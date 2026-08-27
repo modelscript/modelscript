@@ -703,7 +703,7 @@ export function transpileQuery(
           .filter((arg) => {
             if (ts.isIdentifier(arg)) {
               if (arg.text === "$") return false;
-              if (arg.text === "db") return false;
+              if (arg.text === "db" || arg.text === "graph" || arg.text === "cg") return false;
             }
             return true;
           })

@@ -121,11 +121,10 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   }
 
   // Force IDENT into regexTokens if it's missing so the DFA generates it!
-  if (wordName && !regexTokens.has(wordName)) {
-    // Inject generic word pattern
+  if (wordName && !grammar.rules[wordName] && !regexTokens.has(wordName)) {
+    // Inject generic word pattern only if wordName is not already a rule in the grammar
     regexTokens.set(wordName, "/[_a-zA-Z][_a-zA-Z0-9]*/");
   }
-
   console.log("lexer.ts: wordRegex is", wordRegex);
 
   console.log("lexer.ts: stringTokens size =", stringTokens.size, Array.from(stringTokens.keys()));
@@ -141,28 +140,36 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     for (const rule of normalized.extras) {
       const rType = (rule.type || "").toUpperCase();
       if (rType === "TOKEN") {
-        let val = rule.value.toString();
-        if (typeof rule.value === "string") val = `"${rule.value}"`;
-        const mappedInt = normalized.symToInt.get(val);
+        const ruleVal =
+          (rule as any).value !== undefined ? (rule as any).value : (rule as any).child || (rule as any).children;
+        let val = ruleVal ? ruleVal.toString() : "";
+        if (typeof (rule as any).value === "string") val = `"${(rule as any).value}"`;
+        const mappedInt =
+          normalized.symToInt.get(val) ??
+          ((rule as any).name ? normalized.symToInt.get((rule as any).name) : undefined);
         if (mappedInt !== undefined) {
-          lexerCode += `  store<u8>(is_extra_token + <u32>SyntaxType.T_${mappedInt}, 1);\n`;
+          lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
         }
       } else if (rType === "SYMBOL") {
         const symName = (rule as any).name || (rule as any).value;
         // Find evaluated rule that corresponds to this symbol
         const evalRule = normalized.evaluatedRules[symName];
         if (evalRule && evalRule.type === "TOKEN") {
-          let val = evalRule.value.toString();
-          if (typeof evalRule.value === "string") val = `"${evalRule.value}"`;
-          const mappedInt = normalized.symToInt.get(val);
+          const ruleVal =
+            (evalRule as any).value !== undefined
+              ? (evalRule as any).value
+              : (evalRule as any).child || (evalRule as any).children;
+          let val = ruleVal ? ruleVal.toString() : symName;
+          if (typeof (evalRule as any).value === "string") val = `"${(evalRule as any).value}"`;
+          const mappedInt = normalized.symToInt.get(val) ?? normalized.symToInt.get(symName);
           if (mappedInt !== undefined) {
-            lexerCode += `  store<u8>(is_extra_token + <u32>SyntaxType.T_${mappedInt}, 1);\n`;
+            lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
           }
         } else {
           // If the symbol resolves to a regex, symToInt will have the symName or regex string
           const mappedInt = normalized.symToInt.get(symName);
           if (mappedInt !== undefined) {
-            lexerCode += `  store<u8>(is_extra_token + <u32>SyntaxType.T_${mappedInt}, 1);\n`;
+            lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
           }
         }
       }
@@ -475,7 +482,11 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     }
 
     if (val.length === 1) {
-      lexerCode += `  if (char0 == ${val.charCodeAt(0)}) {\n`;
+      if (val === "/") {
+        lexerCode += `  if (char0 == 47 && !(lexPos + char0Len < inputLength && (peekChar(lexPos + char0Len) == 42 || peekChar(lexPos + char0Len) == 47))) {\n`;
+      } else {
+        lexerCode += `  if (char0 == ${val.charCodeAt(0)}) {\n`;
+      }
       lexerCode += `    let cPos = lexPos + char0Len;\n`;
       lexerCode += wordBoundaryCheck;
       lexerCode += `  }\n`;

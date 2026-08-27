@@ -28,14 +28,16 @@ export function extractQueryHooks(langConfig: any, $: Record<string, any>): Quer
   for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
     const ruleAST = ruleFn($);
 
-    // Only process rules wrapped in def() that have queries or lints
-    if (!ruleAST || ruleAST.type !== "def") continue;
-    const hasQueries = ruleAST.options?.queries && Object.keys(ruleAST.options.queries).length > 0;
-    const hasLints = ruleAST.options?.lints && Object.keys(ruleAST.options.lints).length > 0;
+    if (!ruleAST) continue;
+    const t = (ruleAST.type || "").toUpperCase();
+    if (t !== "DEF") continue;
+    const options = ruleAST.options || ruleAST.value;
+    const hasQueries = options?.queries && Object.keys(options.queries).length > 0;
+    const hasLints = options?.lints && Object.keys(options.lints).length > 0;
     if (!hasQueries && !hasLints) continue;
 
-    const queryNames = ruleAST.options?.queries ? Object.keys(ruleAST.options.queries) : [];
-    const lintNames = ruleAST.options?.lints ? Object.keys(ruleAST.options.lints) : [];
+    const queryNames = options?.queries ? Object.keys(options.queries) : [];
+    const lintNames = options?.lints ? Object.keys(options.lints) : [];
     hooks.push({ ruleName, queryNames, lintNames });
   }
 
@@ -103,8 +105,9 @@ export function serializeQueryHooks(hooks: QueryHookInfo[], inputFile: string, o
       `    const $ = new Proxy({}, { get(_, p) { return { type: "sym", name: p }; } });`,
       `    const rule = (langDef.rules as Record<string, unknown>)["${hook.ruleName}"] as (args: unknown) => unknown;`,
       `    const ruleAst = rule ? rule($) : null;`,
-      `    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {`,
-      `      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;`,
+      `    const ast = ruleAst as any;`,
+      `    if (ast && (ast.type === "def" || ast.type === "DEF")) {`,
+      `      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;`,
       `      const merged = {} as QueryHooks;`,
       `      if (opts?.queries) Object.assign(merged, opts.queries);`,
       `      // Register lint functions as lint__<name> queries`,

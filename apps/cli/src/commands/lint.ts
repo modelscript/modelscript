@@ -2,12 +2,7 @@
 /* eslint-disable no-useless-assignment */
 
 import { UnifiedWorkspace } from "@modelscript/compiler";
-import {
-  createModelicaQueryEngine,
-  createModelicaWorkspaceIndex,
-  createSysML2QueryEngine,
-  createSysML2WorkspaceIndex,
-} from "@modelscript/core";
+import { createModelicaQueryEngine, createModelicaWorkspaceIndex, createSysML2QueryEngine } from "@modelscript/core";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -95,21 +90,19 @@ export const Lint: CommandModule<{}, LintArgs> = {
     }
 
     if (hasSysML) {
-      sIdx = createSysML2WorkspaceIndex();
-      const WebParserModule = await import("web-tree-sitter");
-      const WebParser: any = WebParserModule.default || WebParserModule;
-      await WebParser.Parser.init();
+      const { createWasmParser } = await import("@modelscript/language");
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = path.dirname(__filename);
-      const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/tree-sitter-sysml2.wasm");
-      const SysML2 = await WebParser.Language.load(fs.readFileSync(wasmPath));
-      const sysmlParser = new WebParser.Parser();
-      sysmlParser.setLanguage(SysML2);
+      const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
+      const sysmlResult = await createWasmParser(wasmPath);
+      const sysmlParser = sysmlResult.parser;
       for (const item of sysmlItems) {
         const tree = sysmlParser.parse(item.text);
-        const ast = tree.rootNode as any;
-        astMap.set(item.uri, ast);
-        sIdx.register(item.uri, () => ast);
+        if (tree) {
+          const ast = tree.rootNode as any;
+          astMap.set(item.uri, ast);
+          sIdx.register(item.uri, () => ast);
+        }
       }
       u.registerWorkspace("sysml2", sIdx, sysml2LangFallback as any);
     }

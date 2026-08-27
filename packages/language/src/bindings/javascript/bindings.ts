@@ -405,6 +405,15 @@ export class LspFacade {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
       this.wasmMemory = wasmMemoryOrInstance.exports.memory || wasmMemoryOrInstance.memory;
       this.exports = wasmMemoryOrInstance.exports;
+    } else if (exports) {
+      this.wasmMemory = wasmMemoryOrInstance;
+      this.exports = exports;
+    } else if (
+      wasmMemoryOrInstance &&
+      (wasmMemoryOrInstance.memory || wasmMemoryOrInstance.parse || wasmMemoryOrInstance.getInputBuffer)
+    ) {
+      this.wasmMemory = wasmMemoryOrInstance.memory;
+      this.exports = wasmMemoryOrInstance;
     } else {
       this.wasmMemory = wasmMemoryOrInstance;
       this.exports = exports;
@@ -780,8 +789,10 @@ export class LspFacade {
     console.log(
       `[Bindings] parseIncrementalBatch START: ${edits.length} edits, netDelta=${netDelta}, oldLen=${oldTotalLength}, newLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
     );
+    // Sort edits in descending order so mutations at higher offsets do not shift lower offsets
+    const sortedEdits = edits.slice().sort((a, b) => b.rangeOffset - a.rangeOffset);
     let currentLen = oldTotalLength;
-    for (const edit of edits) {
+    for (const edit of sortedEdits) {
       if (edit.text.length !== edit.rangeLength) {
         const sourceIndex = edit.rangeOffset + edit.rangeLength;
         const targetIndex = edit.rangeOffset + edit.text.length;
@@ -1054,7 +1065,7 @@ export class LspFacade {
 
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
 
-    const memory = new Uint32Array(this.wasmMemory.buffer);
+    let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
 
     // Pre-calculate all needed nodePtr offsets in a single O(N) pass
@@ -3050,12 +3061,26 @@ export class LspFacade {
       const isFlow = (flags & (1 << 1)) !== 0;
       const startVal = this.exports.dae_getVarStartValue ? this.exports.dae_getVarStartValue(daePtr, i) : 0;
 
+      // Read array shape dimensions
+      const dimensions: number[] = [];
+      if (this.exports.dae_getVarShapeDim) {
+        for (let d = 0; d < 4; d++) {
+          const dimSize = this.exports.dae_getVarShapeDim(daePtr, i, d);
+          if (dimSize > 0) {
+            dimensions.push(dimSize);
+          } else {
+            break;
+          }
+        }
+      }
+
       variables.push({
         name,
         type: varType,
         variability,
         causality,
         isFlow,
+        dimensions,
         start: startVal !== 0 ? startVal : null,
       });
     }
@@ -3134,7 +3159,8 @@ export class LspFacade {
       for (const v of continuousVars) {
         const prefix = v.isFlow ? "flow " : "";
         const startStr = v.start !== null ? ` (start = ${v.start})` : "";
-        flatLines.push(`  ${prefix}${v.type} ${v.name}${startStr};`);
+        const dimStr = v.dimensions && v.dimensions.length > 0 ? `[${v.dimensions.join(", ")}]` : "";
+        flatLines.push(`  ${prefix}${v.type} ${v.name}${dimStr}${startStr};`);
       }
     }
     if (paramVars.length > 0) {
@@ -3142,7 +3168,8 @@ export class LspFacade {
       flatLines.push("  // --- Parameters & Constants ---");
       for (const p of paramVars) {
         const startStr = p.start !== null ? ` = ${p.start}` : "";
-        flatLines.push(`  ${p.variability} ${p.type} ${p.name}${startStr};`);
+        const dimStr = p.dimensions && p.dimensions.length > 0 ? `[${p.dimensions.join(", ")}]` : "";
+        flatLines.push(`  ${p.variability} ${p.type} ${p.name}${dimStr}${startStr};`);
       }
     }
     if (equations.length > 0) {
@@ -4735,4 +4762,97 @@ export class LspWorkspaceManager {
       score: r.score,
     }));
   }
+}
+
+/**
+ * Asynchronously loads a ModelScript language WebAssembly parser module from a URL,
+ * local file path, or in-memory byte buffer and wraps it in a high-performance LspFacade and TreeSitterParser.
+ */
+export async function createWasmParser(
+  wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
+  options?: { syntaxNames?: string[] },
+): Promise<{ facade: LspFacade; parser: TreeSitterParser }> {
+  let bytes: ArrayBuffer;
+  let syntaxNames = options?.syntaxNames;
+
+  if (typeof wasmUrlOrBytes === "string") {
+    if (
+      typeof fetch !== "undefined" &&
+      (wasmUrlOrBytes.startsWith("http://") ||
+        wasmUrlOrBytes.startsWith("https://") ||
+        wasmUrlOrBytes.startsWith("blob:") ||
+        wasmUrlOrBytes.startsWith("vscode-") ||
+        wasmUrlOrBytes.startsWith("/"))
+    ) {
+      try {
+        const res = await fetch(wasmUrlOrBytes);
+        bytes = await res.arrayBuffer();
+      } catch {
+        const modName = "node" + ":fs";
+        const fs = await Function("m", "return import(m)")(modName);
+        const buf = fs.readFileSync(wasmUrlOrBytes);
+        bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      }
+    } else {
+      const modName = "node" + ":fs";
+      const fs = await Function("m", "return import(m)")(modName);
+      const buf = fs.readFileSync(wasmUrlOrBytes);
+      bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    }
+
+    if (!syntaxNames) {
+      const bindingsPaths = [
+        wasmUrlOrBytes.replace(/\/dist\/parser\.wasm$/, "/src-gen/bindings.js"),
+        wasmUrlOrBytes.replace(/\.wasm$/, ".bindings.js"),
+        wasmUrlOrBytes.replace(/\/parser\.wasm$/, "/bindings.js"),
+        wasmUrlOrBytes.replace(/\/tree-sitter-[^/]+\.wasm$/, "/bindings.js"),
+      ];
+      for (const bPath of bindingsPaths) {
+        const mod = await Function("m", "return import(m)")(bPath);
+        if (mod) {
+          if (mod.SYNTAX_NAMES && mod.SYNTAX_NAMES.length > 0) {
+            syntaxNames = mod.SYNTAX_NAMES;
+          }
+          if (mod.FIELD_NAMES) {
+            Object.assign(FIELD_NAMES, mod.FIELD_NAMES);
+          }
+          if (syntaxNames) break;
+        }
+      }
+    }
+  } else if (wasmUrlOrBytes instanceof Uint8Array) {
+    bytes = wasmUrlOrBytes.buffer.slice(
+      wasmUrlOrBytes.byteOffset,
+      wasmUrlOrBytes.byteOffset + wasmUrlOrBytes.byteLength,
+    );
+  } else {
+    bytes = wasmUrlOrBytes;
+  }
+
+  const imports = {
+    env: {
+      abort: (msg?: any, file?: any, line?: any, col?: any) => {
+        console.error(`WASM abort: ${msg}:${file}:${line}:${col}`);
+      },
+    },
+    parser: {
+      logInt: (val: number) => {},
+    },
+    engine: {
+      debugLog: (ptr: number, len: number) => {},
+    },
+    host: {
+      runHostQuery: () => 0,
+    },
+  };
+
+  const wasmModule = await WebAssembly.instantiate(bytes, imports);
+  const exports = wasmModule.instance ? wasmModule.instance.exports : (wasmModule as any).exports;
+  const facade = new LspFacade(exports);
+  if (syntaxNames && syntaxNames.length > 0) {
+    facade.syntaxNames = syntaxNames;
+  }
+  const parser = new TreeSitterParser();
+  parser.setLanguage(facade);
+  return { facade, parser };
 }

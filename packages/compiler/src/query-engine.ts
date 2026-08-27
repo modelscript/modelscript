@@ -804,8 +804,93 @@ export class QueryEngine {
   // Public QueryDB Facade
   // =========================================================================
 
+  getCstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
+    if (!this.tree) return null;
+    if (typeof (this.tree as any).getText === "function") {
+      return (this.tree as any).getText(startByte, endByte, entry);
+    }
+    if (typeof (this.tree as any).getNode === "function") {
+      const n = (this.tree as any).getNode(startByte, endByte, entry);
+      return (n as any)?.text ?? null;
+    }
+    if (typeof this.tree === "function") {
+      const root = (this.tree as any)(entry?.resourceId);
+      if (root && root.tree && root.tree.sourceCode) {
+        const s = startByte > root.endIndex ? Math.floor(startByte / 2) : startByte;
+        const e = endByte > root.endIndex ? Math.floor(endByte / 2) : endByte;
+        return root.tree.sourceCode.slice(s, e);
+      }
+      if (root && root.text) {
+        const s = startByte > root.text.length ? Math.floor(startByte / 2) : startByte;
+        const e = endByte > root.text.length ? Math.floor(endByte / 2) : endByte;
+        return root.text.slice(s, e);
+      }
+    }
+    return null;
+  }
+
+  getCstNode(id: SymbolId): unknown | null {
+    if (!this.tree) return null;
+    const entry = this.resolveEntry(id);
+    if (!entry) return null;
+    if (typeof (this.tree as any).getNode === "function") {
+      return (this.tree as any).getNode(entry.startByte, entry.endByte, entry);
+    }
+    if (typeof this.tree === "function") {
+      const root = (this.tree as any)(entry?.resourceId);
+      if (root) {
+        const s = entry.startByte > (root.endIndex ?? Infinity) ? Math.floor(entry.startByte / 2) : entry.startByte;
+        const e = entry.endByte > (root.endIndex ?? Infinity) ? Math.floor(entry.endByte / 2) : entry.endByte;
+        if (typeof root.descendantForIndex === "function") {
+          return root.descendantForIndex(s, e);
+        }
+        const findNode = (n: any): any => {
+          if (n.startIndex === s && n.endIndex === e) return n;
+          for (const c of n.children || []) {
+            if (c.startIndex <= s && c.endIndex >= e) {
+              const found = findNode(c);
+              if (found) return found;
+            }
+          }
+          return n.startIndex <= s && n.endIndex >= e ? n : null;
+        };
+        return findNode(root);
+      }
+    }
+    return null;
+  }
+
+  getCstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
+    if (!this.tree) return null;
+    if (typeof (this.tree as any).getNode === "function") {
+      return (this.tree as any).getNode(startByte, endByte, entry);
+    }
+    if (typeof this.tree === "function") {
+      const root = (this.tree as any)(entry?.resourceId);
+      if (root) {
+        const s = startByte > (root.endIndex ?? Infinity) ? Math.floor(startByte / 2) : startByte;
+        const e = endByte > (root.endIndex ?? Infinity) ? Math.floor(endByte / 2) : endByte;
+        if (typeof root.descendantForIndex === "function") {
+          return root.descendantForIndex(s, e);
+        }
+        const findNode = (n: any): any => {
+          if (n.startIndex === s && n.endIndex === e) return n;
+          for (const c of n.children || []) {
+            if (c.startIndex <= s && c.endIndex >= e) {
+              const found = findNode(c);
+              if (found) return found;
+            }
+          }
+          return n.startIndex <= s && n.endIndex >= e ? n : null;
+        };
+        return findNode(root);
+      }
+    }
+    return null;
+  }
+
   /**
-   * Create a public (non-dependency-tracked) QueryDB facade.
+   * Returns a standalone `QueryDB` facade wrapping this engine.
    *
    * Used by external consumers (e.g., compat-shim's QueryBackedClassInstance)
    * that need to invoke queries and access symbols outside of the Salsa
@@ -927,20 +1012,15 @@ export class QueryEngine {
       },
 
       cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
-        if (!engine.tree) return null;
-        return engine.tree.getText(startByte, endByte, entry);
+        return engine.getCstText(startByte, endByte, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
-        if (!engine.tree) return null;
-        const entry = engine.resolveEntry(id);
-        if (!entry) return null;
-        return engine.tree.getNode(entry.startByte, entry.endByte, entry);
+        return engine.getCstNode(id);
       },
 
       cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
-        if (!engine.tree) return null;
-        return engine.tree.getNode(startByte, endByte, entry);
+        return engine.getCstNodeRange(startByte, endByte, entry);
       },
 
       flushVolatile(): void {
@@ -1454,20 +1534,15 @@ export class QueryEngine {
       },
 
       cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
-        if (!engine.tree) return null;
-        return engine.tree.getText(startByte, endByte, entry);
+        return engine.getCstText(startByte, endByte, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
-        if (!engine.tree) return null;
-        const entry = engine.resolveEntry(id);
-        if (!entry) return null;
-        return engine.tree.getNode(entry.startByte, entry.endByte, entry);
+        return engine.getCstNode(id);
       },
 
       cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
-        if (!engine.tree) return null;
-        return engine.tree.getNode(startByte, endByte, entry);
+        return engine.getCstNodeRange(startByte, endByte, entry);
       },
 
       flushVolatile(): void {

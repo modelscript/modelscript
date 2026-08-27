@@ -168,3 +168,5 @@ export function generateJavaScriptWrapper(
 
   return { js: jsWithLegend, dts: dtsWithLegend, syntaxNames, fieldNames: fieldNamesArr, semanticLegend: legend };
 }
+
+export * from "./bindings.js";

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-for-of, @typescript-eslint/no-non-null-assertion */
+import { SyntaxNode } from "@modelscript/language";
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { Node as SyntaxNode } from "web-tree-sitter";
 import { nodeRange } from "../utils/astUtils";
 
 export function registerDocumentFeaturesProvider(

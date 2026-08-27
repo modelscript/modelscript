@@ -278,6 +278,119 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
+   * M4003: Array shape mismatch between declared dimension and initializer.
+   * e.g. `Real x[9] = {8};`
+   */
+  arrayShapeMismatch: {
+    nodes: ["component_declaration", "component_declaration1"],
+    severity: "error",
+    code: 4003,
+    message: (target) =>
+      `Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      // 1. Find array_subscripts on node or ancestor component_clause
+      let subNode: u32 = 0;
+      if ($.array_subscripts != 0) {
+        for (const s of db.ast.getDescendants(node, $.array_subscripts)) {
+          subNode = s;
+          break;
+        }
+        if (subNode == 0) {
+          for (const anc of db.ast.getAncestors(node)) {
+            const ancType = db.ast.getType(anc);
+            if (ancType == $.component_clause || ancType == $.component_clause1) {
+              for (const s of db.ast.getDescendants(anc, $.array_subscripts)) {
+                subNode = s;
+                break;
+              }
+              break;
+            }
+          }
+        }
+      }
+      if (subNode == 0) return;
+
+      const declaredSize = db.ast.parseInteger(subNode);
+      if (declaredSize <= 0) return;
+
+      // 2. Find modification and array_arguments ({ ... })
+      let arrayArgs: u32 = 0;
+      if ($.array_arguments != 0) {
+        for (const args of db.ast.getDescendants(node, $.array_arguments)) {
+          arrayArgs = args;
+          break;
+        }
+      }
+      if (arrayArgs == 0) return;
+
+      // Skip array comprehensions with 'for'
+      if ($.for_indices != 0) {
+        for (const forIdx of db.ast.getDescendants(arrayArgs, $.for_indices)) {
+          if (forIdx != 0) return;
+        }
+      }
+
+      // Count elements in array_arguments
+      let count: u32 = 1;
+      if ($.array_arguments_non_first != 0) {
+        count += db.ast.getDescendants(arrayArgs, $.array_arguments_non_first).length as u32;
+      }
+
+      if (count != (declaredSize as u32)) {
+        db.diagnostic(arrayArgs);
+      }
+    },
+  },
+
+  /**
+   * M3001: Array element type mismatch.
+   */
+  arrayElementTypeMismatch: {
+    nodes: ["component_declaration", "component_declaration1"],
+    severity: "error",
+    code: 3001,
+    message: (target) => `Array element type mismatch in '${target.text}'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let arrayArgs: u32 = 0;
+      for (const args of db.ast.getDescendants(node, $.array_arguments)) {
+        arrayArgs = args;
+        break;
+      }
+      if (arrayArgs == 0) return;
+
+      // Determine expected primitive type
+      let expectedType: u16 = TYPE_UNKNOWN;
+      for (const anc of db.ast.getAncestors(node)) {
+        const ancType = db.ast.getType(anc);
+        if (ancType == $.component_clause || ancType == $.component_clause1) {
+          for (const id of db.ast.getDescendants(anc, $.identifier)) {
+            if (db.ast.textEquals(id, "Real")) expectedType = TYPE_REAL;
+            else if (db.ast.textEquals(id, "Integer")) expectedType = TYPE_INTEGER;
+            else if (db.ast.textEquals(id, "Boolean")) expectedType = TYPE_BOOLEAN;
+            else if (db.ast.textEquals(id, "String")) expectedType = TYPE_STRING;
+            break;
+          }
+          break;
+        }
+      }
+      if (expectedType == TYPE_UNKNOWN) return;
+
+      if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER) {
+        for (const str of db.ast.getDescendants(arrayArgs, $.string_literal)) {
+          db.diagnostic(str);
+        }
+      } else if (expectedType == TYPE_STRING) {
+        for (const num of db.ast.getDescendants(arrayArgs, $.unsigned_real)) {
+          db.diagnostic(num);
+        }
+        for (const num of db.ast.getDescendants(arrayArgs, $.unsigned_integer)) {
+          db.diagnostic(num);
+        }
+      }
+    },
+  },
+
+  /**
    * M5001: Type mismatch in equation `lhs = rhs`.
    */
   equationTypeMismatch: {

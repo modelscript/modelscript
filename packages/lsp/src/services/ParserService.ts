@@ -8,10 +8,10 @@ import {
   LineIndex,
   TokenData,
 } from "@modelscript/compiler";
+import { createWasmParser, SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
 import { createModelicaQueryEngine, MsimParser } from "@modelscript/modelica/factory";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 import { computeTreeEdit } from "../utils/astUtils";
 import { loadDependencyFromRegistry, LoaderContext, loadMSL, loadSysML2StandardLibrary } from "../vfs/library-loader";
 import { DocumentManager } from "./DocumentManager";
@@ -302,20 +302,13 @@ export class ParserService {
         message: "Initializing this.parser...",
       });
 
-      await Parser.init({
-        locateFile: (file: string) => {
-          return `${serverDistBase}/${file}`;
-        },
-      });
-
-      const Modelica = await Language.load(`${serverDistBase}/tree-sitter-modelica.wasm`);
-      this.parser = new Parser();
-      this.parser.setLanguage(Modelica);
+      const modelicaResult = await createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`);
+      this.parser = modelicaResult.parser;
       Context.registerParser(".mo", this.parser);
       Context.registerParser(".mos", this.parser);
       Context.registerParser(".msim", new MsimParser() as any);
       this.parserReady = true;
-      this.connection.console.info("Tree-sitter Modelica this.parser initialized");
+      this.connection.console.info("ModelScript Modelica parser initialized");
 
       // === EARLY VALIDATION PASS ===
       // Validate open documents NOW — before any library loading.
@@ -332,54 +325,50 @@ export class ParserService {
         message: "ModelScript (loading libraries...)",
       });
 
-      // Initialize SysML2 this.parser (non-blocking — WASM load is fast)
+      // Initialize SysML2 parser (non-blocking — WASM load is fast)
       try {
-        const SysML2 = await Language.load(`${serverDistBase}/tree-sitter-sysml2.wasm`);
-        this.sysml2Parser = new Parser();
-        this.sysml2Parser.setLanguage(SysML2);
+        const sysmlResult = await createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`);
+        this.sysml2Parser = sysmlResult.parser;
         Context.registerParser(".sysml", this.sysml2Parser as any);
         this.sysml2ParserReady = true;
-        this.connection.console.info("Tree-sitter SysML2 this.parser initialized");
+        this.connection.console.info("ModelScript SysML2 parser initialized");
       } catch (e) {
-        this.connection.console.warn(`[tree-sitter] Failed to load SysML2 language: ${e}`);
+        this.connection.console.warn(`Failed to load SysML2 language: ${e}`);
       }
 
-      // Initialize STEP this.parser
+      // Initialize STEP parser
       try {
-        const StepLang = await Language.load(`${serverDistBase}/tree-sitter-step.wasm`);
-        stepParser = new Parser();
-        stepParser.setLanguage(StepLang);
-        Context.registerParser(".step", stepParser as any);
-        Context.registerParser(".stp", stepParser as any);
-        Context.registerParser(".p21", stepParser as any);
-        stepParserReady = true;
-        this.connection.console.info("Tree-sitter STEP this.parser initialized");
+        const stepResult = await createWasmParser(`${serverDistBase}/tree-sitter-step.wasm`);
+        this.stepParser = stepResult.parser;
+        Context.registerParser(".step", this.stepParser as any);
+        Context.registerParser(".stp", this.stepParser as any);
+        Context.registerParser(".p21", this.stepParser as any);
+        this.stepParserReady = true;
+        this.connection.console.info("ModelScript STEP parser initialized");
       } catch (e) {
-        this.connection.console.warn(`[tree-sitter] Failed to load STEP language: ${e}`);
+        this.connection.console.warn(`Failed to load STEP language: ${e}`);
       }
 
-      // Initialize OWL2 this.parser
+      // Initialize OWL2 parser
       try {
-        const Owl2Lang = await Language.load(`${serverDistBase}/tree-sitter-owl2.wasm`);
-        this.owl2Parser = new Parser();
-        this.owl2Parser.setLanguage(Owl2Lang);
-        Context.registerParser(".owl", owl2Parser as any);
+        const owl2Result = await createWasmParser(`${serverDistBase}/tree-sitter-owl2.wasm`);
+        this.owl2Parser = owl2Result.parser;
+        Context.registerParser(".owl", this.owl2Parser as any);
         this.owl2ParserReady = true;
-        this.connection.console.info("Tree-sitter OWL2 this.parser initialized");
+        this.connection.console.info("ModelScript OWL2 parser initialized");
       } catch (e) {
-        this.connection.console.warn(`[tree-sitter] Failed to load OWL2 language: ${e}`);
+        this.connection.console.warn(`Failed to load OWL2 language: ${e}`);
       }
 
-      // Initialize CSV this.parser
+      // Initialize CSV parser
       try {
-        const CsvLang = await Language.load(`${serverDistBase}/tree-sitter-csv.wasm`);
-        this.csvParser = new Parser();
-        this.csvParser.setLanguage(CsvLang);
-        Context.registerParser(".csv", csvParser as any);
+        const csvResult = await createWasmParser(`${serverDistBase}/tree-sitter-csv.wasm`);
+        this.csvParser = csvResult.parser;
+        Context.registerParser(".csv", this.csvParser as any);
         this.csvParserReady = true;
-        this.connection.console.info("Tree-sitter CSV this.parser initialized");
+        this.connection.console.info("ModelScript CSV parser initialized");
       } catch (e) {
-        this.connection.console.warn(`[tree-sitter] Failed to load CSV language: ${e}`);
+        this.connection.console.warn(`Failed to load CSV language: ${e}`);
       }
 
       // Load the Modelica Standard Library from the bundled zip

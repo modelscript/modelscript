@@ -1,4 +1,4 @@
-import { Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
+import { SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
 
 /* Document formatter — ported from morsel's formatter.ts */
 

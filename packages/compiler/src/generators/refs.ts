@@ -53,8 +53,10 @@ export function extractRefHooks(langConfig: any, $: Record<string, any>): RefHoo
 function collectRefNodes(node: any, ruleName: string, hooks: RefHookInfo[]): void {
   if (!node || typeof node !== "object") return;
 
-  if (node.type === "ref") {
-    const opts = node.options || {};
+  const t = (node.type || "").toUpperCase();
+
+  if (t === "REF") {
+    const opts = node.options || node.value || {};
 
     let namePath = "name";
     if (opts.name) {
@@ -73,40 +75,29 @@ function collectRefNodes(node: any, ruleName: string, hooks: RefHookInfo[]): voi
       targetKinds: opts.targetKinds || [],
       resolve: opts.resolve || "lexical",
     });
-  } else if (node.type === "def") {
+  } else if (t === "DEF") {
     // def() node with symbol.ref — also acts as a reference site
-    const opts = node.options || {};
-    if (!opts.symbol) return;
+    const opts = node.options || node.value || {};
+    if (opts.symbol) {
+      const self = createSelfProxy();
+      const symbolConfig = opts.symbol(self);
+      if (symbolConfig?.ref) {
+        const namePath = symbolConfig.name ? extractScopePath(symbolConfig.name) : "name";
 
-    const self = createSelfProxy();
-    const symbolConfig = opts.symbol(self);
-    if (!symbolConfig?.ref) return;
-
-    const namePath = symbolConfig.name ? extractScopePath(symbolConfig.name) : "name";
-
-    hooks.push({
-      ruleName,
-      namePath,
-      targetKinds: symbolConfig.ref.targetKinds || [],
-      resolve: symbolConfig.ref.resolve || "lexical",
-    });
-  } else if (node.type === "choice" || node.type === "seq") {
-    // Walk into choice/seq args
-    if (Array.isArray(node.args)) {
-      for (const arg of node.args) {
-        collectRefNodes(arg, ruleName, hooks);
+        hooks.push({
+          ruleName,
+          namePath,
+          targetKinds: symbolConfig.ref.targetKinds || [],
+          resolve: symbolConfig.ref.resolve || "lexical",
+        });
       }
     }
-  } else if (
-    node.type === "optional" ||
-    node.type === "repeat" ||
-    node.type === "repeat1" ||
-    node.type === "token" ||
-    node.type === "token_immediate"
-  ) {
-    // Walk into unary wrappers
-    if (node.arg) {
-      collectRefNodes(node.arg, ruleName, hooks);
+  }
+
+  const children = node.children || node.args || (node.arg ? [node.arg] : []) || (node.rule ? [node.rule] : []);
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      collectRefNodes(child, ruleName, hooks);
     }
   }
 }

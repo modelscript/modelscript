@@ -1,23 +1,21 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "declaration": true,
-    "outDir": "dist",
     "rootDir": ".",
-    "strict": true,
-    "esModuleInterop": true,
+    "outDir": "./dist",
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext", "DOM"],
+    "declaration": true,
+    "strict": false,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "noEmitOnError": false,
+    "noImplicitAny": false,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleResolution": "nodenext",
+    "types": ["node"]
   },
-  "include": [
-    "language.ts",
-    "indexer_config.ts",
-    "query_hooks.ts",
-    "ref_config.ts",
-    "step-multibody-mapper.ts",
-    "src-gen/**/*.ts"
-  ],
-  "exclude": ["node_modules", "dist", "build", "src"]
+  "include": ["*.ts", "src/**/*.ts", "src-gen/**/*.ts"]
 }

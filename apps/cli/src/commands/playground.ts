@@ -1852,7 +1852,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                                                     return (
                                                         <tr key={i} style={{ borderBottom: '1px solid #21262d' }}>
                                                             <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#58a6ff', fontFamily: 'monospace' }}>
-                                                                {v.name}
+                                                                {v.name + (v.dimensions && v.dimensions.length > 0 ? '[' + v.dimensions.join(', ') + ']' : '')}
                                                             </td>
                                                             <td style={{ padding: '6px 8px', color: '#7ee787', fontFamily: 'monospace' }}>
                                                                 {v.type}
@@ -2715,6 +2715,7 @@ async function runDiagnosticsNow() {
                     const edit = groupEdits[0];
                     globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen, latestUri);
                 } else {
+                    groupEdits.sort((a, b) => b.rangeOffset - a.rangeOffset);
                     globalAstRoot = lspFacade.parseIncrementalBatch(groupEdits, newTotalLen, latestUri);
                 }
                 hadAnyEdit = true;

@@ -1,10 +1,7 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+import type { IndexerBatchError, IndexerBatchRequest, IndexerBatchResponse, SymbolIndex } from "@modelscript/compiler";
 import { SymbolIndexer } from "@modelscript/compiler";
-import { Language, Parser } from "web-tree-sitter";
-// @ts-ignore
+import { createWasmParser, TreeSitterParser as Parser } from "@modelscript/language";
 import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config";
-// @ts-ignore
-import type { IndexerBatchError, IndexerBatchRequest, IndexerBatchResponse } from "@modelscript/compiler";
 import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/config";
 
 let parser: Parser | null = null;
@@ -13,20 +10,17 @@ let initialized = false;
 
 async function initParsers(serverDistBase: string) {
   if (initialized) return;
-  await Parser.init({
-    locateFile: (file: string) => {
-      return `${serverDistBase}/${file}`;
-    },
-  });
-
-  const Modelica = await Language.load(`${serverDistBase}/tree-sitter-modelica.wasm`);
-  parser = new Parser();
-  parser.setLanguage(Modelica);
 
   try {
-    const SysML2 = await Language.load(`${serverDistBase}/tree-sitter-sysml2.wasm`);
-    sysml2Parser = new Parser();
-    sysml2Parser.setLanguage(SysML2);
+    const modelicaResult = await createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`);
+    parser = modelicaResult.parser;
+  } catch (e) {
+    console.warn("[indexer-worker] Failed to load Modelica parser:", e);
+  }
+
+  try {
+    const sysmlResult = await createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`);
+    sysml2Parser = sysmlResult.parser;
   } catch (e) {
     console.warn("[indexer-worker] Failed to load SysML2 parser:", e);
   }
@@ -57,7 +51,13 @@ self.onmessage = async (e: MessageEvent<IndexerBatchRequest>) => {
       const indexer = new SymbolIndexer(hooks);
       // We pass a local ID generator starting from 1
       let localIdCounter = 1;
-      const { index: rawIndex } = indexer.update(null as any, tree.rootNode, [], 0, () => localIdCounter++);
+      const { index: rawIndex } = indexer.update(
+        null as unknown as SymbolIndex,
+        tree.rootNode,
+        [],
+        0,
+        () => localIdCounter++,
+      );
 
       // Clean up the WASM tree to prevent memory leaks in the worker!
       tree.delete();
@@ -78,11 +78,11 @@ self.onmessage = async (e: MessageEvent<IndexerBatchRequest>) => {
     };
 
     self.postMessage(response);
-  } catch (err: any) {
+  } catch (err: unknown) {
     const errorRes: IndexerBatchError = {
       type: "INDEX_ERROR",
       batchId,
-      error: err.message || String(err),
+      error: err instanceof Error ? err.message : String(err),
     };
     self.postMessage(errorRes);
   }

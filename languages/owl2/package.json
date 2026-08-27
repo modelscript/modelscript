@@ -3,7 +3,18 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    "./language": "./dist/language.js",
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./src": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
     "./config": {
       "types": "./dist/src-gen/config.d.ts",
       "default": "./dist/src-gen/config.js"
@@ -17,41 +28,18 @@
       "default": "./dist/src-gen/ast.js"
     }
   },
-  "types": "bindings/node",
   "files": [
-    "grammar.js",
-    "binding.gyp",
-    "prebuilds/**",
-    "bindings/node/*",
     "queries/*",
-    "src/**"
+    "src/**",
+    "src-gen/**",
+    "dist/**"
   ],
   "scripts": {
     "build": "node build.js && tsc",
-    "clean": "rimraf dist *.wasm",
-    "install": "node-gyp-build",
-    "prebuildify": "prebuildify --napi --strip"
+    "clean": "rimraf dist src-gen *.wasm"
   },
   "dependencies": {
     "@modelscript/compiler": "*",
-    "node-addon-api": "^8.5.0",
-    "node-gyp-build": "^4.8.4"
-  },
-  "devDependencies": {
-    "prebuildify": "^6.0.0"
-  },
-  "peerDependencies": {
-    "tree-sitter": "^0.21.0"
-  },
-  "peerDependenciesMeta": {
-    "tree_sitter": {
-      "optional": true
-    }
-  },
-  "tree-sitter": [
-    {
-      "scope": "source.owl2",
-      "injection-regex": "^owl2$"
-    }
-  ]
+    "@modelscript/language": "*"
+  }
 }

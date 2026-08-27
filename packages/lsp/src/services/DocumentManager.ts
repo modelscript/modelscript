@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
+import { Tree as TreeSitterTree } from "@modelscript/language";
 import { TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { Tree as TreeSitterTree } from "web-tree-sitter";
 
 export class DocumentManager {
   public documents: TextDocuments<TextDocument>;

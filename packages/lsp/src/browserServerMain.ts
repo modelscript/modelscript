@@ -25,7 +25,7 @@ import { type SysML2Layout } from "./sysml2-layout";
 // @ts-ignore
 // @ts-ignore
 
-import { Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
+import { SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
 
 import { ArenaDAEBuilder, Context, LineIndex, QueryEngine, initBltWasm } from "@modelscript/compiler";
 import { ArenaQueryFlattener } from "@modelscript/modelica";

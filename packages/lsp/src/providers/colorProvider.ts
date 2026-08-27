@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-for-of */
+import { SyntaxNode } from "@modelscript/language";
 import { Color, ColorInformation, ColorPresentation, Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { Node as SyntaxNode } from "web-tree-sitter";
 
 const COLOR_FIELDS = new Set(["color", "lineColor", "fillColor", "textColor"]);
 

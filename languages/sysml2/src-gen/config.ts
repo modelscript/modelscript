@@ -1,4 +1,4 @@
-import type { DiffConfig, GraphicsConfig, IndexerHook, RefHook } from "@modelscript/compiler";
+import type { DiffConfig, GraphicsConfig, I18nConfig, IndexerHook, RefHook } from "@modelscript/compiler";
 
 export const INDEXER_HOOKS: IndexerHook[] = [
   {
@@ -65,6 +65,14 @@ export const INDEXER_HOOKS: IndexerHook[] = [
     ruleName: "AliasMember",
     kind: "Alias",
     namePath: "memberName",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "AliasMember",
+    kind: "Reference",
+    namePath: "memberElement",
     exportPaths: [],
     inheritPaths: [],
     metadataFieldPaths: {},
@@ -1220,6 +1228,14 @@ export const INDEXER_HOOKS: IndexerHook[] = [
     },
   },
   {
+    ruleName: "TransitionUsage",
+    kind: "Reference",
+    namePath: "source",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
     ruleName: "ViewDefinition",
     kind: "Definition",
     namePath: "declaredName",
@@ -1375,6 +1391,12 @@ export const REF_HOOKS: RefHook[] = [
     resolve: "qualified",
   },
   {
+    ruleName: "AliasMember",
+    namePath: "memberElement",
+    targetKinds: ["Element"],
+    resolve: "qualified",
+  },
+  {
     ruleName: "_ImportedMembership",
     namePath: "importedMembership",
     targetKinds: ["Membership"],
@@ -1431,6 +1453,12 @@ export const REF_HOOKS: RefHook[] = [
   {
     ruleName: "FlowFeature",
     namePath: "ownedRelationship",
+    targetKinds: ["Feature"],
+    resolve: "qualified",
+  },
+  {
+    ruleName: "TransitionUsage",
+    namePath: "source",
     targetKinds: ["Feature"],
     resolve: "qualified",
   },
@@ -4928,3 +4956,5 @@ export const diffConfig: Record<string, DiffConfig> = {
     breaking: ["subject", "isAbstract"],
   },
 };
+
+export const i18nConfig: Record<string, I18nConfig> = {};

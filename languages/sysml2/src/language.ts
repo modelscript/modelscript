@@ -535,12 +535,18 @@ const extractNameChain = (node: CSTNode): string[] => {
 
   // Walk the node to extract names
   if (node.type === "FeatureReferenceExpression") {
-    const rel = node.childForFieldName("ownedRelationship");
+    const rel =
+      node.childForFieldName("ownedRelationship") ||
+      node.children.find((c: any) => c.type === "FeatureReferenceMember") ||
+      node.children[0];
     if (rel) {
-      const memberElement = rel.childForFieldName("memberElement");
+      const memberElement =
+        rel.childForFieldName("memberElement") ||
+        rel.children.find((c: any) => c.type === "QualifiedName") ||
+        rel.children[0];
       if (memberElement) {
-        const name = extractQualifiedName(memberElement);
-        if (name) names.push(name);
+        const name = extractQualifiedName(memberElement) || memberElement.text.trim();
+        if (name) names.push(name.trim());
       }
     }
   } else if (node.type === "PrimaryExpression") {
@@ -584,19 +590,23 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     // --- Literals ---
     case "LiteralInteger": {
       const val = node.childForFieldName("value");
-      return val ? parseInt(val.text, 10) : undefined;
+      return val ? parseInt(val.text, 10) : parseInt(node.text.trim(), 10);
     }
     case "LiteralReal": {
       const val = node.childForFieldName("value");
-      return val ? parseFloat(val.text) : undefined;
+      return val ? parseFloat(val.text) : parseFloat(node.text.trim());
     }
     case "LiteralBoolean": {
       const val = node.childForFieldName("value");
-      return val?.text === "true";
+      const text = val ? val.text : node.text.trim();
+      if (text === "true") return true;
+      if (text === "false") return false;
+      return undefined;
     }
     case "LiteralString": {
       const val = node.childForFieldName("value");
-      return val ? val.text.slice(1, -1) : undefined; // strip quotes
+      const text = val ? val.text : node.text.trim();
+      return text.replace(/^["']|["']$/g, "");
     }
     case "NullExpression":
       return null;
@@ -670,12 +680,16 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
 
     // --- Relational ---
     case "RelationalExpression": {
-      const operands: CSTNode[] = [];
-      const operators: string[] = [];
+      let operands: CSTNode[] = [];
+      let operators: string[] = [];
       for (const child of node.children) {
         const fn = node.fieldNameForChild?.(node.children.indexOf(child));
         if (fn === "operand") operands.push(child);
         else if (fn === "operator") operators.push(child.text ?? child.children?.[0]?.text ?? "");
+      }
+      if (operands.length < 2 && node.children.length === 3) {
+        operands = [node.children[0], node.children[2]];
+        operators = [(node.children[1].text ?? "").trim()];
       }
       if (operands.length < 2 || operators.length === 0) return undefined;
       const left = evaluateExpressionNode(db, operands[0], scopeId);
@@ -828,37 +842,39 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     }
 
     case "PrimaryExpression": {
+      // Check for parenthesized expression: ( expr )
+      const expr = node.childForFieldName("operand");
+      if (expr) return evaluateExpressionNode(db, expr, scopeId);
+
+      // Check for dot-path feature chain
       const names = extractNameChain(node);
       if (names.length > 0) {
         return resolveFeaturePath(db, names, scopeId);
       }
-      // Single base expression with postfix ops — not supported yet
-      const base = node.childForFieldName("base");
-      if (base) return evaluateExpressionNode(db, base, scopeId);
+
+      // Check children
+      for (const child of node.children) {
+        const val = evaluateExpressionNode(db, child, scopeId);
+        if (val !== undefined) return val;
+      }
       return undefined;
     }
 
     // --- Wrapped expressions ---
     case "OwnedExpression":
-    case "SequenceExpression": {
-      // Unwrap: delegate to the first child expression
+    case "ExpressionBody": {
       for (const child of node.children) {
-        if (child.type !== "," && child.type !== "(" && child.type !== ")") {
-          return evaluateExpressionNode(db, child, scopeId);
-        }
+        const val = evaluateExpressionNode(db, child, scopeId);
+        if (val !== undefined) return val;
       }
       return undefined;
     }
 
-    // --- Parenthesized expressions ---
     default: {
-      // Try to find a single expression child
-      if (node.children.length === 3 && node.children[0]?.type === "(") {
-        return evaluateExpressionNode(db, node.children[1], scopeId);
-      }
-      // Try to unwrap single-child nodes
-      if (node.children.length === 1) {
-        return evaluateExpressionNode(db, node.children[0], scopeId);
+      // For wrapper nodes, try to evaluate the first recognized child
+      for (const child of node.children) {
+        const val = evaluateExpressionNode(db, child, scopeId);
+        if (val !== undefined) return val;
       }
       return undefined;
     }
@@ -866,10 +882,10 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
 };
 
 /**
- * Evaluate the result expression of a CalculationBody.
+ * Evaluate the body of a CalculationDefinition or CalculationUsage.
  * Finds the ResultExpressionMember in the CST and evaluates it.
  */
-const evaluateResultExpression = (db: QueryDB, self: SymbolEntry): EvalResult => {
+const evaluateResultExpression = (db: QueryDB, self: SymbolEntry, evalScopeId?: number | null): EvalResult => {
   const cst = db.cstNode(self.id) as CSTNode | null;
   if (!cst) return undefined;
 
@@ -887,10 +903,13 @@ const evaluateResultExpression = (db: QueryDB, self: SymbolEntry): EvalResult =>
   if (!resultMember) return undefined;
 
   // Navigate to the OwnedExpression inside
-  const ownedRelElem = resultMember.childForFieldName("ownedRelatedElement");
+  const ownedRelElem =
+    resultMember.childForFieldName("ownedRelatedElement") ||
+    resultMember.children.find((c: any) => c.type === "OwnedExpression") ||
+    resultMember.children[0];
   if (!ownedRelElem) return undefined;
 
-  return evaluateExpressionNode(db, ownedRelElem, self.parentId);
+  return evaluateExpressionNode(db, ownedRelElem, evalScopeId ?? self.parentId);
 };
 
 // ---------------------------------------------------------------------------
@@ -929,44 +948,48 @@ const calculationUsageModel = {
   },
 };
 
-/** Queries for CalculationDefinition */
-const calculationQueries = {
+/** Calculation Definition queries */
+const calculationDefinitionQueries = {
   ...definitionStructuralQueries,
   parameters: (db: QueryDB, self: SymbolEntry) =>
     db
       .childrenOf(self.id)
-      .filter((c) => c.fieldName === "ownedRelatedElement" && db.parentOf(c.id)?.ruleName === "ParameterMember"),
+      .filter((c) => c.kind === "Usage" && (metaStr(c, "direction") === "in" || metaStr(c, "direction") === "inout")),
   returnParameter: (db: QueryDB, self: SymbolEntry) => {
-    for (const c of db.childrenOf(self.id)) {
-      if (c.fieldName === "ownedRelatedElement") {
-        const parent = db.parentOf(c.id);
-        if (parent?.ruleName === "ReturnParameterMember") return c;
-      }
-    }
-    return null;
+    const outputs = db.childrenOf(self.id).filter((c) => c.kind === "Usage" && metaStr(c, "direction") === "out");
+    return outputs[0] ?? null;
   },
   resultExpression: (db: QueryDB, self: SymbolEntry) => evaluateResultExpression(db, self),
 };
 
-/** Queries for CalculationUsage */
+/** Calculation Usage queries */
 const calculationUsageQueries = {
   ...usageQueries,
-  parameters: calculationQueries.parameters,
-  returnParameter: calculationQueries.returnParameter,
-  resultExpression: calculationQueries.resultExpression,
+  parameters: (db: QueryDB, self: SymbolEntry) =>
+    db
+      .childrenOf(self.id)
+      .filter((c) => c.kind === "Usage" && (metaStr(c, "direction") === "in" || metaStr(c, "direction") === "inout")),
+  returnParameter: (db: QueryDB, self: SymbolEntry) => {
+    const outputs = db.childrenOf(self.id).filter((c) => c.kind === "Usage" && metaStr(c, "direction") === "out");
+    return outputs[0] ?? null;
+  },
+  resultExpression: (db: QueryDB, self: SymbolEntry) => evaluateResultExpression(db, self),
 };
+
+const calculationQueries = calculationDefinitionQueries;
+const calculationModel = calculationDefinitionModel;
 
 // ---------------------------------------------------------------------------
 // Constraint Evaluation — computed fields
 // ---------------------------------------------------------------------------
 
 /**
- * Evaluate a constraint body expression.
+ * Evaluate the body of a ConstraintDefinition or ConstraintUsage.
  * The constraint body is a _CalculationBody containing a ResultExpressionMember.
  * Returns true/false/null (null = indeterminate).
  */
-const evaluateConstraintBody = (db: QueryDB, self: SymbolEntry): boolean | null => {
-  const result = evaluateResultExpression(db, self);
+const evaluateConstraintBody = (db: QueryDB, self: SymbolEntry, evalScopeId?: number | null): boolean | null => {
+  const result = evaluateResultExpression(db, self, evalScopeId);
   if (typeof result === "boolean") return result;
   if (result === undefined) return null; // indeterminate
   // Coerce numbers: 0 = false, nonzero = true
@@ -1026,14 +1049,31 @@ const constraintUsageQueries = {
   ...constraintEvalQueries,
 };
 
+const getConstraintKind = (db: QueryDB, self: SymbolEntry): string => {
+  const meta = metaStr(self, "constraintKind");
+  if (meta) return meta;
+  const text = db.cstText(Math.max(0, self.startByte - 30), self.startByte);
+  if (text && text.includes("assume")) return "assume";
+  return "require"; // default
+};
+
 /**
  * Computed: are all require constraints met for a requirement?
  * Returns true (all pass), false (any fail), or null (indeterminate).
  */
 const evaluateConstraintsMet = (db: QueryDB, self: SymbolEntry): boolean | null => {
-  const requireConstraints = db
+  let requireConstraints = db
     .childrenOf(self.id)
-    .filter((c) => c.ruleName === "RequirementConstraintUsage" && metaStr(c, "constraintKind") === "require");
+    .filter((c) => c.ruleName === "RequirementConstraintUsage" && getConstraintKind(db, c) === "require");
+
+  if (requireConstraints.length === 0) {
+    const typeDef = usageQueries.resolvedType(db, self);
+    if (typeDef) {
+      requireConstraints = db
+        .childrenOf(typeDef.id)
+        .filter((c) => c.ruleName === "RequirementConstraintUsage" && getConstraintKind(db, c) === "require");
+    }
+  }
 
   if (requireConstraints.length === 0) return null; // no constraints to check
 
@@ -1041,7 +1081,7 @@ const evaluateConstraintsMet = (db: QueryDB, self: SymbolEntry): boolean | null 
   let anyIndeterminate = false;
 
   for (const constraint of requireConstraints) {
-    const result = evaluateConstraintBody(db, constraint);
+    const result = evaluateConstraintBody(db, constraint, self.id);
     if (result === false) return false; // short-circuit: constraint violated
     if (result === null) anyIndeterminate = true;
     // result === true → continue
@@ -2435,7 +2475,8 @@ export const sysml2Language = language({
 
     RootNamespace: ($) => repeat($._PackageBodyElement),
 
-    _PackageBodyElement: ($) => choice($.PackageMember, $.ElementFilterMember, $.AliasMember, $.Import),
+    _PackageBodyElement: ($) =>
+      choice($.PackageMember, $.ElementFilterMember, $.AliasMember, $.Import, $.AnnotatingMember),
 
     // =====================================================================
     // BASIC ELEMENTS
@@ -2830,11 +2871,7 @@ export const sysml2Language = language({
     _FeatureDeclaration: ($) =>
       choice(seq($._Identification, optional($._FeatureSpecializationPart)), $._FeatureSpecializationPart),
 
-    _FeatureSpecializationPart: ($) =>
-      choice(
-        seq(repeat1($._FeatureSpecialization), optional($._MultiplicityPart), repeat($._FeatureSpecialization)),
-        seq($._MultiplicityPart, repeat($._FeatureSpecialization)),
-      ),
+    _FeatureSpecializationPart: ($) => repeat1(choice($._FeatureSpecialization, $._MultiplicityPart)),
 
     _MultiplicityPart: ($) =>
       choice(
@@ -2852,13 +2889,14 @@ export const sysml2Language = language({
 
     _Typings: ($) => seq(choice(":", seq("defined", "by")), $.FeatureTyping, repeat(seq(",", $.FeatureTyping))),
 
-    _Subsettings: ($) => seq(choice(":>", "subsets"), $.OwnedSubsetting, repeat(seq(",", $.OwnedSubsetting))),
+    _Subsettings: ($) => seq(choice(":>", "subsets", "subset"), $.OwnedSubsetting, repeat(seq(",", $.OwnedSubsetting))),
 
-    _References: ($) => seq(choice("::>", "references"), $.OwnedReferenceSubsetting),
+    _References: ($) => seq(choice("::>", "references", "reference"), $.OwnedReferenceSubsetting),
 
     _Crosses: ($) => seq(choice("=>", "crosses"), $.OwnedCrossSubsetting),
 
-    _Redefinitions: ($) => seq(choice(":>>", "redefines"), $.OwnedRedefinition, repeat(seq(",", $.OwnedRedefinition))),
+    _Redefinitions: ($) =>
+      seq(choice(":>>", "redefines", "redefine"), $.OwnedRedefinition, repeat(seq(",", $.OwnedRedefinition))),
 
     FeatureTyping: ($) => choice($.OwnedFeatureTyping, $.ConjugatedPortTyping),
 
@@ -2950,6 +2988,7 @@ export const sysml2Language = language({
         seq(optional($.EmptySuccessionMember), $.OccurrenceUsageMember),
         $.AliasMember,
         $.Import,
+        $.AnnotatingMember,
       ),
 
     DefinitionMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._DefinitionElement)),
@@ -2978,6 +3017,10 @@ export const sysml2Language = language({
         field("isVariation", "variation"),
         field("isConstant", "constant"),
         field("isRef", "ref"),
+        field("isRedefine", "redefine"),
+        field("isRedefine", "redefines"),
+        field("isSubsetting", "subset"),
+        field("isSubsetting", "subsets"),
         "individual",
         "snapshot",
         "timeslice",
@@ -5101,20 +5144,13 @@ export const sysml2Language = language({
     // =====================================================================
 
     DECIMAL_VALUE: () => token(/[0-9]+/),
-
-    EXP_VALUE: () => token(seq(/[0-9]+/, choice("e", "E"), optional(choice("+", "-")), /[0-9]+/)),
-
-    ID: () => token(seq(/[a-zA-Z_]/, repeat(/[a-zA-Z_0-9]/))),
-
-    UNRESTRICTED_NAME: () =>
-      token(seq("'", repeat(choice(seq("\\", choice("b", "t", "n", "f", "r", '"', "'", "\\")), /[^'\\]/)), "'")),
-
-    STRING_VALUE: () =>
-      token(seq('"', repeat(choice(seq("\\", choice("b", "t", "n", "f", "r", '"', "'", "\\")), /[^"\\]/)), '"')),
-
-    REGULAR_COMMENT: () => token(seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
-    ML_NOTE: () => token(seq("//*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
-    SL_NOTE: () => token(seq("//", /[^\r\n]*/)),
+    EXP_VALUE: () => token(/[0-9]+[eE][+-]?[0-9]+/),
+    ID: () => token(/[a-zA-Z_][a-zA-Z_0-9]*/),
+    UNRESTRICTED_NAME: () => token(/'(?:[^'\\]|\\.)*'/),
+    STRING_VALUE: () => token(/"(?:[^"\\]|\\.)*"/),
+    REGULAR_COMMENT: () => token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
+    ML_NOTE: () => token(/\/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
+    SL_NOTE: () => token(/\/\/[^\r\n]*/),
   },
 });
 

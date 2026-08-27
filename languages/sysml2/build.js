@@ -6,79 +6,64 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Step 0: Regenerate grammar.js (and other artifacts) from language.ts
-const languagePath = path.join(__dirname, "language.ts");
+// Step 1: Generate Salsa config / query-hooks / ast
+const languagePath = path.join(__dirname, "src", "language.ts");
 const cliPath = path.resolve(__dirname, "..", "..", "packages", "compiler", "src", "cli.ts");
-const grammarPath = path.join(__dirname, "grammar.js");
+console.log("[sysml2] Generating artifacts from language.ts...");
+execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
 
-const srcGenPath = path.join(__dirname, "src-gen");
+// Step 2 & 3: Run builder via tsx to compile parser and WASM
+const buildScriptPath = path.join(__dirname, "build-parser.ts");
+const buildScriptContent = `import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
+import { buildParser } from "@modelscript/language";
+import { sysml2Language } from "./src/language.js";
 
-let shouldGenerate = true;
-if (fs.existsSync(grammarPath) && fs.existsSync(srcGenPath)) {
-  const langStats = fs.statSync(languagePath);
-  const grammarStats = fs.statSync(grammarPath);
-  if (langStats.mtimeMs <= grammarStats.mtimeMs) {
-    shouldGenerate = false;
-  }
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const languagePath = path.join(__dirname, "src", "language.ts");
+const result = buildParser(sysml2Language, { sourcePath: languagePath });
+
+// 1. Write AssemblyScript files to as-gen/ for asc
+const asGenDir = path.join(__dirname, "as-gen");
+fs.mkdirSync(asGenDir, { recursive: true });
+for (const file of result.assemblyScriptFiles) {
+  fs.writeFileSync(path.join(asGenDir, file.filename), file.content);
 }
 
-if (shouldGenerate) {
-  console.log("[sysml2] Generating artifacts from language.ts...");
-  try {
-    execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
-  } catch (err) {
-    console.error("[sysml2] Failed to generate artifacts:", err.message);
-    process.exitCode = 1;
-  }
-}
+// 2. Write TypeScript/JavaScript bindings to src-gen/
+const srcGenDir = path.join(__dirname, "src-gen");
+fs.mkdirSync(srcGenDir, { recursive: true });
+fs.writeFileSync(path.join(srcGenDir, "bindings.js"), result.javascriptWrapper.js);
+fs.writeFileSync(path.join(srcGenDir, "bindings.d.ts"), result.javascriptWrapper.dts);
 
-const wasmPath = path.join(__dirname, "tree-sitter-sysml2.wasm");
+// 3. Compile AssemblyScript to WASM
+const outDir = path.join(__dirname, "dist");
+fs.mkdirSync(outDir, { recursive: true });
+const outWasm = path.join(outDir, "parser.wasm");
+const parserTs = path.join(asGenDir, "parser.ts");
 
-let shouldBuild = false;
+const ascPath = [
+  path.resolve(__dirname, "node_modules/.bin/asc"),
+  path.resolve(__dirname, "../../node_modules/.bin/asc"),
+  "npx asc",
+].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
 
-if (!fs.existsSync(wasmPath)) {
-  shouldBuild = true;
-} else {
-  const grammarStats = fs.statSync(grammarPath);
-  const wasmStats = fs.statSync(wasmPath);
-  if (grammarStats.mtimeMs > wasmStats.mtimeMs) {
-    shouldBuild = true;
-  }
-}
+console.log("[sysml2] Compiling WebAssembly parser with asc...");
+execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads --optimize --runtime stub\`, {
+  stdio: "inherit",
+  cwd: __dirname,
+});
+console.log("[sysml2] WebAssembly parser built successfully -> " + outWasm);
 
-if (shouldBuild) {
-  console.log("grammar.js is newer than tree-sitter-sysml2.wasm. Rebuilding WASM...");
+// Cleanup as-gen after WASM compilation
+fs.rmSync(asGenDir, { recursive: true, force: true });
+`;
 
-  const pkgPath = path.join(__dirname, "package.json");
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-  const originalType = pkg.type;
-
-  try {
-    delete pkg.type;
-    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-
-    execSync("npx --yes tree-sitter-cli generate", { stdio: "inherit", cwd: __dirname });
-    let retries = 5;
-    while (retries > 0) {
-      try {
-        execSync("npx --yes tree-sitter-cli build --wasm", { stdio: "inherit", cwd: __dirname });
-        break;
-      } catch (err) {
-        retries--;
-        if (retries === 0) throw err;
-        console.warn(`[WASM Build] Failed (likely due to concurrent wasi-sdk extraction), retrying in 3s...`);
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
-      }
-    }
-  } catch (err) {
-    console.error("Failed to build WASM:", err.message);
-    process.exitCode = 1;
-  } finally {
-    if (originalType) {
-      pkg.type = originalType;
-      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-    }
-  }
-} else {
-  console.log("tree-sitter-sysml2.wasm is up to date.");
+fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
+try {
+  execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+} finally {
+  if (fs.existsSync(buildScriptPath)) fs.unlinkSync(buildScriptPath);
 }

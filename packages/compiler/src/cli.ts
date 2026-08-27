@@ -4,8 +4,7 @@ import * as path from "path";
 import { extractIndexerHooks, serializeIndexerConfig } from "./generators/indexer.js";
 import { extractQueryHooks, serializeQueryHooks } from "./generators/queries.js";
 import { extractRefHooks, serializeRefConfig } from "./generators/refs.js";
-import { generateScanner } from "./generators/scanner.js";
-import { extractRecoverySpecs, type RecoverySpec } from "./recovery.js";
+import { type RecoverySpec } from "./recovery.js";
 
 // ---------------------------------------------------------------------------
 // Rule Serializer — Converts DSL AST nodes to Tree-Sitter grammar.js syntax
@@ -19,43 +18,51 @@ function serializeRule(ruleAST: any): string {
     return ruleAST.toString();
   }
   if (ruleAST && typeof ruleAST === "object") {
-    switch (ruleAST.type) {
+    const type = ruleAST.type ? String(ruleAST.type).toLowerCase() : "";
+    const children = ruleAST.children || ruleAST.args || [];
+    const child = children.length > 0 ? children[0] : ruleAST.arg || ruleAST.rule;
+
+    switch (type) {
       case "sym":
-        return `$.${ruleAST.name}`;
+      case "symbol":
+        return `$.${ruleAST.name || ruleAST.value}`;
       case "seq":
-        return `seq(${ruleAST.args.map(serializeRule).join(", ")})`;
+        return `seq(${children.map(serializeRule).join(", ")})`;
       case "choice":
-        return `choice(${ruleAST.args.map(serializeRule).join(", ")})`;
+        return `choice(${children.map(serializeRule).join(", ")})`;
       case "optional":
-        return `optional(${serializeRule(ruleAST.arg)})`;
+        return `optional(${serializeRule(child)})`;
       case "repeat":
-        return `repeat(${serializeRule(ruleAST.arg)})`;
+        return `repeat(${serializeRule(child)})`;
       case "repeat1":
-        return `repeat1(${serializeRule(ruleAST.arg)})`;
+        return `repeat1(${serializeRule(child)})`;
       case "token":
-        return `token(${serializeRule(ruleAST.arg)})`;
+        return `token(${serializeRule(child !== undefined ? child : ruleAST.value)})`;
       case "token_immediate":
-        return `token.immediate(${serializeRule(ruleAST.arg)})`;
+        return `token.immediate(${serializeRule(child !== undefined ? child : ruleAST.value)})`;
+      case "pattern":
+        return ruleAST.value instanceof RegExp ? ruleAST.value.toString() : new RegExp(ruleAST.value).toString();
+      case "string":
+        return JSON.stringify(ruleAST.value);
       case "field":
-        return `field(${JSON.stringify(ruleAST.name)}, ${serializeRule(ruleAST.arg)})`;
+        return `field(${JSON.stringify(ruleAST.name)}, ${serializeRule(child)})`;
       case "prec":
-        return `prec(${ruleAST.precedence}, ${serializeRule(ruleAST.arg)})`;
+        return `prec(${ruleAST.precedence}, ${serializeRule(child)})`;
       case "prec_left":
-        return `prec.left(${ruleAST.precedence}, ${serializeRule(ruleAST.arg)})`;
+        return `prec.left(${ruleAST.precedence}, ${serializeRule(child)})`;
       case "prec_right":
-        return `prec.right(${ruleAST.precedence}, ${serializeRule(ruleAST.arg)})`;
+        return `prec.right(${ruleAST.precedence}, ${serializeRule(child)})`;
       case "prec_dynamic":
-        return `prec.dynamic(${ruleAST.precedence}, ${serializeRule(ruleAST.arg)})`;
+        return `prec.dynamic(${ruleAST.precedence}, ${serializeRule(child)})`;
       case "alias":
-        return `alias(${serializeRule(ruleAST.arg)}, ${serializeAliasValue(ruleAST.value)})`;
+        return `alias(${serializeRule(child)}, ${serializeAliasValue(ruleAST.value)})`;
       case "blank":
         return `blank()`;
+      case "semantic":
+        return serializeRule(child);
       case "def":
-        // Strip the semantic layer — grammar.js only needs the syntax rule
-        return serializeRule(ruleAST.rule);
       case "ref":
-        // Strip the semantic layer — grammar.js only needs the syntax rule
-        return serializeRule(ruleAST.rule);
+        return serializeRule(ruleAST.rule || child);
     }
   }
   throw new Error(`Unknown rule AST: ${JSON.stringify(ruleAST)}`);
@@ -66,8 +73,8 @@ function serializeAliasValue(value: any): string {
     return JSON.stringify(value);
   }
   // SymbolNode — reference to another rule
-  if (value && value.type === "sym") {
-    return `$.${value.name}`;
+  if (value && (value.type === "sym" || value.type === "SYMBOL" || value.type === "symbol")) {
+    return `$.${value.name || value.value}`;
   }
   throw new Error(`Unknown alias value: ${JSON.stringify(value)}`);
 }
@@ -107,22 +114,25 @@ function serializeRuleRecoveryWalk(node: any, fieldToSpec: Map<string, RecoveryS
   if (node instanceof RegExp) return node.toString();
 
   if (node && typeof node === "object") {
-    switch (node.type) {
+    const type = node.type ? String(node.type).toLowerCase() : "";
+    const children = node.children || node.args || [];
+    const child = children.length > 0 ? children[0] : node.arg || node.rule;
+
+    switch (type) {
       case "field": {
         const spec = fieldToSpec.get(node.name);
         if (spec) {
           // This is the target field — inject recovery into its repeat(choice(...))
-          const injected = injectRecoveryIntoField(node.arg, spec);
+          const injected = injectRecoveryIntoField(child, spec);
           return `field(${JSON.stringify(node.name)}, ${injected})`;
         }
-        return `field(${JSON.stringify(node.name)}, ${serializeRuleRecoveryWalk(node.arg, fieldToSpec)})`;
+        return `field(${JSON.stringify(node.name)}, ${serializeRuleRecoveryWalk(child, fieldToSpec)})`;
       }
       case "seq":
-        return `seq(${node.args.map((a: any) => serializeRuleRecoveryWalk(a, fieldToSpec)).join(", ")})`;
+        return `seq(${children.map((a: any) => serializeRuleRecoveryWalk(a, fieldToSpec)).join(", ")})`;
       case "def":
-        return serializeRuleRecoveryWalk(node.rule, fieldToSpec);
       case "ref":
-        return serializeRuleRecoveryWalk(node.rule, fieldToSpec);
+        return serializeRuleRecoveryWalk(node.rule || child, fieldToSpec);
       default:
         // For all other node types, use the standard serializer
         return serializeRule(node);
@@ -139,14 +149,19 @@ function injectRecoveryIntoField(node: any, spec: RecoverySpec): string {
   if (!node || typeof node !== "object") return serializeRule(node);
 
   const recoveryToken = `prec(-1, $.${spec.externalTokenName})`;
+  const type = node.type ? String(node.type).toLowerCase() : "";
+  const children = node.children || node.args || [];
+  const child = children.length > 0 ? children[0] : node.arg;
 
-  if (node.type === "repeat" || node.type === "repeat1") {
-    const inner = node.arg;
-    const repeatFn = node.type === "repeat" ? "repeat" : "repeat1";
+  if (type === "repeat" || type === "repeat1") {
+    const inner = child;
+    const repeatFn = type === "repeat" ? "repeat" : "repeat1";
+    const innerType = inner && inner.type ? String(inner.type).toLowerCase() : "";
+    const innerChildren = inner ? inner.children || inner.args || [] : [];
 
-    if (inner && inner.type === "choice") {
+    if (inner && innerType === "choice") {
       // repeat(choice(A, B, C)) → repeat(choice(A, B, C, prec(-1, $._recovery_*)))
-      const alts = inner.args.map(serializeRule);
+      const alts = innerChildren.map(serializeRule);
       alts.push(recoveryToken);
       return `${repeatFn}(choice(${alts.join(", ")}))`;
     } else {
@@ -182,104 +197,8 @@ async function generate(fileArg: string) {
     },
   );
 
-  const outputDir = path.dirname(inputFile);
-
-  // -------------------------------------------------------------------------
-  // Recovery: infer sync tokens and inject into rule ASTs before serialization
-  // -------------------------------------------------------------------------
-  const recoverySpecs = extractRecoverySpecs(langConfig, $);
-  if (recoverySpecs.length > 0) {
-    console.log(`[recovery] Found ${recoverySpecs.length} recovery spec(s):`);
-    for (const s of recoverySpecs) {
-      console.log(
-        `  ${s.ruleName}.${s.fieldName} → sync on "${s.syncToken}"${s.additionalSyncTokens.length > 0 ? ` + [${s.additionalSyncTokens.join(", ")}]` : ""}`,
-      );
-    }
-  }
-
-  // Build a map of ruleName → RecoverySpec[] for injection
-  const recoveryByRule = new Map<string, RecoverySpec[]>();
-  for (const s of recoverySpecs) {
-    const arr = recoveryByRule.get(s.ruleName) || [];
-    arr.push(s);
-    recoveryByRule.set(s.ruleName, arr);
-  }
-
-  // -------------------------------------------------------------------------
-  // Artifact A: grammar.js (Tree-Sitter parser)
-  // -------------------------------------------------------------------------
-  const grammarSections: string[] = [];
-  grammarSections.push(`  name: '${langConfig.name}'`);
-
-  // Extras
-  if (langConfig.extras) {
-    const extrasRules = langConfig.extras($);
-    grammarSections.push(`\n  extras: $ => ${serializeRuleArray(extrasRules)}`);
-  }
-
-  // Conflicts
-  if (langConfig.conflicts) {
-    const conflictSets = langConfig.conflicts($);
-    grammarSections.push(`\n  conflicts: $ => ${serializeConflicts(conflictSets)}`);
-  }
-
-  // Externals — merge user-defined + auto-generated recovery tokens
-  const externalTokens: string[] = [];
-  if (langConfig.externals) {
-    const externalRules = langConfig.externals($);
-    externalTokens.push(...externalRules.map(serializeRule));
-  }
-  for (const s of recoverySpecs) {
-    externalTokens.push(`$.${s.externalTokenName}`);
-  }
-  if (externalTokens.length > 0) {
-    grammarSections.push(`\n  externals: $ => [${externalTokens.join(", ")}]`);
-  }
-
-  // Inline
-  if (langConfig.inline) {
-    const inlineRules = langConfig.inline($);
-    grammarSections.push(`\n  inline: $ => ${serializeRuleArray(inlineRules)}`);
-  }
-
-  // Supertypes
-  if (langConfig.supertypes) {
-    const supertypeRules = langConfig.supertypes($);
-    grammarSections.push(`\n  supertypes: $ => ${serializeRuleArray(supertypeRules)}`);
-  }
-
-  // Word
-  if (langConfig.word) {
-    const wordRule = langConfig.word($);
-    grammarSections.push(`\n  word: $ => ${serializeRule(wordRule)}`);
-  }
-
-  // Rules — with recovery injection
-  let rulesContent = "";
-  if (langConfig.rules) {
-    for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
-      const ruleAST = ruleFn($);
-      const specs = recoveryByRule.get(ruleName);
-      if (specs && specs.length > 0) {
-        // Serialize with recovery injection
-        rulesContent += `    ${ruleName}: $ => ${serializeRuleWithRecovery(ruleAST, specs)},\n`;
-      } else {
-        rulesContent += `    ${ruleName}: $ => ${serializeRule(ruleAST)},\n`;
-      }
-    }
-
-    // No extra grammar rules needed — recovery_error is an external scanner token
-  } else {
-    rulesContent = "    // empty rules\n";
-  }
-
-  grammarSections.push(`\n  rules: {\n${rulesContent.replace(/\n$/, "")}\n  }`);
-
-  const grammarContent = `module.exports = grammar({\n${grammarSections.join(",")}\n});\n`;
-
-  const grammarFile = path.join(outputDir, "grammar.js");
-  fs.writeFileSync(grammarFile, grammarContent, "utf-8");
-  console.log(`Generated ${grammarFile}`);
+  const outputDir =
+    path.basename(path.dirname(inputFile)) === "src" ? path.dirname(path.dirname(inputFile)) : path.dirname(inputFile);
 
   // -------------------------------------------------------------------------
   // Artifact B: config.ts (Symbol Indexer, Reference resolution, Graphics, Diff)
@@ -299,7 +218,7 @@ async function generate(fileArg: string) {
   const { extractClassSpecs, generateAstClasses } = await import("./generators/ast.js");
   const classSpecs = extractClassSpecs(langConfig, $);
 
-  let graphicsContent = "";
+  let graphicsContent = "export const graphicsConfig: Record<string, GraphicsConfig> = {};\n";
   const graphicsSpecs = classSpecs.filter((s: any) => s.graphicsConfig);
   if (graphicsSpecs.length > 0) {
     const gfxLines: string[] = [];
@@ -317,7 +236,7 @@ async function generate(fileArg: string) {
     graphicsContent = gfxLines.join("\n");
   }
 
-  let diffContent = "";
+  let diffContent = "export const diffConfig: Record<string, DiffConfig> = {};\n";
   const diffSpecs = classSpecs.filter((s: any) => s.diffConfig);
   if (diffSpecs.length > 0) {
     const diffLines: string[] = [];
@@ -339,7 +258,7 @@ async function generate(fileArg: string) {
     diffContent = diffLines.join("\n");
   }
 
-  let i18nContent = "";
+  let i18nContent = "export const i18nConfig: Record<string, I18nConfig> = {};\n";
   const i18nSpecs = classSpecs.filter((s: any) => s.i18nConfig);
   if (i18nSpecs.length > 0) {
     const i18nLines: string[] = [];
@@ -361,10 +280,7 @@ async function generate(fileArg: string) {
     i18nContent = i18nLines.join("\n");
   }
 
-  const imports = ["IndexerHook", "RefHook"];
-  if (graphicsSpecs.length > 0) imports.push("GraphicsConfig");
-  if (diffSpecs.length > 0) imports.push("DiffConfig");
-  if (i18nSpecs.length > 0) imports.push("I18nConfig");
+  const imports = ["IndexerHook", "RefHook", "GraphicsConfig", "DiffConfig", "I18nConfig"];
 
   const combinedConfigContent =
     `import type { ${imports.join(", ")} } from "@modelscript/compiler";\n\n` +
@@ -399,18 +315,6 @@ async function generate(fileArg: string) {
     const astFile = path.join(srcGenDir, "ast.ts");
     fs.writeFileSync(astFile, astClassesContent, "utf-8");
     console.log(`Generated ${astFile}`);
-  }
-
-  // -------------------------------------------------------------------------
-  // Artifact F: src/scanner.c (auto-generated external scanner)
-  // -------------------------------------------------------------------------
-  if (recoverySpecs.length > 0) {
-    const scannerContent = generateScanner(recoverySpecs, langConfig.name);
-    const srcDir = path.join(outputDir, "src");
-    fs.mkdirSync(srcDir, { recursive: true });
-    const scannerFile = path.join(srcDir, "scanner.c");
-    fs.writeFileSync(scannerFile, scannerContent, "utf-8");
-    console.log(`Generated ${scannerFile}`);
   }
 
   // -------------------------------------------------------------------------

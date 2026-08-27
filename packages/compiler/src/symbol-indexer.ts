@@ -204,7 +204,33 @@ export class SymbolIndexer {
 
     if (hook) {
       const id = this.idGenerator();
-      const nameNode = this.resolveFieldPath(node, hook.namePath);
+      let nameNode = this.resolveFieldPath(node, hook.namePath);
+      if (!nameNode && hook.namePath === "declaredName") {
+        nameNode =
+          this.resolveFieldPath(node, "redefinedFeature") ||
+          this.resolveFieldPath(node, "subsettedFeature") ||
+          node.children?.find(
+            (c: CSTNode) =>
+              c.type === "OwnedRedefinition" ||
+              c.type === "OwnedSubsetting" ||
+              c.type === "OwnedReferenceSubsetting" ||
+              c.type === "QualifiedName" ||
+              c.type === "Name" ||
+              c.type === "ID",
+          ) ||
+          null;
+      }
+      if (
+        !nameNode &&
+        (node.type === "OwnedRedefinition" ||
+          node.type === "OwnedSubsetting" ||
+          node.type === "OwnedReferenceSubsetting" ||
+          node.type === "OwnedCrossSubsetting")
+      ) {
+        nameNode =
+          node.children?.find((c: CSTNode) => c.type === "QualifiedName" || c.type === "Name" || c.type === "ID") ||
+          node;
+      }
       const name = nameNode ? this.getNodeText(nameNode) : "<anonymous>";
 
       const entry: SymbolEntry = {
@@ -272,7 +298,33 @@ export class SymbolIndexer {
     let currentOldParentId = oldParentId;
 
     if (hook) {
-      const nameNode = this.resolveFieldPath(node, hook.namePath);
+      let nameNode = this.resolveFieldPath(node, hook.namePath);
+      if (!nameNode && hook.namePath === "declaredName") {
+        nameNode =
+          this.resolveFieldPath(node, "redefinedFeature") ||
+          this.resolveFieldPath(node, "subsettedFeature") ||
+          node.children?.find(
+            (c: CSTNode) =>
+              c.type === "OwnedRedefinition" ||
+              c.type === "OwnedSubsetting" ||
+              c.type === "OwnedReferenceSubsetting" ||
+              c.type === "QualifiedName" ||
+              c.type === "Name" ||
+              c.type === "ID",
+          ) ||
+          null;
+      }
+      if (
+        !nameNode &&
+        (node.type === "OwnedRedefinition" ||
+          node.type === "OwnedSubsetting" ||
+          node.type === "OwnedReferenceSubsetting" ||
+          node.type === "OwnedCrossSubsetting")
+      ) {
+        nameNode =
+          node.children?.find((c: CSTNode) => c.type === "QualifiedName" || c.type === "Name" || c.type === "ID") ||
+          node;
+      }
       const name = nameNode ? this.getNodeText(nameNode) : "<anonymous>";
 
       const siblingBaseKey = `${parentId ?? "root"}:${hook.ruleName}:${name}`;
@@ -565,6 +617,16 @@ export class SymbolIndexer {
     );
   }
 
+  private findDescendantByFieldName(node: CSTNode, fieldName: string): CSTNode | null {
+    const direct = node.childForFieldName(fieldName);
+    if (direct) return direct;
+    for (const child of node.children || []) {
+      const found = this.findDescendantByFieldName(child, fieldName);
+      if (found) return found;
+    }
+    return null;
+  }
+
   /**
    * Resolve a dot-separated field path (e.g. "name" or "body.elements")
    * against a CST node by following Tree-Sitter's field accessors.
@@ -586,6 +648,9 @@ export class SymbolIndexer {
           const pascalType = part.charAt(0).toUpperCase() + part.slice(1);
           child = children.find((c: CSTNode) => c.type === pascalType || c.type === part) ?? null;
         }
+        if (!child) {
+          child = this.findDescendantByFieldName(current, part);
+        }
         current = child;
       }
     }
@@ -595,7 +660,7 @@ export class SymbolIndexer {
 
   /** Get the source text of a CST node. */
   private getNodeText(node: CSTNode): string {
-    return node.text;
+    return node.text ? node.text.trim() : "";
   }
 
   /** Extract metadata from a CST node using the hook's field path mapping. */

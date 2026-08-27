@@ -150,15 +150,19 @@ function extractFields(rule: any, langConfig: any, $: Record<string, any>): Fiel
   if (!rule || typeof rule !== "object") return [];
 
   const results: FieldInfo[] = [];
+  const t = (rule.type || "").toLowerCase();
+  const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []) || (rule.rule ? [rule.rule] : []);
 
-  switch (rule.type) {
+  switch (t) {
     case "field": {
-      const isList = isListRule(rule.arg);
-      const isOptional = isOptionalRule(rule.arg);
-      const choiceKinds = extractChoiceSymbols(rule.arg);
-      const inferredType = inferFieldType(rule.arg, langConfig, $);
+      const fieldName = rule.name || (typeof rule.value === "string" ? rule.value : "field");
+      const arg = rule.arg || rule.children?.[0];
+      const isList = isListRule(arg);
+      const isOptional = isOptionalRule(arg);
+      const choiceKinds = extractChoiceSymbols(arg);
+      const inferredType = inferFieldType(arg, langConfig, $);
       results.push({
-        name: rule.name,
+        name: fieldName,
         isList,
         isOptional,
         choiceKinds,
@@ -167,29 +171,27 @@ function extractFields(rule: any, langConfig: any, $: Record<string, any>): Fiel
       break;
     }
     case "seq":
-      for (const arg of rule.args ?? []) {
-        results.push(...extractFields(arg, langConfig, $));
-      }
-      break;
     case "choice":
-      for (const arg of rule.args ?? []) {
-        results.push(...extractFields(arg, langConfig, $));
+      for (const child of children) {
+        results.push(...extractFields(child, langConfig, $));
       }
       break;
     case "optional":
+    case "opt":
     case "repeat":
     case "repeat1":
+    case "rep":
+    case "rep1":
     case "token":
     case "token_immediate":
     case "prec":
     case "prec_left":
     case "prec_right":
     case "prec_dynamic":
-      results.push(...extractFields(rule.arg, langConfig, $));
-      break;
     case "def":
-      // Recurse into the def's inner rule
-      results.push(...extractFields(rule.rule, langConfig, $));
+      for (const child of children) {
+        results.push(...extractFields(child, langConfig, $));
+      }
       break;
   }
 
@@ -199,32 +201,34 @@ function extractFields(rule: any, langConfig: any, $: Record<string, any>): Fiel
 /** Check if a rule is a list type (rep or rep1). */
 function isListRule(rule: any): boolean {
   if (!rule) return false;
-  if (rule.type === "repeat" || rule.type === "repeat1") return true;
-  return false;
+  const t = (rule.type || "").toLowerCase();
+  return t === "repeat" || t === "repeat1" || t === "rep" || t === "rep1";
 }
 
 /** Check if a rule is optional. */
 function isOptionalRule(rule: any): boolean {
   if (!rule) return false;
-  if (rule.type === "optional") return true;
-  return false;
+  const t = (rule.type || "").toLowerCase();
+  return t === "optional" || t === "opt";
 }
 
 /** If a rule is a choice of symbols, extract their names. */
 function extractChoiceSymbols(rule: any): string[] {
   if (!rule) return [];
-  if (rule.type === "sym") return [rule.name];
-  if (rule.type === "choice") {
+  const t = (rule.type || "").toLowerCase();
+  if (t === "sym") return [rule.name];
+  if (t === "choice") {
     const result: string[] = [];
-    for (const arg of rule.args ?? []) {
-      if (arg.type === "sym") result.push(arg.name);
+    const children = rule.children || rule.args || [];
+    for (const arg of children) {
+      if ((arg.type || "").toLowerCase() === "sym") result.push(arg.name);
       else result.push(...extractChoiceSymbols(arg));
     }
     return result;
   }
-  // For rep/optional, look inside
-  if (rule.type === "repeat" || rule.type === "repeat1" || rule.type === "optional") {
-    return extractChoiceSymbols(rule.arg);
+  if (t === "repeat" || t === "repeat1" || t === "rep" || t === "rep1" || t === "optional" || t === "opt") {
+    const child = rule.children?.[0] || rule.arg;
+    return extractChoiceSymbols(child);
   }
   return [];
 }
@@ -259,13 +263,16 @@ export function extractClassSpecs(langConfig: any, $: Record<string, any>): Clas
 
   for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
     const ruleAST = ruleFn($);
-    if (!ruleAST || ruleAST.type !== "def") continue;
+    if (!ruleAST) continue;
+    const t = (ruleAST.type || "").toUpperCase();
+    if (t !== "DEF") continue;
 
-    const options = ruleAST.options;
+    const options = ruleAST.options || ruleAST.value;
     if (!options?.model) continue;
 
     const model: ModelConfig = options.model;
-    const rawFields = extractFields(ruleAST.rule, langConfig, $);
+    const ruleSyntax = ruleAST.children?.[0] || ruleAST.rule;
+    const rawFields = extractFields(ruleSyntax, langConfig, $);
 
     // Deduplicate fields by name (commaSep1/rep can produce duplicates)
     const seenFieldNames = new Set<string>();

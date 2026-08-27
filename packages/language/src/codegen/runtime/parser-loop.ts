@@ -178,6 +178,7 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
  * The `lex` function also updates global `lexLen` and `srcLexPos`.
  */
 function invokeLexer(pos: u32): i32 {
+  updateExpectedTokens();
   let token = lex(pos);
   return token;
 }
@@ -2967,9 +2968,8 @@ export function advanceGLR(): void {
         let actCount = action_data[actionOffset];
         let idx = actionOffset + 1;
         let foundTok = false;
-        let shiftTarget = -1;
-        let isAccept = false;
-        let reduceProd = -1;
+        let actOffsetInActions = -1;
+        let totalActionsForSym = 0;
 
         // Pass 1: exact match for sym == tok
         for (let a = 0; a < actCount; a++) {
@@ -2977,16 +2977,11 @@ export function advanceGLR(): void {
           let numActions = action_data[idx++];
           if (sym == tok) {
             foundTok = true;
-            for (let na = 0; na < numActions; na++) {
-              let aType = action_data[idx++];
-              let aTarget = action_data[idx++];
-              if (aType == ACTION_SHIFT && shiftTarget == -1) shiftTarget = aTarget;
-              else if (aType == ACTION_ACCEPT) isAccept = true;
-              else if (aType == ACTION_REDUCE && reduceProd == -1) reduceProd = aTarget;
-            }
-          } else {
-            idx += numActions * 2;
+            actOffsetInActions = idx;
+            totalActionsForSym = numActions;
+            break;
           }
+          idx += numActions * 2;
         }
 
         // Pass 2: wildcard match sym == 0 if no exact match found
@@ -2996,21 +2991,17 @@ export function advanceGLR(): void {
             let sym = action_data[idx++];
             let numActions = action_data[idx++];
             if (sym == 0) {
-              for (let na = 0; na < numActions; na++) {
-                let aType = action_data[idx++];
-                let aTarget = action_data[idx++];
-                if (aType == ACTION_SHIFT && shiftTarget == -1) shiftTarget = aTarget;
-                else if (aType == ACTION_ACCEPT) isAccept = true;
-                else if (aType == ACTION_REDUCE && reduceProd == -1) reduceProd = aTarget;
-              }
-            } else {
-              idx += numActions * 2;
+              foundTok = true;
+              actOffsetInActions = idx;
+              totalActionsForSym = numActions;
+              break;
             }
+            idx += numActions * 2;
           }
         }
 
         // Pass 3: Default reduction if state has only reductions and no shifts
-        if (shiftTarget == -1 && !isAccept && reduceProd == -1) {
+        if (!foundTok) {
           let hasAnyShift = false;
           let candidateReduce = -1;
           idx = actionOffset + 1;
@@ -3025,29 +3016,59 @@ export function advanceGLR(): void {
             }
           }
           if (!hasAnyShift && candidateReduce != -1) {
-            reduceProd = candidateReduce;
+            let reducedHead = processReduceAction(head, candidateReduce, frontierPos);
+            if (reducedHead != null) {
+              head = reducedHead;
+              continue;
+            }
           }
+          break;
         }
 
-        if (isAccept) {
-          processAcceptAction(head);
-          didAct = true;
-          break;
-        }
-        if (shiftTarget != -1) {
-          processShiftAction(head, shiftTarget, tok, frontierPos, false, false);
-          didAct = true;
-          break;
-        }
-        if (reduceProd != -1) {
-          if (head.state == 0 && prod_lengths[reduceProd] == 0 && tok != TOKEN_EOF) {
+        if (totalActionsForSym == 1) {
+          let aType = action_data[actOffsetInActions];
+          let aTarget = action_data[actOffsetInActions + 1];
+          if (aType == ACTION_ACCEPT) {
+            processAcceptAction(head);
+            didAct = true;
+            break;
+          } else if (aType == ACTION_SHIFT) {
+            processShiftAction(head, aTarget, tok, frontierPos, false, false);
+            didAct = true;
+            break;
+          } else if (aType == ACTION_REDUCE) {
+            if (head.state == 0 && prod_lengths[aTarget] == 0 && tok != TOKEN_EOF) {
+              break;
+            }
+            let reducedHead = processReduceAction(head, aTarget, frontierPos);
+            if (reducedHead != null) {
+              head = reducedHead;
+              continue;
+            }
             break;
           }
-          let reducedHead = processReduceAction(head, reduceProd, frontierPos);
-          if (reducedHead != null) {
-            head = reducedHead;
-            continue;
+        } else if (totalActionsForSym > 1) {
+          // GLR Fork: Execute all conflicting actions
+          for (let na = 0; na < totalActionsForSym; na++) {
+            let aType = action_data[actOffsetInActions + na * 2];
+            let aTarget = action_data[actOffsetInActions + na * 2 + 1];
+            if (aType == ACTION_ACCEPT) {
+              processAcceptAction(head);
+              didAct = true;
+            } else if (aType == ACTION_SHIFT) {
+              processShiftAction(head, aTarget, tok, frontierPos, false, false);
+              didAct = true;
+            } else if (aType == ACTION_REDUCE) {
+              if (!(head.state == 0 && prod_lengths[aTarget] == 0 && tok != TOKEN_EOF)) {
+                let redHead = processReduceAction(head, aTarget, frontierPos);
+                if (redHead != null) {
+                  pushActiveHead(changetype<u32>(redHead));
+                  didAct = true;
+                }
+              }
+            }
           }
+          break;
         }
         break;
       }
@@ -3442,19 +3463,6 @@ export function findReusableNode(
         let canReuse = (!isError && !isMissing && nodeEnvHash == envHash);
         if (canReuse && nodeType > (MAX_TERMINAL_ID as u16)) {
           let validState = nodeStartState == (currentState as u32);
-          if (!validState && (currentState as i32) < goto_offsets.length) {
-            let gOffset = goto_offsets[currentState];
-            if (gOffset >= 0 && gOffset < goto_data.length) {
-              let gCount = goto_data[gOffset];
-              for (let gi = 0; gi < gCount; gi++) {
-                let gSym = goto_data[gOffset + 1 + gi * 2];
-                if (gSym == nodeType) {
-                  validState = true;
-                  break;
-                }
-              }
-            }
-          }
           if (validState) {
             let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
             if (!hasErrorFlags && !nodeHasAnyErrors(cPtr)) {

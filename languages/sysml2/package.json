@@ -3,7 +3,18 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    "./language": "./dist/language.js",
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./src": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
     "./factory": {
       "types": "./dist/factory.d.ts",
       "default": "./dist/factory.js"
@@ -29,15 +40,23 @@
       "default": "./dist/transformers/modelica-transformer.js"
     }
   },
+  "files": [
+    "queries/*",
+    "src/**",
+    "src-gen/**",
+    "dist/**",
+    "factory.ts",
+    "constraint-extractor.ts",
+    "transformers/**"
+  ],
   "scripts": {
     "build": "node build.js && tsc",
-    "clean": "rimraf dist *.wasm"
+    "clean": "rimraf dist src-gen *.wasm"
   },
   "dependencies": {
     "@modelscript/compiler": "*",
     "@modelscript/diagram": "*",
-    "node-addon-api": "^8.5.0",
-    "node-gyp-build": "^4.8.4"
+    "@modelscript/language": "*"
   },
   "devDependencies": {}
 }

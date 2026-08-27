@@ -773,6 +773,132 @@ export class AstAPI {
 
   @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
   @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
+
+  @inline parseInteger(nodeId: u32): i32 {
+      if (nodeId == 0) return 0;
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      if (offset < 0) return 0;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
+      let buffer = getInputBuffer();
+      let len = getNodeByteLength(nodeId);
+      let endOffset = offset + len;
+
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch >= 48 && ch <= 57) {
+              break;
+          }
+          actualOffset += step;
+      }
+      if (actualOffset >= endOffset) return 0;
+
+      let result: i32 = 0;
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch >= 48 && ch <= 57) {
+              result = result * 10 + (ch - 48);
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
+      return result;
+  }
+
+  @inline parseReal(nodeId: u32): f64 {
+      if (nodeId == 0) return 0.0;
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      if (offset < 0) return 0.0;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
+      let buffer = getInputBuffer();
+      let len = getNodeByteLength(nodeId);
+      let endOffset = offset + len;
+
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if ((ch >= 48 && ch <= 57) || ch == 46 /* '.' */) {
+              break;
+          }
+          actualOffset += step;
+      }
+      if (actualOffset >= endOffset) return 0.0;
+
+      let whole: f64 = 0.0;
+      let frac: f64 = 0.0;
+      let fracDiv: f64 = 1.0;
+      let isFrac = false;
+
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch >= 48 && ch <= 57) {
+              if (!isFrac) {
+                  whole = whole * 10.0 + f64(ch - 48);
+              } else {
+                  fracDiv = fracDiv * 10.0;
+                  frac = frac + f64(ch - 48) / fracDiv;
+              }
+              actualOffset += step;
+          } else if (ch == 46 /* '.' */ && !isFrac) {
+              isFrac = true;
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
+      return whole + frac;
+  }
+
+  @inline getBinaryOp(leftNode: u32, rightNode: u32): u16 {
+      let leftOffset = lsp_findNodeOffset(globalAstRoot, leftNode);
+      let leftLen = getNodeByteLength(leftNode);
+      let rightOffset = lsp_findNodeOffset(globalAstRoot, rightNode);
+      if (leftOffset < 0 || rightOffset < 0) return 0;
+
+      let step = getEncodingStep();
+      let scanOffset = leftOffset + leftLen;
+      let buffer = getInputBuffer();
+
+      while (scanOffset < rightOffset) {
+          let ch = step == 2 ? load<u16>(buffer + scanOffset) : load<u8>(buffer + scanOffset);
+          if (ch == 43 /* '+' */) return 0; // BinOp.Add
+          if (ch == 45 /* '-' */) return 1; // BinOp.Sub
+          if (ch == 42 /* '*' */) return 2; // BinOp.Mul
+          if (ch == 47 /* '/' */) return 3; // BinOp.Div
+          if (ch == 94 /* '^' */) return 4; // BinOp.Pow
+          if (ch == 60 /* '<' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 61 /* '=' */) return 16; // <=
+                  if (nextCh == 62 /* '>' */) return 13; // <>
+              }
+              return 14; // <
+          }
+          if (ch == 62 /* '>' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 61 /* '=' */) return 17; // >=
+              }
+              return 15; // >
+          }
+          if (ch == 61 /* '=' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 61 /* '=' */) return 12; // ==
+              }
+          }
+          if (ch == 97 /* 'a' */) return 10; // and
+          if (ch == 111 /* 'o' */) return 11; // or
+          scanOffset += step;
+      }
+      return 0;
+  }
   @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
   @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
   @inline getByteLength(nodeId: u32): u32 { return getNodeByteLength(nodeId); }

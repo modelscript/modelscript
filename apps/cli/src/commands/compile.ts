@@ -82,17 +82,11 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     profiler.start("parsing");
     for (const p of args.paths) {
       if (p.endsWith(".sysml")) {
-        hasSysML = true;
-        const WebParserModule = await import("web-tree-sitter");
-
-        const WebParser: any = WebParserModule.default || WebParserModule;
-        await WebParser.Parser.init();
-        const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/tree-sitter-sysml2.wasm");
-        const fs = await import("fs");
-        const SysML2 = await WebParser.Language.load(fs.readFileSync(wasmPath));
+        const { createWasmParser } = await import("@modelscript/language");
+        const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
         if (!sysmlParser) {
-          sysmlParser = new WebParser.Parser();
-          sysmlParser.setLanguage(SysML2);
+          const sysmlResult = await createWasmParser(wasmPath);
+          sysmlParser = sysmlResult.parser;
         }
         const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
         const tree = sysmlParser.parse(text);

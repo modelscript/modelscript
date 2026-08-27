@@ -63,17 +63,12 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     Context.registerParser(".mo", modelicaParser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
-    const WebParserModule = await import("web-tree-sitter");
-
-    const WebParser: any = WebParserModule.default || WebParserModule;
-
-    await WebParser.Parser.init();
+    const { createWasmParser } = await import("@modelscript/language");
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/tree-sitter-sysml2.wasm");
-    const SysML2 = await WebParser.Language.load(fs.readFileSync(wasmPath));
-    const sysmlParser = new WebParser.Parser();
-    sysmlParser.setLanguage(SysML2);
+    const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
+    const sysmlResult = await createWasmParser(wasmPath);
+    const sysmlParser = sysmlResult.parser;
 
     const mIdx = createModelicaWorkspaceIndex();
     const sysmlIndex = createSysML2WorkspaceIndex();
@@ -98,7 +93,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         const text = fs.readFileSync(p, "utf-8");
         const tree = sysmlParser.parse(text);
         const fileUri = "file://" + path.resolve(p);
-        sysmlIndex.register(fileUri, () => tree.rootNode);
+        if (tree) {
+          sysmlIndex.register(fileUri, () => tree.rootNode as any);
+        }
         if (!sysmlFileUri) sysmlFileUri = fileUri;
       } else {
         await context.addLibrary(p);

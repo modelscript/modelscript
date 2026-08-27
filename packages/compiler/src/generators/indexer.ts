@@ -38,8 +38,10 @@ export function extractIndexerHooks(langConfig: any, $: Record<string, any>): In
 function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]): void {
   if (!node || typeof node !== "object") return;
 
-  if (node.type === "def") {
-    const options = node.options;
+  const t = (node.type || "").toUpperCase();
+
+  if (t === "DEF") {
+    const options = node.options || node.value;
     if (options) {
       let kind = "Unknown";
       let namePath = "name"; // default
@@ -76,8 +78,8 @@ function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]):
         metadataFieldPaths,
       });
     }
-  } else if (node.type === "ref") {
-    const opts = node.options || {};
+  } else if (t === "REF") {
+    const opts = node.options || node.value || {};
     let namePath = "name";
     if (opts.name) {
       const self = createSelfProxy();
@@ -96,21 +98,12 @@ function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]):
       inheritPaths: [],
       metadataFieldPaths: {},
     });
-  } else if (node.type === "choice" || node.type === "seq") {
-    if (Array.isArray(node.args)) {
-      for (const arg of node.args) {
-        collectIndexerHooks(arg, ruleName, hooks);
-      }
-    }
-  } else if (
-    node.type === "optional" ||
-    node.type === "repeat" ||
-    node.type === "repeat1" ||
-    node.type === "token" ||
-    node.type === "token_immediate"
-  ) {
-    if (node.arg) {
-      collectIndexerHooks(node.arg, ruleName, hooks);
+  }
+
+  const children = node.children || node.args || (node.arg ? [node.arg] : []) || (node.rule ? [node.rule] : []);
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      collectIndexerHooks(child, ruleName, hooks);
     }
   }
 }

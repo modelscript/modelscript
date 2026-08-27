@@ -1153,8 +1153,8 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
       addTrans(start, end, ast.char);
     } else if (ast.type === "CLASS") {
       if (ast.invert) {
-        // Inverted classes match up to unicode max
-        for (let i = 0; i <= 0x10ffff; i++) {
+        // Inverted classes match standard byte/ASCII character set
+        for (let i = 0; i <= 0xff; i++) {
           let match = false;
           for (const [s, e] of ast.ranges) {
             if (i >= s && i <= e) {

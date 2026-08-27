@@ -226,6 +226,9 @@ export interface AstAPI<RuleName extends string, FieldName extends string = stri
   getNextSibling(nodeId: u32): u32;
   getChildCount(nodeId: u32): u32;
   getByteLength(nodeId: u32): u32;
+  parseInteger(nodeId: u32): i32;
+  parseReal(nodeId: u32): f64;
+  getBinaryOp(leftNode: u32, rightNode: u32): u16;
 
   getTextSpan(nodeId: u32, absoluteStart?: u32): u64;
   getRootNode(): u32;
@@ -267,6 +270,8 @@ export interface DaeAPI {
   getVarNameId(varIdx: u32): u32;
   getVarType(varIdx: u32): i32;
   isVarFlow(varIdx: u32): boolean;
+  setVarShapeDim(varIdx: u32, dimIdx: u32, size: i32): void;
+  getVarShapeDim(varIdx: u32, dimIdx: u32): i32;
   extractEquations(rootId: u32): void;
   reset(): void;
 }

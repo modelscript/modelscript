@@ -10,11 +10,10 @@ const __dirname = path.dirname(__filename);
 // Copy assets
 function copyAssets() {
   const assets = [
-    ["../../node_modules/web-tree-sitter/web-tree-sitter.wasm", "server/dist/web-tree-sitter.wasm"],
     ["../../languages/modelica/tree-sitter-modelica.wasm", "server/dist/tree-sitter-modelica.wasm"],
-    ["../../languages/sysml2/tree-sitter-sysml2.wasm", "server/dist/tree-sitter-sysml2.wasm"],
-    ["../../languages/step/tree-sitter-step.wasm", "server/dist/tree-sitter-step.wasm"],
-    ["../../languages/owl2/tree-sitter-owl2.wasm", "server/dist/tree-sitter-owl2.wasm"],
+    ["../../languages/sysml2/dist/parser.wasm", "server/dist/tree-sitter-sysml2.wasm"],
+    ["../../languages/step/dist/parser.wasm", "server/dist/tree-sitter-step.wasm"],
+    ["../../languages/owl2/dist/parser.wasm", "server/dist/tree-sitter-owl2.wasm"],
     ["../../languages/csv/tree-sitter-csv.wasm", "server/dist/tree-sitter-csv.wasm"],
     ["../../packages/compiler/build/release.wasm", "server/dist/release.wasm"],
     ["../../node_modules/occt-import-js/dist/occt-import-js.wasm", "server/dist/occt-import-js.wasm"],
