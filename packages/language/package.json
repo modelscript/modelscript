@@ -90,6 +90,14 @@
       "types": "./dist/cosim/*.d.ts",
       "default": "./dist/cosim/*.js"
     },
+    "./lsp": {
+      "types": "./dist/lsp/browserServerMain.d.ts",
+      "default": "./dist/lsp/browserServerMain.js"
+    },
+    "./lsp/*": {
+      "types": "./dist/lsp/*.d.ts",
+      "default": "./dist/lsp/*.js"
+    },
     "./package.json": "./package.json"
   },
   "main": "dist/index.js",
@@ -128,13 +136,22 @@
     "@antv/x6-plugin-selection": "^2.2.2",
     "@modelscript/compiler": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/owl2": "*",
+    "@modelscript/step": "*",
+    "@modelscript/sysml2": "*",
+    "@modelscript/utils": "*",
     "aedes": "^1.0.2",
     "aedes-server-factory": "^0.2.1",
     "assemblyscript": "^0.28.17",
+    "fflate": "^0.8.2",
     "mqtt": "^5.10.0",
+    "occt-import-js": "^0.0.23",
     "opencascade.js": "^1.0.0",
     "pako": "^2.1.0",
     "pg": "^8.13.0",
+    "sql.js": "^1.14.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -143,6 +160,7 @@
     "@types/node": "^25.3.2",
     "@types/pako": "^2.0.4",
     "@types/pg": "^8.11.0",
+    "@types/sql.js": "^1.4.11",
     "@types/ws": "^8.18.0",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.1",

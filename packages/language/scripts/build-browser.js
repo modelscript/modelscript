@@ -100,6 +100,67 @@ esbuild
   })
   .then(() => {
     console.log("Self-hosted typescript bundle created at dist/typescript.mjs");
+
+    // Also build the LSP browser server bundle
+    return esbuild.build({
+      entryPoints: [
+        path.join(pkgDir, "src/lsp/browserServerMain.ts"),
+        path.join(pkgDir, "src/lsp/step-worker.ts"),
+        path.join(pkgDir, "src/lsp/workers/indexer.worker.ts"),
+      ],
+      outdir: path.join(pkgDir, "dist/lsp"),
+      bundle: true,
+      format: "iife",
+      platform: "browser",
+      target: "es2022",
+      minify: false,
+      keepNames: true,
+      sourcemap: "inline",
+      define: {
+        "process.env": "{}",
+        "process.browser": "true",
+        "import.meta.url": "''",
+      },
+      plugins: [
+        {
+          name: "node-builtins-ignore",
+          setup(build) {
+            const builtins = [
+              "assert",
+              "buffer",
+              "child_process",
+              "crypto",
+              "diagnostics_channel",
+              "events",
+              "fs",
+              "fs/promises",
+              "http",
+              "https",
+              "module",
+              "net",
+              "os",
+              "path",
+              "process",
+              "readline",
+              "stream",
+              "string_decoder",
+              "tls",
+              "url",
+              "util",
+              "worker_threads",
+              "zlib",
+              "assemblyscript/dist/asc.js",
+            ];
+            const filter = new RegExp(`^(node:)?(?:${builtins.join("|")})$`);
+            build.onResolve({ filter }, (args) => ({ path: args.path, namespace: "ignore" }));
+            build.onLoad({ filter: /.*/, namespace: "ignore" }, () => ({ contents: "", loader: "js" }));
+          },
+        },
+      ],
+    });
+  })
+  .then(() => {
+    console.log("LSP browser server bundle created at dist/lsp/browserServerMain.js");
   })
   .catch((err) => {
     console.error(err);

@@ -19,7 +19,7 @@ function copyAssets() {
     ["../../node_modules/occt-import-js/dist/occt-import-js.wasm", "server/dist/occt-import-js.wasm"],
     ["../../scripts/ModelicaStandardLibrary_v4.1.0.zip", "server/dist/ModelicaStandardLibrary_v4.1.0.zip"],
     ["../../scripts/SysML-v2-Release-2026-03.zip", "server/dist/SysML-v2-Release-2026-03.zip"],
-    ["../../packages/lsp/dist", "server/dist"],
+    ["../../packages/language/dist/lsp", "server/dist"],
   ];
 
   for (const [src, dest] of assets) {
@@ -74,6 +74,7 @@ const webviewConfig: esbuild.BuildOptions = {
   format: "iife",
   platform: "browser",
   sourcemap: "inline",
+  external: ["@kitware/vtk.js", "@kitware/vtk.js/*"],
 };
 
 const notebookRendererConfig: esbuild.BuildOptions = {
