@@ -2,9 +2,10 @@
 /* eslint-disable no-useless-assignment */
 
 import { UnifiedWorkspace } from "@modelscript/compiler";
-import { createModelicaQueryEngine, createModelicaWorkspaceIndex, createSysML2QueryEngine } from "@modelscript/core";
+import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
+import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import path from "node:path";

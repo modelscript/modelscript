@@ -10,7 +10,8 @@
  * for CPU isolation when needed.
  */
 
-import type { ModelicaDAE } from "@modelscript/core";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ModelicaDAE = any;
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
 import type { CoSimParticipant } from "../participant.js";
 

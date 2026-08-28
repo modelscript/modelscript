@@ -2,10 +2,12 @@
 
 import { UnifiedWorkspace, VerificationRunner } from "@modelscript/compiler";
 import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/compiler/simulator";
-import { Context, createModelicaWorkspaceIndex, createSysML2WorkspaceIndex } from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
+import { Context } from "@modelscript/modelica/context";
+import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
+import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import path from "node:path";
@@ -111,7 +113,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
     const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
-    const { createModelicaQueryEngine } = await import("@modelscript/core");
+    const { createModelicaQueryEngine } = await import("@modelscript/modelica/factory");
     const sysmlFactory = await import("@modelscript/sysml2/factory");
 
     const fileCache = new Map<string, string>();

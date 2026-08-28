@@ -140,16 +140,39 @@
       "default": "./dist/arena-script-interpreter.js"
     },
     "./parser.wasm": "./dist/parser.wasm",
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "default": "./dist/context.js"
+    },
+    "./ast-visitor": {
+      "types": "./dist/ast-visitor.d.ts",
+      "default": "./dist/ast-visitor.js"
+    },
+    "./modelica-scopes": {
+      "types": "./dist/modelica-scopes.d.ts",
+      "default": "./dist/modelica-scopes.js"
+    },
+    "./interpreter": {
+      "types": "./dist/interpreter.d.ts",
+      "default": "./dist/interpreter.js"
+    },
+    "./studies": {
+      "types": "./dist/studies.d.ts",
+      "default": "./dist/studies.js"
+    },
     "./dist/*": "./dist/*"
   },
   "scripts": {
-    "build": "node build.js && tsc",
-    "clean": "rimraf dist build src-gen *.wasm"
+    "build": "npm run clean && node build.js && tsc",
+    "clean": "rimraf dist build src-gen *.wasm",
+    "test": "npx tsx tests/testsuite-runner.ts"
   },
   "dependencies": {
     "@modelscript/cad": "*",
     "@modelscript/compiler": "*",
+    "@modelscript/csv": "*",
     "@modelscript/language": "^0.0.18",
+    "@modelscript/symbolics": "*",
     "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.4"
   }

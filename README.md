@@ -5,7 +5,6 @@
 
 [![GitHub Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red?logo=github)](https://github.com/sponsors/nachawati)
 [![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
-[![npm @modelscript/core](https://img.shields.io/npm/v/@modelscript/core?label=core)](https://www.npmjs.com/package/@modelscript/core)
 [![npm @modelscript/cli](https://img.shields.io/npm/v/@modelscript/cli?label=cli)](https://www.npmjs.com/package/@modelscript/cli)
 [![npm @modelscript/tree-sitter-modelica](https://img.shields.io/npm/v/@modelscript/tree-sitter-modelica?label=tree-sitter-modelica)](https://www.npmjs.com/package/@modelscript/tree-sitter-modelica)
 [![Docker API](https://img.shields.io/badge/ghcr.io-api-blue?logo=docker)](https://ghcr.io/modelscript/api)
@@ -35,7 +34,6 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | [`@modelscript/cad`](./packages/cad/)             | Procedural CAD: TypeScript DSL for programmatic 3D geometry with STEP compilation            |
 | [`@modelscript/compiler`](./packages/compiler/)   | Salsa-based query engine for incremental compilation, type checking, and flattening          |
-| [`@modelscript/core`](./packages/core/)           | Central compiler engine for ModelScript (legacy flattener, simulator, optimizer)             |
 | [`@modelscript/cosim`](./packages/cosim/)         | MQTT-linked co-simulation engine for ModelScript                                             |
 | [`@modelscript/diagram`](./packages/diagram/)     | Diagram rendering, interactive SVG generation, and X6-based visual layouts                   |
 | [`@modelscript/ecad`](./packages/ecad/)           | ECAD structural extraction and Gerber layout generator for ModelScript                       |

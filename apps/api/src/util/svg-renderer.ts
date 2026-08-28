@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { Context } from "@modelscript/modelica/context";
+import Modelica from "@modelscript/modelica/parser";
 import {
-  Context,
   ModelicaClassInstance,
   ModelicaComponentInstance,
   type ModelicaModification,
-} from "@modelscript/core";
-import Modelica from "@modelscript/modelica/parser";
+} from "@modelscript/modelica/semantic-model";
 import { registerWindow } from "@svgdotjs/svg.js";
 import { createSVGWindow } from "svgdom";
 import Parser from "tree-sitter";
@@ -114,7 +114,7 @@ export async function processLibrary(
   ensureSvgWindow();
   ensureParser();
 
-  const { renderIcon, renderDiagram } = await import("@modelscript/core");
+  const { renderIcon, renderDiagram } = await import("@modelscript/modelica/diagram");
 
   const context = new Context(new NodeFileSystem());
 

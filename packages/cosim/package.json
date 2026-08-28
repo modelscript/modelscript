@@ -52,7 +52,8 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@modelscript/core": "*",
+    "@modelscript/compiler": "*",
+    "@modelscript/language": "*",
     "aedes": "^1.0.2",
     "aedes-server-factory": "^0.2.1",
     "assemblyscript": "^0.28.17",

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Context } from "@modelscript/core";
+import type { Context } from "@modelscript/modelica/context";
 
 import type { UnifiedWorkspace } from "@modelscript/compiler";
 import type { OntologyBuilder } from "@modelscript/language";

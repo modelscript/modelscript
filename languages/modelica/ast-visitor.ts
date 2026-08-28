@@ -4,12 +4,11 @@
 /**
  * Standalone visitor interface and base class for the Modelica model tree.
  *
- * Extracted from model.ts so that the polyglot flattener (and other consumers)
- * can implement the visitor pattern without depending on the full legacy model
- * class hierarchy.
+ * Extracted so that the flattener, semantic models, and other consumers
+ * can implement the visitor pattern without circular dependencies.
  *
  * The visitor methods accept "any" types to avoid circular dependencies between
- * the visitor definition and the concrete node classes. Consumers that need
+ * the visitor definition and concrete node classes. Consumers that need
  * type-safe access should narrow the types at the call site.
  */
 

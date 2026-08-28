@@ -1879,3 +1879,5 @@ export class ModelicaEnumerationLiteralElement extends ModelicaElement {
     return this.literalName;
   }
 }
+
+export { ModelicaElement as ModelicaEntity, ModelicaElement as ModelicaNamedElement };

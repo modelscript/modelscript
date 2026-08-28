@@ -12,19 +12,15 @@ import {
   type QueryEngine,
   type WorkspaceIndex,
 } from "@modelscript/compiler";
-import { ArenaQueryFlattener, type FlattenOptions } from "@modelscript/modelica";
-import {
-  createModelicaQueryEngine,
-  createModelicaWorkspaceIndex,
-  injectPredefinedTypes,
-} from "@modelscript/modelica/factory";
-import { ModelicaPoParser, ModelicaTranslation } from "@modelscript/modelica/po";
-import { ModelicaClassInstance, type ModelicaElement } from "@modelscript/modelica/semantic-model";
 import { MODELSCRIPT_CAS_PACKAGE } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
+import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
+import { ArenaQueryFlattener, type FlattenOptions } from "./flattener-query.js";
+import { ModelicaPoParser, ModelicaTranslation } from "./po.js";
+import { ModelicaClassInstance, type ModelicaElement } from "./semantic-model.js";
 
-import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./modelica/builtins/geometry.js";
-import { MODELSCRIPT_STUDIES_PACKAGE } from "./modelica/builtins/studies.js";
+import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./geometry.js";
+import { MODELSCRIPT_STUDIES_PACKAGE } from "./studies.js";
 
 export type { HomotopyMode, InitSolverConfig, ModelicaCompilerOptions, PreconditionerMode };
 
@@ -234,7 +230,7 @@ export class Context extends BaseContext {
           }
 
           // For single-file libraries (path IS the .mo file), the top-level
-          // class is a root class with no enclosing package.  Setting parentFQN
+          // class is a root class with no enclosing package. Setting parentFQN
           // to the library name would create a self-referential parent in the
           // symbol table (parentId === symbolId), causing infinite loops in
           // the flattener's scope traversal.
@@ -485,12 +481,6 @@ export class Context extends BaseContext {
   flattenText(name: string): string | null {
     return this.flatten(name);
   }
-
-  /**
-   * Validates a class instance before flattening, rejecting semantically invalid models.
-   * Each check here has a corresponding linter rule in linter.ts for IDE feedback.
-   * @throws Error if the class is not valid for flattening.
-   */
 
   /**
    * Retrieves the current FileSystem instance used by the context.

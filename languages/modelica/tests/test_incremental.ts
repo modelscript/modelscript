@@ -40,7 +40,6 @@ end BouncingBall;`;
   const decls = Array.from(wsIndex.toUnifiedPartial().symbols.values()).filter(
     (s) => s.name === "v" && resolver["isDeclaration"](s),
   );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const oldProcessed = (wsIndex as any).files.get(uri).index.processedOldIds;
   console.log("processedOldIds array:", Array.from(oldProcessed || []));
   console.log(

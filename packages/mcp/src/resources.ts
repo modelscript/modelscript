@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ModelicaClassInstance, ModelicaComponentInstance } from "@modelscript/core";
+import { ModelicaClassInstance, ModelicaComponentInstance } from "@modelscript/modelica/semantic-model";
 import type { ServerContext } from "./types.js";
 
 /**

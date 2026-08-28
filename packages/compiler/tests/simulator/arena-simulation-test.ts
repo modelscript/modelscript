@@ -1,9 +1,9 @@
 import { simulateArena } from "@modelscript/compiler/simulator";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
-import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../../core/tests/node-filesystem.js";
-import { Context } from "../../src/index.js";
+import Modelica from "../../../../languages/modelica/bindings/node/index.cjs";
+import { Context } from "../../../../languages/modelica/context.js";
+import { NodeFileSystem } from "../../../../languages/modelica/tests/node-filesystem.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);

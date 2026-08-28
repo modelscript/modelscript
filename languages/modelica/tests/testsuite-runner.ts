@@ -451,6 +451,9 @@ async function main(): Promise<void> {
     for (const arg of args) {
       let root = path.resolve(testsuiteRoot, arg);
       if (!fs.existsSync(root)) {
+        root = path.resolve(baseTestsuiteRoot, arg);
+      }
+      if (!fs.existsSync(root)) {
         root = path.resolve(process.cwd(), arg);
       }
       if (!fs.existsSync(root)) {

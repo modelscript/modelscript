@@ -47,12 +47,12 @@
     "release": "nx release",
     "release:dry-run": "nx release --dry-run",
     "test": "nx run-many --target=test --parallel=3",
-    "test:modelica": "npx tsx packages/core/tests/testsuite-runner.ts",
-    "test:modelica:update": "npx tsx packages/core/tests/testsuite-runner.ts --update --omc",
-    "test:single": "npx tsx packages/core/tests/testsuite-runner.ts"
+    "test:modelica": "npx tsx languages/modelica/tests/testsuite-runner.ts",
+    "test:modelica:update": "npx tsx languages/modelica/tests/testsuite-runner.ts --update --omc",
+    "test:single": "npx tsx languages/modelica/tests/testsuite-runner.ts"
   },
   "lint-staged": {
-    "*.{ts,tsx}": "eslint",
+    "*.{ts,tsx}": "eslint --no-warn-ignored",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
   "overrides": {

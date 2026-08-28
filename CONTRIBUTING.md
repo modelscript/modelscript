@@ -32,12 +32,12 @@ Releases are triggered manually via GitHub Actions. The workflow versions all pu
 
 The following secrets must be set in **Settings → Secrets and variables → Actions**:
 
-| Secret       | Source                                                          | Purpose                                                                              |
-| ------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `NPM_TOKEN`  | [npmjs.com](https://www.npmjs.com/settings/~/tokens)            | Publish `@modelscript/core`, `@modelscript/cli`, `@modelscript/tree-sitter-modelica` |
-| `VSCE_PAT`   | [Azure DevOps](https://dev.azure.com/) → Personal access tokens | Publish VS Code extension to Marketplace                                             |
-| `OVSX_PAT`   | [open-vsx.org](https://open-vsx.org/user-settings/tokens)       | Publish VS Code extension to Open VSX                                                |
-| `DEPLOY_PAT` | GitHub → Personal access tokens (classic)                       | Push version commits and tags back to the repo                                       |
+| Secret       | Source                                                          | Purpose                                                                                  |
+| ------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `NPM_TOKEN`  | [npmjs.com](https://www.npmjs.com/settings/~/tokens)            | Publish `@modelscript/language`, `@modelscript/cli`, `@modelscript/tree-sitter-modelica` |
+| `VSCE_PAT`   | [Azure DevOps](https://dev.azure.com/) → Personal access tokens | Publish VS Code extension to Marketplace                                                 |
+| `OVSX_PAT`   | [open-vsx.org](https://open-vsx.org/user-settings/tokens)       | Publish VS Code extension to Open VSX                                                    |
+| `DEPLOY_PAT` | GitHub → Personal access tokens (classic)                       | Push version commits and tags back to the repo                                           |
 
 ### 2. Trigger the Release
 
@@ -56,7 +56,7 @@ The workflow runs these steps in order:
 
 1. **Build, Test, Lint** — ensures main is healthy
 2. **Version & Changelog** — bumps versions using [conventional commits](https://www.conventionalcommits.org/), generates changelogs, creates a GitHub Release
-3. **Publish to npm** — `@modelscript/core`, `@modelscript/cli`, `@modelscript/tree-sitter-modelica`
+3. **Publish to npm** — `@modelscript/language`, `@modelscript/cli`, `@modelscript/tree-sitter-modelica`
 4. **Publish VS Code Extension** — packages VSIX, publishes to VS Code Marketplace and Open VSX
 5. **Publish Docker Images** — builds and pushes to GHCR (`ghcr.io/modelscript/*`) with `:latest` and `:version` tags
 6. **Push tags** — pushes version commits and git tags back to the repo

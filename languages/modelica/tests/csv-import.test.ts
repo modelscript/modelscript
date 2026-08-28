@@ -3,7 +3,7 @@ import Modelica from "@modelscript/modelica/parser";
 import { promises as fs } from "fs";
 import { join } from "path";
 import Parser from "tree-sitter";
-import { Context } from "../src/compiler/context.js";
+import { Context } from "../context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 // Register parsers

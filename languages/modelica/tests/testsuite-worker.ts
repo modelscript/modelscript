@@ -35,7 +35,7 @@ import { StringWriter } from "@modelscript/utils";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Context } from "../src/compiler/context.js";
+import { Context } from "../context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
@@ -57,7 +57,7 @@ function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const modelicaWasm = path.resolve(__dirname, "../../../languages/modelica/dist/parser.wasm");
+const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
 const { parser } = await createWasmParser(modelicaWasm);
 Context.registerParser(".mo", parser);
 

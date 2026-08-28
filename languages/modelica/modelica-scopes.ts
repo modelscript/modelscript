@@ -2,17 +2,14 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Scope } from "@modelscript/compiler";
-import { ModelicaIdentifierSyntaxNode } from "@modelscript/modelica/ast";
+import { Scope, _getScriptingScope } from "@modelscript/compiler";
+import { ModelicaIdentifierSyntaxNode } from "./ast.js";
 import type {
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaElement,
   ModelicaElement as ModelicaNamedElement,
-} from "@modelscript/modelica/semantic-model";
-
-// Import the private registry setter from core scope to keep callback registers linked
-import { _getScriptingScope } from "../scope.js";
+} from "./semantic-model.js";
 
 /**
  * A lightweight scope for loop variables in comprehension clauses like

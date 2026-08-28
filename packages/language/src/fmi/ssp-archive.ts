@@ -17,9 +17,9 @@
  * system and exposes them as typed variable descriptors for flattener use.
  */
 
-import type { Scope } from "@modelscript/core";
-import { ModelicaClassInstance } from "@modelscript/core";
+import type { Scope } from "@modelscript/compiler";
 import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica/ast";
+import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { inflateRaw } from "pako";
 
 /** Connector descriptor extracted from an SSP system boundary. */

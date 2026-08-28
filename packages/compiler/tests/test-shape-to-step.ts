@@ -2,9 +2,9 @@ import * as fs from "fs";
 import * as path from "path";
 import Parser from "tree-sitter";
 import Modelica from "../../../languages/modelica/bindings/node/index.cjs";
+import { Context } from "../../../languages/modelica/context.js";
 import { ShapeFlattener } from "../../../languages/modelica/shape-flattener.js";
 import { compileAssemblyToStep } from "../../cad/src/step-compiler.js";
-import { Context } from "../../core/src/compiler/context.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);

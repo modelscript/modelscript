@@ -156,9 +156,9 @@ export default function Index() {
           </div>
           <div className="packages-grid">
             <PackageCard
-              name="@modelscript/core"
-              description="Central compiler engine — parsing, semantic analysis, flattening, simulation, optimization, and rendering."
-              install="npm install @modelscript/core"
+              name="@modelscript/language"
+              description="Polyglot modeling language runtime — parsing, semantic queries, DSL compilation, and diagram rendering."
+              install="npm install @modelscript/language"
             />
             <PackageCard
               name="@modelscript/cli"

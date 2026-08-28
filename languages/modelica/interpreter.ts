@@ -8,6 +8,25 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
+import { Scope } from "@modelscript/compiler";
+import {
+  evaluateCASFunction,
+  isCASFunction,
+  ModelicaArray,
+  ModelicaBinaryExpression,
+  ModelicaBooleanLiteral,
+  ModelicaEnumerationLiteral,
+  ModelicaExpression,
+  ModelicaExpressionValue,
+  ModelicaFunctionCallExpression,
+  ModelicaIntegerLiteral,
+  ModelicaNameExpression,
+  ModelicaObject,
+  ModelicaRealLiteral,
+  ModelicaStringLiteral,
+  ModelicaUnaryExpression,
+} from "@modelscript/symbolics";
+import { createHash, makeWeakRef } from "@modelscript/utils";
 import {
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
@@ -36,31 +55,13 @@ import {
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
-} from "@modelscript/modelica/ast";
-import { makeDiagnostic, ModelicaErrorCode } from "@modelscript/modelica/errors";
-import {
-  evaluateCASFunction,
-  isCASFunction,
-  ModelicaArray,
-  ModelicaBinaryExpression,
-  ModelicaBooleanLiteral,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaExpressionValue,
-  ModelicaFunctionCallExpression,
-  ModelicaIntegerLiteral,
-  ModelicaNameExpression,
-  ModelicaObject,
-  ModelicaRealLiteral,
-  ModelicaStringLiteral,
-  ModelicaUnaryExpression,
-} from "@modelscript/symbolics";
-import { createHash, makeWeakRef } from "@modelscript/utils";
-import { ModelicaLoopScope, ModelicaScriptScope, Scope } from "../scope.js";
+} from "./ast.js";
+import { makeDiagnostic, ModelicaErrorCode, type ModelicaDiagnostic } from "./errors.js";
+import { ModelicaLoopScope, ModelicaScriptScope } from "./modelica-scopes.js";
 
 export class ModelicaAlgorithmScope extends Scope {
   variables = new Map<string, SyntheticInterpreterVariable>();
-  public diagnostics?: import("@modelscript/modelica/errors").ModelicaDiagnostic[];
+  public diagnostics?: ModelicaDiagnostic[];
 
   override get elements(): IterableIterator<any> {
     return this.variables.values();
@@ -134,7 +135,7 @@ import {
   ModelicaComponentInstance,
   ModelicaEnumerationClassInstance,
   ModelicaExpressionClassInstance,
-} from "@modelscript/modelica/semantic-model";
+} from "./semantic-model.js";
 
 /**
  * Lightweight shim avoiding legacy Polyglot wrapper instantiation inside execution loops.
@@ -446,7 +447,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   constructor(
     evaluateAlgorithms = false,
     printCallback: ((msg: string) => void) | undefined = undefined,
-    public diagnostics?: import("@modelscript/modelica/errors").ModelicaDiagnostic[],
+    public diagnostics?: ModelicaDiagnostic[],
   ) {
     super();
     this.#evaluateAlgorithms = evaluateAlgorithms;

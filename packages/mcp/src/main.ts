@@ -4,7 +4,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Context } from "@modelscript/core";
+import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
 import { PolyglotMcpHost } from "./polyglot-server.js";

@@ -9,7 +9,6 @@ import {
   runSensitivityAnalysisArena,
   simulateArena,
 } from "@modelscript/compiler/simulator";
-import { Context, createModelicaQueryEngine, createSysML2QueryEngine } from "@modelscript/core";
 import {
   executeBgpQuery,
   executeQueryString,
@@ -20,8 +19,11 @@ import {
 } from "@modelscript/language";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
+import { Context } from "@modelscript/modelica/context";
+import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { ModelicaClassInstance, ModelicaComponentInstance } from "@modelscript/modelica/semantic-model";
+import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
 import { z } from "zod";

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { SymbolId } from "@modelscript/compiler";
-import type { Context } from "@modelscript/core";
+import type { Context } from "@modelscript/modelica/context";
 import type { ModelicaModArgs } from "@modelscript/modelica/modification-args";
 import type { CSGExecutionGraph, CSGNode } from "./worker.js";
 

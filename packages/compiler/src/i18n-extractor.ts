@@ -66,7 +66,10 @@ export class I18nExtractor {
   private walk(node: TSNode, sourceFile: string) {
     if (!node) return;
 
-    const config = this.i18nConfig[node.type];
+    const pascalType = node.type
+      ? node.type.replace(/_([a-z])/g, (_, c) => c.toUpperCase()).replace(/^[a-z]/, (c) => c.toUpperCase())
+      : "";
+    const config = this.i18nConfig[node.type] || this.i18nConfig[pascalType];
     let pushedScope = false;
 
     // 1. Handle scope stack pushing

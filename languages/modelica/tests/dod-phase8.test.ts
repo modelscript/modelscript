@@ -2,7 +2,7 @@ import Modelica from "@modelscript/modelica/parser";
 import { writeFileSync } from "fs";
 import { join } from "path";
 import Parser from "tree-sitter";
-import { Context } from "../src/compiler/context.js";
+import { Context } from "../context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 // Register parser for test environment

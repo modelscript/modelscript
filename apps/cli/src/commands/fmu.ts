@@ -2,7 +2,6 @@
 
 import { initBltWasm } from "@modelscript/compiler";
 import { ArenaSimulator } from "@modelscript/compiler/simulator";
-import { Context } from "@modelscript/core";
 import {
   type FmuArchiveOptions,
   FMI2_FUNCTIONS_H,
@@ -14,6 +13,7 @@ import {
   generateFmuCSources,
   generateFmuWasmSource,
 } from "@modelscript/language/fmi";
+import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { execSync } from "node:child_process";
 import fs from "node:fs";

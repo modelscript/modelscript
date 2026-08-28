@@ -26,6 +26,10 @@
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "default": "./dist/context.js"
+    },
     "./diagram": {
       "types": "./dist/diagram/index.d.ts",
       "default": "./dist/diagram/index.js"
@@ -91,7 +95,6 @@
     "@antv/x6": "^3.1.7",
     "@antv/x6-plugin-selection": "^2.2.2",
     "@modelscript/compiler": "*",
-    "@modelscript/core": "*",
     "@modelscript/modelica": "*",
     "pako": "^2.1.0"
   },

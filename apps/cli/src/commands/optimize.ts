@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ModelicaOptimizer } from "@modelscript/compiler/optimizer";
-import { Context } from "@modelscript/core";
+import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";

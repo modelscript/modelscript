@@ -19,12 +19,12 @@
 5. **Build commands** (`npm run build`, `nx run`, etc.) hang indefinitely when there are lint or compilation errors. Always use a short `WaitMsBeforeAsync` (e.g., 500ms) and monitor with `command_status`, or pipe through `timeout 30` to force termination.
 6. **Command Canceled:** Always query the output of a command using `command_status` with `WaitDurationSeconds: 0` even if its status was previously reported as `CANCELED` during a poll. A canceled command might still have produced useful error output before being terminated.
 7. **Apparent hangs:** When a command appears to hang (stuck in RUNNING with no output), **always assume it is the known Antigravity Linux terminal bug first**, not an infinite loop in the code. Query `command_status` with `WaitDurationSeconds: 0` and `OutputCharacterCount` to check if output was already produced. Do not prematurely terminate commands or assume code bugs without first verifying the output.
-8. **Test script placement:** Never place test scripts that import project modules in `/tmp/`. Scripts in `/tmp/` cannot resolve monorepo workspace imports (e.g., `@modelscript/core`) or relative paths back into the repo. Always place ad-hoc test scripts inside the repo (e.g., `packages/core/tests/` or a scratch file alongside the source).
-9. **Tree-sitter for Node.js:** When writing scripts that run on desktop/Node.js (tests, CLI tools, etc.), always use the **native** `tree-sitter` package — never `web-tree-sitter` or WASM. Follow the pattern in `packages/core/tests/jest.setup.ts`:
+8. **Test script placement:** Never place test scripts that import project modules in `/tmp/`. Scripts in `/tmp/` cannot resolve monorepo workspace imports or relative paths back into the repo. Always place ad-hoc test scripts inside the repo (e.g., `languages/modelica/tests/` or a scratch file alongside the source).
+9. **Tree-sitter for Node.js:** When writing scripts that run on desktop/Node.js (tests, CLI tools, etc.), always use the **native** `tree-sitter` package — never `web-tree-sitter` or WASM. Follow the pattern in `languages/modelica/tests/jest.setup.ts`:
    ```typescript
-   import Modelica from "@modelscript/tree-sitter-modelica";
+   import Modelica from "@modelscript/modelica/parser";
    import Parser from "tree-sitter";
-   import { Context } from "../src/compiler/context.js";
+   import { Context } from "../context.js";
    const parser = new Parser();
    parser.setLanguage(Modelica);
    Context.registerParser(".mo", parser);
@@ -137,11 +137,11 @@ Post-processing steps after flattening: constant folding → alias elimination �
 
 ## Linter Rules
 
-When adding new linter rules to `@modelscript/core`, follow this pattern:
+When adding new linter rules to `@modelscript/modelica`, follow this pattern:
 
 ### 1. Define the Error Code
 
-Add a new entry to `ModelicaErrorCode` in `packages/core/src/compiler/modelica/errors.ts`:
+Add a new entry to `ModelicaErrorCode` in `languages/modelica/errors.ts`:
 
 ```typescript
 RULE_NAME: {
@@ -170,7 +170,7 @@ RULE_NAME: {
 
 ### 2. Register the Lint Rule
 
-Add a `ModelicaLinter.register(...)` call at the bottom of `packages/core/src/compiler/modelica/linter.ts`:
+Add a `ModelicaLinter.register(...)` call at the bottom of `languages/modelica/linter.ts`:
 
 ```typescript
 ModelicaLinter.register(ModelicaErrorCode.RULE_NAME, {
@@ -203,8 +203,8 @@ Create a `.mo` file in the appropriate `testsuite/OpenModelica/flattening/` subd
 ### 4. Verify
 
 ```bash
-npm run build --workspace=@modelscript/core   # Compile + lint
-npm run test --workspace=@modelscript/core    # Run test suite
+npm run build --workspace=@modelscript/modelica   # Compile + lint
+npm run test --workspace=@modelscript/modelica    # Run test suite
 ```
 
 ### Current Lint Rules
@@ -229,28 +229,28 @@ npm run test --workspace=@modelscript/core    # Run test suite
 
 ## Test Runner
 
-**IMPORTANT:** The testsuite runner for `@modelscript/core` is located at `packages/core/tests/testsuite-runner.ts` (NOT `src/test/`). It does **not** support `--filter`. Arguments are subdirectory names or `.mo` file paths relative to the `testsuite/` root.
+**IMPORTANT:** The testsuite runner for `@modelscript/modelica` is located at `languages/modelica/tests/testsuite-runner.ts` (NOT `src/test/`). It does **not** support `--filter`. Arguments are subdirectory names or `.mo` file paths relative to the `testsuite/` root.
 
 **Run commands (from the monorepo root):**
 
 ```bash
 # Run all tests
-npm run test --workspace=@modelscript/core
+npm run test --workspace=@modelscript/modelica
 
 # Run a specific subdirectory (e.g., all "types" tests)
-cd packages/core && npx tsx tests/testsuite-runner.ts OpenModelica/flattening/modelica/types
+cd languages/modelica && npx tsx tests/testsuite-runner.ts OpenModelica/flattening/modelica/types
 
 # Run a single test file
-cd packages/core && npx tsx tests/testsuite-runner.ts OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
+cd languages/modelica && npx tsx tests/testsuite-runner.ts OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
 
 # Update expected output to match actual output (rewrites // Result: blocks)
-cd packages/core && npx tsx tests/testsuite-runner.ts --update OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
+cd languages/modelica && npx tsx tests/testsuite-runner.ts --update OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
 ```
 
 **Rules:**
 
 1. **Never** use `--filter` — it does not exist and the argument will be interpreted as a path.
-2. Arguments are relative to `packages/core/testsuite/`. Use `OpenModelica/flattening/modelica/<subdir>` for subdirectories.
+2. Arguments are relative to `languages/modelica/testsuite/`. Use `OpenModelica/flattening/modelica/<subdir>` for subdirectories.
 3. Use `--update` to auto-rewrite the `// Result:` block in `.mo` files to match actual output.
 4. Pipe through `timeout 60` to guard against hangs: `timeout 60 npx tsx tests/testsuite-runner.ts ...`
 

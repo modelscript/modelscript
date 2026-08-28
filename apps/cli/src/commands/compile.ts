@@ -2,7 +2,7 @@
 
 import { printArenaDAE } from "@modelscript/compiler";
 import { snapshotMemory } from "@modelscript/compiler/simulator";
-import { Context } from "@modelscript/core";
+import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -54,8 +54,8 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     const profiler = new Profiler();
 
     const { UnifiedWorkspace } = await import("@modelscript/compiler");
-    const { createModelicaQueryEngine, createSysML2WorkspaceIndex, createModelicaWorkspaceIndex } =
-      await import("@modelscript/core");
+    const { createModelicaQueryEngine, createModelicaWorkspaceIndex } = await import("@modelscript/modelica/factory");
+    const { createSysML2WorkspaceIndex } = await import("@modelscript/sysml2/factory");
     const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;
     const modelicaLangFallback = (await import("@modelscript/modelica/language")).default;
 

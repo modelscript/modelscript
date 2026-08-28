@@ -1,8 +1,8 @@
-import Modelica from "@modelscript/tree-sitter-modelica";
 import Parser from "tree-sitter";
+import Modelica from "../../../languages/modelica/bindings/node/index.cjs";
+import { Context } from "../../../languages/modelica/context.js";
 import { ArenaQueryFlattener } from "../../../languages/modelica/src/flattener.js";
-import { Context } from "../../core/src/compiler/context.js";
-import { NodeFileSystem } from "../../core/tests/node-filesystem.js";
+import { NodeFileSystem } from "../../../languages/modelica/tests/node-filesystem.js";
 import { QueryEngine } from "../../salsa/src/query-engine.js";
 import { simulateArena } from "../src/simulator/core/simulate-arena.js";
 import { WorkspaceIndex } from "../src/workspace-index.js";

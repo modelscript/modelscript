@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context } from "@modelscript/core";
+import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import path from "node:path";
 import Parser from "tree-sitter";

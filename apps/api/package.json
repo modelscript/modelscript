@@ -36,9 +36,10 @@
   "dependencies": {
     "@comunica/query-sparql": "^5.1.3",
     "@comunica/query-sparql-rdfjs": "^5.1.3",
-    "@modelscript/core": "*",
     "@modelscript/cosim": "*",
+    "@modelscript/language": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.5",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",

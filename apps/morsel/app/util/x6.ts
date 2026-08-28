@@ -1,17 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  computeHeight,
-  computeIconPlacement,
-  computePortPlacement,
-  computeWidth,
-  convertColor,
-  convertPoint,
-  convertSmoothPath,
-  evaluateCondition,
   ModelicaClassKind,
-  ModelicaComponentInstance,
-  renderText,
   Smooth,
   TextAlignment,
   type IBitmap,
@@ -26,8 +16,19 @@ import {
   type IPolygon,
   type IRectangle,
   type IText,
-  type ModelicaClassInstance,
-} from "@modelscript/core";
+} from "@modelscript/modelica/ast";
+import {
+  computeHeight,
+  computeIconPlacement,
+  computePortPlacement,
+  computeWidth,
+  convertColor,
+  convertPoint,
+  convertSmoothPath,
+  evaluateCondition,
+  renderText,
+} from "@modelscript/modelica/diagram";
+import { ModelicaComponentInstance, type ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { Marker, Svg } from "@svgdotjs/svg.js";
 
 export interface X6Markup {

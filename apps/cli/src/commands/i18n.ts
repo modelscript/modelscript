@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { I18nExtractor } from "@modelscript/compiler";
-import { Context } from "@modelscript/core";
+import { Context } from "@modelscript/modelica/context";
 import { i18nConfig } from "@modelscript/modelica/indexer_config";
 import Modelica from "@modelscript/modelica/parser";
 import { writeFileSync } from "node:fs";

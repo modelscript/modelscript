@@ -14,9 +14,13 @@
  * archive, so no separate XML file is needed.
  */
 
-import type { Scope } from "@modelscript/core";
-import { ModelicaClassInstance, type ModelicaNamedElement } from "@modelscript/core";
+import type { Scope } from "@modelscript/compiler";
 import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica/ast";
+import {
+  ModelicaClassInstance,
+  type ModelicaModification,
+  type ModelicaNamedElement,
+} from "@modelscript/modelica/semantic-model";
 import { inflateRaw } from "pako";
 
 // ── FMU model description types ──
@@ -356,7 +360,7 @@ export class ModelicaFmuEntity {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  clone(modification?: import("@modelscript/core").ModelicaModification | null): any {
+  clone(modification?: ModelicaModification | null): any {
     if (!this.#loaded) this.load();
     const cloned = new ModelicaFmuEntity(
       (this.parent ?? this) as unknown as Scope,

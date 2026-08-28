@@ -2,8 +2,8 @@
 
 import type { ArenaDoEInputRange } from "@modelscript/compiler/simulator";
 import { buildArenaSurrogate } from "@modelscript/compiler/simulator";
-import { Context } from "@modelscript/core";
 import { generateRomWasmSource } from "@modelscript/language/fmi";
+import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs/promises";
 import Parser from "tree-sitter";

@@ -32,10 +32,12 @@ export default defineConfig([
     languageOptions: {
       parserOptions: {
         projectService: {
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 100,
           allowDefaultProject: [
             "eslint.config.ts",
             "languages/modelica/grammar.js",
             "languages/modelica/bindings/node/index.d.ts",
+            "languages/modelica/tests/*.ts",
             "languages/step/grammar.js",
             "languages/step/bindings/node/index.d.ts",
             "languages/csv/grammar.js",
@@ -49,11 +51,11 @@ export default defineConfig([
             "scripts/generate-benchmark.ts",
             "scripts/benchmark-incremental.ts",
             "scripts/fetch-reference-fmus.ts",
-            "packages/fmi/scripts/compare-csv.ts",
-            "packages/fmi/scripts/fetch-fmusim.ts",
-            "packages/fmi/scripts/fmusim-verify.ts",
-            "packages/fmi/scripts/omc-verify.ts",
-            "packages/fmi/scripts/validate.ts",
+            "packages/language/validation/fmi/scripts/compare-csv.ts",
+            "packages/language/validation/fmi/scripts/fetch-fmusim.ts",
+            "packages/language/validation/fmi/scripts/fmusim-verify.ts",
+            "packages/language/validation/fmi/scripts/omc-verify.ts",
+            "packages/language/validation/fmi/scripts/validate.ts",
             "apps/docs/docs/.vitepress/config.ts",
             "apps/docs/docs/.vitepress/theme/index.ts",
             "languages/example/src/language.ts",
@@ -69,6 +71,8 @@ export default defineConfig([
             "packages/language/src/codegen/runtime/arena.ts",
             "packages/language/src/codegen/runtime/array.ts",
             "packages/language/src/codegen/runtime/cursor.ts",
+            "packages/language/src/codegen/runtime/fmi2_wasm.ts",
+            "packages/language/src/codegen/runtime/fmi3_wasm.ts",
             "packages/language/examples/calc/src/language.ts",
             "packages/language/jest.config.ts",
             "packages/language/scripts/*.js",
@@ -87,7 +91,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["scripts/**/*.ts", "packages/compiler/bench*.ts", "packages/fmi/scripts/**/*.ts"],
+    files: ["scripts/**/*.ts", "packages/compiler/bench*.ts", "packages/language/validation/fmi/scripts/**/*.ts"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/consistent-generic-constructors": "off",
@@ -111,12 +115,7 @@ export default defineConfig([
     },
   },
   {
-    files: [
-      "packages/core/tests/debug-*.ts",
-      "packages/core/tests/redeclare_test.ts",
-      "packages/language/tests/**/*.ts",
-      "apps/cli/tests/**/*.ts",
-    ],
+    files: ["languages/modelica/tests/**/*.ts", "packages/language/tests/**/*.ts", "apps/cli/tests/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
@@ -137,7 +136,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["packages/language/src/**/*.ts", "packages/compiler/src/**/*.ts", "packages/fmi/src/**/*.ts"],
+    files: ["packages/language/src/**/*.ts", "packages/compiler/src/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
