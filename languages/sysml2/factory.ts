@@ -10,7 +10,7 @@ import { LSPBridge, PositionIndex } from "@modelscript/compiler/lsp-bridge";
 import { ScopeResolver } from "@modelscript/compiler/resolver";
 import type { VerificationResult } from "@modelscript/compiler/verifier";
 import { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
-import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
+import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/language/diagram/builder";
 
 import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from "./src-gen/config.js";
 import { QUERY_HOOKS } from "./src-gen/query-hooks.js";

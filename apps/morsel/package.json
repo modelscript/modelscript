@@ -16,7 +16,7 @@
     "@antv/layout": "^0.3.25",
     "@antv/x6": "^3.0.1",
     "@mjackson/node-fetch-server": "^0.6.0",
-    "@modelscript/diagram": "^0.0.0",
+    "@modelscript/language": "^0.0.18",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/utils": "*",

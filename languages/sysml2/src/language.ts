@@ -1953,7 +1953,7 @@ const packageTraceabilityLints = {
 // ---------------------------------------------------------------------------
 
 import type { GraphicsConfig } from "@modelscript/compiler";
-import type { X6Markup } from "@modelscript/diagram/builder";
+import type { X6Markup } from "@modelscript/language/diagram/builder";
 
 /** Standard SysML block-style node markup: header + separator + label + icon */
 const blockMarkup: X6Markup[] = [

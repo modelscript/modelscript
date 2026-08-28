@@ -150,9 +150,7 @@ end ChuaCircuit;`;
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
         const diagramJsPath = join(__dirname, "../../../../packages/language/dist/diagram.browser.js");
-        const fallbackDiagramJsPath = join(__dirname, "../../../../packages/diagram/dist/browser.js");
-        const finalPath = existsSync(diagramJsPath) ? diagramJsPath : fallbackDiagramJsPath;
-        res.end(existsSync(finalPath) ? readFileSync(finalPath) : "");
+        res.end(existsSync(diagramJsPath) ? readFileSync(diagramJsPath) : "");
       } else if (urlPath?.startsWith("/vendor/")) {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);

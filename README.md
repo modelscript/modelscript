@@ -35,7 +35,6 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 | [`@modelscript/cad`](./packages/cad/)           | Procedural CAD: TypeScript DSL for programmatic 3D geometry with STEP compilation            |
 | [`@modelscript/compiler`](./packages/compiler/) | Salsa-based query engine for incremental compilation, type checking, and flattening          |
 | [`@modelscript/cosim`](./packages/cosim/)       | MQTT-linked co-simulation engine for ModelScript                                             |
-| [`@modelscript/diagram`](./packages/diagram/)   | Diagram rendering, interactive SVG generation, and X6-based visual layouts                   |
 | [`@modelscript/ecad`](./packages/ecad/)         | ECAD structural extraction and Gerber layout generator for ModelScript                       |
 | [`@modelscript/language`](./packages/language/) | ModelScript DSL Compiler — parser/lexer codegen, WASM runtime, FMI, reasoner, and SMT solver |
 | [`@modelscript/lsp`](./packages/lsp/)           | Language Server Protocol — completions, hover, diagnostics, formatting, colors               |

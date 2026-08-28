@@ -3,7 +3,7 @@
 // Rule Nodes — Named generic interfaces for type-level field extraction
 // ---------------------------------------------------------------------------
 
-import type { GraphicsConfig } from "@modelscript/diagram/builder";
+import type { GraphicsConfig } from "@modelscript/language/diagram/builder";
 import type { GlobalAdapters, NodeAdapter } from "./adapter-registry.js";
 import type { LintResult } from "./query-engine.js";
 import type { CycleInfo, QueryDB, QueryFn, SymbolEntry, SymbolKind } from "./runtime.js";
