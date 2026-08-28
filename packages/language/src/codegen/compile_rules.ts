@@ -99,12 +99,16 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "            let right = ufFind((key & 0xFFFFFF) as u32);\n";
   out += "            let nodeClass = ufFind(load<u32>(eNodeClassesOffset + i * 4));\n";
   out += "            let cost: u32 = 1;\n";
-  out += "            if (op >= 1280 && op <= 1283) {\n";
+  out += "            if ((op >= 1280 && op <= 1284) || (op >= 1536 && op <= 1539) || (op >= 1792 && op <= 1793)) {\n";
   out += "                let lCost = load<u32>(dpCostOffset + left * 4);\n";
   out += "                let rCost = load<u32>(dpCostOffset + right * 4);\n";
   out += "                if (lCost == 0xFFFFFFFF || rCost == 0xFFFFFFFF) cost = 0xFFFFFFFF;\n";
   out += "                else cost += lCost + rCost;\n";
-  out += "            } else if (op == 512 || op == 256 || op == 0 || op == 768) {\n"; // RealLiteral, IntLiteral, Name, BoolLiteral
+  out += "            } else if ((op >= 1024 && op <= 1027) || (op >= 1800 && op <= 1810)) {\n";
+  out += "                let lCost = load<u32>(dpCostOffset + left * 4);\n";
+  out += "                if (lCost == 0xFFFFFFFF) cost = 0xFFFFFFFF;\n";
+  out += "                else cost += lCost;\n";
+  out += "            } else if (op == 512 || op == 256 || op == 0 || op == 768) {\n";
   out += "                cost = 1;\n";
   out += "            }\n";
   out += "            if (cost != 0xFFFFFFFF) {\n";
@@ -125,16 +129,16 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "    let key = load<u64>(dpKeyOffset + root * 8);\n";
   out += "    if (key == 0) return 0xFFFFFFFF;\n";
   out += "    let op = (key >> 48) as u16;\n";
-  out += "    if (op == 512) {\n"; // RealLiteral
+  out += "    if (op == 512) { // RealLiteral\n";
   out += "        let valBits = (key & 0xFFFFFFFFFFFF) << 16;\n";
   out += "        return dae.addRealLiteral(reinterpret<f64>(valBits));\n";
-  out += "    } else if (op == 256) {\n"; // IntLiteral
+  out += "    } else if (op == 256) { // IntLiteral\n";
   out += "        let val = (key & 0xFFFFFFFF) as i32;\n";
   out += "        return dae.addIntLiteral(val);\n";
-  out += "    } else if (op == 0) {\n"; // Name
+  out += "    } else if (op == 0) { // Name\n";
   out += "        let nameId = (key & 0xFFFFFFFF) as u32;\n";
   out += "        return dae.addExpression(0 /* Name */, nameId, 0xFFFFFFFF, 0xFFFFFFFF);\n";
-  out += "    } else if (op >= 1280 && op <= 1283) {\n";
+  out += "    } else if (op >= 1280 && op <= 1284) {\n";
   out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "        let right = (key & 0xFFFFFF) as u32;\n";
   out += "        let leftNode = extractAst(left, dae);\n";
@@ -142,6 +146,18 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "        if (leftNode == 0xFFFFFFFF || rightNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
   out += "        let binOp: u32 = op - 1280;\n";
   out += "        return dae.addExpression(5 /* Binary */, binOp, leftNode, rightNode);\n";
+  out += "    } else if (op >= 1024 && op <= 1027) {\n";
+  out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
+  out += "        let leftNode = extractAst(left, dae);\n";
+  out += "        if (leftNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
+  out += "        let unOp: u32 = op - 1024;\n";
+  out += "        return dae.addExpression(6 /* Unary */, unOp, leftNode, 0xFFFFFFFF);\n";
+  out += "    } else if (op >= 1800 && op <= 1810) {\n";
+  out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
+  out += "        let leftNode = extractAst(left, dae);\n";
+  out += "        if (leftNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
+  out += "        let funcId: u32 = op - 1800;\n";
+  out += "        return dae.addExpression(7 /* Call */, funcId, leftNode, 1);\n";
   out += "    }\n";
   out += "    return 0xFFFFFFFF;\n";
   out += "}\n";
@@ -191,8 +207,36 @@ function parseSExpr(s: string): Expr {
       const inner = s.substring(1, s.length - 1).trim();
       const spaceIdx = inner.indexOf(" ");
       const firstToken = spaceIdx !== -1 ? inner.substring(0, spaceIdx) : inner;
-      const knownOps = ["add", "sub", "mul", "div", "neg", "abs", "eq", "neq", "lt", "gt", "and", "or", "not"];
-      if (knownOps.includes(firstToken)) {
+      const normToken = firstToken.startsWith("fn:") ? firstToken.substring(3) : firstToken;
+      const knownOps = [
+        "add",
+        "sub",
+        "mul",
+        "div",
+        "pow",
+        "neg",
+        "abs",
+        "sqrt",
+        "sin",
+        "cos",
+        "tan",
+        "asin",
+        "acos",
+        "atan",
+        "sinh",
+        "cosh",
+        "tanh",
+        "exp",
+        "log",
+        "eq",
+        "neq",
+        "lt",
+        "gt",
+        "and",
+        "or",
+        "not",
+      ];
+      if (knownOps.includes(normToken)) {
         const parts: string[] = [];
         let pDepth = 0;
         let curr = "";
@@ -208,12 +252,60 @@ function parseSExpr(s: string): Expr {
         }
         if (curr.length > 0) parts.push(curr);
         if (parts.length === 2) {
-          return { op: parts[0], left: parseSExpr(parts[1]), right: "" };
+          return { op: normToken, left: parseSExpr(parts[1]), right: "" };
         }
-        return { op: parts[0], left: parseSExpr(parts[1]), right: parseSExpr(parts[2]) };
+        return { op: normToken, left: parseSExpr(parts[1]), right: parseSExpr(parts[2]) };
       } else {
         return parseSExpr(inner);
       }
+    }
+  }
+
+  // Prefix function call: e.g. sin(x), fn:sin(x), cos(x + y), sqrt(x)
+  const fnMatch = s.match(/^([a-zA-Z_][a-zA-Z0-9_:]*)\s*\((.*)\)$/);
+  if (fnMatch) {
+    const rawName = fnMatch[1];
+    const fnName = rawName.startsWith("fn:") ? rawName.substring(3) : rawName;
+    const innerArg = fnMatch[2];
+    const knownFns = [
+      "add",
+      "sub",
+      "mul",
+      "div",
+      "pow",
+      "neg",
+      "abs",
+      "sqrt",
+      "sin",
+      "cos",
+      "tan",
+      "asin",
+      "acos",
+      "atan",
+      "sinh",
+      "cosh",
+      "tanh",
+      "exp",
+      "log",
+      "not",
+    ];
+    if (knownFns.includes(fnName)) {
+      let commaIdx = -1;
+      let depth = 0;
+      for (let i = 0; i < innerArg.length; i++) {
+        if (innerArg[i] === "(") depth++;
+        else if (innerArg[i] === ")") depth--;
+        else if (innerArg[i] === "," && depth === 0) {
+          commaIdx = i;
+          break;
+        }
+      }
+      if (commaIdx !== -1) {
+        const a1 = innerArg.substring(0, commaIdx).trim();
+        const a2 = innerArg.substring(commaIdx + 1).trim();
+        return { op: fnName, left: parseSExpr(a1), right: parseSExpr(a2) };
+      }
+      return { op: fnName, left: parseSExpr(innerArg.trim()), right: "" };
     }
   }
 
@@ -234,6 +326,7 @@ function parseSExpr(s: string): Expr {
       { sym: "*", op: "mul" },
       { sym: "/", op: "div" },
     ],
+    [{ sym: "^", op: "pow" }],
   ];
 
   for (const group of opGroups) {
@@ -266,22 +359,59 @@ function parseSExpr(s: string): Expr {
 /**
  * Maps binary/unary operation string names to their encoded opcode values.
  */
-function getOpCode(op: string): number {
+export function getOpCode(op: string): number {
+  if (op.startsWith("fn:")) op = op.substring(3);
   if (op === "add") return 1280; // (5 << 8) | 0
   if (op === "sub") return 1281; // (5 << 8) | 1
   if (op === "mul") return 1282; // (5 << 8) | 2
   if (op === "div") return 1283; // (5 << 8) | 3
+  if (op === "pow") return 1284; // (5 << 8) | 4
   if (op === "neg") return 1024; // (4 << 8) | 0
   if (op === "abs") return 1025; // (4 << 8) | 1
+  if (op === "not") return 1026;
+  if (op === "sqrt") return 1027;
+  if (op === "sin") return 1800; // (7 << 8) | 8
+  if (op === "cos") return 1801;
+  if (op === "tan") return 1802;
+  if (op === "asin") return 1803;
+  if (op === "acos") return 1804;
+  if (op === "atan") return 1805;
+  if (op === "sinh") return 1806;
+  if (op === "cosh") return 1807;
+  if (op === "tanh") return 1808;
+  if (op === "exp") return 1809;
+  if (op === "log") return 1810;
   if (op === "eq") return 1536; // (6 << 8) | 0
   if (op === "neq") return 1537;
   if (op === "lt") return 1538;
   if (op === "gt") return 1539;
   if (op === "and") return 1792; // (7 << 8) | 0
   if (op === "or") return 1793;
-  if (op === "not") return 1026;
   return 0;
 }
+
+export const TRIG_RULES: RewriteRule[] = [
+  { name: "sin_zero", lhs: "sin(0)", rhs: "0" },
+  { name: "cos_zero", lhs: "cos(0)", rhs: "1" },
+  { name: "tan_zero", lhs: "tan(0)", rhs: "0" },
+  { name: "sinh_zero", lhs: "sinh(0)", rhs: "0" },
+  { name: "cosh_zero", lhs: "cosh(0)", rhs: "1" },
+  { name: "tanh_zero", lhs: "tanh(0)", rhs: "0" },
+  { name: "exp_zero", lhs: "exp(0)", rhs: "1" },
+  { name: "log_one", lhs: "log(1)", rhs: "0" },
+  { name: "sin_asin", lhs: "sin(asin(x))", rhs: "x" },
+  { name: "cos_acos", lhs: "cos(acos(x))", rhs: "x" },
+  { name: "tan_atan", lhs: "tan(atan(x))", rhs: "x" },
+  { name: "sin_neg", lhs: "sin(neg(x))", rhs: "neg(sin(x))" },
+  { name: "cos_neg", lhs: "cos(neg(x))", rhs: "cos(x)" },
+  { name: "tan_neg", lhs: "tan(neg(x))", rhs: "neg(tan(x))" },
+  { name: "sinh_neg", lhs: "sinh(neg(x))", rhs: "neg(sinh(x))" },
+  { name: "cosh_neg", lhs: "cosh(neg(x))", rhs: "cosh(x)" },
+  { name: "tanh_neg", lhs: "tanh(neg(x))", rhs: "neg(tanh(x))" },
+  { name: "pythagorean", lhs: "(sin(x) ^ 2) + (cos(x) ^ 2)", rhs: "1" },
+  { name: "pythagorean_alt", lhs: "(cos(x) ^ 2) + (sin(x) ^ 2)", rhs: "1" },
+  { name: "sqrt_square", lhs: "sqrt(x ^ 2)", rhs: "abs(x)" },
+];
 
 /**
  * Compiles a single rewrite rule into AssemblyScript conditional matching and union logic.

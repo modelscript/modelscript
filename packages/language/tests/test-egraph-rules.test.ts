@@ -1,4 +1,4 @@
-import { compileRewriteRules } from "../src/codegen/compile_rules.js";
+import { compileRewriteRules, TRIG_RULES } from "../src/codegen/compile_rules.js";
 
 describe("E-Graph Rewrite Rules & Simplifications", () => {
   it("compiles string S-expression rules correctly", () => {
@@ -37,5 +37,15 @@ describe("E-Graph Rewrite Rules & Simplifications", () => {
     const code = compileRewriteRules(rules);
     expect(code).toContain("// Rule: nested_rule");
     expect(code).toContain("op == 1282"); // mul
+  });
+
+  it("compiles trigonometric identity rewrite rules correctly", () => {
+    const code = compileRewriteRules(TRIG_RULES);
+    expect(code).toContain("// Rule: sin_zero");
+    expect(code).toContain("// Rule: pythagorean");
+    expect(code).toContain("1800"); // sin opcode
+    expect(code).toContain("1801"); // cos opcode
+    expect(code).toContain("1284"); // pow opcode
+    expect(code).toContain("1027"); // sqrt opcode
   });
 });

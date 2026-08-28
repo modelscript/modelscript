@@ -15,7 +15,7 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
   beforeAll(async () => {
     const target = path.join(__dirname, "..", "..", "..", "languages", "modelica", "src", "language.ts");
     const mod = await import("file://" + target);
-    const result = buildParser({ ...mod.modelicaLanguage, classes: [], lints: [], queries: {} } as any);
+    const result = buildParser({ ...mod.modelicaLanguage, classes: [], lints: [] } as any);
     buildResult = result;
     tmpDir = path.join(__dirname, "scratch_build_full_modelica_hang");
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -52,7 +52,8 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
 
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
+import type { JSONValue, Triple, Writer } from "@modelscript/utils";
+import { createHash } from "@modelscript/utils";
 import {
   ArenaDAEBuilder,
   BinOp,
@@ -11,9 +13,7 @@ import {
   UnaryOp,
   Variability,
   VarType,
-} from "@modelscript/compiler";
-import type { JSONValue, Triple, Writer } from "@modelscript/utils";
-import { createHash } from "@modelscript/utils";
+} from "../../dae-arena.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "../modelica-types.js";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -3922,7 +3922,7 @@ function evaluateExpression(expression: ModelicaExpression, env: Map<string, num
  *
  * Numeric encoding for booleans: `true` = 1, `false` = 0.
  */
-export class ExpressionEvaluator {
+class ExpressionEvaluator {
   /** Variable environment: name → numeric value. */
   env: Map<string, number>;
   /** Previous-step values for `pre()`. */
@@ -6666,3 +6666,5 @@ export function pantelidesIndexReduction(
 
   return { dummyDerivatives, constraintAssignments };
 }
+
+export { ExpressionEvaluator as LegacyExpressionEvaluator };

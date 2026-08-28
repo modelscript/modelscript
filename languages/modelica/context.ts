@@ -3,6 +3,7 @@
 
 import {
   Context as BaseContext,
+  MODELSCRIPT_CAS_PACKAGE,
   printArenaDAE,
   type ArenaDAEBuilder,
   type HomotopyMode,
@@ -12,7 +13,6 @@ import {
   type QueryEngine,
   type WorkspaceIndex,
 } from "@modelscript/compiler";
-import { MODELSCRIPT_CAS_PACKAGE } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ArenaQueryFlattener, type FlattenOptions } from "./flattener-query.js";

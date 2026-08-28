@@ -178,8 +178,7 @@
   },
   "nx": {
     "implicitDependencies": [
-      "!@modelscript/modelica",
-      "!@modelscript/symbolics"
+      "!@modelscript/modelica"
     ],
     "targets": {
       "test": {

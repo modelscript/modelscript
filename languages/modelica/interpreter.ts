@@ -8,7 +8,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
-import { Scope } from "@modelscript/compiler";
 import {
   evaluateCASFunction,
   isCASFunction,
@@ -25,7 +24,8 @@ import {
   ModelicaRealLiteral,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
-} from "@modelscript/symbolics";
+  Scope,
+} from "@modelscript/compiler";
 import { createHash, makeWeakRef } from "@modelscript/utils";
 import {
   ModelicaArrayConcatenationSyntaxNode,

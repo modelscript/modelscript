@@ -12,15 +12,19 @@ export * from "./runtime.js";
 export * from "./symbolics/algebra/groebner.js";
 export * from "./symbolics/algebra/linalg.js";
 export * from "./symbolics/algebra/solve.js";
+export * from "./symbolics/algebra/tensor.js";
 export * from "./symbolics/arithmetic/interval.js";
 export * from "./symbolics/arithmetic/mccormick.js";
 export * from "./symbolics/calculus/derivative.js";
 export * from "./symbolics/calculus/integrate.js";
 export * from "./symbolics/graphs/sparse.js";
+export * from "./symbolics/ir/expressions.js";
+export * from "./symbolics/modelica-types.js";
 export * from "./symbolics/simplify/cas-bindings.js";
 export * from "./symbolics/simplify/egraph.js";
 export * from "./symbolics/simplify/expand.js";
 export * from "./symbolics/simplify/factor.js";
+export * from "./symbolics/systems/index.js";
 export * from "./symbolics/tape.js";
 
 // Language workbench infrastructure

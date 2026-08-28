@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/**
- * Symbolic differentiation of Modelica DAE expressions.
- * Bridges the legacy AST representation with the new Arena DAE calculus engine.
- */
-
-import { ArenaDAEBuilder, differentiateArenaExpr, simplifyArenaExpr } from "@modelscript/compiler";
+import { ArenaDAEBuilder } from "../../dae-arena.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../modelica-types.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import {
@@ -17,8 +12,7 @@ import {
   ModelicaRealLiteral,
   ModelicaUnaryExpression,
 } from "../systems/index.js";
-
-// ── Bridge APIs ──
+import { differentiateArenaExpr, simplifyArenaExpr } from "./derivative.js";
 
 export function differentiateExpr(expr: ModelicaExpression, varName: string): ModelicaExpression {
   const arena = new ArenaDAEBuilder();
@@ -34,7 +28,6 @@ export function simplifyExpr(expr: ModelicaExpression): ModelicaExpression {
   return materializeExpression(arena, simpId);
 }
 
-// ── Constants ──
 export const ZERO = new ModelicaRealLiteral(0.0);
 export const ONE = new ModelicaRealLiteral(1.0);
 export const TWO = new ModelicaRealLiteral(2.0);
@@ -46,8 +39,6 @@ export const DIFF_ONE = ONE;
 export const DIFF_TWO = TWO;
 export const DIFF_HALF = HALF;
 export const DIFF_NEG_ONE = NEG_ONE;
-
-// ── Helpers ──
 
 export function isZero(expr: ModelicaExpression): boolean {
   if (expr instanceof ModelicaRealLiteral) return expr.value === 0;

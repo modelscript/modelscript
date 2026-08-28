@@ -146,11 +146,11 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "        let op = (key >> 48) as u16;\n" +
     "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n" +
     "        let right = (key & 0xFFFFFF) as u32;\n\n" +
-    "        if (op >= 1280 && op <= 1283) {\n" +
+    "        if ((op >= 1280 && op <= 1284) || (op >= 1536 && op <= 1539) || (op >= 1792 && op <= 1793)) {\n" +
     "            left = ufFind(left);\n" +
     "            right = ufFind(right);\n" +
     "            key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24) | ((right & 0xFFFFFF) as u64);\n" +
-    "        } else if (op == 1024 || op == 1026) {\n" +
+    "        } else if ((op >= 1024 && op <= 1027) || (op >= 1800 && op <= 1810)) {\n" +
     "            left = ufFind(left);\n" +
     "            key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24);\n" +
     "        }\n\n" +
@@ -255,6 +255,18 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
   out += "        let childId = dae.exprData.get(exprOffset + 2);\n";
   out += "        let childClass = addENode(childId, dae);\n";
   out += "        let opType = (kind << 8) | data1;\n";
+  out += "        let key: u64 = ((opType as u64) << 48) | (((ufFind(childClass) & 0xFFFFFF) as u64) << 24);\n";
+  out += "        let existing = hashFind(key);\n";
+  out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
+  out += "        let id = ufMakeSet();\n";
+  out += "        hashInsert(key, id);\n";
+  out += "        return id;\n";
+  out += "    }\n";
+
+  out += "    if (kind == 7) {\n"; // Call
+  out += "        let childId = dae.exprData.get(exprOffset + 2);\n";
+  out += "        let childClass = addENode(childId, dae);\n";
+  out += "        let opType = 1800 + (data1 as u16);\n";
   out += "        let key: u64 = ((opType as u64) << 48) | (((ufFind(childClass) & 0xFFFFFF) as u64) << 24);\n";
   out += "        let existing = hashFind(key);\n";
   out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";

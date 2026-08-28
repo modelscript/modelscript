@@ -172,7 +172,6 @@
     "@modelscript/compiler": "*",
     "@modelscript/csv": "*",
     "@modelscript/language": "^0.0.18",
-    "@modelscript/symbolics": "*",
     "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.4"
   }

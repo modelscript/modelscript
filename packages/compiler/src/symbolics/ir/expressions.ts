@@ -27,7 +27,7 @@ import {
   simplifyExpr,
   sub,
   ZERO,
-} from "../calculus/derivative.js";
+} from "../calculus/ast-derivative.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "../modelica-types.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import {
