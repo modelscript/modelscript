@@ -172,7 +172,6 @@
     "test": "npx tsx tests/testsuite-runner.ts"
   },
   "dependencies": {
-    "@modelscript/cad": "*",
     "@modelscript/compiler": "*",
     "@modelscript/csv": "*",
     "@modelscript/language": "^0.0.18",

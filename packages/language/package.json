@@ -30,6 +30,14 @@
       "types": "./dist/context.d.ts",
       "default": "./dist/context.js"
     },
+    "./cad": {
+      "types": "./dist/cad/index.d.ts",
+      "default": "./dist/cad/index.js"
+    },
+    "./cad/*": {
+      "types": "./dist/cad/*.d.ts",
+      "default": "./dist/cad/*.js"
+    },
     "./diagram": {
       "types": "./dist/diagram/index.d.ts",
       "default": "./dist/diagram/index.js"

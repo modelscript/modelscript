@@ -32,7 +32,6 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 
 | Package                                         | Description                                                                                  |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [`@modelscript/cad`](./packages/cad/)           | Procedural CAD: TypeScript DSL for programmatic 3D geometry with STEP compilation            |
 | [`@modelscript/compiler`](./packages/compiler/) | Salsa-based query engine for incremental compilation, type checking, and flattening          |
 | [`@modelscript/cosim`](./packages/cosim/)       | MQTT-linked co-simulation engine for ModelScript                                             |
 | [`@modelscript/ecad`](./packages/ecad/)         | ECAD structural extraction and Gerber layout generator for ModelScript                       |

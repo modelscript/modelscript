@@ -1,13 +1,12 @@
+import { createWasmParser } from "@modelscript/language";
 import * as fs from "fs";
 import * as path from "path";
-import Parser from "tree-sitter";
-import Modelica from "../../../languages/modelica/bindings/node/index.cjs";
 import { Context } from "../../../languages/modelica/context.js";
 import { ShapeFlattener } from "../../../languages/modelica/shape-flattener.js";
-import { compileAssemblyToStep } from "../../cad/src/step-compiler.js";
+import { compileAssemblyToStep } from "../../language/src/cad/step-compiler.js";
 
-const parser = new Parser();
-parser.setLanguage(Modelica);
+const modelicaWasm = path.resolve("languages/modelica/dist/parser.wasm");
+const { parser } = await createWasmParser(modelicaWasm);
 Context.registerParser(".mo", parser);
 
 async function run() {

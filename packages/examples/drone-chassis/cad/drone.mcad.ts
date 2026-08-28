@@ -11,7 +11,7 @@
  *   npx tsx drone.mcad.ts drone.step   # writes to file
  */
 
-import { assembly, box, compileAssemblyToStep, cylinder, part, translate } from "@modelscript/cad";
+import { assembly, box, compileAssemblyToStep, cylinder, part, translate } from "@modelscript/language/cad";
 import * as fs from "fs";
 
 // ── Parameters ───────────────────────────────────────────────────────────
