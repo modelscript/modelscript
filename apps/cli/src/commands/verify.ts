@@ -3,7 +3,7 @@
 import { UnifiedWorkspace, VerificationRunner } from "@modelscript/compiler";
 import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/compiler/simulator";
 import { Context, createModelicaWorkspaceIndex, createSysML2WorkspaceIndex } from "@modelscript/core";
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
 import sysml2LangFallback from "@modelscript/sysml2/language";

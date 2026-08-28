@@ -8,8 +8,12 @@ import { compareCSV, getVarsMap } from "./compare-csv.js";
 
 const execAsync = util.promisify(exec);
 
-const FMI_PKG_ROOT = path.resolve(".");
-const VALIDATION_DIR = path.join(FMI_PKG_ROOT, "validation");
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const VALIDATION_DIR = path.resolve(__dirname, "..");
+const FMI_PKG_ROOT = path.resolve(VALIDATION_DIR, "../..");
 const REF_REPO_DIR = path.join(VALIDATION_DIR, "reference_fmus_repo");
 const EXPORTED_DIR = path.join(VALIDATION_DIR, "exported_fmus");
 const REF_FMUS_DIR = path.join(VALIDATION_DIR, "reference_fmus");
@@ -412,7 +416,8 @@ async function runCrossSimulationMatrix() {
       : fsSync.existsSync(".venv/bin/python")
         ? ".venv/bin/python"
         : "python3";
-    await runCmd(`${pythonCmd} scripts/plot_trajectories.py "${VALIDATION_DIR}"`);
+    const plotScriptPath = path.join(__dirname, "plot_trajectories.py");
+    await runCmd(`${pythonCmd} "${plotScriptPath}" "${VALIDATION_DIR}"`);
     console.log("  [✓] Plots generated successfully.");
   } catch (e: any) {
     console.error("  [X] Failed to generate plots (pandas/matplotlib may not be installed):", e.message);

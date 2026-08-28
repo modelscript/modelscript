@@ -10,7 +10,7 @@ import {
   type ArenaDoEInputRange,
 } from "@modelscript/compiler/simulator";
 import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
-import { generateRomWasmSource } from "@modelscript/fmi";
+import { generateRomWasmSource } from "@modelscript/language/fmi";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import { LspContext } from "../LspContext";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arenaUtils";

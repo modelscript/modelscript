@@ -10,7 +10,7 @@ import {
   type MemorySnapshot,
 } from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
 import Modelica from "@modelscript/modelica/parser";
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";

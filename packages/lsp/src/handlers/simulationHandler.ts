@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 import { ArenaSimulator } from "@modelscript/compiler/simulator";
-import { generateFmuWasmSource } from "@modelscript/fmi";
+import { generateFmuWasmSource } from "@modelscript/language/fmi";
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { LspContext } from "../LspContext";
 
@@ -79,7 +79,7 @@ export function registerSimulationHandlers(context: LspContext) {
     }
 
     // Generate the FMU result for scalar variable metadata
-    const { generateFmu } = await import("@modelscript/fmi");
+    const { generateFmu } = await import("@modelscript/language/fmi");
     const fmuResult = generateFmu(arena, { modelIdentifier: targetClass }, stateVars);
 
     // Generate WASM-targeted C source

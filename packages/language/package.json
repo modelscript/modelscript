@@ -46,6 +46,14 @@
       "types": "./dist/diagram/spinner.d.ts",
       "default": "./dist/diagram/spinner.js"
     },
+    "./fmi": {
+      "types": "./dist/fmi/index.d.ts",
+      "default": "./dist/fmi/index.js"
+    },
+    "./fmi/*": {
+      "types": "./dist/fmi/*.d.ts",
+      "default": "./dist/fmi/*.js"
+    },
     "./package.json": "./package.json"
   },
   "main": "dist/index.js",
@@ -64,7 +72,7 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run build:templates && tsc && npm run build:browser",
+    "build": "npm run clean && npm run build:templates && tsc && npm run build:browser",
     "build:browser": "node scripts/build-browser.js",
     "build:templates": "node scripts/bundle-templates.js",
     "clean": "rimraf dist src/src-gen",
@@ -81,12 +89,17 @@
   "dependencies": {
     "@antv/layout": "^0.3.25",
     "@antv/x6": "^3.1.7",
-    "@antv/x6-plugin-selection": "^2.2.2"
+    "@antv/x6-plugin-selection": "^2.2.2",
+    "@modelscript/compiler": "*",
+    "@modelscript/core": "*",
+    "@modelscript/modelica": "*",
+    "pako": "^2.1.0"
   },
   "devDependencies": {
     "@as-pect/cli": "^9.0.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.2",
+    "@types/pako": "^2.0.4",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.1",
     "prettier": "^3.6.2",

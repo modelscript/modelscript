@@ -358,7 +358,11 @@ export class ModelicaFmuEntity {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   clone(modification?: import("@modelscript/core").ModelicaModification | null): any {
     if (!this.#loaded) this.load();
-    const cloned = new ModelicaFmuEntity(this.parent ?? this, this.path, this.#xmlContent ?? undefined);
+    const cloned = new ModelicaFmuEntity(
+      (this.parent ?? this) as unknown as Scope,
+      this.path,
+      this.#xmlContent ?? undefined,
+    );
     cloned.name = this.name;
     cloned.fmuVariables = this.fmuVariables;
     cloned.#loaded = true;

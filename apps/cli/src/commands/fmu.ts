@@ -13,16 +13,19 @@ import {
   generateFmu,
   generateFmuCSources,
   generateFmuWasmSource,
-} from "@modelscript/fmi";
-import Modelica from "@modelscript/modelica/parser";
+} from "@modelscript/language/fmi";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface FmuArgs {
   name: string;
@@ -125,8 +128,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
 
   handler: async (args) => {
     const profiler = new Profiler();
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
+    const { parser } = await createWasmParser(modelicaWasmPath);
 
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());

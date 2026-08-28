@@ -423,7 +423,11 @@ export class ModelicaSspEntity {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   clone(): any {
     if (!this.#loaded) this.load();
-    const cloned = new ModelicaSspEntity(this.parent ?? this, this.sspPath, this.metadata ?? undefined);
+    const cloned = new ModelicaSspEntity(
+      (this.parent ?? this) as unknown as Scope,
+      this.sspPath,
+      this.metadata ?? undefined,
+    );
     cloned.name = this.name;
     cloned.#loaded = true;
     cloned.instantiate();

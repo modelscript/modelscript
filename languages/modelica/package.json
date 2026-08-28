@@ -138,7 +138,9 @@
     "./arena-script-interpreter": {
       "types": "./dist/arena-script-interpreter.d.ts",
       "default": "./dist/arena-script-interpreter.js"
-    }
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dist/*": "./dist/*"
   },
   "scripts": {
     "build": "node build.js && tsc",

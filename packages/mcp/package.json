@@ -25,7 +25,6 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelscript/compiler": "*",
     "@modelscript/core": "*",
-    "@modelscript/fmi": "*",
     "@modelscript/language": "*",
     "@modelscript/modelica": "*",
     "@modelscript/sysml2": "*",

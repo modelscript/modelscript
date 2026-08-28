@@ -19,6 +19,7 @@ import {
   engineCode,
   evalCode,
   eventsCode,
+  fmi2_wasmCode,
   fmi3_wasmCode,
   foldCode,
   gssCode,
@@ -1087,6 +1088,7 @@ export function generateParserTables(
     { filename: "bdf.ts", content: bdfCode },
     { filename: "homotopy.ts", content: homotopyCode },
     { filename: "delay.ts", content: delayCode },
+    { filename: "fmi2_wasm.ts", content: fmi2_wasmCode },
     { filename: "fmi3_wasm.ts", content: fmi3_wasmCode },
     { filename: "vmap.ts", content: vmapCode },
   ];
@@ -1146,6 +1148,7 @@ export function generateParserTables(
   code += extractExports(bdfCode, "./bdf");
   code += extractExports(homotopyCode, "./homotopy");
   code += extractExports(delayCode, "./delay");
+  code += extractExports(fmi2_wasmCode, "./fmi2_wasm");
   code += extractExports(fmi3_wasmCode, "./fmi3_wasm");
   code += extractExports(vmapCode, "./vmap");
 

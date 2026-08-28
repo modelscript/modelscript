@@ -5,7 +5,7 @@ import {
   runWasmSimulation,
 } from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
 import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs/promises";
 import Parser from "tree-sitter";
