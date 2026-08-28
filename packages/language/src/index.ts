@@ -13,6 +13,7 @@ export * from "./codegen/textmate.js";
 export * from "./codegen/transpiler.js";
 export * from "./diagram/polyglot-diagram-builder.js";
 export * from "./dsl.js";
+export * as ecad from "./ecad/index.js";
 export * from "./grammar.js";
 export * from "./reasoner/index.js";
 export * from "./runtime/config_client.js";

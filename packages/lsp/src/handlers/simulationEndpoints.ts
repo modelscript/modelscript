@@ -2,8 +2,8 @@
 // @ts-nocheck
 import { ArenaDAEBuilder, Causality } from "@modelscript/compiler";
 import { simulateArena, simulateArenaAsync } from "@modelscript/compiler/simulator";
-import { CoSimSession, Orchestrator } from "@modelscript/cosim";
-import { WasmOpenFoamProvider } from "@modelscript/cosim/participants/cfd-provider";
+import { CoSimSession, Orchestrator } from "@modelscript/language/cosim";
+import { WasmOpenFoamProvider } from "@modelscript/language/cosim/participants/cfd-provider";
 import { generateMultiModelWrapper } from "@modelscript/language/fmi";
 import { LspContext } from "../LspContext";
 import { getArenaParameterInfo } from "../utils/arenaUtils";

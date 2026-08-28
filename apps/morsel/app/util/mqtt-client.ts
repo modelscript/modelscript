@@ -7,7 +7,7 @@
  * Used by the MQTT model tree and real-time simulation integration to
  * receive live variable updates from MQTT participants.
  *
- * This is separate from @modelscript/cosim's CosimMqttClient which is
+ * This is separate from @modelscript/language/cosim's CosimMqttClient which is
  * designed for server-side Node.js usage.
  */
 

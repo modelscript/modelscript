@@ -8,7 +8,7 @@
  *   cd apps/api && npx tsx src/seed-cfd-animation.ts
  */
 
-import { WasmOpenFoamProvider } from "@modelscript/cosim/participants/cfd-provider";
+import { WasmOpenFoamProvider } from "@modelscript/language/cosim/participants/cfd-provider";
 import { LibraryDatabase } from "./database.js";
 import { generateThumbnail } from "./workers/thumbnailWorker.js";
 

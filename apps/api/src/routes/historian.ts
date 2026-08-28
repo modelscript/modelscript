@@ -1,5 +1,5 @@
-import type { CosimMqttClient } from "@modelscript/cosim";
-import { HistorianReplayer } from "@modelscript/cosim";
+import type { CosimMqttClient } from "@modelscript/language/cosim";
+import { HistorianReplayer } from "@modelscript/language/cosim";
 import express from "express";
 import type { Pool } from "pg";
 

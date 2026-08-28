@@ -30,15 +30,13 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 
 ### Packages (`packages/`)
 
-| Package                                         | Description                                                                                  |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [`@modelscript/compiler`](./packages/compiler/) | Salsa-based query engine for incremental compilation, type checking, and flattening          |
-| [`@modelscript/cosim`](./packages/cosim/)       | MQTT-linked co-simulation engine for ModelScript                                             |
-| [`@modelscript/ecad`](./packages/ecad/)         | ECAD structural extraction and Gerber layout generator for ModelScript                       |
-| [`@modelscript/language`](./packages/language/) | ModelScript DSL Compiler — parser/lexer codegen, WASM runtime, FMI, reasoner, and SMT solver |
-| [`@modelscript/lsp`](./packages/lsp/)           | Language Server Protocol — completions, hover, diagnostics, formatting, colors               |
-| [`@modelscript/mcp`](./packages/mcp/)           | Model Context Protocol implementation for AI/LLM integration                                 |
-| [`@modelscript/utils`](./packages/utils/)       | Common utility functions across the monorepo                                                 |
+| Package                                         | Description                                                                                    |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [`@modelscript/compiler`](./packages/compiler/) | Salsa-based query engine for incremental compilation, type checking, and flattening            |
+| [`@modelscript/language`](./packages/language/) | ModelScript DSL Compiler — parser/lexer codegen, WASM runtime, FMI, CoSim, CAD, ECAD, reasoner |
+| [`@modelscript/lsp`](./packages/lsp/)           | Language Server Protocol — completions, hover, diagnostics, formatting, colors                 |
+| [`@modelscript/mcp`](./packages/mcp/)           | Model Context Protocol implementation for AI/LLM integration                                   |
+| [`@modelscript/utils`](./packages/utils/)       | Common utility functions across the monorepo                                                   |
 
 ### Languages (`languages/`)
 

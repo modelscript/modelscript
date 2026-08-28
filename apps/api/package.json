@@ -36,7 +36,6 @@
   "dependencies": {
     "@comunica/query-sparql": "^5.1.3",
     "@comunica/query-sparql-rdfjs": "^5.1.3",
-    "@modelscript/cosim": "*",
     "@modelscript/language": "*",
     "@modelscript/modelica": "*",
     "@modelscript/utils": "*",

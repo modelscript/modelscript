@@ -14,7 +14,7 @@
  * other components.
  */
 
-import type { FmiModelDescription, FmiScalarVariable } from "@modelscript/cosim";
+import type { FmiModelDescription, FmiScalarVariable } from "./model-description.js";
 
 /**
  * Generate Modelica source code for a wrapper block representing an FMU.

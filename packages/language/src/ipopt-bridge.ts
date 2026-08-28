@@ -35,7 +35,7 @@ export class KinematicIpoptSolver {
       const coinorPath = path.join(extensionPath, "wasm", "coinor.js");
       if (fs.existsSync(coinorPath)) {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const coinorFactory = require(coinorPath);
+        const coinorFactory = require(coinorPath) as any;
         this.coinorModule = await coinorFactory();
         console.log("[IpoptBridge] Successfully loaded coinor.js WASM module.");
       } else {

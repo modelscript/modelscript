@@ -109,7 +109,7 @@ export function registerInteropEndpoints(context: LspContext) {
     }> => {
       try {
         // Dynamically import cosim for model description parsing and wrapper generation
-        const { parseModelDescription, generateFmuWrapperModelica } = await import("@modelscript/cosim");
+        const { parseModelDescription, generateFmuWrapperModelica } = await import("@modelscript/language/cosim");
 
         // Decode base64 to bytes
         const binaryStr = atob(params.data);

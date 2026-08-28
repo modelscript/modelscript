@@ -1,6 +1,6 @@
 import { ArenaDAE, Causality } from "@modelscript/compiler";
 import { simulateArena } from "@modelscript/compiler/simulator";
-import type { CoSimParticipant, CosimValue, ParticipantMetadata } from "@modelscript/cosim";
+import type { CoSimParticipant, CosimValue, ParticipantMetadata } from "@modelscript/language/cosim";
 
 export class ModelScriptParticipant implements CoSimParticipant {
   id: string;

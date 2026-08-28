@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { CosimMqttClient } from "@modelscript/cosim";
+import type { CosimMqttClient } from "@modelscript/language/cosim";
 import bcrypt from "bcryptjs";
 import express from "express";
 import rateLimit from "express-rate-limit";
