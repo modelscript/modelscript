@@ -2570,6 +2570,9 @@ self.onerror = function(message, source, lineno, colno, error) {
 };
 
 let lspFacade = null;
+let Tree = null;
+let SyntaxNode = null;
+let LspFacade = null;
 let latestUri = 'inmemory://example.mo';
 let currentTextLength = 0;
 let currentGenerationId = Date.now();
@@ -2863,9 +2866,6 @@ self.onmessage = async (e) => {
 
             const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
             
-            let LspFacade;
-            let Tree;
-            let SyntaxNode;
             try {
                 const cleanedJs = jsWrapper
                     .replace(/^\\s*export\\s+\\{[\\s\\S]*?\\};?/gm, "")

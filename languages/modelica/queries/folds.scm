@@ -5,6 +5,5 @@
 [
   (CompoundImportClause)
   (ArrayConstructor)
-  (IDENT)
 ] @fold
 

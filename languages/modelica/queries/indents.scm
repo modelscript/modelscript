@@ -5,7 +5,6 @@
 [
   (CompoundImportClause)
   (ArrayConstructor)
-  (IDENT)
 ] @indent.begin
 
 ; ─── Dedent on close ──────────────────────────────────────────────

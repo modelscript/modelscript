@@ -333,7 +333,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       // Count elements in array_arguments
       let count: u32 = 1;
       if ($.array_arguments_non_first != 0) {
-        count += db.ast.getDescendants(arrayArgs, $.array_arguments_non_first).length as u32;
+        const nonFirstElements = db.ast.getDescendants(arrayArgs, $.array_arguments_non_first);
+        for (const elem of nonFirstElements) {
+          if (elem != 0) count++;
+        }
       }
 
       if (count != (declaredSize as u32)) {

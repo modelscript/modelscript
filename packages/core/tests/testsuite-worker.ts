@@ -28,13 +28,13 @@ globalThis.WeakRef = class WeakRefMock {
 import { simulateArena } from "@modelscript/compiler/simulator";
 
 import { ArenaDAEPrinter } from "@modelscript/compiler/arena-printer";
+import { createWasmParser } from "@modelscript/language";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
-import Modelica from "@modelscript/modelica/parser";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { StringWriter } from "@modelscript/utils";
 import { execSync } from "node:child_process";
 import path from "node:path";
-import Parser from "tree-sitter";
+import { fileURLToPath } from "node:url";
 import { Context } from "../src/compiler/context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
@@ -53,10 +53,12 @@ function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
     .trim();
 }
 
-// ── Tree-sitter setup ────────────────────────────────────────────────────────
+// ── WebAssembly parser setup ──────────────────────────────────────────────────
 
-const parser = new Parser();
-parser.setLanguage(Modelica);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const modelicaWasm = path.resolve(__dirname, "../../../languages/modelica/dist/parser.wasm");
+const { parser } = await createWasmParser(modelicaWasm);
 Context.registerParser(".mo", parser);
 
 // ── Types (duplicated from runner — kept in sync) ────────────────────────────

@@ -568,9 +568,12 @@ export class ArenaQueryFlattener {
 
     // Resolve ShortClassSpecifier aliases (e.g., model D = A(x=1);)
     const cst = this.db.cstNode(classId) as any;
-    const spec = cst?.childForFieldName?.("classSpecifier");
-    if (spec?.type === "ShortClassSpecifier") {
-      const typeSpec = spec.childForFieldName?.("typeSpecifier");
+    let spec = cst?.childForFieldName?.("classSpecifier") ?? cst?.childForFieldName?.("class_specifier");
+    if (spec?.type === "class_specifier" && spec.children.length > 0) {
+      spec = spec.children[0];
+    }
+    if (spec?.type === "ShortClassSpecifier" || spec?.type === "short_class_specifier") {
+      const typeSpec = spec.childForFieldName?.("typeSpecifier") ?? spec.childForFieldName?.("type_specifier");
       const typeName = typeSpec?.text;
       const entry = this.db.symbol(classId);
       if (typeName && entry) {
@@ -630,20 +633,31 @@ export class ArenaQueryFlattener {
     if (!cstNode) return;
 
     // Fast-path: iterate class definition composition and extract equations lazily to avoid peak memory
-    if (cstNode.type === "class_definition") {
-      const classSpecifier = cstNode.childForFieldName("classSpecifier");
+    if (cstNode.type === "class_definition" || cstNode.type === "ClassDefinition") {
+      let classSpecifier = cstNode.childForFieldName("classSpecifier") ?? cstNode.childForFieldName("class_specifier");
+      if (classSpecifier?.type === "class_specifier" && classSpecifier.children.length > 0) {
+        classSpecifier = classSpecifier.children[0];
+      }
       const composition = classSpecifier?.childForFieldName("composition");
       if (composition) {
-        const sections = composition.namedChildren;
+        const sections = composition.children ?? composition.namedChildren;
         for (let i = sections.length - 1; i >= 0; i--) {
           const sectionNode = sections[i];
-          if (sectionNode.type === "equation_section" || sectionNode.type === "initial_equation_section") {
+          if (
+            sectionNode.type === "equation_section" ||
+            sectionNode.type === "initial_equation_section" ||
+            sectionNode.type === "EquationSection"
+          ) {
             this.flattenEquationSectionCst(sectionNode, prefix, dae, classId);
           }
         }
         for (let i = 0; i < sections.length; i++) {
           const sectionNode = sections[i];
-          if (sectionNode.type === "algorithm_section" || sectionNode.type === "initial_algorithm_section") {
+          if (
+            sectionNode.type === "algorithm_section" ||
+            sectionNode.type === "initial_algorithm_section" ||
+            sectionNode.type === "AlgorithmSection"
+          ) {
             const astSection = ModelicaSyntaxNode.new(null, sectionNode);
             if (astSection instanceof ModelicaAlgorithmSectionSyntaxNode) {
               this.flattenAlgorithmSection(astSection, prefix, dae, classId);
@@ -1129,9 +1143,12 @@ export class ArenaQueryFlattener {
 
     // Resolve ShortClassSpecifier aliases (e.g., model D = A(x=1);)
     const cst = this.db.cstNode(classId) as any;
-    const spec = cst?.childForFieldName?.("classSpecifier");
-    if (spec?.type === "ShortClassSpecifier") {
-      const typeSpec = spec.childForFieldName?.("typeSpecifier");
+    let spec = cst?.childForFieldName?.("classSpecifier") ?? cst?.childForFieldName?.("class_specifier");
+    if (spec?.type === "class_specifier" && spec.children.length > 0) {
+      spec = spec.children[0];
+    }
+    if (spec?.type === "ShortClassSpecifier" || spec?.type === "short_class_specifier") {
+      const typeSpec = spec.childForFieldName?.("typeSpecifier") ?? spec.childForFieldName?.("type_specifier");
       const typeName = typeSpec?.text;
       const entry = this.db.symbol(classId);
       if (typeName && entry) {
@@ -1182,8 +1199,11 @@ export class ArenaQueryFlattener {
 
     // Support `redeclare model extends X(x=y)` syntax (inline extends in LongClassSpecifier)
     const selfCst = this.db.cstNode(classId) as any;
-    const specExt = selfCst?.childForFieldName?.("classSpecifier");
-    if (specExt?.type === "LongClassSpecifier") {
+    let specExt = selfCst?.childForFieldName?.("classSpecifier") ?? selfCst?.childForFieldName?.("class_specifier");
+    if (specExt?.type === "class_specifier" && specExt.children.length > 0) {
+      specExt = specExt.children[0];
+    }
+    if (specExt?.type === "LongClassSpecifier" || specExt?.type === "long_class_specifier") {
       let hasExtends = false;
       for (let i = 0; i < specExt.childCount; i++) {
         if (specExt.child(i).type === "extends") {
@@ -1877,12 +1897,14 @@ export class ArenaQueryFlattener {
         );
         const c1 = performance.now();
         (this as any).effModTime = ((this as any).effModTime || 0) + (c1 - c0);
-        typeMods = mergeModArgs(typeMods, classInlineMod);
-
-        const cst = this.db.cstNode(currentClassId) as any;
-        const spec = cst?.childForFieldName?.("classSpecifier");
-        if (spec?.type === "ShortClassSpecifier") {
-          const typeSpec = spec.childForFieldName?.("typeSpecifier");
+        let spec = this.db.cstNode(currentClassId) as any;
+        let classSpec = spec?.childForFieldName?.("classSpecifier") ?? spec?.childForFieldName?.("class_specifier");
+        if (classSpec?.type === "class_specifier" && classSpec.children.length > 0) {
+          classSpec = classSpec.children[0];
+        }
+        if (classSpec?.type === "ShortClassSpecifier" || classSpec?.type === "short_class_specifier") {
+          const typeSpec =
+            classSpec.childForFieldName?.("typeSpecifier") ?? classSpec.childForFieldName?.("type_specifier");
           if (typeSpec?.text) {
             const resolvedId = this.resolveTypeNameInScope(typeSpec.text, currentEntry.parentId);
             if (resolvedId !== null && resolvedId !== currentClassId) {
@@ -1891,6 +1913,7 @@ export class ArenaQueryFlattener {
             }
           }
         }
+        typeMods = mergeModArgs(typeMods, classInlineMod);
 
         const children = this.db.childrenOf(currentClassId);
         const extendsClause = children.find((c) => c.kind === "Extends");
@@ -1912,7 +1935,8 @@ export class ArenaQueryFlattener {
     }
 
     if (typeMods) {
-      effectiveMod = mergeModArgs(effectiveMod, typeMods);
+      // Type-level modifications have lower precedence than component-level modifications
+      effectiveMod = mergeModArgs(typeMods, effectiveMod);
     }
 
     let rawDims = this.db.query<any[] | null>("arrayDimensions", entry.id) || [];
@@ -2156,9 +2180,17 @@ export class ArenaQueryFlattener {
     let isEnum = classMeta?.classPrefixes === "enumeration" || !!classMeta?.enumeration;
     if (!isEnum && classInstanceId !== null) {
       const classCst = this.db.cstNode(classInstanceId) as any;
-      const spec = classCst?.childForFieldName?.("classSpecifier");
-      if (spec?.type === "ShortClassSpecifier" && spec.childForFieldName?.("enumeration")) {
-        isEnum = true;
+      let spec = classCst?.childForFieldName?.("classSpecifier") ?? classCst?.childForFieldName?.("class_specifier");
+      if (spec?.type === "class_specifier" && spec.children.length > 0) {
+        spec = spec.children[0];
+      }
+      if (spec?.type === "ShortClassSpecifier" || spec?.type === "short_class_specifier") {
+        if (
+          spec.childForFieldName?.("enumeration") ||
+          spec.children?.some((c: any) => c.text === "enumeration" || c.type === "enum_list" || c.type === "enumList")
+        ) {
+          isEnum = true;
+        }
       }
     }
 
@@ -3210,15 +3242,21 @@ export class ArenaQueryFlattener {
     // Fallback: parse from CST if children list is empty
     if (literals.length === 0) {
       const classCst = this.db.cstNode(classInstanceId) as any;
-      const spec = classCst?.childForFieldName?.("classSpecifier");
-      const enumNode = spec?.childForFieldName?.("enumeration") || classCst?.childForFieldName?.("enumeration");
-      const list = enumNode?.childForFieldName?.("enumList");
+      let spec = classCst?.childForFieldName?.("classSpecifier") ?? classCst?.childForFieldName?.("class_specifier");
+      if (spec?.type === "class_specifier" && spec.children.length > 0) {
+        spec = spec.children[0];
+      }
+      const list =
+        spec?.childForFieldName?.("enumList") ??
+        spec?.childForFieldName?.("enum_list") ??
+        spec?.children?.find((c: any) => c.type === "enum_list" || c.type === "enumList");
       if (list) {
         for (const child of list.children) {
-          if (child.type === "enum_literal" || child.type === "EnumLiteral") {
-            // tree-sitter name is usually `identifier` inside `enum_literal`
+          if (child.type === "enum_literal" || child.type === "EnumLiteral" || child.type === "enumeration_literal") {
             const ident = child.childForFieldName?.("identifier") || child;
             literals.push({ ordinal: ordinal++, stringValue: ident.text });
+          } else if (child.type === "identifier") {
+            literals.push({ ordinal: ordinal++, stringValue: child.text });
           }
         }
       }

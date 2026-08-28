@@ -67,54 +67,68 @@ export class SymbolIndexer {
    * @returns New index + set of changed symbol IDs for cache invalidation.
    */
   update(
-    oldIndex: SymbolIndex,
+    oldIndex: SymbolIndex | null | undefined,
     rootNode: CSTNode,
-    editRanges: Array<{ startByte: number; endByte: number }>,
+    editRanges: Array<{ startByte: number; endByte: number }> = [],
     totalDelta: number = 0,
     idGenerator?: () => SymbolId,
   ): { index: SymbolIndex; changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> } {
+    const currentOldIndex = oldIndex ?? {
+      symbols: new IdTrieMap<SymbolEntry>(),
+      byName: new StringTrieMap<SymbolId[]>(),
+      childrenOf: new IdTrieMap<SymbolId[]>(),
+    };
+    const effectiveEditRanges = editRanges ?? [];
     // Sort edit ranges ascending for binary search
-    editRanges.sort((a, b) => a.startByte - b.startByte);
+    effectiveEditRanges.sort((a, b) => a.startByte - b.startByte);
 
     const oldByStableKey = new Map<string, SymbolEntry>();
     const ordinalCounters = new Map<string, number>();
-    for (const parentId of oldIndex.childrenOf.keys()) {
-      const childIds = oldIndex.childrenOf.get(parentId);
-      if (!childIds) continue;
-      ordinalCounters.clear();
-      for (const childId of childIds) {
-        const entry = oldIndex.symbols.get(childId);
-        if (!entry) continue;
-        const baseKey = `${parentId === 0 ? "root" : parentId}:${entry.ruleName}:${entry.name}`;
-        const ordinal = ordinalCounters.get(baseKey) ?? 0;
-        ordinalCounters.set(baseKey, ordinal + 1);
-        const key = this.stableKey(entry.ruleName, entry.name, entry.parentId, ordinal);
-        oldByStableKey.set(key, entry);
+    if (currentOldIndex.childrenOf) {
+      for (const parentId of currentOldIndex.childrenOf.keys()) {
+        const childIds = currentOldIndex.childrenOf.get(parentId);
+        if (!childIds) continue;
+        ordinalCounters.clear();
+        for (const childId of childIds) {
+          const entry = currentOldIndex.symbols.get(childId);
+          if (!entry) continue;
+          const baseKey = `${parentId === 0 ? "root" : parentId}:${entry.ruleName}:${entry.name}`;
+          const ordinal = ordinalCounters.get(baseKey) ?? 0;
+          ordinalCounters.set(baseKey, ordinal + 1);
+          const key = this.stableKey(entry.ruleName, entry.name, entry.parentId, ordinal);
+          oldByStableKey.set(key, entry);
+        }
       }
     }
 
     const ctx: IndexContext = {
-      symbols: Object.assign(new IdTrieMap<SymbolEntry>(), { trie: (oldIndex.symbols as any).trie }),
-      byName: Object.assign(new StringTrieMap<SymbolId[]>(), { trie: (oldIndex.byName as any).trie }),
-      childrenOf: Object.assign(new IdTrieMap<SymbolId[]>(), { trie: (oldIndex.childrenOf as any).trie }),
+      symbols: (currentOldIndex.symbols as any)?.trie
+        ? Object.assign(new IdTrieMap<SymbolEntry>(), { trie: (currentOldIndex.symbols as any).trie })
+        : new IdTrieMap<SymbolEntry>(),
+      byName: (currentOldIndex.byName as any)?.trie
+        ? Object.assign(new StringTrieMap<SymbolId[]>(), { trie: (currentOldIndex.byName as any).trie })
+        : new StringTrieMap<SymbolId[]>(),
+      childrenOf: (currentOldIndex.childrenOf as any)?.trie
+        ? Object.assign(new IdTrieMap<SymbolId[]>(), { trie: (currentOldIndex.childrenOf as any).trie })
+        : new IdTrieMap<SymbolId[]>(),
       processedOldIds: new Set(),
     };
 
     let maxOldId = 0;
-    for (const id of oldIndex.symbols.keys()) {
+    for (const id of currentOldIndex.symbols.keys()) {
       if (id > maxOldId) maxOldId = id;
     }
     this.nextId = maxOldId + 1;
     this.idGenerator = idGenerator || (() => this.nextId++);
 
-    const rootOldChildIds = oldIndex.childrenOf.get(0) ?? [];
+    const rootOldChildIds = currentOldIndex.childrenOf.get(0) ?? [];
     for (const childId of rootOldChildIds) {
       if (ctx.processedOldIds.has(childId)) continue;
-      const childEntry = oldIndex.symbols.get(childId);
+      const childEntry = currentOldIndex.symbols.get(childId);
       if (!childEntry) continue;
 
       let overlap = false;
-      for (const r of editRanges) {
+      for (const r of effectiveEditRanges) {
         if (childEntry.startByte < r.endByte && childEntry.endByte > r.startByte) {
           overlap = true;
           break;
@@ -123,7 +137,7 @@ export class SymbolIndexer {
       if (overlap) continue;
 
       let isBefore = true;
-      for (const r of editRanges) {
+      for (const r of effectiveEditRanges) {
         if (childEntry.startByte >= r.endByte) {
           isBefore = false;
           break;
@@ -131,9 +145,9 @@ export class SymbolIndexer {
       }
 
       if (isBefore) {
-        this.shiftSubtree(childId, oldIndex, ctx, 0);
+        this.shiftSubtree(childId, currentOldIndex, ctx, 0);
       } else {
-        this.shiftSubtree(childId, oldIndex, ctx, totalDelta);
+        this.shiftSubtree(childId, currentOldIndex, ctx, totalDelta);
       }
     }
 
@@ -142,8 +156,8 @@ export class SymbolIndexer {
       null,
       ctx,
       oldByStableKey,
-      oldIndex,
-      editRanges,
+      currentOldIndex,
+      effectiveEditRanges,
       new Map(),
       null,
       null,
@@ -160,7 +174,7 @@ export class SymbolIndexer {
     };
 
     for (const [id, entry] of ctx.symbols.entries()) {
-      const oldEntry = oldIndex.symbols.get(id);
+      const oldEntry = currentOldIndex.symbols.get(id);
       if (!oldEntry || !this.entryEqual(oldEntry, entry)) {
         changedIds.add(id);
         structuralChangedIds.add(id);
@@ -176,12 +190,12 @@ export class SymbolIndexer {
       }
     }
 
-    for (const [id, oldEntry] of oldIndex.symbols.entries()) {
+    for (const [id, oldEntry] of currentOldIndex.symbols.entries()) {
       if (!ctx.processedOldIds.has(id)) {
         changedIds.add(id);
         structuralChangedIds.add(id);
         invalidateParent(oldEntry.parentId, true);
-        this.deleteSubtree(id, oldIndex, ctx);
+        this.deleteSubtree(id, currentOldIndex, ctx);
       }
     }
 
@@ -458,33 +472,38 @@ export class SymbolIndexer {
     oldParentId: SymbolId | null,
     totalDelta: number = 0,
   ): void {
-    let editStartByte = Infinity,
-      editEndByte = 0;
-    for (const r of editRanges) {
-      editStartByte = Math.min(editStartByte, r.startByte);
-      editEndByte = Math.max(editEndByte, r.endByte);
-    }
-
-    let lo = 0,
-      hi = childCount;
+    let firstAffected = 0;
+    let lastAffected = childCount - 1;
     const children = parent.children || [];
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      const c = children[mid];
-      if (c && nodeEndByte(c) < editStartByte) lo = mid + 1;
-      else hi = mid;
-    }
-    const firstAffected = Math.max(0, lo - 1);
 
-    lo = firstAffected;
-    hi = childCount;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      const c = children[mid];
-      if (c && nodeStartByte(c) <= editEndByte) lo = mid + 1;
-      else hi = mid;
+    if (editRanges.length > 0) {
+      let editStartByte = Infinity,
+        editEndByte = 0;
+      for (const r of editRanges) {
+        editStartByte = Math.min(editStartByte, r.startByte);
+        editEndByte = Math.max(editEndByte, r.endByte);
+      }
+
+      let lo = 0,
+        hi = childCount;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        const c = children[mid];
+        if (c && nodeEndByte(c) < editStartByte) lo = mid + 1;
+        else hi = mid;
+      }
+      firstAffected = Math.max(0, lo - 1);
+
+      lo = firstAffected;
+      hi = childCount;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        const c = children[mid];
+        if (c && nodeStartByte(c) <= editEndByte) lo = mid + 1;
+        else hi = mid;
+      }
+      lastAffected = Math.min(childCount - 1, lo);
     }
-    const lastAffected = Math.min(childCount - 1, lo);
 
     const siblingCounts = new Map<string, number>();
     for (let i = firstAffected; i <= lastAffected && i < childCount; i++) {

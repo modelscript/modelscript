@@ -13,6 +13,27 @@ import { createSelfProxy, extractScopePath } from "../index.js";
 export function extractIndexerHooks(langConfig: any, $: Record<string, any>): IndexerHook[] {
   const hooks: IndexerHook[] = [];
 
+  if (langConfig.symbols && typeof langConfig.symbols === "object") {
+    for (const [ruleName, symConfig] of Object.entries<any>(langConfig.symbols)) {
+      hooks.push({
+        ruleName,
+        kind: symConfig.kind || "Class",
+        namePath: symConfig.name || "name",
+        exportPaths: symConfig.exports
+          ? Array.isArray(symConfig.exports)
+            ? symConfig.exports
+            : [symConfig.exports]
+          : [],
+        inheritPaths: symConfig.inherits
+          ? Array.isArray(symConfig.inherits)
+            ? symConfig.inherits
+            : [symConfig.inherits]
+          : [],
+        metadataFieldPaths: symConfig.attributes || {},
+      });
+    }
+  }
+
   if (!langConfig.rules) return hooks;
 
   for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {

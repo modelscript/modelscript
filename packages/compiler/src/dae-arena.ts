@@ -1967,5 +1967,12 @@ export function isAssignableType(targetType: VarType, sourceType: VarType): bool
   if (targetType === sourceType) return true;
   // Integer → Real is allowed (implicit widening)
   if (targetType === VarType.Real && sourceType === VarType.Integer) return true;
+  // Integer ↔ Enumeration is allowed in Modelica (implicit conversion)
+  if (
+    (targetType === VarType.Enumeration && sourceType === VarType.Integer) ||
+    (targetType === VarType.Integer && sourceType === VarType.Enumeration)
+  ) {
+    return true;
+  }
   return false;
 }

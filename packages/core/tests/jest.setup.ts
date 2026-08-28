@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CSV from "@modelscript/csv/parser";
-import Modelica from "@modelscript/modelica/parser";
-import Parser from "tree-sitter";
+import { createWasmParser } from "@modelscript/language";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Context } from "../src/compiler/context.js";
 
-const parser = new Parser();
-parser.setLanguage(Modelica);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const modelicaWasm = path.resolve(__dirname, "../../../languages/modelica/dist/parser.wasm");
+const { parser } = await createWasmParser(modelicaWasm);
 Context.registerParser(".mo", parser);
-
-const csvParser = new Parser();
-csvParser.setLanguage(CSV);
-Context.registerParser(".csv", csvParser);

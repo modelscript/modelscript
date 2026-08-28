@@ -4,16 +4,14 @@
 
 ; ─── Keywords ───────────────────────────────────────────────────────
 [
-  "algorithm" "annotation" "block" "break" "class" "connect"
-  "connector" "constant" "constrainedby" "constraint" "der" "discrete"
-  "each" "else" "elseif" "elsewhen" "encapsulated" "end"
-  "enumeration" "equation" "expandable" "extends" "external" "false"
+  "annotation" "break" "connect" "constant" "constrainedby" "constraint"
+  "der" "discrete" "each" "else" "elseif" "elsewhen"
+  "encapsulated" "end" "enumeration" "extends" "external" "false"
   "final" "flow" "for" "function" "if" "import"
-  "impure" "in" "initial" "inner" "input" "loop"
-  "model" "operator" "optimization" "outer" "output" "package"
-  "parameter" "partial" "protected" "public" "pure" "record"
-  "redeclare" "replaceable" "return" "shape" "stream" "then"
-  "true" "type" "when" "while" "within"
+  "in" "initial" "inner" "input" "loop" "outer"
+  "output" "parameter" "protected" "public" "pure" "redeclare"
+  "replaceable" "return" "stream" "then" "true" "when"
+  "while" "within"
 ] @keyword
 
 ; ─── Type references ───────────────────────────────────────────────

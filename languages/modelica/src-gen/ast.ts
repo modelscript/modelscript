@@ -644,6 +644,11 @@ export class ComponentDeclaration extends SemanticNode {
     return this.query<boolean>("isRedeclare");
   }
 
+  get componentInstance(): any {
+    const entry = this.query<SymbolEntry>("componentInstance");
+    return wrapEntry(entry, this.db) as any;
+  }
+
   // --- Graphics ---
   get graphics() {
     return {

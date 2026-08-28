@@ -273,13 +273,11 @@ export const modelicaLanguage = language({
   },
 
   symbols: {
-    class_definition: { name: "name", kind: "Class", scope: true },
-    long_class_specifier: { name: "name", kind: "Class", scope: true },
+    class_definition: { name: "class_specifier.name", kind: "Class", scope: true },
     short_class_specifier: { name: "name", kind: "Class", scope: true },
-    der_class_specifier: { name: "name", kind: "Class", scope: true },
-    component_declaration: { name: "name", kind: "Variable", scope: false },
-    extends_clause: { name: "name", kind: "Extends", scope: false },
-    connect_equation: { name: "from", kind: "Connection", scope: false },
+    component_declaration: { name: "declaration.name", kind: "Component", scope: false },
+    extends_clause: { name: "type_specifier", kind: "Extends", scope: false },
+    connect_equation: { name: "lhs", kind: "ConnectEquation", scope: false },
   },
 
   lints: allModelicaLints,
@@ -374,7 +372,8 @@ export const modelicaLanguage = language({
     within_clause: ($) => seq("within", optional($.name), ";"),
 
     // A.2.2 Class Definition
-    class_definition: ($) => seq(optional("encapsulated"), $.class_prefixes, $.class_specifier),
+    class_definition: ($) =>
+      seq(optional("encapsulated"), $.class_prefixes, field("class_specifier", $.class_specifier)),
 
     class_prefixes: () =>
       seq(
@@ -565,12 +564,17 @@ export const modelicaLanguage = language({
 
     component_list: ($) => seq($.component_declaration, repeat(seq(",", $.component_declaration))),
 
-    component_declaration: ($) => seq($.declaration, optional($.condition_attribute), $.description),
+    component_declaration: ($) =>
+      seq(field("declaration", $.declaration), optional($.condition_attribute), $.description),
 
     condition_attribute: ($) => seq("if", $.expression),
 
     declaration: ($) =>
-      seq(semanticToken("property", $.identifier), optional($.array_subscripts), optional($.modification)),
+      seq(
+        semanticToken("property", field("name", $.identifier)),
+        optional($.array_subscripts),
+        optional($.modification),
+      ),
 
     // A.2.5 Modification
     modification: ($) =>

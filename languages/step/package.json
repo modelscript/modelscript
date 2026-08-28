@@ -16,8 +16,8 @@
       "default": "./dist/src/language.js"
     },
     "./parser": {
-      "types": "./bindings/node/index.d.ts",
-      "default": "./bindings/node/index.cjs"
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
     },
     "./config": {
       "types": "./dist/src-gen/config.d.ts",

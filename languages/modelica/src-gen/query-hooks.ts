@@ -12,7 +12,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
   const hooks = new Map<string, QueryHooks>();
   if (!langDef.rules) return hooks;
 
-  // ClassDefinition: members, arrayDimensions, effectiveModification, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, isOperatorRecord, operatorFunctions, resolveModification, scopeData, inheritedSymbolsMap, resolveSimpleName, resolveName, instantiate, lint__duplicateModification, lint__builtinExtendsWithElements, lint__classSpecializationViolation, lint__modifierNotFound, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement, lint__functionPublicVariable, lint__externalWithAlgorithm, lint__functionInvalidVarType, lint__functionProtectedIo, lint__nestedWhen, lint__divisionByZero, lint__assignmentToConstant, lint__forIteratorNot1D, lint__chunked__forIteratorNot1D, lint__chunked__classBodyTypeChecks, lint__classBodyTypeChecks, lint__tupleExpressionContext, lint__connectFlowMismatch, lint__nonConnectorType, lint__functionArgVariability, lint__functionDefaultArgCycle, lint__unusedInputVariable, lint__unbalancedModel, lint__missingInner, lint__nameNotFound, lint__binaryOpTypeMismatch, lint__withinInScript, lint__arrayDimensionMismatch, lint__packageVariableNotConstant, lint__restrictionViolation, lint__partialInstantiation
+  // ClassDefinition: members, arrayDimensions, effectiveModification, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, isOperatorRecord, operatorFunctions, resolveModification, scopeData, inheritedSymbolsMap, resolveSimpleName, resolveName, instantiate, lint__builtinExtendsWithElements, lint__classSpecializationViolation, lint__modifierNotFound, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement, lint__functionPublicVariable, lint__externalWithAlgorithm, lint__functionInvalidVarType, lint__functionProtectedIo, lint__nestedWhen, lint__divisionByZero, lint__assignmentToConstant, lint__forIteratorNot1D, lint__chunked__forIteratorNot1D, lint__chunked__classBodyTypeChecks, lint__classBodyTypeChecks, lint__tupleExpressionContext, lint__connectFlowMismatch, lint__nonConnectorType, lint__functionArgVariability, lint__functionDefaultArgCycle, lint__unusedInputVariable, lint__unbalancedModel, lint__missingInner, lint__nameNotFound, lint__binaryOpTypeMismatch, lint__withinInScript, lint__arrayDimensionMismatch, lint__packageVariableNotConstant, lint__restrictionViolation, lint__partialInstantiation
   {
     const $ = new Proxy(
       {},
@@ -24,8 +24,9 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     );
     const rule = (langDef.rules as Record<string, unknown>)["ClassDefinition"] as (args: unknown) => unknown;
     const ruleAst = rule ? rule($) : null;
-    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
-      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+    const ast = ruleAst as any;
+    if (ast && (ast.type === "def" || ast.type === "DEF")) {
+      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;
       const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
@@ -52,8 +53,9 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     );
     const rule = (langDef.rules as Record<string, unknown>)["ExtendsClause"] as (args: unknown) => unknown;
     const ruleAst = rule ? rule($) : null;
-    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
-      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+    const ast = ruleAst as any;
+    if (ast && (ast.type === "def" || ast.type === "DEF")) {
+      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;
       const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
@@ -68,7 +70,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ComponentDeclaration: typeSpecifier, resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isEvaluate, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, resolvedArrayDimensions, lint__cyclicDimensionDependency, lint__componentNamingConvention, lint__modifierNotFound, lint__duplicateModification, lint__implementsTargetUnresolved, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
+  // ComponentDeclaration: typeSpecifier, resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isEvaluate, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, resolvedArrayDimensions, componentInstance, lint__cyclicDimensionDependency, lint__componentNamingConvention, lint__modifierNotFound, lint__duplicateModification, lint__implementsTargetUnresolved, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
   {
     const $ = new Proxy(
       {},
@@ -80,8 +82,9 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     );
     const rule = (langDef.rules as Record<string, unknown>)["ComponentDeclaration"] as (args: unknown) => unknown;
     const ruleAst = rule ? rule($) : null;
-    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
-      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+    const ast = ruleAst as any;
+    if (ast && (ast.type === "def" || ast.type === "DEF")) {
+      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;
       const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
@@ -108,8 +111,9 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     );
     const rule = (langDef.rules as Record<string, unknown>)["ShortClassDefinition"] as (args: unknown) => unknown;
     const ruleAst = rule ? rule($) : null;
-    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
-      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+    const ast = ruleAst as any;
+    if (ast && (ast.type === "def" || ast.type === "DEF")) {
+      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;
       const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
@@ -136,8 +140,9 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     );
     const rule = (langDef.rules as Record<string, unknown>)["ConnectEquation"] as (args: unknown) => unknown;
     const ruleAst = rule ? rule($) : null;
-    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
-      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+    const ast = ruleAst as any;
+    if (ast && (ast.type === "def" || ast.type === "DEF")) {
+      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;
       const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries

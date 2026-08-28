@@ -6,54 +6,67 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const grammarPath = path.join(__dirname, "grammar.js");
-const wasmPath = path.join(__dirname, "tree-sitter-modelica.wasm");
+// Step 1: Generate Salsa config / query-hooks / ast
+const languagePath = path.join(__dirname, "language.ts");
+const cliPath = path.resolve(__dirname, "..", "..", "packages", "compiler", "src", "cli.ts");
+console.log("[modelica] Generating artifacts from language.ts...");
+execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
 
-let shouldBuild = false;
+// Step 2 & 3: Run builder via tsx to compile parser and WASM
+const buildScriptPath = path.join(__dirname, "build-parser.ts");
+const buildScriptContent = `import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
+import { buildParser } from "@modelscript/language";
+import { modelicaLanguage } from "./src/language.js";
 
-if (!fs.existsSync(wasmPath)) {
-  shouldBuild = true;
-} else {
-  const grammarStats = fs.statSync(grammarPath);
-  const wasmStats = fs.statSync(wasmPath);
-  if (grammarStats.mtimeMs > wasmStats.mtimeMs) {
-    shouldBuild = true;
-  }
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const languagePath = path.join(__dirname, "src", "language.ts");
+const result = buildParser(modelicaLanguage, { sourcePath: languagePath });
+
+// 1. Write AssemblyScript files to as-gen/ for asc
+const asGenDir = path.join(__dirname, "as-gen");
+fs.mkdirSync(asGenDir, { recursive: true });
+for (const file of result.assemblyScriptFiles) {
+  fs.writeFileSync(path.join(asGenDir, file.filename), file.content);
 }
 
-if (shouldBuild) {
-  console.log("[modelica] Building tree-sitter-modelica.wasm...");
+// 2. Write TypeScript/JavaScript bindings to src-gen/
+const srcGenDir = path.join(__dirname, "src-gen");
+fs.mkdirSync(srcGenDir, { recursive: true });
+fs.writeFileSync(path.join(srcGenDir, "bindings.js"), result.javascriptWrapper.js);
+fs.writeFileSync(path.join(srcGenDir, "bindings.d.ts"), result.javascriptWrapper.dts);
 
-  const pkgPath = path.join(__dirname, "package.json");
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-  const originalType = pkg.type;
+// 3. Compile AssemblyScript to WASM
+const outDir = path.join(__dirname, "dist");
+fs.mkdirSync(outDir, { recursive: true });
+const outWasm = path.join(outDir, "parser.wasm");
+const parserTs = path.join(asGenDir, "parser.ts");
 
-  try {
-    // tree-sitter-cli requires CJS-style package.json
-    delete pkg.type;
-    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+const ascPath = [
+  path.resolve(__dirname, "node_modules/.bin/asc"),
+  path.resolve(__dirname, "../../node_modules/.bin/asc"),
+  "npx asc",
+].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
 
-    let retries = 5;
-    while (retries > 0) {
-      try {
-        execSync("npx --yes tree-sitter-cli build --wasm", { stdio: "inherit", cwd: __dirname });
-        break;
-      } catch (err) {
-        retries--;
-        if (retries === 0) throw err;
-        console.warn(`[WASM Build] Failed (likely due to concurrent wasi-sdk extraction), retrying in 3s...`);
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
-      }
-    }
-  } catch (err) {
-    console.error("[modelica] Failed to build WASM:", err.message);
-    process.exitCode = 1;
-  } finally {
-    if (originalType) {
-      pkg.type = originalType;
-      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-    }
-  }
-} else {
-  console.log("[modelica] tree-sitter-modelica.wasm is up to date.");
+console.log("[modelica] Compiling WebAssembly parser with asc...");
+execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads --optimize --runtime stub\`, {
+  stdio: "inherit",
+  cwd: __dirname,
+});
+console.log("[modelica] WebAssembly parser built successfully -> " + outWasm);
+
+// Copy parser.wasm to tree-sitter-modelica.wasm in the package root for backwards-compat if referenced
+fs.copyFileSync(outWasm, path.join(__dirname, "tree-sitter-modelica.wasm"));
+
+// Cleanup as-gen after WASM compilation
+fs.rmSync(asGenDir, { recursive: true, force: true });
+`;
+
+fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
+try {
+  execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+} finally {
+  if (fs.existsSync(buildScriptPath)) fs.unlinkSync(buildScriptPath);
 }

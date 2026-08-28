@@ -818,9 +818,9 @@ export declare class SyntaxNode {
   get startIndex(): number;
   /** The end character index of the node (UTF-16). */
   get endIndex(): number;
-  /** The start byte index of the node in UTF-16 memory. */
+  /** The start byte index of the node (character offset matching Tree-sitter JS). */
   get startByte(): number;
-  /** The end byte index of the node in UTF-16 memory. */
+  /** The end byte index of the node (character offset matching Tree-sitter JS). */
   get endByte(): number;
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
@@ -977,6 +977,7 @@ export declare class TreeSitterParser {
   reset(): void;
 }
 export declare const WasmLanguageBinding: typeof LspFacade;
+export default WasmLanguageBinding;
 export interface LruAstCacheOptions {
   /** Maximum number of full document ASTs to keep in memory simultaneously (default: 100). */
   maxActiveAsts?: number;

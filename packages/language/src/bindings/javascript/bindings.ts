@@ -3925,14 +3925,14 @@ export class SyntaxNode {
     return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
 
-  /** The start byte index of the node in UTF-16 memory. */
+  /** The start byte index of the node (character offset matching Tree-sitter JS). */
   get startByte(): number {
-    return this._startOffset + this._cachedPad;
+    return (this._startOffset + this._cachedPad) / 2;
   }
 
-  /** The end byte index of the node in UTF-16 memory. */
+  /** The end byte index of the node (character offset matching Tree-sitter JS). */
   get endByte(): number {
-    return this._startOffset + this._cachedPad + this._cachedLen;
+    return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
 
   /**
@@ -4155,11 +4155,26 @@ export class SyntaxNode {
    * Looks up a named field on this node and returns the corresponding child syntax node.
    */
   childForFieldName(name: string): SyntaxNode | null {
-    const fieldId = FIELD_NAMES[name];
-    if (fieldId === undefined) {
-      return null;
+    const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+    const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
+    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    if (fieldId !== undefined) {
+      const node = this.childForFieldId(fieldId);
+      if (node) return node;
     }
-    return this.childForFieldId(fieldId);
+    // Fallback: match by child node type name (snake_case or camelCase) or condition alias
+    for (const kid of this.children) {
+      const kt = kid.type;
+      if (
+        kt === name ||
+        kt === snake ||
+        kt === camel ||
+        (name === "condition" && (kt === "expression" || kt === "simple_expression"))
+      ) {
+        return kid;
+      }
+    }
+    return null;
   }
 
   /**
@@ -4175,9 +4190,22 @@ export class SyntaxNode {
    * Returns all child nodes matching the given field name.
    */
   childrenForFieldName(name: string): SyntaxNode[] {
-    const fieldId = FIELD_NAMES[name];
-    if (fieldId === undefined) return [];
-    return this.childrenForFieldId(fieldId);
+    const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+    const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
+    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    if (fieldId !== undefined) {
+      const byId = this.childrenForFieldId(fieldId);
+      if (byId.length > 0) return byId;
+    }
+    // Fallback: match by child node type name (snake_case or camelCase)
+    const matches: SyntaxNode[] = [];
+    for (const kid of this.children) {
+      const kt = kid.type;
+      if (kt === name || kt === snake || kt === camel) {
+        matches.push(kid);
+      }
+    }
+    return matches;
   }
 
   /**
@@ -4588,6 +4616,7 @@ export class TreeSitterParser {
 }
 
 export const WasmLanguageBinding = LspFacade;
+export default WasmLanguageBinding;
 
 export interface LruAstCacheOptions {
   /** Maximum number of full document ASTs to keep in memory simultaneously (default: 100). */

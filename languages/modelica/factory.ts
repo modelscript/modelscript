@@ -65,24 +65,33 @@ const queryHooks = QUERY_HOOKS ?? (globalThis as any).__queryHooksFallback;
 const refHooks = REF_HOOKS ?? (globalThis as any).__refHooksFallback;
 const evaluator = modelicaEvaluator ?? (globalThis as any).__evaluatorFallback;
 
+// Helper to normalize rule names (PascalCase <-> snake_case)
+function toSnakeCase(str: string): string {
+  return str.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+}
+
 // Merge Modelica and CSV query hooks
 const mergedQueryHooks = new Map<string, any>();
 if (queryHooks instanceof Map) {
   for (const [k, v] of queryHooks.entries()) {
     mergedQueryHooks.set(k, v);
+    mergedQueryHooks.set(toSnakeCase(k), v);
   }
 } else if (queryHooks) {
   for (const [k, v] of Object.entries(queryHooks)) {
     mergedQueryHooks.set(k, v);
+    mergedQueryHooks.set(toSnakeCase(k), v);
   }
 }
 if (csvQueryHooks instanceof Map) {
   for (const [k, v] of csvQueryHooks.entries()) {
     mergedQueryHooks.set(k, v);
+    mergedQueryHooks.set(toSnakeCase(k), v);
   }
 } else if (csvQueryHooks) {
   for (const [k, v] of Object.entries(csvQueryHooks)) {
     mergedQueryHooks.set(k, v);
+    mergedQueryHooks.set(toSnakeCase(k), v);
   }
 }
 
@@ -123,7 +132,54 @@ const msimPropertyHook: any = {
   },
 };
 
-const allIndexerHooks = [...baseIndexerHooks, ...refAsIndexerHooks, msimIndexerHook, msimPropertyHook];
+const wasmModelicaIndexerHooks: any[] = [
+  {
+    ruleName: "class_definition",
+    kind: "Class",
+    namePath: "class_specifier.name",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {
+      classPrefixes: "class_prefixes",
+    },
+  },
+  {
+    ruleName: "component_declaration",
+    kind: "Component",
+    namePath: "declaration.name",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {
+      typeSpecifier: "parent.type_specifier",
+    },
+  },
+  {
+    ruleName: "extends_clause",
+    kind: "Extends",
+    namePath: "type_specifier",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {
+      typeSpecifier: "type_specifier",
+    },
+  },
+  {
+    ruleName: "connect_equation",
+    kind: "ConnectEquation",
+    namePath: "lhs",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+];
+
+const allIndexerHooks = [
+  ...wasmModelicaIndexerHooks,
+  ...baseIndexerHooks,
+  ...refAsIndexerHooks,
+  msimIndexerHook,
+  msimPropertyHook,
+];
 
 import { injectPredefinedTypes } from "./predefined-types.js";
 

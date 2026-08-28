@@ -5440,13 +5440,13 @@ export class SyntaxNode {
   get endIndex() {
     return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
-  /** The start byte index of the node in UTF-16 memory. */
+  /** The start byte index of the node (character offset matching Tree-sitter JS). */
   get startByte() {
-    return this._startOffset + this._cachedPad;
+    return (this._startOffset + this._cachedPad) / 2;
   }
-  /** The end byte index of the node in UTF-16 memory. */
+  /** The end byte index of the node (character offset matching Tree-sitter JS). */
   get endByte() {
-    return this._startOffset + this._cachedPad + this._cachedLen;
+    return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
@@ -5641,11 +5641,26 @@ export class SyntaxNode {
    * Looks up a named field on this node and returns the corresponding child syntax node.
    */
   childForFieldName(name) {
-    const fieldId = FIELD_NAMES[name];
-    if (fieldId === undefined) {
-      return null;
+    const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+    const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
+    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    if (fieldId !== undefined) {
+      const node = this.childForFieldId(fieldId);
+      if (node) return node;
     }
-    return this.childForFieldId(fieldId);
+    // Fallback: match by child node type name (snake_case or camelCase) or condition alias
+    for (const kid of this.children) {
+      const kt = kid.type;
+      if (
+        kt === name ||
+        kt === snake ||
+        kt === camel ||
+        (name === "condition" && (kt === "expression" || kt === "simple_expression"))
+      ) {
+        return kid;
+      }
+    }
+    return null;
   }
   /**
    * Returns all child nodes matching the given numeric field ID (e.g. for repeated fields).
@@ -5659,9 +5674,22 @@ export class SyntaxNode {
    * Returns all child nodes matching the given field name.
    */
   childrenForFieldName(name) {
-    const fieldId = FIELD_NAMES[name];
-    if (fieldId === undefined) return [];
-    return this.childrenForFieldId(fieldId);
+    const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+    const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
+    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    if (fieldId !== undefined) {
+      const byId = this.childrenForFieldId(fieldId);
+      if (byId.length > 0) return byId;
+    }
+    // Fallback: match by child node type name (snake_case or camelCase)
+    const matches = [];
+    for (const kid of this.children) {
+      const kt = kid.type;
+      if (kt === name || kt === snake || kt === camel) {
+        matches.push(kid);
+      }
+    }
+    return matches;
   }
   /**
    * Returns the field name associated with a child at childIndex.
@@ -6020,6 +6048,7 @@ export class TreeSitterParser {
   reset() {}
 }
 export const WasmLanguageBinding = LspFacade;
+export default WasmLanguageBinding;
 /**
  * Tier 2 On-Demand LRU Full AST Cache.
  * Evicts inactive ASTs to prevent WASM heap exhaustion in large monorepos.

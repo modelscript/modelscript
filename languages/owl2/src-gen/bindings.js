@@ -2377,6 +2377,15 @@ export class LspFacade {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
       this.wasmMemory = wasmMemoryOrInstance.exports.memory || wasmMemoryOrInstance.memory;
       this.exports = wasmMemoryOrInstance.exports;
+    } else if (exports) {
+      this.wasmMemory = wasmMemoryOrInstance;
+      this.exports = exports;
+    } else if (
+      wasmMemoryOrInstance &&
+      (wasmMemoryOrInstance.memory || wasmMemoryOrInstance.parse || wasmMemoryOrInstance.getInputBuffer)
+    ) {
+      this.wasmMemory = wasmMemoryOrInstance.memory;
+      this.exports = wasmMemoryOrInstance;
     } else {
       this.wasmMemory = wasmMemoryOrInstance;
       this.exports = exports;
@@ -5305,13 +5314,13 @@ export class SyntaxNode {
   get endIndex() {
     return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
-  /** The start byte index of the node in UTF-16 memory. */
+  /** The start byte index of the node (character offset matching Tree-sitter JS). */
   get startByte() {
-    return this._startOffset + this._cachedPad;
+    return (this._startOffset + this._cachedPad) / 2;
   }
-  /** The end byte index of the node in UTF-16 memory. */
+  /** The end byte index of the node (character offset matching Tree-sitter JS). */
   get endByte() {
-    return this._startOffset + this._cachedPad + this._cachedLen;
+    return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
@@ -5506,11 +5515,26 @@ export class SyntaxNode {
    * Looks up a named field on this node and returns the corresponding child syntax node.
    */
   childForFieldName(name) {
-    const fieldId = FIELD_NAMES[name];
-    if (fieldId === undefined) {
-      return null;
+    const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+    const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
+    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    if (fieldId !== undefined) {
+      const node = this.childForFieldId(fieldId);
+      if (node) return node;
     }
-    return this.childForFieldId(fieldId);
+    // Fallback: match by child node type name (snake_case or camelCase) or condition alias
+    for (const kid of this.children) {
+      const kt = kid.type;
+      if (
+        kt === name ||
+        kt === snake ||
+        kt === camel ||
+        (name === "condition" && (kt === "expression" || kt === "simple_expression"))
+      ) {
+        return kid;
+      }
+    }
+    return null;
   }
   /**
    * Returns all child nodes matching the given numeric field ID (e.g. for repeated fields).
@@ -5524,9 +5548,22 @@ export class SyntaxNode {
    * Returns all child nodes matching the given field name.
    */
   childrenForFieldName(name) {
-    const fieldId = FIELD_NAMES[name];
-    if (fieldId === undefined) return [];
-    return this.childrenForFieldId(fieldId);
+    const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+    const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
+    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    if (fieldId !== undefined) {
+      const byId = this.childrenForFieldId(fieldId);
+      if (byId.length > 0) return byId;
+    }
+    // Fallback: match by child node type name (snake_case or camelCase)
+    const matches = [];
+    for (const kid of this.children) {
+      const kt = kid.type;
+      if (kt === name || kt === snake || kt === camel) {
+        matches.push(kid);
+      }
+    }
+    return matches;
   }
   /**
    * Returns the field name associated with a child at childIndex.
@@ -5885,6 +5922,7 @@ export class TreeSitterParser {
   reset() {}
 }
 export const WasmLanguageBinding = LspFacade;
+export default WasmLanguageBinding;
 /**
  * Tier 2 On-Demand LRU Full AST Cache.
  * Evicts inactive ASTs to prevent WASM heap exhaustion in large monorepos.
@@ -6022,8 +6060,9 @@ export class LspWorkspaceManager {
  * Asynchronously loads a ModelScript language WebAssembly parser module from a URL,
  * local file path, or in-memory byte buffer and wraps it in a high-performance LspFacade and TreeSitterParser.
  */
-export async function createWasmParser(wasmUrlOrBytes) {
+export async function createWasmParser(wasmUrlOrBytes, options) {
   let bytes;
+  let syntaxNames = options?.syntaxNames;
   if (typeof wasmUrlOrBytes === "string") {
     if (
       typeof fetch !== "undefined" &&
@@ -6048,6 +6087,26 @@ export async function createWasmParser(wasmUrlOrBytes) {
       const buf = fs.readFileSync(wasmUrlOrBytes);
       bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
+    if (!syntaxNames) {
+      const bindingsPaths = [
+        wasmUrlOrBytes.replace(/\/dist\/parser\.wasm$/, "/src-gen/bindings.js"),
+        wasmUrlOrBytes.replace(/\.wasm$/, ".bindings.js"),
+        wasmUrlOrBytes.replace(/\/parser\.wasm$/, "/bindings.js"),
+        wasmUrlOrBytes.replace(/\/tree-sitter-[^/]+\.wasm$/, "/bindings.js"),
+      ];
+      for (const bPath of bindingsPaths) {
+        const mod = await Function("m", "return import(m)")(bPath);
+        if (mod) {
+          if (mod.SYNTAX_NAMES && mod.SYNTAX_NAMES.length > 0) {
+            syntaxNames = mod.SYNTAX_NAMES;
+          }
+          if (mod.FIELD_NAMES) {
+            Object.assign(FIELD_NAMES, mod.FIELD_NAMES);
+          }
+          if (syntaxNames) break;
+        }
+      }
+    }
   } else if (wasmUrlOrBytes instanceof Uint8Array) {
     bytes = wasmUrlOrBytes.buffer.slice(
       wasmUrlOrBytes.byteOffset,
@@ -6058,15 +6117,26 @@ export async function createWasmParser(wasmUrlOrBytes) {
   }
   const imports = {
     env: {
-      abort: () => {},
+      abort: (msg, file, line, col) => {
+        console.error(`WASM abort: ${msg}:${file}:${line}:${col}`);
+      },
     },
     parser: {
-      logInt: () => {},
+      logInt: (val) => {},
+    },
+    engine: {
+      debugLog: (ptr, len) => {},
+    },
+    host: {
+      runHostQuery: () => 0,
     },
   };
   const wasmModule = await WebAssembly.instantiate(bytes, imports);
   const exports = wasmModule.instance ? wasmModule.instance.exports : wasmModule.exports;
   const facade = new LspFacade(exports);
+  if (syntaxNames && syntaxNames.length > 0) {
+    facade.syntaxNames = syntaxNames;
+  }
   const parser = new TreeSitterParser();
   parser.setLanguage(facade);
   return { facade, parser };

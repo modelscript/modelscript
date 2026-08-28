@@ -4639,7 +4639,7 @@ const modelicaLang = language({
             }
             const cstNode = db.cstNode(self.id);
             let current = cstNode as any;
-            while (current && current.type !== "ComponentClause") {
+            while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
               current = current.parent;
             }
             return current?.childForFieldName("typeSpecifier")?.text ?? null;
@@ -4657,7 +4657,7 @@ const modelicaLang = language({
             } else {
               const cstNode = db.cstNode(self.id);
               let current = cstNode as any;
-              while (current && current.type !== "ComponentClause") {
+              while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
                 current = current.parent;
               }
               typeName = current?.childForFieldName("typeSpecifier")?.text ?? "";
@@ -4665,8 +4665,8 @@ const modelicaLang = language({
 
             if (!typeName || typeof typeName !== "string") return null;
 
-            // Try qualified resolution from parent scope
-            if (typeName.includes(".") && self.parentId !== null) {
+            // Try resolution from parent scope
+            if (self.parentId !== null) {
               const parentEntry = db.symbol(self.parentId);
               if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
                 const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", parentEntry.id);
@@ -4704,7 +4704,7 @@ const modelicaLang = language({
           effectiveModification: (db: QueryDB, self: SymbolEntry) => {
             const cst = db.cstNode(self.id) as any;
             let current = cst;
-            while (current && current.type !== "ComponentDeclaration") {
+            while (current && current.type !== "ComponentDeclaration" && current.type !== "component_declaration") {
               current = current.parent;
             }
             const declNode = current?.childForFieldName("declaration");
@@ -4718,7 +4718,7 @@ const modelicaLang = language({
           isConnectorType: (db: QueryDB, self: SymbolEntry) => {
             const cstNode = db.cstNode(self.id);
             let current = cstNode as any;
-            while (current && current.type !== "ComponentClause") {
+            while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
               current = current.parent;
             }
             let typeName = current?.childForFieldName("typeSpecifier")?.text;
@@ -4759,7 +4759,13 @@ const modelicaLang = language({
 
           variability: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause" && current.type !== "ComponentClause1")
+            while (
+              current &&
+              current.type !== "ComponentClause" &&
+              current.type !== "ComponentClause1" &&
+              current.type !== "component_clause" &&
+              current.type !== "component_clause1"
+            )
               current = current.parent;
             return (
               current?.childForFieldName("typePrefix")?.childForFieldName("variability")?.text ??
@@ -4770,7 +4776,13 @@ const modelicaLang = language({
 
           causality: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause" && current.type !== "ComponentClause1")
+            while (
+              current &&
+              current.type !== "ComponentClause" &&
+              current.type !== "ComponentClause1" &&
+              current.type !== "component_clause" &&
+              current.type !== "component_clause1"
+            )
               current = current.parent;
             return (
               current?.childForFieldName("typePrefix")?.childForFieldName("causality")?.text ??
@@ -4781,7 +4793,13 @@ const modelicaLang = language({
 
           flowPrefix: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause" && current.type !== "ComponentClause1")
+            while (
+              current &&
+              current.type !== "ComponentClause" &&
+              current.type !== "ComponentClause1" &&
+              current.type !== "component_clause" &&
+              current.type !== "component_clause1"
+            )
               current = current.parent;
             return (
               current
@@ -4794,7 +4812,8 @@ const modelicaLang = language({
 
           isFinal: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
+            while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+              current = current.parent;
             return !!current?.childForFieldName("final");
           },
 
@@ -4805,7 +4824,8 @@ const modelicaLang = language({
           isEvaluate: (db: QueryDB, self: SymbolEntry) => {
             const cst = db.cstNode(self.id) as any;
             let current = cst;
-            while (current && current.type !== "ComponentDeclaration") current = current.parent;
+            while (current && current.type !== "ComponentDeclaration" && current.type !== "component_declaration")
+              current = current.parent;
             const ann = current?.childForFieldName("annotationClause");
             if (!ann) return false;
             const classMod = ann.childForFieldName?.("classModification");
@@ -4824,19 +4844,22 @@ const modelicaLang = language({
 
           isRedeclare: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
+            while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+              current = current.parent;
             return !!current?.childForFieldName("redeclare");
           },
 
           isInner: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
+            while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+              current = current.parent;
             return current?.text.match(/\binner\b/) !== null;
           },
 
           isReplaceable: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
+            while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+              current = current.parent;
             return !!current?.childForFieldName("replaceable");
           },
 
@@ -4844,7 +4867,13 @@ const modelicaLang = language({
             let current = db.cstNode(self.id) as any;
             while (current && current.type !== "ElementSection") {
               // Stop at class definition boundaries — don't walk into a parent class
-              if (current.type === "LongClassSpecifier" || current.type === "ShortClassSpecifier") return false;
+              if (
+                current.type === "LongClassSpecifier" ||
+                current.type === "ShortClassSpecifier" ||
+                current.type === "long_class_specifier" ||
+                current.type === "short_class_specifier"
+              )
+                return false;
               current = current.parent;
             }
             return current ? current.childForFieldName("visibility")?.text === "protected" : false;
@@ -4852,7 +4881,8 @@ const modelicaLang = language({
 
           isOuter: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
+            while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+              current = current.parent;
             return !!current?.childForFieldName("outer");
           },
 
@@ -4879,7 +4909,7 @@ const modelicaLang = language({
             } else {
               const cstNode = db.cstNode(self.id);
               let current = cstNode as any;
-              while (current && current.type !== "ComponentClause") {
+              while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
                 current = current.parent;
               }
               typeName = current?.childForFieldName("typeSpecifier")?.text ?? "";
