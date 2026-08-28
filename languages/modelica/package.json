@@ -51,6 +51,10 @@
       "types": "./dist/geometry.d.ts",
       "default": "./dist/geometry.js"
     },
+    "./csg": {
+      "types": "./dist/src/csg.d.ts",
+      "default": "./dist/src/csg.js"
+    },
     "./scripting": {
       "types": "./dist/scripting.d.ts",
       "default": "./dist/scripting.js"

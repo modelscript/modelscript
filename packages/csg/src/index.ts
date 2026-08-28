@@ -1,4 +1,2 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
-export { extractCSGTopology } from "./extractor.js";
+export { extractCSGTopology, type CSGExecutionGraph, type CSGNode } from "@modelscript/modelica";
 export { CSGWorker } from "./worker.js";

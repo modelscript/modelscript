@@ -20,6 +20,7 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
+    "@modelscript/modelica": "*",
     "opencascade.js": "^1.0.0"
   },
   "devDependencies": {
