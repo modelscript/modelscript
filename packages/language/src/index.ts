@@ -11,6 +11,7 @@ export * from "./codegen/egraph.js";
 export * from "./codegen/parser.js";
 export * from "./codegen/textmate.js";
 export * from "./codegen/transpiler.js";
+export * as csg from "./csg/index.js";
 export * from "./diagram/polyglot-diagram-builder.js";
 export * from "./dsl.js";
 export * as ecad from "./ecad/index.js";

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CSGWorker } from "@modelscript/csg";
+import { CSGWorker } from "@modelscript/language/csg";
 import { Context } from "@modelscript/modelica/context";
 import { extractCSGTopology } from "@modelscript/modelica/csg";
 import Modelica from "@modelscript/modelica/parser";

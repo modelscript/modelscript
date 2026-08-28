@@ -46,6 +46,14 @@
       "types": "./dist/ecad/*.d.ts",
       "default": "./dist/ecad/*.js"
     },
+    "./csg": {
+      "types": "./dist/csg/index.d.ts",
+      "default": "./dist/csg/index.js"
+    },
+    "./csg/*": {
+      "types": "./dist/csg/*.d.ts",
+      "default": "./dist/csg/*.js"
+    },
     "./diagram": {
       "types": "./dist/diagram/index.d.ts",
       "default": "./dist/diagram/index.js"
@@ -124,6 +132,7 @@
     "aedes-server-factory": "^0.2.1",
     "assemblyscript": "^0.28.17",
     "mqtt": "^5.10.0",
+    "opencascade.js": "^1.0.0",
     "pako": "^2.1.0",
     "pg": "^8.13.0",
     "ws": "^8.18.0"

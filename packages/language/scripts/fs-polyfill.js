@@ -14,4 +14,6 @@ export function readdirSync() {
 export function existsSync() {
   return false;
 }
+export function mkdirSync() {}
+export function writeFileSync() {}
 export const constants = {};
