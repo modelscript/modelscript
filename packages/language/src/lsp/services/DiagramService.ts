@@ -23,15 +23,31 @@ import {
 import { DocumentManager } from "./DocumentManager.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return hash;
+}
+
 export class DiagramService {
   private sysml2Layouts = new Map<string, any>();
   private diagramDispatch: any;
+  private diagramCache = new Map<string, { version: string; data: any }>();
+  public validationService?: any;
+  public parserService?: any;
 
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
     private workspaceManager: WorkspaceManager,
-  ) {}
+    validationService?: any,
+    parserService?: any,
+  ) {
+    this.validationService = validationService;
+    this.parserService = parserService;
+  }
 
   async handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }): Promise<any> {
     // Do NOT flush validation here — it blocks the event loop and starves the
@@ -44,23 +60,21 @@ export class DiagramService {
     }
 
     // Modelica — check cache first.
-    // Use the last-indexed text as the cache key rather than doc.version.
-    // doc.version increments on every keystroke, making the cache useless
-    // during interactive editing. (globalThis as any).lastIndexedText only updates when the
-    // semantic pipeline actually re-indexes, so intermediate keystrokes
-    // reuse the previous diagram data.
     const effectiveUri = params.uri.startsWith("modelscript-lib://global")
       ? "file://" + params.uri.substring("modelscript-lib://global".length)
       : params.uri;
-    const indexedText = (globalThis as any).lastIndexedText.get(effectiveUri);
+    const lastIndexedMap = this.validationService?.lastIndexedText ?? (globalThis as any).lastIndexedText;
+    const dependenciesReady =
+      this.validationService?.dependenciesReady ?? (globalThis as any).dependenciesReady ?? true;
+    const indexedText = lastIndexedMap?.get(effectiveUri);
     const version =
       indexedText != null
-        ? `idx:${indexedText.length}:${(globalThis as any).simpleHash(indexedText)}|${(globalThis as any).dependenciesReady}`
-        : (globalThis as any).dependenciesReady
+        ? `idx:${indexedText.length}:${simpleHash(indexedText)}|${dependenciesReady}`
+        : dependenciesReady
           ? "deps-ready"
           : "deps-loading";
     const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
-    const cached = (globalThis as any).diagramCache.get(cacheKey);
+    const cached = this.diagramCache.get(cacheKey) ?? (globalThis as any).diagramCache?.get(cacheKey);
     if (cached && cached.version === version) {
       this.connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
       return cached.data;
@@ -70,7 +84,7 @@ export class DiagramService {
     const classInstance = this.workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
 
     if (!classInstance) {
-      if (!(globalThis as any).dependenciesReady) {
+      if (!dependenciesReady) {
         return {
           nodes: [],
           edges: [],
@@ -96,14 +110,14 @@ export class DiagramService {
       const result = await buildDiagramData(classInstance);
       const tBuild = performance.now() - tBuild0;
       if (result) {
-        (result as any).isLoading = !(globalThis as any).dependenciesReady;
+        (result as any).isLoading = !dependenciesReady;
       }
       this.connection.console.error(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
       );
 
       // Cache the result
-      (globalThis as any).diagramCache.set(cacheKey, { version, data: result });
+      this.diagramCache.set(cacheKey, { version, data: result });
 
       return result;
     } catch (e: any) {
@@ -195,10 +209,14 @@ export class DiagramService {
             return null;
           }
         },
-        getSysML2Parser: () =>
-          (globalThis as any).sysml2ParserReady && (globalThis as any).sysml2Parser
+        getSysML2Parser: () => {
+          if (this.parserService?.sysml2ParserReady && this.parserService.sysml2Parser) {
+            return this.parserService.sysml2Parser;
+          }
+          return (globalThis as any).sysml2ParserReady && (globalThis as any).sysml2Parser
             ? (globalThis as any).sysml2Parser
-            : null,
+            : null;
+        },
         computeConnectionInsert: computeSysML2ConnectionInsert,
         computeConnectionDelete: computeSysML2ConnectionDelete,
         computeElementInsert: computeSysML2ElementInsert,

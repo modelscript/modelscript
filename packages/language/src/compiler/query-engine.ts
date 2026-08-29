@@ -59,23 +59,44 @@ class DependencyTracker {
 // Shallow Equality — Used for backdating decisions
 // ---------------------------------------------------------------------------
 
+export class QueryCancelledError extends Error {
+  constructor(message = "Query computation was cancelled") {
+    super(message);
+    this.name = "QueryCancelledError";
+  }
+}
+
 /**
  * Determines if two query results are "the same" for backdating purposes.
- * Uses reference equality first, then falls back to JSON comparison for
- * arrays and plain objects. This is the right default tradeoff:
- * - Fast for primitives and shared object references
- * - Correct for the common case of returning filtered arrays
+ * Uses fast reference equality first, then structural comparison for arrays and objects.
  */
-function shallowEqual(a: unknown, b: unknown): boolean {
+function shallowEqual(a: unknown, b: unknown, depth = 0): boolean {
   if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (typeof a !== "object" || typeof b !== "object") return false;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (depth > 10) return false;
 
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!shallowEqual(a[i], b[i], depth + 1)) return false;
+    }
+    return true;
   }
+
+  if (Array.isArray(b)) return false;
+
+  const keysA = Object.keys(a as Record<string, unknown>);
+  const keysB = Object.keys(b as Record<string, unknown>);
+  if (keysA.length !== keysB.length) return false;
+
+  for (let i = 0; i < keysA.length; i++) {
+    const key = keysA[i];
+    const valA = (a as Record<string, unknown>)[key];
+    const valB = (b as Record<string, unknown>)[key];
+    if (valA !== valB && !shallowEqual(valA, valB, depth + 1)) return false;
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1213,7 +1234,7 @@ export class QueryEngine {
           return false; // Input was changed or deleted
         }
       } else if (dep.kind === "query") {
-        const depKey = this.memoKey(dep.queryName, dep.symbolId);
+        const depKey = this.memoKey(dep.queryName, dep.symbolId, dep.argsHash);
         let depMemo = this.memos.get(depKey);
 
         if (!depMemo) {
@@ -1223,7 +1244,7 @@ export class QueryEngine {
         // Ensure the dependency is verified in the current revision
         if (depMemo.verified_at !== this.currentRevision) {
           // Recursively fetch the dependency (this will verify it)
-          this.fetch(dep.queryName, dep.symbolId);
+          this.fetch(dep.queryName, dep.symbolId, dep.argsHash);
           depMemo = this.memos.get(depKey);
           if (!depMemo) return false;
         }

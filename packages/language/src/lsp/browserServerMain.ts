@@ -933,7 +933,7 @@ registerSignatureHelpProvider(
   parserService.getLineIndexForDoc.bind(parserService),
 );
 registerCodeLensProvider(lspContext);
-registerInlayHintProvider(connection);
+registerInlayHintProvider(lspContext);
 connection.listen();
 
 let debuggerResumeCallback: (() => void) | undefined;
