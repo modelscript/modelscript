@@ -41,7 +41,6 @@
     "@modelscript/language": "*",
     "@modelscript/modelica": "*",
     "@modelscript/sysml2": "*",
-    "@modelscript/utils": "*",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",
     "assemblyscript": "^0.28.19",

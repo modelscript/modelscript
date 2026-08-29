@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { McpManifest, McpManifestTool, McpPropertySchema } from "@modelscript/language";
 import { z } from "zod";
+import type { McpManifest, McpManifestTool } from "../codegen/compile_mcp.js";
+import type { McpPropertySchema } from "../dsl.js";
 import type { ServerContext } from "./types.js";
 
 /**

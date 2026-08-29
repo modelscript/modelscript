@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Dirent, FileSystem, Stats } from "@modelscript/utils";
+import type { Dirent, FileSystem, Stats } from "@modelscript/language/utils";
 import { fs, statSync } from "@zenfs/core";
 import { basename, extname, join, resolve, sep } from "@zenfs/core/path.js";
 

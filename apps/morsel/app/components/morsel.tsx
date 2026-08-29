@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { decodeDataUrl } from "@modelscript/utils";
+import { decodeDataUrl } from "@modelscript/language/utils";
 import {
   ColumnsIcon,
   DownloadIcon,

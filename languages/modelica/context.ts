@@ -13,7 +13,7 @@ import {
   type QueryEngine,
   type WorkspaceIndex,
 } from "@modelscript/language/compiler";
-import type { FileSystem, Parser, Tree } from "@modelscript/utils";
+import type { FileSystem, Parser, Tree } from "@modelscript/language/utils";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ArenaQueryFlattener, type FlattenOptions } from "./flattener-query.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./po.js";

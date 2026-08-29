@@ -1,4 +1,4 @@
-import type { Dirent, FileSystem, Stats } from "@modelscript/utils";
+import type { Dirent, FileSystem, Stats } from "../../utils/index.js";
 
 export interface MemFile {
   content: string;

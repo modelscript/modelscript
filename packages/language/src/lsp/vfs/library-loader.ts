@@ -10,9 +10,9 @@ import {
   putSalsaIndexCache,
 } from "./browser-file-system.js";
 
-import type { Parser, Tree } from "@modelscript/utils";
 import { strFromU8, unzipSync } from "fflate";
 import type { FederatedQueryCacheStore } from "../../compiler/index.js";
+import type { Parser, Tree } from "../../utils/index.js";
 import { iconCache } from "../handlers/treeHandler.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";
 

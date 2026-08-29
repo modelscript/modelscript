@@ -30,9 +30,9 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 
 ### Packages (`packages/`)
 
-| [`@modelscript/language`](./packages/language/) | ModelScript DSL Compiler & Polyglot Runtime — Salsa query engine, incremental compilation, type checking, DAE/BLT solvers, simulation, optimization, parser/lexer codegen, WASM runtime, LSP, FMI, CoSim, CAD, ECAD, reasoner |
-| [`@modelscript/mcp`](./packages/mcp/) | Model Context Protocol implementation for AI/LLM integration |
-| [`@modelscript/utils`](./packages/utils/) | Common utility functions across the monorepo |
+| Package                                         | Description                                                                                                                                                                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/language`](./packages/language/) | ModelScript DSL Compiler & Polyglot Runtime — Salsa query engine, incremental compilation, type checking, DAE/BLT solvers, simulation, optimization, parser/lexer codegen, WASM runtime, LSP, FMI, CoSim, CAD, ECAD, reasoner, MCP server, and core utilities |
 
 ### Languages (`languages/`)
 

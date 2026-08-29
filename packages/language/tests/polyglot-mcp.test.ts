@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { McpManifest } from "@modelscript/language";
-import { mcpPropertySchemaToZod, PolyglotMcpHost } from "../src/polyglot-server.js";
-import type { ServerContext } from "../src/types.js";
+import type { McpManifest } from "../src/codegen/compile_mcp.js";
+import { mcpPropertySchemaToZod, PolyglotMcpHost } from "../src/mcp/polyglot-server.js";
+import type { ServerContext } from "../src/mcp/types.js";
 
 describe("Polyglot MCP Host Engine", () => {
   test("converts declarative property schemas to Zod types correctly", () => {

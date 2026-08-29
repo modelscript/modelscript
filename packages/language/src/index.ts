@@ -20,4 +20,5 @@ export * from "./grammar.js";
 export * from "./reasoner/index.js";
 export * from "./runtime/config_client.js";
 export * from "./transformers/polyglot-transformer.js";
+export * as utils from "./utils/index.js";
 export * from "./workers/worker-pool.js";

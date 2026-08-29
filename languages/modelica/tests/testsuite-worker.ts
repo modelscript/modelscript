@@ -29,9 +29,9 @@ import { simulateArena } from "@modelscript/language/simulator";
 
 import { createWasmParser } from "@modelscript/language";
 import { ArenaDAEPrinter } from "@modelscript/language/compiler";
+import { StringWriter } from "@modelscript/language/utils";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
-import { StringWriter } from "@modelscript/utils";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

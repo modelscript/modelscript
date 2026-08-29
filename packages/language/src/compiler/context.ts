@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { FileSystem, Parser, Tree } from "@modelscript/utils";
+import type { FileSystem, Parser, Tree } from "../utils/index.js";
 import type { QueryEngine } from "./query-engine.js";
 import type { WorkspaceIndex } from "./workspace-index.js";
 

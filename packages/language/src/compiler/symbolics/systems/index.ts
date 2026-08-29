@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
-import type { JSONValue, Triple, Writer } from "@modelscript/utils";
-import { createHash } from "@modelscript/utils";
+import type { JSONValue, Triple, Writer } from "../../../utils/index.js";
+import { createHash } from "../../../utils/index.js";
 import {
   ArenaDAEBuilder,
   BinOp,

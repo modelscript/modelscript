@@ -26,7 +26,7 @@ import {
   ModelicaUnaryExpression,
   Scope,
 } from "@modelscript/language/compiler";
-import { createHash, makeWeakRef } from "@modelscript/utils";
+import { createHash, makeWeakRef } from "@modelscript/language/utils";
 import {
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,

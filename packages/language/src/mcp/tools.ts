@@ -1,22 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  executeBgpQuery,
-  executeQueryString,
-  formatBgpQueryResult,
-  formatQueryResult,
-  OntologyBuilder,
-  TableauReasoner,
-} from "@modelscript/language";
-import type { TopologyGraph } from "@modelscript/language/compiler";
-import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/language/compiler";
-import {
-  type ArenaSimulateOptions,
-  runArenaDoE,
-  runSensitivityAnalysisArena,
-  simulateArena,
-} from "@modelscript/language/simulator";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import { Context } from "@modelscript/modelica/context";
@@ -27,6 +11,22 @@ import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
 import { z } from "zod";
+import type { TopologyGraph } from "../compiler/index.js";
+import { UnifiedWorkspace, WorkspaceIndex } from "../compiler/index.js";
+import {
+  type ArenaSimulateOptions,
+  runArenaDoE,
+  runSensitivityAnalysisArena,
+  simulateArena,
+} from "../compiler/simulator/index.js";
+import {
+  executeBgpQuery,
+  executeQueryString,
+  formatBgpQueryResult,
+  formatQueryResult,
+  OntologyBuilder,
+  TableauReasoner,
+} from "../reasoner/index.js";
 import { NodeFileSystem } from "./filesystem.js";
 import type { ServerContext } from "./types.js";
 
@@ -373,7 +373,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         // Convert input record to Map
         const inputMap = new Map<string, { min: number; max: number }>();
         for (const [key, val] of Object.entries(inputs)) {
-          inputMap.set(key, val);
+          inputMap.set(key, val as { min: number; max: number });
         }
 
         const simOpts: ArenaSimulateOptions = {};
@@ -669,7 +669,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
 
       const reasoner = ctx.ontologyBuilder.backend;
-      const result = executeBgpQuery(reasoner, { patterns });
+      const result = executeBgpQuery(reasoner, { patterns: patterns as any });
 
       return {
         content: [{ type: "text" as const, text: formatBgpQueryResult(result) }],

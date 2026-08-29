@@ -122,13 +122,30 @@
       "types": "./dist/compiler/optimizer/*.d.ts",
       "default": "./dist/compiler/optimizer/*.js"
     },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
+    },
+    "./mcp/*": {
+      "types": "./dist/mcp/*.d.ts",
+      "default": "./dist/mcp/*.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "default": "./dist/utils/index.js"
+    },
+    "./utils/*": {
+      "types": "./dist/utils/*.d.ts",
+      "default": "./dist/utils/*.js"
+    },
     "./package.json": "./package.json"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "language-generate": "./bin/language-generate.js",
-    "modelscript-language": "./dist/compiler/cli.js"
+    "modelscript-language": "./dist/compiler/cli.js",
+    "modelscript-mcp": "./dist/mcp/main.js"
   },
   "files": [
     "package.json",
@@ -159,11 +176,11 @@
     "@antv/layout": "^0.3.25",
     "@antv/x6": "^3.1.7",
     "@antv/x6-plugin-selection": "^2.2.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",
     "@modelscript/step": "*",
     "@modelscript/sysml2": "*",
-    "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.5",
     "aedes": "^1.0.2",
     "aedes-server-factory": "^0.2.1",
@@ -171,10 +188,12 @@
     "commander": "^11.0.0",
     "fflate": "^0.8.2",
     "helmlab": "^0.11.9",
+    "media-typer": "^1.1.0",
     "mqtt": "^5.10.0",
     "occt-import-js": "^0.0.23",
     "opencascade.js": "^1.0.0",
     "pako": "^2.1.0",
+    "parse-data-url": "^6.0.0",
     "pg": "^8.13.0",
     "pino": "^10.3.1",
     "sql.js": "^1.14.1",
@@ -182,11 +201,13 @@
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",
     "web-tree-sitter": "^0.26.10",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@as-pect/cli": "^9.0.0",
     "@eslint/js": "^10.0.1",
+    "@types/media-typer": "^1.1.3",
     "@types/node": "^25.3.2",
     "@types/pako": "^2.0.4",
     "@types/pg": "^8.11.0",

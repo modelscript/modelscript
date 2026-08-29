@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { makeWeakRef } from "@modelscript/utils";
+import { makeWeakRef } from "../utils/index.js";
 
 /**
  * Minimal subset of the QueryDB interface used for arena-backed name resolution.
