@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { I18nExtractor } from "@modelscript/language/compiler";
+import { extractI18nConfig, I18nExtractor } from "@modelscript/language/compiler";
 import { Context } from "@modelscript/modelica/context";
-import { i18nConfig } from "@modelscript/modelica/indexer_config";
+import modelicaLang from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
 import { writeFileSync } from "node:fs";
 import Parser from "tree-sitter";
@@ -38,6 +38,7 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
+    const i18nConfig = extractI18nConfig(modelicaLang);
     const extractor = new I18nExtractor(i18nConfig);
 
     for (const path of args.paths) {

@@ -67,12 +67,10 @@ Source (.mo) → tree-sitter → CST
 
 ### Key Packages
 
-| Package               | Responsibility                                                                                                                                                                                                                |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `languages/modelica/` | tree-sitter grammar, AST wrappers, indexer hooks, `ArenaQueryFlattener`, `ArenaExprVisitor`                                                                                                                                   |
-| `packages/language/`  | Salsa query engine, `SymbolIndexer`, `WorkspaceIndex`, `ArenaDAEBuilder`, `ArenaDAEPrinter`, BLT solver, Simulation, Optimization, DSL compiler, parser/lexer codegen, WASM runtime, OWL2 reasoner, Datalog & SMT solver, LSP |
-| `packages/mcp/`       | Model Context Protocol (MCP) server & tools                                                                                                                                                                                   |
-| `packages/utils/`     | Common utilities                                                                                                                                                                                                              |
+| Package               | Responsibility                                                                                                                                                                                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `languages/modelica/` | tree-sitter grammar, AST wrappers, indexer hooks, `ArenaQueryFlattener`, `ArenaExprVisitor`                                                                                                                                                               |
+| `packages/language/`  | Salsa query engine, `SymbolIndexer`, `WorkspaceIndex`, `ArenaDAEBuilder`, `ArenaDAEPrinter`, BLT solver, Simulation, Optimization, DSL compiler, parser/lexer codegen, WASM runtime, OWL2 reasoner, Datalog & SMT solver, LSP, MCP server, core utilities |
 
 ### SymbolIndex Data Model
 

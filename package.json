@@ -32,7 +32,7 @@
     "build:all": "nx run-many --target=build --exclude=@modelscript/morsel --parallel=3",
     "clean": "nx run-many --target=clean",
     "predev": "mkdir -p data",
-    "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/web,@modelscript/ide,@modelscript/lsp --parallel=4",
+    "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/web,@modelscript/ide,@modelscript/language --parallel=4",
     "dev:docs": "npm run dev --workspace=@modelscript/docs",
     "dev:ide": "npm run dev --workspace=@modelscript/ide",
     "dev:vscode": "npm run test-web --workspace=extensions/vscode",
@@ -62,6 +62,7 @@
     "dompurify": "^3.4.0",
     "elliptic": "^6.6.1",
     "hono": "^4.12.14",
+    "three": "^0.184.0",
     "tree-sitter-cli": "0.26.9"
   },
   "dependencies": {

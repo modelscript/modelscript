@@ -11,9 +11,13 @@ export default function Home() {
   const [dataUrl, setDataUrl] = useState<DataUrl | false>(false);
   const [embed, setEmbed] = useState<boolean>(false);
   useEffect(() => {
-    if (location.hash.length > 0) setDataUrl(parseDataUrl(location.hash.substring(1)));
-    if (searchParams.get("embed") != null) setEmbed(true);
-    history.replaceState({}, "", "/");
-  }, [location]);
+    if (location.hash.length > 0) {
+      setDataUrl(parseDataUrl(location.hash.substring(1)));
+      history.replaceState({}, "", "/");
+    }
+    if (searchParams.get("embed") != null) {
+      setEmbed(true);
+    }
+  }, [location.hash, searchParams]);
   return <MorselEditor dataUrl={dataUrl ? dataUrl : null} embed={embed} />;
 }

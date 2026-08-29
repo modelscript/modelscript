@@ -19,18 +19,6 @@
       "types": "./dist/factory.d.ts",
       "default": "./dist/factory.js"
     },
-    "./config": {
-      "types": "./dist/src-gen/config.d.ts",
-      "default": "./dist/src-gen/config.js"
-    },
-    "./query-hooks": {
-      "types": "./dist/src-gen/query-hooks.d.ts",
-      "default": "./dist/src-gen/query-hooks.js"
-    },
-    "./ast": {
-      "types": "./dist/src-gen/ast.d.ts",
-      "default": "./dist/src-gen/ast.js"
-    },
     "./constraint-extractor": {
       "types": "./dist/constraint-extractor.d.ts",
       "default": "./dist/constraint-extractor.js"

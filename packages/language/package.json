@@ -144,7 +144,6 @@
   "types": "dist/index.d.ts",
   "bin": {
     "language-generate": "./bin/language-generate.js",
-    "modelscript-language": "./dist/compiler/cli.js",
     "modelscript-mcp": "./dist/mcp/main.js"
   },
   "files": [
@@ -158,10 +157,13 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build:templates && tsc && npm run build:browser",
+    "asbuild": "npm run asbuild:debug && npm run asbuild:release",
+    "asbuild:debug": "asc assembly/index.ts --target debug",
+    "asbuild:release": "asc assembly/index.ts --target release",
+    "build": "npm run clean && npm run asbuild && npm run build:templates && tsc && npm run build:browser",
     "build:browser": "node scripts/build-browser.js",
     "build:templates": "node scripts/bundle-templates.js",
-    "clean": "rimraf dist src/src-gen",
+    "clean": "rimraf dist src/src-gen build",
     "lint": "eslint src",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:diagnostics": "tsx tests/test-diagnostics.ts",
@@ -213,6 +215,7 @@
     "@types/pg": "^8.11.0",
     "@types/sql.js": "^1.4.11",
     "@types/ws": "^8.18.0",
+    "@webgpu/types": "^0.1.70",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.1",
     "prettier": "^3.6.2",

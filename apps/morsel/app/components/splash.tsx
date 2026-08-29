@@ -203,7 +203,7 @@ const ModelGridItem: React.FC<{
         e.currentTarget.style.transform = "translateY(0)";
       }}
     >
-      <ModelPreview />
+      <ModelPreview model={model} colorMode={colorMode} />
       <span
         style={{
           fontSize: 14,

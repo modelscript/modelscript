@@ -8,7 +8,7 @@
     "module": "nodenext",
     "target": "esnext",
     "lib": ["esnext", "dom", "dom.iterable"],
-    "types": ["node"],
+    "types": ["node", "@webgpu/types"],
 
     "sourceMap": true,
     "declaration": true,

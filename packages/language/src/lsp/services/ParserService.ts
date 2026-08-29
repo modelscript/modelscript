@@ -13,6 +13,7 @@ import {
   TokenData,
 } from "../../compiler/index.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
+import { getCompositeName } from "../utils/hierarchyUtils.js";
 import {
   loadDependencyFromRegistry,
   LoaderContext,
@@ -323,7 +324,7 @@ export class ParserService {
         `[lsp] Parser ready. Early-validating ${this.documents.all().length} open documents for syntax errors.`,
       );
       for (const doc of this.documents.all()) {
-        await validateTextDocument(doc);
+        await (validationService?.validateTextDocument?.(doc) ?? (globalThis as any).validateTextDocument?.(doc));
       }
       this.connection.sendNotification("modelscript/status", {
         state: "loading",
@@ -432,11 +433,27 @@ export class ParserService {
           } else if (useLocalMsl && dep.name === "SysML" && dep.version === "2026.3.0") {
             await loadSysML2StandardLibrary(serverDistBase, loaderCtx);
           } else {
-            await loadDependencyFromRegistry(dep, loaderCtx);
+            try {
+              await loadDependencyFromRegistry(dep, loaderCtx);
+            } catch (regErr) {
+              if (dep.name === "Modelica") {
+                this.connection.console.warn(
+                  `[lsp] Registry load failed for Modelica, falling back to local MSL zip: ${regErr}`,
+                );
+                await loadMSL(serverDistBase, loaderCtx);
+              } else if (dep.name === "SysML") {
+                this.connection.console.warn(
+                  `[lsp] Registry load failed for SysML, falling back to local SysML zip: ${regErr}`,
+                );
+                await loadSysML2StandardLibrary(serverDistBase, loaderCtx);
+              } else {
+                throw regErr;
+              }
+            }
           }
           if (validationService) validationService.markDependencyLoaded(dep.name, dep.version);
         } catch (err) {
-          this.connection.console.warn(`[lsp] Failed to load ${dep.name}@${dep.version} from registry: ${err}`);
+          this.connection.console.warn(`[lsp] Failed to load ${dep.name}@${dep.version}: ${err}`);
           // Mark loaded anyway so we don't permanently block readiness
           if (validationService) validationService.markDependencyLoaded(dep.name, dep.version);
         }
@@ -533,7 +550,7 @@ export class ParserService {
       } else {
         engine = createModelicaQueryEngine(
           unifiedIndex,
-          getSharedCstTreeWrapper(),
+          this.getSharedCstTreeWrapper(),
           savedLoaderCtx?.cacheStore,
           100_000,
         ) as any;

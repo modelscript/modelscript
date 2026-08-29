@@ -15,7 +15,7 @@ function copyAssets() {
     ["../../languages/step/dist/parser.wasm", "server/dist/tree-sitter-step.wasm"],
     ["../../languages/owl2/dist/parser.wasm", "server/dist/tree-sitter-owl2.wasm"],
     ["../../languages/csv/tree-sitter-csv.wasm", "server/dist/tree-sitter-csv.wasm"],
-    ["../../packages/compiler/build/release.wasm", "server/dist/release.wasm"],
+    ["../../packages/language/build/release.wasm", "server/dist/release.wasm"],
     ["../../node_modules/occt-import-js/dist/occt-import-js.wasm", "server/dist/occt-import-js.wasm"],
     ["../../scripts/ModelicaStandardLibrary_v4.1.0.zip", "server/dist/ModelicaStandardLibrary_v4.1.0.zip"],
     ["../../scripts/SysML-v2-Release-2026-03.zip", "server/dist/SysML-v2-Release-2026-03.zip"],

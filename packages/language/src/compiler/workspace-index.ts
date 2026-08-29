@@ -754,6 +754,7 @@ export class WorkspaceIndex {
           type: "INDEX_BATCH",
           batchId: ++batchId,
           serverDistBase,
+          hooks: this.hooks,
           files: filesData,
         });
       };

@@ -31,11 +31,11 @@ export default defineConfig(({ isSsrBuild }) => {
             // The LSP server resolves paths as ${extensionUri}/server/dist/...
             // With extensionUri = origin + "/lsp", files are served at /lsp/server/dist/...
             {
-              src: "../../packages/lsp/dist/browserServerMain.js",
+              src: "../../packages/language/dist/lsp/browserServerMain.js",
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/lsp/dist/workers/indexer.worker.js",
+              src: "../../packages/language/dist/lsp/workers/indexer.worker.js",
               dest: "lsp/server/dist/workers",
             },
             {
@@ -59,6 +59,10 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
+              src: "../../packages/language/build/release.wasm",
+              dest: "lsp/server/dist",
+            },
+            {
               src: "../../node_modules/occt-import-js/dist/occt-import-js.wasm",
               dest: "lsp/server/dist",
             },
@@ -78,6 +82,7 @@ export default defineConfig(({ isSsrBuild }) => {
       minify: false,
     },
     resolve: {
+      dedupe: ["react", "react-dom", "react-router", "styled-components", "@primer/react", "three"],
       alias: {
         // web-tree-sitter 0.26.x imports "fs/promises" dynamically;
         // vite-plugin-node-polyfills maps "fs" → empty.js but not
@@ -85,9 +90,40 @@ export default defineConfig(({ isSsrBuild }) => {
         "fs/promises": "node-stdlib-browser/mock/empty",
       },
     },
+    optimizeDeps: {
+      include: [
+        "@antv/layout",
+        "@antv/x6",
+        "@monaco-editor/react",
+        "@primer/octicons-react",
+        "@primer/react",
+        "@react-three/drei",
+        "@react-three/fiber",
+        "@react-three/xr",
+        "lodash",
+        "lodash/debounce",
+        "lodash.debounce",
+        "monaco-editor",
+        "mqtt",
+        "pako",
+        "papaparse",
+        "parse-data-url",
+        "react",
+        "react-dom",
+        "react-dropzone",
+        "react-markdown",
+        "recharts",
+        "styled-components",
+        "three",
+        "vscode-languageserver-protocol/browser",
+      ],
+    },
     server: {
       port: 3002,
       strictPort: true,
+      fs: {
+        allow: [path.resolve(import.meta.dirname, "../..")],
+      },
       proxy: {
         "/api/v1": {
           target: "http://127.0.0.1:3000",

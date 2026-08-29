@@ -1,6 +1,4 @@
 import { createWasmParser, TreeSitterParser as Parser } from "@modelscript/language";
-import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config";
-import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/config";
 import type {
   IndexerBatchError,
   IndexerBatchRequest,
@@ -36,7 +34,7 @@ async function initParsers(serverDistBase: string) {
 self.onmessage = async (e: MessageEvent<IndexerBatchRequest>) => {
   if (e.data.type !== "INDEX_BATCH") return;
 
-  const { batchId, serverDistBase, files } = e.data;
+  const { batchId, serverDistBase, files, hooks: requestHooks } = e.data;
 
   try {
     await initParsers(serverDistBase);
@@ -46,7 +44,7 @@ self.onmessage = async (e: MessageEvent<IndexerBatchRequest>) => {
     for (const file of files) {
       const isSysml = file.uri.endsWith(".sysml");
       const activeParser = isSysml ? sysml2Parser : parser;
-      const hooks = isSysml ? sysml2IndexerHooks : modelicaIndexerHooks;
+      const hooks = requestHooks ?? [];
 
       if (!activeParser) continue;
 

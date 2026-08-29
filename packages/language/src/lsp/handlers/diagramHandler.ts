@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import { LspContext } from "../LspContext.js";
-import { cadComponentsCache, flattenArenaFromInstance, simpleHash } from "../browserServerMain.js";
+import { cadComponentsCache, simpleHash } from "../browserServerMain.js";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
 import { generateDroneChassisGeometry } from "./drone-chassis-geometry.js";
 
@@ -90,11 +90,6 @@ export function registerDiagramHandlers(context: LspContext) {
   );
 
   context.connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) => {
-    const instances = context.workspaceManager.documentInstances.get(params.uri);
-    if (!instances || instances.length === 0) {
-      return [];
-    }
-
     // Check cache using the same content-hash strategy as the diagram cache
     const effectiveUri = params.uri.startsWith("modelscript-lib://global")
       ? "file://" + params.uri.substring("modelscript-lib://global".length)
@@ -106,13 +101,30 @@ export function registerDiagramHandlers(context: LspContext) {
       return cached.data;
     }
 
-    const classInstance = instances[0];
-
     try {
-      const docContext = context.workspaceManager.documentContexts.get(params.uri);
-      if (!context) return [];
+      const sharedContext = context.parserService.sharedContext;
+      if (!sharedContext) return [];
 
-      const arena = flattenArenaFromInstance(classInstance, docContext);
+      const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      let targetClassName: string | undefined;
+      let targetSymbolId: number | undefined;
+
+      for (const [id, entry] of unifiedIndex.symbols.entries()) {
+        if (
+          entry.resourceId === params.uri &&
+          (entry.kind === "Class" || entry.kind === "Def") &&
+          entry.parentId === null
+        ) {
+          targetSymbolId = id;
+          targetClassName = entry.name;
+          break;
+        }
+      }
+
+      if (!targetClassName) return [];
+
+      const arena = sharedContext.flattenArena(targetClassName, targetSymbolId, params.uri);
+      if (!arena) return [];
 
       const data: any[] = [];
       for (let i = 0; i < arena.varCount; i++) {

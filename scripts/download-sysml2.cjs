@@ -18,37 +18,12 @@ if (fs.existsSync(DEST)) {
   process.exit(0);
 }
 
-console.log(`[download-sysml2] Downloading SysML v2 release...`);
-
-function download(url, dest) {
-  return new Promise((resolve, reject) => {
-    const follow = (u) => {
-      https
-        .get(u, (res) => {
-          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            follow(res.headers.location);
-            return;
-          }
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode} for ${u}`));
-            return;
-          }
-          const file = fs.createWriteStream(dest);
-          res.pipe(file);
-          file.on("finish", () => file.close(resolve));
-          file.on("error", reject);
-        })
-        .on("error", reject);
-    };
-    follow(url);
-  });
-}
-
 const FULL_ZIP = path.join(__dirname, "_sysml2-full.zip");
 
-download(URL, FULL_ZIP)
-  .then(() => {
-    console.log(`[download-sysml2] Downloaded full release, extracting sysml.library...`);
+try {
+  console.log(`[download-sysml2] Downloading SysML v2 release...`);
+  execSync(`curl -L -C - --retry 5 --retry-delay 2 -o "${FULL_ZIP}" "${URL}"`, { stdio: "inherit" });
+  console.log(`[download-sysml2] Downloaded full release, extracting sysml.library...`);
 
     // Create a temp directory for extraction
     const tmpDir = path.join(__dirname, "_sysml2-extract");
@@ -74,18 +49,12 @@ download(URL, FULL_ZIP)
       fs.rmSync(tmpDir, { recursive: true, force: true });
       fs.unlinkSync(FULL_ZIP);
     }
-  })
-  .catch((err) => {
-    console.error(`[download-sysml2] Failed: ${err.message}`);
-    try {
-      fs.unlinkSync(FULL_ZIP);
-    } catch {
-      /* ignore */
-    }
-    try {
-      fs.unlinkSync(DEST);
-    } catch {
-      /* ignore */
-    }
-    process.exit(1);
-  });
+} catch (err) {
+  console.error(`[download-sysml2] Failed: ${err.message}`);
+  try {
+    fs.unlinkSync(DEST);
+  } catch {
+    /* ignore */
+  }
+  process.exit(1);
+}

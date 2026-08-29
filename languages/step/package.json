@@ -19,18 +19,6 @@
       "types": "./src-gen/bindings.d.ts",
       "default": "./src-gen/bindings.js"
     },
-    "./config": {
-      "types": "./dist/src-gen/config.d.ts",
-      "default": "./dist/src-gen/config.js"
-    },
-    "./query-hooks": {
-      "types": "./dist/src-gen/query-hooks.d.ts",
-      "default": "./dist/src-gen/query-hooks.js"
-    },
-    "./ast": {
-      "types": "./dist/src-gen/ast.d.ts",
-      "default": "./dist/src-gen/ast.js"
-    },
     "./mapper": {
       "types": "./dist/step-multibody-mapper.d.ts",
       "default": "./dist/step-multibody-mapper.js"

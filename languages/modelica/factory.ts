@@ -10,15 +10,27 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { LSPBridge, PositionIndex, QueryEngine, ScopeResolver, WorkspaceIndex } from "@modelscript/language/compiler";
+import {
+  extractIndexerHooks,
+  extractQueryHooksMap,
+  extractRefHooks,
+  LSPBridge,
+  PositionIndex,
+  QueryEngine,
+  ScopeResolver,
+  WorkspaceIndex,
+} from "@modelscript/language/compiler";
 
+import csvLangDef from "@modelscript/csv/language";
 import * as ModelicaAST from "./ast.js";
+import modelicaLangDef from "./language.js";
 
-import { INDEXER_HOOKS, REF_HOOKS } from "./src-gen/config.js";
-import { QUERY_HOOKS } from "./src-gen/query-hooks.js";
+const INDEXER_HOOKS = extractIndexerHooks(modelicaLangDef);
+const QUERY_HOOKS = extractQueryHooksMap(modelicaLangDef);
+const REF_HOOKS = extractRefHooks(modelicaLangDef);
 
-import { INDEXER_HOOKS as csvIndexerHooks } from "@modelscript/csv/config";
-import { QUERY_HOOKS as csvQueryHooks } from "@modelscript/csv/query-hooks";
+const csvIndexerHooks = extractIndexerHooks(csvLangDef);
+const csvQueryHooks = extractQueryHooksMap(csvLangDef);
 
 import {
   ModelicaArrayClassInstance,

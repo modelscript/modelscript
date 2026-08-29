@@ -310,6 +310,7 @@ function SceneContents({
   onSelect,
   dark,
   animationController,
+  vtkBuffer,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;

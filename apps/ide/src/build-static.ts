@@ -74,7 +74,7 @@ if (sysml2WasmSrc) {
 }
 
 // Ensure release.wasm (compiler BLT solver) is copied
-const releaseWasmSrc = resolve(__dirname, "..", "..", "..", "packages", "compiler", "build", "release.wasm");
+const releaseWasmSrc = resolve(__dirname, "..", "..", "..", "packages", "language", "build", "release.wasm");
 const releaseWasmDest = join(extDestDir, "server", "dist", "release.wasm");
 if (existsSync(releaseWasmSrc)) {
   cpSync(releaseWasmSrc, releaseWasmDest);

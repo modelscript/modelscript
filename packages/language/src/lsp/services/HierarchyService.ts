@@ -8,7 +8,16 @@ import {
   type ModelicaComponentInstance,
   TreeNodeInfo,
 } from "../../compiler/index.js";
-import { fqnCacheState } from "../utils/hierarchyUtils.js";
+import {
+  CLASS_KIND_KEYWORDS,
+  SYSML2_RULE_TO_KIND,
+  SYSML2_TREE_KINDS,
+  classKindFromEntry,
+  fqnCacheState,
+  getCompositeName,
+  hasClassChildren,
+  isTreeVisible,
+} from "../utils/hierarchyUtils.js";
 import { DocumentManager } from "./DocumentManager.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 

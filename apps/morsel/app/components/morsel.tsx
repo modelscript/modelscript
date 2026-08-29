@@ -46,6 +46,8 @@ import {
   didOpen,
   getCadComponents,
   getDiagramData,
+  installDependency,
+  parseCode,
   simulate,
 } from "~/util/lsp-bridge";
 import { startLsp } from "~/util/lsp-worker";
@@ -178,6 +180,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [diagramData, setDiagramData] = useState<any>(null);
   const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
+  const [documentModels, setDocumentModels] = useState<{ name: string; kind: string }[]>([]);
   const isSpatialEditPending = useRef(false);
   const diagramEditorRef = useRef<DiagramEditorHandle>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -326,11 +329,45 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [mqtt.latestValues, cosimDataSource]);
 
-  // Collect all displayable models/blocks from root-level class instances
-  // Supports multiple root-level models as well as nested models within a single root package
-  const nestedModels = useMemo(() => {
-    return [];
-  }, []);
+  // Collect all displayable models/blocks defined in current document
+  const nestedModels = documentModels;
+
+  // Extract models/blocks defined in the current document for model tabs
+  useEffect(() => {
+    let cancelled = false;
+    const updateDocumentModels = async () => {
+      try {
+        const text = editorRef.current?.getValue() || content;
+        if (!text) return;
+        const res = await parseCode(text);
+        if (cancelled) return;
+        if (res && res.classes) {
+          setDocumentModels(res.classes);
+          if (res.classes.length > 0) {
+            setSelectedTreeClassName((prev) => {
+              if (prev && res.classes.some((c) => c.name === prev)) return prev;
+              return res.classes[0].name;
+            });
+          }
+        }
+      } catch {
+        // ignore parse error during active typing
+      }
+    };
+    updateDocumentModels();
+    return () => {
+      cancelled = true;
+    };
+  }, [contextVersion, content]);
+
+  // Keep selectedModelIndex in sync with selectedTreeClassName
+  useEffect(() => {
+    if (!selectedTreeClassName || nestedModels.length === 0) return;
+    const idx = nestedModels.findIndex((m) => m.name === selectedTreeClassName);
+    if (idx !== -1 && idx !== selectedModelIndex) {
+      setSelectedModelIndex(idx);
+    }
+  }, [selectedTreeClassName, nestedModels, selectedModelIndex]);
 
   useEffect(() => {
     if (!props.embed) {
@@ -1099,11 +1136,10 @@ end Manufacturing;`,
                   >
                     {nestedModels.map((model, index) => (
                       <button
-                        key={(model as any).compositeName ?? index}
+                        key={(model as any).name ?? index}
                         onClick={() => {
                           setSelectedModelIndex(index);
-                          (model as any).instantiate?.();
-                          setDiagramData(model as any);
+                          setSelectedTreeClassName(model.name);
                         }}
                         style={{
                           padding: "6px 16px",
@@ -1977,54 +2013,21 @@ end Manufacturing;`,
             isOpen={isAddLibraryOpen}
             onDismiss={() => setIsAddLibraryOpen(false)}
             translations={translations}
-            onAddLibrary={async (item, type) => {
-              // Library loading is now handled by LSP
-              return;
+            onInstallPackage={async (packageName, version) => {
               try {
-                let path: string;
-                let data: ArrayBuffer;
-                if (type === "file" && (item as any) instanceof File) {
-                  path = `/usr/${(item as File).name.replace(/\.zip$/i, "")}`;
-                  data = await (item as File).arrayBuffer();
-                } else if (type === "url") {
-                  const url = item as string;
-                  let response: Response | undefined;
-                  const cache = await caches.open("modelscript-libraries");
-                  response = await cache.match(url);
-
-                  if (!response) {
-                    try {
-                      response = await fetch(url);
-                      if (!response!.ok) {
-                        throw new Error("Direct fetch failed");
-                      }
-                    } catch (e) {
-                      try {
-                        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-                        response = await fetch(proxyUrl);
-                      } catch (proxyError) {
-                        throw new Error(
-                          `Failed to fetch library from ${url}: ${proxyError instanceof Error ? (proxyError as Error).message : String(proxyError)}`,
-                          { cause: proxyError },
-                        );
-                      }
-                    }
-                    if (!response || !(response as Response).ok) {
-                      throw new Error(
-                        `Failed to fetch library: ${response?.status} ${response?.statusText || "Unknown Error"}`,
-                      );
-                    }
-                    await cache.put(url, response!.clone());
-                  }
-                  data = await response!.arrayBuffer();
-                  const fileName = url.split("/").pop() || "library.zip";
-                  path = `/usr/${fileName.replace(/\.zip$/i, "")}`;
-                } else {
-                  return;
-                }
-                // await mountLibrary(path, data);
-                // Library filesystem access is handled by LSP
+                await installDependency(packageName, version);
                 setContextVersion((v) => v + 1);
+              } catch (e) {
+                console.error("Failed to install package:", e);
+                alert("Failed to install package: " + (e instanceof Error ? e.message : String(e)));
+              }
+            }}
+            onAddLibrary={async (item, type) => {
+              try {
+                if (type === "file" && item instanceof File) {
+                  // Custom file zip handling
+                  setContextVersion((v) => v + 1);
+                }
               } catch (error) {
                 console.error(error);
                 alert("Failed to add library: " + ((error as any)?.message ?? String(error)));

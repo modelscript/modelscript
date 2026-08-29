@@ -10,18 +10,20 @@ import {
   PositionIndex,
   QueryEngine,
   ScopeResolver,
-  type VerificationResult,
   WorkspaceIndex,
+  extractIndexerHooks,
+  extractQueryHooksMap,
+  extractRefHooks,
+  type VerificationResult,
 } from "@modelscript/language/compiler";
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/language/diagram/builder";
+import { sysml2Language } from "./src/language.js";
 
-import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from "./src-gen/config.js";
-import { QUERY_HOOKS } from "./src-gen/query-hooks.js";
-
-const indexerHooks = INDEXER_HOOKS ?? (globalThis as any).__sysml2IndexerHooksFallback;
-export const queryHooks = QUERY_HOOKS ?? (globalThis as any).__sysml2QueryHooksFallback;
-const refHooks = REF_HOOKS ?? (globalThis as any).__sysml2RefHooksFallback;
-const gfxConfig = sysml2GraphicsConfig ?? {};
+const indexerHooks = extractIndexerHooks(sysml2Language) ?? (globalThis as any).__sysml2IndexerHooksFallback ?? [];
+export const queryHooks =
+  extractQueryHooksMap(sysml2Language) ?? (globalThis as any).__sysml2QueryHooksFallback ?? new Map();
+const refHooks = extractRefHooks(sysml2Language) ?? (globalThis as any).__sysml2RefHooksFallback ?? [];
+const gfxConfig = (sysml2Language as any).graphicsConfig ?? {};
 
 // Convert refHooks into indexerHooks so reference nodes get indexed too.
 // The resolver needs reference entries in the index to detect unresolved refs.

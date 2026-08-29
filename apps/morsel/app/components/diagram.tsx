@@ -69,7 +69,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (g) g.zoomToFit({ maxScale: 1, padding: 20 });
     },
     layout: () => {
-      // Ignored for now
+      if (typeof window !== "undefined") {
+        window.postMessage({ type: "autoLayout" }, "*");
+      }
     },
   }));
 

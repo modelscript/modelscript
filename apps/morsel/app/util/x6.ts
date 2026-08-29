@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import {
-  ModelicaClassKind,
+  computeHeight,
+  computeIconPlacement,
+  computePortPlacement,
+  computeWidth,
+  convertColor,
+  convertPoint,
+  convertSmoothPath,
+  evaluateCondition,
+  renderText,
   Smooth,
   TextAlignment,
   type IBitmap,
@@ -16,17 +25,6 @@ import {
   type IPolygon,
   type IRectangle,
   type IText,
-} from "@modelscript/modelica/ast";
-import {
-  computeHeight,
-  computeIconPlacement,
-  computePortPlacement,
-  computeWidth,
-  convertColor,
-  convertPoint,
-  convertSmoothPath,
-  evaluateCondition,
-  renderText,
 } from "@modelscript/modelica/diagram";
 import { ModelicaComponentInstance, type ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { Marker, Svg } from "@svgdotjs/svg.js";
@@ -420,7 +418,7 @@ export function renderTextX6(
   svg.style.visibility = "hidden";
   svg.style.pointerEvents = "none";
   document.body.appendChild(svg);
-  const text = renderText(new Svg(svg).group(), graphicItem, classInstance, componentInstance);
+  const text = renderText(new Svg(svg).group(), graphicItem, classInstance ?? componentInstance);
   document.body.removeChild(svg);
   const [x1, y1] = convertPoint(graphicItem?.extent?.[0], [0, 0]);
   const [x2, y2] = convertPoint(graphicItem?.extent?.[1], [0, 0]);

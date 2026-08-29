@@ -19,15 +19,13 @@ COPY package.json package-lock.json ./
 COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
 COPY languages/modelica/bindings languages/modelica/bindings
 COPY languages/modelica/src languages/modelica/src
-COPY packages/core/package.json packages/core/
+COPY packages/language/package.json packages/language/
 COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
-COPY packages/lsp/package.json packages/lsp/
 COPY extensions/vscode/package.json extensions/vscode/
 COPY apps/ide/package.json apps/ide/
-COPY packages/cosim/package.json packages/cosim/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 # Build native addon from committed parser source
 RUN cd languages/modelica && npx node-gyp rebuild
@@ -43,8 +41,7 @@ RUN npx nx build @modelscript/api
 
 
 FROM deps AS build-api-true
-COPY packages/core/dist packages/core/dist
-COPY packages/cosim/dist packages/cosim/dist
+COPY packages/language/dist packages/language/dist
 COPY apps/api/dist apps/api/dist
 
 FROM build-api-${PREBUILT} AS build-api
@@ -52,23 +49,20 @@ FROM build-api-${PREBUILT} AS build-api
 FROM node:22-alpine AS api
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/core/package.json packages/core/
-COPY packages/cosim/package.json packages/cosim/
+COPY packages/language/package.json packages/language/
 COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
 COPY languages/modelica/bindings languages/modelica/bindings
 COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
-COPY packages/lsp/package.json packages/lsp/
 COPY extensions/vscode/package.json extensions/vscode/
 COPY apps/ide/package.json apps/ide/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=deps /app/languages/modelica/src languages/modelica/src
 COPY --from=deps /app/languages/modelica/build languages/modelica/build
 COPY --from=deps /app/node_modules/@modelscript/modelica node_modules/@modelscript/modelica
-COPY --from=build-api /app/packages/core/dist packages/core/dist
-COPY --from=build-api /app/packages/cosim/dist packages/cosim/dist
+COPY --from=build-api /app/packages/language/dist packages/language/dist
 COPY --from=build-api /app/apps/api/dist apps/api/dist
 EXPOSE 3000
 ENV NODE_ENV=production
@@ -164,8 +158,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
-COPY packages/core/package.json packages/core/
-COPY packages/lsp/package.json packages/lsp/
+COPY packages/language/package.json packages/language/
 COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=build-ide /app/apps/ide/dist apps/ide/dist
@@ -193,8 +186,7 @@ RUN npx nx build @modelscript/cli
 
 
 FROM deps AS build-cli-true
-COPY packages/core/dist packages/core/dist
-COPY packages/cosim/dist packages/cosim/dist
+COPY packages/language/dist packages/language/dist
 COPY apps/cli/dist apps/cli/dist
 
 FROM build-cli-${PREBUILT} AS build-cli
@@ -202,8 +194,7 @@ FROM build-cli-${PREBUILT} AS build-cli
 FROM node:22-alpine AS cli
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/core/package.json packages/core/
-COPY packages/cosim/package.json packages/cosim/
+COPY packages/language/package.json packages/language/
 COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
 COPY languages/modelica/bindings languages/modelica/bindings
 COPY apps/cli/package.json apps/cli/
@@ -211,8 +202,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=deps /app/languages/modelica/src languages/modelica/src
 COPY --from=deps /app/languages/modelica/build languages/modelica/build
 COPY --from=deps /app/node_modules/@modelscript/modelica node_modules/@modelscript/modelica
-COPY --from=build-cli /app/packages/core/dist packages/core/dist
-COPY --from=build-cli /app/packages/cosim/dist packages/cosim/dist
+COPY --from=build-cli /app/packages/language/dist packages/language/dist
 COPY --from=build-cli /app/apps/cli/dist apps/cli/dist
 ENV NODE_ENV=production
 # The container will run as an executable CLI

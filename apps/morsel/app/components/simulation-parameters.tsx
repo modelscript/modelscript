@@ -97,7 +97,11 @@ function NumericParameterRow({
           size="small"
           variant="invisible"
           onClick={toggleSweep}
-          sx={{ color: isSweeping ? "var(--fgColor-accent)" : "var(--fgColor-muted)", mr: 1, padding: "0 4px" }}
+          style={{
+            color: isSweeping ? "var(--fgColor-accent, #0969da)" : "var(--fgColor-muted, #656d76)",
+            marginRight: 4,
+            padding: "0 4px",
+          }}
         />
       )}
       {isSweeping && sweepState ? (

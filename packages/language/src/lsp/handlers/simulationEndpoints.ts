@@ -7,7 +7,66 @@ import { ArenaDAEBuilder, Causality } from "../../compiler/index.js";
 import { simulateArena, simulateArenaAsync } from "../../compiler/simulator/index.js";
 import { LspContext } from "../LspContext.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
+import { getCompositeName } from "../utils/hierarchyUtils.js";
 import { ModelScriptParticipant } from "./modelscriptParticipant.js";
+
+function resolveTargetClass(
+  context: LspContext,
+  uri: string,
+  className?: string,
+): { symbolId: number; className: string; classKind: string } | null {
+  const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+  if (className) {
+    const parts = className.split(".");
+    const candidates = unifiedIndex.byName.get(parts[parts.length - 1]);
+    if (candidates && candidates.length > 0) {
+      for (const id of candidates) {
+        const entry = unifiedIndex.symbols.get(id);
+        if (entry && (entry.name === className || getCompositeName(entry, unifiedIndex) === className)) {
+          return {
+            symbolId: id,
+            className: entry.name,
+            classKind: (entry.metadata?.classKind as string) ?? "class",
+          };
+        }
+      }
+    }
+  }
+
+  // Fallback: search for top-level class in the specified URI
+  for (const [id, entry] of unifiedIndex.symbols.entries()) {
+    if (entry.resourceId === uri && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+      return {
+        symbolId: id,
+        className: entry.name,
+        classKind: (entry.metadata?.classKind as string) ?? "class",
+      };
+    }
+  }
+
+  return null;
+}
+
+function flattenTargetClass(
+  context: LspContext,
+  uri: string,
+  className?: string,
+): { arena: ArenaDAEBuilder; target: { symbolId: number; className: string; classKind: string } } | { error: string } {
+  const target = resolveTargetClass(context, uri, className);
+  if (!target) {
+    return { error: `No class definition found for '${className || uri}'` };
+  }
+  const sharedContext = context.parserService.sharedContext;
+  if (!sharedContext) {
+    return { error: "Shared Context not ready." };
+  }
+  const arena = sharedContext.flattenArena(target.className, target.symbolId, uri);
+  if (!arena) {
+    return { error: `Failed to flatten class '${target.className}'` };
+  }
+  return { arena, target };
+}
+
 export function registerSimulationEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/simulate",
@@ -40,37 +99,18 @@ export function registerSimulationEndpoints(context: LspContext) {
       error?: string;
       sweepResults?: { value: number; y: number[][] }[];
     }> => {
-      context.connection.console.info(`[simulate] Requested simulation for URI: ${params.uri}`);
       context.connection.console.info(
-        `[simulate] context.workspaceManager.documentInstances has ${context.workspaceManager.documentInstances.size} entries.`,
+        `[simulate] Requested simulation for URI: ${params.uri} class: ${params.className}`,
       );
-      let instances = context.workspaceManager.documentInstances.get(params.uri);
-      if (!instances || instances.length === 0) {
-        // Force-validate the document so the polyglot index is populated
-        const doc = context.documents.get(params.uri);
-        if (doc) {
-          context.connection.console.info(`[simulate] No instances yet — force-validating ${params.uri}`);
-          await context.validationService.validateTextDocument(doc);
-          instances = context.workspaceManager.documentInstances.get(params.uri);
-        }
-      }
-      if (!instances || instances.length === 0) {
-        context.connection.console.info(
-          `[simulate] Instances array empty/undefined for ${params.uri}. Available URIs: ${Array.from(context.workspaceManager.documentInstances.keys()).join(", ")}`,
-        );
-        return { t: [], y: [], states: [], error: "No class instances found for this document." };
-      }
-
-      let classInstance = instances[0];
-      if (params.className) {
-        const found = instances.find((i) => i.name === params.className);
-        if (found) classInstance = found;
+      const doc = context.documents.get(params.uri);
+      if (doc) {
+        await context.validationService.validateTextDocument(doc);
+        const inflight = context.state.activeValidationPromises.get(params.uri);
+        if (inflight) await inflight;
       }
 
       try {
-        // Ensure the full MSL index is available before flattening — the flattener
-        // resolves component types like Modelica.Electrical.Analog.Sources.SineVoltage
-        // which require MSL to be fully indexed.
+        // Ensure MSL index is ready if dependencies are pending
         if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
           context.connection.console.info(`[simulate] MSL not fully indexed — forcing full index...`);
           context.connection.sendNotification("modelscript/status", {
@@ -79,39 +119,15 @@ export function registerSimulationEndpoints(context: LspContext) {
           });
           await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
           context.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-
-          // Re-create the query engine with the full unified index
-          const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-          injectPredefinedTypes(fullIndex);
-          const engine = params.uri.endsWith(".sysml")
-            ? context.workspaceManager.globalSysML2QueryEngine
-            : context.workspaceManager.globalModelicaQueryEngine;
-          if (engine) {
-            engine.updateIndex(fullIndex);
-            const resolver = (engine as any).__resolverCache;
-            if (resolver) resolver.updateIndex(fullIndex);
-          }
-
-          // Re-validate to rebuild instances with full index
-          const doc = context.documents.get(params.uri);
-          if (doc) await context.validationService.validateTextDocument(doc);
-          instances = context.workspaceManager.documentInstances.get(params.uri);
-          if (!instances || instances.length === 0) {
-            return { t: [], y: [], states: [], error: "No class instances found after MSL indexing." };
-          }
-          classInstance = params.className
-            ? (instances.find((i) => i.name === params.className) ?? instances[0])
-            : instances[0];
         }
 
-        const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!docContext) {
-          return { t: [], y: [], states: [], error: `No Modelica context found for URI '${params.uri}'` };
+        const flat = flattenTargetClass(context, params.uri, params.className);
+        if ("error" in flat) {
+          return { t: [], y: [], states: [], error: flat.error };
         }
+        const { arena, target } = flat;
 
-        const arena = flattenArenaFromInstance(classInstance, docContext);
-
-        if (classInstance.classKind === "process") {
+        if (target.classKind === "process") {
           context.connection.console.info(`[simulate] Detected process. Launching Co-Simulation Orchestrator...`);
           const session = new CoSimSession("vscode-cosim");
           const exp = arena.experiment;
@@ -132,7 +148,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             { name: "gateInlet.m_flow", causality: "output", type: "Real" },
           ];
 
-          const modelica = new ModelScriptParticipant("1d-solver", classInstance.name, arena);
+          const modelica = new ModelScriptParticipant("1d-solver", target.className, arena);
 
           session.addParticipant(cfd);
           session.addParticipant(modelica);
@@ -290,24 +306,12 @@ export function registerSimulationEndpoints(context: LspContext) {
       variables?: { name: string; causality: string }[];
       error?: string;
     } => {
-      const instances = context.workspaceManager.documentInstances.get(params.uri);
-      if (!instances || instances.length === 0) {
-        return { ok: false, error: "No class instances found for this document." };
-      }
-
-      let classInstance = instances[0];
-      if (params.className) {
-        const found = instances.find((i) => i.name === params.className);
-        if (found) classInstance = found;
-      }
-
       try {
-        const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!docContext) {
-          return { ok: false, error: `No Modelica context found for URI '${params.uri}'` };
+        const flat = flattenTargetClass(context, params.uri, params.className);
+        if ("error" in flat) {
+          return { ok: false, error: flat.error };
         }
-
-        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const { arena } = flat;
 
         // Initialize current values from start attributes
         const currentValues = new Map<string, number>();
@@ -351,92 +355,96 @@ export function registerSimulationEndpoints(context: LspContext) {
     "modelscript/simulateStep",
     (params: {
       participantId: string;
-      currentTime: number;
-      stepSize: number;
-      inputs?: Record<string, number>;
+      inputs: Record<string, number>;
+      time: number;
     }): {
-      ok: boolean;
-      outputs?: Record<string, number>;
-      allValues?: Record<string, number>;
+      outputs: Record<string, number>;
       error?: string;
     } => {
-      const entry = cosimSimulators.get(params.participantId);
-      if (!entry) {
-        return { ok: false, error: `Participant '${params.participantId}' not initialized.` };
+      const simState = cosimSimulators.get(params.participantId);
+      if (!simState) {
+        return { outputs: {}, error: `No simulator found for participant ${params.participantId}` };
       }
 
       try {
-        // Apply input overrides (set them in current values before stepping)
-        if (params.inputs) {
-          for (const [name, value] of Object.entries(params.inputs)) {
-            entry.currentValues.set(name, value);
-          }
+        const { arena, currentValues, stepSize } = simState;
+
+        // Apply input values
+        for (const [name, val] of Object.entries(params.inputs)) {
+          currentValues.set(name, val);
         }
 
-        // Write all current values to the arena's start values before simulating
-        for (const [name, val] of entry.currentValues) {
-          try {
-            const idx = entry.arena.getVarIdxByName(name);
-            if (idx !== -1) {
-              entry.arena.setVarStartValue(idx, val);
-            }
-          } catch {
-            // ignore
-          }
-        }
+        // Set up parameter overrides with current values
+        const overrides = new Map<string, number>(currentValues);
 
-        // Step the simulation by one communication interval
-        const result = simulateArena(entry.arena, {
-          startTime: params.currentTime,
-          stopTime: params.currentTime + params.stepSize,
-          step: params.stepSize,
-          solver: "rk4",
+        // Step the simulation forward by stepSize
+        const stepResult = simulateArena(arena, {
+          startTime: params.time,
+          stopTime: params.time + stepSize,
+          step: stepSize,
+          solver: "euler",
+          parameterOverrides: overrides,
         });
 
-        // Extract values from the last time point
-        const lastIdx = result.t.length - 1;
+        // Update current values with the final state
+        const lastIdx = stepResult.t.length - 1;
         if (lastIdx >= 0) {
-          for (let i = 0; i < result.states.length; i++) {
-            const name = result.states[i];
-            const value = result.y[lastIdx]?.[i];
-            if (name && value !== undefined) {
-              entry.currentValues.set(name, value);
+          for (let vi = 0; vi < stepResult.states.length; vi++) {
+            const stateName = stepResult.states[vi];
+            const val = stepResult.y[lastIdx]?.[vi];
+            if (val !== undefined) {
+              currentValues.set(stateName, val);
             }
           }
         }
 
-        // Collect outputs (variables with causality "output")
+        // Collect outputs
         const outputs: Record<string, number> = {};
-        const allValues: Record<string, number> = {};
-        for (let i = 0; i < entry.arena.varCount; i++) {
-          if (entry.arena.isVarRemoved(i)) continue;
-          const name = entry.arena.getVarName(i);
-          const val = entry.currentValues.get(name);
-          if (val !== undefined) {
-            allValues[name] = val;
-            if (entry.arena.getVarCausality(i) === Causality.Output) {
-              outputs[name] = val;
-            }
+        for (let i = 0; i < arena.varCount; i++) {
+          if (arena.isVarRemoved(i)) continue;
+          if (arena.getVarCausality(i) === Causality.Output) {
+            const name = arena.getVarName(i);
+            outputs[name] = currentValues.get(name) ?? 0;
           }
         }
 
-        return { ok: true, outputs, allValues };
+        return { outputs };
       } catch (e) {
         console.error("[simulateStep] Error:", e);
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return { outputs: {}, error: e instanceof Error ? e.message : String(e) };
       }
     },
   );
 
   context.connection.onRequest(
     "modelscript/createCosimWrapper",
-    (params: {
-      modelName: string;
-      fmus: { className: string; instanceName: string; fileName: string }[];
-      connections?: { source: string; target: string }[];
-    }): { ok: boolean; source?: string; error?: string } => {
+    async (params: {
+      modelNames: string[];
+      couplings: {
+        from: { model: string; variable: string };
+        to: { model: string; variable: string };
+      }[];
+      wrapperName: string;
+      uri: string;
+    }): Promise<{ ok: boolean; source?: string; error?: string }> => {
       try {
-        const source = generateMultiModelWrapper(params.modelName, params.fmus, params.connections ?? []);
+        const models = params.modelNames.map((name) => {
+          const classInstance = context.workspaceManager.resolveModelicaClassInstance(params.uri, name);
+          if (!classInstance) throw new Error(`Could not resolve Modelica class ${name}`);
+          return classInstance;
+        });
+
+        const source = generateMultiModelWrapper(
+          models,
+          params.couplings.map((c) => ({
+            fromModel: c.from.model,
+            fromVar: c.from.variable,
+            toModel: c.to.model,
+            toVar: c.to.variable,
+          })),
+          params.wrapperName,
+        );
+
         return { ok: true, source };
       } catch (e) {
         console.error("[createCosimWrapper] Error:", e);
@@ -455,33 +463,19 @@ export function registerSimulationEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/simulateDebug",
     async (params: { uri: string; className?: string }): Promise<unknown> => {
-      let instances = context.workspaceManager.documentInstances.get(params.uri);
-      if (!instances || instances.length === 0) {
-        const doc = context.documents.get(params.uri);
-        if (doc) {
-          await context.validationService.validateTextDocument(doc);
-          const inflight = context.state.activeValidationPromises.get(params.uri);
-          if (inflight) await inflight;
-          instances = context.workspaceManager.documentInstances.get(params.uri);
-        }
-      }
-      if (!instances || instances.length === 0) {
-        return {
-          error: `No class instances found for ${params.uri}. Available: ${Array.from(context.workspaceManager.documentInstances.keys()).join(", ")}`,
-        };
-      }
-
-      let classInstance = instances[0];
-      if (params.className) {
-        const found = instances.find((i) => i.name === params.className);
-        if (found) classInstance = found;
+      const doc = context.documents.get(params.uri);
+      if (doc) {
+        await context.validationService.validateTextDocument(doc);
+        const inflight = context.state.activeValidationPromises.get(params.uri);
+        if (inflight) await inflight;
       }
 
       try {
-        const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return { error: "No context found" };
-
-        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const flat = flattenTargetClass(context, params.uri, params.className);
+        if ("error" in flat) {
+          return { error: flat.error };
+        }
+        const { arena } = flat;
 
         stepMode = true; // Reset step mode on new simulation run
 

@@ -15,9 +15,9 @@ import {
   type DiagramEditAction,
   type DiagramNode,
   type DiagramPort,
-} from "@modelscript/lsp/src/diagramProtocol";
+} from "@modelscript/language/lsp/diagramProtocol";
 import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
-import { getLsp } from "./lsp-worker";
+import { getLsp, startLsp } from "./lsp-worker";
 
 export type { DiagramApplyEditsResult, DiagramData, DiagramEdge, DiagramEditAction, DiagramNode, DiagramPort };
 
@@ -25,10 +25,10 @@ export type { DiagramApplyEditsResult, DiagramData, DiagramEdge, DiagramEditActi
 // Helpers
 // ────────────────────────────────────────────────────────────────────
 
-function lsp(): ProtocolConnection {
+async function lsp(): Promise<ProtocolConnection> {
   const c = getLsp();
-  if (!c) throw new Error("LSP not started — call startLsp() first");
-  return c;
+  if (c) return c;
+  return startLsp();
 }
 
 /** Version counter for incremental didChange notifications. */
@@ -46,30 +46,38 @@ function nextVersion(uri: string): number {
 
 /** Notify the LSP that a document was opened. */
 export function didOpen(uri: string, text: string, languageId = "modelica"): void {
-  lsp().sendNotification("textDocument/didOpen", {
-    textDocument: { uri, languageId, version: nextVersion(uri), text },
+  lsp().then((c) => {
+    c.sendNotification("textDocument/didOpen", {
+      textDocument: { uri, languageId, version: nextVersion(uri), text },
+    });
   });
 }
 
 /** Notify the LSP that the full content of a document changed. */
 export function didChange(uri: string, text: string): void {
-  lsp().sendNotification("textDocument/didChange", {
-    textDocument: { uri, version: nextVersion(uri) },
-    contentChanges: [{ text }],
+  lsp().then((c) => {
+    c.sendNotification("textDocument/didChange", {
+      textDocument: { uri, version: nextVersion(uri) },
+      contentChanges: [{ text }],
+    });
   });
 }
 
 /** Notify the LSP that a document was closed. */
 export function didClose(uri: string): void {
-  lsp().sendNotification("textDocument/didClose", {
-    textDocument: { uri },
+  lsp().then((c) => {
+    c.sendNotification("textDocument/didClose", {
+      textDocument: { uri },
+    });
   });
   versions.delete(uri);
 }
 
 /** Notify the LSP of the currently visible line ranges in the editor. */
 export function didChangeVisibleRanges(uri: string, ranges: { startLine: number; endLine: number }[]): void {
-  lsp().sendNotification("modelscript/visibleRanges", { uri, ranges });
+  lsp().then((c) => {
+    c.sendNotification("modelscript/visibleRanges", { uri, ranges });
+  });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -138,7 +146,7 @@ export async function applyDiagramEdits(
   actions: DiagramEditAction[],
   seq = 1,
 ): Promise<DiagramApplyEditsResult> {
-  return lsp().sendRequest(DiagramMethods.applyEdits, { uri, seq, actions });
+  return (await lsp()).sendRequest(DiagramMethods.applyEdits, { uri, seq, actions });
 }
 
 export async function getDiagramData(
@@ -146,7 +154,7 @@ export async function getDiagramData(
   className?: string,
   diagramType?: string,
 ): Promise<DiagramData | null> {
-  return lsp().sendRequest(DiagramMethods.getData, { uri, className, diagramType });
+  return (await lsp()).sendRequest(DiagramMethods.getData, { uri, className, diagramType });
 }
 
 export async function getComponentProperties(
@@ -154,7 +162,7 @@ export async function getComponentProperties(
   className: string,
   componentName: string,
 ): Promise<ComponentPropertyData | null> {
-  return lsp().sendRequest(DiagramMethods.getComponentProperties, { uri, className, componentName });
+  return (await lsp()).sendRequest(DiagramMethods.getComponentProperties, { uri, className, componentName });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -162,7 +170,7 @@ export async function getComponentProperties(
 // ────────────────────────────────────────────────────────────────────
 
 export async function simulate(uri: string, params: SimulateParams = {}): Promise<SimulateResult> {
-  return lsp().sendRequest("modelscript/simulate", { uri, ...params });
+  return (await lsp()).sendRequest("modelscript/simulate", { uri, ...params });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -170,7 +178,7 @@ export async function simulate(uri: string, params: SimulateParams = {}): Promis
 // ────────────────────────────────────────────────────────────────────
 
 export async function calibrate(uri: string, params: Omit<CalibrateParams, "uri">): Promise<CalibrateResult> {
-  return lsp().sendRequest("modelscript/calibrate", { uri, ...params });
+  return (await lsp()).sendRequest("modelscript/calibrate", { uri, ...params });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -178,7 +186,7 @@ export async function calibrate(uri: string, params: Omit<CalibrateParams, "uri"
 // ────────────────────────────────────────────────────────────────────
 
 export async function flatten(name: string, uri?: string): Promise<{ text: string | null; error?: string }> {
-  return lsp().sendRequest("modelscript/flatten", { name, uri });
+  return (await lsp()).sendRequest("modelscript/flatten", { name, uri });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -186,19 +194,19 @@ export async function flatten(name: string, uri?: string): Promise<{ text: strin
 // ────────────────────────────────────────────────────────────────────
 
 export async function getLibraryTree(uri: string, parentId?: string): Promise<TreeNodeInfo[]> {
-  return lsp().sendRequest("modelscript/getLibraryTree", { uri, parentId });
+  return (await lsp()).sendRequest("modelscript/getLibraryTree", { uri, parentId });
 }
 
 export async function getClassSource(className: string): Promise<{ content: string | null; error?: string }> {
-  return lsp().sendRequest("modelscript/getClassSource", { className });
+  return (await lsp()).sendRequest("modelscript/getClassSource", { className });
 }
 
 export async function getClassIcon(className: string, uri?: string): Promise<string | null> {
-  return lsp().sendRequest("modelscript/getClassIcon", { className, uri });
+  return (await lsp()).sendRequest("modelscript/getClassIcon", { className, uri });
 }
 
 export async function searchClasses(query: string, limit = 50): Promise<{ results: TreeNodeInfo[] }> {
-  return lsp().sendRequest("modelscript/searchClasses", { query, limit });
+  return (await lsp()).sendRequest("modelscript/searchClasses", { query, limit });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -208,7 +216,7 @@ export async function searchClasses(query: string, limit = 50): Promise<{ result
 export async function getCadComponents(
   uri: string,
 ): Promise<{ name: string; cad: string; dynamicBindings: { property: string; index: number; variable: string }[] }[]> {
-  return lsp().sendRequest("modelscript/getCadComponents", { uri });
+  return (await lsp()).sendRequest("modelscript/getCadComponents", { uri });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -218,7 +226,22 @@ export async function getCadComponents(
 export async function listClasses(): Promise<{
   classes: { name: string; kind: string; uri: string }[];
 }> {
-  return lsp().sendRequest("modelscript/listClasses", {});
+  return (await lsp()).sendRequest("modelscript/listClasses", {});
+}
+
+export async function parseCode(code: string): Promise<{
+  classes: { name: string; kind: string }[];
+  syntaxErrors: string[];
+}> {
+  return (await lsp()).sendRequest("modelscript/parse", { code });
+}
+
+export async function getDocumentSymbols(uri: string): Promise<any[]> {
+  return (await lsp()).sendRequest("textDocument/documentSymbol", { textDocument: { uri } });
+}
+
+export async function installDependency(name: string, version: string): Promise<void> {
+  (await lsp()).sendNotification("modelscript/installDependency", { name, version });
 }
 
 // ────────────────────────────────────────────────────────────────────

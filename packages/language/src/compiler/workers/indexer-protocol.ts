@@ -4,6 +4,7 @@ export interface IndexerBatchRequest {
   type: "INDEX_BATCH";
   batchId: number;
   serverDistBase: string; // Needed to load tree-sitter WASM
+  hooks?: any[];
   files: {
     uri: string;
     text: string;

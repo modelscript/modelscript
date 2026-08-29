@@ -16,6 +16,7 @@ import {
 
 let connection: ProtocolConnection | null = null;
 let worker: Worker | null = null;
+let initPromise: Promise<ProtocolConnection> | null = null;
 
 /**
  * Start the LSP WebWorker and send `initialize` + `initialized`.
@@ -25,65 +26,76 @@ let worker: Worker | null = null;
  */
 export async function startLsp(): Promise<ProtocolConnection> {
   if (connection) return connection;
+  if (initPromise) return initPromise;
 
-  // The LSP bundle is copied to /lsp/server/dist/browserServerMain.js
-  // by viteStaticCopy. We create a plain Worker pointing at that URL.
-  worker = new Worker(new URL("/lsp/server/dist/browserServerMain.js", globalThis.location.origin), {
-    name: "modelscript-lsp",
-  });
+  initPromise = (async () => {
+    // The LSP bundle is copied to /lsp/server/dist/browserServerMain.js
+    // by viteStaticCopy. We create a plain Worker pointing at that URL.
+    worker = new Worker(new URL("/lsp/server/dist/browserServerMain.js", globalThis.location.origin), {
+      name: "modelscript-lsp",
+    });
 
-  const reader = new BrowserMessageReader(worker);
-  const writer = new BrowserMessageWriter(worker);
-  connection = createProtocolConnection(reader, writer);
-  connection.listen();
+    const reader = new BrowserMessageReader(worker);
+    const writer = new BrowserMessageWriter(worker);
+    const conn = createProtocolConnection(reader, writer);
+    conn.listen();
 
-  // Send initialize — the extensionUri tells the server where to find
-  // WASM files and standard library zips (relative to the server/dist path).
-  await connection.sendRequest("initialize", {
-    processId: null,
-    rootUri: null,
-    capabilities: {
-      textDocument: {
-        publishDiagnostics: { relatedInformation: true },
-        completion: {
-          completionItem: {
-            snippetSupport: true,
-            documentationFormat: ["markdown", "plaintext"],
+    // Send initialize — the extensionUri tells the server where to find
+    // WASM files and standard library zips (relative to the server/dist path).
+    await conn.sendRequest("initialize", {
+      processId: null,
+      rootUri: null,
+      capabilities: {
+        textDocument: {
+          publishDiagnostics: { relatedInformation: true },
+          completion: {
+            completionItem: {
+              snippetSupport: true,
+              documentationFormat: ["markdown", "plaintext"],
+            },
           },
-        },
-        hover: {
-          contentFormat: ["markdown", "plaintext"],
-        },
-        semanticTokens: {
-          requests: { full: true },
-          tokenTypes: [],
-          tokenModifiers: [],
-          formats: ["relative"],
-        },
-        formatting: {},
-        colorProvider: {},
-        signatureHelp: {
-          signatureInformation: {
-            documentationFormat: ["markdown", "plaintext"],
-            parameterInformation: { labelOffsetSupport: true },
+          hover: {
+            contentFormat: ["markdown", "plaintext"],
           },
+          semanticTokens: {
+            requests: { full: true },
+            tokenTypes: [],
+            tokenModifiers: [],
+            formats: ["relative"],
+          },
+          formatting: {},
+          colorProvider: {},
+          signatureHelp: {
+            signatureInformation: {
+              documentationFormat: ["markdown", "plaintext"],
+              parameterInformation: { labelOffsetSupport: true },
+            },
+          },
+          documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+          codeLens: {},
+          documentHighlight: {},
+          codeAction: {},
         },
-        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
-        codeLens: {},
-        documentHighlight: {},
-        codeAction: {},
       },
-    },
-    initializationOptions: {
-      // This URI is used by the LSP to construct paths like
-      // ${extensionUri}/server/dist/tree-sitter-modelica.wasm
-      extensionUri: globalThis.location.origin + "/lsp",
-    },
-  });
+      initializationOptions: {
+        // This URI is used by the LSP to construct paths like
+        // ${extensionUri}/server/dist/tree-sitter-modelica.wasm
+        extensionUri: globalThis.location.origin + "/lsp",
+        useLocalMsl: true,
+      },
+    });
 
-  connection.sendNotification("initialized", {});
+    conn.sendNotification("initialized", {});
+    connection = conn;
+    return conn;
+  })();
 
-  return connection;
+  try {
+    return await initPromise;
+  } catch (err) {
+    initPromise = null;
+    throw err;
+  }
 }
 
 /** Returns the active connection, or null if not started. */

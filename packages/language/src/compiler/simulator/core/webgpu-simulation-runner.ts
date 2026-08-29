@@ -14,8 +14,8 @@
 /// <reference types="@webgpu/types" />
 import { type GPUArenaBuffers } from "../../arena-gpu-buffers.js";
 import { type ArenaDAEBuilder } from "../../dae-arena.js";
-import { generateWGSL } from "../../generators/wgsl-codegen.js";
 import { getCachedWGSL, setCachedWGSL } from "./wgsl-cache.js";
+import { generateWGSL } from "./wgsl-codegen.js";
 
 // Uses @webgpu/types directly
 

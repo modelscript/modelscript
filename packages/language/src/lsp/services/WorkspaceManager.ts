@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
+import owl2Lang from "@modelscript/owl2/language";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
-import { Context, QueryEngine, UnifiedWorkspace, WorkspaceIndex } from "../../compiler/index.js";
-// @ts-ignore
-import { INDEXER_HOOKS as owl2IndexerHooks } from "@modelscript/owl2/config";
+import { Context, extractIndexerHooks, QueryEngine, UnifiedWorkspace, WorkspaceIndex } from "../../compiler/index.js";
 import { DocumentManager } from "./DocumentManager.js";
+
+const owl2IndexerHooks = extractIndexerHooks(owl2Lang);
 
 export class WorkspaceManager {
   public globalWorkspaceIndex = createModelicaWorkspaceIndex();
@@ -97,6 +98,19 @@ export class WorkspaceManager {
         }
       }
       return null;
+    }
+
+    const idx = this.unifiedWorkspace.toUnifiedPartial();
+    for (const [id, entry] of idx.symbols.entries()) {
+      if (entry.resourceId === uri && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+        let engine = entry.resourceId.endsWith(".sysml")
+          ? this.globalSysML2QueryEngine
+          : this.globalModelicaQueryEngine;
+        if (!engine) engine = this.globalModelicaQueryEngine;
+        if (engine) {
+          return new ModelicaClassInstance(entry.id, engine.toQueryDB() as any);
+        }
+      }
     }
 
     const instances = this.documentInstances.get(uri);

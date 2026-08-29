@@ -2,6 +2,50 @@
 // @ts-nocheck
 import { ClassHierarchyNode, ComponentTreeNode, ModelicaClassInstance, TreeNodeInfo } from "../../compiler/index.js";
 
+export const CLASS_KIND_KEYWORDS = [
+  "class",
+  "model",
+  "record",
+  "block",
+  "connector",
+  "type",
+  "package",
+  "function",
+  "operator",
+  "optimization",
+];
+
+export const SYSML2_RULE_TO_KIND: Record<string, string> = {
+  Package: "package",
+  LibraryPackage: "package",
+  PartDefinition: "part def",
+  AttributeDefinition: "attribute def",
+  PortDefinition: "port def",
+  ItemDefinition: "item def",
+  OccurrenceDefinition: "occurrence def",
+  ConnectionDefinition: "connection def",
+  InterfaceDefinition: "interface def",
+  AllocationDefinition: "allocation def",
+  FlowDefinition: "flow def",
+  ActionDefinition: "action def",
+  StateDefinition: "state def",
+  CalculationDefinition: "calc def",
+  ConstraintDefinition: "constraint def",
+  RequirementDefinition: "requirement def",
+  ConcernDefinition: "concern def",
+  UseCaseDefinition: "use case def",
+  CaseDefinition: "case def",
+  AnalysisCaseDefinition: "analysis case def",
+  VerificationCaseDefinition: "verification def",
+  ViewDefinition: "view def",
+  ViewpointDefinition: "viewpoint def",
+  RenderingDefinition: "rendering def",
+  MetadataDefinition: "metadata def",
+  EnumerationDefinition: "enumeration",
+};
+
+export const SYSML2_TREE_KINDS = new Set(["Definition", "Package", "Enumeration"]);
+
 export const fqnCacheState = {
   index: null as any,
   cache: new Map<string, number>(),

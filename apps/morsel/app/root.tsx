@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BaseStyles, ThemeProvider } from "@primer/react";
-import { useEffect } from "react";
-import { Links, Meta, Outlet, Scripts, ScrollRestoration, useNavigate } from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, isRouteErrorResponse } from "react-router";
 
 import "@primer/css/dist/primer.css";
 import "@primer/primitives/dist/css/functional/themes/dark.css";
@@ -65,19 +64,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <script
           dangerouslySetInnerHTML={{
             __html: `
-          // Remove loader once React renders content
+          // Hide loader once React renders content
           (function() {
             var loader = document.getElementById('morsel-initial-loader');
             if (!loader) return;
             var observer = new MutationObserver(function() {
               if (document.getElementById('morsel-app-loader')) {
-                loader.remove();
+                loader.style.display = 'none';
                 observer.disconnect();
               }
             });
             observer.observe(document.body, { childList: true, subtree: true });
-            // Fallback: remove after 15s in case observer never fires
-            setTimeout(function() { if (loader.parentNode) loader.remove(); }, 15000);
+            // Fallback: hide after 15s in case observer never fires
+            setTimeout(function() { if (loader) loader.style.display = 'none'; }, 15000);
           })();
         `,
           }}
@@ -100,9 +99,28 @@ export default function App() {
   );
 }
 
-export function ErrorBoundary() {
-  const navigate = useNavigate();
-  useEffect(() => {
-    navigate("/");
-  }, []);
+export function ErrorBoundary({ error }: { error?: unknown }) {
+  let message = "Oops!";
+  let details = "An unexpected error occurred.";
+  let stack: string | undefined;
+
+  if (isRouteErrorResponse(error)) {
+    message = error.status === 404 ? "404" : "Error";
+    details = error.status === 404 ? "The requested page could not be found." : error.statusText || details;
+  } else if (error instanceof Error) {
+    details = error.message;
+    stack = error.stack;
+  }
+
+  return (
+    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
+      <h1>{message}</h1>
+      <p>{details}</p>
+      {stack && (
+        <pre style={{ overflowX: "auto", background: "#f6f8fa", padding: "1rem", borderRadius: "6px" }}>
+          <code>{stack}</code>
+        </pre>
+      )}
+    </div>
+  );
 }

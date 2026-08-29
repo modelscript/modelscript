@@ -81,12 +81,10 @@ export class ValidationService {
       const hasErr = typeof node.hasError === "function" ? node.hasError() : node.hasError;
       const isMissing = typeof node.isMissing === "function" ? node.isMissing() : node.isMissing;
 
-      let shouldReport = false;
       let start = textDocument.positionAt(node.startIndex);
       let end = textDocument.positionAt(node.endIndex);
 
       if (isMissing) {
-        shouldReport = true;
         if (start.line === end.line && start.character === end.character) {
           if (node.previousSibling) {
             start = textDocument.positionAt(node.previousSibling.startIndex);
@@ -95,24 +93,35 @@ export class ValidationService {
             end = { line: start.line, character: start.character + 1 };
           }
         }
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: { start, end },
+          message: `Missing syntax element`,
+          source: "modelscript",
+        });
       } else if (node.type === "ERROR") {
-        if (node.childCount === 0) shouldReport = true;
-      } else if (!hasErr && node.childCount === 0 && node.parent?.type === "ERROR") {
-        shouldReport = true;
-      }
-
-      if (shouldReport) {
-        if (start.line !== end.line || start.character !== end.character) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            range: { start, end },
-            message: isMissing ? `Missing syntax element` : `Syntax error`,
-            source: "modelscript",
-          });
+        if (start.line === end.line && start.character === end.character) {
+          end = { line: start.line, character: start.character + 1 };
         }
+        const textSnippet = textDocument.getText({ start, end });
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: { start, end },
+          message: textSnippet ? `Syntax error near '${textSnippet}'` : "Syntax error",
+          source: "modelscript",
+        });
+
+        // Don't descend further into this ERROR node's children to prevent duplicate noisy diagnostics
+        while (!cursor.gotoNextSibling()) {
+          if (!cursor.gotoParent()) {
+            didDescend = false;
+            break;
+          }
+        }
+        continue;
       }
 
-      if (hasErr || node.type === "ERROR") {
+      if (hasErr) {
         if (cursor.gotoFirstChild()) {
           continue;
         }
@@ -1096,7 +1105,7 @@ export class ValidationService {
       const step0_3t = performance.now();
       unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const step0_4t = performance.now();
-      const cstTreeWrapper = getSharedCstTreeWrapper();
+      const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
       this.connection.console.info(`[perf] Step 1.0 (toUnifiedPartial): ${(step0_4t - step0_3t).toFixed(2)}ms`);
 
       const changedIdsObj = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();

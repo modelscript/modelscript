@@ -5,14 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Step 1: Generate Salsa config / query-hooks / ast
-const languagePath = path.join(__dirname, "language.ts");
-const cliPath = path.resolve(__dirname, "..", "..", "packages", "language", "src", "compiler", "cli.ts");
-console.log("[modelica] Generating artifacts from language.ts...");
-execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
-
-// Step 2 & 3: Run builder via tsx to compile parser and WASM
+// Step 1: Run builder via tsx to compile parser and WASM
 const buildScriptPath = path.join(__dirname, "build-parser.ts");
 const buildScriptContent = `import fs from "node:fs";
 import path from "node:path";
