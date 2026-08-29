@@ -146,6 +146,14 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     return this._version;
   }
 
+  get structuralRevision(): number {
+    return this._version;
+  }
+
+  get fileCount(): number {
+    return this.fileIndices.size;
+  }
+
   public getMeshes(uri: string): any[] {
     return this.fileMeshes.get(uri) || [];
   }

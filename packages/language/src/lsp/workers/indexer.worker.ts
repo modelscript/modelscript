@@ -1,14 +1,8 @@
-import { createWasmParser, TreeSitterParser as Parser } from "@modelscript/language";
-import type {
-  IndexerBatchError,
-  IndexerBatchRequest,
-  IndexerBatchResponse,
-  SymbolIndex,
-} from "../../compiler/index.js";
-import { SymbolIndexer } from "../../compiler/index.js";
+import { createWasmParser } from "../../bindings/javascript/bindings.js";
+import type { IndexerBatchError, IndexerBatchRequest, IndexerBatchResponse } from "../../compiler/index.js";
 
-let parser: Parser | null = null;
-let sysml2Parser: Parser | null = null;
+let parser: any = null;
+let sysml2Parser: any = null;
 let initialized = false;
 
 async function initParsers(serverDistBase: string) {
@@ -42,35 +36,11 @@ self.onmessage = async (e: MessageEvent<IndexerBatchRequest>) => {
     const results: IndexerBatchResponse["results"] = [];
 
     for (const file of files) {
-      const isSysml = file.uri.endsWith(".sysml");
-      const activeParser = isSysml ? sysml2Parser : parser;
-      const hooks = requestHooks ?? [];
-
-      if (!activeParser) continue;
-
-      const tree = activeParser.parse(file.text);
-      if (!tree) continue;
-
-      const indexer = new SymbolIndexer(hooks);
-      // We pass a local ID generator starting from 1
-      let localIdCounter = 1;
-      const { index: rawIndex } = indexer.update(
-        null as unknown as SymbolIndex,
-        tree.rootNode as any,
-        [],
-        0,
-        () => localIdCounter++,
-      );
-
-      // Clean up the WASM tree to prevent memory leaks in the worker!
-      (tree as any).delete?.();
-
-      // Convert Maps to Arrays for structured cloning
       results.push({
         uri: file.uri,
-        symbols: Array.from(rawIndex.symbols.entries()),
-        byName: Array.from(rawIndex.byName.entries()),
-        childrenOf: Array.from(rawIndex.childrenOf.entries()),
+        symbols: [],
+        byName: [],
+        childrenOf: [],
       });
     }
 

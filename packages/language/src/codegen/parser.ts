@@ -22,6 +22,7 @@ import {
   fmi2_wasmCode,
   fmi3_wasmCode,
   foldCode,
+  groebnerCode,
   gssCode,
   hashmapCode,
   homotopyCode,
@@ -1091,6 +1092,7 @@ export function generateParserTables(
     { filename: "fmi2_wasm.ts", content: fmi2_wasmCode },
     { filename: "fmi3_wasm.ts", content: fmi3_wasmCode },
     { filename: "vmap.ts", content: vmapCode },
+    { filename: "groebner.ts", content: groebnerCode },
   ];
 
   if (originalGrammar.runtimeFiles) {
@@ -1151,6 +1153,7 @@ export function generateParserTables(
   code += extractExports(fmi2_wasmCode, "./fmi2_wasm");
   code += extractExports(fmi3_wasmCode, "./fmi3_wasm");
   code += extractExports(vmapCode, "./vmap");
+  code += extractExports(groebnerCode, "./groebner");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

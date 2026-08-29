@@ -3,7 +3,7 @@ import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import owl2Lang from "@modelscript/owl2/language";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
-import { Context, extractIndexerHooks, QueryEngine, UnifiedWorkspace, WorkspaceIndex } from "../../compiler/index.js";
+import { Context, extractIndexerHooks, QueryEngine, UnifiedWorkspace } from "../../compiler/index.js";
 import { DocumentManager } from "./DocumentManager.js";
 
 const owl2IndexerHooks = extractIndexerHooks(owl2Lang);
@@ -11,7 +11,7 @@ const owl2IndexerHooks = extractIndexerHooks(owl2Lang);
 export class WorkspaceManager {
   public globalWorkspaceIndex = createModelicaWorkspaceIndex();
   public sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
-  public owl2WorkspaceIndex = new WorkspaceIndex(owl2IndexerHooks);
+  public owl2WorkspaceIndex: any = { version: 0, fileCount: 0 };
   public stepWorkspaceIndex: any; // Requires step-workspace-index
   public unifiedWorkspace = new UnifiedWorkspace();
   public allWorkspaceIndices = new Map<string, any>();

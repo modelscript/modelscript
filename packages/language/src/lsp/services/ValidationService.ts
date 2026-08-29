@@ -10,14 +10,7 @@ import { SyntaxNode, TableauReasoner } from "@modelscript/language";
 import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
-import {
-  LSPBridge,
-  PositionIndex,
-  QueryEngine,
-  ScopeResolver,
-  SymbolIndexer,
-  VerificationRunner,
-} from "../../compiler/index.js";
+import { LSPBridge, PositionIndex, QueryEngine, ScopeResolver, VerificationRunner } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
@@ -208,9 +201,8 @@ export class ValidationService {
           tree = this.parserService.stepParser.parse(text);
           if (tree) {
             this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
-            const indexer = new SymbolIndexer([]);
-            astIndex = indexer.index(tree.rootNode);
-            this.connection.console.info(`[step] AST index: ${astIndex.symbols.size} symbols`);
+            astIndex = { symbols: new Map(), byName: new Map(), childrenOf: new Map() } as any;
+            this.connection.console.info(`[step] Parsed STEP tree successfully`);
           }
         } else {
           this.connection.console.info(
@@ -1416,7 +1408,7 @@ export class ValidationService {
 
       const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const fileNodes = Array.from(db.symbols.values()).filter(
-        (s) =>
+        (s: any) =>
           s.resourceId === textDocument.uri &&
           (s.ruleName === "VerifyRequirementUsage" ||
             s.ruleName === "AnalysisCaseDefinition" ||
@@ -1508,7 +1500,7 @@ export class ValidationService {
       for (const verifyUsage of fileNodes) {
         if (signal.aborted) return { ok: false };
 
-        const topo = sysmlDB.query("extractTopology", verifyUsage.id) as any;
+        const topo = sysmlDB.query("extractTopology", (verifyUsage as any).id) as any;
         if (!topo || topo.rootIds.length === 0) continue;
 
         const rootNode = topo.nodes.get(topo.rootIds[0]);
@@ -1573,7 +1565,7 @@ export class ValidationService {
         };
 
         const runner = new VerificationRunner(sysmlDB, topo.variableMap);
-        const vResults = runner.verifyCase(verifyUsage.id, simResult);
+        const vResults = runner.verifyCase((verifyUsage as any).id, simResult);
         allResults.push(...vResults);
 
         const bridge = this.documentLSPBridges.get(uri);

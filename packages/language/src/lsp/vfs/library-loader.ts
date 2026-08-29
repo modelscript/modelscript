@@ -1,4 +1,4 @@
-import { Context, WorkspaceIndex } from "../../compiler/index.js";
+import { Context } from "../../compiler/index.js";
 
 import type { BrowserFileSystem } from "./browser-file-system.js";
 import {
@@ -21,8 +21,8 @@ export interface LoaderContext {
   logger: { log: (msg: string) => void; warn: (msg: string) => void; error: (msg: string, e: unknown) => void };
   sharedFs: BrowserFileSystem;
   sharedContext: Context;
-  globalWorkspaceIndex: WorkspaceIndex;
-  sysml2WorkspaceIndex: WorkspaceIndex;
+  globalWorkspaceIndex: any;
+  sysml2WorkspaceIndex: any;
   documentTrees: Map<string, { text: string; tree: Tree | null; classCache: Map<string, unknown> }>;
   sysml2Parser: Parser | null;
   cacheStore?: FederatedQueryCacheStore;
@@ -209,7 +209,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
                     }
                   }, 0);
                 }
-                return (tree?.rootNode ?? null) as unknown as import("../../compiler/symbol-indexer.js").CSTNode;
+                return (tree?.rootNode ?? null) as any;
               },
               parentFQN,
             );
@@ -429,11 +429,8 @@ export async function loadDependencyFromRegistry(
       ctx.globalWorkspaceIndex.hydrate(
         uri,
         {
-          // @ts-expect-error missing types
           symbols,
-          // @ts-expect-error missing types
           byName,
-          // @ts-expect-error missing types
           childrenOf,
         },
         undefined,
@@ -577,7 +574,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
                     }
                   }, 0);
                 }
-                return (tree?.rootNode ?? null) as unknown as import("../../compiler/symbol-indexer.js").CSTNode;
+                return (tree?.rootNode ?? null) as any;
               },
               parentFQN,
             );
@@ -680,7 +677,7 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
 
       ctx.documentTrees.set(uri, { text, tree: null, classCache: new Map() });
       ctx.sysml2WorkspaceIndex.register(uri, () => {
-        if (!ctx.sysml2Parser) return null as unknown as import("../../compiler/symbol-indexer.js").CSTNode;
+        if (!ctx.sysml2Parser) return null as any;
         const tree = ctx.sysml2Parser.parse(text);
         if (tree) {
           // WorkspaceIndex uses the node synchronously. Schedule deletion to avoid memory leak.
@@ -692,7 +689,7 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
             }
           }, 0);
         }
-        return (tree ? tree.rootNode : null) as unknown as import("../../compiler/symbol-indexer.js").CSTNode;
+        return (tree ? tree.rootNode : null) as any;
       });
       registeredUris.push(uri);
       fileCount++;

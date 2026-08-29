@@ -984,6 +984,23 @@ export function dae_createBuilder(): u32 {
   return ptr as u32;
 }
 
+export function dae_alloc(size: u32): u32 {
+  return atomicChunkAlloc(size) as u32;
+}
+
+export function dae_allocInt32Array(length: u32): usize {
+  let arr = new Int32Array(length);
+  return changetype<usize>(arr.dataStart);
+}
+
+export function dae_setInt32(ptr: usize, index: u32, value: i32): void {
+  store<i32>(ptr + (index << 2), value);
+}
+
+export function dae_getInt32(ptr: usize, index: u32): i32 {
+  return load<i32>(ptr + (index << 2));
+}
+
 export function dae_free(ptr: u32): void {
   if (ptr == 0) return;
 }

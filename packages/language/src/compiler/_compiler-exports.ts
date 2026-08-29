@@ -28,6 +28,8 @@ export * from "./symbolics/systems/index.js";
 export * from "./symbolics/tape.js";
 
 // Language workbench infrastructure
+export * from "../runtime/wasm_workspace.js";
+export { WasmWorkspaceIndex as WorkspaceIndex } from "../runtime/wasm_workspace.js";
 export * from "./adapter-registry.js";
 export * from "./arena-alias.js";
 export * from "./arena-blt.js";
@@ -52,10 +54,7 @@ export * from "./resolver.js";
 export * from "./scope.js";
 export * from "./semantic-diff.js";
 export * from "./semantic-node.js";
-export * from "./simulator/core/wgsl-codegen.js";
-export * from "./symbol-indexer.js";
 export * from "./topology.js";
-export * from "./unified-workspace.js";
 export * from "./verifier.js";
 export * from "./workers/indexer-protocol.js";
-export * from "./workspace-index.js";
+export type CSTNode = any;

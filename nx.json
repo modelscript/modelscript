@@ -20,6 +20,7 @@
       "outputs": [
         "{projectRoot}/dist",
         "{projectRoot}/build",
+        "{projectRoot}/src-gen",
         "{projectRoot}/public",
         "{projectRoot}/src/**/*.js",
         "{projectRoot}/*.wasm",

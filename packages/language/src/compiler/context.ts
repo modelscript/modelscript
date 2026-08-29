@@ -2,9 +2,9 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { WasmWorkspaceIndex } from "../runtime/wasm_workspace.js";
 import type { FileSystem, Parser, Tree } from "../utils/index.js";
 import type { QueryEngine } from "./query-engine.js";
-import type { WorkspaceIndex } from "./workspace-index.js";
 
 export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
 export type PreconditionerMode = "none" | "branch-and-bound";
@@ -36,23 +36,23 @@ export interface ModelicaCompilerOptions {
 
 export class Context {
   protected _fs: FileSystem;
-  protected _workspaceIndex: WorkspaceIndex;
+  protected _workspaceIndex: WasmWorkspaceIndex | any;
   protected _queryEngine: QueryEngine;
   protected _trees = new Map<string, Tree>();
 
   static _parsers = new Map<string, Parser>();
 
-  constructor(fs: FileSystem, workspaceIndex: WorkspaceIndex, queryEngine: QueryEngine) {
+  constructor(fs: FileSystem, workspaceIndex: WasmWorkspaceIndex | any, queryEngine: QueryEngine) {
     this._fs = fs;
     this._workspaceIndex = workspaceIndex;
     this._queryEngine = queryEngine;
   }
 
-  get workspaceIndex(): WorkspaceIndex {
+  get workspaceIndex(): WasmWorkspaceIndex | any {
     return this._workspaceIndex;
   }
 
-  setWorkspaceIndex(index: WorkspaceIndex): void {
+  setWorkspaceIndex(index: WasmWorkspaceIndex | any): void {
     this._workspaceIndex = index;
   }
 

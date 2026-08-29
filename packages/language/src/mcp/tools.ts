@@ -11,14 +11,14 @@ import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
 import { z } from "zod";
-import type { TopologyGraph } from "../compiler/index.js";
-import { UnifiedWorkspace, WorkspaceIndex } from "../compiler/index.js";
+import { UnifiedWorkspace } from "../compiler/index.js";
 import {
   type ArenaSimulateOptions,
   runArenaDoE,
   runSensitivityAnalysisArena,
   simulateArena,
 } from "../compiler/simulator/index.js";
+import type { TopologyGraph } from "../compiler/topology.js";
 import {
   executeBgpQuery,
   executeQueryString,
@@ -277,8 +277,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async ({ name, paths, startTime, stopTime }) => {
       const u = new UnifiedWorkspace();
-      const mIdx = new WorkspaceIndex([]);
-      const sIdx = new WorkspaceIndex([]);
+      const mIdx = { version: 0, fileCount: 0 };
+      const sIdx = { version: 0, fileCount: 0 };
       u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
       u.registerWorkspace("sysml2", sIdx, sysml2LangFallback);
 
