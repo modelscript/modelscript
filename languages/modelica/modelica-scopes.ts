@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Scope, _getScriptingScope } from "@modelscript/compiler";
+import { Scope, _getScriptingScope } from "@modelscript/language/compiler";
 import { ModelicaIdentifierSyntaxNode } from "./ast.js";
 import type {
   ModelicaClassInstance,

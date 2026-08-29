@@ -58,7 +58,7 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
       }
     }
 
-    let queryEngineRef: import("@modelscript/compiler").QueryEngine | null = null;
+    let queryEngineRef: import("@modelscript/language/compiler").QueryEngine | null = null;
 
     await processLibrary(
       libraryPath,

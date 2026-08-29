@@ -119,7 +119,8 @@ describe("Declarative In-WASM MCP Engine", () => {
     if ((instance.exports as any).initCompiler) {
       (instance.exports as any).initCompiler();
     }
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + "\nreturn { LspFacade };";
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + "\nreturn { LspFacade };";
     const { LspFacade: GeneratedFacade } = new Function(wrapperSrc)();
     facade = new GeneratedFacade(instance.exports.memory || memory, instance.exports);
   });

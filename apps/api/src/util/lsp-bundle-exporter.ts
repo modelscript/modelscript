@@ -1,4 +1,4 @@
-import type { QueryEngine } from "@modelscript/compiler";
+import type { QueryEngine } from "@modelscript/language/compiler";
 import fs from "node:fs";
 import path from "node:path";
 import { ZipFile } from "yazl";

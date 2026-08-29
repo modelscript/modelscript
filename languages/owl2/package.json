@@ -39,7 +39,6 @@
     "clean": "rimraf dist src-gen *.wasm"
   },
   "dependencies": {
-    "@modelscript/compiler": "*",
     "@modelscript/language": "*"
   }
 }

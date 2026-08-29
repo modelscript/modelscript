@@ -1,8 +1,13 @@
-import type { IndexerBatchError, IndexerBatchRequest, IndexerBatchResponse, SymbolIndex } from "@modelscript/compiler";
-import { SymbolIndexer } from "@modelscript/compiler";
 import { createWasmParser, TreeSitterParser as Parser } from "@modelscript/language";
 import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config";
 import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/config";
+import type {
+  IndexerBatchError,
+  IndexerBatchRequest,
+  IndexerBatchResponse,
+  SymbolIndex,
+} from "../../compiler/index.js";
+import { SymbolIndexer } from "../../compiler/index.js";
 
 let parser: Parser | null = null;
 let sysml2Parser: Parser | null = null;

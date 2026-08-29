@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-import { ArenaDAEBuilder, Causality } from "@modelscript/compiler";
-import { simulateArena, simulateArenaAsync } from "@modelscript/compiler/simulator";
 import { CoSimSession, Orchestrator } from "@modelscript/language/cosim";
 import { WasmOpenFoamProvider } from "@modelscript/language/cosim/participants/cfd-provider";
 import { generateMultiModelWrapper } from "@modelscript/language/fmi";
+import { ArenaDAEBuilder, Causality } from "../../compiler/index.js";
+import { simulateArena, simulateArenaAsync } from "../../compiler/simulator/index.js";
 import { LspContext } from "../LspContext.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { ModelScriptParticipant } from "./modelscriptParticipant.js";

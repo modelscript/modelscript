@@ -14,7 +14,6 @@
  * archive, so no separate XML file is needed.
  */
 
-import type { Scope } from "@modelscript/compiler";
 import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica/ast";
 import {
   ModelicaClassInstance,
@@ -22,6 +21,7 @@ import {
   type ModelicaNamedElement,
 } from "@modelscript/modelica/semantic-model";
 import { inflateRaw } from "pako";
+import type { Scope } from "../compiler/index.js";
 
 // ── FMU model description types ──
 

@@ -1,4 +1,4 @@
-import type { QueryHooks } from "@modelscript/compiler";
+import type { QueryHooks } from "@modelscript/language/compiler";
 
 // Import the language definition to access query lambdas directly.
 // The functions are NOT serialized — they execute from the original source.
@@ -24,8 +24,9 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     );
     const rule = (langDef.rules as Record<string, unknown>)["SourceFile"] as (args: unknown) => unknown;
     const ruleAst = rule ? rule($) : null;
-    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
-      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+    const ast = ruleAst as any;
+    if (ast && (ast.type === "def" || ast.type === "DEF")) {
+      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;
       const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
@@ -52,8 +53,9 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     );
     const rule = (langDef.rules as Record<string, unknown>)["CSVVirtualComponent"] as (args: unknown) => unknown;
     const ruleAst = rule ? rule($) : null;
-    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
-      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+    const ast = ruleAst as any;
+    if (ast && (ast.type === "def" || ast.type === "DEF")) {
+      const opts = (ast.options || ast.value || {}) as Record<string, unknown>;
       const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries

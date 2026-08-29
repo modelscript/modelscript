@@ -60,7 +60,8 @@ describe("Phase 6: Snapshotting, Memory Forking & Production LSP Integration", (
     const wasm = fs.readFileSync(outWasm);
     wasmModule = await WebAssembly.compile(wasm);
 
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + "\nreturn { LspFacade };";
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + "\nreturn { LspFacade };";
     getFacadeFn = new Function(wrapperSrc);
 
     const createInstance = async () => {

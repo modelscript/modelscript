@@ -1,4 +1,4 @@
-import { type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/compiler";
+import { type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/language/compiler";
 
 export interface ScopeData {
   directByName: Record<string, SymbolId>;

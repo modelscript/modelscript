@@ -24,7 +24,7 @@
  * ```
  */
 
-import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/compiler";
+import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/language/compiler";
 import { parseModArgsFromCst } from "../language.js";
 import { ModelicaPortBalancer } from "./connections.js";
 import { type ModelicaModArgs, getModArg, isBroken, mergeModArgs, subModification } from "./modifications.js";
@@ -240,7 +240,7 @@ import {
   Variability,
   VarType,
   varTypeName,
-} from "@modelscript/compiler";
+} from "@modelscript/language/compiler";
 import {
   ModelicaAlgorithmSectionSyntaxNode,
   ModelicaBreakStatementSyntaxNode,
@@ -1218,7 +1218,7 @@ export class ArenaQueryFlattener {
 
           const classEntry = this.db.symbol(classId);
           if (classEntry?.parentId !== null) {
-            let resolvedBase: import("@modelscript/compiler").SymbolEntry | null = null;
+            let resolvedBase: import("@modelscript/language/compiler").SymbolEntry | null = null;
             const resolveName = this.db.query<any>("resolveName", classEntry.parentId);
             if (resolveName) {
               let resolved = resolveName(baseName, true);

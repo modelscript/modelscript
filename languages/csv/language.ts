@@ -10,7 +10,7 @@ import {
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
-} from "@modelscript/compiler";
+} from "@modelscript/language/compiler";
 
 interface CsvMetadata {
   typeSpecifier?: string;

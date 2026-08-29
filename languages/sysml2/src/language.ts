@@ -10,7 +10,6 @@
 
 import { emitAxioms } from "../reasoner-bridge.js";
 
-import type { QueryDB, SymbolEntry } from "@modelscript/compiler";
 import {
   choice,
   def,
@@ -27,6 +26,7 @@ import {
   token,
   warning,
 } from "@modelscript/language";
+import type { QueryDB, SymbolEntry } from "@modelscript/language/compiler";
 
 // ---------------------------------------------------------------------------
 // Precedence constants
@@ -131,15 +131,15 @@ const definitionStructuralQueries = {
   extractTopology: (db: QueryDB, self: SymbolEntry) => {
     // Basic extraction to stub out Phase 3 logic
     const rootIds = [self.id];
-    const nodes = new Map<number, import("@modelscript/compiler/topology").TopologyNode>();
-    const edges: import("@modelscript/compiler/topology").TopologyEdge[] = [];
+    const nodes = new Map<number, import("@modelscript/language/compiler").TopologyNode>();
+    const edges: import("@modelscript/language/compiler").TopologyEdge[] = [];
 
     const walk = (entryId: number, parentId: number | null, pathPrefix: string) => {
       const entry = db.symbol(entryId);
       if (!entry) return;
 
       const path = pathPrefix ? `${pathPrefix}.${entry.name}` : entry.name || "";
-      const node: import("@modelscript/compiler/topology").TopologyNode = {
+      const node: import("@modelscript/language/compiler").TopologyNode = {
         usageId: entry.id,
         path,
         targetClassId: null,
@@ -227,7 +227,7 @@ const definitionStructuralQueries = {
     const rootPath = self.name || "";
     const rootPrefix = rootPath ? rootPath + "." : "";
 
-    const buildVarMap = (node: import("@modelscript/compiler/topology").TopologyNode) => {
+    const buildVarMap = (node: import("@modelscript/language/compiler").TopologyNode) => {
       if (node.path && node.path !== rootPath) {
         // Strip root prefix: "circuit.C.v" → "C.v"
         const simPath = node.path.startsWith(rootPrefix) ? node.path.substring(rootPrefix.length) : node.path;
@@ -367,7 +367,7 @@ const packageModel = {
 type EvalResult = number | boolean | string | null | undefined;
 
 /** CSTNode type alias for expression evaluation */
-type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+type CSTNode = import("@modelscript/language/compiler").CSTNode;
 
 /**
  * Resolve a feature reference name within a scope.
@@ -1952,7 +1952,7 @@ const packageTraceabilityLints = {
 // X6-Compatible Graphics Configuration — Reusable helpers
 // ---------------------------------------------------------------------------
 
-import type { GraphicsConfig } from "@modelscript/compiler";
+import type { GraphicsConfig } from "@modelscript/language/compiler";
 import type { X6Markup } from "@modelscript/language/diagram/builder";
 
 /** Standard SysML block-style node markup: header + separator + label + icon */
@@ -2114,7 +2114,7 @@ const sysmlEdgeGraphics = (opts: {
 // Cross-Language Adapters — SysML2 → Modelica helpers
 // ---------------------------------------------------------------------------
 
-import type { AdapterDB } from "@modelscript/compiler";
+import type { AdapterDB } from "@modelscript/language/compiler";
 
 /** Project a SysML2 Definition as a Modelica ClassDefinition. */
 const modelicaClassAdapter = (classKind: string) => ({

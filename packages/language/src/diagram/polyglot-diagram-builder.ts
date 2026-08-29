@@ -104,7 +104,7 @@ export interface GraphicsConfig {
 
 type SelfAccessor = any;
 
-// Minimal types to avoid circular dependency on @modelscript/compiler
+// Minimal types to avoid circular dependency on @modelscript/language/compiler
 export type SymbolId = string;
 export interface SymbolEntry {
   id: SymbolId;

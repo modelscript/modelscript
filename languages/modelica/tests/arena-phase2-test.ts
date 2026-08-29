@@ -1,7 +1,7 @@
 /**
  * Phase 2 parity test: extends, modifications, inner/outer, enums, 2D arrays
  */
-import { ArenaDAEPrinter } from "@modelscript/compiler";
+import { ArenaDAEPrinter } from "@modelscript/language/compiler";
 import Modelica from "@modelscript/modelica/parser";
 import { StringWriter } from "@modelscript/utils";
 import Parser from "tree-sitter";

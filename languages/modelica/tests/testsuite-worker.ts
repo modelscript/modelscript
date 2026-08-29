@@ -25,10 +25,10 @@ globalThis.WeakRef = class WeakRefMock {
   }
 } as unknown as typeof WeakRef;
 
-import { simulateArena } from "@modelscript/compiler/simulator";
+import { simulateArena } from "@modelscript/language/simulator";
 
-import { ArenaDAEPrinter } from "@modelscript/compiler/arena-printer";
 import { createWasmParser } from "@modelscript/language";
+import { ArenaDAEPrinter } from "@modelscript/language/compiler";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { StringWriter } from "@modelscript/utils";

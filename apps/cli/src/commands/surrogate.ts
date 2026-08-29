@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ArenaDoEInputRange } from "@modelscript/compiler/simulator";
-import { buildArenaSurrogate } from "@modelscript/compiler/simulator";
 import { generateRomWasmSource } from "@modelscript/language/fmi";
+import type { ArenaDoEInputRange } from "@modelscript/language/simulator";
+import { buildArenaSurrogate } from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs/promises";

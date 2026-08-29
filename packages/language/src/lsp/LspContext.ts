@@ -1,6 +1,6 @@
-import { Context } from "@modelscript/compiler";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { Context } from "../compiler/index.js";
 import { DiagramService } from "./services/DiagramService.js";
 import { DocumentManager } from "./services/DocumentManager.js";
 import { ParserService } from "./services/ParserService.js";

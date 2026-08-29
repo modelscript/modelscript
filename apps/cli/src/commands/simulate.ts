@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { initBltWasm, type ArenaDAEBuilder } from "@modelscript/compiler";
+import { initBltWasm, type ArenaDAEBuilder } from "@modelscript/language/compiler";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
 import {
   ArenaSimulator,
   runWasmSimulation,
@@ -8,8 +9,7 @@ import {
   simulateArenaAsync,
   snapshotMemory,
   type MemorySnapshot,
-} from "@modelscript/compiler/simulator";
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
+} from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import { execSync, spawn } from "node:child_process";

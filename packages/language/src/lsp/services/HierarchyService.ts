@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
+import { Connection } from "vscode-languageserver";
 import {
   ClassHierarchyNode,
   ComponentTreeNode,
   ModelicaClassInstance,
   type ModelicaComponentInstance,
   TreeNodeInfo,
-} from "@modelscript/compiler";
-import { Connection } from "vscode-languageserver";
+} from "../../compiler/index.js";
 import { fqnCacheState } from "../utils/hierarchyUtils.js";
 import { DocumentManager } from "./DocumentManager.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";

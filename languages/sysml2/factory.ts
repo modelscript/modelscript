@@ -5,11 +5,14 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { QueryEngine } from "@modelscript/compiler";
-import { LSPBridge, PositionIndex } from "@modelscript/compiler/lsp-bridge";
-import { ScopeResolver } from "@modelscript/compiler/resolver";
-import type { VerificationResult } from "@modelscript/compiler/verifier";
-import { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
+import {
+  LSPBridge,
+  PositionIndex,
+  QueryEngine,
+  ScopeResolver,
+  type VerificationResult,
+  WorkspaceIndex,
+} from "@modelscript/language/compiler";
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/language/diagram/builder";
 
 import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from "./src-gen/config.js";

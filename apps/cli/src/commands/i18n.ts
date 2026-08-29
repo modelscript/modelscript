@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { I18nExtractor } from "@modelscript/compiler";
+import { I18nExtractor } from "@modelscript/language/compiler";
 import { Context } from "@modelscript/modelica/context";
 import { i18nConfig } from "@modelscript/modelica/indexer_config";
 import Modelica from "@modelscript/modelica/parser";

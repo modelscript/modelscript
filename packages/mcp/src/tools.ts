@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { TopologyGraph } from "@modelscript/compiler";
-import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/compiler";
-import {
-  type ArenaSimulateOptions,
-  runArenaDoE,
-  runSensitivityAnalysisArena,
-  simulateArena,
-} from "@modelscript/compiler/simulator";
 import {
   executeBgpQuery,
   executeQueryString,
@@ -17,6 +9,14 @@ import {
   OntologyBuilder,
   TableauReasoner,
 } from "@modelscript/language";
+import type { TopologyGraph } from "@modelscript/language/compiler";
+import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/language/compiler";
+import {
+  type ArenaSimulateOptions,
+  runArenaDoE,
+  runSensitivityAnalysisArena,
+  simulateArena,
+} from "@modelscript/language/simulator";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import { Context } from "@modelscript/modelica/context";

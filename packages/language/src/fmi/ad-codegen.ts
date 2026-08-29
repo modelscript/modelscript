@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { type ArenaDAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/compiler";
+import { type ArenaDAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "../compiler/index.js";
 
 import { type Fmi3Variable } from "./fmi3.js";
 

@@ -40,7 +40,7 @@
     }
   },
   "release": {
-    "projects": ["packages/language", "packages/compiler", "languages/modelica", "apps/cli"],
+    "projects": ["packages/language", "languages/modelica", "apps/cli"],
     "version": {
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",

@@ -1,17 +1,17 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
-import { EqKind, performBltTransformationArena, Variability } from "@modelscript/compiler";
-import { ModelicaCalibrator, ModelicaOptimizer } from "@modelscript/compiler/optimizer";
+import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
+import { generateRomWasmSource } from "@modelscript/language/fmi";
+import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
+import { EqKind, performBltTransformationArena, Variability } from "../../compiler/index.js";
+import { ModelicaCalibrator, ModelicaOptimizer } from "../../compiler/optimizer/index.js";
 import {
   ArenaSimulator,
   buildArenaSurrogate,
   runMonteCarloArena,
   simulateArena,
   type ArenaDoEInputRange,
-} from "@modelscript/compiler/simulator";
-import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
-import { generateRomWasmSource } from "@modelscript/language/fmi";
-import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
+} from "../../compiler/simulator/index.js";
 import { LspContext } from "../LspContext.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arenaUtils.js";
 
@@ -566,9 +566,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
       error?: string;
     }> => {
       context.connection.console.info(`[montecarlo] Requested MC for URI: ${params.uri}`);
-      const { runMonteCarloSimulation } = await import("@modelscript/compiler/simulator");
-      type RandomVariable = import("@modelscript/compiler/simulator").RandomVariable;
-      type Distribution = import("@modelscript/compiler/simulator").Distribution;
+      const { runMonteCarloSimulation } = await import("../../compiler/simulator/index.js");
+      type RandomVariable = import("../../compiler/simulator/index.js").RandomVariable;
+      type Distribution = import("../../compiler/simulator/index.js").Distribution;
 
       let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {

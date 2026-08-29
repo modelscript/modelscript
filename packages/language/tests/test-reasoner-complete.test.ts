@@ -82,7 +82,8 @@ describe("Complete Reasoner Feature Suite (WASM + TypeScript)", () => {
     if (instance.exports.initCompiler) {
       instance.exports.initCompiler();
     }
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + "\nreturn { LspFacade };";
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + "\nreturn { LspFacade };";
     const { LspFacade } = new Function(wrapperSrc)();
     facade = new LspFacade(instance.exports.memory, instance.exports);
   }, 60000);

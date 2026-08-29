@@ -75,7 +75,7 @@ describe("100% Tree-sitter API Compatibility Suite", () => {
     const wasmModule = await WebAssembly.compile(wasm);
 
     const wrapperSrc =
-      result.javascriptWrapper.js.replace(/export /g, "") +
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") +
       `\nreturn { LspFacade, Tree, TreeCursor, SyntaxNode, TreeSitterParser };`;
     const getExports = new Function(wrapperSrc);
     const exportsObj = getExports();

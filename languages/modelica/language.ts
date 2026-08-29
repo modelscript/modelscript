@@ -21,6 +21,7 @@
  *   - Cross-language adapters for SysML2 interop
  */
 
+import { keyword } from "@modelscript/language";
 import {
   choice,
   def,
@@ -39,8 +40,7 @@ import {
   type Rule,
   type SymbolEntry,
   type SymbolId,
-} from "@modelscript/compiler";
-import { keyword } from "@modelscript/language";
+} from "@modelscript/language/compiler";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modification-args.js";
 
 function cyrb53(str: string, seed = 0): string {
@@ -1432,7 +1432,7 @@ const modelicaLang = language({
           members: (db, self) => db.childrenOf(self.id),
           /** Extract array dimensions for ShortClassSpecifiers like type ArrayType = Real[3]; */
           arrayDimensions: (db, self) => {
-            const cst = db.cstNode(self.id) as import("@modelscript/compiler/symbol-indexer").CSTNode | null;
+            const cst = db.cstNode(self.id) as import("@modelscript/language/compiler").CSTNode | null;
             if (!cst) return null;
             const classSpec = cst.childForFieldName("classSpecifier");
             if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
@@ -1472,7 +1472,7 @@ const modelicaLang = language({
            */
           effectiveModification: (db: QueryDB, self: SymbolEntry) => {
             // console.error("Executing effectiveModification on ClassDefinition for " + self.name);
-            const cst = db.cstNode(self.id) as import("@modelscript/compiler/symbol-indexer").CSTNode | null;
+            const cst = db.cstNode(self.id) as import("@modelscript/language/compiler").CSTNode | null;
             if (!cst) return null;
             const classSpec = cst.childForFieldName("classSpecifier");
             if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
@@ -1608,7 +1608,7 @@ const modelicaLang = language({
             const kind = (self.metadata as Record<string, unknown>)?.classPrefixes;
             if (kind !== "operator record") return null;
 
-            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/compiler").CSTNode;
             const recordName = self.name;
 
             interface OperatorOverload {
@@ -4977,7 +4977,7 @@ const modelicaLang = language({
            */
           arrayDimensions: (db: QueryDB, self: SymbolEntry) => {
             // Get the CST node for this ComponentDeclaration
-            const cst = db.cstNode(self.id) as import("@modelscript/compiler/symbol-indexer").CSTNode | null;
+            const cst = db.cstNode(self.id) as import("@modelscript/language/compiler").CSTNode | null;
             if (!cst) return null;
 
             /** Extract subscript descriptors from an ArraySubscripts CST node. */
@@ -5516,7 +5516,7 @@ const modelicaLang = language({
            * e.g. `Integer y = 1.5;` (Real literal assigned to Integer).
            */
           bindingTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/compiler").CSTNode;
 
             const declaredType = db.query<string | null>("typeSpecifier", self.id);
             if (!declaredType) {
@@ -5660,7 +5660,7 @@ const modelicaLang = language({
            */
           arrayShapeMismatch: (db: QueryDB, self: SymbolEntry) => {
             if (self.parentId !== null && db.childrenOf(self.parentId).length > 1000) return null;
-            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/compiler").CSTNode;
 
             // Get declared dimensions via query
             const dims = db.query<Array<{ kind: string; value?: number }> | null>("arrayDimensions", self.id);
@@ -5721,7 +5721,7 @@ const modelicaLang = language({
            * e.g. `B[2] b = {B(1,1), C(2)};` — C is not B.
            */
           arrayElementTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/compiler").CSTNode;
 
             const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
@@ -5815,7 +5815,7 @@ const modelicaLang = language({
            */
           unresolvedReference: (db: QueryDB, self: SymbolEntry) => {
             if (self.parentId !== null && db.childrenOf(self.parentId).length > 1000) return null;
-            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/compiler").CSTNode;
 
             // Get the CST node
             const cst = db.cstNode(self.id) as CSTNode | null;
@@ -5894,7 +5894,7 @@ const modelicaLang = language({
            * e.g. `Real x = X(2,3);` where X takes 1 input.
            */
           functionCallMismatch: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/compiler").CSTNode;
 
             // Get the CST binding expression
             const cst = db.cstNode(self.id) as CSTNode | null;
@@ -6624,7 +6624,7 @@ const modelicaLang = language({
            * e.g. `connect(x, y)` where x/y are plain Real variables.
            */
           nonConnectorType: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/compiler").CSTNode;
 
             const meta = self.metadata as Record<string, unknown>;
             const ref1Name = typeof meta?.ref1 === "string" ? meta.ref1 : null;

@@ -16,6 +16,7 @@
  *     model.json          (serialized DAE for JS-based runtime)
  */
 
+import { deflateRaw } from "pako";
 import {
   type ArenaDAEBuilder,
   BinOp,
@@ -25,8 +26,7 @@ import {
   UnaryOp,
   Variability,
   VarType,
-} from "@modelscript/compiler";
-import { deflateRaw } from "pako";
+} from "../compiler/index.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
 import { generateFmi3 } from "./fmi3.js";

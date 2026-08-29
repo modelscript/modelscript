@@ -23,7 +23,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@modelscript/compiler": "*",
     "@modelscript/language": "*",
     "@modelscript/modelica": "*",
     "@modelscript/sysml2": "*",

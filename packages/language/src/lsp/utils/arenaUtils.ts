@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ArenaDAEBuilder, ArenaDAEPrinter, ExprKind, VarType, Variability } from "@modelscript/compiler";
+import { ArenaDAEBuilder, ArenaDAEPrinter, ExprKind, VarType, Variability } from "../../compiler/index.js";
 
 /**
  * Port getParameterInfo to work on ArenaDAEBuilder.

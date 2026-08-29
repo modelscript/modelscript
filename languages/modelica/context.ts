@@ -12,7 +12,7 @@ import {
   type PreconditionerMode,
   type QueryEngine,
   type WorkspaceIndex,
-} from "@modelscript/compiler";
+} from "@modelscript/language/compiler";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ArenaQueryFlattener, type FlattenOptions } from "./flattener-query.js";

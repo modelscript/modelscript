@@ -53,7 +53,10 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
     const wasmModule = await WebAssembly.compile(wasm);
 
     const wrapperSrc =
-      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
+      result.javascriptWrapper.js
+        .replace(/export default /g, "")
+        .replace(/export default /g, "")
+        .replace(/export /g, "") + `\nreturn { LspFacade };`;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-import { ClassHierarchyNode, ComponentTreeNode, ModelicaClassInstance, TreeNodeInfo } from "@modelscript/compiler";
+import { ClassHierarchyNode, ComponentTreeNode, ModelicaClassInstance, TreeNodeInfo } from "../../compiler/index.js";
 
 export const fqnCacheState = {
   index: null as any,

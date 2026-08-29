@@ -1,2 +1,2 @@
-import { eliminateArenaAliases } from "@modelscript/compiler";
+import { eliminateArenaAliases } from "@modelscript/language/compiler";
 console.log(eliminateArenaAliases);

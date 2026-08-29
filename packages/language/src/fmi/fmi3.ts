@@ -15,7 +15,7 @@
  * FMI 3.0 specification: https://fmi-standard.org/
  */
 
-import { type ArenaDAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "@modelscript/compiler";
+import { type ArenaDAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "../compiler/index.js";
 
 // ── Public interface ──
 

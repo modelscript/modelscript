@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @deprecated Use arena-native evaluation and statement execution in `@modelscript/compiler` instead.
+ * @deprecated Use arena-native evaluation and statement execution in `@modelscript/language/compiler` instead.
  * This class is preserved solely for legacy flattener compatibility and will be removed once the legacy flattener is retired.
  */
 
@@ -25,7 +25,7 @@ import {
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
   Scope,
-} from "@modelscript/compiler";
+} from "@modelscript/language/compiler";
 import { createHash, makeWeakRef } from "@modelscript/utils";
 import {
   ModelicaArrayConcatenationSyntaxNode,

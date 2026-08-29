@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "@modelscript/compiler";
+import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../compiler/index.js";
 
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { binaryOpToJs, escapeJsString, mapFunctionNameJs, sanitizeIdentifier } from "./transpiler-utils.js";

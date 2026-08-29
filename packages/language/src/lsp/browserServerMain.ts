@@ -27,8 +27,8 @@ import { type SysML2Layout } from "./sysml2-layout.js";
 
 import { SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
 
-import { ArenaDAEBuilder, Context, LineIndex, QueryEngine, initBltWasm } from "@modelscript/compiler";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
+import { ArenaDAEBuilder, Context, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
 
 import { ModelicaClassDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 
@@ -202,9 +202,9 @@ const diagramService = new DiagramService(connection, documentManager, workspace
 workspaceManager.stepWorkspaceIndex = new StepWorkspaceIndex();
 workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, { priority: 2 });
 
-import { UnifiedWorkspace } from "@modelscript/compiler";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import sysml2LangFallback from "@modelscript/sysml2/language";
+import { UnifiedWorkspace } from "../compiler/index.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
 import { registerAnalysisHandlers } from "./handlers/analysisHandler.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
@@ -1000,7 +1000,7 @@ export interface FlatSemanticEdit {
 export { cadComponentsCache, documents, flattenArenaFromInstance, sharedContext, simpleHash };
 
 // --- Zero-Copy WebGPU Visualization Pipeline ---
-import { WebGPUSimulationRunner } from "@modelscript/compiler/simulator";
+import { WebGPUSimulationRunner } from "../compiler/simulator/index.js";
 
 if (typeof self !== "undefined") {
   self.addEventListener("message", async (e: MessageEvent) => {
@@ -1023,7 +1023,7 @@ if (typeof self !== "undefined") {
         if (!docContext) throw new Error("No Modelica context found");
 
         const arena = flattenArenaFromInstance(classInstance, docContext);
-        const { performBltTransformationArena, serializeArenaForGPU } = await import("@modelscript/compiler");
+        const { performBltTransformationArena, serializeArenaForGPU } = await import("../compiler/index.js");
         const stateVars = new Set<number>();
         const bltResult = performBltTransformationArena(arena, stateVars, new Set<number>());
         const buffers = serializeArenaForGPU(arena, bltResult, stateVars);

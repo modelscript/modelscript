@@ -73,7 +73,8 @@ describe("Error -> Repair -> Error Hang Reproduction", () => {
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
 
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 

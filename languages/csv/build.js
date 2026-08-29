@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 // Step 0: Regenerate grammar.js (and other artifacts) from language.ts
 const languagePath = path.join(__dirname, "language.ts");
-const cliPath = path.resolve(__dirname, "..", "..", "packages", "compiler", "src", "cli.ts");
+const cliPath = path.resolve(__dirname, "..", "..", "packages", "language", "src", "compiler", "cli.ts");
 const grammarPath = path.join(__dirname, "grammar.js");
 
 const srcGenPath = path.join(__dirname, "src-gen");

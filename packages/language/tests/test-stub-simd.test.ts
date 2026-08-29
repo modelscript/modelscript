@@ -59,7 +59,8 @@ describe("Phase 1: Next-Gen Storage Engine, SIMD Stubs & Merkle Hashes", () => {
     const wasm = fs.readFileSync(outWasm);
     wasmModule = await WebAssembly.compile(wasm);
 
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
     getFacadeFn = new Function(wrapperSrc);
 
     const createInstance = async () => {

@@ -57,7 +57,8 @@ describe("Gap 1: Persistent On-Disk Binary Stub Cache Tests", () => {
     const wasm = fs.readFileSync(outWasm);
     wasmModule = await WebAssembly.compile(wasm);
 
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
     getFacadeFn = new Function(wrapperSrc);
 
     const createInstance = async () => {

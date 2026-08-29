@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { UnifiedWorkspace, VerificationRunner } from "@modelscript/compiler";
-import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/compiler/simulator";
+import { UnifiedWorkspace, VerificationRunner } from "@modelscript/language/compiler";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
+import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";

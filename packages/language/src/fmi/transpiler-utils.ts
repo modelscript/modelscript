@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp } from "@modelscript/compiler";
+import { BinOp } from "../compiler/index.js";
 
 /** Sanitize a Modelica name into a valid C/JS identifier. */
 export function sanitizeIdentifier(name: string): string {

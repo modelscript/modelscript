@@ -1,10 +1,10 @@
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
 import {
   type Distribution,
   type RandomVariable,
   runMonteCarloArena,
   runWasmSimulation,
-} from "@modelscript/compiler/simulator";
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
+} from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs/promises";
@@ -167,12 +167,12 @@ export const MC: CommandModule<{}, McArgs> = {
     } else {
       // WASM execution path
       const { latinHypercubeSample, sampleDistribution, Xoshiro256pp, normalQuantile } =
-        await import("@modelscript/compiler/simulator");
+        await import("@modelscript/language/simulator");
 
       const modelIdentifier = args.name.replace(/\./g, "_");
       const stateVars = new Set<string>();
       // To get state variables we need to prepare the simulator once
-      const { ArenaSimulator } = await import("@modelscript/compiler/simulator");
+      const { ArenaSimulator } = await import("@modelscript/language/simulator");
       const simulator = new ArenaSimulator(arena);
       simulator.prepare();
       for (const varIdx of simulator.stateVars) {
@@ -250,7 +250,7 @@ export const MC: CommandModule<{}, McArgs> = {
         }
       }
 
-      const { aggregateResults } = await import("@modelscript/compiler/simulator");
+      const { aggregateResults } = await import("@modelscript/language/simulator");
       mcResult = aggregateResults(allResults, normalQuantile((1 + 0.95) / 2), false);
     }
 

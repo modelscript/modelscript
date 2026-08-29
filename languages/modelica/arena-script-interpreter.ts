@@ -1,6 +1,6 @@
-import type { QueryEngine } from "@modelscript/compiler";
-import { ModelicaCalibrator } from "@modelscript/compiler/optimizer";
-import { ArenaSimulator, simulateArena, type ArenaSimulateOptions } from "@modelscript/compiler/simulator";
+import type { QueryEngine } from "@modelscript/language/compiler";
+import { ModelicaCalibrator } from "@modelscript/language/optimizer";
+import { ArenaSimulator, simulateArena, type ArenaSimulateOptions } from "@modelscript/language/simulator";
 import type { SyntaxNode } from "@modelscript/utils";
 import {
   ModelicaComponentReferenceSyntaxNode,

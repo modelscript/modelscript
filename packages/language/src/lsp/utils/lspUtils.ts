@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { LSPBridge, PositionIndex } from "@modelscript/compiler";
+import { LSPBridge, PositionIndex } from "../../compiler/index.js";
 
 /** Helper to convert a SymbolEntry to a cross-file LSP Location */
 export function symbolEntryToLocation(

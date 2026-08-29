@@ -77,7 +77,8 @@ describe("Phase 4: Modelica Flattening & MSL Math Engine Migration", () => {
       if (instance.exports.initCompiler) {
         instance.exports.initCompiler();
       }
-      const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + "\nreturn { LspFacade };";
+      const wrapperSrc =
+        result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + "\nreturn { LspFacade };";
       const { LspFacade } = new Function(wrapperSrc)();
       return new LspFacade(instance.exports.memory, instance.exports);
     };

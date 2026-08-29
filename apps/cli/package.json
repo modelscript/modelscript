@@ -38,7 +38,6 @@
   },
   "dependencies": {
     "@babel/standalone": "^7.29.7",
-    "@modelscript/compiler": "*",
     "@modelscript/language": "*",
     "@modelscript/modelica": "*",
     "@modelscript/sysml2": "*",

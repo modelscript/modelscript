@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/compiler";
+import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/language/compiler";
 import type { Context } from "../context.js";
 import type { ModelicaModArgs } from "../modification-args.js";
 

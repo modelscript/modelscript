@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "@modelscript/compiler";
+import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "../compiler/index.js";
 import { extractStepAssembly } from "./step-assembly-extractor.js";
 import { StepAssemblyModel } from "./step-physical-data.js";
 

@@ -2,8 +2,8 @@
 
 import type { Context } from "@modelscript/modelica/context";
 
-import type { UnifiedWorkspace } from "@modelscript/compiler";
 import type { OntologyBuilder } from "@modelscript/language";
+import type { UnifiedWorkspace } from "@modelscript/language/compiler";
 
 /**
  * Shared server context — holds the current compiler Context,

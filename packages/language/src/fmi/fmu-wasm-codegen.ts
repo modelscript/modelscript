@@ -7,7 +7,7 @@
  * source file that compiles to WebAssembly via Emscripten.
  */
 
-import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/compiler";
+import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "../compiler/index.js";
 
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";

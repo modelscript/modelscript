@@ -10,7 +10,7 @@
  * convention.
  */
 
-import type { SymbolEntry, SymbolIndex } from "@modelscript/compiler";
+import type { SymbolEntry, SymbolIndex } from "../compiler/index.js";
 
 // ---------------------------------------------------------------------------
 // Public data types

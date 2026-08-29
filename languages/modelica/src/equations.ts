@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ArenaDAEBuilder } from "@modelscript/compiler";
-import { EqKind, ExprKind } from "@modelscript/compiler";
 import type { DaeBuilder } from "@modelscript/language";
+import type { ArenaDAEBuilder } from "@modelscript/language/compiler";
+import { EqKind, ExprKind } from "@modelscript/language/compiler";
 
 interface DAEAdapter {
   addEquation(kind: number, lhs: number, rhs: number, flags?: number): number;

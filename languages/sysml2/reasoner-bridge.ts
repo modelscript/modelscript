@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { OWL2Axiom, QueryDB, SymbolEntry } from "@modelscript/compiler";
+import type { OWL2Axiom, QueryDB, SymbolEntry } from "@modelscript/language/compiler";
 
 /**
  * Extracts OWL2 DL axioms natively from a SysML v2 file/namespace.

@@ -4,7 +4,7 @@
  * SUNDIALS C glue-code generator.
  */
 
-import type { ArenaDAEBuilder } from "@modelscript/compiler";
+import type { ArenaDAEBuilder } from "../compiler/index.js";
 import type { FmuResult } from "./fmi.js";
 import type { SolverOptions } from "./solver-options.js";
 import { formatCDouble } from "./transpiler-utils.js";

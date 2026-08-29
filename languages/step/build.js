@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 // Step 1: Generate Salsa config / query-hooks / ast
 const languagePath = path.join(__dirname, "src", "language.ts");
-const cliPath = path.resolve(__dirname, "..", "..", "packages", "compiler", "src", "cli.ts");
+const cliPath = path.resolve(__dirname, "..", "..", "packages", "language", "src", "compiler", "cli.ts");
 console.log("[step] Generating artifacts from language.ts...");
 execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
 

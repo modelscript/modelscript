@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind } from "@modelscript/compiler";
+import { ArenaDAEBuilder, BinOp, EqKind, ExprKind } from "@modelscript/language/compiler";
 
 /**
  * Union-Find data structure with path compression and union-by-rank.

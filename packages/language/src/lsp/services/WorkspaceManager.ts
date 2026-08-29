@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-import { Context, QueryEngine, UnifiedWorkspace, WorkspaceIndex } from "@modelscript/compiler";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
+import { Context, QueryEngine, UnifiedWorkspace, WorkspaceIndex } from "../../compiler/index.js";
 // @ts-ignore
 import { INDEXER_HOOKS as owl2IndexerHooks } from "@modelscript/owl2/config";
 import { DocumentManager } from "./DocumentManager.js";

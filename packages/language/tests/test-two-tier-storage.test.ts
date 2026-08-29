@@ -78,7 +78,8 @@ describe("Two-Tier Storage Architecture & Stub Indexing", () => {
     const wasmModule = await WebAssembly.compile(wasm);
 
     const wrapperSrc =
-      result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade, LruAstCache, LspWorkspaceManager };`;
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") +
+      `\nreturn { LspFacade, LruAstCache, LspWorkspaceManager };`;
     const getExports = new Function(wrapperSrc);
     const { LspFacade, LruAstCache, LspWorkspaceManager } = getExports();
     LruAstCacheClass = LruAstCache;

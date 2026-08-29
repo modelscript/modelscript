@@ -1,4 +1,4 @@
-import type { WebGPUSimulationRunner } from "@modelscript/compiler/src/simulator/core/webgpu-simulation-runner";
+import type { WebGPUSimulationRunner } from "@modelscript/language/simulator";
 import { Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import Box from "../Box";

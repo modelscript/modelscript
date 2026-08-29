@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { printArenaDAE } from "@modelscript/compiler";
-import { snapshotMemory } from "@modelscript/compiler/simulator";
+import { printArenaDAE } from "@modelscript/language/compiler";
+import { snapshotMemory } from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
 import { createRequire } from "node:module";
@@ -53,7 +53,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
   handler: async (args) => {
     const profiler = new Profiler();
 
-    const { UnifiedWorkspace } = await import("@modelscript/compiler");
+    const { UnifiedWorkspace } = await import("@modelscript/language/compiler");
     const { createModelicaQueryEngine, createModelicaWorkspaceIndex } = await import("@modelscript/modelica/factory");
     const { createSysML2WorkspaceIndex } = await import("@modelscript/sysml2/factory");
     const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { LSPBridge } from "@modelscript/compiler";
 import { Connection, Definition, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { LSPBridge } from "../../compiler/index.js";
 import { symbolEntryToLocation } from "../utils/lspUtils.js";
 
 function isStepDocument(document: TextDocument): boolean {

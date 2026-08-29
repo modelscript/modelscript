@@ -1,4 +1,4 @@
-import { ProjectionResult, UnifiedWorkspace } from "@modelscript/compiler";
+import { ProjectionResult, UnifiedWorkspace } from "@modelscript/language/compiler";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaConfig from "@modelscript/modelica/language";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";

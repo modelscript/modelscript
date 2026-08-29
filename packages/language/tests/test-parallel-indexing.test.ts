@@ -55,7 +55,8 @@ describe("Gap 3: Multi-Threaded Parallel Indexing & Bulk Registration Tests", ()
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
 
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
     const getFacadeFn = new Function(wrapperSrc);
 
     const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });

@@ -16,19 +16,15 @@ export function registerCodeLensProvider(context: LspContext) {
 
     for (const [, symbol] of index.symbols.entries()) {
       // Find classes with the "study", "model", "block", or "process" kind
-      // @ts-expect-error missing type properties
-      const kind = symbol.classKind;
-      if ((kind === "study" || kind === "model" || kind === "block" || kind === "process") && symbol.name) {
+      const sym = symbol as any;
+      const kind = sym.classKind;
+      if ((kind === "study" || kind === "model" || kind === "block" || kind === "process") && sym.name) {
         // We only want the top-level declaration range, not the whole body
         const range = Range.create(
-          // @ts-expect-error missing type properties
-          symbol.selectionRange?.start.line ?? symbol.range.start.line,
-          // @ts-expect-error missing type properties
-          symbol.selectionRange?.start.character ?? symbol.range.start.character,
-          // @ts-expect-error missing type properties
-          symbol.selectionRange?.start.line ?? symbol.range.start.line,
-          // @ts-expect-error missing type properties
-          symbol.selectionRange?.start.character ?? symbol.range.start.character,
+          sym.selectionRange?.start.line ?? sym.range?.start?.line ?? 0,
+          sym.selectionRange?.start.character ?? sym.range?.start?.character ?? 0,
+          sym.selectionRange?.start.line ?? sym.range?.start?.line ?? 0,
+          sym.selectionRange?.start.character ?? sym.range?.start?.character ?? 0,
         );
 
         const title = kind === "study" ? "▶ Run Study" : `▶ Simulate ${kind}`;

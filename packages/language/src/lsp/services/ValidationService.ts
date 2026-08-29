@@ -6,6 +6,10 @@ import { DocumentManager } from "./DocumentManager.js";
 import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
+import { SyntaxNode, TableauReasoner } from "@modelscript/language";
+import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
+import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
+import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
 import {
   LSPBridge,
   PositionIndex,
@@ -13,12 +17,8 @@ import {
   ScopeResolver,
   SymbolIndexer,
   VerificationRunner,
-} from "@modelscript/compiler";
-import { simulateArena } from "@modelscript/compiler/simulator";
-import { SyntaxNode, TableauReasoner } from "@modelscript/language";
-import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
-import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
-import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
+} from "../../compiler/index.js";
+import { simulateArena } from "../../compiler/simulator/index.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
 import { parseStepReferences, STEP_SCHEMA } from "../utils/stepUtils.js";

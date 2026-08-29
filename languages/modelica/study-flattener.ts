@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/compiler";
+import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/language/compiler";
 import { type ModelicaModArgs } from "./modification-args.js";
 
 /**

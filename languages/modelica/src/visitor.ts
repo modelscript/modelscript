@@ -14,7 +14,7 @@ import {
   type ArenaValue,
   type QueryDB,
   type SymbolId,
-} from "@modelscript/compiler";
+} from "@modelscript/language/compiler";
 import {
   AstTag,
   ModelicaArrayConcatenationSyntaxNode,
@@ -527,7 +527,7 @@ export class ArenaExprVisitor {
             if (literals && literals.length > 0) {
               // Construct fully qualified enum path
               const pathParts: string[] = [];
-              let curr: import("@modelscript/compiler/runtime").SymbolEntry | null | undefined = entry;
+              let curr: import("@modelscript/language/compiler").SymbolEntry | null | undefined = entry;
               while (curr && curr.parentId !== 0 && curr.parentId !== null) {
                 pathParts.unshift(curr.name);
                 curr = this.db.symbol(curr.parentId);
@@ -547,7 +547,7 @@ export class ArenaExprVisitor {
 
             // Construct fully qualified enum path
             const pathParts: string[] = [];
-            let curr: import("@modelscript/compiler/runtime").SymbolEntry | null | undefined = entry;
+            let curr: import("@modelscript/language/compiler").SymbolEntry | null | undefined = entry;
             while (curr && curr.parentId !== 0 && curr.parentId !== null) {
               pathParts.unshift(curr.name);
               curr = this.db.symbol(curr.parentId);

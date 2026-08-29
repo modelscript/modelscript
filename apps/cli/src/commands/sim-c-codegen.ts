@@ -12,7 +12,7 @@
  * with `gcc -O3 -lm` and executed as a subprocess.
  */
 
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/compiler";
+import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
 import type { FmiScalarVariable, FmuResult } from "@modelscript/language/fmi";
 
 // ── Public interface ──

@@ -1,17 +1,17 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // ts-check
 
+import { createWasmParser, SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
+import { createModelicaQueryEngine, MsimParser } from "@modelscript/modelica/factory";
+import { Connection, TextDocuments } from "vscode-languageserver";
+import { TextDocument } from "vscode-languageserver-textdocument";
 import {
   Context,
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
   LineIndex,
   TokenData,
-} from "@modelscript/compiler";
-import { createWasmParser, SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
-import { createModelicaQueryEngine, MsimParser } from "@modelscript/modelica/factory";
-import { Connection, TextDocuments } from "vscode-languageserver";
-import { TextDocument } from "vscode-languageserver-textdocument";
+} from "../../compiler/index.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
 import {
   loadDependencyFromRegistry,

@@ -54,7 +54,8 @@ describe("Gap 2: Dex-Style Trigram Fuzzy Search Tests", () => {
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
 
-    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const wrapperSrc =
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
     const getFacadeFn = new Function(wrapperSrc);
 
     const memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
-import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/compiler";
 import type { Assembly, Mat4, PartEntry, Solid } from "@modelscript/language/cad";
 import {
   IDENTITY,
@@ -14,6 +13,7 @@ import {
   torus,
   translationMatrix,
 } from "@modelscript/language/cad";
+import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/language/compiler";
 import { isBroken, mergeModArgs, subModification, type ModelicaModArgs } from "./modification-args.js";
 
 type ModificationStack = { mods: ModelicaModArgs; evaluationScopeId: SymbolId | null }[];
