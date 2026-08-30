@@ -1,6 +1,14 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+export interface I18nTextConfig {
+  field: string;
+  context?: "self" | "scope";
+}
 
-import type { I18nConfig } from "./language-dsl.js";
+export interface I18nConfig {
+  texts?: (string | I18nTextConfig)[];
+  traverse?: string[];
+  scope?: (self: any) => string | null;
+  extract?: (db: any, self: any) => any;
+}
 
 export interface TSPoint {
   readonly row: number;

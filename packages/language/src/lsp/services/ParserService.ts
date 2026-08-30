@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // ts-check
 
-import { createWasmParser, SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
 import { createModelicaQueryEngine, MsimParser } from "@modelscript/modelica/factory";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { createWasmParser } from "../../bindings/javascript/bindings.js";
 import {
   Context,
   FederatedQueryCacheStore,
@@ -12,6 +12,7 @@ import {
   LineIndex,
   TokenData,
 } from "../../compiler/index.js";
+import type { SyntaxNode, Tree as TreeSitterTree } from "../../utils/tree-sitter.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
 import {
@@ -22,6 +23,14 @@ import {
 } from "../vfs/library-loader.js";
 import { DocumentManager } from "./DocumentManager.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
+
+let registryUrl: any = undefined;
+let savedLoaderCtx: any = undefined;
+let projectTreeChangedTimer: any = undefined;
+let projectTreeChangedPending: any = undefined;
+let documentLSPBridges: any = undefined;
+let createSysML2QueryEngine: any = undefined;
+let ModelicaClassInstance: any = undefined;
 
 export class ParserService {
   public parserReady = false;

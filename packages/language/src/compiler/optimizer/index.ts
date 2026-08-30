@@ -9,4 +9,4 @@ export * from "./solvers/gpu-codegen.js";
 export * from "./solvers/ipopt-solver.js";
 
 // Re-export ArenaSimulator from the sibling simulator package for convenience
-export { ArenaSimulator } from "../simulator/core/simulator.js";
+export { ArenaSimulator } from "../simulator/core/simulate-arena.js";

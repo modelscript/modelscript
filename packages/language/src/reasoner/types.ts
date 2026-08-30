@@ -475,3 +475,21 @@ export type OntologyEvent =
   | { type: "error"; error: Error };
 
 export type OntologyEventListener = (event: OntologyEvent) => void;
+
+// ---------------------------------------------------------------------------
+// IRI Namespace Helpers
+// ---------------------------------------------------------------------------
+
+/** Standard IRI prefixes for each language domain. */
+export const OWL2_IRI_PREFIX = {
+  modelica: "mo:",
+  sysml2: "sysml:",
+  step: "step:",
+  owl2: "",
+} as const;
+
+/** Create a fully qualified IRI from a source language and name. */
+export function makeIri(sourceLang: string, name: string): string {
+  const prefix = (OWL2_IRI_PREFIX as Record<string, string>)[sourceLang] ?? `${sourceLang}:`;
+  return `${prefix}${name}`;
+}

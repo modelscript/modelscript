@@ -88,7 +88,7 @@ export default language({
     CSVVirtualComponent: () =>
       def({
         syntax: "CSVVirtualComponent",
-        symbol: (self) => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Component",
           name: self.syntax, // dummy access to record namePath
         }),

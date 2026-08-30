@@ -1,8 +1,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { createSelfProxy, extractScopePath } from "./language-dsl.js";
 import type { IndexerHook, QueryHooks } from "./runtime.js";
+
+export interface SelfAccessor {
+  readonly [key: string]: SelfAccessor;
+}
+
+export const SCOPE_PATH = Symbol("scopePath");
+
+export function createSelfProxy(path: string = ""): SelfAccessor {
+  return new Proxy({} as SelfAccessor, {
+    get(_, prop) {
+      if (prop === SCOPE_PATH) return path;
+      const newPath = path ? `${path}.${String(prop)}` : String(prop);
+      return createSelfProxy(newPath) as any;
+    },
+  });
+}
+
+export function extractScopePath(accessor: SelfAccessor): string {
+  return (accessor as any)[SCOPE_PATH] as string;
+}
 
 export interface QueryHookInfo {
   ruleName: string;

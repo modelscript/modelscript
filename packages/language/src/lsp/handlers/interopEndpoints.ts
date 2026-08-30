@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
-import { buildFmuArchive, ModelicaFmuEntity } from "@modelscript/language/fmi";
 import { ArenaSimulator } from "../../compiler/simulator/index.js";
+import { buildFmuArchive, ModelicaFmuEntity } from "../../fmi/index.js";
 import { LspContext } from "../LspContext.js";
 
 export function registerInteropEndpoints(context: LspContext) {
@@ -109,7 +109,7 @@ export function registerInteropEndpoints(context: LspContext) {
     }> => {
       try {
         // Dynamically import cosim for model description parsing and wrapper generation
-        const { parseModelDescription, generateFmuWrapperModelica } = await import("@modelscript/language/cosim");
+        const { parseModelDescription, generateFmuWrapperModelica } = await import("../../cosim/index.js");
 
         // Decode base64 to bytes
         const binaryStr = atob(params.data);

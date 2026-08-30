@@ -473,7 +473,7 @@ export class AdapterRegistry {
   /** Determine the className for a SymbolEntry (from metadata or ruleName). */
   private resolveClassName(entry: SymbolEntry): string {
     // Prefer metadata._className injected by some languages
-    if (typeof entry.metadata._className === "string") return entry.metadata._className;
+    if (typeof entry.metadata?._className === "string") return entry.metadata._className;
     return toPascalCase(entry.ruleName);
   }
 

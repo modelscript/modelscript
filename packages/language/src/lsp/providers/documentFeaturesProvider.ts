@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-for-of, @typescript-eslint/no-non-null-assertion */
-import { SyntaxNode } from "@modelscript/language";
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import type { SyntaxNode } from "../../utils/tree-sitter.js";
 import { nodeRange } from "../utils/astUtils.js";
 
 export function registerDocumentFeaturesProvider(
@@ -63,8 +62,7 @@ export function registerDocumentFeaturesProvider(
           }
         }
         const children = node.children || [];
-        for (let i = 0; i < children.length; i++) {
-          const child = children[i];
+        for (const child of children) {
           if (child) collectFolds(child);
         }
       };
@@ -112,8 +110,7 @@ export function registerDocumentFeaturesProvider(
         }
       }
       const children = node.children || [];
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i];
+      for (const child of children) {
         if (child) collectFolds(child);
       }
     };
@@ -157,12 +154,12 @@ export function registerDocumentFeaturesProvider(
       // Build linked list from outermost to innermost
       for (const ancestor of ancestors) {
         current = {
-          range: nodeRange(ancestor),
+          range: nodeRange(ancestor as any),
           parent: current,
         };
       }
 
-      return current ?? { range: nodeRange(tree.rootNode) };
+      return current ?? { range: nodeRange(tree.rootNode as any) };
     });
 
     return results as any[];
@@ -195,8 +192,7 @@ export function registerDocumentFeaturesProvider(
       kind: DocumentHighlightKind;
     }[] = [];
 
-    for (let i = 0; i < indexData.tokens.length; i++) {
-      const node = indexData.tokens[i]!;
+    for (const node of indexData.tokens) {
       if (node.type === "IDENT" && node.text === word) {
         highlights.push({
           range: nodeRange(node),

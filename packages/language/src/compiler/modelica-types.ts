@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export enum ModelicaBinaryOperator {
   LOGICAL_OR = "or",
   LOGICAL_AND = "and",
@@ -67,4 +69,57 @@ export enum ModelicaVariability {
 export enum ModelicaVisibility {
   PUBLIC = "public",
   PROTECTED = "protected",
+}
+
+// ── Structural Interfaces ──
+
+export interface Diagnostic {
+  code: number;
+  rule: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  range: { startPosition: { row: number; column: number }; endPosition: { row: number; column: number } } | null;
+}
+
+export interface IClassInstance {
+  readonly instantiated: boolean;
+  readonly instantiating: boolean;
+  instantiate(): void;
+  readonly name?: string | null;
+  readonly hash?: string;
+  readonly modification?: { expression?: any | null } | null;
+  readonly abstractSyntaxNode?: unknown;
+  readonly components: Iterable<IComponentInstance>;
+  readonly classKind?: string;
+  clone?(): IClassInstance;
+}
+
+export interface IComponentInstance {
+  readonly name?: string | null;
+  readonly instantiated: boolean;
+  readonly instantiating: boolean;
+  instantiate(): void;
+  readonly classInstance?: IClassInstance | null;
+  readonly modification?: { expression?: any | null } | null;
+}
+
+export interface IArrayClassInstance extends IClassInstance {
+  readonly elements?: IClassInstance[];
+  readonly shape: number[];
+}
+
+export interface IEnumerationClassInstance extends IClassInstance {
+  readonly value: any;
+}
+
+export interface IPredefinedClassInstance extends IClassInstance {
+  readonly expression: any;
+}
+
+export interface SourceLocation {
+  filePath?: string;
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
 }

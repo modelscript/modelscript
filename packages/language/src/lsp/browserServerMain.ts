@@ -25,7 +25,7 @@ import { type SysML2Layout } from "./sysml2-layout.js";
 // @ts-ignore
 // @ts-ignore
 
-import { SyntaxNode, Tree as TreeSitterTree } from "@modelscript/language";
+import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/tree-sitter.js";
 
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { ArenaDAEBuilder, Context, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
@@ -183,6 +183,8 @@ Object.defineProperty(globalThis, "owl2Parser", {
   get: () => parserService.owl2Parser,
   set: (v) => (parserService.owl2Parser = v),
 });
+let fqnCacheIndex = new Map();
+let fqnCache = new Map();
 Object.defineProperty(globalThis, "fqnCacheIndex", { get: () => fqnCacheIndex, set: (v) => (fqnCacheIndex = v) });
 Object.defineProperty(globalThis, "fqnCache", { get: () => fqnCache, set: (v: any) => (fqnCache = v) });
 

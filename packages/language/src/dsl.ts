@@ -944,6 +944,9 @@ export interface LanguageOptions<
    * Defines AI/LLM tools, resources, and prompt templates compiled to zero-copy in-WASM handlers.
    */
   mcp?: McpDeclarationConfig<RuleName, FieldName, QueryName, ModelAttrs>;
+
+  /** Cross-language projection adapter configuration */
+  adapters?: any;
 }
 
 /**

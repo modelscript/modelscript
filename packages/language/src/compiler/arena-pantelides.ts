@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { collectArenaExprDeps } from "./arena-blt.js";
-import { differentiateArenaExpression, simplifyArenaExpression } from "./arena-cas.js";
-import { ArenaDAEBuilder, EqKind, ExprKind } from "./dae-arena.js";
+import {
+  ArenaDAEBuilder,
+  EqKind,
+  ExprKind,
+  differentiateArenaExpression,
+  simplifyArenaExpression,
+} from "./dae-arena.js";
 import type { StringId } from "./interner.js";
 
 /**

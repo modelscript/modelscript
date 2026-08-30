@@ -20,46 +20,46 @@ import type {
   SymbolNode,
   TokenImmediateNode,
   TokenNode,
-} from "./index.js";
+} from "./language-dsl.js";
 
 // ---------------------------------------------------------------------------
 // Generic combinators — preserve literal types for field name inference
 // ---------------------------------------------------------------------------
 
-export function seq<T extends Rule[]>(...args: T): SeqNode<T> {
-  return { type: "seq", args };
+export function seq<T extends (Rule | string | RegExp)[]>(...args: T): SeqNode<any> {
+  return { type: "seq", args } as any;
 }
 
-export function optional<T extends Rule>(arg: T): OptionalNode<T> {
-  return { type: "optional", arg };
+export function optional<T extends Rule | string | RegExp>(arg: T): OptionalNode<any> {
+  return { type: "optional", arg } as any;
 }
 
-export function repeat<T extends Rule>(arg: T): RepeatNode<T> {
-  return { type: "repeat", arg };
+export function repeat<T extends Rule | string | RegExp>(arg: T): RepeatNode<any> {
+  return { type: "repeat", arg } as any;
 }
 
-export function repeat1<T extends Rule>(arg: T): Repeat1Node<T> {
-  return { type: "repeat1", arg };
+export function repeat1<T extends Rule | string | RegExp>(arg: T): Repeat1Node<any> {
+  return { type: "repeat1", arg } as any;
 }
 
-export function choice<T extends Rule[]>(...args: T): ChoiceNode<T> {
-  return { type: "choice", args };
+export function choice<T extends (Rule | string | RegExp)[]>(...args: T): ChoiceNode<any> {
+  return { type: "choice", args } as any;
 }
 
-export function token<T extends Rule>(arg: T): TokenNode<T> {
-  return { type: "token", arg };
+export function token<T extends Rule | string | RegExp>(arg: T): TokenNode<any> {
+  return { type: "token", arg } as any;
 }
 
 /**
  * Marks a token as immediate (no whitespace allowed before it).
  * Attached as `token.immediate()` for Tree-Sitter compatibility.
  */
-token.immediate = function <T extends Rule>(arg: T): TokenImmediateNode<T> {
-  return { type: "token_immediate", arg };
+token.immediate = function <T extends Rule | string | RegExp>(arg: T): TokenImmediateNode<any> {
+  return { type: "token_immediate", arg } as any;
 };
 
-export function field<N extends string>(name: N, arg: Rule): FieldNode<N> {
-  return { type: "field", name, arg };
+export function field<N extends string>(name: N, arg: Rule | string | RegExp): FieldNode<N> {
+  return { type: "field", name, arg } as any;
 }
 
 export function blank(): BlankNode {
@@ -70,30 +70,30 @@ export function blank(): BlankNode {
  * Assigns a precedence level to a rule.
  * Higher values bind tighter.
  */
-export function prec(precedence: number, arg: Rule): PrecNode {
-  return { type: "prec", precedence, arg };
+export function prec(precedence: number, arg: Rule | string | RegExp): PrecNode {
+  return { type: "prec", precedence, arg } as any;
 }
 
 /** Left-associative precedence. */
-prec.left = function (precedence: number, arg: Rule): PrecLeftNode {
-  return { type: "prec_left", precedence, arg };
+prec.left = function (precedence: number, arg: Rule | string | RegExp): PrecLeftNode {
+  return { type: "prec_left", precedence, arg } as any;
 };
 
 /** Right-associative precedence. */
-prec.right = function (precedence: number, arg: Rule): PrecRightNode {
-  return { type: "prec_right", precedence, arg };
+prec.right = function (precedence: number, arg: Rule | string | RegExp): PrecRightNode {
+  return { type: "prec_right", precedence, arg } as any;
 };
 
 /** Dynamic precedence (resolved at parse time). */
-prec.dynamic = function (precedence: number, arg: Rule): PrecDynamicNode {
-  return { type: "prec_dynamic", precedence, arg };
+prec.dynamic = function (precedence: number, arg: Rule | string | RegExp): PrecDynamicNode {
+  return { type: "prec_dynamic", precedence, arg } as any;
 };
 
 /**
  * Renames a node in the generated CST.
  */
-export function alias(arg: Rule, value: string | SymbolNode): AliasNode {
-  return { type: "alias", arg, value };
+export function alias(arg: Rule | string | RegExp, value: string | SymbolNode): AliasNode {
+  return { type: "alias", arg, value } as any;
 }
 
 // ---------------------------------------------------------------------------

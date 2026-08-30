@@ -12,7 +12,10 @@
  * data contract between the compiler and the ECAD canvas frontend.
  */
 
-import type { ModelicaDAE } from "../compiler/index.js";
+export interface ModelicaDAENetlistInput {
+  connectPairs: { a: string; b: string; aComponent: string; bComponent: string }[];
+  arenaGetVarByName?(name: string): { attributes: Map<string, any> } | null | undefined;
+}
 
 // ── Public types ──
 
@@ -75,7 +78,7 @@ export interface NetlistGraph {
  * @param dae The flattened DAE containing connectPairs
  * @returns A JSON-serializable NetlistGraph
  */
-export function extractNetlist(dae: ModelicaDAE): NetlistGraph {
+export function extractNetlist(dae: ModelicaDAENetlistInput): NetlistGraph {
   if (dae.connectPairs.length === 0) {
     return { nets: [], components: [], totalPins: 0, totalConnections: 0 };
   }
@@ -194,9 +197,9 @@ export function extractNetlist(dae: ModelicaDAE): NetlistGraph {
 /**
  * Extract PCB placement info from a component's annotation attributes.
  */
-function extractPlacement(dae: ModelicaDAE, componentName: string): ComponentPlacement | null {
+function extractPlacement(dae: ModelicaDAENetlistInput, componentName: string): ComponentPlacement | null {
   // Look for annotation attributes on the component variable
-  const v = dae.arenaGetVarByName(componentName);
+  const v = dae.arenaGetVarByName?.(componentName);
   if (!v) return null;
 
   const pcbAnnotation = v.attributes.get("PCB");

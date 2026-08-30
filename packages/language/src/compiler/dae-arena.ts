@@ -771,6 +771,11 @@ export class ArenaDAEBuilder {
     return id !== undefined ? this.interner.resolve(id) : null;
   }
 
+  /** Perform in-place alias elimination directly on the arena buffers. */
+  eliminateAliases(): void {
+    eliminateArenaAliases(this);
+  }
+
   // ── Sparse Attribute Accessors ──
 
   getVarDescription(idx: number): string | undefined {
@@ -1976,3 +1981,450 @@ export function isAssignableType(targetType: VarType, sourceType: VarType): bool
   }
   return false;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alias Elimination
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Union-Find data structure for zero-allocation integer aliasing.
+ */
+export class IntUnionFind {
+  private parent: Int32Array;
+  private rank: Int32Array;
+
+  constructor(size: number) {
+    this.parent = new Int32Array(size);
+    this.rank = new Int32Array(size);
+    for (let i = 0; i < size; i++) this.parent[i] = i;
+  }
+
+  find(i: number): number {
+    let root = i;
+    while (root !== (this.parent[root] as number)) root = this.parent[root] as number;
+    let curr = i;
+    while (curr !== root) {
+      const n = this.parent[curr] as number;
+      this.parent[curr] = root;
+      curr = n;
+    }
+    return root;
+  }
+
+  union(i: number, j: number): boolean {
+    const rootI = this.find(i);
+    const rootJ = this.find(j);
+    if (rootI === rootJ) return false;
+
+    if ((this.rank[rootI] as number) < (this.rank[rootJ] as number)) {
+      this.parent[rootI] = rootJ;
+    } else if ((this.rank[rootI] as number) > (this.rank[rootJ] as number)) {
+      this.parent[rootJ] = rootI;
+    } else {
+      this.parent[rootJ] = rootI;
+      this.rank[rootI] = (this.rank[rootI] as number) + 1;
+    }
+    return true;
+  }
+}
+
+/**
+ * Perform O(N) zero-allocation alias elimination directly on the arena buffers.
+ * Identifies equations of the form `Name(a) = Name(b)` and canonicalizes all
+ * Name references throughout the arena expressions to the root variable.
+ */
+export function eliminateArenaAliases(dae: ArenaDAEBuilder): void {
+  const uf = new IntUnionFind(dae.varCount);
+
+  // 1. Gather all connection/alias equations
+  // In the arena, aliases can come from EqKind.Simple or EqKind.Connect
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind === EqKind.Simple || kind === EqKind.Connect) {
+      const lhsId = dae.getEqLhs(i);
+      const rhsId = dae.getEqRhs(i);
+
+      if (dae.getExprKind(lhsId) === ExprKind.Name && dae.getExprKind(rhsId) === ExprKind.Name) {
+        const lhsNameId = dae.getExprData1(lhsId);
+        const rhsNameId = dae.getExprData1(rhsId);
+
+        const lhsName = dae.interner.resolve(lhsNameId);
+        const rhsName = dae.interner.resolve(rhsNameId);
+        if (!lhsName || !rhsName) continue;
+
+        const lhsVarIdx = dae.getVarIdxByName(lhsName);
+        const rhsVarIdx = dae.getVarIdxByName(rhsName);
+
+        if (lhsVarIdx >= 0 && rhsVarIdx >= 0) {
+          const lhsType = dae.getVarType(lhsVarIdx);
+          const rhsType = dae.getVarType(rhsVarIdx);
+          if (lhsType === rhsType) {
+            // Both are valid variables of the same type, merge them
+            uf.union(lhsVarIdx, rhsVarIdx);
+            dae.setVarAlias(lhsVarIdx, rhsName);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Canonicalize variable StringIds in Name expressions
+  // For each ExprKind.Name, if its variable has a different root in UF,
+  // rewrite data1 to the root's StringId.
+  for (let exprId = 0; exprId < dae.exprCount; exprId++) {
+    if (dae.getExprKind(exprId) === ExprKind.Name) {
+      const nameId = dae.getExprData1(exprId);
+      const nameStr = dae.interner.resolve(nameId);
+      if (!nameStr) continue;
+
+      const varIdx = dae.getVarIdxByName(nameStr);
+      if (varIdx >= 0) {
+        const rootIdx = uf.find(varIdx);
+        if (rootIdx !== varIdx) {
+          // Overwrite data1 with the canonical root's StringId
+          const rootNameId = dae.getVarNameId(rootIdx);
+          dae.setExprData1(exprId, rootNameId);
+        }
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAS & Symbolic Differentiation Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Symbolically differentiates an expression with respect to time.
+ * @param arena The ArenaDAEBuilder containing the expressions.
+ * @param exprId The ID of the expression to differentiate.
+ * @param stateVars The set of state variables (StringIds) that are functions of time.
+ * @returns The ExprId of the differentiated expression.
+ */
+export function differentiateArenaExpression(arena: ArenaDAEBuilder, exprId: number, stateVars: Set<StringId>): number {
+  const kind = arena.getExprKind(exprId);
+
+  switch (kind) {
+    case ExprKind.RealLiteral:
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+    case ExprKind.StringLiteral:
+    case ExprKind.EnumLiteral:
+      return arena.addRealLiteral(0.0);
+
+    case ExprKind.Name: {
+      const nameId = arena.getExprData1(exprId);
+      if (stateVars.has(nameId)) {
+        return arena.addDerExpr(exprId);
+      }
+      return arena.addRealLiteral(0.0);
+    }
+
+    case ExprKind.Der: {
+      return arena.addDerExpr(exprId);
+    }
+
+    case ExprKind.Negate: {
+      const operand = arena.getExprLeft(exprId);
+      return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpression(arena, operand, stateVars));
+    }
+
+    case ExprKind.Binary: {
+      const op = arena.getExprData1(exprId) as BinOp;
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+
+      switch (op) {
+        case BinOp.Add:
+        case BinOp.Sub: {
+          const dLeft = differentiateArenaExpression(arena, left, stateVars);
+          const dRight = differentiateArenaExpression(arena, right, stateVars);
+          return arena.addBinaryExpr(op, dLeft, dRight);
+        }
+        case BinOp.Mul: {
+          const dLeft = differentiateArenaExpression(arena, left, stateVars);
+          const dRight = differentiateArenaExpression(arena, right, stateVars);
+          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
+          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
+          return arena.addBinaryExpr(BinOp.Add, u_dv, v_du);
+        }
+        case BinOp.Div: {
+          const dLeft = differentiateArenaExpression(arena, left, stateVars);
+          const dRight = differentiateArenaExpression(arena, right, stateVars);
+          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
+          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
+          const num = arena.addBinaryExpr(BinOp.Sub, v_du, u_dv);
+          const den = arena.addBinaryExpr(BinOp.Mul, right, right);
+          return arena.addBinaryExpr(BinOp.Div, num, den);
+        }
+        default:
+          return arena.addRealLiteral(0.0);
+      }
+    }
+
+    case ExprKind.Call:
+      return arena.addRealLiteral(0.0);
+
+    default:
+      return arena.addRealLiteral(0.0);
+  }
+}
+
+/**
+ * Simplifies an arena expression (constant folding and algebraic identities).
+ */
+export function simplifyArenaExpression(arena: ArenaDAEBuilder, exprId: number): number {
+  const kind = arena.getExprKind(exprId);
+
+  if (kind === ExprKind.Negate) {
+    const operand = simplifyArenaExpression(arena, arena.getExprLeft(exprId));
+    if (arena.getExprKind(operand) === ExprKind.RealLiteral) {
+      return arena.addRealLiteral(-arena.getExprRealValue(operand));
+    }
+    return arena.addExpression(ExprKind.Negate, 0, operand);
+  }
+
+  if (kind === ExprKind.Binary) {
+    const op = arena.getExprData1(exprId) as BinOp;
+    const left = simplifyArenaExpression(arena, arena.getExprLeft(exprId));
+    const right = simplifyArenaExpression(arena, arena.getExprRight(exprId));
+
+    const leftIsReal = arena.getExprKind(left) === ExprKind.RealLiteral;
+    const rightIsReal = arena.getExprKind(right) === ExprKind.RealLiteral;
+    const leftVal = leftIsReal ? arena.getExprRealValue(left) : 0;
+    const rightVal = rightIsReal ? arena.getExprRealValue(right) : 0;
+
+    if (leftIsReal && rightIsReal) {
+      switch (op) {
+        case BinOp.Add:
+          return arena.addRealLiteral(leftVal + rightVal);
+        case BinOp.Sub:
+          return arena.addRealLiteral(leftVal - rightVal);
+        case BinOp.Mul:
+          return arena.addRealLiteral(leftVal * rightVal);
+        case BinOp.Div:
+          return arena.addRealLiteral(leftVal / rightVal);
+      }
+    }
+
+    // Identities
+    if (op === BinOp.Add) {
+      if (leftIsReal && leftVal === 0) return right;
+      if (rightIsReal && rightVal === 0) return left;
+    } else if (op === BinOp.Sub) {
+      if (rightIsReal && rightVal === 0) return left;
+      if (left === right) return arena.addRealLiteral(0.0);
+    } else if (op === BinOp.Mul) {
+      if ((leftIsReal && leftVal === 0) || (rightIsReal && rightVal === 0)) return arena.addRealLiteral(0.0);
+      if (leftIsReal && leftVal === 1) return right;
+      if (rightIsReal && rightVal === 1) return left;
+      if (leftIsReal && leftVal === -1) return arena.addExpression(ExprKind.Negate, 0, right);
+      if (rightIsReal && rightVal === -1) return arena.addExpression(ExprKind.Negate, 0, left);
+    } else if (op === BinOp.Div) {
+      if (leftIsReal && leftVal === 0) return arena.addRealLiteral(0.0);
+      if (rightIsReal && rightVal === 1) return left;
+      if (left === right) return arena.addRealLiteral(1.0);
+    }
+
+    return arena.addBinaryExpr(op, left, right);
+  }
+
+  return exprId;
+}
+
+/**
+ * Symbolically computes the partial derivative of an expression with respect to a specific variable.
+ * Used for building analytical Jacobians.
+ */
+export function differentiateArenaExpressionWrt(arena: ArenaDAEBuilder, exprId: number, wrtVarId: StringId): number {
+  if (exprId < 0) return arena.addRealLiteral(0.0);
+
+  const kind = arena.getExprKind(exprId);
+
+  switch (kind) {
+    case ExprKind.RealLiteral:
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+    case ExprKind.StringLiteral:
+    case ExprKind.EnumLiteral:
+      return arena.addRealLiteral(0.0);
+
+    case ExprKind.Name: {
+      const nameId = arena.getExprData1(exprId);
+      if (nameId === wrtVarId) {
+        return arena.addRealLiteral(1.0);
+      }
+      return arena.addRealLiteral(0.0);
+    }
+
+    case ExprKind.Der: {
+      const argId = arena.getExprData1(exprId);
+      if (arena.getExprKind(argId) === ExprKind.Name) {
+        const innerName = arena.interner.resolve(arena.getExprData1(argId));
+        const fullDerNameId = arena.interner.intern(`der(${innerName})`);
+        if (fullDerNameId === wrtVarId) {
+          return arena.addRealLiteral(1.0);
+        }
+      }
+      return arena.addRealLiteral(0.0);
+    }
+
+    case ExprKind.Negate: {
+      const operand = arena.getExprLeft(exprId);
+      return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpressionWrt(arena, operand, wrtVarId));
+    }
+
+    case ExprKind.Binary: {
+      const op = arena.getExprData1(exprId) as BinOp;
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+
+      switch (op) {
+        case BinOp.Add:
+        case BinOp.Sub: {
+          const dLeft = differentiateArenaExpressionWrt(arena, left, wrtVarId);
+          const dRight = differentiateArenaExpressionWrt(arena, right, wrtVarId);
+          return arena.addBinaryExpr(op, dLeft, dRight);
+        }
+        case BinOp.Mul: {
+          const dLeft = differentiateArenaExpressionWrt(arena, left, wrtVarId);
+          const dRight = differentiateArenaExpressionWrt(arena, right, wrtVarId);
+          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
+          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
+          return arena.addBinaryExpr(BinOp.Add, u_dv, v_du);
+        }
+        case BinOp.Div: {
+          const dLeft = differentiateArenaExpressionWrt(arena, left, wrtVarId);
+          const dRight = differentiateArenaExpressionWrt(arena, right, wrtVarId);
+          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
+          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
+          const num = arena.addBinaryExpr(BinOp.Sub, v_du, u_dv);
+          const den = arena.addBinaryExpr(BinOp.Mul, right, right);
+          return arena.addBinaryExpr(BinOp.Div, num, den);
+        }
+        case BinOp.Pow: {
+          const dLeft = differentiateArenaExpressionWrt(arena, left, wrtVarId);
+          const v_minus_1 = arena.addBinaryExpr(BinOp.Sub, right, arena.addRealLiteral(1.0));
+          const u_pow_v_minus_1 = arena.addBinaryExpr(BinOp.Pow, left, v_minus_1);
+          const v_mul_u_pow = arena.addBinaryExpr(BinOp.Mul, right, u_pow_v_minus_1);
+          return arena.addBinaryExpr(BinOp.Mul, v_mul_u_pow, dLeft);
+        }
+        default:
+          return arena.addRealLiteral(0.0);
+      }
+    }
+
+    default:
+      return arena.addRealLiteral(0.0);
+  }
+}
+
+/**
+ * The Modelica source for the ModelScript.CAS package.
+ * This declares all CAS functions with their signatures for use
+ * in Modelica models.
+ */
+export const MODELSCRIPT_CAS_PACKAGE = `
+package ModelScript
+  package CAS "Computer Algebra System"
+
+    function simplify "Simplify an expression using E-Graph equality saturation"
+      input Expression expr;
+      output Expression result;
+      external "builtin";
+    end simplify;
+
+    function expand "Expand polynomial expressions (distribute multiplication)"
+      input Expression expr;
+      output Expression result;
+      external "builtin";
+    end expand;
+
+    function normalize "Normalize to canonical form via E-Graph"
+      input Expression expr;
+      output Expression result;
+      external "builtin";
+    end normalize;
+
+    function trigSimplify "Simplify using trigonometric identities"
+      input Expression expr;
+      output Expression result;
+      external "builtin";
+    end trigSimplify;
+
+    function trigExpand "Expand trig expressions using addition formulas"
+      input Expression expr;
+      output Expression result;
+      external "builtin";
+    end trigExpand;
+
+    function diff "Symbolic differentiation"
+      input Expression expr;
+      input Expression var "Variable to differentiate with respect to (as an expression node)";
+      input Integer n = 1 "Order of derivative";
+      output Expression result;
+      external "builtin";
+    end diff;
+
+    function integrate "Symbolic anti-differentiation"
+      input Expression expr;
+      input Expression var "Variable to integrate with respect to";
+      output Expression result;
+      external "builtin";
+    end integrate;
+
+    function solve "Solve expr = 0 for var (returns first solution)"
+      input Expression expr;
+      input Expression var "Variable to solve for";
+      output Expression result;
+      external "builtin";
+    end solve;
+
+    function solveAll "Solve expr = 0 for var (returns all solutions)"
+      input Expression expr;
+      input Expression var "Variable to solve for";
+      output Expression[:] result;
+      external "builtin";
+    end solveAll;
+
+    function factor "Factor a quadratic polynomial"
+      input Expression expr;
+      input Expression var;
+      output Expression result;
+      external "builtin";
+    end factor;
+
+    function taylor "Taylor series expansion"
+      input Expression expr;
+      input Expression var;
+      input Real point;
+      input Integer order;
+      output Expression result;
+      external "builtin";
+    end taylor;
+
+    function limit "Evaluate limit of expr as var -> point"
+      input Expression expr;
+      input Expression var;
+      input Real point;
+      output Expression result;
+      external "builtin";
+    end limit;
+
+    function degree "Get polynomial degree of expr in var"
+      input Expression expr;
+      input Expression var;
+      output Integer result;
+      external "builtin";
+    end degree;
+
+    function roots "Find rational roots of polynomial expr in var (returns numeric roots)"
+      input Expression expr;
+      input Expression var;
+      output Real[:] result;
+      external "builtin";
+    end roots;
+
+  end CAS;
+end ModelScript;
+`;

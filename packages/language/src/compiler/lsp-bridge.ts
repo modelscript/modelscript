@@ -1,5 +1,5 @@
 /* eslint-disable */
-import type { QueryEngine } from "./query-engine.js";
+import type { QueryEngine } from "../runtime/wasm_query_engine.js";
 import type { ScopeResolver } from "./resolver.js";
 import type { SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 

@@ -1,7 +1,7 @@
 import { AdapterRegistry } from "../compiler/adapter-registry.js";
-import { OWL2OntologyStore } from "../compiler/owl2-ontology-store.js";
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "../compiler/runtime.js";
 import { IdTrieMap, StringTrieMap } from "../compiler/utils/radix-trie.js";
+import { WasmOntologyStore } from "./wasm_ontology.js";
 
 export interface IWorkspaceIndex {
   version: number;
@@ -444,12 +444,12 @@ export class WasmWorkspaceIndex {
 
 export class UnifiedWorkspace {
   public adapterRegistry = new AdapterRegistry();
-  public owl2Store: OWL2OntologyStore;
+  public owl2Store: WasmOntologyStore;
   private workspaces = new Map<string, any>();
   private _version = 0;
 
   constructor() {
-    this.owl2Store = new OWL2OntologyStore(this.adapterRegistry);
+    this.owl2Store = new WasmOntologyStore(this.adapterRegistry);
   }
 
   get version(): number {

@@ -66,16 +66,12 @@ if (fs.existsSync(wrapperTemplatePath)) {
   dtsOut += `export declare const bindingsTemplateDtsCode: string;\n`;
 }
 
-// Write the JS file
-const outDir = path.resolve(__dirname, "../build/src-gen");
-if (!fs.existsSync(outDir)) {
-  fs.mkdirSync(outDir, { recursive: true });
+for (const targetDir of [path.resolve(__dirname, "../build/src-gen"), path.resolve(__dirname, "../src/src-gen")]) {
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  fs.writeFileSync(path.resolve(targetDir, "runtime-templates.js"), out, "utf-8");
+  fs.writeFileSync(path.resolve(targetDir, "runtime-templates.ts"), out, "utf-8");
+  fs.writeFileSync(path.resolve(targetDir, "runtime-templates.d.ts"), dtsOut, "utf-8");
+  console.log(`Bundled templates into ${targetDir}`);
 }
-const jsOutPath = path.resolve(outDir, "runtime-templates.js");
-fs.writeFileSync(jsOutPath, out, "utf-8");
-
-// Write the DTS file
-const dtsOutPath = path.resolve(outDir, "runtime-templates.d.ts");
-fs.writeFileSync(dtsOutPath, dtsOut, "utf-8");
-
-console.log(`Bundled templates into ${outDir}`);

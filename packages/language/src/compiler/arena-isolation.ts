@@ -1,7 +1,7 @@
 import { collectArenaExprDeps } from "./arena-blt.js";
 import type { ArenaExecutionBlock } from "./arena-execution.js";
 import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "./dae-arena.js";
-import { Polynomial, Term, computeGroebnerBasis } from "./symbolics/algebra/groebner.js";
+import { Polynomial, Term, computeGroebnerBasis } from "./groebner.js";
 
 /**
  * Checks if the arena equation is explicitly solvable for the target variable.

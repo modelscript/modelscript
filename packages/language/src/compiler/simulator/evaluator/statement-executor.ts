@@ -415,7 +415,7 @@ export async function executeArenaStatementsAsync(
   stmtCount: number,
   valuesByStringId: Float64Array,
   functionLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulator.js").SimulationDebugger,
+  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
 ): Promise<void> {
   let i = startStmtIdx;
   const endIdx = startStmtIdx + stmtCount;
@@ -679,7 +679,7 @@ async function executeArenaForStatementAsync(
   bodyStmtCount: number,
   valuesByStringId: Float64Array,
   functionLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulator.js").SimulationDebugger,
+  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
 ): Promise<void> {
   let startVal: number;
   let stepVal: number;
@@ -759,7 +759,7 @@ async function executeArenaWhileStatementAsync(
   bodyStmtCount: number,
   valuesByStringId: Float64Array,
   functionLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulator.js").SimulationDebugger,
+  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
 ): Promise<void> {
   let iterCount = 0;
 
@@ -789,7 +789,7 @@ export async function executeArenaFunctionAsync(
   funcArena: ArenaDAEBuilder,
   argValues: number[],
   parentLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulator.js").SimulationDebugger,
+  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
 ): Promise<number | null> {
   if (++currentCallDepth > MAX_CALL_DEPTH) {
     currentCallDepth--;

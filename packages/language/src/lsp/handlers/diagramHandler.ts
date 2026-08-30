@@ -34,7 +34,7 @@ export function registerDiagramHandlers(context: LspContext) {
       // 2. Initialize ShapeFlattener
       const queryDB = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
       const { ShapeFlattener } = await import("@modelscript/modelica/shape-flattener");
-      const { compileAssemblyToStep } = await import("@modelscript/language/cad");
+      const { compileAssemblyToStep } = await import("../../cad/index.js");
       const flattener = new ShapeFlattener(queryDB);
 
       // 3. Flatten into Assembly

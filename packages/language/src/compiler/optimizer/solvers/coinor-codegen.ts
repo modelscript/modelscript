@@ -16,7 +16,7 @@
  */
 
 import type { SolverOptions } from "../../simulator/index.js";
-import { StaticTapeBuilder } from "../../symbolics/tape.js";
+import { StaticTapeBuilder } from "../../tape.js";
 
 // Represent the legacy expression AST structurally to avoid circular dependency
 type ModelicaExpression = any;

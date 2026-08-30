@@ -6,6 +6,8 @@ dist/
 build/
 .build/
 as-gen/
+packages/language/src/src-gen/
+packages/language/build/
 prebuilds/
 coverage/
 ctrf/

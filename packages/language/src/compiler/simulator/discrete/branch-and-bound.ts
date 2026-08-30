@@ -25,14 +25,157 @@
  *    for the global optimisation of nonconvex MINLPs", Computers & Chem. Eng.
  */
 
-import {
-  ArenaDAEBuilder,
-  Interval,
-  StaticTapeBuilder,
-  evaluateTapeInterval,
-  evaluateTapeMcCormick,
-} from "../../index.js";
-import { evaluateTapeForward, evaluateTapeReverse } from "../evaluator/ad-jacobian.js";
+import { ArenaDAEBuilder } from "../../dae-arena.js";
+import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "../../tape.js";
+
+/** Interval representation for Spatial Branch & Bound */
+export class Interval {
+  constructor(
+    public lo: number,
+    public hi: number,
+  ) {}
+  get mid(): number {
+    return 0.5 * (this.lo + this.hi);
+  }
+  get width(): number {
+    return this.hi - this.lo;
+  }
+}
+
+export interface McCormickResult {
+  cv: number;
+  cc: number;
+  lo: number;
+  hi: number;
+}
+
+export function evaluateTapeInterval(tape: StaticTapeBuilder, box: DomainBox): Interval[] {
+  const result: Interval[] = [];
+  const nodeCount = tape.length;
+  for (let i = 0; i < nodeCount; i++) {
+    const offset = i * 4;
+    const kind = tape.opData[offset] as TapeOpKind;
+    const data1 = tape.opData[offset + 1] ?? 0;
+    const data2 = tape.opData[offset + 2] ?? 0;
+    switch (kind) {
+      case TapeOpKind.Const: {
+        const c = tape.valData[i] ?? 0;
+        result.push(new Interval(c, c));
+        break;
+      }
+      case TapeOpKind.Var: {
+        const name = tape.interner.resolve(data1);
+        const iv = box.get(name);
+        result.push(iv ? new Interval(iv.lo, iv.hi) : new Interval(-Infinity, Infinity));
+        break;
+      }
+      case TapeOpKind.Add: {
+        const l = result[data1] ?? new Interval(0, 0);
+        const r = result[data2] ?? new Interval(0, 0);
+        result.push(new Interval(l.lo + r.lo, l.hi + r.hi));
+        break;
+      }
+      case TapeOpKind.Sub: {
+        const l = result[data1] ?? new Interval(0, 0);
+        const r = result[data2] ?? new Interval(0, 0);
+        result.push(new Interval(l.lo - r.hi, l.hi - r.lo));
+        break;
+      }
+      case TapeOpKind.Mul: {
+        const l = result[data1] ?? new Interval(0, 0);
+        const r = result[data2] ?? new Interval(0, 0);
+        const p1 = l.lo * r.lo,
+          p2 = l.lo * r.hi,
+          p3 = l.hi * r.lo,
+          p4 = l.hi * r.hi;
+        result.push(new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4)));
+        break;
+      }
+      case TapeOpKind.Div: {
+        const l = result[data1] ?? new Interval(0, 0);
+        const r = result[data2] ?? new Interval(0, 0);
+        if (r.lo <= 0 && r.hi >= 0) {
+          result.push(new Interval(-Infinity, Infinity));
+        } else {
+          const q1 = l.lo / r.lo,
+            q2 = l.lo / r.hi,
+            q3 = l.hi / r.lo,
+            q4 = l.hi / r.hi;
+          result.push(new Interval(Math.min(q1, q2, q3, q4), Math.max(q1, q2, q3, q4)));
+        }
+        break;
+      }
+      case TapeOpKind.Neg: {
+        const l = result[data1] ?? new Interval(0, 0);
+        result.push(new Interval(-l.hi, -l.lo));
+        break;
+      }
+      default:
+        result.push(new Interval(-Infinity, Infinity));
+    }
+  }
+  return result;
+}
+
+export function evaluateTapeMcCormick(
+  tape: StaticTapeBuilder,
+  box: DomainBox,
+  point: Map<string, number>,
+): McCormickResult[] {
+  const intervals = evaluateTapeInterval(tape, box);
+  const result: McCormickResult[] = [];
+  const nodeCount = tape.length;
+  for (let i = 0; i < nodeCount; i++) {
+    const iv = intervals[i] ?? new Interval(0, 0);
+    const offset = i * 4;
+    const kind = tape.opData[offset] as TapeOpKind;
+    const data1 = tape.opData[offset + 1] ?? 0;
+    const data2 = tape.opData[offset + 2] ?? 0;
+    switch (kind) {
+      case TapeOpKind.Const: {
+        const c = tape.valData[i] ?? 0;
+        result.push({ cv: c, cc: c, lo: c, hi: c });
+        break;
+      }
+      case TapeOpKind.Var: {
+        const name = tape.interner.resolve(data1);
+        const x = point.get(name) ?? iv.mid;
+        result.push({ cv: x, cc: x, lo: iv.lo, hi: iv.hi });
+        break;
+      }
+      case TapeOpKind.Add: {
+        const l = result[data1] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
+        const r = result[data2] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
+        result.push({ cv: l.cv + r.cv, cc: l.cc + r.cc, lo: iv.lo, hi: iv.hi });
+        break;
+      }
+      case TapeOpKind.Sub: {
+        const l = result[data1] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
+        const r = result[data2] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
+        result.push({ cv: l.cv - r.cc, cc: l.cc - r.cv, lo: iv.lo, hi: iv.hi });
+        break;
+      }
+      case TapeOpKind.Mul: {
+        const l = result[data1] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
+        const r = result[data2] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
+        const cv1 = l.lo * r.cv + l.cv * r.lo - l.lo * r.lo;
+        const cv2 = l.hi * r.cv + l.cv * r.hi - l.hi * r.hi;
+        const cc1 = l.hi * r.cc + l.cv * r.lo - l.hi * r.lo;
+        const cc2 = l.cv * r.hi + l.lo * r.cc - l.lo * r.hi;
+        result.push({ cv: Math.max(cv1, cv2), cc: Math.min(cc1, cc2), lo: iv.lo, hi: iv.hi });
+        break;
+      }
+      case TapeOpKind.Neg: {
+        const l = result[data1] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
+        result.push({ cv: -l.cc, cc: -l.cv, lo: iv.lo, hi: iv.hi });
+        break;
+      }
+      default:
+        result.push({ cv: iv.lo, cc: iv.hi, lo: iv.lo, hi: iv.hi });
+    }
+  }
+  return result;
+}
 
 /** A box in the search space: variable name → [lo, hi] */
 export type DomainBox = Map<string, Interval>;

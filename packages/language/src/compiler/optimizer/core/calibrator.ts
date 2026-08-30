@@ -30,8 +30,8 @@
  */
 
 import { ArenaDAEBuilder } from "../../index.js";
-import { simulateArena } from "../../simulator/core/simulate-arena.js";
-import { ArenaSimulator, luFactor, luSolve } from "../../simulator/core/simulator.js";
+import { ArenaSimulator, simulateArena } from "../../simulator/core/simulate-arena.js";
+import { luFactor, luSolve } from "../../simulator/evaluator/gaussian.js";
 
 // ── Public interfaces ──
 

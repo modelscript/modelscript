@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { SyntaxNode } from "@modelscript/language";
 import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
@@ -7,6 +6,7 @@ import {
   ModelicaElement as ModelicaNamedElement,
 } from "@modelscript/modelica/semantic-model";
 import { Scope } from "../../compiler/index.js";
+import type { SyntaxNode } from "../../utils/tree-sitter.js";
 
 export function isClassInstance(obj: any): obj is ModelicaClassInstance {
   return obj && "classKind" in obj;

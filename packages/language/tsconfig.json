@@ -23,8 +23,13 @@
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/language": ["./src/index.ts"],
+      "@modelscript/language/*": ["./src/*"]
+    }
   },
   "include": ["src/**/*"],
-  "exclude": ["src/codegen/runtime/**/*"]
+  "exclude": ["src/codegen/runtime/**/*", "dist", "build", "node_modules"]
 }

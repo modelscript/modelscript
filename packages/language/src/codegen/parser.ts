@@ -4,10 +4,12 @@ import { NormalizedGrammar } from "../grammar.js";
 import { extractLanguageAST } from "./ast-loader.js";
 
 import {
+  aliasCode,
   arenaCode,
   arrayCode,
   bdfCode,
   bltCode,
+  branch_and_boundCode,
   builtins_mathCode,
   casCode,
   coloringCode,
@@ -26,10 +28,14 @@ import {
   gssCode,
   hashmapCode,
   homotopyCode,
+  integrateCode,
   integratorsCode,
+  intervalCode,
   isolationCode,
+  linalgCode,
   lspCode,
   matrixCode,
+  mccormickCode,
   ontologyCode,
   ontology_projectionCode,
   pantelidesCode,
@@ -47,7 +53,7 @@ import {
   tearingCode,
   trigramCode,
   vmapCode,
-} from "../../build/src-gen/runtime-templates.js";
+} from "../src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
 import { generateCFG } from "./cfg.js";
 import { compileMcpConfig } from "./compile_mcp.js";
@@ -980,6 +986,8 @@ export function generateParserTables(
   code += extractExports(bltCode, "./blt");
   code += extractExports(correspondenceCode, "./correspondence");
   code += extractExports(polyglot_arenaCode, "./polyglot_arena");
+  code += extractExports(groebnerCode, "./groebner");
+  code += extractExports(linalgCode, "./linalg");
 
   if (originalGrammar.typeSystem) {
     const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
@@ -1060,6 +1068,7 @@ export function generateParserTables(
     { filename: "recovery-config.ts", content: recoveryConfigCode },
     { filename: "recovery.ts", content: recoveryCode },
     { filename: "dae.ts", content: daeCode },
+    { filename: "alias.ts", content: aliasCode },
     { filename: "blt.ts", content: bltCode },
     { filename: "eval.ts", content: evalCode },
     { filename: "events.ts", content: eventsCode },
@@ -1093,6 +1102,11 @@ export function generateParserTables(
     { filename: "fmi3_wasm.ts", content: fmi3_wasmCode },
     { filename: "vmap.ts", content: vmapCode },
     { filename: "groebner.ts", content: groebnerCode },
+    { filename: "linalg.ts", content: linalgCode },
+    { filename: "integrate.ts", content: integrateCode },
+    { filename: "interval.ts", content: intervalCode },
+    { filename: "mccormick.ts", content: mccormickCode },
+    { filename: "branch_and_bound.ts", content: branch_and_boundCode },
   ];
 
   if (originalGrammar.runtimeFiles) {
@@ -1123,6 +1137,7 @@ export function generateParserTables(
 
   code += extractExports(arenaCode, "./arena");
   code += extractExports(daeCode, "./dae");
+  code += extractExports(aliasCode, "./alias");
   code += extractExports(bltCode, "./blt");
   code += extractExports(evalCode, "./eval");
   code += extractExports(eventsCode, "./events");
@@ -1154,6 +1169,11 @@ export function generateParserTables(
   code += extractExports(fmi3_wasmCode, "./fmi3_wasm");
   code += extractExports(vmapCode, "./vmap");
   code += extractExports(groebnerCode, "./groebner");
+  code += extractExports(linalgCode, "./linalg");
+  code += extractExports(integrateCode, "./integrate");
+  code += extractExports(intervalCode, "./interval");
+  code += extractExports(mccormickCode, "./mccormick");
+  code += extractExports(branch_and_boundCode, "./branch_and_bound");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();
@@ -1166,14 +1186,14 @@ export function generateParserTables(
     code += "\n" + extractExports(layoutContent, "./ir_layout");
     code += extractExports(cfgContent, "./cfg");
     code += extractExports(ssaContent, "./ssa");
-    code += extractExports(aliasContent, "./alias");
+    code += extractExports(aliasContent, "./alias-domain");
     code += extractExports(octagonContent, "./octagon");
     code += extractExports(isolationContent, "./isolation-domain");
     code += extractExports(pantelidesContent, "./pantelides-domain");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
     outFiles.push({ filename: "ssa.ts", content: ssaContent });
-    outFiles.push({ filename: "alias.ts", content: aliasContent });
+    outFiles.push({ filename: "alias-domain.ts", content: aliasContent });
     outFiles.push({ filename: "octagon.ts", content: octagonContent });
     outFiles.push({ filename: "isolation-domain.ts", content: isolationContent });
     outFiles.push({ filename: "pantelides-domain.ts", content: pantelidesContent });

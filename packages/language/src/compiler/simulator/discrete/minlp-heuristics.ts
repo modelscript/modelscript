@@ -17,9 +17,15 @@
  *   "Mixed-integer nonlinear optimization", Acta Numerica.
  */
 
-import { ArenaDAEBuilder, BinOp, ExprKind, StaticTapeBuilder } from "../../index.js";
-import { evaluateTapeForward, evaluateTapeReverse } from "../evaluator/ad-jacobian.js";
-import type { ImplicitInitBlock } from "../initialization/system-initializer.js";
+import type { ImplicitInitBlock } from "../../arena-init.js";
+import {
+  ArenaDAEBuilder,
+  BinOp,
+  ExprKind,
+  StaticTapeBuilder,
+  evaluateTapeForward,
+  evaluateTapeReverse,
+} from "../../index.js";
 
 /** Result of the MINLP freeze-and-solve iteration. */
 export interface MinlpResult {

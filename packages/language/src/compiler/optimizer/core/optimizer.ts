@@ -16,10 +16,9 @@
  */
 
 import { ArenaDAEBuilder, Variability } from "../../index.js";
-import { simulateArena } from "../../simulator/core/simulate-arena.js";
-import { ArenaSimulator, luFactor, luSolve } from "../../simulator/core/simulator.js";
+import { ArenaSimulator, simulateArena } from "../../simulator/core/simulate-arena.js";
 import type { SolverOptions } from "../../simulator/core/solver-options.js";
-import { Tape, type TapeNode } from "../../simulator/evaluator/tape.js";
+import { luFactor, luSolve } from "../../simulator/evaluator/gaussian.js";
 import type { MonteCarloOptions, RandomVariable } from "../../simulator/uq/monte-carlo.js";
 import {
   ProgressiveHedging,
@@ -734,30 +733,18 @@ export class ModelicaOptimizer {
         }
       }
     };
-    // Reverse-mode AD objective gradient: single forward+backward pass for all ∂f/∂z_i
+    // Direct trapezoidal gradient computation for quadratic control objective
     const evalGradient = (z: Float64Array, g: Float64Array): void => {
-      const tape = new Tape();
-      // Create tracked tape nodes for all decision variables
-      const zNodes: TapeNode[] = [];
-      for (let i = 0; i < nVars; i++) zNodes.push(tape.variable(z[i]!));
-
-      // Evaluate objective on tape: trapezoidal ∫ L(u) dt
-      let costNode = tape.constant(0);
+      g.fill(0);
       for (let k = 0; k < nPoints; k++) {
-        const w = tape.constant(k === 0 || k === N ? 0.5 : 1.0);
-        const dtNode = tape.constant(dt);
-        // Compute L = ∑ u_i² at grid point k
-        let L = tape.constant(0);
+        const w = k === 0 || k === N ? 0.5 : 1.0;
         for (let j = 0; j < nControls; j++) {
-          const uNode = zNodes[k * varsPerPoint + nStates + j]!;
-          L = tape.add(L, tape.mul(uNode, uNode));
+          const idx = k * varsPerPoint + nStates + j;
+          const uVal = z[idx] ?? 0;
+          // ∂(w * dt * u^2)/∂u = 2 * w * dt * u
+          g[idx] = 2 * w * dt * uVal;
         }
-        costNode = tape.add(costNode, tape.mul(w, tape.mul(dtNode, L)));
       }
-
-      // Single backward pass → all gradients simultaneously
-      tape.backward(costNode);
-      for (let i = 0; i < nVars; i++) g[i] = zNodes[i]!.adjoint;
     };
 
     // AD-based constraint Jacobian using forward-mode AD through the model dynamics

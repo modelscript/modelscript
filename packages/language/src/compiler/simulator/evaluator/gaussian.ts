@@ -546,3 +546,126 @@ function formatNum(v: number): string {
   const s = v.toString();
   return !s.includes(".") && !s.includes("e") && !s.includes("E") ? s + ".0" : s;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dense LU Factorization & Solve
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Factorization result for dense LU solver. */
+export interface LUFactorization {
+  /** LU factorization matrix. */
+  lu: Float64Array[];
+  /** Pivot permutation vector. */
+  piv: Int32Array;
+  /** Row scaling factors for equilibration. */
+  rowScale: Float64Array;
+  /** Matrix dimension. */
+  n: number;
+}
+
+/** Factor a dense n×n matrix (given as array of Float64Array rows) into PA = LU
+ *  with row equilibration for numerical stability. */
+export function luFactor(A: Float64Array[], n: number): LUFactorization {
+  // Copy matrix
+  const lu = A.map((row) => new Float64Array(row));
+  const piv = new Int32Array(n);
+  for (let i = 0; i < n; i++) piv[i] = i;
+
+  // Row equilibration: scale each row by 1/max|entry|
+  const rowScale = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const row = lu[i];
+    if (!row) continue;
+    let maxVal = 0;
+    for (let j = 0; j < n; j++) {
+      maxVal = Math.max(maxVal, Math.abs(row[j] ?? 0));
+    }
+    const s = maxVal > 1e-30 ? 1.0 / maxVal : 1.0;
+    rowScale[i] = s;
+    for (let j = 0; j < n; j++) {
+      row[j] = (row[j] ?? 0) * s;
+    }
+  }
+
+  for (let k = 0; k < n; k++) {
+    const luK = lu[k];
+    if (!luK) continue;
+    // Find pivot
+    let maxVal = Math.abs(luK[k] ?? 0);
+    let maxIdx = k;
+    for (let i = k + 1; i < n; i++) {
+      const luI = lu[i];
+      if (!luI) continue;
+      const val = Math.abs(luI[k] ?? 0);
+      if (val > maxVal) {
+        maxVal = val;
+        maxIdx = i;
+      }
+    }
+    // Swap rows
+    if (maxIdx !== k) {
+      const rowK = lu[k];
+      const rowMax = lu[maxIdx];
+      if (rowK && rowMax) {
+        lu[k] = rowMax;
+        lu[maxIdx] = rowK;
+      }
+      const tmpP = piv[k] ?? k;
+      piv[k] = piv[maxIdx] ?? maxIdx;
+      piv[maxIdx] = tmpP;
+      // Also swap rowScale entries
+      const tmpS = rowScale[k] ?? 1;
+      rowScale[k] = rowScale[maxIdx] ?? 1;
+      rowScale[maxIdx] = tmpS;
+    }
+    const luKSwapped = lu[k];
+    if (!luKSwapped) continue;
+    const diagVal = luKSwapped[k] ?? 0;
+    if (Math.abs(diagVal) < 1e-30) continue; // Near-singular — skip
+
+    // Eliminate below
+    for (let i = k + 1; i < n; i++) {
+      const luI = lu[i];
+      if (!luI) continue;
+      const factor = (luI[k] ?? 0) / diagVal;
+      luI[k] = factor; // Store L
+      for (let j = k + 1; j < n; j++) {
+        luI[j] = (luI[j] ?? 0) - factor * (luKSwapped[j] ?? 0);
+      }
+    }
+  }
+  return { lu, piv, rowScale, n };
+}
+
+/** Solve LU·x = b (in-place, overwrites b with x).
+ *  Accounts for row equilibration applied during factorization. */
+export function luSolve(fact: LUFactorization, b: Float64Array): void {
+  const { lu, piv, rowScale, n } = fact;
+  // Apply permutation, then row scaling to RHS
+  // After pivoting, rowScale[i] = original scale for the row now at position i
+  const pb = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const pi = piv[i] ?? i;
+    pb[i] = (b[pi] ?? 0) * (rowScale[i] ?? 1);
+  }
+  // Forward substitution (L·z = pb)
+  for (let i = 1; i < n; i++) {
+    const luI = lu[i];
+    if (!luI) continue;
+    for (let j = 0; j < i; j++) {
+      pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);
+    }
+  }
+  // Back substitution (U·x = z)
+  for (let i = n - 1; i >= 0; i--) {
+    const luI = lu[i];
+    if (!luI) continue;
+    for (let j = i + 1; j < n; j++) {
+      pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);
+    }
+    const diag = luI[i] ?? 0;
+    pb[i] = Math.abs(diag) > 1e-30 ? (pb[i] ?? 0) / diag : 0;
+  }
+  // Copy result back
+  for (let i = 0; i < n; i++) b[i] = pb[i] ?? 0;
+}

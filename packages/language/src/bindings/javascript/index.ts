@@ -1,5 +1,5 @@
-import { bindingsTemplateDtsCode, bindingsTemplateJsCode } from "../../../build/src-gen/runtime-templates.js";
 import { NormalizedGrammar } from "../../grammar.js";
+import { bindingsTemplateDtsCode, bindingsTemplateJsCode } from "../../src-gen/runtime-templates.js";
 
 /**
  * Generates the standalone JavaScript wrapper string and its TypeScript definitions

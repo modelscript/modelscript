@@ -8,9 +8,9 @@
  * eliminating object allocations and pointer chasing.
  */
 
-import type { ArenaDAEBuilder } from "../dae-arena.js";
-import { BinOp, ExprKind, UnaryOp } from "../dae-arena.js";
-import { StringInterner } from "../interner.js";
+import type { ArenaDAEBuilder } from "./dae-arena.js";
+import { BinOp, ExprKind, UnaryOp } from "./dae-arena.js";
+import { StringInterner } from "./interner.js";
 
 export enum TapeOpKind {
   Const = 0,
@@ -55,7 +55,30 @@ export class StaticTapeBuilder {
   public opData = new Int32Array(this.capacity * TAPE_STRIDE);
   public valData = new Float64Array(this.capacity);
   public length = 0;
+  public get nodeCount(): number {
+    return this.length;
+  }
   private cache = new Map<string, number>();
+
+  public getOpKind(idx: number): TapeOpKind {
+    return this.opData[idx * TAPE_STRIDE + TAPE_OP_KIND] as TapeOpKind;
+  }
+  public getData1(idx: number): number {
+    return this.opData[idx * TAPE_STRIDE + TAPE_DATA1]!;
+  }
+  public getData2(idx: number): number {
+    return this.opData[idx * TAPE_STRIDE + TAPE_DATA2]!;
+  }
+  public getData3(idx: number): number {
+    return this.opData[idx * TAPE_STRIDE + TAPE_DATA3]!;
+  }
+  public getConstValue(idx: number): number {
+    return this.valData[idx] ?? 0;
+  }
+  public getVarName(idx: number): string {
+    const id = this.getData1(idx);
+    return this.interner.resolve(id) ?? "";
+  }
 
   constructor(public interner = new StringInterner()) {}
 
@@ -778,4 +801,349 @@ export class StaticTapeBuilder {
 
     return { code: lines, gradients };
   }
+
+  evaluateForward(varValues: Map<string, number>): Float64Array {
+    return evaluateTapeForward(this, varValues);
+  }
+
+  evaluateReverse(t: Float64Array, outputIndex: number): Map<string, number> {
+    return evaluateTapeReverse(this, t, outputIndex);
+  }
+}
+
+/** Extract derivative name from expression like der(x). */
+function extractDer(arena: ArenaDAEBuilder, exprId: number): string | null {
+  if (exprId < 0) return null;
+  if (arena.getExprKind(exprId) === ExprKind.Der) {
+    const argId = arena.getExprData1(exprId);
+    if (arena.getExprKind(argId) === ExprKind.Name) {
+      return arena.interner.resolve(arena.getExprData1(argId)) || null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Evaluate a tape forward pass at runtime, returning the value array.
+ */
+export function evaluateTapeForward(builder: StaticTapeBuilder, varValues: Map<string, number>): Float64Array {
+  const t = new Float64Array(builder.length);
+  const { opData, valData, interner } = builder;
+  const TAPE_STRIDE = 4;
+
+  for (let i = 0; i < builder.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset] as TapeOpKind;
+    const a = opData[offset + 1]!;
+    const b = opData[offset + 2]!;
+    const c = opData[offset + 3]!;
+
+    switch (kind) {
+      case TapeOpKind.Const:
+        t[i] = valData[i]!;
+        break;
+      case TapeOpKind.Var:
+        t[i] = varValues.get(interner.resolve(a) || "") ?? 0;
+        break;
+      case TapeOpKind.Add:
+        t[i] = (t[a] ?? 0) + (t[b] ?? 0);
+        break;
+      case TapeOpKind.Sub:
+        t[i] = (t[a] ?? 0) - (t[b] ?? 0);
+        break;
+      case TapeOpKind.Mul:
+        t[i] = (t[a] ?? 0) * (t[b] ?? 0);
+        break;
+      case TapeOpKind.Div:
+        t[i] = (t[a] ?? 0) / (t[b] ?? 0);
+        break;
+      case TapeOpKind.Pow:
+        t[i] = Math.pow(t[a] ?? 0, t[b] ?? 0);
+        break;
+      case TapeOpKind.Neg:
+        t[i] = -(t[a] ?? 0);
+        break;
+      case TapeOpKind.Sin:
+        t[i] = Math.sin(t[a] ?? 0);
+        break;
+      case TapeOpKind.Cos:
+        t[i] = Math.cos(t[a] ?? 0);
+        break;
+      case TapeOpKind.Tan:
+        t[i] = Math.tan(t[a] ?? 0);
+        break;
+      case TapeOpKind.Exp:
+        t[i] = Math.exp(t[a] ?? 0);
+        break;
+      case TapeOpKind.Log:
+        t[i] = Math.log(t[a] ?? 0);
+        break;
+      case TapeOpKind.Sqrt:
+        t[i] = Math.sqrt(t[a] ?? 0);
+        break;
+      // ── Vector ops ──
+      case TapeOpKind.VecVar: {
+        const baseName = interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          t[i + k] = varValues.get(`${baseName}[${k + 1}]`) ?? 0;
+        }
+        break;
+      }
+      case TapeOpKind.VecConst:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = valData[i + k] ?? 0;
+        }
+        break;
+      case TapeOpKind.VecAdd:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = (t[a + k] ?? 0) + (t[c + k] ?? 0);
+        }
+        break;
+      case TapeOpKind.VecSub:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = (t[a + k] ?? 0) - (t[c + k] ?? 0);
+        }
+        break;
+      case TapeOpKind.VecMul:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = (t[a + k] ?? 0) * (t[c + k] ?? 0);
+        }
+        break;
+      case TapeOpKind.VecNeg:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = -(t[a + k] ?? 0);
+        }
+        break;
+      case TapeOpKind.VecSubscript:
+        t[i] = t[a + c] ?? 0;
+        break;
+      case TapeOpKind.Nop:
+        break;
+    }
+  }
+  return t;
+}
+
+/**
+ * Evaluate the reverse-mode AD sweep on a tape, returning gradients for all variables.
+ */
+export function evaluateTapeReverse(
+  builder: StaticTapeBuilder,
+  t: Float64Array,
+  outputIndex: number,
+): Map<string, number> {
+  const dt = new Float64Array(builder.length);
+  dt[outputIndex] = 1.0;
+
+  const { opData, interner } = builder;
+  const TAPE_STRIDE = 4;
+
+  for (let i = builder.length - 1; i >= 0; i--) {
+    if (dt[i] === 0) continue;
+
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset] as TapeOpKind;
+    const a = opData[offset + 1]!;
+    const b = opData[offset + 2]!;
+    const c = opData[offset + 3]!;
+
+    const dti = dt[i] ?? 0;
+
+    switch (kind) {
+      case TapeOpKind.Add:
+        dt[a] = (dt[a] ?? 0) + dti;
+        dt[b] = (dt[b] ?? 0) + dti;
+        break;
+      case TapeOpKind.Sub:
+        dt[a] = (dt[a] ?? 0) + dti;
+        dt[b] = (dt[b] ?? 0) - dti;
+        break;
+      case TapeOpKind.Mul:
+        dt[a] = (dt[a] ?? 0) + dti * (t[b] ?? 0);
+        dt[b] = (dt[b] ?? 0) + dti * (t[a] ?? 0);
+        break;
+      case TapeOpKind.Div:
+        dt[a] = (dt[a] ?? 0) + dti / (t[b] ?? 1);
+        dt[b] = (dt[b] ?? 0) - (dti * (t[a] ?? 0)) / ((t[b] ?? 1) * (t[b] ?? 1));
+        break;
+      case TapeOpKind.Pow: {
+        const base = t[a] ?? 0;
+        const exp = t[b] ?? 0;
+        dt[a] = (dt[a] ?? 0) + dti * exp * Math.pow(base, exp - 1);
+        dt[b] = (dt[b] ?? 0) + dti * (t[i] ?? 0) * Math.log(base);
+        break;
+      }
+      case TapeOpKind.Neg:
+        dt[a] = (dt[a] ?? 0) - dti;
+        break;
+      case TapeOpKind.Sin:
+        dt[a] = (dt[a] ?? 0) + dti * Math.cos(t[a] ?? 0);
+        break;
+      case TapeOpKind.Cos:
+        dt[a] = (dt[a] ?? 0) - dti * Math.sin(t[a] ?? 0);
+        break;
+      case TapeOpKind.Tan:
+        dt[a] = (dt[a] ?? 0) + dti * (1 + (t[i] ?? 0) * (t[i] ?? 0));
+        break;
+      case TapeOpKind.Exp:
+        dt[a] = (dt[a] ?? 0) + dti * (t[i] ?? 0);
+        break;
+      case TapeOpKind.Log:
+        dt[a] = (dt[a] ?? 0) + dti / (t[a] ?? 1);
+        break;
+      case TapeOpKind.Sqrt:
+        dt[a] = (dt[a] ?? 0) + dti / (2 * (t[i] ?? 1));
+        break;
+      // ── Vector ops reverse ──
+      case TapeOpKind.VecAdd:
+        for (let k = 0; k < b; k++) {
+          const dk = dt[i + k] ?? 0;
+          dt[a + k] = (dt[a + k] ?? 0) + dk;
+          dt[c + k] = (dt[c + k] ?? 0) + dk;
+        }
+        break;
+      case TapeOpKind.VecSub:
+        for (let k = 0; k < b; k++) {
+          const dk = dt[i + k] ?? 0;
+          dt[a + k] = (dt[a + k] ?? 0) + dk;
+          dt[c + k] = (dt[c + k] ?? 0) - dk;
+        }
+        break;
+      case TapeOpKind.VecMul:
+        for (let k = 0; k < b; k++) {
+          const dk = dt[i + k] ?? 0;
+          dt[a + k] = (dt[a + k] ?? 0) + dk * (t[c + k] ?? 0);
+          dt[c + k] = (dt[c + k] ?? 0) + dk * (t[a + k] ?? 0);
+        }
+        break;
+      case TapeOpKind.VecNeg:
+        for (let k = 0; k < b; k++) {
+          dt[a + k] = (dt[a + k] ?? 0) - (dt[i + k] ?? 0);
+        }
+        break;
+      case TapeOpKind.VecSubscript:
+        dt[a + c] = (dt[a + c] ?? 0) + dti;
+        break;
+      case TapeOpKind.Nop:
+      case TapeOpKind.Const:
+      case TapeOpKind.Var:
+      case TapeOpKind.VecConst:
+      case TapeOpKind.VecVar:
+        break;
+    }
+  }
+
+  // Collect variable gradients
+  const gradients = new Map<string, number>();
+  for (let i = 0; i < builder.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset] as TapeOpKind;
+    if (kind === TapeOpKind.Var) {
+      const a = opData[offset + 1]!;
+      const name = interner.resolve(a) || "";
+      gradients.set(name, (gradients.get(name) ?? 0) + (dt[i] ?? 0));
+    } else if (kind === TapeOpKind.VecVar) {
+      const a = opData[offset + 1]!;
+      const b = opData[offset + 2]!;
+      const baseName = interner.resolve(a) || "";
+      for (let k = 0; k < b; k++) {
+        const name = `${baseName}[${k + 1}]`;
+        gradients.set(name, (gradients.get(name) ?? 0) + (dt[i + k] ?? 0));
+      }
+    }
+  }
+  return gradients;
+}
+
+/**
+ * Build a runtime AD Jacobian evaluator from a DAE.
+ *
+ * Returns a function `(t: number, y: number[]) => number[][]` that computes
+ * the exact Jacobian of the derivative equations w.r.t. the state variables.
+ */
+export function buildAdJacobian(dae: ArenaDAEBuilder): ((t: number, y: number[]) => number[][]) | null {
+  // Gather derivative equations: der(x) = f(x, u)
+  const derEqs: { state: string; rhsExprId: number }[] = [];
+
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    // EqKind.Simple or EqKind.Array
+    if (kind !== 0 && kind !== 4) continue;
+
+    const lhsId = dae.getEqLhs(i);
+    const rhsId = dae.getEqRhs(i);
+
+    const ld = extractDer(dae, lhsId);
+    const rd = extractDer(dae, rhsId);
+
+    if (kind === 4) {
+      // EqKind.Array
+      const baseName = ld || rd;
+      if (!baseName) continue;
+      const rhs = ld ? rhsId : lhsId;
+
+      const vIdx = dae.getVarIdxByName(baseName);
+      const dims = vIdx >= 0 ? dae.getVarShape(vIdx) : [];
+      const size = dims && dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
+
+      for (let j = 0; j < size; j++) {
+        derEqs.push({ state: `${baseName}[${j + 1}]`, rhsExprId: rhs });
+      }
+      continue;
+    }
+
+    if (ld) derEqs.push({ state: ld, rhsExprId: rhsId });
+    else if (rd) derEqs.push({ state: rd, rhsExprId: lhsId });
+  }
+
+  if (derEqs.length === 0) return null;
+
+  const stateNames = derEqs.map((eq) => eq.state);
+  const n = stateNames.length;
+
+  const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
+  for (const eq of derEqs) {
+    const tape = new StaticTapeBuilder();
+    const outIdx = tape.addExpression(eq.rhsExprId, dae);
+    tapeData.push({ ops: tape, outputIndex: outIdx });
+  }
+
+  return (time: number, y: number[]): number[][] => {
+    const varValues = new Map<string, number>();
+    varValues.set("time", time);
+    for (let i = 0; i < n; i++) {
+      const name = stateNames[i];
+      if (name) varValues.set(name, y[i] ?? 0);
+    }
+    for (let i = 0; i < dae.varCount; i++) {
+      const name = dae.getVarName(i);
+      if (!varValues.has(name) && dae.getVarExpression(i) !== undefined) {
+        varValues.set(name, dae.getVarStartValue(i));
+      }
+    }
+
+    const J: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      J[i] = new Array(n).fill(0) as number[];
+    }
+
+    for (let row = 0; row < n; row++) {
+      const td = tapeData[row];
+      if (!td) continue;
+
+      const t = evaluateTapeForward(td.ops, varValues);
+      const grads = evaluateTapeReverse(td.ops, t, td.outputIndex);
+
+      const jRow = J[row];
+      if (!jRow) continue;
+      for (let col = 0; col < n; col++) {
+        const stateName = stateNames[col];
+        if (stateName) {
+          jRow[col] = grads.get(stateName) ?? 0;
+        }
+      }
+    }
+
+    return J;
+  };
 }

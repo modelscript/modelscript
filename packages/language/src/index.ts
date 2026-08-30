@@ -19,6 +19,8 @@ export * as ecad from "./ecad/index.js";
 export * from "./grammar.js";
 export * from "./reasoner/index.js";
 export * from "./runtime/config_client.js";
+export * from "./runtime/wasm_interval.js";
+export * from "./runtime/wasm_ontology.js";
 export * from "./runtime/wasm_workspace.js";
 export * from "./transformers/polyglot-transformer.js";
 export * as utils from "./utils/index.js";

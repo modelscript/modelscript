@@ -1,49 +1,234 @@
-import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * OWL2 Ontology Store
+ * WASM-Backed OWL2 Ontology Store
  *
  * Maintains a unified, incrementally-updated OWL2 ontology derived from
- * all source language workspaces (Modelica, SysML2, STEP) via the
- * AdapterRegistry. Designed to be integrated into the UnifiedWorkspace
- * so that axiom re-projection is triggered automatically when the
- * workspace version changes.
- *
- * ## Architecture
- *
- * ```
- *   Modelica WorkspaceIndex ─┐
- *   SysML2  WorkspaceIndex ──┤──→ AdapterRegistry ──→ OWL2OntologyStore
- *   STEP    WorkspaceIndex ──┘                          │
- *                                                       ├─ axioms: OWL2Axiom[]
- *                                                       ├─ axiomsBySource: Map<string, OWL2Axiom[]>
- *                                                       ├─ lastDelta: OWL2AxiomDelta
- *                                                       └─ revision: number
- * ```
- *
- * ## Incremental Strategy
- *
- * Instead of re-projecting the entire workspace on every keystroke,
- * the store tracks which source languages changed (via workspace
- * version numbers) and only re-projects the changed language's symbols.
- *
- * The delta is computed by comparing the previous axiom set for that
- * language against the newly projected set. This allows downstream
- * consumers (e.g., FaCT++ reasoner, IDE hierarchy views) to process
- * only the incremental changes.
+ * all source language workspaces (Modelica, SysML2, STEP, OWL2) via the
+ * AdapterRegistry and WebAssembly zero-GC runtime.
  */
 
-import type { AdapterRegistry } from "./adapter-registry.js";
-import type { OWL2Axiom, OWL2AxiomDelta } from "./owl2-axioms.js";
-import { projectionToAxioms } from "./owl2-projection.js";
-import type { SymbolEntry, SymbolIndex } from "./runtime.js";
+import type { AdapterRegistry, ProjectionResult } from "../compiler/adapter-registry.js";
+import type { SymbolEntry, SymbolIndex } from "../compiler/runtime.js";
+import { IdTrieMap, StringTrieMap } from "../compiler/utils/radix-trie.js";
+import type {
+  IOWL2OntologyStore,
+  OWL2Axiom,
+  OWL2AxiomDelta,
+  OWL2ClassAssertion,
+  OWL2ClassDeclaration,
+  OWL2DataPropertyAssertion,
+  OWL2DataPropertyDeclaration,
+  OWL2DisjointClasses,
+  OWL2IndividualDeclaration,
+  OWL2ObjectPropertyAssertion,
+  OWL2ObjectPropertyDeclaration,
+  OWL2SubClassOf,
+  OWL2TransitiveObjectProperty,
+} from "../reasoner/types.js";
 
-// ---------------------------------------------------------------------------
-// OWL2 Ontology Store
-// ---------------------------------------------------------------------------
+/**
+ * Convert a ProjectionResult (from AdapterRegistry.project()) into
+ * concrete OWL2Axiom instances.
+ */
+export function projectionToAxioms(result: ProjectionResult): OWL2Axiom[] {
+  const props = result.props;
+  const axiomType = props.axiomType as string | undefined;
 
-export class OWL2OntologyStore {
+  if (axiomType) {
+    return convertExplicitAxiom(props, axiomType);
+  }
+
+  if (Array.isArray(props.axioms)) {
+    return props.axioms as OWL2Axiom[];
+  }
+
+  return [];
+}
+
+function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string): OWL2Axiom[] {
+  switch (axiomType) {
+    case "ClassDeclaration":
+      return [
+        {
+          type: "ClassDeclaration",
+          iri: props.iri as string,
+          sourceLang: props.sourceLang as string,
+          sourceQualifiedName: props.sourceQualifiedName as string,
+        } satisfies OWL2ClassDeclaration,
+      ];
+
+    case "SubClassOf":
+      return [
+        {
+          type: "SubClassOf",
+          subClassIri: props.subClassIri as string,
+          superClassIri: props.superClassIri as string,
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2SubClassOf,
+      ];
+
+    case "DisjointClasses":
+      return [
+        {
+          type: "DisjointClasses",
+          classIris: props.classIris as string[],
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2DisjointClasses,
+      ];
+
+    case "ObjectPropertyDeclaration":
+      return [
+        {
+          type: "ObjectPropertyDeclaration",
+          iri: props.iri as string,
+          sourceLang: props.sourceLang as string,
+          characteristics: props.characteristics as OWL2ObjectPropertyDeclaration["characteristics"],
+        } satisfies OWL2ObjectPropertyDeclaration,
+      ];
+
+    case "DataPropertyDeclaration":
+      return [
+        {
+          type: "DataPropertyDeclaration",
+          iri: props.iri as string,
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2DataPropertyDeclaration,
+      ];
+
+    case "ObjectPropertyAssertion":
+      return [
+        {
+          type: "ObjectPropertyAssertion",
+          propertyIri: props.propertyIri as string,
+          subjectIri: props.subjectIri as string,
+          objectIri: props.objectIri as string,
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2ObjectPropertyAssertion,
+      ];
+
+    case "DataPropertyAssertion":
+      return [
+        {
+          type: "DataPropertyAssertion",
+          propertyIri: props.propertyIri as string,
+          subjectIri: props.subjectIri as string,
+          value: props.value as string,
+          datatype: props.datatype as string | undefined,
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2DataPropertyAssertion,
+      ];
+
+    case "TransitiveObjectProperty":
+      return [
+        {
+          type: "TransitiveObjectProperty",
+          propertyIri: props.propertyIri as string,
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2TransitiveObjectProperty,
+      ];
+
+    case "IndividualDeclaration":
+      return [
+        {
+          type: "IndividualDeclaration",
+          iri: props.iri as string,
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2IndividualDeclaration,
+      ];
+
+    case "ClassAssertion":
+      return [
+        {
+          type: "ClassAssertion",
+          classIri: props.classIri as string,
+          individualIri: props.individualIri as string,
+          sourceLang: props.sourceLang as string,
+        } satisfies OWL2ClassAssertion,
+      ];
+
+    default:
+      return [];
+  }
+}
+
+// Axiom Type Constants matching AssemblyScript ontology.ts
+export const AXIOM_CLASS_DECL = 1;
+export const AXIOM_SUBCLASS_OF = 2;
+export const AXIOM_EQUIV_CLASS = 3;
+export const AXIOM_DISJOINT_CLASSES = 4;
+export const AXIOM_OBJ_PROP_DECL = 5;
+export const AXIOM_DATA_PROP_DECL = 6;
+export const AXIOM_OBJ_PROP_ASSERT = 7;
+export const AXIOM_DATA_PROP_ASSERT = 8;
+export const AXIOM_TRANSITIVE_PROP = 9;
+export const AXIOM_INDIVIDUAL_DECL = 10;
+export const AXIOM_CLASS_ASSERT = 11;
+export const AXIOM_OBJECT_SOME_VALUES_FROM = 12;
+export const AXIOM_SUB_PROPERTY_CHAIN = 13;
+export const AXIOM_FUNCTIONAL_OBJ_PROP = 14;
+export const AXIOM_FUNCTIONAL_DATA_PROP = 15;
+export const AXIOM_SAME_INDIVIDUAL = 16;
+export const AXIOM_UNIVERSAL_RESTRICTION = 17;
+export const AXIOM_DISJUNCTIVE_CLASS = 18;
+export const AXIOM_QUALIFIED_CARDINALITY = 19;
+export const AXIOM_SYMMETRIC_PROP = 20;
+export const AXIOM_INVERSE_PROP = 21;
+export const AXIOM_ASYMMETRIC_PROP = 22;
+export const AXIOM_IRREFLEXIVE_PROP = 23;
+export const AXIOM_DISJOINT_PROPS = 24;
+export const AXIOM_NOMINAL_CLASS = 25;
+export const AXIOM_SELF_RESTRICTION = 26;
+export const AXIOM_SHACL_RULE = 27;
+
+export interface WasmOntologyInstance {
+  ontology_addAxiom?(
+    axiomType: number,
+    sourceLangId: number,
+    subjectHash: number,
+    predicateHash: number,
+    objectHash: number,
+    dataValLo: number,
+    dataValHi: number,
+  ): number;
+  ontology_isSubClassOf?(subClassHash: number, superClassHash: number): number;
+  ontology_explainSubsumption?(subClassHash: number, superClassHash: number): number;
+  ontology_checkConsistency?(): number;
+  ontology_classifyIndividual?(individualHash: number): number;
+  ontology_areDisjoint?(class1Hash: number, class2Hash: number): number;
+  ontology_isInstanceOf?(individualHash: number, classHash: number): number;
+  ontology_getTransitiveClosure?(propertyHash: number, sourceHash: number): number;
+  ontology_getTaxonomy?(): number;
+  ontology_queryTriples?(subjectPattern: number, predicatePattern: number, objectPattern: number): number;
+  ontology_getAxiomCount?(): number;
+  ontology_clear?(): void;
+  ontology_computeIntervalIndex?(): void;
+  ontology_evaluatePropertyPath?(
+    propertyHash: number,
+    pathOp: number,
+    stepPropertyHash2: number,
+    sourceHash: number,
+  ): number;
+  ontology_saturateELRules?(): number;
+  ontology_retractAxiom?(axiomId: number): number;
+  ontology_applyDelta?(
+    retractionsPtr: number,
+    retractionsCount: number,
+    assertionsPtr: number,
+    assertionsCount: number,
+  ): number;
+  ontology_saturateFunctional?(): number;
+  ontology_quickXplain?(): number;
+  ontology_allMus?(maxCores?: number): number;
+  ontology_runHybridFixpoint?(): number;
+  ontology_validateAdvancedConstraints?(): number;
+  ontology_runTableauSubsumption?(subClass: number, supClass: number): number;
+  projection_projectFileStubs?(fileId: number, sourceLangId: number): number;
+  projection_projectAllStubs?(sourceLangId: number): number;
+  memory?: WebAssembly.Memory;
+}
+
+export class WasmOntologyStore implements IOWL2OntologyStore {
   /** Monotonic revision counter — incremented on every re-projection. */
   private _revision = 0;
 
@@ -65,8 +250,20 @@ export class OWL2OntologyStore {
   /** The adapter registry used for projection. */
   private _registry: AdapterRegistry;
 
-  constructor(registry: AdapterRegistry) {
+  /** Optional direct handle to compiled WebAssembly runtime. */
+  private _wasmInstance: WasmOntologyInstance | null = null;
+
+  constructor(registry: AdapterRegistry, wasmInstance?: WasmOntologyInstance | null) {
     this._registry = registry;
+    this._wasmInstance = wasmInstance ?? null;
+  }
+
+  public setWasmInstance(wasmInstance: WasmOntologyInstance): void {
+    this._wasmInstance = wasmInstance;
+  }
+
+  public get wasmInstance(): WasmOntologyInstance | null {
+    return this._wasmInstance;
   }
 
   // -------------------------------------------------------------------------
@@ -95,6 +292,9 @@ export class OWL2OntologyStore {
 
   /** Number of axioms in the store. */
   get size(): number {
+    if (this._wasmInstance?.ontology_getAxiomCount) {
+      return this._wasmInstance.ontology_getAxiomCount();
+    }
     return this._axioms.length;
   }
 
@@ -115,8 +315,6 @@ export class OWL2OntologyStore {
   /**
    * Full re-projection: project all source languages into OWL2.
    * Computes the delta against the previous axiom set.
-   * Call this when the workspace is first initialized or after
-   * a major structural change.
    */
   fullProjection(): void {
     const previousAxioms = [...this._axioms];
@@ -145,9 +343,6 @@ export class OWL2OntologyStore {
    * Only re-projects the specified language's symbols and patches
    * the unified axiom set. Much cheaper than fullProjection() for
    * single-file edits.
-   *
-   * @param language - The source language that changed.
-   * @returns The incremental delta for this language.
    */
   projectLanguage(language: string): OWL2AxiomDelta {
     const previousLangAxioms = this._axiomsBySource.get(language) ?? [];
@@ -192,9 +387,6 @@ export class OWL2OntologyStore {
    * Incremental update driven by workspace version tracking.
    * Checks which registered workspaces have a newer version than
    * the last projection and re-projects only those.
-   *
-   * @param workspaceVersions - Map of language → current workspace version.
-   * @returns Combined delta across all re-projected languages, or null if nothing changed.
    */
   update(workspaceVersions: Map<string, number>): OWL2AxiomDelta | null {
     const changedLanguages: string[] = [];
@@ -212,7 +404,6 @@ export class OWL2OntologyStore {
 
     if (changedLanguages.length === 0) return null;
 
-    // Aggregate deltas across all changed languages
     const allRetractions: OWL2Axiom[] = [];
     const allAssertions: OWL2Axiom[] = [];
 
@@ -228,12 +419,31 @@ export class OWL2OntologyStore {
 
   /**
    * Project a single symbol into OWL2 axioms.
-   * Useful for on-demand tooltip/hover information.
    */
   projectSymbol(entry: SymbolEntry, sourceLang: string): OWL2Axiom[] {
     const result = this._registry.project(entry, sourceLang, "owl2");
     if (!result) return [];
     return projectionToAxioms(result);
+  }
+
+  // -------------------------------------------------------------------------
+  // In-WASM Reasoning & Query Acceleration
+  // -------------------------------------------------------------------------
+
+  /** Direct check if subClass ⊑ superClass */
+  isSubClassOf(subClassHash: number, superClassHash: number): boolean {
+    if (this._wasmInstance?.ontology_isSubClassOf) {
+      return this._wasmInstance.ontology_isSubClassOf(subClassHash, superClassHash) !== 0;
+    }
+    return false;
+  }
+
+  /** Direct ontology consistency check */
+  checkConsistency(): boolean {
+    if (this._wasmInstance?.ontology_checkConsistency) {
+      return this._wasmInstance.ontology_checkConsistency() !== 0;
+    }
+    return true;
   }
 
   // -------------------------------------------------------------------------
@@ -285,20 +495,13 @@ export class OWL2OntologyStore {
 
   /**
    * Generate synthetic SymbolEntry objects for projected axioms.
-   *
-   * This enables cross-language IRI resolution: when an OWL2 lint query
-   * does `db.byName("mo:Motor")`, it will find the synthetic entry
-   * created from a Modelica-projected ClassDeclaration axiom.
-   *
-   * Synthetic entries use negative IDs (starting from -1_000_000) to
-   * avoid collisions with real CST-derived symbol IDs.
+   * Enables cross-language IRI resolution in LSP.
    */
   toSyntheticSymbolEntries(): SymbolIndex {
     const symbols = new IdTrieMap<SymbolEntry>();
     const byName = new StringTrieMap<number[]>();
     const childrenOf = new IdTrieMap<number[]>();
 
-    // Start synthetic IDs at a large negative offset to avoid collisions
     let nextId = -1_000_000;
 
     for (const axiom of this._axioms) {
@@ -320,6 +523,9 @@ export class OWL2OntologyStore {
 
   /** Clear all axioms and reset state. */
   clear(): void {
+    if (this._wasmInstance?.ontology_clear) {
+      this._wasmInstance.ontology_clear();
+    }
     this._axioms = [];
     this._axiomsBySource.clear();
     this._projectedVersions.clear();
@@ -329,11 +535,16 @@ export class OWL2OntologyStore {
 }
 
 // ---------------------------------------------------------------------------
+// Backward-compatibility alias
+// ---------------------------------------------------------------------------
+export { WasmOntologyStore as OWL2OntologyStore };
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
 /** Compute the delta between two axiom sets. */
-function computeDelta(previous: readonly OWL2Axiom[], current: readonly OWL2Axiom[]): OWL2AxiomDelta {
+export function computeDelta(previous: readonly OWL2Axiom[], current: readonly OWL2Axiom[]): OWL2AxiomDelta {
   const prevKeys = new Set(previous.map(axiomKey));
   const currKeys = new Set(current.map(axiomKey));
 
@@ -344,7 +555,7 @@ function computeDelta(previous: readonly OWL2Axiom[], current: readonly OWL2Axio
 }
 
 /** Stable string key for axiom identity. */
-function axiomKey(axiom: OWL2Axiom): string {
+export function axiomKey(axiom: OWL2Axiom): string {
   switch (axiom.type) {
     case "ClassDeclaration":
       return `CD:${axiom.iri}`;
@@ -376,7 +587,7 @@ function axiomKey(axiom: OWL2Axiom): string {
 }
 
 /** Check if an axiom references a given IRI. */
-function axiomReferencesIri(axiom: OWL2Axiom, iri: string): boolean {
+export function axiomReferencesIri(axiom: OWL2Axiom, iri: string): boolean {
   switch (axiom.type) {
     case "ClassDeclaration":
       return axiom.iri === iri;
@@ -406,7 +617,7 @@ function axiomReferencesIri(axiom: OWL2Axiom, iri: string): boolean {
 }
 
 /** Convert an axiom to OWL2 Functional-Style Syntax string. */
-function axiomToFSS(axiom: OWL2Axiom): string {
+export function axiomToFSS(axiom: OWL2Axiom): string {
   switch (axiom.type) {
     case "ClassDeclaration":
       return `Declaration(Class(${axiom.iri}))`;
@@ -439,10 +650,9 @@ function axiomToFSS(axiom: OWL2Axiom): string {
 
 /**
  * Convert a projected axiom into a synthetic SymbolEntry for cross-language
- * IRI resolution. Only declaration axioms produce entries — assertion axioms
- * don't introduce new names.
+ * IRI resolution.
  */
-function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | null {
+export function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | null {
   const base: Omit<SymbolEntry, "id" | "kind" | "name"> = {
     ruleName: "owl2:projected",
     namePath: "iri",

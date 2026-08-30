@@ -3,21 +3,11 @@
 // Rule Nodes — Named generic interfaces for type-level field extraction
 // ---------------------------------------------------------------------------
 
-import type { GraphicsConfig } from "@modelscript/language/diagram/builder";
+import type { LintResult } from "../dsl.js";
 import type { GlobalAdapters, NodeAdapter } from "./adapter-registry.js";
-import type { LintResult } from "./query-engine.js";
+import { type SelfAccessor } from "./hook-extractor.js";
+import type { I18nConfig } from "./i18n-extractor.js";
 import type { CycleInfo, QueryDB, QueryFn, SymbolEntry, SymbolKind } from "./runtime.js";
-export type {
-  CycleInfo,
-  GlobalAdapters,
-  GraphicsConfig,
-  LintResult,
-  NodeAdapter,
-  QueryDB,
-  QueryFn,
-  SymbolEntry,
-  SymbolKind,
-};
 
 export interface SymbolNode {
   type: "sym";
@@ -190,34 +180,6 @@ export type TypedSelf<Fields extends string> = [Fields] extends [never]
 // ---------------------------------------------------------------------------
 
 /**
- * A deeply nestable Proxy that captures dot-paths at runtime.
- * Writing `self.body.elements` produces a proxy representing `"body.elements"`.
- * Works exactly like Tree-Sitter's `$` proxy, but for scope graph references.
- */
-export type SelfAccessor = {
-  readonly [key: string]: SelfAccessor;
-};
-
-/** Symbol used internally to extract the captured dot-path from a SelfAccessor proxy. */
-export const SCOPE_PATH = Symbol("scopePath");
-
-/** Creates a `self` proxy that records field access chains as dot-paths. */
-export function createSelfProxy(path: string = ""): SelfAccessor {
-  return new Proxy({} as SelfAccessor, {
-    get(_, prop) {
-      if (prop === SCOPE_PATH) return path;
-      const newPath = path ? `${path}.${String(prop)}` : String(prop);
-      return createSelfProxy(newPath) as any;
-    },
-  });
-}
-
-/** Extracts the captured dot-path string from a SelfAccessor proxy. */
-export function extractScopePath(accessor: SelfAccessor): string {
-  return (accessor as any)[SCOPE_PATH] as string;
-}
-
-/**
  * Configures the symbol index properties for a syntax node.
  * Evaluated eagerly during the indexing phase.
  */
@@ -322,22 +284,6 @@ export interface DiffConfig {
   breaking?: string[];
 }
 
-export interface I18nTextConfig {
-  field: string;
-  context?: "self" | "scope";
-}
-
-export interface I18nConfig {
-  /** Fields to extract directly as msgid. */
-  texts?: (string | I18nTextConfig)[];
-  /** Child fields to traverse recursively. */
-  traverse?: string[];
-  /** Function that resolves the scope name for this node (if it introduces a new namespace context). */
-  scope?: (self: any) => string | null;
-  /** Dynamic custom extraction callback. */
-  extract?: (db: any, self: any) => any;
-}
-
 export interface DefOptions<Fields extends string = string, QKeys extends string = never> {
   /**
    * Defines the fast symbol graph representation of this syntax node.
@@ -412,7 +358,7 @@ export interface DefOptions<Fields extends string = string, QKeys extends string
    * Declarative graphics configuration for layout and UI rendering.
    * Can map structural CST components to visualization primitives (nodes, ports, edges).
    */
-  graphics?: (self: TypedSelf<Fields>) => GraphicsConfig;
+  graphics?: (self: TypedSelf<Fields>) => any;
 }
 
 /**

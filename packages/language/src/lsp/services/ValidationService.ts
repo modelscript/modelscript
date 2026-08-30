@@ -6,16 +6,24 @@ import { DocumentManager } from "./DocumentManager.js";
 import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
-import { SyntaxNode, TableauReasoner } from "@modelscript/language";
 import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
 import { LSPBridge, PositionIndex, QueryEngine, ScopeResolver, VerificationRunner } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
+import { TableauReasoner } from "../../reasoner/tableau-reasoner.js";
+import type { SyntaxNode } from "../../utils/tree-sitter.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
 import { parseStepReferences, STEP_SCHEMA } from "../utils/stepUtils.js";
 import { ReasonerService } from "./ReasonerService.js";
+
+let createSysML2QueryEngine: any = undefined;
+let createModelicaQueryEngine: any = undefined;
+let verificationTimer: any = undefined;
+let injectPredefinedTypes: any = undefined;
+let activeVerification: any = undefined;
+let flattenArenaFromInstance: any = undefined;
 
 export class ValidationService {
   // Instance state (previously module-level variables in browserServerMain.ts)
