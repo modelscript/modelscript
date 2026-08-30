@@ -1,6 +1,4 @@
-// SPDX-License-Identifier: LGPL-3.0-or-later
-
-import { choice, def, field, language, optional, ref, repeat, repeat1, seq, token } from "@modelscript/language";
+import { choice, def, field, language, optional, ref, repeat, repeat1, seq } from "@modelscript/language";
 
 export const stepLanguage = language({
   name: "step",
@@ -19,10 +17,10 @@ export const stepLanguage = language({
       },
       {
         name: "step_to_multibody",
-        description: "Maps STEP geometry and assembly hierarchy to Modelica MultiBody or CSG structures.",
+        description: "Translates STEP geometry entities into Modelica MultiBody kinematic frames.",
         category: "transformation",
         inputSchema: {
-          productName: { type: "string", description: "Name of root product", required: true },
+          path: { type: "string", description: "Path to .step / .stp file", required: true },
         },
       },
     ],
@@ -32,12 +30,7 @@ export const stepLanguage = language({
 
   rules: {
     // Top-level structure
-    StepFile: ($) =>
-      seq(
-        field("header", $.HeaderSection),
-        repeat(field("dataSection", $.DataSection)),
-        optional(field("trailer", $.Trailer)),
-      ),
+    StepFile: ($) => seq($.HeaderSection, repeat($.DataSection), $.Trailer),
 
     Trailer: () => "END-ISO-10303-21;",
 
@@ -47,9 +40,9 @@ export const stepLanguage = language({
     HeaderEntity: ($) =>
       def({
         syntax: seq(field("keyword", $.KEYWORD), "(", field("parameters", $.ParameterList), ")", ";"),
-        symbol: (self: Record<string, unknown>) => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "HeaderEntity",
-          name: self.keyword as string,
+          name: self.keyword ?? "",
         }),
       }),
 
@@ -63,10 +56,10 @@ export const stepLanguage = language({
           repeat(field("entity", $.EntityInstance)),
           "ENDSEC;",
         ),
-        symbol: (self: Record<string, unknown>) => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "DataSection",
-          name: (self.scopeName as string) || "DATA",
-          exports: [self.scopeName as string],
+          name: self.scopeName || "DATA",
+          exports: [self.scopeName ?? ""],
         }),
       }),
 
@@ -74,12 +67,12 @@ export const stepLanguage = language({
     EntityInstance: ($) =>
       def({
         syntax: seq(field("id", $.ENTITY_INSTANCE_NAME), "=", field("record", $._Record), ";"),
-        symbol: (self: Record<string, unknown>) => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Entity",
-          name: self.id as string,
-          exports: [self.id as string],
+          name: self.id ?? "",
+          exports: [self.id ?? ""],
           attributes: {
-            entityType: self.record as string,
+            entityType: self.record ?? "",
           },
         }),
       }),
@@ -108,7 +101,7 @@ export const stepLanguage = language({
     EntityReference: ($) =>
       ref({
         syntax: field("target", $.ENTITY_INSTANCE_NAME),
-        name: (self: Record<string, unknown>) => self.target as string,
+        name: (self: Record<string, string>) => self.target ?? "",
         targetKinds: ["Entity"],
         resolve: "lexical",
       }),
@@ -122,28 +115,19 @@ export const stepLanguage = language({
     DERIVED_PARAMETER: () => "*",
 
     // Terminals
-    ENTITY_INSTANCE_NAME: () => token(seq("#", /[0-9]+/)),
+    ENTITY_INSTANCE_NAME: () => /#[0-9]+/,
 
     KEYWORD: () => /[A-Z][A-Z0-9_]*/,
 
-    INTEGER: () => token(seq(optional(choice("+", "-")), /[0-9]+/)),
+    INTEGER: () => /[+-]?[0-9]+/,
 
-    REAL: () =>
-      token(
-        seq(
-          optional(choice("+", "-")),
-          /[0-9]+/,
-          ".",
-          optional(/[0-9]+/),
-          optional(seq(choice("E", "e"), optional(choice("+", "-")), /[0-9]+/)),
-        ),
-      ),
+    REAL: () => /[+-]?[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?/,
 
-    STRING: () => token(seq("'", repeat(choice(/[^']/, "''")), "'")),
+    STRING: () => /'([^']|'')*'/,
 
-    ENUMERATION: () => token(seq(".", /[A-Z][A-Z0-9_]*/, ".")),
+    ENUMERATION: () => /\.[A-Z][A-Z0-9_]*\./,
 
-    BLOCK_COMMENT: () => token(seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
+    BLOCK_COMMENT: () => /\/\*[^*]*\*+([^/*][^*]*\*+)*\//,
   },
 });
 

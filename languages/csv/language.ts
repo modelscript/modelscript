@@ -90,7 +90,7 @@ export default language({
         syntax: "CSVVirtualComponent",
         symbol: (self: Record<string, string>) => ({
           kind: "Component",
-          name: self.syntax, // dummy access to record namePath
+          name: self.syntax ?? "", // dummy access to record namePath
         }),
         queries: {
           resolvedType: (db: QueryDB, self: SymbolEntry): SymbolEntry | null => {

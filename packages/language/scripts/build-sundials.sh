@@ -22,7 +22,7 @@ SUNDIALS_VERSION="7.2.0"
 SUNDIALS_URL="https://github.com/LLNL/sundials/releases/download/v${SUNDIALS_VERSION}/sundials-${SUNDIALS_VERSION}.tar.gz"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
-SRC_DIR="$(cd "$PACKAGE_DIR/../compiler/src/simulator/solvers" && pwd)"
+SRC_DIR="$PACKAGE_DIR/src/compiler/simulator/solvers"
 BUILD_DIR="$PACKAGE_DIR/.build/sundials"
 WASM_DIR="$PACKAGE_DIR/wasm"
 
@@ -42,7 +42,7 @@ SUITESPARSE_URL="https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/refs
 mkdir -p "$BUILD_DIR"
 if [ ! -f "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}.tar.gz" ]; then
   echo "Downloading SuiteSparse ${SUITESPARSE_VERSION}..."
-  curl -L -o "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}.tar.gz" "$SUITESPARSE_URL"
+  curl -C - --retry 5 --retry-delay 2 -L -o "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}.tar.gz" "$SUITESPARSE_URL"
 fi
 
 if [ ! -d "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}" ]; then
@@ -70,7 +70,7 @@ find "$SUITESPARSE_SRC" -name "*.a" -exec cp {} "$SUITESPARSE_INSTALL/lib" \;
 mkdir -p "$BUILD_DIR"
 if [ ! -f "$BUILD_DIR/sundials-${SUNDIALS_VERSION}.tar.gz" ]; then
   echo "Downloading SUNDIALS ${SUNDIALS_VERSION}..."
-  curl -L -o "$BUILD_DIR/sundials-${SUNDIALS_VERSION}.tar.gz" "$SUNDIALS_URL"
+  curl -C - --retry 5 --retry-delay 2 -L -o "$BUILD_DIR/sundials-${SUNDIALS_VERSION}.tar.gz" "$SUNDIALS_URL"
 fi
 
 if [ ! -d "$BUILD_DIR/sundials-${SUNDIALS_VERSION}" ]; then
@@ -129,6 +129,8 @@ cat > "$BUILD_DIR/sundials_wasm_entry.c" << 'ENTRY_EOF'
 #include <string.h>
 
 /* Include the full SUNDIALS interface implementation */
+#include <sunmatrix/sunmatrix_dense.h>
+#include <sunlinsol/sunlinsol_dense.h>
 #include "sundials-interface.c"
 
 /* Type for the WASM RHS callback */
@@ -266,6 +268,124 @@ int sundials_kinsol_wasm(
 
     return status;
 }
+
+/* Step-by-step stateful CVODE context wrapper */
+typedef struct {
+    SUNContext sunctx;
+    void* cvode_mem;
+    N_Vector y;
+    SUNMatrix A;
+    SUNLinearSolver LS;
+    wasm_rhs_fn rhs_fn;
+    wasm_event_fn event_fn;
+    int n_states;
+    int n_events;
+} CvodeStepContext;
+
+static int cvode_step_rhs_wrapper(sunrealtype t, N_Vector y, N_Vector ydot, void* user_data) {
+    CvodeStepContext* ctx = (CvodeStepContext*)user_data;
+    double* y_data = N_VGetArrayPointer(y);
+    double* ydot_data = N_VGetArrayPointer(ydot);
+    return ctx->rhs_fn((double)t, y_data, ydot_data, NULL);
+}
+
+static int cvode_step_root_wrapper(sunrealtype t, N_Vector y, sunrealtype* gout, void* user_data) {
+    CvodeStepContext* ctx = (CvodeStepContext*)user_data;
+    if (ctx->event_fn && ctx->n_events > 0) {
+        double* y_data = N_VGetArrayPointer(y);
+        return ctx->event_fn((double)t, y_data, (double*)gout, NULL);
+    }
+    return 0;
+}
+
+CvodeStepContext* cvode_init(
+    int n_states,
+    double t0,
+    double* y0,
+    int rhs_fn_ptr,
+    int n_events,
+    int event_fn_ptr,
+    double rtol,
+    double atol
+) {
+    CvodeStepContext* ctx = (CvodeStepContext*)malloc(sizeof(CvodeStepContext));
+    if (!ctx) return NULL;
+
+    ctx->n_states = n_states;
+    ctx->n_events = n_events;
+    ctx->rhs_fn = (wasm_rhs_fn)(long)rhs_fn_ptr;
+    ctx->event_fn = event_fn_ptr ? (wasm_event_fn)(long)event_fn_ptr : NULL;
+
+    if (SUNContext_Create(SUN_COMM_NULL, &ctx->sunctx) != 0) {
+        free(ctx);
+        return NULL;
+    }
+
+    ctx->y = N_VNew_Serial(n_states, ctx->sunctx);
+    if (!ctx->y) {
+        SUNContext_Free(&ctx->sunctx);
+        free(ctx);
+        return NULL;
+    }
+
+    double* y_data = N_VGetArrayPointer(ctx->y);
+    for (int i = 0; i < n_states; i++) {
+        y_data[i] = y0[i];
+    }
+
+    ctx->cvode_mem = CVodeCreate(CV_BDF, ctx->sunctx);
+    if (!ctx->cvode_mem) {
+        N_VDestroy(ctx->y);
+        SUNContext_Free(&ctx->sunctx);
+        free(ctx);
+        return NULL;
+    }
+
+    CVodeInit(ctx->cvode_mem, cvode_step_rhs_wrapper, (sunrealtype)t0, ctx->y);
+    CVodeSStolerances(ctx->cvode_mem, (sunrealtype)rtol, (sunrealtype)atol);
+    CVodeSetUserData(ctx->cvode_mem, ctx);
+
+    ctx->A = SUNDenseMatrix(n_states, n_states, ctx->sunctx);
+    ctx->LS = SUNLinSol_Dense(ctx->y, ctx->A, ctx->sunctx);
+    CVodeSetLinearSolver(ctx->cvode_mem, ctx->LS, ctx->A);
+
+    if (n_events > 0 && ctx->event_fn) {
+        CVodeRootInit(ctx->cvode_mem, n_events, cvode_step_root_wrapper);
+    }
+
+    return ctx;
+}
+
+int cvode_step(CvodeStepContext* ctx, double t_out, double* t_ret_ptr, double* y_ret) {
+    sunrealtype t_ret;
+    int flag = CVode(ctx->cvode_mem, (sunrealtype)t_out, ctx->y, &t_ret, CV_NORMAL);
+
+    *t_ret_ptr = (double)t_ret;
+    double* y_data = N_VGetArrayPointer(ctx->y);
+    for (int i = 0; i < ctx->n_states; i++) {
+        y_ret[i] = y_data[i];
+    }
+
+    return flag;
+}
+
+void cvode_reinit(CvodeStepContext* ctx, double t, double* y_new) {
+    double* y_data = N_VGetArrayPointer(ctx->y);
+    for (int i = 0; i < ctx->n_states; i++) {
+        y_data[i] = y_new[i];
+    }
+    CVodeReInit(ctx->cvode_mem, (sunrealtype)t, ctx->y);
+}
+
+void cvode_free(CvodeStepContext* ctx) {
+    if (!ctx) return;
+    if (ctx->LS) SUNLinSolFree(ctx->LS);
+    if (ctx->A) SUNMatDestroy(ctx->A);
+    if (ctx->y) N_VDestroy(ctx->y);
+    if (ctx->cvode_mem) CVodeFree(&ctx->cvode_mem);
+    if (ctx->sunctx) SUNContext_Free(&ctx->sunctx);
+    free(ctx);
+}
 ENTRY_EOF
 
 # Compile with Emscripten
@@ -280,14 +400,16 @@ emcc -O2 \
   -lsundials_kinsol \
   -lsundials_nvecserial \
   -lsundials_sunmatrixsparse \
+  -lsundials_sunmatrixdense \
+  -lsundials_sunlinsoldense \
   -lsundials_sunlinsolklu \
   -lsundials_core \
   -L"$SUITESPARSE_INSTALL/lib" -lklu -lamd -lcolamd -lbtf -lsuitesparseconfig \
   -lm \
   -s MODULARIZE=1 \
   -s EXPORT_ES6=1 \
-  -s EXPORTED_FUNCTIONS='["_sundials_cvode_wasm","_sundials_kinsol_wasm","_malloc","_free"]' \
-  -s EXPORTED_RUNTIME_METHODS='["addFunction","removeFunction","ccall","cwrap"]' \
+  -s EXPORTED_FUNCTIONS='["_sundials_cvode_wasm","_sundials_kinsol_wasm","_cvode_init","_cvode_step","_cvode_reinit","_cvode_free","_malloc","_free"]' \
+  -s EXPORTED_RUNTIME_METHODS='["addFunction","removeFunction","ccall","cwrap","HEAPF64","HEAPU8","HEAP32","wasmMemory"]' \
   -s ALLOW_TABLE_GROWTH=1 \
   -s ALLOW_MEMORY_GROWTH=1 \
   -s INITIAL_MEMORY=16777216 \

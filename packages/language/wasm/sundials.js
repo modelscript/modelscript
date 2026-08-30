@@ -98,12 +98,12 @@ async function Module(moduleArg = {}) {
     var b = wasmMemory.buffer;
     HEAP8 = new Int8Array(b);
     HEAP16 = new Int16Array(b);
-    HEAPU8 = new Uint8Array(b);
+    Module["HEAPU8"] = HEAPU8 = new Uint8Array(b);
     HEAPU16 = new Uint16Array(b);
-    HEAP32 = new Int32Array(b);
+    Module["HEAP32"] = HEAP32 = new Int32Array(b);
     HEAPU32 = new Uint32Array(b);
     HEAPF32 = new Float32Array(b);
-    HEAPF64 = new Float64Array(b);
+    Module["HEAPF64"] = HEAPF64 = new Float64Array(b);
     HEAP64 = new BigInt64Array(b);
     HEAPU64 = new BigUint64Array(b);
   }
@@ -2960,6 +2960,10 @@ async function Module(moduleArg = {}) {
     _free,
     _sundials_cvode_wasm,
     _sundials_kinsol_wasm,
+    _cvode_init,
+    _cvode_step,
+    _cvode_reinit,
+    _cvode_free,
     __emscripten_stack_restore,
     __emscripten_stack_alloc,
     _emscripten_stack_get_current,
@@ -2972,10 +2976,14 @@ async function Module(moduleArg = {}) {
     _free = Module["_free"] = wasmExports["free"];
     _sundials_cvode_wasm = Module["_sundials_cvode_wasm"] = wasmExports["sundials_cvode_wasm"];
     _sundials_kinsol_wasm = Module["_sundials_kinsol_wasm"] = wasmExports["sundials_kinsol_wasm"];
+    _cvode_init = Module["_cvode_init"] = wasmExports["cvode_init"];
+    _cvode_step = Module["_cvode_step"] = wasmExports["cvode_step"];
+    _cvode_reinit = Module["_cvode_reinit"] = wasmExports["cvode_reinit"];
+    _cvode_free = Module["_cvode_free"] = wasmExports["cvode_free"];
     __emscripten_stack_restore = wasmExports["_emscripten_stack_restore"];
     __emscripten_stack_alloc = wasmExports["_emscripten_stack_alloc"];
     _emscripten_stack_get_current = wasmExports["emscripten_stack_get_current"];
-    memory = wasmMemory = wasmExports["memory"];
+    memory = wasmMemory = Module["wasmMemory"] = wasmExports["memory"];
     __indirect_function_table = wasmTable = wasmExports["__indirect_function_table"];
   }
   var wasmImports = {

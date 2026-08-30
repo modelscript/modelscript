@@ -476,7 +476,7 @@ export class WebGPUSimulationRunner {
     outputTimes: number[],
     options: { atol?: number; rtol?: number; maxStep?: number } = {},
   ): Promise<{ t: number[]; y: number[][] }> {
-    const { dopri5Async } = await import("../solvers/dopri5.js");
+    const { dopri5Async } = await import("../../../runtime/wasm_dopri5.js");
 
     const rhsFnAsync = async (t: number, y: number[]): Promise<number[]> => {
       const yF32 = new Float32Array(y);

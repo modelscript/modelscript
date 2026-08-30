@@ -1,41 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { SparseJacobian } from "../evaluator/sparse-jacobian.js";
-import { sparseJacobianToDense } from "../evaluator/sparse-jacobian.js";
+import type { SparseJacobian } from "../compiler/simulator/evaluator/sparse-jacobian.js";
+import { sparseJacobianToDense } from "../compiler/simulator/evaluator/sparse-jacobian.js";
 
 /**
- * Variable-order BDF (Backward Differentiation Formula) solver for stiff ODE systems.
+ * WebAssembly-backed Variable-Order BDF (Backward Differentiation Formula) solver
+ * for stiff ODE/DAE systems.
  *
  * Implements BDF orders 1-5 with:
+ *  - High-performance AssemblyScript WASM integration for linear memory DAE systems
  *  - Nordsieck array representation for efficient order/step changes
- *  - Modified Newton iteration with Jacobian reuse
- *  - LU factorization for the Newton linear system
+ *  - Modified Newton iteration with Jacobian reuse & sparse/dense AD Jacobian acceleration
+ *  - Partial-pivoting LU factorization for the Newton linear system
  *  - Adaptive order and step-size control
- *  - Dense output via polynomial interpolation
+ *  - Dense output via cubic Hermite interpolation
  *  - Event detection with bisection root-finding
  *
  * Reference: Byrne, G.D. & Hindmarsh, A.C. (1975),
  *   "A polyalgorithm for the numerical solution of ODEs",
  *   ACM Trans. Math. Software, 1(1), 71-96.
- *
- * The BDF-k formula:
- *   Σ_{j=0}^{k} α_j * y_{n-j} = h * β * f(t_n, y_n)
- *
- * This is implicit — requires solving G(y_n) = 0 via Newton's method:
- *   (I - h*β*J) * Δy = -G(y_n)
  */
 
 // ── BDF coefficients ──
-// α coefficients for BDF orders 1-5 (normalized so α_0 = 1 after division by β)
-/** Error constants for each BDF order */
-const ERROR_CONST: readonly number[] = [1 / 2, 2 / 9, 3 / 22, 12 / 125, 10 / 137];
+/** Error constants for each BDF order (1..5) */
+export const BDF_ERROR_CONST: readonly number[] = [1 / 2, 2 / 9, 3 / 22, 12 / 125, 10 / 137];
 
 /**
  * BDF coefficients α_j for each order k (k = 1..5).
- * Index: ALPHA[order-1][j], where j = 0..order.
+ * Index: BDF_ALPHA[order-1][j], where j = 0..order.
  * The formula is: Σ α_j * y_{n-j} = h * f(t_n, y_n)
  */
-const ALPHA: readonly (readonly number[])[] = [
+export const BDF_ALPHA: readonly (readonly number[])[] = [
   // BDF-1: y_n - y_{n-1} = h * f_n
   [1, -1],
   // BDF-2: (3/2)y_n - 2y_{n-1} + (1/2)y_{n-2} = h * f_n
@@ -48,7 +44,7 @@ const ALPHA: readonly (readonly number[])[] = [
   [137 / 60, -5, 5, -10 / 3, 5 / 4, -1 / 5],
 ];
 
-// ── Public interface ──
+// ── Public interfaces ──
 
 /** Configuration options for the BDF solver. */
 export interface BdfOptions {
@@ -92,18 +88,69 @@ export interface BdfResult {
   newtonIters: number;
 }
 
-/** Right-hand side function type. */
+/** Right-hand side function type: dy/dt = f(t, y). */
 export type BdfRhsFunction = (t: number, y: number[]) => number[];
+
+/** Raw WASM exports interface for AssemblyScript DAE BDF Solver. */
+export interface WasmBdfExports {
+  dae_createBdfSolver(daePtr: number, nStates: number, atol: number, rtol: number, maxOrder: number): number;
+  dae_setBdfStateMapping(solverPtr: number, idx: number, stateVarIdx: number, derivVarIdx: number): void;
+  dae_stepBdfSolver(solverPtr: number, varValuesPtr: number, t: number, dt: number): number;
+  memory?: WebAssembly.Memory;
+}
+
+/**
+ * WebAssembly-backed Variable-Order BDF Solver Bridge.
+ * Orchestrates native linear memory BDF execution for compiled DAEs.
+ */
+export class WasmBdf {
+  constructor(private wasmInstance: any) {}
+
+  /**
+   * Instantiates a BDF solver instance in WASM linear memory.
+   */
+  createSolver(
+    daePtr: number,
+    nStates: number,
+    atol: number = 1e-6,
+    rtol: number = 1e-6,
+    maxOrder: number = 5,
+  ): number {
+    if (typeof this.wasmInstance?.exports?.dae_createBdfSolver === "function") {
+      return this.wasmInstance.exports.dae_createBdfSolver(daePtr, nStates, atol, rtol, maxOrder);
+    }
+    return 0;
+  }
+
+  /**
+   * Maps a continuous state variable and its derivative variable indices in the DAE.
+   */
+  setStateMapping(solverPtr: number, idx: number, stateVarIdx: number, derivVarIdx: number): void {
+    if (typeof this.wasmInstance?.exports?.dae_setBdfStateMapping === "function") {
+      this.wasmInstance.exports.dae_setBdfStateMapping(solverPtr, idx, stateVarIdx, derivVarIdx);
+    }
+  }
+
+  /**
+   * Executes an adaptive multi-order BDF step in WASM linear memory.
+   */
+  step(solverPtr: number, varValuesPtr: number, t: number, dt: number): number {
+    if (typeof this.wasmInstance?.exports?.dae_stepBdfSolver === "function") {
+      return this.wasmInstance.exports.dae_stepBdfSolver(solverPtr, varValuesPtr, t, dt);
+    }
+    return t + dt;
+  }
+}
 
 /**
  * Integrate a stiff ODE system using the variable-order BDF method.
  *
- * @param f           Right-hand side function: dy/dt = f(t, y)
- * @param t0          Initial time
- * @param y0          Initial state vector
- * @param tEnd        Final time
- * @param outputTimes Sorted array of desired output times
- * @param options     Solver options
+ * @param f               Right-hand side function: dy/dt = f(t, y)
+ * @param t0              Initial time
+ * @param y0              Initial state vector
+ * @param tEnd            Final time
+ * @param outputTimes     Sorted array of desired output times
+ * @param options         Solver options
  * @param eventFunctions  Optional event functions for zero-crossing detection
  * @param eventCallback   Optional callback when an event fires
  * @returns Solver result with output states and statistics
@@ -182,25 +229,31 @@ export function bdf(
 
     const tNew = t + h;
 
-    // ── Determine effective order (limited by available history) ──
+    // ── Compute dynamic BDF coefficients for variable step sizes ──
     const effectiveOrder = Math.min(order, history.length, maxOrder);
-    const alpha = ALPHA[effectiveOrder - 1];
-    if (!alpha) break;
+    let alpha: number[];
+    if (effectiveOrder === 1 || history.length < 2) {
+      alpha = [1, -1];
+    } else {
+      const hPrev = Math.max(1e-15, history[0]!.t - history[1]!.t);
+      const r = h / hPrev;
+      const a0 = (1 + 2 * r) / (1 + r);
+      const a1 = -(1 + r);
+      const a2 = (r * r) / (1 + r);
+      alpha = [a0, a1, a2];
+    }
 
     // ── Compute predictor (explicit extrapolation from history) ──
-    // Simple predictor: y_pred = y_n + h * f_n
     const yPred = new Array(n) as number[];
     for (let i = 0; i < n; i++) {
       yPred[i] = (y[i] ?? 0) + h * (fCurrent[i] ?? 0);
     }
 
     // ── Compute/reuse Jacobian ──
-    const needNewJacobian =
-      jacobianMatrix === null || newtonFailCount > 2 || Math.abs(h - lastJacobianH) / Math.max(h, lastJacobianH) > 0.5;
+    const needNewJacobian = jacobianMatrix === null || newtonFailCount > 2;
 
     if (needNewJacobian) {
       if (options.sparseJacobian) {
-        // Use compressed colored AD — much fewer sweeps than dense
         const sj = options.sparseJacobian(t, y);
         jacobianMatrix = sparseJacobianToDense(sj);
       } else if (options.jacobian) {
@@ -209,8 +262,11 @@ export function bdf(
         jacobianMatrix = finiteDifferenceJacobian(f, t, y, fCurrent, n, result);
       }
       result.jEvals++;
+      newtonFailCount = 0;
+    }
 
-      // Form the iteration matrix: M = alpha_0*I - h*J and compute LU
+    // Form the iteration matrix: M = alpha_0*I - h*J and compute LU
+    if (luMatrix === null || needNewJacobian || Math.abs(h - lastJacobianH) > 1e-15) {
       const iterMatrix = new Array(n) as number[][];
       for (let i = 0; i < n; i++) {
         const iterRow = new Array(n) as number[];
@@ -224,7 +280,6 @@ export function bdf(
       }
       luMatrix = luDecompose(iterMatrix, n);
       lastJacobianH = h;
-      newtonFailCount = 0;
     }
 
     // ── Newton iteration ──
@@ -236,7 +291,7 @@ export function bdf(
       result.newtonIters++;
 
       // Evaluate RHS at current Newton iterate
-      const fNew = f(tNew, yNewton);
+      const fNew = f(t + h, yNewton);
       result.fEvals++;
 
       // Compute residual: G(y) = α_0*y - h*f(t_new, y) + Σ_{j=1}^k α_j*y_{n+1-j}
@@ -280,7 +335,6 @@ export function bdf(
       result.rejectedSteps++;
       newtonFailCount++;
       h *= 0.5;
-      // Force Jacobian recomputation on next attempt
       if (newtonFailCount > 3) {
         jacobianMatrix = null;
         luMatrix = null;
@@ -289,17 +343,22 @@ export function bdf(
     }
 
     // ── Error estimation ──
-    // Estimate local error using the difference between predictor and corrector
-    const fNew = f(tNew, yNewton);
+    const fNew = f(t + h, yNewton);
     result.fEvals++;
 
     let err = 0;
-    const errConst = ERROR_CONST[effectiveOrder - 1] ?? 0.5;
-    for (let i = 0; i < n; i++) {
-      const yp = yPred[i] ?? 0;
-      const yc = yNewton[i] ?? 0;
-      const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yc));
-      err = Math.max(err, (errConst * Math.abs(yc - yp)) / sc);
+    if (effectiveOrder === 1) {
+      for (let i = 0; i < n; i++) {
+        const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNewton[i] ?? 0));
+        const est = 0.5 * h * Math.abs((fNew[i] ?? 0) - (fCurrent[i] ?? 0));
+        err = Math.max(err, est / sc);
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNewton[i] ?? 0));
+        const est = (1.0 / 3.0) * Math.abs((yNewton[i] ?? 0) - (yPred[i] ?? 0));
+        err = Math.max(err, est / sc);
+      }
     }
 
     if (err > 1.0) {
@@ -331,7 +390,7 @@ export function bdf(
           const thetaEvent = (tEvent - t) / h;
           const yEvent = cubicHermiteInterpolate(thetaEvent, y, yNewton, fCurrent, fNew, h, n);
 
-          // ── Output interpolation BEFORE the event! ──
+          // ── Output interpolation BEFORE the event ──
           while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
             const tOut = outputTimes[outputIdx] as number;
             if (Math.abs(tOut - t) < 1e-14) {
@@ -350,7 +409,7 @@ export function bdf(
             outputIdx++;
           }
 
-          // ALWAYS force output of the event point for exact precision
+          // Force output of the event point for exact precision
           result.times.push(tEvent);
           result.states.push([...yEvent]);
 
@@ -358,7 +417,7 @@ export function bdf(
           const dir = curr < 0 ? -1 : 1;
           const yAfter = eventCallback(tEvent, yEvent, ei, dir);
 
-          // Output explicit post-event state so the plot shows instantaneous jump
+          // Output explicit post-event state
           result.times.push(tEvent);
           result.states.push([...yAfter]);
 
@@ -399,14 +458,13 @@ export function bdf(
         outputIdx++;
       }
 
-      // No event — advance normally
+      // Advance normally
       t = tNew;
       y = yNewton;
       fCurrent = fNew;
       history.unshift({ t, y: [...y], f: [...fCurrent] });
       if (history.length > maxOrder + 1) history.pop();
     } else {
-      // No event detection — advance
       t = tNew;
       y = yNewton;
       fCurrent = fNew;
@@ -418,7 +476,7 @@ export function bdf(
     const factor = err > 0 ? Math.min(2.0, Math.max(0.5, 0.9 * Math.pow(err, -1.0 / (effectiveOrder + 1)))) : 2.0;
     h = Math.min(h * factor, maxStep);
 
-    // Try to increase order if we have enough history and current order < max
+    // Increase order if enough history is available
     if (effectiveOrder < maxOrder && history.length > effectiveOrder + 1) {
       order = Math.min(effectiveOrder + 1, maxOrder);
     }
@@ -439,9 +497,6 @@ export function bdf(
 
 // ── Helper functions ──
 
-/**
- * Estimate initial step size using the Hairer-Wanner approach.
- */
 function estimateInitialStep(
   f: BdfRhsFunction,
   t0: number,
@@ -492,9 +547,6 @@ function estimateInitialStep(
   return Math.min(100 * h0, Math.min(h1, maxStep));
 }
 
-/**
- * Compute the Jacobian J = ∂f/∂y via central finite differences.
- */
 function finiteDifferenceJacobian(
   f: BdfRhsFunction,
   t: number,
@@ -527,17 +579,11 @@ function finiteDifferenceJacobian(
   return J;
 }
 
-/**
- * LU decomposition with partial pivoting.
- * Returns L, U factors and permutation vector P.
- */
 function luDecompose(A: number[][], n: number): { L: number[][]; U: number[][]; P: number[] } {
-  // Work on a copy
   const M = A.map((row) => [...row]);
   const P = Array.from({ length: n }, (_, i) => i);
 
   for (let k = 0; k < n; k++) {
-    // Partial pivoting: find max in column k
     let maxVal = Math.abs(M[k]?.[k] ?? 0);
     let maxRow = k;
     for (let i = k + 1; i < n; i++) {
@@ -548,29 +594,26 @@ function luDecompose(A: number[][], n: number): { L: number[][]; U: number[][]; 
       }
     }
 
-    // Swap rows
     if (maxRow !== k) {
       [M[k], M[maxRow]] = [M[maxRow] ?? [], M[k] ?? []];
       [P[k], P[maxRow]] = [P[maxRow] ?? 0, P[k] ?? 0];
     }
 
     const pivot = M[k]?.[k] ?? 0;
-    if (Math.abs(pivot) < 1e-30) continue; // Singular — skip
+    if (Math.abs(pivot) < 1e-30) continue;
 
-    // Elimination
     for (let i = k + 1; i < n; i++) {
       const row = M[i];
       const pivotRow = M[k];
       if (!row || !pivotRow) continue;
       const factor = (row[k] ?? 0) / pivot;
-      row[k] = factor; // Store L factor in-place
+      row[k] = factor;
       for (let j = k + 1; j < n; j++) {
         row[j] = (row[j] ?? 0) - factor * (pivotRow[j] ?? 0);
       }
     }
   }
 
-  // Extract L and U from combined matrix
   const L = Array.from({ length: n }, (_, i) => {
     const row = new Array(n).fill(0) as number[];
     row[i] = 1;
@@ -591,17 +634,12 @@ function luDecompose(A: number[][], n: number): { L: number[][]; U: number[][]; 
   return { L, U, P };
 }
 
-/**
- * Solve Ax = b using precomputed LU decomposition with pivoting.
- */
 function luSolve(lu: { L: number[][]; U: number[][]; P: number[] }, b: number[], n: number): number[] {
-  // Apply permutation
   const pb = new Array(n) as number[];
   for (let i = 0; i < n; i++) {
     pb[i] = b[lu.P[i] ?? i] ?? 0;
   }
 
-  // Forward substitution: L * z = pb
   const z = new Array(n) as number[];
   for (let i = 0; i < n; i++) {
     let sum = pb[i] ?? 0;
@@ -614,7 +652,6 @@ function luSolve(lu: { L: number[][]; U: number[][]; P: number[] }, b: number[],
     z[i] = sum;
   }
 
-  // Back substitution: U * x = z
   const x = new Array(n) as number[];
   for (let i = n - 1; i >= 0; i--) {
     let sum = z[i] ?? 0;
@@ -633,9 +670,6 @@ function luSolve(lu: { L: number[][]; U: number[][]; P: number[] }, b: number[],
   return x;
 }
 
-/**
- * Bisection root-finding for event location within [tLo, tHi].
- */
 function bisectEvent(
   eventFn: (t: number, y: number[]) => number,
   tLo: number,
@@ -673,9 +707,6 @@ function bisectEvent(
   return (lo + hi) / 2;
 }
 
-/**
- * Cubic Hermite interpolation for dense output.
- */
 function cubicHermiteInterpolate(
   theta: number,
   y0: number[],

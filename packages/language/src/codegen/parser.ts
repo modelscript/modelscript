@@ -18,6 +18,7 @@ import {
   cursorCode,
   daeCode,
   delayCode,
+  dualCode,
   engineCode,
   evalCode,
   eventsCode,
@@ -1107,6 +1108,7 @@ export function generateParserTables(
     { filename: "interval.ts", content: intervalCode },
     { filename: "mccormick.ts", content: mccormickCode },
     { filename: "branch_and_bound.ts", content: branch_and_boundCode },
+    { filename: "dual.ts", content: dualCode },
   ];
 
   if (originalGrammar.runtimeFiles) {
@@ -1174,6 +1176,7 @@ export function generateParserTables(
   code += extractExports(intervalCode, "./interval");
   code += extractExports(mccormickCode, "./mccormick");
   code += extractExports(branch_and_boundCode, "./branch_and_bound");
+  code += extractExports(dualCode, "./dual");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

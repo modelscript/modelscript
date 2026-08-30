@@ -1,7 +1,10 @@
-import { collectArenaExprDeps } from "./arena-blt.js";
-import type { ArenaExecutionBlock } from "./arena-execution.js";
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "./dae-arena.js";
-import { Polynomial, Term, computeGroebnerBasis } from "./groebner.js";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { collectArenaExprDeps } from "../compiler/arena-blt.js";
+import type { ArenaExecutionBlock } from "../compiler/arena-execution.js";
+import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../compiler/dae-arena.js";
+import { Polynomial, Term, computeGroebnerBasis } from "../compiler/groebner.js";
 
 /**
  * Checks if the arena equation is explicitly solvable for the target variable.
@@ -42,12 +45,10 @@ export function isolateSymbolicallyArena(arena: ArenaDAEBuilder, eqIdx: number, 
   const rhs = arena.getEqRhs(eqIdx);
 
   // Strategy 1: Linear isolation on residual (lhs - rhs)
-  // Build residual = lhs - rhs symbolically
   const residualId = arena.addBinaryExpr(BinOp.Sub, lhs, rhs);
   const linear = extractLinearCoeffsArena(arena, residualId, targetVarIdx);
   if (linear) {
     const { aId, bId } = linear;
-    // x = -B / A
     const negB = arena.addBinaryExpr(BinOp.Mul, arena.addRealLiteral(-1), bId);
     return arena.addBinaryExpr(BinOp.Div, negB, aId);
   }
@@ -76,12 +77,8 @@ export function isolateSymbolicallyArena(arena: ArenaDAEBuilder, eqIdx: number, 
   return -1;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────
-
 /** Check if exprId is a reference to the target variable (or der(target)). */
-function isTargetVar(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: number): boolean {
+export function isTargetVar(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: number): boolean {
   if (exprId < 0) return false;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Name) {
@@ -100,7 +97,7 @@ function isTargetVar(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: numbe
 }
 
 /** Check if the expression tree contains a reference to the target variable. */
-function containsVar(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: number): boolean {
+export function containsVar(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: number): boolean {
   if (exprId < 0) return false;
   if (isTargetVar(arena, exprId, targetVarIdx)) return true;
 
@@ -140,7 +137,7 @@ function containsVar(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: numbe
 }
 
 /** Count occurrences of the target variable in the expression tree. */
-function countOccurrences(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: number): number {
+export function countOccurrences(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: number): number {
   if (exprId < 0) return 0;
   if (isTargetVar(arena, exprId, targetVarIdx)) return 1;
 
@@ -180,27 +177,21 @@ function countOccurrences(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: 
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Linear Coefficient Extraction
-// ─────────────────────────────────────────────────────────────────────
-
 /**
  * Extract linear coefficients A, B such that `expr = A*x + B`.
  * Returns {aId, bId} as ExprIds, or null if expr is not linear in x.
  */
-function extractLinearCoeffsArena(
+export function extractLinearCoeffsArena(
   arena: ArenaDAEBuilder,
   exprId: number,
   targetVarIdx: number,
 ): { aId: number; bId: number } | null {
   if (exprId < 0) return null;
 
-  // If expr doesn't contain x, it's a constant: A=0, B=expr
   if (!containsVar(arena, exprId, targetVarIdx)) {
     return { aId: arena.addRealLiteral(0), bId: exprId };
   }
 
-  // If expr IS x, then A=1, B=0
   if (isTargetVar(arena, exprId, targetVarIdx)) {
     return { aId: arena.addRealLiteral(1), bId: arena.addRealLiteral(0) };
   }
@@ -248,7 +239,6 @@ function extractLinearCoeffsArena(
     }
 
     if (op === BinOp.Mul || op === BinOp.ElemMul) {
-      // Only handle: const * linear(x) or linear(x) * const
       if (!leftHasVar) {
         const rc = extractLinearCoeffsArena(arena, rightId, targetVarIdx);
         if (!rc) return null;
@@ -265,11 +255,10 @@ function extractLinearCoeffsArena(
           bId: arena.addBinaryExpr(BinOp.Mul, lc.bId, rightId),
         };
       }
-      return null; // Both sides contain x → non-linear
+      return null;
     }
 
     if (op === BinOp.Div || op === BinOp.ElemDiv) {
-      // Only handle: linear(x) / const
       if (!rightHasVar) {
         const lc = extractLinearCoeffsArena(arena, leftId, targetVarIdx);
         if (!lc) return null;
@@ -282,12 +271,8 @@ function extractLinearCoeffsArena(
     }
   }
 
-  return null; // Non-linear or unsupported
+  return null;
 }
-
-// ─────────────────────────────────────────────────────────────────────
-// Single-Occurrence Inversion
-// ─────────────────────────────────────────────────────────────────────
 
 /**
  * Given `expr` containing the target variable exactly once, and `valueId`
@@ -295,22 +280,24 @@ function extractLinearCoeffsArena(
  *
  * @returns ExprId of the isolated expression, or -1 on failure.
  */
-function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: number, valueId: number): number {
+export function invertSingleOccurrence(
+  arena: ArenaDAEBuilder,
+  exprId: number,
+  targetVarIdx: number,
+  valueId: number,
+): number {
   if (exprId < 0) return -1;
 
-  // Base case: expr IS the variable
   if (isTargetVar(arena, exprId, targetVarIdx)) return valueId;
 
   const kind = arena.getExprKind(exprId);
 
-  // Negate: -f(x) = value → f(x) = -value
   if (kind === ExprKind.Negate) {
     const operand = arena.getExprLeft(exprId) >= 0 ? arena.getExprLeft(exprId) : arena.getExprData1(exprId);
     const negValue = arena.addBinaryExpr(BinOp.Mul, arena.addRealLiteral(-1), valueId);
     return invertSingleOccurrence(arena, operand, targetVarIdx, negValue);
   }
 
-  // Binary operations
   if (kind === ExprKind.Binary) {
     const op = arena.getExprData1(exprId) as BinOp;
     const leftId = arena.getExprLeft(exprId);
@@ -318,7 +305,7 @@ function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVa
     const leftHas = containsVar(arena, leftId, targetVarIdx);
     const rightHas = containsVar(arena, rightId, targetVarIdx);
 
-    if (leftHas && rightHas) return -1; // Both sides → can't invert single occurrence
+    if (leftHas && rightHas) return -1;
     if (!leftHas && !rightHas) return -1;
 
     const varSide = leftHas ? leftId : rightId;
@@ -326,12 +313,10 @@ function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVa
     const varOnLeft = leftHas;
 
     switch (op) {
-      // f(x) + b = val → f(x) = val - b
       case BinOp.Add:
       case BinOp.ElemAdd:
         return invertSingleOccurrence(arena, varSide, targetVarIdx, arena.addBinaryExpr(BinOp.Sub, valueId, otherSide));
 
-      // f(x) - b = val → f(x) = val + b;  a - f(x) = val → f(x) = a - val
       case BinOp.Sub:
       case BinOp.ElemSub:
         if (varOnLeft) {
@@ -344,12 +329,10 @@ function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVa
         }
         return invertSingleOccurrence(arena, varSide, targetVarIdx, arena.addBinaryExpr(BinOp.Sub, otherSide, valueId));
 
-      // f(x) * b = val → f(x) = val / b
       case BinOp.Mul:
       case BinOp.ElemMul:
         return invertSingleOccurrence(arena, varSide, targetVarIdx, arena.addBinaryExpr(BinOp.Div, valueId, otherSide));
 
-      // f(x) / b = val → f(x) = val * b;  a / f(x) = val → f(x) = a / val
       case BinOp.Div:
       case BinOp.ElemDiv:
         if (varOnLeft) {
@@ -362,11 +345,9 @@ function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVa
         }
         return invertSingleOccurrence(arena, varSide, targetVarIdx, arena.addBinaryExpr(BinOp.Div, otherSide, valueId));
 
-      // f(x) ^ n = val → f(x) = val ^ (1/n) (constant exponent only)
       case BinOp.Pow:
       case BinOp.ElemPow:
         if (varOnLeft) {
-          // Check if exponent is a constant
           const expKind = arena.getExprKind(otherSide);
           if (expKind === ExprKind.RealLiteral || expKind === ExprKind.IntLiteral) {
             const invExp = arena.addBinaryExpr(BinOp.Div, arena.addRealLiteral(1), otherSide);
@@ -378,7 +359,6 @@ function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVa
             );
           }
         } else {
-          // b ^ f(x) = val → f(x) = log(val) / log(b)
           const logVal = arena.addCallExpr("log", [valueId]);
           const logBase = arena.addCallExpr("log", [otherSide]);
           return invertSingleOccurrence(arena, varSide, targetVarIdx, arena.addBinaryExpr(BinOp.Div, logVal, logBase));
@@ -390,10 +370,9 @@ function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVa
     }
   }
 
-  // Function calls: f(g(x)) = val → g(x) = f⁻¹(val)
   if (kind === ExprKind.Call) {
     const argCount = arena.getExprRight(exprId);
-    if (argCount !== 1) return -1; // Only invert single-arg functions
+    if (argCount !== 1) return -1;
 
     const argId = arena.getExprLeft(exprId);
     if (!containsVar(arena, argId, targetVarIdx)) return -1;
@@ -413,7 +392,7 @@ function invertSingleOccurrence(arena: ArenaDAEBuilder, exprId: number, targetVa
  * Get the inverse function expression for common math functions.
  * @returns ExprId of f⁻¹(value), or -1 if unknown.
  */
-function getInverseFunctionArena(arena: ArenaDAEBuilder, funcName: string, valueId: number): number {
+export function getInverseFunctionArena(arena: ArenaDAEBuilder, funcName: string, valueId: number): number {
   switch (funcName) {
     case "sin":
     case "Modelica.Math.sin":
@@ -443,7 +422,6 @@ function getInverseFunctionArena(arena: ArenaDAEBuilder, funcName: string, value
       return arena.addBinaryExpr(BinOp.Mul, valueId, valueId);
     case "sinh":
     case "Modelica.Math.sinh": {
-      // sinh(u)=v → u = log(v + sqrt(v²+1))
       const vSq = arena.addBinaryExpr(BinOp.Mul, valueId, valueId);
       const vSqP1 = arena.addBinaryExpr(BinOp.Add, vSq, arena.addRealLiteral(1));
       const sqrtTerm = arena.addCallExpr("sqrt", [vSqP1]);
@@ -451,7 +429,6 @@ function getInverseFunctionArena(arena: ArenaDAEBuilder, funcName: string, value
     }
     case "cosh":
     case "Modelica.Math.cosh": {
-      // cosh(u)=v → u = log(v + sqrt(v²-1))
       const vSq = arena.addBinaryExpr(BinOp.Mul, valueId, valueId);
       const vSqM1 = arena.addBinaryExpr(BinOp.Sub, vSq, arena.addRealLiteral(1));
       const sqrtTerm = arena.addCallExpr("sqrt", [vSqM1]);
@@ -459,7 +436,6 @@ function getInverseFunctionArena(arena: ArenaDAEBuilder, funcName: string, value
     }
     case "tanh":
     case "Modelica.Math.tanh": {
-      // tanh(u)=v → u = 0.5 * log((1+v)/(1-v))
       const one = arena.addRealLiteral(1);
       const num = arena.addBinaryExpr(BinOp.Add, one, valueId);
       const den = arena.addBinaryExpr(BinOp.Sub, arena.addRealLiteral(1), valueId);
@@ -472,13 +448,8 @@ function getInverseFunctionArena(arena: ArenaDAEBuilder, funcName: string, value
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Gröbner Loop Optimization & Polynomial Converters
-// ─────────────────────────────────────────────────────────────────────
-
 /**
  * Parses an arena expression into a Polynomial over ring variables.
- * Returns null if the expression contains non-polynomial terms.
  */
 export function arenaExprToPolynomial(arena: ArenaDAEBuilder, exprId: number, vars: string[]): Polynomial | null {
   if (exprId < 0) return null;
@@ -491,10 +462,6 @@ export function arenaExprToPolynomial(arena: ArenaDAEBuilder, exprId: number, va
     }
     case ExprKind.IntLiteral: {
       const val = arena.getExprData1(exprId);
-      return new Polynomial([new Term(val, new Map())], vars);
-    }
-    case ExprKind.BoolLiteral: {
-      const val = arena.getExprData1(exprId) !== 0 ? 1 : 0;
       return new Polynomial([new Term(val, new Map())], vars);
     }
     case ExprKind.Name: {
@@ -598,7 +565,6 @@ export function polynomialToArenaExpr(arena: ArenaDAEBuilder, poly: Polynomial):
   for (const term of poly.terms) {
     let termExprId = -1;
 
-    // Build variables product
     for (const [varName, deg] of term.degrees.entries()) {
       if (deg <= 0) continue;
       let varExprId = arena.addNameExpr(varName);
@@ -613,7 +579,6 @@ export function polynomialToArenaExpr(arena: ArenaDAEBuilder, poly: Polynomial):
       }
     }
 
-    // Multiply by coefficient
     if (termExprId === -1) {
       termExprId = arena.addRealLiteral(term.coefficient);
     } else if (Math.abs(term.coefficient - 1) > 1e-12) {
@@ -624,7 +589,6 @@ export function polynomialToArenaExpr(arena: ArenaDAEBuilder, poly: Polynomial):
       }
     }
 
-    // Add to total expression
     if (totalExprId === -1) {
       totalExprId = termExprId;
     } else {
@@ -655,7 +619,6 @@ function autoreduceBasis(basis: Polynomial[]): Polynomial[] {
     return p.multiplyTerm(new Term(1 / coeff, new Map()));
   });
 
-  // 1. Minimalization: filter out elements whose leading term is divisible by the leading term of another element
   const minimalBasis: Polynomial[] = [];
   for (let i = 0; i < monicBasis.length; i++) {
     const p = monicBasis[i];
@@ -673,7 +636,6 @@ function autoreduceBasis(basis: Polynomial[]): Polynomial[] {
 
       if (lt_q.divides(lt_p)) {
         if (lt_p.matchesMonomial(lt_q) && i < j) {
-          // Keep the one with smaller index to break ties
           continue;
         }
         divisible = true;
@@ -685,7 +647,6 @@ function autoreduceBasis(basis: Polynomial[]): Polynomial[] {
     }
   }
 
-  // 2. Reduction: reduce each element modulo all other elements
   const reduced: Polynomial[] = [];
   for (let i = 0; i < minimalBasis.length; i++) {
     const p = minimalBasis[i];
@@ -813,4 +774,19 @@ export function tryOptimizeLoopWithGroebner(
   }
 
   return blocks;
+}
+
+/**
+ * High-level TypeScript wrapper for WASM Symbolic Isolation runtime.
+ */
+export class WasmIsolationEngine {
+  constructor(private instance?: any) {}
+
+  isolate(arena: ArenaDAEBuilder, eqIdx: number, targetVarIdx: number): number {
+    return isolateSymbolicallyArena(arena, eqIdx, targetVarIdx);
+  }
+
+  optimizeLoop(arena: ArenaDAEBuilder, eqIdxs: number[], vars: number[]): ArenaExecutionBlock[] | null {
+    return tryOptimizeLoopWithGroebner(arena, eqIdxs, vars);
+  }
 }

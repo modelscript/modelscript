@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { collectArenaExprDeps } from "./arena-blt.js";
+import { collectArenaExprDeps } from "../compiler/arena-blt.js";
 import {
   ArenaDAEBuilder,
   EqKind,
   ExprKind,
   differentiateArenaExpression,
   simplifyArenaExpression,
-} from "./dae-arena.js";
-import type { StringId } from "./interner.js";
+} from "../compiler/dae-arena.js";
+import type { StringId } from "../compiler/interner.js";
 
 /**
  * Result of Pantelides Index Reduction on the arena.
@@ -18,12 +19,14 @@ export interface ArenaPantelidesResult {
   dummyDerivatives: Set<number>;
   /** newly generated constraint equations (EqIdxs added to the arena). */
   generatedEquations: number[];
+  /** Structural index computed (defaults to 1 for index-1 ODE systems). */
+  structuralIndex?: number;
 }
 
 /**
  * Returns true if the expression contains a derivative operator `der()`.
  */
-function containsDerivative(arena: ArenaDAEBuilder, exprId: number): boolean {
+export function containsDerivative(arena: ArenaDAEBuilder, exprId: number): boolean {
   if (exprId < 0) return false;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Der) return true;
@@ -108,7 +111,6 @@ export function pantelidesIndexReductionArena(
     // We found a constraint equation involving only states and parameters.
     // E.g., C1.v - C2.v = 0
     // Pick one state to demote. For now, just pick the first one.
-    // (A more sophisticated approach looks at the subtracted state, etc.)
     const constrainedState = Array.from(involvedStates)[0] ?? -1;
 
     if (dummyDerivatives.has(constrainedState)) continue;
@@ -125,5 +127,22 @@ export function pantelidesIndexReductionArena(
     generatedEquations.push(newEqIdx);
   }
 
-  return { dummyDerivatives, generatedEquations };
+  return { dummyDerivatives, generatedEquations, structuralIndex: dummyDerivatives.size > 0 ? 2 : 1 };
+}
+
+/**
+ * WebAssembly-backed Pantelides Index Reduction Engine instance.
+ */
+export class WasmPantelides {
+  constructor(private wasmInstance: any) {}
+
+  reduceIndex(daePtr: number, bltPtr: number = 0): { structuralIndex: number; dummyDerivativeCount: number } {
+    if (typeof this.wasmInstance?.exports?.runPantelidesIndexReduction === "function") {
+      this.wasmInstance.exports.runPantelidesIndexReduction(daePtr, bltPtr);
+      const structuralIndex = this.wasmInstance.exports.getPantelidesStructuralIndex?.() ?? 1;
+      const dummyDerivativeCount = this.wasmInstance.exports.getPantelidesDummyDerivativeCount?.() ?? 0;
+      return { structuralIndex, dummyDerivativeCount };
+    }
+    return { structuralIndex: 1, dummyDerivativeCount: 0 };
+  }
 }

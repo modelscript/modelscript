@@ -30,9 +30,12 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
     url = urlOverride;
   } else {
     if (isNodeOrBun) {
-      // In Node.js, read from file system relative to dist/
+      // In Node.js, read from file system relative to dist/ or src/
       const { join } = await import("path");
-      url = join(import.meta.dirname, "..", "build", "release.wasm");
+      const { existsSync } = await import("node:fs");
+      const candidate1 = join(import.meta.dirname, "..", "build", "release.wasm");
+      const candidate2 = join(import.meta.dirname, "..", "..", "build", "release.wasm");
+      url = existsSync(candidate1) ? candidate1 : candidate2;
     } else {
       // In browser context, use relative URL from the current module
       url = new URL("../build/release.wasm", import.meta.url);

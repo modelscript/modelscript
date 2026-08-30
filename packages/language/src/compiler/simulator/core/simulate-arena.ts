@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
+import { bdf } from "../../../runtime/wasm_bdf.js";
+import { dopri5 } from "../../../runtime/wasm_dopri5.js";
 import { solveInitialEquationsArena } from "../../arena-init.js";
 import {
   ArenaDAEBuilder,
@@ -22,8 +24,6 @@ import { Dual } from "../evaluator/dual.js";
 import { evaluateArenaRuntime } from "../evaluator/eval-runtime.js";
 import { luFactor, luSolve } from "../evaluator/gaussian.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "../evaluator/statement-executor.js";
-import { bdf } from "../solvers/bdf.js";
-import { dopri5 } from "../solvers/dopri5.js";
 import {
   type ArenaAssertion,
   type ArenaEventIndicator,
