@@ -3,7 +3,7 @@
 // Rule Nodes — Named generic interfaces for type-level field extraction
 // ---------------------------------------------------------------------------
 
-import type { LintResult } from "../dsl.js";
+import type { LintResult } from "../dsl/language.js";
 import type { GlobalAdapters, NodeAdapter } from "./adapter-registry.js";
 import { type SelfAccessor } from "./hook-extractor.js";
 import type { I18nConfig } from "./i18n-extractor.js";

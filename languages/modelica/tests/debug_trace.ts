@@ -1,4 +1,4 @@
-import { compileRegexToDFA } from "../../language/src/automata.js";
+import { compileRegexToDFA } from "../../language/src/dsl/automata.js";
 
 const pattern = "\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\/";
 const res = compileRegexToDFA([{ pattern, tokenName: "T_COMMENT" }]);

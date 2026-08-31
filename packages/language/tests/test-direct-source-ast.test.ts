@@ -2,9 +2,9 @@ import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { buildParser } from "../src/api.js";
 import { extractLanguageAST } from "../src/codegen/ast-loader.js";
-import { field, language, repeat, semanticToken, seq } from "../src/dsl.js";
+import { buildParser } from "../src/dsl/api.js";
+import { field, language, repeat, semanticToken, seq } from "../src/dsl/language.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,7 +63,7 @@ describe("Direct Source AST Extraction & Typed Lambda Transpilation", () => {
 
   it("should compile language with typed lambdas to AssemblyScript and execute in WASM", async () => {
     const testGrammarSource = `
-      import { language, seq, field, repeat, semanticToken } from "../src/dsl.js";
+      import { language, seq, field, repeat, semanticToken } from "../src/dsl/language.js";
 
       export class NodeCounter {
         count: u32;

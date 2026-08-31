@@ -1,5 +1,5 @@
-import { LanguageOptions } from "../dsl.js";
-import { NormalizedGrammar } from "../grammar.js";
+import { NormalizedGrammar } from "../dsl/grammar.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 /**
  * Generates AssemblyScript / TypeScript enum definitions (`SyntaxType`, `NodeFlag`, `FieldId`)

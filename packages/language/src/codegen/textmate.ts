@@ -1,4 +1,4 @@
-import { LanguageOptions, Rule, TokenClass } from "../dsl.js";
+import { LanguageOptions, Rule, TokenClass } from "../dsl/language.js";
 
 /**
  * Escapes special regular expression meta-characters in a raw string.

@@ -1,5 +1,9 @@
 dist
 build
+.build
+as-gen
+**/src-gen/**
+src-gen/**
 .react-router
 packages/ide/vscode-web/
 packages/ide/models/

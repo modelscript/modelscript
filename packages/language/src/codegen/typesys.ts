@@ -1,4 +1,4 @@
-import { LanguageOptions as GrammarOptions } from "../dsl.js";
+import { LanguageOptions as GrammarOptions } from "../dsl/language.js";
 import { transpileQuery } from "./transpiler.js";
 import { getDJB2Hash } from "./utils.js";
 

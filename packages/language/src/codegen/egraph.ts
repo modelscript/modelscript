@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 import { compileRewriteRules } from "./compile_rules.js";
 
 /**

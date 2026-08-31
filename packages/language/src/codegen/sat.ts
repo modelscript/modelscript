@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 export function generateSAT(grammarDef: LanguageOptions, normalized: any): string {
   const reasonerExt = (grammarDef.semantics?.reasoner as any)?.extensions || {};

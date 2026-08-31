@@ -1,4 +1,4 @@
-import { ruleCombinators, TransformCombinator } from "../dsl.js";
+import { ruleCombinators, TransformCombinator } from "../dsl/language.js";
 
 /**
  * Interface representing an algebraic or AST rewrite rule.

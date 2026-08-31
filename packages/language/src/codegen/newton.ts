@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 export function generateNewtonSolver(grammarDef?: LanguageOptions): string {
   return `// --- WASM-Native Non-Linear Newton-Raphson Algebraic Solver ---

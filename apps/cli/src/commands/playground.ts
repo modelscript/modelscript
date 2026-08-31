@@ -77,7 +77,10 @@ export const Playground: CommandModule = {
         headers["Content-Type"] = "text/html";
         res.writeHead(200, headers);
 
-        const dslPath = join(__dirname, "../../../../packages/language/src/dsl.ts");
+        const dslPathCandidate = join(__dirname, "../../../../packages/language/src/dsl/language.ts");
+        const dslPath = existsSync(dslPathCandidate)
+          ? dslPathCandidate
+          : join(__dirname, "../../../../packages/language/src/dsl/dsl.ts");
         let dslLibStr = "";
         let dslLibModuleStr = "";
         if (existsSync(dslPath)) {

@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 import {
   BLOCK_FALSE_BRANCH,
   BLOCK_FIRST_INSTR,

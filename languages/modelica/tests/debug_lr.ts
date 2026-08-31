@@ -1,6 +1,6 @@
 import { sysml2Language } from "../../../languages/sysml2/src/language.js";
-import { LRAutomaton } from "../../language/src/automata.js";
-import { NormalizedGrammar } from "../../language/src/grammar.js";
+import { LRAutomaton } from "../../language/src/dsl/automata.js";
+import { NormalizedGrammar } from "../../language/src/dsl/grammar.js";
 
 const normalized = new NormalizedGrammar(sysml2Language);
 const automaton = new LRAutomaton(normalized);

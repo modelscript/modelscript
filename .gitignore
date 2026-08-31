@@ -6,6 +6,7 @@ dist/
 build/
 .build/
 as-gen/
+build-parser.ts
 packages/language/src/src-gen/
 packages/language/build/
 prebuilds/

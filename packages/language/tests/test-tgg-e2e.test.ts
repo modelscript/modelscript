@@ -1,5 +1,5 @@
 import { compileTGGRules } from "../src/codegen/compile_tgg.js";
-import { tggCompute, tggDefaultVal, tggEq, tggRule, tggTypeMap, type PolyglotConfig } from "../src/dsl.js";
+import { tggCompute, tggDefaultVal, tggEq, tggRule, tggTypeMap, type PolyglotConfig } from "../src/dsl/language.js";
 import { PolyglotTransformer } from "../src/transformers/polyglot-transformer.js";
 import { emitModelica, type SysML2PartDef } from "./fixtures/modelica-transformer.js";
 import { emitSysML2, type ModelicaModel } from "./fixtures/sysml2-transformer.js";

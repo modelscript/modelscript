@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 export function generateWit(grammarDef: LanguageOptions, normalized?: any): string {
   const packageName = grammarDef.targets?.wit?.package || `modelscript:${grammarDef.name || "parser"}`;

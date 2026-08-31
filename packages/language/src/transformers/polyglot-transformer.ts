@@ -5,7 +5,7 @@
  * and DL-Lite/OWL2 semantic reasoner feature inference across multi-language model graphs.
  */
 
-import type { PolyglotConfig, TGGRuleOptions } from "../dsl.js";
+import type { PolyglotConfig, TGGRuleOptions } from "../dsl/language.js";
 
 /**
  * Generic, schema-agnostic node model for polyglot cross-language graph transformation.

@@ -1,13 +1,13 @@
+import { generateJavaScriptWrapper } from "../bindings/javascript/index.js";
+import { compileMcpConfig, type McpManifest } from "../codegen/compile_mcp.js";
+import type { GeneratedFile } from "../codegen/parser.js";
+import { generateParser, generateParserTables } from "../codegen/parser.js";
+import { generateTextMate } from "../codegen/textmate.js";
 import type { GrammarConflictDiagnostic } from "./automata.js";
-import { generateJavaScriptWrapper } from "./bindings/javascript/index.js";
-import { compileMcpConfig, type McpManifest } from "./codegen/compile_mcp.js";
-import type { GeneratedFile } from "./codegen/parser.js";
-import { generateParser, generateParserTables } from "./codegen/parser.js";
-import { generateTextMate } from "./codegen/textmate.js";
-import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "./dsl.js";
+import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "./language.js";
 
+export type { McpManifest } from "../codegen/compile_mcp.js";
 export type { GrammarConflictDiagnostic } from "./automata.js";
-export type { McpManifest } from "./codegen/compile_mcp.js";
 
 /**
  * Options for configuring language parser build and source AST extraction.

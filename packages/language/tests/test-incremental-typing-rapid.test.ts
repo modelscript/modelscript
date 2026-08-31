@@ -3,8 +3,8 @@ import childProcess from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { buildParser } from "../src/api.js";
-import { choice, field, optional, repeat, semanticToken, seq } from "../src/dsl.js";
+import { buildParser } from "../src/dsl/api.js";
+import { choice, field, optional, repeat, semanticToken, seq } from "../src/dsl/language.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

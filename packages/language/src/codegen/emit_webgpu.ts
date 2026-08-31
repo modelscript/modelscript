@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 export function generateWebGPUEmitter(grammarDef: LanguageOptions): string {
   const tileSize = grammarDef.targets?.webgpu?.tileSize || 16;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { grammar } from "../src/dsl.js";
+import { grammar } from "../src/dsl/language.js";
 
 describe("Declarative 2D Diagram DSL Schema", () => {
   it("should allow declaring rich diagram configuration on grammar definition", () => {

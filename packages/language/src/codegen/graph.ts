@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl.js";
+import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl/language.js";
 import { graphCode } from "../src-gen/runtime-templates.js";
 import { extractLanguageAST } from "./ast-loader.js";
 import { transpileClass, transpileQuery as transpileQueryExternal } from "./transpiler.js";

@@ -7,7 +7,7 @@
  * reasoner's Simplex solver and the Pantelides structural analysis.
  */
 
-import { add, constant, cos, div, mul, neg, sin, sub, TransformCombinator } from "../dsl.js";
+import { add, constant, cos, div, mul, neg, sin, sub, TransformCombinator } from "../dsl/language.js";
 
 // Type alias for a combinator node
 type C = TransformCombinator;

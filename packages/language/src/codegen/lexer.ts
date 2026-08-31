@@ -1,7 +1,7 @@
-import { compileRegexToDFA } from "../automata.js";
-import type { LanguageOptions, Rule } from "../dsl.js";
-import { toRule } from "../dsl.js";
-import { NormalizedGrammar } from "../grammar.js";
+import { compileRegexToDFA } from "../dsl/automata.js";
+import { NormalizedGrammar } from "../dsl/grammar.js";
+import type { LanguageOptions, Rule } from "../dsl/language.js";
+import { toRule } from "../dsl/language.js";
 
 /**
  * Generates an AssemblyScript DFA-based lexer state machine for the specified grammar.

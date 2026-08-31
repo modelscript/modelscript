@@ -1,4 +1,4 @@
-import { NormalizedGrammar } from "../../grammar.js";
+import { NormalizedGrammar } from "../../dsl/grammar.js";
 import { bindingsTemplateDtsCode, bindingsTemplateJsCode } from "../../src-gen/runtime-templates.js";
 
 /**
@@ -163,8 +163,10 @@ export function generateJavaScriptWrapper(
   const legendStr = JSON.stringify(legend);
 
   // Add the legend exports manually to the generated wrapper code
-  const jsWithLegend = js + `\nexport const semanticLegend = ${legendStr};\n`;
-  const dtsWithLegend = dts + `\nexport const semanticLegend: { tokenTypes: string[], tokenModifiers: string[] };\n`;
+  const jsWithLegend =
+    js +
+    `\nexport const semanticLegend = { tokenTypes: ${JSON.stringify(legend.tokenTypes)}, tokenModifiers: ${JSON.stringify(legend.tokenModifiers)} };\n`;
+  const dtsWithLegend = dts + `\nexport const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };\n`;
 
   return { js: jsWithLegend, dts: dtsWithLegend, syntaxNames, fieldNames: fieldNamesArr, semanticLegend: legend };
 }

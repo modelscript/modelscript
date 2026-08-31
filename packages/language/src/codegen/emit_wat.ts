@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 export function generateWatEmitter(grammarDef?: LanguageOptions): string {
   const exportName = grammarDef?.targets?.wat?.exportName || "main";

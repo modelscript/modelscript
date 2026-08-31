@@ -1,7 +1,7 @@
 // --- Zero-GC WASM Isolation Engine Generator ---
 // Emits AssemblyScript solver functions for all 8 symbolic isolation strategies.
 
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 /**
  * Generates the AssemblyScript isolation domain module containing all 8 symbolic isolation

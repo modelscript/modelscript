@@ -1,6 +1,6 @@
 import { generateCodeGraphBridge } from "../src/codegen/graph.js";
 import { generateTypes } from "../src/codegen/types.js";
-import { field, language, repeat, semanticToken, seq } from "../src/dsl.js";
+import { field, language, repeat, semanticToken, seq } from "../src/dsl/language.js";
 
 describe("Model Attributes & WASM Blackboard Tests", () => {
   it("should generate NodeFlag and Property enums for bool and property model attributes", () => {

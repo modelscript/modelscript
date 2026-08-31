@@ -1,6 +1,6 @@
-import { GLRTable, LRAutomaton } from "../automata.js";
-import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl.js";
-import { NormalizedGrammar } from "../grammar.js";
+import { GLRTable, LRAutomaton } from "../dsl/automata.js";
+import { NormalizedGrammar } from "../dsl/grammar.js";
+import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl/language.js";
 import { extractLanguageAST } from "./ast-loader.js";
 
 import {

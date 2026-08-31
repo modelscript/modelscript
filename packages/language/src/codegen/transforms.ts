@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 export function generateTransforms(grammarDef: LanguageOptions<any>): string {
   const transformsDef = (grammarDef as any).transforms;

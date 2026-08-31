@@ -1,4 +1,4 @@
-import { PolyglotConfig, TGGConstraint, TGGRuleOptions } from "../dsl.js";
+import { PolyglotConfig, TGGConstraint, TGGRuleOptions } from "../dsl/language.js";
 import { getDJB2Hash } from "./utils.js";
 
 export interface CompiledTGGOutput {

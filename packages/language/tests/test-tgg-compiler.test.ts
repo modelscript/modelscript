@@ -1,5 +1,5 @@
 import { compileTGGRules } from "../src/codegen/compile_tgg.js";
-import { tggDefaultVal, tggEq, tggRule, tggTypeMap } from "../src/dsl.js";
+import { tggDefaultVal, tggEq, tggRule, tggTypeMap } from "../src/dsl/language.js";
 
 describe("AOT TGG Compiler", () => {
   it("should compile declarative TGG rules into AssemblyScript dispatch tables", () => {

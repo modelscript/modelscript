@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import prettier from "prettier";
+import ts from "typescript";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,8 +28,6 @@ for (const file of files) {
 }
 
 // Also bundle the JS wrapper template, compiling it at build-time
-import ts from "typescript";
-
 const wrapperTemplatePath = path.resolve(__dirname, "../src/bindings/javascript/bindings.ts");
 if (fs.existsSync(wrapperTemplatePath)) {
   const content = fs.readFileSync(wrapperTemplatePath, "utf-8");
@@ -54,8 +54,16 @@ if (fs.existsSync(wrapperTemplatePath)) {
   const program = ts.createProgram(["bindings.ts"], options, host);
   program.emit();
 
-  const jsCode = createdFiles["bindings.js"] || "";
-  const dtsCode = createdFiles["bindings.d.ts"] || "";
+  let jsCode = createdFiles["bindings.js"] || "";
+  let dtsCode = createdFiles["bindings.d.ts"] || "";
+
+  // Format compiled code with Prettier so downstream generated bindings.js/.d.ts match repo formatting
+  try {
+    jsCode = await prettier.format(jsCode, { parser: "babel" });
+    dtsCode = await prettier.format(dtsCode, { parser: "typescript" });
+  } catch (err) {
+    console.warn("Prettier formatting warning in bundle-templates:", err);
+  }
 
   const jsCleaned = jsCode.replace(/\\/g, "\\\\").replace(/\`/g, "\\`").replace(/\$/g, "\\$");
   const dtsCleaned = dtsCode.replace(/\\/g, "\\\\").replace(/\`/g, "\\`").replace(/\$/g, "\\$");

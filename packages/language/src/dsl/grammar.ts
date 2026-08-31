@@ -1,4 +1,4 @@
-import { LanguageOptions, Rule, toRule } from "./dsl.js";
+import { LanguageOptions, Rule, toRule } from "./language.js";
 
 /** A type alias for string, representing a grammar symbol (terminal or non-terminal) */
 export type SymbolName = string;

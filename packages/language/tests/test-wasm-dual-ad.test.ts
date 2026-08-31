@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { modelicaLanguage } from "../../../languages/modelica/src/language.js";
-import { buildParser } from "../src/api.js";
+import { buildParser } from "../src/dsl/api.js";
 import { SolversBridge } from "../src/runtime/solvers_bridge.js";
 
 const __filename = fileURLToPath(import.meta.url);

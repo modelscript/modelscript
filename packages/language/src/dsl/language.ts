@@ -1570,7 +1570,7 @@ export {
   StandardHessianMixin,
   StandardIntervalMixin,
   StandardTangentMixin,
-} from "./codegen/transform_mixins.js";
+} from "../codegen/transform_mixins.js";
 
 // Unified Configuration System Types & Schema Builders
 

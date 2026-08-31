@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { McpDeclarationConfig, McpPropertySchema } from "../dsl.js";
+import type { McpDeclarationConfig, McpPropertySchema } from "../dsl/language.js";
 import { getDJB2Hash } from "./utils.js";
 
 export interface McpManifestTool {

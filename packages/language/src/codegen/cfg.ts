@@ -1,4 +1,4 @@
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 /**
  * Generates a generic AST → CFG lowering pass in AssemblyScript.

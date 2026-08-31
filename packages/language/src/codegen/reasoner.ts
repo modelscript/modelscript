@@ -1,5 +1,5 @@
-import { LanguageOptions as GrammarOptions } from "../dsl.js";
-import { NormalizedGrammar } from "../grammar.js";
+import { NormalizedGrammar } from "../dsl/grammar.js";
+import { LanguageOptions as GrammarOptions } from "../dsl/language.js";
 
 import { getDJB2Hash } from "./utils.js";
 

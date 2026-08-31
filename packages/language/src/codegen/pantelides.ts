@@ -1,7 +1,7 @@
 // --- Zero-GC WASM Pantelides Index Reduction Generator ---
 // Emits AssemblyScript wrapper routines for DAE structural singularity index reduction.
 
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl/language.js";
 
 export function generatePantelidesDomain(grammarDef?: LanguageOptions<any>): string {
   return `

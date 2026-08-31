@@ -5,9 +5,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildParser } from "../src/api.js";
 import { LspFacade } from "../src/bindings/javascript/bindings.js";
-import { field, language, mcpPrompt, mcpResource, mcpTool, repeat, semanticToken, seq } from "../src/dsl.js";
+import { buildParser } from "../src/dsl/api.js";
+import { field, language, mcpPrompt, mcpResource, mcpTool, repeat, semanticToken, seq } from "../src/dsl/language.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

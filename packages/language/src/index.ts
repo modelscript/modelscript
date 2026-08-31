@@ -1,5 +1,3 @@
-export * from "./api.js";
-export * from "./automata.js";
 export * from "./bindings/javascript/index.js";
 export * as cad from "./cad/index.js";
 export * from "./codegen/ast-loader.js";
@@ -14,9 +12,8 @@ export * from "./codegen/transpiler.js";
 export * as compiler from "./compiler/index.js";
 export * as csg from "./csg/index.js";
 export * from "./diagram/polyglot-diagram-builder.js";
-export * from "./dsl.js";
+export * from "./dsl/index.js";
 export * as ecad from "./ecad/index.js";
-export * from "./grammar.js";
 export * from "./reasoner/index.js";
 export * from "./runtime/config_client.js";
 export * from "./runtime/wasm_bdf.js";

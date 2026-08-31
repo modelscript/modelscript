@@ -1,4 +1,4 @@
-import { ConfigOption, ConfigSchema } from "../dsl.js";
+import { ConfigOption, ConfigSchema } from "../dsl/language.js";
 
 export type ConfigCompilationMode = "compileTimeLocked" | "dynamicRuntime";
 
