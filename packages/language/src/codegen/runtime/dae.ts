@@ -1148,6 +1148,10 @@ export function dae_addExpression(ptr: u32, kind: i32, data1: u32, left: u32, ri
   return changetype<DaeBuilder>(ptr).addExpression(kind, data1, left, right);
 }
 
+export function dae_addStatement(ptr: u32, kind: i32, data1: u32, left: u32, right: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addStatement(kind, data1, left, right);
+}
+
 export function dae_addDer(ptr: u32, varId: u32): u32 {
   return changetype<DaeBuilder>(ptr).addDer(varId);
 }

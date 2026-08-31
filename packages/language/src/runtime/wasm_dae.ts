@@ -71,6 +71,17 @@ export enum EqKind {
   InitialFor = 8,
 }
 
+/** Variable attribute kind tag. */
+export enum VarAttrKind {
+  Min = 0,
+  Max = 1,
+  Unit = 2,
+  DisplayUnit = 3,
+  Nominal = 4,
+  Start = 5,
+  Fixed = 6,
+}
+
 // ── State Machine Types ──
 
 /** A transition in an arena state machine. */
@@ -2473,6 +2484,197 @@ export class WasmDaeBridge {
     return this.exports.dae_addExpression(this.ptr, kind, data1, left, right);
   }
 
+  addStatement(kind: StmtKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
+    if (!this.exports.dae_addStatement) return -1;
+    return this.exports.dae_addStatement(this.ptr, kind, data1, left, right);
+  }
+
+  addBinaryExpr(op: BinOp, left: number, right: number): number {
+    if (this.exports.dae_addBinaryExpr) {
+      return this.exports.dae_addBinaryExpr(this.ptr, op, left, right);
+    }
+    return this.addExpression(ExprKind.Binary, op, left, right);
+  }
+
+  addRealLiteral(value: number): number {
+    if (this.exports.dae_addRealLiteral) {
+      return this.exports.dae_addRealLiteral(this.ptr, value);
+    }
+    return this.addExpression(ExprKind.RealLiteral, 0, 0, 0);
+  }
+
+  addIntLiteral(value: number): number {
+    if (this.exports.dae_addIntLiteral) {
+      return this.exports.dae_addIntLiteral(this.ptr, value);
+    }
+    return this.addExpression(ExprKind.IntLiteral, value, 0, 0);
+  }
+
+  addDer(varId: number): number {
+    if (this.exports.dae_addDer) {
+      return this.exports.dae_addDer(this.ptr, varId);
+    }
+    return this.addExpression(ExprKind.Der, varId, 0, 0);
+  }
+
+  addName(varId: number): number {
+    if (this.exports.dae_addName) {
+      return this.exports.dae_addName(this.ptr, varId);
+    }
+    return this.addExpression(ExprKind.Name, varId, 0, 0);
+  }
+
+  addIfElse(condExpr: number, trueExpr: number, falseExpr: number): number {
+    if (this.exports.dae_addIfElse) {
+      return this.exports.dae_addIfElse(this.ptr, condExpr, trueExpr, falseExpr);
+    }
+    return this.addExpression(ExprKind.IfElse, condExpr, trueExpr, falseExpr);
+  }
+
+  addCall(funcId: number, firstArg: number, argCount: number): number {
+    if (this.exports.dae_addCall) {
+      return this.exports.dae_addCall(this.ptr, funcId, firstArg, argCount);
+    }
+    return this.addExpression(ExprKind.Call, funcId, firstArg, argCount);
+  }
+
+  lookupVariable(nameId: number): number {
+    return this.exports.dae_lookupVariable ? this.exports.dae_lookupVariable(this.ptr, nameId) : -1;
+  }
+
+  addAlias(varIdx: number, targetNameId: number): void {
+    if (this.exports.dae_addAlias) this.exports.dae_addAlias(this.ptr, varIdx, targetNameId);
+  }
+
+  getAlias(varIdx: number): number {
+    return this.exports.dae_getAlias ? this.exports.dae_getAlias(this.ptr, varIdx) : 0;
+  }
+
+  setVarAttrExpr(varIdx: number, attrKind: VarAttrKind, exprId: number): void {
+    if (this.exports.dae_setVarAttrExpr) this.exports.dae_setVarAttrExpr(this.ptr, varIdx, attrKind, exprId);
+  }
+
+  getVarAttrExpr(varIdx: number, attrKind: VarAttrKind): number {
+    return this.exports.dae_getVarAttrExpr ? this.exports.dae_getVarAttrExpr(this.ptr, varIdx, attrKind) : 0;
+  }
+
+  setVarShapeDim(varIdx: number, dimIdx: number, size: number): void {
+    if (this.exports.dae_setVarShapeDim) this.exports.dae_setVarShapeDim(this.ptr, varIdx, dimIdx, size);
+  }
+
+  getVarShapeDim(varIdx: number, dimIdx: number): number {
+    return this.exports.dae_getVarShapeDim ? this.exports.dae_getVarShapeDim(this.ptr, varIdx, dimIdx) : 0;
+  }
+
+  setVarSymbolicShapeExpr(varIdx: number, dimIdx: number, exprId: number): void {
+    if (this.exports.dae_setVarSymbolicShapeExpr) {
+      this.exports.dae_setVarSymbolicShapeExpr(this.ptr, varIdx, dimIdx, exprId);
+    }
+  }
+
+  getVarSymbolicShapeExpr(varIdx: number, dimIdx: number): number {
+    return this.exports.dae_getVarSymbolicShapeExpr
+      ? this.exports.dae_getVarSymbolicShapeExpr(this.ptr, varIdx, dimIdx)
+      : 0;
+  }
+
+  addClock(intervalExprId: number, resolutionExprId = 0, shiftExprId = 0): number {
+    return this.exports.dae_addClock
+      ? this.exports.dae_addClock(this.ptr, intervalExprId, resolutionExprId, shiftExprId)
+      : 0;
+  }
+
+  setVarClock(varIdx: number, clockId: number): void {
+    if (this.exports.dae_setVarClock) this.exports.dae_setVarClock(this.ptr, varIdx, clockId);
+  }
+
+  getVarClock(varIdx: number): number {
+    return this.exports.dae_getVarClock ? this.exports.dae_getVarClock(this.ptr, varIdx) : 0;
+  }
+
+  setEqClock(eqIdx: number, clockId: number): void {
+    if (this.exports.dae_setEqClock) this.exports.dae_setEqClock(this.ptr, eqIdx, clockId);
+  }
+
+  getEqClock(eqIdx: number): number {
+    return this.exports.dae_getEqClock ? this.exports.dae_getEqClock(this.ptr, eqIdx) : 0;
+  }
+
+  addWhenEquation(conditionExprId: number): number {
+    return this.exports.dae_addWhenEquation ? this.exports.dae_addWhenEquation(this.ptr, conditionExprId) : 0;
+  }
+
+  addWhenBodyEquation(whenIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
+    return this.exports.dae_addWhenBodyEquation
+      ? this.exports.dae_addWhenBodyEquation(this.ptr, whenIdx, kind, lhsId, rhsId)
+      : 0;
+  }
+
+  addForEquation(indexNameId: number, rangeExprId: number): number {
+    return this.exports.dae_addForEquation ? this.exports.dae_addForEquation(this.ptr, indexNameId, rangeExprId) : 0;
+  }
+
+  addForBodyEquation(forIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
+    return this.exports.dae_addForBodyEquation
+      ? this.exports.dae_addForBodyEquation(this.ptr, forIdx, kind, lhsId, rhsId)
+      : 0;
+  }
+
+  addIfEquation(conditionExprId: number): number {
+    return this.exports.dae_addIfEquation ? this.exports.dae_addIfEquation(this.ptr, conditionExprId) : 0;
+  }
+
+  addIfThenEquation(ifIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
+    return this.exports.dae_addIfThenEquation
+      ? this.exports.dae_addIfThenEquation(this.ptr, ifIdx, kind, lhsId, rhsId)
+      : 0;
+  }
+
+  addStateMachine(nameId: number, initialStateId: number): number {
+    return this.exports.dae_addStateMachine ? this.exports.dae_addStateMachine(this.ptr, nameId, initialStateId) : 0;
+  }
+
+  addState(smId: number, nameId: number): number {
+    return this.exports.dae_addState ? this.exports.dae_addState(this.ptr, smId, nameId) : 0;
+  }
+
+  addStateEquation(smId: number, stateId: number, targetNameId: number, exprId: number, isDerivative: boolean): number {
+    return this.exports.dae_addStateEquation
+      ? this.exports.dae_addStateEquation(this.ptr, smId, stateId, targetNameId, exprId, isDerivative)
+      : 0;
+  }
+
+  addTransition(
+    smId: number,
+    fromStateId: number,
+    toStateId: number,
+    conditionExprId: number,
+    flags = 0,
+    priority = 0,
+  ): number {
+    return this.exports.dae_addTransition
+      ? this.exports.dae_addTransition(this.ptr, smId, fromStateId, toStateId, conditionExprId, flags, priority)
+      : 0;
+  }
+
+  addEventIndicator(exprId: number): number {
+    return this.exports.dae_addEventIndicator ? this.exports.dae_addEventIndicator(this.ptr, exprId) : 0;
+  }
+
+  getEventIndicatorCount(): number {
+    return this.exports.dae_getEventIndicatorCount ? this.exports.dae_getEventIndicatorCount(this.ptr) : 0;
+  }
+
+  getEventIndicatorExprId(idx: number): number {
+    return this.exports.dae_getEventIndicatorExprId ? this.exports.dae_getEventIndicatorExprId(this.ptr, idx) : 0;
+  }
+
+  setOptimizationObjective(objExpr: number, integrandExpr: number, startExpr: number, finalExpr: number): void {
+    if (this.exports.dae_setOptimizationObjective) {
+      this.exports.dae_setOptimizationObjective(this.ptr, objExpr, integrandExpr, startExpr, finalExpr);
+    }
+  }
+
   snapshot(): void {
     if (this.exports.dae_snapshot) this.exports.dae_snapshot(this.ptr);
   }
@@ -2491,5 +2693,9 @@ export class WasmDaeBridge {
 
   getExprCount(): number {
     return this.exports.dae_getExprCount ? this.exports.dae_getExprCount(this.ptr) : 0;
+  }
+
+  getStmtCount(): number {
+    return this.exports.dae_getStmtCount ? this.exports.dae_getStmtCount(this.ptr) : 0;
   }
 }
