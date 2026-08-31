@@ -2849,4 +2849,64 @@ export class WasmDaeBridge implements IDaeBuilder {
   getStmtCount(): number {
     return this.exports.dae_getStmtCount ? this.exports.dae_getStmtCount(this.ptr) : 0;
   }
+
+  getExprKind(exprId: number): ExprKind {
+    return this.exports.dae_getExprKind ? (this.exports.dae_getExprKind(this.ptr, exprId) as ExprKind) : ExprKind.Name;
+  }
+
+  getExprData1(exprId: number): number {
+    return this.exports.dae_getExprData1 ? this.exports.dae_getExprData1(this.ptr, exprId) : 0;
+  }
+
+  getExprLeft(exprId: number): number {
+    return this.exports.dae_getExprLeft ? this.exports.dae_getExprLeft(this.ptr, exprId) : -1;
+  }
+
+  getExprRight(exprId: number): number {
+    return this.exports.dae_getExprRight ? this.exports.dae_getExprRight(this.ptr, exprId) : -1;
+  }
+
+  getVarNameId(varId: number): number {
+    return this.exports.dae_getVarNameId ? this.exports.dae_getVarNameId(this.ptr, varId) : 0;
+  }
+
+  getVarType(varId: number): VarType {
+    return this.exports.dae_getVarType ? (this.exports.dae_getVarType(this.ptr, varId) as VarType) : VarType.Real;
+  }
+
+  getVarVariability(varId: number): Variability {
+    return this.exports.dae_getVarVariability
+      ? (this.exports.dae_getVarVariability(this.ptr, varId) as Variability)
+      : Variability.Continuous;
+  }
+
+  getVarCausality(varId: number): Causality {
+    return this.exports.dae_getVarCausality
+      ? (this.exports.dae_getVarCausality(this.ptr, varId) as Causality)
+      : Causality.Local;
+  }
+
+  getVarFlags(varId: number): number {
+    return this.exports.dae_getVarFlags ? this.exports.dae_getVarFlags(this.ptr, varId) : 0;
+  }
+
+  getVarStartValue(varId: number): number {
+    return this.exports.dae_getVarStartValue ? this.exports.dae_getVarStartValue(this.ptr, varId) : 0.0;
+  }
+
+  getEqKind(eqId: number): EqKind {
+    return this.exports.dae_getEqKind ? (this.exports.dae_getEqKind(this.ptr, eqId) as EqKind) : EqKind.Simple;
+  }
+
+  getEqLhs(eqId: number): number {
+    return this.exports.dae_getEqLhs ? this.exports.dae_getEqLhs(this.ptr, eqId) : -1;
+  }
+
+  getEqRhs(eqId: number): number {
+    return this.exports.dae_getEqRhs ? this.exports.dae_getEqRhs(this.ptr, eqId) : -1;
+  }
+
+  getEqAux(eqId: number): number {
+    return this.exports.dae_getEqAux ? this.exports.dae_getEqAux(this.ptr, eqId) : 0;
+  }
 }
