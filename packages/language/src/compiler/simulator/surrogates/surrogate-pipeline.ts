@@ -11,9 +11,8 @@
  * pipeline for data generation.
  */
 
+import { FmuSubsystemRegistry, NeuralNetFmuSubsystem } from "../../../runtime/wasm_fmu_subsystem.js";
 import { ArenaDAEBuilder } from "../../index.js";
-import { FmuSubsystemRegistry } from "../discrete/fmu-subsystem.js";
-import { NeuralNetFmuSubsystem } from "../discrete/nn-fmu-subsystem.js";
 import type { ArenaDoEConfig, ArenaDoEResult } from "../uq/doe.js";
 import { runArenaDoE, runArenaDoEAsync } from "../uq/doe.js";
 import type { ROMTrainConfig, TrainedROM } from "./rom-trainer.js";

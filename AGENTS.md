@@ -122,7 +122,7 @@ Located at `languages/modelica/arena-expr-visitor.ts`. Walks AST expression node
 
 ### ArenaDAEBuilder
 
-Located at `packages/language/src/compiler/dae-arena.ts`. A **data-oriented** (struct-of-arrays) container:
+Located at `packages/language/src/runtime/wasm_dae.ts`. A **data-oriented** (struct-of-arrays) container:
 
 - `varData` — variable metadata (name, type, variability, causality, start, flags)
 - `exprData` — expression tree (kind, data1, left, right)

@@ -29,9 +29,9 @@
  * Pure TypeScript — no native dependencies.
  */
 
+import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
 import { ArenaDAEBuilder } from "../../index.js";
 import { ArenaSimulator, simulateArena } from "../../simulator/core/simulate-arena.js";
-import { luFactor, luSolve } from "../../simulator/evaluator/gaussian.js";
 
 // ── Public interfaces ──
 

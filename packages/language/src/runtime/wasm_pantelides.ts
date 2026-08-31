@@ -2,14 +2,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { collectArenaExprDeps } from "../compiler/arena-blt.js";
+import type { StringId } from "../compiler/interner.js";
 import {
   ArenaDAEBuilder,
   EqKind,
   ExprKind,
   differentiateArenaExpression,
   simplifyArenaExpression,
-} from "../compiler/dae-arena.js";
-import type { StringId } from "../compiler/interner.js";
+} from "./wasm_dae.js";
 
 /**
  * Result of Pantelides Index Reduction on the arena.

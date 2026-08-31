@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArenaDAEBuilder, ExprKind, StmtKind } from "../../index.js";
-import { evaluateArenaRuntime } from "./eval-runtime.js";
+/**
+ * Procedural algorithm statement execution module.
+ * Executes Modelica algorithm sections (`for`, `while`, `assignment`, `if`, `when`, `return`, `break`)
+ * using the ArenaDAEBuilder AST and dense environment vectors.
+ */
+
+import { ArenaDAEBuilder, ExprKind, StmtKind } from "../compiler/index.js";
+import { evaluateArenaRuntime } from "./wasm_evaluator.js";
 
 /** Sentinel thrown when a `return` statement is executed. */
 export const ArenaReturnSignal = Object.freeze({ __brand: "ArenaReturnSignal" as const });
@@ -19,12 +25,6 @@ let currentCallDepth = 0;
 
 /**
  * Execute a range of statements from the ArenaDAEBuilder.
- *
- * @param arena The ArenaDAEBuilder.
- * @param startStmtIdx The index of the first statement to execute.
- * @param stmtCount The number of statements to execute.
- * @param valuesByStringId The environment containing variable values.
- * @param functionLookup Callback for user-defined function calls.
  */
 export function executeArenaStatements(
   arena: ArenaDAEBuilder,
@@ -49,7 +49,6 @@ export function executeArenaStatements(
         const targetExprId = data1;
         const sourceExprId = left;
         const value = evaluateArenaRuntime(arena, sourceExprId, valuesByStringId);
-        // Only simple variable targets are supported natively for now (ExprKind.Name)
         if (arena.getExprKind(targetExprId) === ExprKind.Name) {
           const nameId = arena.getExprData1(targetExprId);
           valuesByStringId[nameId] = value;
@@ -61,7 +60,7 @@ export function executeArenaStatements(
         const indexNameId = data1;
         const rangeExprId = left;
         const bodyStmtCount = right;
-        nextIdx += bodyStmtCount; // skip body for outer loop
+        nextIdx += bodyStmtCount;
 
         executeArenaForStatement(
           arena,
@@ -78,7 +77,7 @@ export function executeArenaStatements(
       case StmtKind.While: {
         const condExprId = data1;
         const bodyStmtCount = left;
-        nextIdx += bodyStmtCount; // skip body
+        nextIdx += bodyStmtCount;
 
         executeArenaWhileStatement(arena, condExprId, i + 1, bodyStmtCount, valuesByStringId, functionLookup);
         break;
@@ -87,7 +86,7 @@ export function executeArenaStatements(
       case StmtKind.If: {
         const condExprId = data1;
         const thenStmtCount = left;
-        const branchCount = right; // number of additional else/elseif blocks
+        const branchCount = right;
 
         const blockStartIdx = i + 1;
         nextIdx = blockStartIdx + thenStmtCount;
@@ -100,7 +99,6 @@ export function executeArenaStatements(
           executed = true;
         }
 
-        // Process branches (else if, else)
         for (let b = 0; b < branchCount; b++) {
           const branchStmtIdx = nextIdx;
           const branchKind = arena.getStmtKind(branchStmtIdx);
@@ -111,11 +109,9 @@ export function executeArenaStatements(
 
           if (!executed && branchKind === StmtKind.Block) {
             if (branchCondExprId === -1) {
-              // else block
               executeArenaStatements(arena, branchStmtIdx + 1, branchStmtCount, valuesByStringId, functionLookup);
               executed = true;
             } else {
-              // else if block
               const elseIfCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
               if (elseIfCondVal !== 0) {
                 executeArenaStatements(arena, branchStmtIdx + 1, branchStmtCount, valuesByStringId, functionLookup);
@@ -173,11 +169,10 @@ export function executeArenaStatements(
           const funcNameId = arena.getExprData1(callExprId);
           const firstArg = arena.getExprLeft(callExprId);
           const numArgs = arena.getExprRight(callExprId);
-
           const funcName = arena.interner.resolve(funcNameId);
 
           if (funcName === "assert" || funcName === "print" || funcName === "terminate") {
-            // Silently consume or handle built-ins
+            // consume built-in
           } else if (functionLookup) {
             const argValues: number[] = [];
             if (numArgs > 0) {
@@ -197,7 +192,7 @@ export function executeArenaStatements(
       case StmtKind.ComplexAssignment: {
         const numTargets = data1;
         const sourceExprId = left;
-        nextIdx += numTargets; // skip target blocks
+        nextIdx += numTargets;
 
         if (numTargets === 1) {
           const targetBlockIdx = i + 1;
@@ -236,7 +231,6 @@ export function executeArenaStatements(
       }
 
       case StmtKind.Block:
-        // Standalone blocks are ignored in the main loop, they are processed by If/When/ComplexAssignment
         break;
     }
 
@@ -259,8 +253,8 @@ function executeArenaForStatement(
 
   if (arena.getExprKind(rangeExprId) === ExprKind.Range) {
     const startId = arena.getExprData1(rangeExprId);
-    const stepId = arena.getExprLeft(rangeExprId);
-    const stopId = arena.getExprRight(rangeExprId);
+    const stopId = arena.getExprLeft(rangeExprId);
+    const stepId = arena.getExprRight(rangeExprId);
 
     startVal = evaluateArenaRuntime(arena, startId, valuesByStringId);
     endVal = evaluateArenaRuntime(arena, stopId, valuesByStringId);
@@ -270,7 +264,6 @@ function executeArenaForStatement(
       stepVal = 1;
     }
   } else {
-    // Array/scalar iterators
     const val = evaluateArenaRuntime(arena, rangeExprId, valuesByStringId);
     startVal = val;
     endVal = val;
@@ -338,11 +331,6 @@ function executeArenaWhileStatement(
 
 /**
  * Execute a user-defined Modelica function DAE using its native arena.
- *
- * @param funcArena The ArenaDAEBuilder of the function.
- * @param argValues Positional argument values.
- * @param parentLookup Parent function lookup callback.
- * @returns The value of the first output variable, or null on failure.
  */
 export function executeArenaFunction(
   funcArena: ArenaDAEBuilder,
@@ -380,14 +368,12 @@ export function executeArenaFunction(
           valuesByStringId[nameId] = evaluateArenaRuntime(funcArena, startExprId, valuesByStringId);
         }
       } else {
-        // Other (local, protected) variables
         if (typeof startExprId === "number" && startExprId !== -1) {
           valuesByStringId[nameId] = evaluateArenaRuntime(funcArena, startExprId, valuesByStringId);
         }
       }
     }
 
-    // Execute all algorithm sections
     for (const section of funcArena.algorithmSections) {
       try {
         executeArenaStatements(funcArena, section.start, section.count, valuesByStringId, parentLookup);
@@ -407,15 +393,13 @@ export function executeArenaFunction(
   }
 }
 
-// --- ASYNC DUALS FOR DEBUGGING ---
-
 export async function executeArenaStatementsAsync(
   arena: ArenaDAEBuilder,
   startStmtIdx: number,
   stmtCount: number,
   valuesByStringId: Float64Array,
   functionLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
+  debuggerHook?: import("../compiler/simulator/core/simulation.js").SimulationDebugger,
 ): Promise<void> {
   let i = startStmtIdx;
   const endIdx = startStmtIdx + stmtCount;
@@ -601,11 +585,10 @@ export async function executeArenaStatementsAsync(
           const funcNameId = arena.getExprData1(callExprId);
           const firstArg = arena.getExprLeft(callExprId);
           const numArgs = arena.getExprRight(callExprId);
-
           const funcName = arena.interner.resolve(funcNameId);
 
           if (funcName === "assert" || funcName === "print" || funcName === "terminate") {
-            // Silently consume or handle built-ins
+            // consume built-in
           } else if (functionLookup) {
             const argValues: number[] = [];
             if (numArgs > 0) {
@@ -679,7 +662,7 @@ async function executeArenaForStatementAsync(
   bodyStmtCount: number,
   valuesByStringId: Float64Array,
   functionLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
+  debuggerHook?: import("../compiler/simulator/core/simulation.js").SimulationDebugger,
 ): Promise<void> {
   let startVal: number;
   let stepVal: number;
@@ -687,8 +670,8 @@ async function executeArenaForStatementAsync(
 
   if (arena.getExprKind(rangeExprId) === ExprKind.Range) {
     const startId = arena.getExprData1(rangeExprId);
-    const stepId = arena.getExprLeft(rangeExprId);
-    const stopId = arena.getExprRight(rangeExprId);
+    const stopId = arena.getExprLeft(rangeExprId);
+    const stepId = arena.getExprRight(rangeExprId);
 
     startVal = evaluateArenaRuntime(arena, startId, valuesByStringId);
     endVal = evaluateArenaRuntime(arena, stopId, valuesByStringId);
@@ -759,7 +742,7 @@ async function executeArenaWhileStatementAsync(
   bodyStmtCount: number,
   valuesByStringId: Float64Array,
   functionLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
+  debuggerHook?: import("../compiler/simulator/core/simulation.js").SimulationDebugger,
 ): Promise<void> {
   let iterCount = 0;
 
@@ -789,7 +772,7 @@ export async function executeArenaFunctionAsync(
   funcArena: ArenaDAEBuilder,
   argValues: number[],
   parentLookup?: (nameId: number, args: number[]) => number | null,
-  debuggerHook?: import("../core/simulation.js").SimulationDebugger,
+  debuggerHook?: import("../compiler/simulator/core/simulation.js").SimulationDebugger,
 ): Promise<number | null> {
   if (++currentCallDepth > MAX_CALL_DEPTH) {
     currentCallDepth--;

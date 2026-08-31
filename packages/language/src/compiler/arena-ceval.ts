@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ArenaDAEBuilder, ExprKind, StmtKind, VarType } from "../runtime/wasm_dae.js";
 import { evaluateArenaExpression, type ArenaValue } from "./arena-eval.js";
-import { ArenaDAEBuilder, ExprKind, StmtKind, VarType } from "./dae-arena.js";
 import type { QueryDB, SymbolId } from "./index.js";
 
 const MAX_WHILE_ITERATIONS = 10_000;

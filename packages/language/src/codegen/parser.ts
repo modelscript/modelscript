@@ -18,6 +18,7 @@ import {
   cursorCode,
   daeCode,
   delayCode,
+  doeCode,
   dualCode,
   engineCode,
   evalCode,
@@ -37,6 +38,7 @@ import {
   lspCode,
   matrixCode,
   mccormickCode,
+  monte_carloCode,
   ontologyCode,
   ontology_projectionCode,
   pantelidesCode,
@@ -48,11 +50,13 @@ import {
   scope_stackCode,
   sparse_choleskyCode,
   sparse_luCode,
+  statementsCode,
   string_poolCode,
   stubCode,
   tapeCode,
   tearingCode,
   trigramCode,
+  verifierCode,
   vmapCode,
 } from "../src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
@@ -1109,6 +1113,10 @@ export function generateParserTables(
     { filename: "mccormick.ts", content: mccormickCode },
     { filename: "branch_and_bound.ts", content: branch_and_boundCode },
     { filename: "dual.ts", content: dualCode },
+    { filename: "monte_carlo.ts", content: monte_carloCode },
+    { filename: "doe.ts", content: doeCode },
+    { filename: "statements.ts", content: statementsCode },
+    { filename: "verifier.ts", content: verifierCode },
   ];
 
   if (originalGrammar.runtimeFiles) {
@@ -1177,6 +1185,8 @@ export function generateParserTables(
   code += extractExports(mccormickCode, "./mccormick");
   code += extractExports(branch_and_boundCode, "./branch_and_bound");
   code += extractExports(dualCode, "./dual");
+  code += extractExports(monte_carloCode, "./monte_carlo");
+  code += extractExports(doeCode, "./doe");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import assert from "node:assert";
-import { ArenaDAEBuilder, BinOp, EqKind, Variability, VarType } from "../src/compiler/dae-arena.js";
+import { ArenaDAEBuilder, BinOp, EqKind, Variability, VarType } from "../src/runtime/wasm_dae.js";
 import { containsDerivative, pantelidesIndexReductionArena, WasmPantelides } from "../src/runtime/wasm_pantelides.js";
 
 console.log("Testing Pantelides Index Reduction & WASM Runtime...");

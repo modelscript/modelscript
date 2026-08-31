@@ -3,8 +3,8 @@
 
 import { collectArenaExprDeps } from "../compiler/arena-blt.js";
 import type { ArenaExecutionBlock } from "../compiler/arena-execution.js";
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../compiler/dae-arena.js";
-import { Polynomial, Term, computeGroebnerBasis } from "../compiler/groebner.js";
+import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "./wasm_dae.js";
+import { Polynomial, Term, computeGroebnerBasis } from "./wasm_groebner.js";
 
 /**
  * Checks if the arena equation is explicitly solvable for the target variable.

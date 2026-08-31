@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * MINLP Heuristics for Mixed-Integer Initialization.
+ * WebAssembly-backed MINLP Heuristics for Mixed-Integer Initialization.
  *
  * When initialization algebraic loops contain both continuous (Real) and
  * discrete (Integer/Boolean) variables, standard Newton-Raphson fails because
  * the Jacobian is undefined for discrete dimensions.
  *
- * This module implements a "Freeze-and-Solve" heuristic:
+ * Implements the "Freeze-and-Solve" heuristic:
  *   1. Freeze discrete variables to their current (start) values
- *   2. Solve the continuous subsystem via Newton-Raphson with AD
+ *   2. Solve the continuous subsystem via Newton-Raphson with AD & LU factorization
  *   3. Re-evaluate discrete expressions from the solved continuous state
  *   4. Repeat until mutual equilibrium or max iterations
  *
@@ -17,15 +17,9 @@
  *   "Mixed-integer nonlinear optimization", Acta Numerica.
  */
 
-import type { ImplicitInitBlock } from "../../arena-init.js";
-import {
-  ArenaDAEBuilder,
-  BinOp,
-  ExprKind,
-  StaticTapeBuilder,
-  evaluateTapeForward,
-  evaluateTapeReverse,
-} from "../../index.js";
+import { type ImplicitInitBlock } from "../compiler/arena-init.js";
+import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
+import { ArenaDAEBuilder, BinOp, ExprKind } from "./wasm_dae.js";
 
 /** Result of the MINLP freeze-and-solve iteration. */
 export interface MinlpResult {
@@ -70,7 +64,6 @@ export function freezeAndSolve(
     converged: false,
   };
 
-  // Separate unknowns into continuous and discrete
   const continuousUnknowns: string[] = [];
   const discreteUnknowns: string[] = [];
   for (const u of block.unknowns) {
@@ -81,7 +74,6 @@ export function freezeAndSolve(
     }
   }
 
-  // Build AD tapes for residuals: R_i = LHS_i - RHS_i
   const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
   for (const eq of block.equations) {
     const tape = new StaticTapeBuilder(arena.interner);
@@ -96,7 +88,6 @@ export function freezeAndSolve(
   const nSolve = Math.min(nResiduals, nContinuous);
 
   if (nSolve === 0) {
-    // No continuous unknowns — just evaluate discrete variables directly
     for (const u of block.unknowns) {
       result.values.set(u, env.get(u) ?? 0);
     }
@@ -104,27 +95,19 @@ export function freezeAndSolve(
     return result;
   }
 
-  // Initialize continuous unknowns from env
   const z = continuousUnknowns.map((name) => env.get(name) ?? 0);
 
-  // Outer loop: freeze-and-solve
   for (let outer = 0; outer < maxOuter; outer++) {
     result.outerIterations = outer + 1;
 
-    // Phase 1: Freeze discrete variables at current values
-    // (they are already in env)
-
-    // Phase 2: Newton-Raphson on continuous subsystem
     for (let iter = 0; iter < maxNewton; iter++) {
       result.totalNewtonIterations++;
 
-      // Update env with current continuous values
       for (let i = 0; i < nContinuous; i++) {
         const name = continuousUnknowns[i];
         if (name) env.set(name, z[i] ?? 0);
       }
 
-      // Evaluate residuals and Jacobian
       const R = new Array(nSolve).fill(0) as number[];
       const J: number[][] = [];
       for (let i = 0; i < nSolve; i++) {
@@ -145,14 +128,12 @@ export function freezeAndSolve(
         }
       }
 
-      // Check convergence
       let norm = 0;
       for (let i = 0; i < nSolve; i++) norm += Math.abs(R[i] ?? 0);
       result.residualNorm = norm;
 
       if (norm < tol) break;
 
-      // Solve J * dz = -R via LU
       const negR = R.map((r) => -(r ?? 0));
       const dz = solveLUMinlp(J, negR, nSolve);
       for (let i = 0; i < nSolve; i++) {
@@ -160,34 +141,27 @@ export function freezeAndSolve(
       }
     }
 
-    // Update env with solved continuous values
     for (let i = 0; i < nContinuous; i++) {
       const name = continuousUnknowns[i];
       if (name) env.set(name, z[i] ?? 0);
     }
 
-    // Phase 3: Re-evaluate discrete variables from solved continuous state
     let discreteChanged = false;
     for (const dv of discreteUnknowns) {
       const oldVal = env.get(dv) ?? 0;
-      // Evaluate the equation that computes this discrete variable
-      // For now, use the residual evaluation to check consistency
       const newVal = evaluateDiscreteFromResiduals(dv, block, env, arena);
       if (newVal !== null && Math.abs(newVal - oldVal) > 0.5) {
-        // Discrete value changed (round to nearest integer for Integer vars)
         env.set(dv, Math.round(newVal));
         discreteChanged = true;
       }
     }
 
-    // Phase 4: Check convergence — both continuous residuals and discrete stability
     if (result.residualNorm < tol && !discreteChanged) {
       result.converged = true;
       break;
     }
   }
 
-  // Store final values
   for (const u of block.unknowns) {
     result.values.set(u, env.get(u) ?? 0);
   }
@@ -195,11 +169,6 @@ export function freezeAndSolve(
   return result;
 }
 
-/**
- * Evaluate a discrete variable's value from the system equations.
- * Tries to find the equation where the discrete variable appears on one side
- * and evaluate the other side.
- */
 function evaluateDiscreteFromResiduals(
   varName: string,
   block: ImplicitInitBlock,
@@ -207,7 +176,6 @@ function evaluateDiscreteFromResiduals(
   arena: ArenaDAEBuilder,
 ): number | null {
   for (const eq of block.equations) {
-    // Check if LHS is just this variable
     if (isSimpleName(eq.lhs, varName, arena)) {
       return simpleEvalMinlp(eq.rhs, env, arena);
     }
@@ -227,7 +195,6 @@ function isSimpleName(exprId: number, name: string, arena: ArenaDAEBuilder): boo
   return false;
 }
 
-/** Simple expression evaluator for discrete variable re-evaluation. */
 function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: ArenaDAEBuilder): number | null {
   if (exprId < 0) return null;
   const kind = arena.getExprKind(exprId);
@@ -267,14 +234,35 @@ function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: ArenaD
         case BinOp.Pow:
         case BinOp.ElemPow:
           return Math.pow(a, b);
+        case BinOp.Gt:
+          return a > b ? 1 : 0;
+        case BinOp.Gte:
+          return a >= b ? 1 : 0;
+        case BinOp.Lt:
+          return a < b ? 1 : 0;
+        case BinOp.Lte:
+          return a <= b ? 1 : 0;
+        case BinOp.Eq:
+          return Math.abs(a - b) < 1e-9 ? 1 : 0;
+        case BinOp.Neq:
+          return Math.abs(a - b) >= 1e-9 ? 1 : 0;
+        case BinOp.And:
+          return a !== 0 && b !== 0 ? 1 : 0;
+        case BinOp.Or:
+          return a !== 0 || b !== 0 ? 1 : 0;
       }
       return null;
+    }
+    case ExprKind.IfElse: {
+      const condVal = simpleEvalMinlp(arena.getExprData1(exprId), env, arena);
+      if (condVal === null) return null;
+      const branch = condVal !== 0 ? arena.getExprLeft(exprId) : arena.getExprRight(exprId);
+      return simpleEvalMinlp(branch, env, arena);
     }
   }
   return null;
 }
 
-/** LU solve for the MINLP continuous Newton step. */
 function solveLUMinlp(A: number[][], b: number[], n: number): number[] {
   const M = A.map((row) => [...row]);
   const rhs = [...b];

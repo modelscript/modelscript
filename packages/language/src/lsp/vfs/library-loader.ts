@@ -11,7 +11,7 @@ import {
 } from "./browser-file-system.js";
 
 import { strFromU8, unzipSync } from "fflate";
-import type { FederatedQueryCacheStore } from "../../compiler/index.js";
+import type { FederatedQueryCacheStore } from "../../runtime/wasm_cache_store.js";
 import type { Parser, Tree } from "../../utils/index.js";
 import { iconCache } from "../handlers/treeHandler.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";

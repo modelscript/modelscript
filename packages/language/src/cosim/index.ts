@@ -12,6 +12,7 @@ export * from "./mqtt/protocol.js";
 export * from "./mqtt/topics.js";
 
 // ── Core ──
+export * from "../runtime/wasm_cosim.js";
 export * from "./coupling.js";
 export * from "./orchestrator.js";
 export * from "./participant.js";

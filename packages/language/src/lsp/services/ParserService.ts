@@ -5,13 +5,8 @@ import { createModelicaQueryEngine, MsimParser } from "@modelscript/modelica/fac
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { createWasmParser } from "../../bindings/javascript/bindings.js";
-import {
-  Context,
-  FederatedQueryCacheStore,
-  IndexedDBQueryCacheStore,
-  LineIndex,
-  TokenData,
-} from "../../compiler/index.js";
+import { Context, LineIndex, TokenData } from "../../compiler/index.js";
+import { FederatedQueryCacheStore, IndexedDBQueryCacheStore } from "../../runtime/wasm_cache_store.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../../utils/tree-sitter.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";

@@ -1,5 +1,5 @@
+import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "../runtime/wasm_dae.js";
 import { evaluateArrayBuiltin, evaluateBuiltinMathFunction } from "./arena-eval-builtins.js";
-import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./dae-arena.js";
 import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
 
 /**

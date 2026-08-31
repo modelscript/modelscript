@@ -3,6 +3,10 @@
 
 import { bdf } from "../../../runtime/wasm_bdf.js";
 import { dopri5 } from "../../../runtime/wasm_dopri5.js";
+import { Dual, evaluateArenaDualExpression, evaluateArenaRuntime } from "../../../runtime/wasm_evaluator.js";
+import { type FmuSubsystem, type FmuSubsystemRegistry } from "../../../runtime/wasm_fmu_subsystem.js";
+import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
+import { executeArenaStatements, executeArenaStatementsAsync } from "../../../runtime/wasm_statement_executor.js";
 import { solveInitialEquationsArena } from "../../arena-init.js";
 import {
   ArenaDAEBuilder,
@@ -18,12 +22,6 @@ import {
   type ArenaStateMachine,
 } from "../../index.js";
 import { buildAdJacobian } from "../../tape.js";
-import { type FmuSubsystem, type FmuSubsystemRegistry } from "../discrete/fmu-subsystem.js";
-import { evaluateArenaDualExpression } from "../evaluator/dual-evaluator.js";
-import { Dual } from "../evaluator/dual.js";
-import { evaluateArenaRuntime } from "../evaluator/eval-runtime.js";
-import { luFactor, luSolve } from "../evaluator/gaussian.js";
-import { executeArenaStatements, executeArenaStatementsAsync } from "../evaluator/statement-executor.js";
 import {
   type ArenaAssertion,
   type ArenaEventIndicator,

@@ -26,8 +26,8 @@
  *
  */
 
-import type { StringId } from "./interner.js";
-import { StringInterner } from "./interner.js";
+import type { StringId } from "../compiler/interner.js";
+import { StringInterner } from "../compiler/interner.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums (stored as small integers in Uint8Array columns)
@@ -943,6 +943,14 @@ export class ArenaDAEBuilder {
 
   getEqRhs(idx: number): number {
     return this.eqData[idx * EQ_STRIDE + EQ_RHS]!;
+  }
+
+  setEqLhs(idx: number, exprId: number): void {
+    this.eqData[idx * EQ_STRIDE + EQ_LHS] = exprId;
+  }
+
+  setEqRhs(idx: number, exprId: number): void {
+    this.eqData[idx * EQ_STRIDE + EQ_RHS] = exprId;
   }
 
   getEqAux(idx: number): number {
@@ -2428,3 +2436,60 @@ package ModelScript
   end CAS;
 end ModelScript;
 `;
+
+/**
+ * WASM DAE Bridge.
+ *
+ * Interfaces with the zero-GC WebAssembly `DaeBuilder` runtime exports.
+ */
+export class WasmDaeBridge {
+  private readonly exports: any;
+  public ptr = 0;
+
+  constructor(wasmExports: any, ptr = 0) {
+    this.exports = wasmExports;
+    this.ptr = ptr !== 0 ? ptr : this.exports.dae_createBuilder ? this.exports.dae_createBuilder() : 0;
+  }
+
+  addVariable(
+    nameId: number,
+    type: VarType,
+    variability: Variability,
+    causality: Causality,
+    startVal = 0.0,
+    flags = 0,
+  ): number {
+    if (!this.exports.dae_addVariable) return -1;
+    return this.exports.dae_addVariable(this.ptr, nameId, type, variability, causality, startVal, flags);
+  }
+
+  addEquation(kind: EqKind, lhsId: number, rhsId: number, auxId = 0xffffffff): number {
+    if (!this.exports.dae_addEquation) return -1;
+    return this.exports.dae_addEquation(this.ptr, kind, lhsId, rhsId, auxId);
+  }
+
+  addExpression(kind: ExprKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
+    if (!this.exports.dae_addExpression) return -1;
+    return this.exports.dae_addExpression(this.ptr, kind, data1, left, right);
+  }
+
+  snapshot(): void {
+    if (this.exports.dae_snapshot) this.exports.dae_snapshot(this.ptr);
+  }
+
+  rollback(): void {
+    if (this.exports.dae_rollback) this.exports.dae_rollback(this.ptr);
+  }
+
+  getVarCount(): number {
+    return this.exports.dae_getVarCount ? this.exports.dae_getVarCount(this.ptr) : 0;
+  }
+
+  getEqCount(): number {
+    return this.exports.dae_getEqCount ? this.exports.dae_getEqCount(this.ptr) : 0;
+  }
+
+  getExprCount(): number {
+    return this.exports.dae_getExprCount ? this.exports.dae_getExprCount(this.ptr) : 0;
+  }
+}

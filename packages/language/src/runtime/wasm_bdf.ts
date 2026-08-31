@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { SparseJacobian } from "../compiler/simulator/evaluator/sparse-jacobian.js";
-import { sparseJacobianToDense } from "../compiler/simulator/evaluator/sparse-jacobian.js";
+import type { SparseJacobian } from "./wasm_sparse_jacobian.js";
+import { sparseJacobianToDense } from "./wasm_sparse_jacobian.js";
 
 /**
  * WebAssembly-backed Variable-Order BDF (Backward Differentiation Formula) solver

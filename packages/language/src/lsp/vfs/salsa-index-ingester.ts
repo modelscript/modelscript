@@ -1,6 +1,5 @@
 import initSqlJs from "sql.js";
-import type { QueryCacheStore } from "../../compiler/index.js";
-import type { Memo } from "../../compiler/runtime.js";
+import type { Memo, QueryCacheStore } from "../../compiler/runtime.js";
 
 export async function ingestSalsaIndex(
   buffer: ArrayBuffer,
@@ -26,18 +25,17 @@ export async function ingestSalsaIndex(
 
     // Stream memos into cache store
     const memoRows = db.exec("SELECT key, data FROM memos");
-    const memos = new Map<string, Memo>();
+    const memos = new Map<number, Memo>();
     if (memoRows.length > 0) {
       for (const row of memoRows[0].values) {
         try {
-          const key = row[0] as string;
+          const key = Number(row[0]);
           const data = JSON.parse(row[1] as string) as Memo;
           memos.set(key, data);
         } catch {
           // Ignore malformed memos
         }
       }
-      // @ts-expect-error incompatible types
       await cacheStore.setMemos(memos);
     }
 

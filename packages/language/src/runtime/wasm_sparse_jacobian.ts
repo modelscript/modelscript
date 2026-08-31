@@ -1,6 +1,13 @@
-import { ArenaDAEBuilder, EqKind, ExprKind, colorJacobianColumns } from "../../index.js";
-import { evaluateArenaDualExpression } from "./dual-evaluator.js";
-import { Dual } from "./dual.js";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * Sparse Automatic Differentiation (AD) Jacobian evaluation.
+ * Uses column coloring and forward-mode dual numbers to compute compressed
+ * Jacobians for stiff ODE/DAE solvers and optimization routines.
+ */
+
+import { ArenaDAEBuilder, EqKind, ExprKind, colorJacobianColumns } from "../compiler/index.js";
+import { Dual, evaluateArenaDualExpression } from "./wasm_evaluator.js";
 
 export interface SparseJacobian {
   n: number;
@@ -33,6 +40,9 @@ function extractDerArena(arena: ArenaDAEBuilder, exprId: number): string | null 
   return null;
 }
 
+/**
+ * Construct a compressed sparse Jacobian evaluator using forward-mode AD and graph coloring.
+ */
 export function buildSparseAdJacobian(
   dae: ArenaDAEBuilder,
   stateNames: string[],

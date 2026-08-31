@@ -12,8 +12,8 @@
  * use by WGSL compute shaders.
  */
 
+import { type ArenaDAEBuilder, Variability } from "../runtime/wasm_dae.js";
 import type { ArenaBltResult } from "./arena-blt.js";
-import { type ArenaDAEBuilder, Variability } from "./dae-arena.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

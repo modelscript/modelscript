@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArenaDAEBuilder, ExprKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, ExprKind } from "../runtime/wasm_dae.js";
 
 /**
  * Generates all multi-dimensional 1-based indices for a given shape.

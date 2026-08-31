@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Gröbner Basis algorithms for multivariate polynomial algebra.
+ * WebAssembly Gröbner Basis & Multivariate Polynomial Algebra Engine.
  *
- * This module provides the mathematical foundation for identifying,
- * factoring, and triangularizing non-linear algebraic loops in ModelScript.
+ * Provides:
+ *  - Monomial terms, orderings (LEX, GRLEX, GREVLEX), polynomial arithmetic
+ *  - Multivariate polynomial division and S-polynomial computation
+ *  - Buchberger's algorithm with autoreduction and monic normalization
+ *  - WasmGroebner bridge for zero-GC algebraic loop triangularization
  */
 
 export type TermDegrees = Map<string, number>;
@@ -110,7 +113,7 @@ export const TermOrder = {
         if (v === undefined) continue;
         const da = a.getDegree(v);
         const db = b.getDegree(v);
-        if (da !== db) return da - db; // Note: smaller degree is "larger" term in GREVLEX tiebreaker
+        if (da !== db) return da - db;
       }
       return 0;
     },
@@ -118,10 +121,6 @@ export const TermOrder = {
 
 /** A multivariate polynomial */
 export class Polynomial {
-  /**
-   * Variables in consideration for ordering (ordered array)
-   * The order in this array defines the term ranking priorities.
-   */
   public vars: string[];
 
   constructor(
@@ -141,7 +140,6 @@ export class Polynomial {
   simplify(orderFn = TermOrder.LEX(this.vars)): this {
     const grouped = new Map<string, Term>();
     for (const t of this.terms) {
-      // Build monomial signature
       const sigKeys = Array.from(t.degrees.keys()).sort();
       const sig = sigKeys.map((k) => `${k}^${t.degrees.get(k)}`).join("*");
 
@@ -219,12 +217,11 @@ export class Polynomial {
 
       if (!divisionOccurred) {
         r.terms.push(LT_p);
-        p.terms.shift(); // Remove LT_p
+        p.terms.shift();
         p.simplify(orderFn);
       }
     }
 
-    // Attempt final simplify
     r.simplify(orderFn);
     for (const q of quotients) q.simplify(orderFn);
 
@@ -246,10 +243,9 @@ export function termLCM(a: Term, b: Term): Term {
 export function sPolynomial(f: Polynomial, g: Polynomial, vars: string[], orderFn = TermOrder.LEX(vars)): Polynomial {
   const lt_f = f.LT();
   const lt_g = g.LT();
-  if (!lt_f || !lt_g) return new Polynomial([], vars); // zero
+  if (!lt_f || !lt_g) return new Polynomial([], vars);
 
   const lcm = termLCM(lt_f, lt_g);
-
   const m1 = lt_f.divideInto(lcm);
   const m2 = lt_g.divideInto(lcm);
 
@@ -264,13 +260,11 @@ export function sPolynomial(f: Polynomial, g: Polynomial, vars: string[], orderF
  */
 export function computeGroebnerBasis(F: Polynomial[], vars: string[], orderFn = TermOrder.LEX(vars)): Polynomial[] {
   const G = [...F];
-  // Simple Buchberger loop
   let changed = true;
   while (changed) {
     changed = false;
     const pairs: [Polynomial, Polynomial][] = [];
 
-    // Collect all pairs
     for (let i = 0; i < G.length; i++) {
       for (let j = i + 1; j < G.length; j++) {
         const pi = G[i];
@@ -293,6 +287,63 @@ export function computeGroebnerBasis(F: Polynomial[], vars: string[], orderFn = 
     }
   }
 
-  // To do: Reduced Gröbner Basis computation (autoreduce and make monic)
   return G;
+}
+
+/**
+ * Reduce a Gröbner basis to a minimal, monic reduced Gröbner basis.
+ */
+export function reduceGroebnerBasis(G: Polynomial[], vars: string[], orderFn = TermOrder.LEX(vars)): Polynomial[] {
+  // Step 1: Remove polynomials whose leading term is divisible by another LT
+  let minimal: Polynomial[] = [];
+  for (let i = 0; i < G.length; i++) {
+    const p = G[i]!;
+    const lt = p.LT();
+    if (!lt) continue;
+    let redundant = false;
+    for (let j = 0; j < G.length; j++) {
+      if (i === j) continue;
+      const otherLt = G[j]?.LT();
+      if (otherLt && otherLt.divides(lt)) {
+        redundant = true;
+        break;
+      }
+    }
+    if (!redundant) minimal.push(p);
+  }
+
+  // Step 2: Make monic and tail-reduce
+  const reduced: Polynomial[] = [];
+  for (let i = 0; i < minimal.length; i++) {
+    const p = minimal[i]!;
+    const lt = p.LT();
+    if (!lt) continue;
+    const monicTerms = p.terms.map((t) => new Term(t.coefficient / lt.coefficient, new Map(t.degrees)));
+    const monicP = new Polynomial(monicTerms, vars);
+
+    // Reduce against other polynomials in basis
+    const others = minimal.filter((_, idx) => idx !== i);
+    const { remainder } = monicP.divide(others, orderFn);
+    if (!remainder.isZero()) {
+      reduced.push(remainder);
+    }
+  }
+
+  return reduced;
+}
+
+/**
+ * WASM Gröbner basis bridge wrapper.
+ */
+export class WasmGroebner {
+  private readonly exports: any;
+
+  constructor(wasmExports: any) {
+    this.exports = wasmExports;
+  }
+
+  triangularize(daePtr: number, eqIdxsPtr: number, nEqs: number, varIdxsPtr: number, nVars: number): boolean {
+    if (!this.exports.groebner_triangularize) return false;
+    return this.exports.groebner_triangularize(daePtr, eqIdxsPtr, nEqs, varIdxsPtr, nVars) === 1;
+  }
 }

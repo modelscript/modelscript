@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { ArenaDAEBuilder } from "../compiler/dae-arena.js";
 import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
+import { ArenaDAEBuilder } from "./wasm_dae.js";
 
 /**
  * WebAssembly-backed Interval Arithmetic, McCormick Relaxations,

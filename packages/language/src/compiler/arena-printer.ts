@@ -10,8 +10,17 @@
  * from `@modelscript/modelica/ast`.
  */
 
+import {
+  BinOp,
+  EqKind,
+  ExprKind,
+  StmtKind,
+  UnaryOp,
+  Variability,
+  VarType,
+  type ArenaDAEBuilder,
+} from "../runtime/wasm_dae.js";
 import type { Writer } from "../utils/index.js";
-import { BinOp, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType, type ArenaDAEBuilder } from "./dae-arena.js";
 
 // ── Inlined Modelica operator strings ──
 // (Avoids circular dependency on @modelscript/modelica/ast)

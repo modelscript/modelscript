@@ -15,10 +15,10 @@
  * Pure TypeScript — no native dependencies.
  */
 
+import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
 import { ArenaDAEBuilder, Variability } from "../../index.js";
 import { ArenaSimulator, simulateArena } from "../../simulator/core/simulate-arena.js";
 import type { SolverOptions } from "../../simulator/core/solver-options.js";
-import { luFactor, luSolve } from "../../simulator/evaluator/gaussian.js";
 import type { MonteCarloOptions, RandomVariable } from "../../simulator/uq/monte-carlo.js";
 import {
   ProgressiveHedging,

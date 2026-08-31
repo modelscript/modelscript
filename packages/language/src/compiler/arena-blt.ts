@@ -1,4 +1,4 @@
-import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
+import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "../runtime/wasm_dae.js";
 
 // WASM Exports mapped globally within this module
 export let alloc: (size: number) => number;

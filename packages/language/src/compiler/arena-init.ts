@@ -19,8 +19,8 @@ import {
   VarType,
   Variability,
   differentiateArenaExpressionWrt,
-} from "./dae-arena.js";
-import { evaluateArenaRuntime } from "./simulator/evaluator/eval-runtime.js";
+} from "../runtime/wasm_dae.js";
+import { evaluateArenaRuntime } from "../runtime/wasm_evaluator.js";
 import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "./tape.js";
 
 // ─────────────────────────────────────────────────────────────────────────

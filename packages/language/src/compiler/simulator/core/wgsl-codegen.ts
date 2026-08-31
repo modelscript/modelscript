@@ -8,8 +8,8 @@
  * divergence, allowing the GPU compiler to optimize aggressively.
  */
 
+import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../../../runtime/wasm_dae.js";
 import type { GPUArenaBuffers } from "../../arena-gpu-buffers.js";
-import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../../dae-arena.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Operator Mappings

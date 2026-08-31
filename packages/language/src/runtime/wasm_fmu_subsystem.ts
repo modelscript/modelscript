@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * FMU subsystem adapter for the ModelicaSimulator.
+ * FMU & ROM Subsystem adapters for the ModelicaSimulator & Co-Simulation.
  *
  * When a DAE contains variables marked as originating from an FMU
- * (via the `__fmu__` naming convention), the simulator can delegate
- * their evaluation to an FMU co-simulation participant instead of
- * solving them algebraically.
+ * (via the `__fmu__` naming convention) or reduced-order surrogate model,
+ * the simulator delegates their evaluation to an FMU co-simulation participant
+ * or trained ROM instead of solving them algebraically.
  *
- * This bridges the gap between the `ModelicaSimulator` (which
- * operates on a flat DAE) and the `CoSimParticipant` interface
- * (which provides `initialize`, `setInputs`, `doStep`, `getOutputs`).
+ * Provides:
+ *  - FmuSubsystem interface for co-simulation stepping
+ *  - LookupTableFmuSubsystem for table-based linear ROMs
+ *  - NeuralNetFmuSubsystem for trained neural network surrogate models
+ *  - FmuSubsystemRegistry for managing registered FMU/ROM subsystems
  */
+
+import { evaluateROM, type TrainedROM } from "../compiler/simulator/surrogates/rom-trainer.js";
 
 /**
  * Interface for an FMU subsystem that the simulator can call
@@ -67,9 +71,6 @@ export interface FmuSubsystem {
  * Used for reduced-order models (ROMs) that have been pre-computed:
  * given input values and a time step, the ROM interpolates from
  * a pre-computed dataset (e.g., a CFD reduced-order model).
- *
- * This avoids needing a full WASM FMU runtime for demonstration
- * and lightweight scenarios.
  */
 export class LookupTableFmuSubsystem implements FmuSubsystem {
   readonly modelName: string;
@@ -77,13 +78,9 @@ export class LookupTableFmuSubsystem implements FmuSubsystem {
   readonly outputNames: string[];
   readonly parameterNames: string[];
 
-  /** Lookup data: time → input values → output values */
   private data = new Map<number, Map<string, number>>();
-  /** Current output values */
   private currentOutputs = new Map<string, number>();
-  /** Transfer function coefficients: outputName → { inputName → gain } */
   private gains: Map<string, Map<string, number>>;
-  /** Steady-state offsets for outputs */
   private offsets: Map<string, number>;
 
   constructor(
@@ -111,7 +108,6 @@ export class LookupTableFmuSubsystem implements FmuSubsystem {
   }
 
   setInputs(inputs: Map<string, number>): void {
-    // Compute outputs as linear combination: y_j = offset_j + Σ gain_{j,i} * u_i
     for (const outName of this.outputNames) {
       const outputGains = this.gains.get(outName);
       let value = this.offsets.get(outName) ?? 0;
@@ -127,8 +123,7 @@ export class LookupTableFmuSubsystem implements FmuSubsystem {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   doStep(_currentTime: number, _stepSize: number): void {
-    // For a static lookup table / linear ROM, doStep is a no-op
-    // (outputs were already computed in setInputs)
+    // Outputs were already computed in setInputs
   }
 
   getOutputs(): Map<string, number> {
@@ -142,43 +137,104 @@ export class LookupTableFmuSubsystem implements FmuSubsystem {
 }
 
 /**
- * Registry of FMU subsystems available to the simulator.
+ * An FmuSubsystem backed by a trained ROM (MLP, RBF, or polynomial).
  *
- * Models reference FMU blocks via a naming convention
- * (e.g., `cfdRom.heatFlux` where `cfdRom` is the FMU instance name).
- * The registry maps instance names to FmuSubsystem implementations.
+ * On each `doStep()`, evaluates the ROM's forward pass with current
+ * input values and populates outputs.
+ */
+export class NeuralNetFmuSubsystem implements FmuSubsystem {
+  readonly modelName: string;
+  readonly inputNames: string[];
+  readonly outputNames: string[];
+  readonly parameterNames: string[] = [];
+
+  private rom: TrainedROM;
+  private currentInputs = new Map<string, number>();
+  private currentOutputs = new Map<string, number>();
+
+  constructor(modelName: string, rom: TrainedROM) {
+    this.modelName = modelName;
+    this.rom = rom;
+    this.inputNames = rom.inputNames;
+    this.outputNames = rom.outputNames;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  initialize(_startTime: number, _stopTime: number, _stepSize: number): void {
+    this.currentInputs.clear();
+    this.currentOutputs.clear();
+    for (const name of this.inputNames) this.currentInputs.set(name, 0);
+    for (const name of this.outputNames) this.currentOutputs.set(name, 0);
+  }
+
+  setInputs(inputs: Map<string, number>): void {
+    for (const [name, value] of inputs) {
+      if (this.currentInputs.has(name)) {
+        this.currentInputs.set(name, value);
+      }
+    }
+    this.evaluate();
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  doStep(_currentTime: number, _stepSize: number): void {
+    this.evaluate();
+  }
+
+  getOutputs(): Map<string, number> {
+    return new Map(this.currentOutputs);
+  }
+
+  terminate(): void {
+    this.currentInputs.clear();
+    this.currentOutputs.clear();
+  }
+
+  updateROM(rom: TrainedROM): void {
+    this.rom = rom;
+  }
+
+  getTrainedROM(): TrainedROM {
+    return this.rom;
+  }
+
+  private evaluate(): void {
+    const inputVec = this.inputNames.map((name) => this.currentInputs.get(name) ?? 0);
+    const outputVec = evaluateROM(this.rom, inputVec);
+    for (let i = 0; i < this.outputNames.length; i++) {
+      this.currentOutputs.set(this.outputNames[i] as string, outputVec[i] ?? 0);
+    }
+  }
+}
+
+/**
+ * Registry of FMU subsystems available to the simulator.
  */
 export class FmuSubsystemRegistry {
   private subsystems = new Map<string, FmuSubsystem>();
 
-  /** Register an FMU subsystem under a given instance name. */
   register(instanceName: string, subsystem: FmuSubsystem): void {
     this.subsystems.set(instanceName, subsystem);
   }
 
-  /** Get a registered FMU subsystem by instance name. */
   get(instanceName: string): FmuSubsystem | undefined {
     return this.subsystems.get(instanceName);
   }
 
-  /** Check if an FMU subsystem is registered. */
   has(instanceName: string): boolean {
     return this.subsystems.has(instanceName);
   }
 
-  /** Get all registered subsystems. */
   entries(): IterableIterator<[string, FmuSubsystem]> {
     return this.subsystems.entries();
   }
 
-  /** Initialize all registered FMU subsystems. */
   initializeAll(startTime: number, stopTime: number, stepSize: number): void {
     for (const sub of this.subsystems.values()) {
       sub.initialize(startTime, stopTime, stepSize);
     }
   }
 
-  /** Terminate all registered FMU subsystems. */
   terminateAll(): void {
     for (const sub of this.subsystems.values()) {
       sub.terminate();

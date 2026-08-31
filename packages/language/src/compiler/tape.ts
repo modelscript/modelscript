@@ -8,8 +8,8 @@
  * eliminating object allocations and pointer chasing.
  */
 
-import type { ArenaDAEBuilder } from "./dae-arena.js";
-import { BinOp, ExprKind, UnaryOp } from "./dae-arena.js";
+import type { ArenaDAEBuilder } from "../runtime/wasm_dae.js";
+import { BinOp, ExprKind, UnaryOp } from "../runtime/wasm_dae.js";
 import { StringInterner } from "./interner.js";
 
 export enum TapeOpKind {
