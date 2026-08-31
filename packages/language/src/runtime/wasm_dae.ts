@@ -279,7 +279,42 @@ const DEFAULT_VAR_CAP = 512;
 const DEFAULT_EQ_CAP = 1024;
 const DEFAULT_STMT_CAP = 256;
 const DEFAULT_EXPR_CAP = 4096;
-export class ArenaDAEBuilder {
+/**
+ * Universal DAE Builder interface shared by host-side ArenaDAEBuilder and WebAssembly WasmDaeBridge.
+ */
+export interface IDaeBuilder {
+  addVariable(
+    nameId: StringId | string,
+    type: VarType,
+    variability: Variability,
+    causality: Causality,
+    startVal?: number,
+    flags?: number,
+    shapeDim?: number,
+  ): number;
+  addEquation(kind: EqKind, lhsId: number, rhsId: number, auxId?: number): number;
+  addExpression(kind: ExprKind, data1?: number, left?: number, right?: number): number;
+  addStatement(kind: StmtKind, data1?: number, left?: number, right?: number): number;
+  addBinaryExpr(op: BinOp, left: number, right: number): number;
+  addUnaryExpr(op: UnaryOp, operand: number): number;
+  addRealLiteral(value: number): number;
+  addIntLiteral(value: number): number;
+  addBoolLiteral(value: boolean): number;
+  addStringLiteral(value: string | number): number;
+  addDer(varId: number): number;
+  addName(varId: number): number;
+  addIfElse(condExpr: number, trueExpr: number, falseExpr: number): number;
+  addCall(funcId: number, firstArg: number, argCount: number): number;
+  lookupVariable(name: string | StringId): number;
+  getVarCount(): number;
+  getEqCount(): number;
+  getExprCount(): number;
+  getStmtCount(): number;
+  snapshot(): void;
+  rollback(): void;
+}
+
+export class ArenaDAEBuilder implements IDaeBuilder {
   // ── Variable arena ──
   private varData: Int32Array;
   private _varCount = 0;
@@ -577,6 +612,37 @@ export class ArenaDAEBuilder {
     return clone;
   }
 
+  private _snapshotInstance: ArenaDAEBuilder | null = null;
+
+  snapshot(): void {
+    this._snapshotInstance = this.clone();
+  }
+
+  rollback(): void {
+    if (!this._snapshotInstance) return;
+    const snap = this._snapshotInstance;
+    this.classKind = snap.classKind;
+    this.isImpure = snap.isImpure;
+    this.experiment = { ...snap.experiment };
+    this.varData = new Int32Array(snap.varData);
+    this._varCount = snap._varCount;
+    this.eqData = new Int32Array(snap.eqData);
+    this._eqCount = snap._eqCount;
+    this.exprData = new Int32Array(snap.exprData);
+    this._exprCount = snap._exprCount;
+    this.stmtData = new Int32Array(snap.stmtData);
+    this._stmtCount = snap._stmtCount;
+    this._algorithmSections = [...snap._algorithmSections];
+    this._initialAlgorithmSections = [...snap._initialAlgorithmSections];
+    this._nameIndex = new Map(snap._nameIndex);
+    this._arrayRootIndex = new Map();
+    for (const [k, v] of snap._arrayRootIndex) this._arrayRootIndex.set(k, [...v]);
+    this._encodedIndex = new Map(snap._encodedIndex);
+    this._causalityIndex = new Map();
+    for (const [k, v] of snap._causalityIndex) this._causalityIndex.set(k, [...v]);
+    this._activeVarCount = snap._activeVarCount;
+  }
+
   constructor(interner?: StringInterner, name = "", description = "") {
     this.interner = interner ?? new StringInterner();
     this.nameId = this.interner.intern(name);
@@ -597,6 +663,59 @@ export class ArenaDAEBuilder {
     return this._varCount;
   }
 
+  getVarCount(): number {
+    return this._varCount;
+  }
+
+  getEqCount(): number {
+    return this._eqCount;
+  }
+
+  getExprCount(): number {
+    return this._exprCount;
+  }
+
+  getStmtCount(): number {
+    return this._stmtCount;
+  }
+
+  lookupVariable(name: string | number): number {
+    const varName = typeof name === "number" ? (this.interner.resolve(name) ?? "") : name;
+    return this.getVarIdxByName(varName);
+  }
+
+  addDer(varId: number): number {
+    return this.addExpression(ExprKind.Der, varId);
+  }
+
+  addName(varId: number): number {
+    return this.addExpression(ExprKind.Name, varId);
+  }
+
+  addIfElse(condExpr: number, trueExpr: number, falseExpr: number): number {
+    return this.addExpression(ExprKind.IfElse, condExpr, trueExpr, falseExpr);
+  }
+
+  addCall(funcId: number, firstArg: number, argCount: number): number {
+    return this.addExpression(ExprKind.Call, funcId, firstArg, argCount);
+  }
+
+  addRange(start: number, stop: number, step = 0): number {
+    return this.addExpression(ExprKind.Range, step, start, stop);
+  }
+
+  addSubscript(baseExpr: number, subExpr: number): number {
+    return this.addExpression(ExprKind.Subscript, 0, baseExpr, subExpr);
+  }
+
+  addArrayCtor(firstElem: number, count: number): number {
+    return this.addExpression(ExprKind.ArrayCtor, count, firstElem);
+  }
+
+  addTuple(firstElem: number, count: number): number {
+    return this.addExpression(ExprKind.Tuple, count, firstElem);
+  }
+
   /**
    * Add a variable to the DAE.
    *
@@ -609,13 +728,15 @@ export class ArenaDAEBuilder {
    * @returns The variable index.
    */
   addVariable(
-    name: string,
+    name: string | number,
     type: VarType = VarType.Real,
     variability: Variability = Variability.Continuous,
     causality: Causality = Causality.Local,
     startValue = 0.0,
     flags = 0,
   ): number {
+    const varName = typeof name === "number" ? (this.interner.resolve(name) ?? `v${name}`) : name;
+    const nameId = typeof name === "number" ? name : this.interner.intern(name);
     const idx = this._varCount++;
     this._activeVarCount++;
     const offset = idx * VAR_STRIDE;
@@ -625,7 +746,7 @@ export class ArenaDAEBuilder {
       this.varData = growInt32(this.varData);
     }
 
-    this.varData[offset + VAR_NAME] = this.interner.intern(name);
+    this.varData[offset + VAR_NAME] = nameId;
     this.varData[offset + VAR_TYPE] = type;
     this.varData[offset + VAR_VARIABILITY] = variability;
     this.varData[offset + VAR_CAUSALITY] = causality;
@@ -639,12 +760,12 @@ export class ArenaDAEBuilder {
     this.varData[offset + VAR_SHAPE_DIM] = 0;
 
     // ── Populate secondary indices ──
-    this._nameIndex.set(name, idx);
+    this._nameIndex.set(varName, idx);
 
     // Array root index: "foo[1,2]" → root "foo"
-    const bracketIdx = name.indexOf("[");
+    const bracketIdx = varName.indexOf("[");
     if (bracketIdx > 0) {
-      const root = name.substring(0, bracketIdx);
+      const root = varName.substring(0, bracketIdx);
       let arr = this._arrayRootIndex.get(root);
       if (!arr) {
         arr = [];
@@ -654,10 +775,10 @@ export class ArenaDAEBuilder {
     }
 
     // Encoded variable index: "\0prefix\0suffix" → suffix
-    if (name.startsWith("\0")) {
-      const lastNull = name.lastIndexOf("\0");
+    if (varName.startsWith("\0")) {
+      const lastNull = varName.lastIndexOf("\0");
       if (lastNull > 0) {
-        const suffix = name.substring(lastNull + 1);
+        const suffix = varName.substring(lastNull + 1);
         this._encodedIndex.set(suffix, idx);
       }
     }
@@ -2453,7 +2574,7 @@ end ModelScript;
  *
  * Interfaces with the zero-GC WebAssembly `DaeBuilder` runtime exports.
  */
-export class WasmDaeBridge {
+export class WasmDaeBridge implements IDaeBuilder {
   private readonly exports: any;
   public ptr = 0;
 
@@ -2463,7 +2584,7 @@ export class WasmDaeBridge {
   }
 
   addVariable(
-    nameId: number,
+    nameId: number | string,
     type: VarType,
     variability: Variability,
     causality: Causality,
@@ -2471,7 +2592,8 @@ export class WasmDaeBridge {
     flags = 0,
   ): number {
     if (!this.exports.dae_addVariable) return -1;
-    return this.exports.dae_addVariable(this.ptr, nameId, type, variability, causality, startVal, flags);
+    const nId = typeof nameId === "number" ? nameId : 0;
+    return this.exports.dae_addVariable(this.ptr, nId, type, variability, causality, startVal, flags);
   }
 
   addEquation(kind: EqKind, lhsId: number, rhsId: number, auxId = 0xffffffff): number {
@@ -2496,6 +2618,10 @@ export class WasmDaeBridge {
     return this.addExpression(ExprKind.Binary, op, left, right);
   }
 
+  addUnaryExpr(op: UnaryOp, operand: number): number {
+    return this.addExpression(ExprKind.Unary, op, operand);
+  }
+
   addRealLiteral(value: number): number {
     if (this.exports.dae_addRealLiteral) {
       return this.exports.dae_addRealLiteral(this.ptr, value);
@@ -2508,6 +2634,31 @@ export class WasmDaeBridge {
       return this.exports.dae_addIntLiteral(this.ptr, value);
     }
     return this.addExpression(ExprKind.IntLiteral, value, 0, 0);
+  }
+
+  addBoolLiteral(value: boolean): number {
+    return this.addExpression(ExprKind.BoolLiteral, value ? 1 : 0);
+  }
+
+  addStringLiteral(value: string | number): number {
+    const sId = typeof value === "number" ? value : 0;
+    return this.addExpression(ExprKind.StringLiteral, sId);
+  }
+
+  addRange(start: number, stop: number, step = 0): number {
+    return this.addExpression(ExprKind.Range, step, start, stop);
+  }
+
+  addSubscript(baseExpr: number, subExpr: number): number {
+    return this.addExpression(ExprKind.Subscript, 0, baseExpr, subExpr);
+  }
+
+  addArrayCtor(firstElem: number, count: number): number {
+    return this.addExpression(ExprKind.ArrayCtor, count, firstElem);
+  }
+
+  addTuple(firstElem: number, count: number): number {
+    return this.addExpression(ExprKind.Tuple, count, firstElem);
   }
 
   addDer(varId: number): number {

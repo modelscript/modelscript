@@ -27,7 +27,7 @@
 import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/language/compiler";
 import { parseModArgsFromCst } from "../language.js";
 import { ModelicaPortBalancer } from "./connections.js";
-import { type ModelicaModArgs, getModArg, isBroken, mergeModArgs, subModification } from "./modifications.js";
+import { getModArg, isBroken, mergeModArgs, type ModelicaModArgs, subModification } from "./modifications.js";
 
 // ---------------------------------------------------------------------------
 // Modification Stack — replaces virtual symbol specialization
