@@ -11,7 +11,7 @@ import {
   simulateArena,
   type ArenaDoEInputRange,
 } from "../../compiler/simulator/index.js";
-import { generateRomWasmSource } from "../../fmi/index.js";
+import { generateRomWasmSource } from "../../fmu/index.js";
 import { LspContext } from "../LspContext.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arenaUtils.js";
 

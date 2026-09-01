@@ -234,6 +234,30 @@ export class WasmWorkspaceIndex {
     return fileId;
   }
 
+  has(uri: string): boolean {
+    return this.uriToId.has(uri) || this.fileSymbols.has(uri);
+  }
+
+  markDirty(uri: string, loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
+    if (typeof loader === "function") {
+      const rootNode = loader();
+      if (rootNode) {
+        this.indexCst(uri, rootNode);
+      }
+    } else {
+      this._version++;
+      this._structuralRevision++;
+    }
+  }
+
+  takeGlobalChangedIds(): { changedIds: Set<number> } | null {
+    return { changedIds: new Set<number>() };
+  }
+
+  takeGlobalChangedNames(): Set<string> | null {
+    return new Set<string>();
+  }
+
   private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
     const existingIds = this.fileSymbols.get(uri);
     if (existingIds) {

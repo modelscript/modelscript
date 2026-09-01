@@ -1,4 +1,4 @@
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmi";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmu";
 import {
   type Distribution,
   type RandomVariable,

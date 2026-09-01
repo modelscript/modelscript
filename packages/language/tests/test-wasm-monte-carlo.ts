@@ -152,7 +152,7 @@ console.log("=== Testing WASM Monte Carlo & Uncertainty Quantification Engine ==
   console.log("✓ Tape Monte Carlo batch evaluation passed");
 }
 
-import { initBltWasm } from "../src/compiler/arena-blt.js";
+import { initBltWasm } from "../src/runtime/wasm_blt.js";
 await initBltWasm();
 
 // 6. Test Arena DAE Monte Carlo Sweep & Sensitivity Analysis
@@ -176,6 +176,7 @@ await initBltWasm();
 
   const mcResult = runMonteCarloArena(arena, rv, {
     numSamples: 50,
+    seed: 42,
     simulateOptions: { startTime: 0, stopTime: 1, step: 0.1 },
   });
 

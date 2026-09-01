@@ -82,13 +82,29 @@
       "types": "./dist/diagram/spinner.d.ts",
       "default": "./dist/diagram/spinner.js"
     },
+    "./fmu": {
+      "types": "./dist/fmu/index.d.ts",
+      "default": "./dist/fmu/index.js"
+    },
+    "./fmu/*": {
+      "types": "./dist/fmu/*.d.ts",
+      "default": "./dist/fmu/*.js"
+    },
+    "./ssp": {
+      "types": "./dist/ssp/index.d.ts",
+      "default": "./dist/ssp/index.js"
+    },
+    "./ssp/*": {
+      "types": "./dist/ssp/*.d.ts",
+      "default": "./dist/ssp/*.js"
+    },
     "./fmi": {
-      "types": "./dist/fmi/index.d.ts",
-      "default": "./dist/fmi/index.js"
+      "types": "./dist/fmu/index.d.ts",
+      "default": "./dist/fmu/index.js"
     },
     "./fmi/*": {
-      "types": "./dist/fmi/*.d.ts",
-      "default": "./dist/fmi/*.js"
+      "types": "./dist/fmu/*.d.ts",
+      "default": "./dist/fmu/*.js"
     },
     "./cosim": {
       "types": "./dist/cosim/index.d.ts",

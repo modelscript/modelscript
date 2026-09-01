@@ -9,8 +9,8 @@
  */
 
 import { inflateRawSync } from "zlib";
+import { CoSimSession } from "../cosim/session.js";
 import type { FmuStorage } from "../fmu/storage.js";
-import { CoSimSession } from "../session.js";
 import { parseSsd, parseSsv } from "./ssd-parser.js";
 import type { SspSystem } from "./types.js";
 

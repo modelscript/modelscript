@@ -6,8 +6,7 @@ import type { QueryEngine } from "../runtime/wasm_query_engine.js";
 import type { WasmWorkspaceIndex } from "../runtime/wasm_workspace.js";
 import type { FileSystem, Parser, Tree } from "../utils/index.js";
 
-import type { HomotopyMode } from "./arena-init.js";
-export type { HomotopyMode };
+import type { HomotopyMode } from "../runtime/wasm_init.js";
 export type PreconditionerMode = "none" | "branch-and-bound";
 export interface InitSolverConfig {
   preconditioner?: PreconditionerMode;

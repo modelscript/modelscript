@@ -12,33 +12,8 @@
  * parser dependency.
  */
 
-/** Causality from FMI 2.0 spec. */
-export type FmiCausality = "input" | "output" | "parameter" | "calculatedParameter" | "local" | "independent";
-
-/** Variability from FMI 2.0 spec. */
-export type FmiVariability = "constant" | "fixed" | "tunable" | "discrete" | "continuous";
-
-/** FMI scalar variable descriptor (subset of FMI 2.0 ScalarVariable). */
-export interface FmiScalarVariable {
-  /** Variable name. */
-  name: string;
-  /** Value reference (unique integer identifier). */
-  valueReference: number;
-  /** Description text. */
-  description: string | undefined;
-  /** Causality (input, output, parameter, etc). */
-  causality: FmiCausality;
-  /** Variability (continuous, discrete, etc). */
-  variability: FmiVariability;
-  /** Data type from the child element. */
-  type: "Real" | "Integer" | "Boolean" | "String" | "Enumeration";
-  /** Start value (if specified). */
-  start: number | string | boolean | undefined;
-  /** Unit (Real variables only). */
-  unit: string | undefined;
-  /** Display unit. */
-  displayUnit: string | undefined;
-}
+import type { FmiCausality, FmiScalarVariable, FmiVariability } from "./fmi.js";
+export type { FmiCausality, FmiScalarVariable, FmiVariability };
 
 /** Default experiment from modelDescription.xml. */
 export interface FmiDefaultExperiment {

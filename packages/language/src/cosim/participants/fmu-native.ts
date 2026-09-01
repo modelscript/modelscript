@@ -30,9 +30,9 @@ import { unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createInterface, type Interface } from "readline";
+import type { FmiModelDescription, FmiScalarVariable } from "../../fmu/model-description.js";
+import type { FmuStorage } from "../../fmu/storage.js";
 import type { CosimValue } from "../coupling.js";
-import type { FmiModelDescription, FmiScalarVariable } from "../fmu/model-description.js";
-import type { FmuStorage } from "../fmu/storage.js";
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
 import type { CoSimParticipant } from "../participant.js";
 

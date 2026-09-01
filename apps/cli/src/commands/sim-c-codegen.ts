@@ -13,7 +13,7 @@
  */
 
 import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
-import type { FmiScalarVariable, FmuResult } from "@modelscript/language/fmi";
+import type { FmiScalarVariable, FmuResult } from "@modelscript/language/fmu";
 
 // ── Public interface ──
 

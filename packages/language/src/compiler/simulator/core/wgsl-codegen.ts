@@ -9,7 +9,7 @@
  */
 
 import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../../../runtime/wasm_dae.js";
-import type { GPUArenaBuffers } from "../../arena-gpu-buffers.js";
+import type { GPUArenaBuffers } from "./gpu-buffers.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Operator Mappings

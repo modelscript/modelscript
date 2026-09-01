@@ -1,4 +1,5 @@
-import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "../runtime/wasm_dae.js";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./wasm_dae.js";
 
 // WASM Exports mapped globally within this module
 export let alloc: (size: number) => number;
@@ -179,100 +180,137 @@ export interface ArenaBltResult {
 }
 
 /**
- * Performs Block Lower Triangular (BLT) Transformation natively on the DAE arena.
+ * Performs Block Lower Triangular (BLT) transformation natively on the ArenaDAEBuilder
+ * by constructing adjacency matrices directly from arena expression graphs.
  */
 export function performBltTransformationArena(
   arena: ArenaDAEBuilder,
-  stateVars: Set<number>,
-  dummyDerivatives: Set<number>,
+  stateVars?: Set<string | number>,
+  dummyDerivatives?: Set<string | number>,
 ): ArenaBltResult {
-  // 1. Identify unknown variables (Continuous, Discrete)
-  const unknowns = new Set<number>();
-  const unknownList: number[] = [];
+  if (!isInitialized) {
+    throw new Error("BLT WASM engine not initialized. Call initBltWasm() first.");
+  }
 
-  // 1. Identify unknown variables (Continuous, Discrete)
+  // 1. Identify active continuous/discrete variables and non-binding equations
+  const activeVarIndices: number[] = [];
+  const varToActiveMap = new Map<number, number>();
+
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
-    const v = arena.getVarVariability(i);
-    if (v === Variability.Continuous || v === Variability.Discrete) {
-      if (stateVars.has(i) && !dummyDerivatives.has(i)) {
-        // State variables are managed by the ODE integrator and their values are known
-        continue;
-      }
-      unknowns.add(i);
-      unknownList.push(i);
-    }
-  }
-
-  // 2. Map equations to dependencies
-  const eqDepsArr = new Array<number[]>(arena.eqCount);
-  let totalDepsCount = 0;
-
-  for (let i = 0; i < arena.eqCount; i++) {
-    eqDepsArr[i] = [];
-    if (arena.getEqKind(i) !== EqKind.Simple) {
-      totalDepsCount += 1; // Account for the `0` length written to WASM
+    const variability = arena.getVarVariability(i);
+    // Ignore parameter/constant variables during dynamic equation BLT
+    if (variability === Variability.Parameter || variability === Variability.Constant) {
       continue;
     }
+    // If state variables are specified, the state variable x itself is known at each integration step
+    // (its derivative der(x) is what needs to be solved, unless in dummyDerivatives).
+    if (stateVars && stateVars.has(i) && (!dummyDerivatives || !dummyDerivatives.has(i))) {
+      continue;
+    }
+    varToActiveMap.set(i, activeVarIndices.length);
+    activeVarIndices.push(i);
+  }
+
+  const activeEqIndices: number[] = [];
+  for (let i = 0; i < arena.eqCount; i++) {
+    const kind = arena.getEqKind(i);
+    // Include dynamic Simple and InitialSimple equations
+    if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
+      activeEqIndices.push(i);
+    }
+  }
+
+  const varCount = activeVarIndices.length;
+  const eqCount = activeEqIndices.length;
+
+  if (varCount === 0 || eqCount === 0) {
+    return { sortedEquations: [], blocks: [] };
+  }
+
+  // 2. Build Adjacency List (CSR format expected by computeBlt)
+  const eqActiveDeps: number[][] = [];
+  let totalInts = 0;
+
+  for (let e = 0; e < eqCount; e++) {
+    const eqIdx = activeEqIndices[e]!;
+    const lhs = arena.getEqLhs(eqIdx);
+    const rhs = arena.getEqRhs(eqIdx);
 
     const deps = new Set<number>();
-    // excludeDer=true: variables inside der() are states managed by the
-    // ODE integrator, not algebraic unknowns for the BLT to solve.
-    collectArenaExprDeps(arena, arena.getEqLhs(i), deps, /* excludeDer */ true);
-    collectArenaExprDeps(arena, arena.getEqRhs(i), deps, /* excludeDer */ true);
+    collectArenaExprDeps(arena, lhs, deps, true);
+    collectArenaExprDeps(arena, rhs, deps, true);
 
-    const filteredDeps: number[] = [];
-    for (const d of deps) {
-      if (unknowns.has(d)) filteredDeps.push(d);
+    const activeList: number[] = [];
+    for (const varIdx of deps) {
+      const activeIdx = varToActiveMap.get(varIdx);
+      if (activeIdx !== undefined) {
+        activeList.push(activeIdx);
+      }
     }
-    eqDepsArr[i] = filteredDeps;
-    totalDepsCount += 1 + filteredDeps.length;
+    eqActiveDeps.push(activeList);
+    totalInts += 1 + activeList.length;
   }
 
-  // 3. Allocate and write to WASM memory
-  const adjSize = totalDepsCount * 4;
-  const adjPtr = alloc(adjSize);
-  const adjMem = new Int32Array(memory.buffer, adjPtr, totalDepsCount);
-  let adjOffset = 0;
-  for (let i = 0; i < arena.eqCount; i++) {
-    const deps = eqDepsArr[i] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
-    adjMem[adjOffset++] = deps.length;
-    for (const d of deps) {
-      adjMem[adjOffset++] = d;
+  const adjPtr = alloc(totalInts * 4);
+  const adjView = new Int32Array(memory.buffer, adjPtr, totalInts);
+  let cursor = 0;
+  for (let e = 0; e < eqCount; e++) {
+    const list = eqActiveDeps[e]!;
+    adjView[cursor++] = list.length;
+    for (const activeIdx of list) {
+      adjView[cursor++] = activeIdx;
     }
   }
 
-  const outEqsSize = arena.eqCount * 4;
-  const outEqsPtr = alloc(outEqsSize);
+  // 3. Allocate outputs
+  // outEqs: i32[eqCount]
+  // outBlocks: i32[1 + eqCount * 2 + varCount * 2]
+  const blocksBufCapacity = 1 + (eqCount + varCount) * 2;
+  const outEqsPtr = alloc(eqCount * 4);
+  const outBlocksPtr = alloc(blocksBufCapacity * 4);
 
-  const outBlocksMax = 1 + arena.eqCount * 2 + arena.varCount;
-  const outBlocksSize = outBlocksMax * 4;
-  const outBlocksPtr = alloc(outBlocksSize);
+  // 4. Compute BLT in WASM
+  const numBlocks = computeBlt(varCount, eqCount, adjPtr, outEqsPtr, outBlocksPtr);
 
-  // 4. Execute WASM BLT
-  const blockCount = computeBlt(arena.varCount, arena.eqCount, adjPtr, outEqsPtr, outBlocksPtr);
+  // 5. Read back results
+  const outEqsView = new Int32Array(memory.buffer, outEqsPtr, eqCount);
+  const sortedEquations: number[] = [];
+  for (let i = 0; i < eqCount; i++) {
+    const activeEqIdx = outEqsView[i]!;
+    const origIdx = activeEqIndices[activeEqIdx];
+    if (origIdx !== undefined) {
+      sortedEquations.push(origIdx);
+    }
+  }
 
-  // 5. Read outputs
-  const outEqsMem = new Int32Array(memory.buffer, outEqsPtr, arena.eqCount);
-  const sortedEquations = Array.from(outEqsMem);
-
-  const outBlocksMem = new Int32Array(memory.buffer, outBlocksPtr, outBlocksMax);
+  const outBlocksView = new Int32Array(memory.buffer, outBlocksPtr, blocksBufCapacity);
   const blocks: { eqIdxs: number[]; vars: number[] }[] = [];
 
-  let bOffset = 1;
-  for (let i = 0; i < blockCount; i++) {
-    const eqLen = outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
-    const vLen = outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
-    const eqIdxs: number[] = [];
-    for (let j = 0; j < eqLen; j++) {
-      eqIdxs.push(outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!);
+  let blocksCursor = 1;
+  for (let b = 0; b < numBlocks; b++) {
+    const bEqCount = outBlocksView[blocksCursor++] ?? 0;
+    const bVarCount = outBlocksView[blocksCursor++] ?? 0;
+
+    const bEqs: number[] = [];
+    for (let k = 0; k < bEqCount; k++) {
+      const activeEqIdx = outBlocksView[blocksCursor++] ?? 0;
+      const origEqIdx = activeEqIndices[activeEqIdx];
+      if (origEqIdx !== undefined) bEqs.push(origEqIdx);
     }
-    const blockVars: number[] = [];
-    for (let j = 0; j < vLen; j++) {
-      blockVars.push(outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!);
+
+    const bVars: number[] = [];
+    for (let k = 0; k < bVarCount; k++) {
+      const activeVarIdx = outBlocksView[blocksCursor++] ?? 0;
+      const origVarIdx = activeVarIndices[activeVarIdx];
+      if (origVarIdx !== undefined) bVars.push(origVarIdx);
     }
-    blocks.push({ eqIdxs, vars: blockVars });
+
+    blocks.push({ eqIdxs: bEqs, vars: bVars });
   }
 
-  return { sortedEquations, blocks };
+  return {
+    sortedEquations,
+    blocks,
+  };
 }

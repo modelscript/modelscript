@@ -9,7 +9,7 @@
  */
 
 import { deflateRawSync } from "zlib";
-import type { CoSimSession } from "../session.js";
+import type { CoSimSession } from "../cosim/session.js";
 
 /** Options for SSP export. */
 export interface SspExportOptions {

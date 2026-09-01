@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
 import { ArenaSimulator } from "../../compiler/simulator/index.js";
-import { buildFmuArchive, ModelicaFmuEntity } from "../../fmi/index.js";
+import { buildFmuArchive, ModelicaFmuEntity } from "../../fmu/index.js";
 import { LspContext } from "../LspContext.js";
 
 export function registerInteropEndpoints(context: LspContext) {

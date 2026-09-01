@@ -6,8 +6,8 @@ import { dopri5 } from "../../../runtime/wasm_dopri5.js";
 import { Dual, evaluateArenaDualExpression, evaluateArenaRuntime } from "../../../runtime/wasm_evaluator.js";
 import { type FmuSubsystem, type FmuSubsystemRegistry } from "../../../runtime/wasm_fmu_subsystem.js";
 import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
+import { solveInitialEquationsArena } from "../../../runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "../../../runtime/wasm_statement_executor.js";
-import { solveInitialEquationsArena } from "../../arena-init.js";
 import {
   ArenaDAEBuilder,
   BinOp,
@@ -2061,7 +2061,7 @@ export async function simulateArenaAsync(
 
   if (options?.solver === "webgpu") {
     // ── Phase 5: WebGPU Execution with Fallback ──
-    const { serializeArenaForGPU } = await import("../../arena-gpu-buffers.js");
+    const { serializeArenaForGPU } = await import("./gpu-buffers.js");
     const { WebGPUSimulationRunner } = await import("./webgpu-simulation-runner.js");
 
     // Create the BLT result shape expected by serializeArenaForGPU

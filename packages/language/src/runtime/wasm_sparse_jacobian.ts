@@ -6,8 +6,62 @@
  * Jacobians for stiff ODE/DAE solvers and optimization routines.
  */
 
-import { ArenaDAEBuilder, EqKind, ExprKind, colorJacobianColumns } from "../compiler/index.js";
+import { ArenaDAEBuilder, EqKind, ExprKind } from "./wasm_dae.js";
 import { Dual, evaluateArenaDualExpression } from "./wasm_evaluator.js";
+
+/** Compressed Column Storage sparse matrix. */
+export interface CCSMatrix {
+  row_indices: number[];
+  col_ptr: number[];
+  nnz: number;
+}
+
+export interface ColoringResult {
+  colors: number[];
+  numColors: number;
+  colorGroups: number[][];
+}
+
+/**
+ * Distance-2 column coloring for sparse Jacobian compression.
+ */
+export function colorJacobianColumns(ccs: { row_indices: number[]; col_ptr: number[] }, nCols: number): ColoringResult {
+  const colors = new Array(nCols).fill(-1);
+  const colorGroups: number[][] = [];
+
+  for (let j = 0; j < nCols; j++) {
+    const forbidden = new Set<number>();
+    const start_j = ccs.col_ptr[j] ?? 0;
+    const end_j = ccs.col_ptr[j + 1] ?? 0;
+
+    for (let p_j = start_j; p_j < end_j; p_j++) {
+      const row = ccs.row_indices[p_j] ?? -1;
+      for (let k = 0; k < j; k++) {
+        const start_k = ccs.col_ptr[k] ?? 0;
+        const end_k = ccs.col_ptr[k + 1] ?? 0;
+        for (let p_k = start_k; p_k < end_k; p_k++) {
+          if (ccs.row_indices[p_k] === row) {
+            const c = colors[k];
+            if (c !== -1 && c !== undefined) forbidden.add(c);
+            break;
+          }
+        }
+      }
+    }
+
+    let c = 0;
+    while (forbidden.has(c)) c++;
+    colors[j] = c;
+    while (colorGroups.length <= c) colorGroups.push([]);
+    colorGroups[c]?.push(j);
+  }
+
+  return {
+    colors,
+    numColors: colorGroups.length,
+    colorGroups,
+  };
+}
 
 export interface SparseJacobian {
   n: number;

@@ -32,15 +32,10 @@ export * from "./historian/recorder.js";
 export * from "./historian/replayer.js";
 
 // ── FMU ──
-export * from "./fmu/model-description.js";
-export * from "./fmu/storage.js";
-export * from "./fmu/wrapper-gen.js";
+export * from "../fmu/index.js";
 
 // ── WebSocket ──
 export * from "./ws/stream.js";
 
 // ── SSP ──
-export * from "./ssp/export.js";
-export * from "./ssp/import.js";
-export * from "./ssp/ssd-parser.js";
-export * from "./ssp/types.js";
+export * from "../ssp/index.js";

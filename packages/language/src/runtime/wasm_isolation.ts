@@ -1,10 +1,14 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-import { collectArenaExprDeps } from "../compiler/arena-blt.js";
-import type { ArenaExecutionBlock } from "../compiler/arena-execution.js";
+import { collectArenaExprDeps } from "./wasm_blt.js";
 import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "./wasm_dae.js";
 import { Polynomial, Term, computeGroebnerBasis } from "./wasm_groebner.js";
+
+/**
+ * An execution block natively representing a sorted step in the ArenaDAEBuilder evaluation order.
+ */
+export type ArenaExecutionBlock =
+  | { type: "single"; varIdx: number; exprId: number }
+  | { type: "system"; eqIdxs: number[]; vars: number[] }
+  | { type: "algorithm"; stmtIdxs: number[] };
 
 /**
  * Checks if the arena equation is explicitly solvable for the target variable.

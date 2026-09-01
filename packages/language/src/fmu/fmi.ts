@@ -17,7 +17,7 @@ import type { SolverOptions } from "./solver-options.js";
 // ── Public interface ──
 
 /** FMI variable causality. */
-export type FmiCausality = "input" | "output" | "parameter" | "local" | "independent";
+export type FmiCausality = "input" | "output" | "parameter" | "calculatedParameter" | "local" | "independent";
 
 /** FMI variable variability. */
 export type FmiVariability = "constant" | "fixed" | "tunable" | "discrete" | "continuous";
@@ -34,8 +34,8 @@ export interface FmiScalarVariable {
   variability: FmiVariability;
   /** Description string (optional). */
   description?: string;
-  /** Data type: Real, Integer, Boolean, String, Clock. */
-  type: "Real" | "Integer" | "Boolean" | "String" | "Clock";
+  /** Data type: Real, Integer, Boolean, String, Clock, Enumeration. */
+  type: "Real" | "Integer" | "Boolean" | "String" | "Clock" | "Enumeration";
   /** Start value (initial condition or default). */
   start?: string | number | boolean;
   /** SI unit string (optional). */

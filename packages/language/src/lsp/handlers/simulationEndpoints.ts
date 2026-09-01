@@ -4,7 +4,7 @@ import { ArenaDAEBuilder, Causality } from "../../compiler/index.js";
 import { simulateArena, simulateArenaAsync } from "../../compiler/simulator/index.js";
 import { CoSimSession, Orchestrator } from "../../cosim/index.js";
 import { WasmOpenFoamProvider } from "../../cosim/participants/cfd-provider.js";
-import { generateMultiModelWrapper } from "../../fmi/index.js";
+import { generateMultiModelWrapper } from "../../fmu/index.js";
 import { LspContext } from "../LspContext.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";

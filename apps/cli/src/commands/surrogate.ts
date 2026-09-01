@@ -1,6 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
-import { generateRomWasmSource } from "@modelscript/language/fmi";
+import { generateRomWasmSource } from "@modelscript/language/fmu";
 import type { ArenaDoEInputRange } from "@modelscript/language/simulator";
 import { buildArenaSurrogate } from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";

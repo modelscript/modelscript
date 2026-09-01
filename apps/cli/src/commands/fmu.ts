@@ -13,7 +13,7 @@ import {
   generateFmuAsSources,
   generateFmuCSources,
   generateFmuWasmSource,
-} from "@modelscript/language/fmi";
+} from "@modelscript/language/fmu";
 import { ArenaSimulator } from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";

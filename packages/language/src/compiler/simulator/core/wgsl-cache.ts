@@ -1,4 +1,4 @@
-import type { GPUArenaBuffers } from "../../arena-gpu-buffers.js";
+import type { GPUArenaBuffers } from "./gpu-buffers.js";
 
 const DB_NAME = "modelscript-wgsl-cache";
 const STORE_NAME = "shaders";

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { FmiModelDescription, FmiScalarVariable } from "../fmu/model-description.js";
-import type { FmuStorage, StoredFmu } from "../fmu/storage.js";
+import type { FmiModelDescription, FmiScalarVariable } from "../../fmu/model-description.js";
+import type { FmuStorage, StoredFmu } from "../../fmu/storage.js";
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
 import type { CoSimParticipant } from "../participant.js";
 

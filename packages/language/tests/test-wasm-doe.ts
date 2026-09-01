@@ -119,7 +119,7 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────────
   console.log("Test 5: End-to-end model parameter sweep via runArenaDoE...");
 
-  const { initBltWasm } = await import("../src/compiler/arena-blt.js");
+  const { initBltWasm } = await import("../src/runtime/wasm_blt.js");
   await initBltWasm();
 
   const { ArenaDAEBuilder, BinOp, EqKind, UnaryOp, VarType, Variability } = await import("../src/compiler/index.js");
