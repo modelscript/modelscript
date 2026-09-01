@@ -3417,7 +3417,7 @@ export class LspFacade {
     const prevAstRoot = this.getDocumentRoot(uri);
     let baseRoot = prevAstRoot;
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = lenBytes;
+      editNewEnd = text.length;
       baseRoot = 0;
     }
     const newAstRoot = this.exports.parse(

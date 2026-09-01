@@ -22,7 +22,6 @@ import {
 } from "@modelscript/language/compiler";
 
 import csvLangDef from "@modelscript/csv/language";
-import * as ModelicaAST from "./ast.js";
 import modelicaLangDef from "./language.js";
 
 const INDEXER_HOOKS = extractIndexerHooks(modelicaLangDef);
@@ -31,38 +30,6 @@ const REF_HOOKS = extractRefHooks(modelicaLangDef);
 
 const csvIndexerHooks = extractIndexerHooks(csvLangDef);
 const csvQueryHooks = extractQueryHooksMap(csvLangDef);
-
-import {
-  ModelicaArrayClassInstance,
-  ModelicaBooleanClassInstance,
-  ModelicaClassInstance,
-  ModelicaClockClassInstance,
-  ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaElementModification,
-  ModelicaEnumerationClassInstance,
-  ModelicaExpressionClassInstance,
-  ModelicaExtendsClassInstance,
-  ModelicaIntegerClassInstance,
-  ModelicaModification,
-  ModelicaPredefinedClassInstance,
-  ModelicaRealClassInstance,
-  ModelicaShortClassInstance,
-  ModelicaStringClassInstance,
-  registerAbstractSyntaxNodeFactory,
-  registerAnnotationEvaluator,
-} from "./semantic-model.js";
-
-import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
-
-// Bridge the Polyglot CST to the Legacy AST for flattener and simulator compatibility.
-// This preserves the @modelscript/modelica package's decoupling from modelica-ast.
-registerAbstractSyntaxNodeFactory((cst: any) => ModelicaAST.ModelicaSyntaxNode.new(null, cst));
-
-registerAnnotationEvaluator((ast: any, name: string, evalScope?: any, overrideModification?: any) => {
-  const evaluator = new AnnotationEvaluator(evalScope, overrideModification);
-  return evaluator.evaluate(ast, name);
-});
 
 import { modelicaEvaluator } from "./expression-evaluator.js";
 
@@ -335,22 +302,3 @@ export function createModelicaLSPBridge(
 
 import { MsimParser } from "./msim-parser.js";
 export { injectPredefinedTypes, LSPBridge, MsimParser, PositionIndex, QueryEngine, ScopeResolver, WorkspaceIndex };
-
-export {
-  ModelicaArrayClassInstance,
-  ModelicaBooleanClassInstance,
-  ModelicaClassInstance,
-  ModelicaClockClassInstance,
-  ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaElementModification,
-  ModelicaEnumerationClassInstance,
-  ModelicaExpressionClassInstance,
-  ModelicaExtendsClassInstance,
-  ModelicaIntegerClassInstance,
-  ModelicaModification,
-  ModelicaPredefinedClassInstance,
-  ModelicaRealClassInstance,
-  ModelicaShortClassInstance,
-  ModelicaStringClassInstance,
-};

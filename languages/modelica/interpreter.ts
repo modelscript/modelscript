@@ -129,13 +129,21 @@ export class ModelicaAlgorithmScope extends Scope {
   }
 }
 
-import {
-  ModelicaArrayClassInstance,
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaEnumerationClassInstance,
-  ModelicaExpressionClassInstance,
-} from "./semantic-model.js";
+function isClassInstance(x: any): boolean {
+  return !!(x && (x.isClassInstance || x.kind === "Class" || x.classKind));
+}
+function isComponentInstance(x: any): boolean {
+  return !!(x && (x.isComponentInstance || x.kind === "Component"));
+}
+function isArrayClassInstance(x: any): boolean {
+  return !!(x && (x.isArrayClassInstance || "shape" in x || x.classKind === "array"));
+}
+function isEnumClassInstance(x: any): boolean {
+  return !!(x && (x.isEnumerationClassInstance || x.classKind === "type" || x.kind === "Enumeration"));
+}
+function isExprClassInstance(x: any): boolean {
+  return !!(x && (x.isExpressionClassInstance || x.classKind === "expression"));
+}
 
 /**
  * Lightweight shim avoiding legacy Polyglot wrapper instantiation inside execution loops.
@@ -862,9 +870,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
             result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
           }
         }
-      } else if (namedElement instanceof ModelicaClassInstance) {
+      } else if (isClassInstance(namedElement)) {
         result = ModelicaExpression.fromClassInstance(namedElement);
-      } else if (namedElement && (namedElement as any).classInstance instanceof ModelicaClassInstance) {
+      } else if (namedElement && isClassInstance((namedElement as any).classInstance)) {
         // For SyntheticInterpreterVariable (and similar), prefer the evaluatedExpression
         // which contains the actual computed value from algorithm execution.
         const evalExpr =
@@ -935,9 +943,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
       if (
         !result &&
-        (namedElement instanceof ModelicaExpressionClassInstance ||
-          (namedElement instanceof ModelicaComponentInstance &&
-            namedElement.classInstance instanceof ModelicaExpressionClassInstance))
+        (isExprClassInstance(namedElement) ||
+          (isComponentInstance(namedElement) && isExprClassInstance(namedElement.classInstance)))
       ) {
         result = new ModelicaNameExpression(node.parts.map((p) => p.identifier?.text).join("."));
       }
@@ -981,10 +988,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (!firstElement) return null;
 
     let result: ModelicaExpression | null;
-    if (firstElement instanceof ModelicaComponentInstance) {
-      if (!firstElement.instantiated && !firstElement.instantiating) firstElement.instantiate();
+    if (isComponentInstance(firstElement)) {
+      if (!firstElement.instantiated && !firstElement.instantiating && typeof firstElement.instantiate === "function")
+        firstElement.instantiate();
       result = ModelicaExpression.fromClassInstance(firstElement.classInstance);
-    } else if (firstElement instanceof ModelicaClassInstance) {
+    } else if (isClassInstance(firstElement)) {
       result = ModelicaExpression.fromClassInstance(firstElement);
     } else {
       return null;
@@ -1252,13 +1260,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (arrayRefExpr instanceof ModelicaComponentReferenceSyntaxNode) {
       const namedElement = scope.resolveComponentReference(arrayRefExpr);
 
-      let arrayClassInstance: ModelicaArrayClassInstance | null = null;
-      if (namedElement instanceof ModelicaComponentInstance) {
-        if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-        if (namedElement.classInstance instanceof ModelicaArrayClassInstance) {
+      let arrayClassInstance: any | null = null;
+      if (isComponentInstance(namedElement)) {
+        if (!namedElement.instantiated && !namedElement.instantiating && typeof namedElement.instantiate === "function")
+          namedElement.instantiate();
+        if (isArrayClassInstance(namedElement.classInstance)) {
           arrayClassInstance = namedElement.classInstance;
         }
-      } else if (namedElement instanceof ModelicaArrayClassInstance) {
+      } else if (isArrayClassInstance(namedElement)) {
         arrayClassInstance = namedElement;
       }
       if (arrayClassInstance) {
@@ -1308,11 +1317,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
       // Handle size(E, 1) where E is an enumeration type — return count of literals
       if (!shape) {
-        let enumClass: ModelicaEnumerationClassInstance | null = null;
-        if (namedElement instanceof ModelicaEnumerationClassInstance) {
+        let enumClass: any | null = null;
+        if (isEnumClassInstance(namedElement)) {
           enumClass = namedElement;
-        } else if (namedElement instanceof ModelicaComponentInstance) {
-          if (namedElement.classInstance instanceof ModelicaEnumerationClassInstance) {
+        } else if (isComponentInstance(namedElement)) {
+          if (isEnumClassInstance(namedElement.classInstance)) {
             enumClass = namedElement.classInstance;
           }
         }
@@ -2037,7 +2046,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
 
     const functionInstance = scope.resolveComponentReference(node.functionReference);
-    if (!(functionInstance instanceof ModelicaClassInstance)) {
+    if (!isClassInstance(functionInstance)) {
       // Fallback: construct an unresolved symbolic function call for algebraic manipulation
       const args = this.evaluateArgs(node, scope).filter((a): a is ModelicaExpression => a !== null);
       if (node.functionReference) {
@@ -2051,8 +2060,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
     let fqName = "";
     let current: Scope | null = functionInstance as any;
-    while (current && current instanceof ModelicaClassInstance && current.name) {
-      fqName = fqName ? `${current.name}.${fqName}` : current.name;
+    while (current && isClassInstance(current) && (current as any).name) {
+      fqName = fqName ? `${(current as any).name}.${fqName}` : (current as any).name;
       current = current.parent;
     }
 
@@ -2269,7 +2278,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       ) {
         currentExpr = componentTarget.evaluatedExpression;
       }
-      if (!currentExpr && componentTarget.classInstance instanceof ModelicaArrayClassInstance) {
+      if (!currentExpr && isArrayClassInstance(componentTarget.classInstance)) {
         currentExpr = buildFilledArray(componentTarget.classInstance.shape, new ModelicaIntegerLiteral(0));
       }
       if (currentExpr instanceof ModelicaArray) {
@@ -2348,8 +2357,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           else if (value instanceof ModelicaArray) typeName = "Real"; // array fallback
 
           const typeDefinition = scope.resolveSimpleName(typeName);
-          if (typeDefinition instanceof ModelicaClassInstance) {
-            componentTarget.classInstance = typeDefinition.clone(toModArgs(value));
+          if (isClassInstance(typeDefinition)) {
+            componentTarget.classInstance = (typeDefinition as any).clone(toModArgs(value));
           }
         }
       }
@@ -2375,7 +2384,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     scope: Scope,
   ): ModelicaExpression | null {
     const functionInstance = scope.resolveComponentReference(functionReference);
-    if (!(functionInstance instanceof ModelicaClassInstance)) return null;
+    if (!isClassInstance(functionInstance)) return null;
     if (functionInstance.classKind !== ModelicaClassKind.FUNCTION) return null;
 
     const parameters: ModelicaParameterModification[] = [];

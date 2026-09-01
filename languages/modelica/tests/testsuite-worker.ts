@@ -27,16 +27,21 @@ globalThis.WeakRef = class WeakRefMock {
 
 import { simulateArena } from "@modelscript/language/simulator";
 
-import { createWasmParser } from "@modelscript/language";
 import { ArenaDAEPrinter } from "@modelscript/language/compiler";
 import { StringWriter } from "@modelscript/language/utils";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
-import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Context } from "../context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+const { parser } = await createWasmParser(modelicaWasm);
+Context.registerParser(".mo", parser as any);
 
 function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
   return text
@@ -52,14 +57,6 @@ function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
     .join("\n")
     .trim();
 }
-
-// ── WebAssembly parser setup ──────────────────────────────────────────────────
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
-const { parser } = await createWasmParser(modelicaWasm);
-Context.registerParser(".mo", parser);
 
 // ── Types (duplicated from runner — kept in sync) ────────────────────────────
 
@@ -193,13 +190,21 @@ function formatSimulationCsv(csvContent: string): string {
 // ── Test execution (arena-native pipeline) ───────────────────────────────────
 
 function resolveClassName(context: Context, testCase: TestCase): string {
-  const classes = context.classes;
+  const baseTestName = testCase.metadata.name.replace(/\.mo$/, "");
+  const userClasses = context.classes.filter(
+    (c) =>
+      !c.entry?.resourceId?.startsWith("modelscript-") &&
+      !c.entry?.resourceId?.startsWith("__predefined__") &&
+      !c.name.startsWith("ModelScript") &&
+      c.name !== "Material",
+  );
+  const classes = userClasses.length > 0 ? userClasses : context.classes;
 
   // First, check if the test name matches a class that is NOT a function/package.
   // If there's a model/class with the exact test name, use it.
   const exactNonFunc = classes.find(
     (c) =>
-      c.name === testCase.metadata.name &&
+      (c.name === testCase.metadata.name || c.name === baseTestName) &&
       c.classKind !== ModelicaClassKind.FUNCTION &&
       c.classKind !== ModelicaClassKind.PACKAGE,
   );
@@ -215,14 +220,17 @@ function resolveClassName(context: Context, testCase: TestCase): string {
     // For packages with nested models, look inside
     if (lastModel.classKind === ModelicaClassKind.PACKAGE) {
       let nestedName: string | null = null;
-      for (const element of lastModel.elements) {
+      const childIds = lastModel.db?.index?.childrenOf?.get(lastModel.id) || [];
+      for (const childId of childIds) {
+        const entry = lastModel.db?.symbol(childId);
         if (
-          element instanceof ModelicaClassInstance &&
-          element.classKind !== ModelicaClassKind.PACKAGE &&
-          element.classKind !== ModelicaClassKind.FUNCTION &&
-          element.name
+          entry &&
+          entry.kind === "Class" &&
+          (entry.metadata as any)?.classKind !== ModelicaClassKind.PACKAGE &&
+          (entry.metadata as any)?.classKind !== ModelicaClassKind.FUNCTION &&
+          entry.name
         ) {
-          nestedName = `${lastModel.name}.${element.name}`;
+          nestedName = `${lastModel.name}.${entry.name}`;
         }
       }
       return nestedName ?? lastModel.name;
@@ -231,13 +239,13 @@ function resolveClassName(context: Context, testCase: TestCase): string {
   }
 
   // Fallback: if only functions exist, use the test name (which may be the function itself)
-  if (classes.some((c) => c.name === testCase.metadata.name)) {
-    return testCase.metadata.name;
+  if (classes.some((c) => c.name === testCase.metadata.name || c.name === baseTestName)) {
+    return classes.find((c) => c.name === testCase.metadata.name || c.name === baseTestName)?.name ?? baseTestName;
   }
 
   // Last resort: use the last class regardless of kind
   const lastClass = classes[classes.length - 1];
-  return lastClass?.name ?? testCase.metadata.name;
+  return lastClass?.name ?? baseTestName;
 }
 
 function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: boolean, omcMode = false): TestResult {
@@ -266,10 +274,18 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     if (testCase.file.includes("Vectorizable6.mo")) {
       fs.writeFileSync("/tmp/source.txt", testCase.source);
     }
-    context.load(testCase.source);
-
+    context.load(testCase.source, testCase.file);
+    console.error(
+      "[DEBUG] context.classes:",
+      context.classes.map((c) => ({ name: c.name, kind: c.classKind, res: c.entry?.resourceId })),
+    );
+    console.error(
+      "[DEBUG] symbols for file:",
+      Array.from(context.queryEngine.index.symbols.values())
+        .filter((s) => s.resourceId === testCase.file)
+        .map((s) => ({ id: s.id, name: s.name, kind: s.kind, parentId: s.parentId })),
+    );
     lastClassName = resolveClassName(context, testCase);
-    console.error(`[Worker] Resolved class: ${lastClassName}`);
 
     let omcExpected = "";
     if (omcMode) {
@@ -537,6 +553,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     };
 
     // ── Arena-native flattening ──
+    console.error("[Worker Debug lastClassName]", lastClassName);
     const t_flatten_start = Date.now();
     const arena = context.flattenArena(lastClassName, undefined, undefined, { omcCompatibility: true });
     console.error(`[Worker] flattenArena took ${Date.now() - t_flatten_start}ms`);

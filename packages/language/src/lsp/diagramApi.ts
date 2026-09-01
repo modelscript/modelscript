@@ -5,7 +5,6 @@
 // based on the document URI. This replaces the per-method if-branching that
 // was previously scattered across 12 handlers in browserServerMain.ts.
 
-import type { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import type { TextEdit } from "vscode-languageserver";
 import { buildComponentProperties, buildDiagramData } from "./diagramData.js";
 import {
@@ -51,9 +50,11 @@ export interface DiagramBackend {
 // ── Modelica Backend ──
 
 export interface ModelicaBackendDeps {
-  getDocumentInstances: (uri: string) => ModelicaClassInstance[] | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getDocumentInstances: (uri: string) => any[] | undefined;
   getDocumentText: (uri: string) => string | undefined;
-  resolveClassInstance: (uri: string, className?: string) => ModelicaClassInstance | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolveClassInstance: (uri: string, className?: string) => any | null;
   flushValidation: (uri: string) => Promise<void>;
 }
 
@@ -338,7 +339,8 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
 
 export function processDiagramEditBatch(
   request: DiagramApplyEditsParams,
-  classInstance: ModelicaClassInstance,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  classInstance: any,
   docText: string,
 ): DiagramApplyEditsResult {
   const allEdits: TextEdit[] = [];

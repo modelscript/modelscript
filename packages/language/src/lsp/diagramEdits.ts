@@ -4,7 +4,8 @@
 // Ported from morsel's morsel.tsx (getPlacementEdit, getConnectEdits,
 // handleEdgeDelete, handleComponentsDelete) to produce LSP TextEdit arrays.
 
-import type { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ModelicaClassInstance = any;
 import { Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "./diagramProtocol.js";
@@ -41,7 +42,7 @@ export function computePlacementEdits(
 }
 
 function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance, item: PlacementItem): TextEdit | null {
-  const component = Array.from(classInstance.components).find((c) => c.name === item.name);
+  const component = Array.from(classInstance.components).find((c: any) => c.name === item.name);
   if (!component) return null;
 
   const originX = Math.round(item.x + item.width / 2);
@@ -71,7 +72,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   let flipX = false;
   let flipY = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const placement: any = component.annotation("Placement");
+  const placement: any = (component as any).annotation("Placement");
   const extent = placement?.transformation?.extent;
   if (extent && extent.length >= 2) {
     const [[x1, y1], [x2, y2]] = extent;
@@ -165,7 +166,7 @@ function getPlacementEditIfMissing(
   classInstance: ModelicaClassInstance,
   item: PlacementItem,
 ): TextEdit | null {
-  const component = Array.from(classInstance.components).find((c) => c.name === item.name);
+  const component = Array.from(classInstance.components).find((c: any) => c.name === item.name);
   if (!component) return null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -297,7 +298,7 @@ export function computeConnectRemove(
 ): TextEdit[] {
   const lines = docText.split("\n");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
+  const connectEq: any = Array.from(classInstance.connectEquations).find((ce: any) => {
     const c1 = ce.componentReference1?.parts
       .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
       .join(".");
@@ -355,7 +356,7 @@ export function computeComponentsDelete(
 
   // Remove component declarations
   for (const name of names) {
-    const component = Array.from(classInstance.components).find((c) => c.name === name);
+    const component = Array.from(classInstance.components).find((c: any) => c.name === name);
     if (!component) continue;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const node = (component as any).abstractSyntaxNode?.parent;
@@ -387,7 +388,7 @@ export function computeEdgePointEdits(
 
   for (const edge of edges) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
+    const connectEq: any = Array.from(classInstance.connectEquations).find((ce: any) => {
       const c1 = ce.componentReference1?.parts
         .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
         .join(".");

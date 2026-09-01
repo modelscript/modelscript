@@ -5,8 +5,6 @@ import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
-import modelicaLangFallback from "@modelscript/modelica/language";
-import { ModelicaClassInstance, ModelicaComponentInstance } from "@modelscript/modelica/semantic-model";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
@@ -229,7 +227,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         if (startTime !== undefined) simOpts.startTime = startTime;
         if (stopTime !== undefined) simOpts.stopTime = stopTime;
         if (interval !== undefined) simOpts.step = interval;
-        const result = simulateArena(arena, simOpts);
+        const result = simulateArena(arena as any, simOpts);
         const states = result.states;
 
         if ((format ?? "json") === "csv") {
@@ -279,7 +277,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const u = new UnifiedWorkspace();
       const mIdx = { version: 0, fileCount: 0 };
       const sIdx = { version: 0, fileCount: 0 };
-      u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
+      u.registerWorkspace("modelica", mIdx, {} as any);
       u.registerWorkspace("sysml2", sIdx, sysml2LangFallback);
 
       const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
@@ -379,7 +377,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const simOpts: ArenaSimulateOptions = {};
         if (stopTime !== undefined) simOpts.stopTime = stopTime;
 
-        const doeResult = runArenaDoE(arena, {
+        const doeResult = runArenaDoE(arena as any, {
           inputs: inputMap,
           outputs,
           strategy: strategy ?? "sobol",
@@ -456,7 +454,13 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           if (spec.perturbation !== undefined) perturbationFactor = spec.perturbation;
         }
 
-        const result = runSensitivityAnalysisArena(arena, parameterNames, nominalValues, perturbationFactor, simOpts);
+        const result = runSensitivityAnalysisArena(
+          arena as any,
+          parameterNames,
+          nominalValues,
+          perturbationFactor,
+          simOpts,
+        );
 
         // Convert Maps to plain objects for JSON serialization
         const serialized: Record<string, Record<string, number>> = {};
@@ -510,7 +514,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
-      const element = ctx.current.query(name);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const element: any = ctx.current.query(name);
       if (!element) {
         return {
           content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
@@ -518,7 +523,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
-      if (!(element instanceof ModelicaClassInstance)) {
+      if (element.isClassInstance === false || (element.kind && element.kind === "Component")) {
         return {
           content: [{ type: "text" as const, text: `'${name}' is not a class.` }],
           isError: true,
@@ -529,14 +534,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const components: { name: string; type: string; description: string }[] = [];
       const extends_: string[] = [];
 
-      for (const child of element.elements) {
-        if (child instanceof ModelicaComponentInstance) {
+      for (const child of element.elements || []) {
+        if (child.isComponentInstance || child.kind === "Component") {
           components.push({
             name: child.name ?? "",
-            type: child.classInstance?.name ?? "",
+            type: child.classInstance?.name ?? child.type ?? "",
             description: child.description ?? "",
           });
-        } else if (child instanceof ModelicaClassInstance) {
+        } else if (child.isClassInstance || child.kind === "Class" || child.classKind) {
           // Nested class or extends
         }
       }

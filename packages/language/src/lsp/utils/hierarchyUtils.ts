@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-// @ts-nocheck
-import { ClassHierarchyNode, ComponentTreeNode, ModelicaClassInstance, TreeNodeInfo } from "../../compiler/index.js";
+import { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "../../compiler/index.js";
 
 export const CLASS_KIND_KEYWORDS = [
   "class",
@@ -216,18 +214,27 @@ export function hasClassChildren(index: any, symbolId: number): boolean {
 }
 
 export function buildClassHierarchy(
-  classInstance: ModelicaClassInstance,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  classInstance: any,
   visited = new Set<string>(),
 ): ClassHierarchyNode {
+  if (!classInstance) {
+    return { name: "<unknown>", kind: "class", description: null, children: [] };
+  }
   const name = classInstance.compositeName || classInstance.name || "<unknown>";
   if (visited.has(name)) {
-    return { name, kind: classInstance.classKind || "class", description: classInstance.description, children: [] };
+    return {
+      name,
+      kind: classInstance.classKind || classInstance.kind || "class",
+      description: classInstance.description,
+      children: [],
+    };
   }
   visited.add(name);
 
   const children: ClassHierarchyNode[] = [];
   try {
-    for (const ext of classInstance.extendsClassInstances) {
+    for (const ext of classInstance.extendsClassInstances || []) {
       if (ext.classInstance) {
         children.push(buildClassHierarchy(ext.classInstance, visited));
       }
@@ -238,23 +245,24 @@ export function buildClassHierarchy(
 
   return {
     name,
-    kind: classInstance.classKind || "class",
+    kind: classInstance.classKind || classInstance.kind || "class",
     description: classInstance.description,
     children,
   };
 }
 
-export function buildComponentTree(classInstance: ModelicaClassInstance, depth = 0): ComponentTreeNode {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildComponentTree(classInstance: any, depth = 0): ComponentTreeNode {
   const children: ComponentTreeNode[] = [];
-  if (depth < 5) {
+  if (classInstance && depth < 5) {
     try {
-      for (const comp of classInstance.components) {
-        if (comp instanceof ModelicaComponentInstance) {
+      for (const comp of classInstance.components || classInstance.elements || []) {
+        if (comp.isComponentInstance || comp.kind === "Component") {
           const childCI = comp.classInstance;
           const childNode: ComponentTreeNode = {
             name: comp.name || "<unnamed>",
-            typeName: childCI?.name || "<unknown>",
-            kind: childCI?.classKind || "unknown",
+            typeName: childCI?.name || comp.type || "<unknown>",
+            kind: childCI?.classKind || childCI?.kind || "unknown",
             variability: comp.variability,
             causality: comp.causality,
             description: comp.description,
@@ -277,12 +285,12 @@ export function buildComponentTree(classInstance: ModelicaClassInstance, depth =
   }
 
   return {
-    name: classInstance.name || "<unnamed>",
-    typeName: classInstance.compositeName || classInstance.name || "<unnamed>",
-    kind: classInstance.classKind || "class",
+    name: classInstance?.name || "<unnamed>",
+    typeName: classInstance?.compositeName || classInstance?.name || "<unnamed>",
+    kind: classInstance?.classKind || classInstance?.kind || "class",
     variability: null,
     causality: null,
-    description: classInstance.description,
+    description: classInstance?.description || null,
     children,
   };
 }

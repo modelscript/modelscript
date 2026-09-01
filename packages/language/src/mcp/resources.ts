@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ModelicaClassInstance, ModelicaComponentInstance } from "@modelscript/modelica/semantic-model";
 import type { ServerContext } from "./types.js";
 
 /**
@@ -60,11 +59,11 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     const classes: { name: string; kind: string; library: string }[] = [];
     for (const lib of ctx.current.listLibraries()) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const element of (lib as any).elements) {
-        if (element instanceof ModelicaClassInstance) {
+      for (const element of (lib as any).elements || []) {
+        if (element && (element.isClassInstance || element.kind === "Class" || element.classKind)) {
           classes.push({
             name: element.name ?? "<anonymous>",
-            kind: element.classKind ?? "class",
+            kind: element.classKind ?? element.kind ?? "class",
             library: lib.name ?? "<unknown>",
           });
         }
@@ -75,7 +74,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     for (const cls of ctx.current.classes) {
       classes.push({
         name: cls.name ?? "<anonymous>",
-        kind: cls.classKind ?? "class",
+        kind: cls.classKind ?? cls.kind ?? "class",
         library: "<inline>",
       });
     }
@@ -107,7 +106,8 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     }
 
     const name = uri.pathname.replace(/^\/\/classes\//, "");
-    const element = ctx.current.query(name);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element: any = ctx.current.query(name);
 
     if (!element) {
       return {
@@ -121,7 +121,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
       };
     }
 
-    if (!(element instanceof ModelicaClassInstance)) {
+    if (element.isClassInstance === false || (element.kind && element.kind === "Component")) {
       return {
         contents: [
           {
@@ -136,17 +136,17 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     const components: { name: string; type: string; description: string }[] = [];
     const childClasses: { name: string; kind: string }[] = [];
 
-    for (const child of element.elements) {
-      if (child instanceof ModelicaComponentInstance) {
+    for (const child of element.elements || []) {
+      if (child.isComponentInstance || child.kind === "Component") {
         components.push({
           name: child.name ?? "",
-          type: child.classInstance?.name ?? "",
+          type: child.classInstance?.name ?? child.type ?? "",
           description: child.description ?? "",
         });
-      } else if (child instanceof ModelicaClassInstance) {
+      } else if (child.isClassInstance || child.kind === "Class" || child.classKind) {
         childClasses.push({
           name: child.name ?? "",
-          kind: child.classKind ?? "class",
+          kind: child.classKind ?? child.kind ?? "class",
         });
       }
     }

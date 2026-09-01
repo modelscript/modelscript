@@ -20,7 +20,6 @@ export * from "../modelica-scopes.js";
 export * from "../multibody-generator.js";
 export * from "../po.js";
 export * from "../scripting.js";
-export * from "../semantic-model.js";
 export * from "../shape-flattener.js";
 export * from "../studies.js";
 export * from "../study-flattener.js";

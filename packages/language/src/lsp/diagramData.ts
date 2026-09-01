@@ -35,7 +35,10 @@ import {
 
 import { ModelicaClassKind, ModelicaVariability } from "@modelscript/modelica/types";
 
-import { ModelicaComponentInstance, type ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ModelicaClassInstance = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ModelicaComponentInstance = any;
 
 // Import canonical types from the protocol module and re-export for
 // backward compatibility with consumers that import from diagramData.
@@ -1321,8 +1324,11 @@ export function buildComponentProperties(
 
   // Extract parameters
   const parameters: ComponentPropertyData["parameters"] = [];
-  for (const element of componentClassInstance.elements) {
-    if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
+  for (const element of componentClassInstance.elements || []) {
+    if (
+      (element.isComponentInstance || element.kind === "Component") &&
+      element.variability === ModelicaVariability.PARAMETER
+    ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const compArgExpr = (component.modification as any)?.getModificationArgument(element.name ?? "")?.expression;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

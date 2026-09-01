@@ -18,7 +18,7 @@ export function registerReplEndpoints(context: LspContext) {
       }
 
       if (!replInterpreter) {
-        replInterpreter = new ArenaScriptInterpreter(queryEngine);
+        replInterpreter = new ArenaScriptInterpreter(queryEngine as any);
       }
 
       // We append a newline to ensure tree-sitter treats single-line statements correctly

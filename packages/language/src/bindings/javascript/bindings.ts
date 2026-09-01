@@ -3478,7 +3478,7 @@ export class LspFacade {
 
     let baseRoot = prevAstRoot;
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = lenBytes;
+      editNewEnd = text.length;
       baseRoot = 0;
     }
 

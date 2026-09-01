@@ -116,6 +116,37 @@ export interface IPredefinedClassInstance extends IClassInstance {
   readonly expression: any;
 }
 
+export interface ClassHierarchyNode {
+  name: string;
+  kind?: string;
+  description?: string | null;
+  uri?: string;
+  children: ClassHierarchyNode[];
+}
+
+export interface ComponentTreeNode {
+  name: string;
+  type?: string;
+  typeName?: string;
+  kind?: string;
+  variability?: any;
+  causality?: any;
+  description?: string | null;
+  children?: ComponentTreeNode[];
+}
+
+export interface TreeNodeInfo {
+  name: string;
+  id?: string;
+  compositeName?: string;
+  kind?: string;
+  classKind?: string;
+  hasChildren?: boolean;
+  language?: string;
+  description?: string | null;
+  children?: TreeNodeInfo[];
+}
+
 export interface SourceLocation {
   filePath?: string;
   startLine: number;

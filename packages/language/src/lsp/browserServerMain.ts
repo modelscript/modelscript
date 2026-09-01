@@ -30,10 +30,6 @@ import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/tree-sitter.js
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { Context, DAEBuilder, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
 
-import { ModelicaClassDefinitionSyntaxNode } from "@modelscript/modelica/ast";
-
-import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
-
 import {
   createModelicaQueryEngine,
   createModelicaScopeResolver,
@@ -72,9 +68,8 @@ import { type LoaderContext, loadRegistryPackages } from "./vfs/library-loader.j
 
 /**
  * Flatten a class instance using the arena-native pipeline.
- * Bridges the LSP's ModelicaClassInstance world with Context.flattenArena().
  */
-function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context: Context): DAEBuilder {
+function flattenArenaFromInstance(classInstance: any, context: Context): DAEBuilder {
   const className = classInstance.compositeName || classInstance.name;
   if (!className) throw new Error("Class instance has no name");
 
@@ -82,7 +77,7 @@ function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context:
   const flattener = new ArenaQueryFlattener(workspaceManager.globalModelicaQueryEngine.toQueryDB());
   const arena = flattener.flatten(classInstance.id);
   if (!arena) throw new Error(`Failed to flatten class '${className}'`);
-  return arena;
+  return arena as any;
 }
 
 console.log("ModelScript language server starting...");
@@ -115,7 +110,6 @@ globalThis.buildClassHierarchy = buildClassHierarchy;
 globalThis.buildComponentTree = buildComponentTree;
 globalThis.clearIconCache = clearIconCache;
 globalThis.loadRegistryPackages = loadRegistryPackages;
-globalThis.ModelicaClassInstance = ModelicaClassInstance;
 globalThis.createModelicaQueryEngine = createModelicaQueryEngine;
 globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 
@@ -124,8 +118,8 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 /* Incremental parsing — cache last tree per document for reuse */
 
 interface CachedClassEntry {
-  classDef: ModelicaClassDefinitionSyntaxNode;
-  instance: ModelicaClassInstance;
+  classDef: any;
+  instance: any;
   diagnostics: Diagnostic[];
 }
 

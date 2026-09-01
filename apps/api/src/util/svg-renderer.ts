@@ -2,11 +2,6 @@
 
 import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
-import {
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  type ModelicaModification,
-} from "@modelscript/modelica/semantic-model";
 import { registerWindow } from "@svgdotjs/svg.js";
 import { createSVGWindow } from "svgdom";
 import Parser from "tree-sitter";
@@ -42,13 +37,14 @@ export interface SvgResult {
 }
 
 /**
- * Extract modifier name/value pairs from a ModelicaModification.
+ * Extract modifier name/value pairs from a modification.
  */
-function extractModifiers(modification: ModelicaModification | null): { name: string; value: string | null }[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractModifiers(modification: any | null): { name: string; value: string | null }[] {
   const result: { name: string; value: string | null }[] = [];
   if (!modification) return result;
 
-  for (const arg of modification.modificationArguments) {
+  for (const arg of modification.modificationArguments || []) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const name = (arg as any).name;
     if (name) {
@@ -73,7 +69,8 @@ function extractModifiers(modification: ModelicaModification | null): { name: st
 /**
  * Extract metadata for a single component instance.
  */
-function extractComponentMetadata(component: ModelicaComponentInstance): ComponentMetadata | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractComponentMetadata(component: any): ComponentMetadata | null {
   const name = component.name;
   if (!name) return null;
 
@@ -158,21 +155,24 @@ export async function processLibrary(
   }
 
   // Process classes recursively
-  async function processElement(element: unknown) {
-    if (!(element instanceof ModelicaClassInstance)) return;
-    if (element.isComponentInstance || (element as { kind?: string }).kind === "Extends") return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function processElement(element: any) {
+    if (!element) return;
+    if (element.isComponentInstance || element.kind === "Extends" || element.kind === "Component") return;
+    if (element.isClassInstance === false && !element.classKind && element.kind !== "Class") return;
 
     const className = element.compositeName;
     if (className) {
       if (!processedClassNames.has(className)) {
         try {
           const classKind = element.classKind ?? "unknown";
-          const baseClasses = element.extendsClassInstances
-            .map((e) => e.classInstance?.compositeName)
+          const baseClasses = (element.extendsClassInstances || [])
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .map((e: any) => e.classInstance?.compositeName)
             .filter(Boolean) as string[];
 
           const components: ComponentMetadata[] = [];
-          for (const comp of element.components) {
+          for (const comp of element.components || []) {
             const compMeta = extractComponentMetadata(comp);
             if (compMeta) components.push(compMeta);
           }
@@ -181,7 +181,7 @@ export async function processLibrary(
             className,
             classKind: classKind.toString(),
             description: element.description ?? null,
-            documentation: element.annotation<{ info?: string }>("Documentation")?.info ?? null,
+            documentation: (element.annotation?.("Documentation") as { info?: string } | undefined)?.info ?? null,
             baseClasses,
             components,
           };

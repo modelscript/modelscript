@@ -1259,6 +1259,33 @@ const PREC = {
 const modelicaLang = language({
   name: "modelica",
 
+  container: {
+    extensions: [".molib", ".zip"],
+    extract: (data, { zip }) => {
+      const entries = zip.entries(data);
+      const packageMo = entries.find((e) => e.name.endsWith("package.mo"));
+      return {
+        manifest: packageMo
+          ? { path: packageMo.name, content: zip.readText(data, packageMo.name) || "", language: "modelica" }
+          : undefined,
+        entries: entries.map((entry) => ({
+          path: entry.name,
+          size: entry.size,
+          read: () => zip.read(data, entry.name),
+          readText: () => zip.readText(data, entry.name),
+          action: entry.name.endsWith(".mo") ? ("parse_as_language" as const) : ("binary_blob" as const),
+          targetLanguage: entry.name.endsWith(".mo") ? "modelica" : undefined,
+        })),
+      };
+    },
+  },
+
+  primitives: {
+    nestedComment: { open: "/*", close: "*/" },
+    lineComment: "//",
+    multiWordKeywords: ["end if", "end for", "end while", "end when"],
+  },
+
   extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
 
   conflicts: ($) => [
@@ -1903,8 +1930,7 @@ const modelicaLang = language({
            *
            * NOTE: This query no longer creates virtual (specialized) symbols.
            * All modification propagation is handled by the flattener's
-           * ModificationStack during flattening. The `outerMod` path is retained
-           * only for backward compatibility with semantic-model.ts `clone()`.
+           * ModificationStack during flattening.
            *
            * Returns a list of static (non-virtual) SymbolIds.
            */

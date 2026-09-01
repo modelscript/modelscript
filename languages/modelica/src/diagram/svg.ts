@@ -16,7 +16,6 @@ import {
   type Shape,
   type Text,
 } from "@svgdotjs/svg.js";
-import { ModelicaClassInstance, ModelicaComponentInstance } from "../../semantic-model.js";
 import { ModelicaClassKind } from "../../types.js";
 import { evaluateCondition } from "./annotation-evaluator.js";
 import {
@@ -44,6 +43,10 @@ import {
   type IText,
   type ITransformation,
 } from "./types.js";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ModelicaClassInstance = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ModelicaComponentInstance = any;
 
 /**
  * Renders the Diagram view of a Modelica class instance as an SVG.
@@ -521,7 +524,7 @@ export function applyTextString(
   let str = graphicItem.string ?? "";
   if (str.includes("%")) {
     str = str.replace(/%name/g, classInstance?.name ?? "");
-    if (classInstance instanceof ModelicaComponentInstance) {
+    if (classInstance?.isComponentInstance || classInstance?.kind === "Component") {
       str = str.replace(/%class/g, classInstance.typeSpecifier || classInstance.name || "");
     }
   }

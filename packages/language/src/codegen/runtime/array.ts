@@ -1,7 +1,16 @@
 /* eslint-disable */
 // @ts-nocheck
 // Chunked Array for Zero-GC Memory Growth
-import { atomicChunkAlloc } from "./arena";
+
+export function atomicChunkAlloc(size: u32): u32 {
+  if (size == 0) return 0;
+  let ptr = heap.alloc(size + 32);
+  if (ptr == 0) return 0;
+  let rem = ptr % 16;
+  if (rem != 0) ptr += 16 - rem;
+  memory.fill(ptr, 0, size);
+  return ptr as u32;
+}
 
 // 2^12 = 4096. Used for fast division to find the chunk index.
 @inline function CHUNK_BITS(): u32 { return 12; }

@@ -4,8 +4,9 @@
 
 import {
   ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array, UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedUint16Array,
-  createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array
+  createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array, atomicChunkAlloc
 } from "./array";
+export { atomicChunkAlloc };
 import { inputEncoding } from "./parser";
 import { getChildByFieldId } from "./engine";
 
@@ -229,19 +230,6 @@ export function S(): SharedState {
  * @returns A pointer to the newly allocated memory chunk.
  */
 
-export function atomicChunkAlloc(size: u32): u32 {
-  if (size == 0) return 0;
-  let ptr = heap.alloc(size + 32);
-  if (ptr == 0) return 0;
-
-  // Ensure 16-byte alignment
-  let rem = ptr % 16;
-  if (rem != 0) ptr += 16 - rem;
-
-  memory.fill(ptr, 0, size);
-
-  return ptr as u32;
-}
 
 export function arena_alloc(size: u32): u32 {
   return atomicChunkAlloc(size);

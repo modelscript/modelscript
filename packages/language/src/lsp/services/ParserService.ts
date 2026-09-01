@@ -395,7 +395,7 @@ export class ParserService {
         { getText: () => null, getNode: () => null },
         cacheStore,
         MAX_MEMOS,
-      );
+      ) as any;
       this.sharedContext = new Context(
         (globalThis as any).sharedFs,
         this.workspaceManager.globalWorkspaceIndex,

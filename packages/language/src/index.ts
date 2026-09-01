@@ -19,6 +19,7 @@ export * from "./runtime/config_client.js";
 export * from "./runtime/wasm_bdf.js";
 export * from "./runtime/wasm_blt.js";
 export * from "./runtime/wasm_cache_store.js";
+export * from "./runtime/wasm_container.js";
 export * from "./runtime/wasm_cosim.js";
 export { DAEBuilder, WasmDaeBridge, type IDaeBuilder } from "./runtime/wasm_dae.js";
 export * from "./runtime/wasm_dae_printer.js";

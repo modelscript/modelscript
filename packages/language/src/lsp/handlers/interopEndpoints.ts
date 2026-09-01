@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
 import { ArenaSimulator } from "../../compiler/simulator/index.js";
-import { buildFmuArchive, ModelicaFmuEntity } from "../../fmu/index.js";
+import { buildFmuArchive, parseFmuModelDescription } from "../../fmu/index.js";
+import { readZipTextEntry } from "../../runtime/wasm_container.js";
 import { LspContext } from "../LspContext.js";
 
 export function registerInteropEndpoints(context: LspContext) {
@@ -61,12 +62,10 @@ export function registerInteropEndpoints(context: LspContext) {
         for (let i = 0; i < binaryStr.length; i++) {
           fmuBytes[i] = binaryStr.charCodeAt(i);
         }
-        const fmuEntity = ModelicaFmuEntity.fromFmu(sharedCtx as any, params.name, fmuBytes);
-        fmuEntity.load();
-        fmuEntity.instantiate();
-        const uri = `__fmu__:${params.name}`;
-        context.workspaceManager.workspaceInstances.set(uri, [fmuEntity as any]);
-        console.log(`[fmu] Registered FMU entity '${params.name}' via custom request`);
+        const xml = readZipTextEntry(fmuBytes, "modelDescription.xml");
+        if (!xml) return { ok: false, error: "modelDescription.xml not found in FMU" };
+        const parsed = parseFmuModelDescription(xml);
+        console.log(`[fmu] Registered FMU '${params.name}' (modelName: ${parsed.modelName}) via custom request`);
         // Re-validate all .mo documents to pick up the new FMU class
         for (const doc of context.documents.all()) {
           if (doc.uri.endsWith(".mo")) {
@@ -118,29 +117,16 @@ export function registerInteropEndpoints(context: LspContext) {
           fmuBytes[i] = binaryStr.charCodeAt(i);
         }
 
-        // Extract modelDescription.xml from ZIP
-        // Re-use the inline extraction or parse directly from ModelicaFmuEntity
-        const sharedCtx = context.state.sharedContext;
-        if (!sharedCtx) return { ok: false, error: "Context not initialized" };
-        const fmuEntity = ModelicaFmuEntity.fromFmu(sharedCtx as any, params.name, fmuBytes);
-        fmuEntity.load();
+        // Extract modelDescription.xml from ZIP using container toolkit
+        const xmlContent = readZipTextEntry(fmuBytes, "modelDescription.xml");
+        if (!xmlContent) return { ok: false, error: "modelDescription.xml not found in FMU" };
+        const parsedFmu = parseFmuModelDescription(xmlContent);
 
-        // Parse the model description for wrapper generation
-        // Extract XML from the FMU archive bytes
-        let xmlContent: string | null = null;
-        // Simple ZIP extraction for modelDescription.xml
-        const td = new TextDecoder();
-        const zipStr = td.decode(fmuBytes);
-        const xmlStart = zipStr.indexOf("<?xml");
-        if (xmlStart >= 0) {
-          // Found XML-like content; try full entity path instead
-        }
-        // Use the fmuEntity's loaded variables to build a description
         const desc = {
           fmiVersion: "2.0",
-          modelName: fmuEntity.name || params.name,
+          modelName: parsedFmu.modelName || params.name,
           guid: "",
-          description: fmuEntity.description || undefined,
+          description: parsedFmu.description || undefined,
           author: undefined,
           generationTool: undefined,
           coSimulationModelIdentifier: undefined,
@@ -148,7 +134,7 @@ export function registerInteropEndpoints(context: LspContext) {
           supportsCoSimulation: true,
           supportsModelExchange: false,
           defaultExperiment: undefined,
-          variables: fmuEntity.fmuVariables.map((v) => ({
+          variables: parsedFmu.variables.map((v) => ({
             name: v.name,
             valueReference: 0,
             description: v.description || undefined,

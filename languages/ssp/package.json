@@ -1,0 +1,42 @@
+{
+  "name": "@modelscript/ssp",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./src": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./ssd-parser": {
+      "types": "./dist/src/ssd-parser.d.ts",
+      "default": "./dist/src/ssd-parser.js"
+    },
+    "./projection": {
+      "types": "./dist/src/projection.d.ts",
+      "default": "./dist/src/projection.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@modelscript/language": "*"
+  }
+}

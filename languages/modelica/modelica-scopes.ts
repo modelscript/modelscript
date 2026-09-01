@@ -4,12 +4,6 @@
 
 import { Scope, _getScriptingScope } from "@modelscript/language/compiler";
 import { ModelicaIdentifierSyntaxNode } from "./ast.js";
-import type {
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaElement as ModelicaNamedElement,
-} from "./semantic-model.js";
 
 /**
  * A lightweight scope for loop variables in comprehension clauses like
@@ -18,23 +12,23 @@ import type {
  * then delegates to the parent scope.
  */
 export class ModelicaLoopScope extends Scope {
-  bindings: Map<string, ModelicaClassInstance>;
+  bindings: Map<string, any>;
 
-  constructor(parent: Scope, bindings: Map<string, ModelicaClassInstance>) {
+  constructor(parent: Scope, bindings: Map<string, any>) {
     super(parent);
     this.bindings = bindings;
   }
 
-  override get elements(): IterableIterator<ModelicaElement> {
+  override get elements(): IterableIterator<any> {
     // Loop scopes have no declared elements; bindings are resolved via resolveSimpleName
-    return [][Symbol.iterator]() as IterableIterator<ModelicaElement>;
+    return [][Symbol.iterator]() as IterableIterator<any>;
   }
 
   override get hash(): string {
     return "";
   }
 
-  override getNamedElement(name: string): ModelicaNamedElement | null {
+  override getNamedElement(name: string): any | null {
     return this.bindings.get(name) ?? null;
   }
 
@@ -42,7 +36,7 @@ export class ModelicaLoopScope extends Scope {
     identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
     global = false,
     encapsulated = false,
-  ): ModelicaNamedElement | null {
+  ): any | null {
     const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.text : identifier;
     if (simpleName && !global) {
       const binding = this.bindings.get(simpleName);
@@ -56,10 +50,10 @@ export class ModelicaLoopScope extends Scope {
  * A scope used by the interpreter to store dynamically created variables during script execution.
  */
 export class ModelicaScriptScope extends Scope {
-  variables = new Map<string, ModelicaComponentInstance>();
-  classDefinitions = new Map<string, ModelicaClassInstance>();
+  variables = new Map<string, any>();
+  classDefinitions = new Map<string, any>();
 
-  override get elements(): IterableIterator<ModelicaElement> {
+  override get elements(): IterableIterator<any> {
     const vars = this.variables.values();
     const classes = this.classDefinitions.values();
     return (function* () {
@@ -72,7 +66,7 @@ export class ModelicaScriptScope extends Scope {
     return "";
   }
 
-  override getNamedElement(name: string): ModelicaNamedElement | null {
+  override getNamedElement(name: string): any | null {
     return this.variables.get(name) ?? this.classDefinitions.get(name) ?? null;
   }
 
@@ -80,7 +74,7 @@ export class ModelicaScriptScope extends Scope {
     identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
     global = false,
     encapsulated = false,
-  ): ModelicaNamedElement | null {
+  ): any | null {
     const name = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier.text : identifier;
     if (name) {
       if (this.variables.has(name)) return this.variables.get(name) ?? null;

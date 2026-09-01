@@ -1,6 +1,57 @@
-import { ChunkedInt32Array, createChunkedInt32Array } from "./array";
-import { atomicChunkAlloc } from "./arena";
+import { ChunkedInt32Array, createChunkedInt32Array, atomicChunkAlloc } from "./array";
 import { UnmanagedMap64, createMap64 } from "./hashmap";
+
+// Strides & Flags
+export const VAR_STRIDE: u32 = 8;
+export const VAR_NAME: u32 = 0;
+export const VAR_TYPE: u32 = 1;
+export const VAR_VARIABILITY: u32 = 2;
+export const VAR_CAUSALITY: u32 = 3;
+export const VAR_START_HI: u32 = 4;
+export const VAR_START_LO: u32 = 5;
+export const VAR_SHAPE_DIM: u32 = 6;
+export const VAR_FLAGS: u32 = 7;
+export const FLAG_TEARING_VAR: i32 = 1 << 0;
+export const FLAG_VAR_FLOW: i32 = 1 << 1;
+export const FLAG_VAR_STREAM: i32 = 1 << 2;
+export const FLAG_VAR_STATE: i32 = 1 << 3;
+export const FLAG_VAR_STATE_DER: i32 = 1 << 4;
+export const FLAG_VAR_FIXED: i32 = 1 << 5;
+
+export const FLAG_EQ_INITIAL: i32 = 1 << 0;
+export const FLAG_EQ_OVERCONSTRAINED: i32 = 1 << 1;
+export const FLAG_EQ_STREAM_CONNECT: i32 = 1 << 2;
+
+export const EQ_STRIDE: u32 = 4;
+export const EQ_KIND: u32 = 0;
+export const EQ_LHS: u32 = 1;
+export const EQ_RHS: u32 = 2;
+export const EQ_AUX: u32 = 3;
+
+export const EXPR_STRIDE: u32 = 4;
+export const EXPR_KIND: u32 = 0;
+export const EXPR_DATA1: u32 = 1;
+export const EXPR_LEFT: u32 = 2;
+export const EXPR_RIGHT: u32 = 3;
+
+export const STMT_STRIDE: u32 = 4;
+export const STMT_KIND: u32 = 0;
+export const STMT_DATA1: u32 = 1;
+export const STMT_LEFT: u32 = 2;
+export const STMT_RIGHT: u32 = 3;
+
+export const VAR_ATTR_STRIDE: u32 = 8;
+export const CLOCK_STRIDE: u32 = 4;
+export const WHEN_STRIDE: u32 = 4;
+export const FOR_STRIDE: u32 = 4;
+export const IF_STRIDE: u32 = 6;
+export const SM_STRIDE: u32 = 4;
+export const STATE_STRIDE: u32 = 6;
+export const TRANSITION_STRIDE: u32 = 6;
+
+export const FLAG_TRANSITION_IMMEDIATE: i32 = 1 << 0;
+export const FLAG_TRANSITION_RESET: i32 = 1 << 1;
+export const FLAG_TRANSITION_SYNCHRONIZE: i32 = 1 << 2;
 
 export enum VarType {
   Real = 0,
@@ -108,58 +159,6 @@ export enum VarAttrKind {
   Start = 5,
   Fixed = 6,
 }
-
-// Strides & Flags
-export const VAR_STRIDE: u32 = 8;
-export const VAR_NAME: u32 = 0;
-export const VAR_TYPE: u32 = 1;
-export const VAR_VARIABILITY: u32 = 2;
-export const VAR_CAUSALITY: u32 = 3;
-export const VAR_START_HI: u32 = 4;
-export const VAR_START_LO: u32 = 5;
-export const VAR_SHAPE_DIM: u32 = 6;
-export const VAR_FLAGS: u32 = 7;
-export const FLAG_TEARING_VAR: i32 = 1 << 0;
-export const FLAG_VAR_FLOW: i32 = 1 << 1;
-export const FLAG_VAR_STREAM: i32 = 1 << 2;
-export const FLAG_VAR_STATE: i32 = 1 << 3;
-export const FLAG_VAR_STATE_DER: i32 = 1 << 4;
-export const FLAG_VAR_FIXED: i32 = 1 << 5;
-
-export const FLAG_EQ_INITIAL: i32 = 1 << 0;
-export const FLAG_EQ_OVERCONSTRAINED: i32 = 1 << 1;
-export const FLAG_EQ_STREAM_CONNECT: i32 = 1 << 2;
-
-export const EQ_STRIDE: u32 = 4;
-export const EQ_KIND: u32 = 0;
-export const EQ_LHS: u32 = 1;
-export const EQ_RHS: u32 = 2;
-export const EQ_AUX: u32 = 3;
-
-export const EXPR_STRIDE: u32 = 4;
-export const EXPR_KIND: u32 = 0;
-export const EXPR_DATA1: u32 = 1;
-export const EXPR_LEFT: u32 = 2;
-export const EXPR_RIGHT: u32 = 3;
-
-export const STMT_STRIDE: u32 = 4;
-export const STMT_KIND: u32 = 0;
-export const STMT_DATA1: u32 = 1;
-export const STMT_LEFT: u32 = 2;
-export const STMT_RIGHT: u32 = 3;
-
-export const VAR_ATTR_STRIDE: u32 = 8;
-export const CLOCK_STRIDE: u32 = 4;
-export const WHEN_STRIDE: u32 = 4;
-export const FOR_STRIDE: u32 = 4;
-export const IF_STRIDE: u32 = 6;
-export const SM_STRIDE: u32 = 4;
-export const STATE_STRIDE: u32 = 6;
-export const TRANSITION_STRIDE: u32 = 6;
-
-export const FLAG_TRANSITION_IMMEDIATE: i32 = 1 << 0;
-export const FLAG_TRANSITION_RESET: i32 = 1 << 1;
-export const FLAG_TRANSITION_SYNCHRONIZE: i32 = 1 << 2;
 
 /**
  * Struct-of-Arrays (SoA) Builder for flat Differential Algebraic Equations (DAE).
@@ -1188,6 +1187,14 @@ export function dae_setVarFlag(ptr: u32, varId: u32, flag: i32): void {
   changetype<DaeBuilder>(ptr).setVarFlag(varId, flag);
 }
 
+export function dae_setVarFlags(ptr: u32, varId: u32, flags: i32): void {
+  changetype<DaeBuilder>(ptr).getVarData().set(varId * VAR_STRIDE + VAR_FLAGS, flags);
+}
+
+export function dae_setVarStartValue(ptr: u32, varId: u32, val: f64): void {
+  changetype<DaeBuilder>(ptr).setVarStartValue(varId, val);
+}
+
 export function dae_getEqCount(ptr: u32): u32 {
   return changetype<DaeBuilder>(ptr).eqCount;
 }
@@ -1196,8 +1203,36 @@ export function dae_getVarCount(ptr: u32): u32 {
   return changetype<DaeBuilder>(ptr).varCount;
 }
 
+export function dae_getStmtCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).stmtCount;
+}
+
+export function dae_getStmtKind(ptr: u32, stmtId: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getStmtData().get(stmtId * STMT_STRIDE + STMT_KIND);
+}
+
+export function dae_getStmtData1(ptr: u32, stmtId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getStmtData().get(stmtId * STMT_STRIDE + STMT_DATA1) as u32;
+}
+
+export function dae_getStmtLeft(ptr: u32, stmtId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getStmtData().get(stmtId * STMT_STRIDE + STMT_LEFT) as u32;
+}
+
+export function dae_getStmtRight(ptr: u32, stmtId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getStmtData().get(stmtId * STMT_STRIDE + STMT_RIGHT) as u32;
+}
+
 export function dae_getExprCount(ptr: u32): u32 {
   return changetype<DaeBuilder>(ptr).exprCount;
+}
+
+export function dae_getExprRealValue(ptr: u32, exprId: u32): f64 {
+  let builder = changetype<DaeBuilder>(ptr);
+  let hi = (builder.getExprData().get(exprId * 4 + 1) as u64) << 32;
+  let lo = (builder.getExprData().get(exprId * 4 + 2) as u64) & 0xffffffff;
+  let bits = hi | lo;
+  return f64.reinterpret_i64(bits as i64);
 }
 
 export function dae_getExprKind(ptr: u32, exprId: u32): i32 {
@@ -1206,6 +1241,10 @@ export function dae_getExprKind(ptr: u32, exprId: u32): i32 {
 
 export function dae_getExprData1(ptr: u32, exprId: u32): u32 {
   return changetype<DaeBuilder>(ptr).getExprData().get(exprId * 4 + 1);
+}
+
+export function dae_setExprData1(ptr: u32, exprId: u32, data1: u32): void {
+  changetype<DaeBuilder>(ptr).getExprData().set(exprId * 4 + 1, data1);
 }
 
 export function dae_getExprLeft(ptr: u32, exprId: u32): u32 {
@@ -1258,6 +1297,14 @@ export function dae_getEqRhs(ptr: u32, eqId: u32): u32 {
 
 export function dae_getEqAux(ptr: u32, eqId: u32): u32 {
   return changetype<DaeBuilder>(ptr).getEqData().get(eqId * EQ_STRIDE + EQ_AUX) as u32;
+}
+
+export function dae_setEqLhs(ptr: u32, eqId: u32, lhsId: u32): void {
+  changetype<DaeBuilder>(ptr).getEqData().set(eqId * EQ_STRIDE + EQ_LHS, lhsId as i32);
+}
+
+export function dae_setEqRhs(ptr: u32, eqId: u32, rhsId: u32): void {
+  changetype<DaeBuilder>(ptr).getEqData().set(eqId * EQ_STRIDE + EQ_RHS, rhsId as i32);
 }
 
 export function dae_setMemF64(ptr: u32, val: f64): void {

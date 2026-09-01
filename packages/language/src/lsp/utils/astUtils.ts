@@ -1,14 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaElement as ModelicaNamedElement,
-} from "@modelscript/modelica/semantic-model";
 import { Scope } from "../../compiler/index.js";
 import type { SyntaxNode } from "../../utils/tree-sitter.js";
 
-export function isClassInstance(obj: any): obj is ModelicaClassInstance {
+export function isClassInstance(obj: any): boolean {
   return obj && "classKind" in obj;
 }
 
@@ -69,10 +63,10 @@ export function computeTreeEdit(
 }
 
 /* Resolve a modification/annotation path element to its named element */
-export function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaNamedElement | null {
+export function resolvePathElement(node: SyntaxNode, scope: Scope): any | null {
   let pathNode: SyntaxNode | null = node;
   const parameterPath: string[] = [];
-  let baseElement: ModelicaNamedElement | null = null;
+  let baseElement: any = null;
   let foundBase = false;
 
   while (pathNode) {
@@ -95,7 +89,7 @@ export function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaName
         const funcRef = refNode.text;
         baseElement = scope.resolveName(funcRef.split("."));
         if (!baseElement) {
-          const annotationClass = (ModelicaElement as any).annotationClassInstance;
+          const annotationClass = (scope as any).annotationClassInstance;
           if (annotationClass) {
             baseElement = annotationClass.resolveSimpleName(funcRef);
             if (!baseElement && funcRef.includes(".")) {
@@ -111,7 +105,7 @@ export function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaName
     }
 
     if (pathNode.type === "AnnotationClause") {
-      baseElement = (ModelicaElement as any).annotationClassInstance;
+      baseElement = (scope as any).annotationClassInstance;
       foundBase = true;
       break;
     }
@@ -135,7 +129,7 @@ export function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaName
   if (foundBase && baseElement) {
     return isClassInstance(baseElement)
       ? baseElement.resolveName(parameterPath)
-      : baseElement instanceof ModelicaComponentInstance
+      : baseElement.isComponentInstance
         ? (baseElement.classInstance?.resolveName(parameterPath) ?? null)
         : null;
   }

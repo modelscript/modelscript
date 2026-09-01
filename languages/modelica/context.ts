@@ -17,12 +17,13 @@ import type { FileSystem, Parser, Tree } from "@modelscript/language/utils";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ModelicaFlattener, type FlattenOptions } from "./flattener.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./po.js";
-import { ModelicaClassInstance, type ModelicaElement } from "./semantic-model.js";
 
 import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./geometry.js";
 import { MODELSCRIPT_STUDIES_PACKAGE } from "./studies.js";
 
 export type { HomotopyMode, InitSolverConfig, ModelicaCompilerOptions, PreconditionerMode };
+
+export type ModelicaElement = any;
 
 export class ModelicaLibrary {
   name: string;
@@ -55,7 +56,7 @@ export class ModelicaLibrary {
  * (arena-backed symbol storage). Name resolution is handled by the QueryDB.
  */
 export class Context extends BaseContext {
-  #classes: ModelicaClassInstance[] = [];
+  #classes: any[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
   #translations = new Map<string, ModelicaTranslation>();
@@ -156,10 +157,10 @@ export class Context extends BaseContext {
 
   readonly parent: null = null;
 
-  getNamedElement(name: string): ModelicaElement | null {
+  getNamedElement(name: string): any | null {
     for (const element of this.elements) {
       if ("name" in element && (element as { name?: string }).name === name) {
-        return element as ModelicaElement;
+        return element;
       }
     }
     return null;
@@ -169,7 +170,7 @@ export class Context extends BaseContext {
    * Resolve a dot-separated name to a named element within the loaded classes.
    * This replaces the `Scope.query()` method that was previously inherited.
    */
-  query(name: string): ModelicaElement | null {
+  query(name: string): any | null {
     return this.resolveName(name.split("."));
   }
 
@@ -177,7 +178,7 @@ export class Context extends BaseContext {
    * Resolve a name (as an array of parts) through the loaded class hierarchy.
    * This replaces the `Scope.resolveName()` method that was previously inherited.
    */
-  resolveName(parts: string[] | null | undefined): ModelicaElement | null {
+  resolveName(parts: string[] | null | undefined): any | null {
     if (!parts || parts.length === 0) return null;
     const first = parts[0];
     if (!first) return null;
@@ -294,11 +295,22 @@ export class Context extends BaseContext {
     this.#queryEngine.updateIndex(unified);
 
     // Hydrate root classes
+    const db = this.#queryEngine.toQueryDB();
     for (const id of this.#queryEngine.index.symbols.keys()) {
       const entry = this.#queryEngine.index.symbols.get(id);
       if (entry && (entry.parentId === null || entry.parentId === id) && entry.kind === "Class") {
         if (!this.#classes.some((c) => c.id === id)) {
-          this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
+          this.#classes.push({
+            id,
+            db,
+            entry,
+            name: entry.name ?? "",
+            kind: entry.kind ?? "Class",
+            classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+            compositeName: entry.name ?? "",
+            description: (entry.metadata as any)?.description ?? null,
+            isClassInstance: true,
+          });
         }
       }
     }
@@ -320,11 +332,22 @@ export class Context extends BaseContext {
     this.#queryEngine.updateIndex(unified);
 
     // Hydrate root classes
+    const db = this.#queryEngine.toQueryDB();
     for (const id of this.#queryEngine.index.symbols.keys()) {
       const entry = this.#queryEngine.index.symbols.get(id);
       if (entry && (entry.parentId === null || entry.parentId === id) && entry.kind === "Class") {
         if (!this.#classes.some((c) => c.id === id)) {
-          this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
+          this.#classes.push({
+            id,
+            db,
+            entry,
+            name: entry.name ?? "",
+            kind: entry.kind ?? "Class",
+            classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+            compositeName: entry.name ?? "",
+            description: (entry.metadata as any)?.description ?? null,
+            isClassInstance: true,
+          });
         }
       }
     }
@@ -345,7 +368,7 @@ export class Context extends BaseContext {
   /**
    * Returns the array of top-level classes loaded via `load()`.
    */
-  get classes(): readonly ModelicaClassInstance[] {
+  get classes(): readonly any[] {
     return this.#classes;
   }
 
@@ -547,6 +570,7 @@ export class Context extends BaseContext {
     this.#queryEngine.updateIndex(unified);
 
     this.#classes = this.#classes.filter((c) => c.db.symbol(c.id)?.resourceId !== uri);
+    const db = this.#queryEngine.toQueryDB();
     for (const id of this.#queryEngine.index.symbols.keys()) {
       const entry = this.#queryEngine.index.symbols.get(id);
       if (
@@ -555,7 +579,17 @@ export class Context extends BaseContext {
         entry.kind === "Class" &&
         entry.resourceId === uri
       ) {
-        this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
+        this.#classes.push({
+          id,
+          db,
+          entry,
+          name: entry.name ?? "",
+          kind: entry.kind ?? "Class",
+          classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+          compositeName: entry.name ?? "",
+          description: (entry.metadata as any)?.description ?? null,
+          isClassInstance: true,
+        });
       }
     }
     this.#classes.sort((a, b) => a.id - b.id);
@@ -567,7 +601,7 @@ export class Context extends BaseContext {
    *
    * @param classInstance - The root class instance to attach.
    */
-  addClass(classInstance: ModelicaClassInstance): void {
+  addClass(classInstance: any): void {
     this.#classes.push(classInstance);
   }
 

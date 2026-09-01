@@ -26,8 +26,9 @@ import {
   type IRectangle,
   type IText,
 } from "@modelscript/modelica/diagram";
-import { ModelicaComponentInstance, type ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { Marker, Svg } from "@svgdotjs/svg.js";
+export type ModelicaClassInstance = unknown;
+export type ModelicaComponentInstance = unknown;
 
 export interface X6Markup {
   tagName: string;

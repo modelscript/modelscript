@@ -2,32 +2,16 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
- * DAEBuilder — Flat, arena-backed storage for flattened DAE data.
+ * DAEBuilder / WasmDaeBridge — Flat, arena-backed storage for flattened DAE data.
  *
- * ## Usage
- *
- * ```typescript
- * const builder = new DAEBuilder(interner);
- *
- * // Flattener appends variables
- * builder.addVariable("resistor1.R", VarType.Real, Variability.Parameter, Causality.Local, 100.0);
- * builder.addVariable("resistor1.v", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
- *
- * // Flattener appends equations
- * const lhsId = builder.addExpression(ExprKind.Name, nameStringId, 0, 0);
- * const rhsId = builder.addExpression(ExprKind.RealLiteral, 0, realBits, 0);
- * builder.addEquation(EqKind.Simple, lhsId, rhsId);
- *
- * // Read back
- * console.log(builder.varCount);        // 2
- * console.log(builder.eqCount);         // 1
- * console.log(builder.estimateMemoryBytes()); // ~200 bytes
- * ```
- *
+ * Implements `IDaeBuilder` backed by the zero-GC WebAssembly `DaeBuilder` runtime.
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { StringId } from "../compiler/interner.js";
 import { StringInterner } from "../compiler/interner.js";
+import type { SourceLocation } from "../compiler/modelica-types.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums (stored as small integers in Uint8Array columns)
@@ -92,8 +76,7 @@ export interface ArenaStateMachineTransition {
   toState: string;
   /** ExprId of the transition condition. */
   conditionExprId: number;
-  /** If true, transition fires in the same tick as the condition becomes true ("immediate" transition).
-   *  If false, the transition is "deferred" — the condition is sampled but the transition fires at the next event instant. */
+  /** If true, transition fires in the same tick as the condition becomes true ("immediate" transition). */
   immediate: boolean;
   /** If true, reset the destination state's variables on entry. */
   reset: boolean;
@@ -125,6 +108,38 @@ export interface ArenaStateMachine {
   transitions: ArenaStateMachineTransition[];
   /** Name of the initial state. */
   initialState: string;
+}
+
+// ── Structured Equation Meta Types ──
+
+export interface WhenEquationMeta {
+  conditionExprId: number;
+  bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number; auxExprId?: number }[];
+  equations: { kind: EqKind; lhs: number; rhs: number; aux?: number }[];
+  elseWhenClauses: {
+    conditionExprId: number;
+    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number; auxExprId?: number }[];
+    equations: { kind: EqKind; lhs: number; rhs: number; aux?: number }[];
+  }[];
+  elseEquations?: { kind: EqKind; lhsExprId: number; rhsExprId: number; auxExprId?: number }[];
+}
+
+export interface ForEquationMeta {
+  indexNameId: number;
+  rangeExprId: number;
+  bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number; auxExprId?: number }[];
+  equations: { kind: EqKind; lhs: number; rhs: number; aux?: number }[];
+}
+
+export interface IfEquationMeta {
+  conditionExprId: number;
+  thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number; auxExprId?: number }[];
+  elseIfClauses: {
+    conditionExprId: number;
+    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number; auxExprId?: number }[];
+    equations: { kind: EqKind; lhs: number; rhs: number; aux?: number }[];
+  }[];
+  elseEquations?: { kind: EqKind; lhsExprId: number; rhsExprId: number; auxExprId?: number }[];
 }
 
 /** Expression kind tag. */
@@ -169,8 +184,7 @@ export enum ExprKind {
   Comprehension = 18,
   /** Partial function application: data1 = StringId of func name, left = arg count. */
   PartialFunc = 19,
-  /** Object/record constructor: data1 = field count, left = first field value ExprId, right = first field name StringId.
-   *  Subsequent fields stored as Tuple entries: data1 = field name StringId, left = field value ExprId. */
+  /** Object/record constructor. */
   Object = 20,
 }
 
@@ -227,61 +241,64 @@ export enum StmtKind {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Column Indices
+// Flags & Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Variable record stride (number of Int32 fields per variable). */
-const VAR_STRIDE = 8;
+export const FLAG_TEARING_VAR = 1 << 0;
+export const FLAG_VAR_FLOW = 1 << 1;
+export const FLAG_VAR_STREAM = 1 << 2;
+export const FLAG_VAR_STATE = 1 << 3;
+export const FLAG_VAR_STATE_DER = 1 << 4;
+export const FLAG_VAR_FIXED = 1 << 5;
+export const FLAG_VAR_REMOVED = 1 << 6;
+export const FLAG_VAR_PROTECTED = 1 << 7;
+export const FLAG_VAR_FINAL = 1 << 8;
 
-// Variable field offsets
-const VAR_NAME = 0; // StringId
-const VAR_TYPE = 1; // VarType
-const VAR_VARIABILITY = 2; // Variability
-const VAR_CAUSALITY = 3; // Causality
-const VAR_START_HI = 4; // Float64 start value (high 32 bits)
-const VAR_START_LO = 5; // Float64 start value (low 32 bits)
-const VAR_SHAPE_DIM = 6; // Number of array dimensions (0 = scalar)
-const VAR_FLAGS = 7; // Bit flags: isProtected(0), isState(1), isAlias(2), isFlow(3), isFinal(4), isRemoved(5)
-
-/** Equation record stride. */
-const EQ_STRIDE = 4;
-
-// Equation field offsets
-const EQ_KIND = 0; // EqKind
-const EQ_LHS = 1; // ExprId (index into expression arena)
-const EQ_RHS = 2; // ExprId
-const EQ_AUX = 3; // Auxiliary data (e.g., for-loop range ExprId)
-
-/** Expression record stride. */
-const EXPR_STRIDE = 4;
-
-// Expression field offsets
-const EXPR_KIND = 0; // ExprKind
-const EXPR_DATA1 = 1; // Kind-specific data
-const EXPR_LEFT = 2; // Left child ExprId (or -1)
-const EXPR_RIGHT = 3; // Right child ExprId (or -1)
-
-/** Statement record stride. */
-const STMT_STRIDE = 4;
-
-// Statement field offsets
-const STMT_KIND = 0; // StmtKind
-const STMT_DATA1 = 1; // Kind-specific data
-const STMT_LEFT = 2; // Left child
-const STMT_RIGHT = 3; // Right child
+export const FLAG_EQ_INITIAL = 1 << 0;
+export const FLAG_EQ_OVERCONSTRAINED = 1 << 1;
+export const FLAG_EQ_STREAM_CONNECT = 1 << 2;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DAEBuilder
+// WASM Singleton Loader
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Default capacity for each arena segment. */
-const DEFAULT_VAR_CAP = 512;
-const DEFAULT_EQ_CAP = 1024;
-const DEFAULT_STMT_CAP = 256;
-const DEFAULT_EXPR_CAP = 4096;
-/**
- * Universal DAE Builder interface shared by host-side DAEBuilder and WebAssembly WasmDaeBridge.
- */
+let cachedWasmExports: any = null;
+
+export function setCachedWasmExports(exports: any): void {
+  cachedWasmExports = exports;
+}
+
+export function getDefaultWasmExports(): any {
+  if (cachedWasmExports) return cachedWasmExports;
+  if (typeof process !== "undefined" && process.versions?.node != null) {
+    try {
+      const candidate1 = join(import.meta.dirname, "..", "build", "release.wasm");
+      const candidate2 = join(import.meta.dirname, "..", "..", "build", "release.wasm");
+      const wasmPath = existsSync(candidate1) ? candidate1 : existsSync(candidate2) ? candidate2 : null;
+      if (wasmPath) {
+        const bytes = readFileSync(wasmPath);
+        const mod = new WebAssembly.Module(bytes);
+        const inst = new WebAssembly.Instance(mod, {
+          env: {
+            abort: () => {
+              /* empty */
+            },
+          },
+        });
+        cachedWasmExports = inst.exports;
+        return cachedWasmExports;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IDaeBuilder
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface IDaeBuilder {
   addVariable(
     nameId: StringId | string,
@@ -314,48 +331,46 @@ export interface IDaeBuilder {
   rollback(): void;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WasmDaeBridge / DAEBuilder
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Host-side Struct-of-Arrays (SoA) Builder for flat Differential Algebraic Equations.
- *
- * @deprecated Prefer using `WasmDaeBridge` or `IDaeBuilder`. `DAEBuilder` will be removed once all flattening pipelines emit directly into WebAssembly linear memory.
+ * Universal DAE Builder backed directly by WebAssembly `DaeBuilder` in linear memory.
  */
-export class DAEBuilder implements IDaeBuilder {
-  // ── Variable arena ──
-  private varData: Int32Array;
-  private _varCount = 0;
-
-  // ── Equation arena ──
-  private eqData: Int32Array;
-  private _eqCount = 0;
-
-  // ── Expression arena ──
-  private exprData: Int32Array;
-  private _exprCount = 0;
-
-  // ── Statement arena ──
-  private stmtData: Int32Array;
-  private _stmtCount = 0;
-
-  // ── Algorithm sections ──
-  /** Each algorithm section is a list of statement index ranges [startIdx, count]. */
-  private _algorithmSections: { start: number; count: number }[] = [];
-  /** Initial algorithm sections. */
-  private _initialAlgorithmSections: { start: number; count: number }[] = [];
-
-  // ── Metadata ──
+export class WasmDaeBridge implements IDaeBuilder {
+  public readonly exports: any;
+  public ptr = 0;
   readonly interner: StringInterner;
 
-  /** DAE name (e.g., the fully-qualified class name). */
-  nameId: StringId;
-  /** DAE description string. */
-  descriptionId: StringId;
+  nameId: StringId = 0;
+  descriptionId: StringId = 0;
 
-  /** Class kind (e.g., "model", "block", "function", "class"). */
   classKind = "class";
-  /** Whether this is an impure function. */
   isImpure = false;
+  externalDecl: string | null = null;
+  jsSource?: string;
+  jsPath?: string;
 
-  /** Experiment annotation data. */
+  objectiveExprId: number = -1;
+  objectiveIntegrandExprId: number = -1;
+  startTimeExprId: number = -1;
+  finalTimeExprId: number = -1;
+  externalIncludes: string[] = [];
+  externalObjects: {
+    name: string;
+    type?: string;
+    className?: string;
+    constructorName?: string;
+    destructorName?: string;
+  }[] = [];
+  equationAnnotations: string[] = [];
+  algorithmAnnotations: string[] = [];
+  eventIndicatorExprIds: number[] = [];
+  diagnostics: any[] = [];
+
+  groupEquationsForParity(): void {}
+
   experiment: {
     startTime?: number;
     stopTime?: number;
@@ -364,344 +379,616 @@ export class DAEBuilder implements IDaeBuilder {
     __modelscript_equidistantOutput?: boolean;
   } = {};
 
-  /** External function declaration text (e.g. `external "C" ...`). */
-  externalDecl: string | null = null;
-  /** JavaScript source code if this function was parsed from JS/TS. */
-  jsSource?: string;
-  jsPath?: string;
-  /** Extracted annotation(Library="...") references. */
-  externalLibraries: string[] = [];
-  /** Extracted annotation(Include="...") references. */
-  externalIncludes: string[] = [];
+  public functions = new Map<string | number, WasmDaeBridge>();
+  public _algorithmSections: { start: number; count: number }[] = [];
+  public _initialAlgorithmSections: { start: number; count: number }[] = [];
+  public stmtLocations = new Map<number, SourceLocation>();
+  public boundaryNodes: any[] = [];
 
-  /** Diagnostics emitted during flattening. */
-  diagnostics: { code: number; rule: string; severity: string; message: string; range: unknown }[] = [];
-
-  /** Map of statement index to source location. */
-  stmtLocations = new Map<number, { startLine: number; startCol?: number }>();
-
-  /** Event indicator expression IDs (zero-crossing functions). */
-  eventIndicatorExprIds: number[] = [];
-
-  /** Optimization objective ExprId. */
-  objectiveExprId = -1;
-  /** Optimization integrand ExprId. */
-  objectiveIntegrandExprId = -1;
-  /** Optimization start time ExprId. */
-  startTimeExprId = -1;
-  /** Optimization final time ExprId. */
-  finalTimeExprId = -1;
-
-  /** Structural connect pairs. */
-  connectPairs: { a: string; b: string; aComponent: string; bComponent: string }[] = [];
-
-  /** External object descriptors. */
-  externalObjects: { className: string; constructorName: string; destructorName: string }[] = [];
-
-  /**
-   * State machines for Modelica state machine semantics.
-   * Each machine has states (with per-state equations), transitions, and an initial state.
-   */
-  stateMachines: ArenaStateMachine[] = [];
-
-  /** Child function DAEs. */
-  functions = new Map<StringId, DAEBuilder>();
-
-  /** Inline body equation descriptor for when-clause metadata. */
-
-  /**
-   * When-equation metadata side-table.
-   * Maps equation index → compound when-clause data stored inline (not referencing the main equation array).
-   * This prevents when-clause body equations from polluting the BLT equation count.
-   */
-  private whenEquationMeta = new Map<
-    number,
-    {
-      conditionExprId: number;
-      /** Body equations stored inline: each has a kind (Simple or FunctionCall) and expression IDs. */
-      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-      /** Else-when clauses, each with a condition and inline body equations. */
-      elseWhenClauses: {
-        conditionExprId: number;
-        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-      }[];
-    }
-  >();
-
-  /**
-   * Maps equation index → compound for-equation data.
-   * Stores iterator name, range expression, and body equations.
-   */
-  private forEquationMeta = new Map<
-    number,
-    {
-      indexNameId: number;
-      rangeExprId: number;
-      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-    }
-  >();
-
-  /**
-   * Maps equation index → compound if-equation data.
-   * Stores condition, then-equations, elseif clauses, and else-equations.
-   */
-  private ifEquationMeta = new Map<
-    number,
-    {
-      conditionExprId: number;
-      thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-      elseIfClauses: {
-        conditionExprId: number;
-        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-      }[];
-      elseEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-    }
-  >();
-
-  /** Variable attribute ExprIds: varIndex → Map<attrName, ExprId>. */
-  private varAttrExprIds = new Map<number, Map<string, number>>();
-
-  // ── Side stores for variable-length data ──
-
-  /** Array dimensions per variable: varIndex → dimensions array. */
-  private shapesMap = new Map<number, number[]>();
-  /** Symbolic array dimension expressions per variable: varIndex → ExprId array. */
-  private shapesExprsMap = new Map<number, number[]>();
-  /** Alias targets: varIndex → target variable name StringId. */
-  private aliasMap = new Map<number, StringId>();
-
-  // ── Sparse AST Side-Tables (for lossy attributes) ──
+  // Host-side maps for metadata and structured equations
+  private varShapes = new Map<number, number[]>();
+  private varShapeExprs = new Map<number, number[]>();
+  private varAttrs = new Map<number, Map<string, number>>();
+  private varExpressions = new Map<number, number>();
   private varDescriptions = new Map<number, string>();
+  private varCadAnnotations = new Map<number, any>();
   private varCustomTypes = new Map<number, string>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private varFunctionTypes = new Map<number, any>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private varEnumerationLiterals = new Map<number, any[]>();
-  private varFlowPrefixes = new Map<number, string>();
-  private varCadAnnotations = new Map<number, string>();
-  private varExpressions = new Map<number, unknown>();
-  /** Start attribute expression per variable (for initialization). */
-  private varStartAttrs = new Map<number, unknown>();
-  /** Extracted geometric annotations. */
-  readonly annotations = new Map<string, unknown>();
+  private varEnumLiterals = new Map<number, any[]>();
+  private whenMeta = new Map<number, WhenEquationMeta>();
+  private forMeta = new Map<number, ForEquationMeta>();
+  private ifMeta = new Map<number, IfEquationMeta>();
+  public stateMachines: ArenaStateMachine[] = [];
 
-  /** Whether each variable has `fixed=true` (for consistent initialization). */
-  private varFixedFlags = new Set<number>();
-
-  /** Collected annotations to be emitted at the end of the equation section. */
-  equationAnnotations: string[] = [];
-
-  /** Boundary nodes for 3D/CFD execution */
-  boundaryNodes: { classId: number; geometryName: string; parameters: Record<string, unknown>; inlets: string[] }[] =
-    [];
-
-  /** Collected annotations to be emitted at the end of the algorithm section. */
-  algorithmAnnotations: string[] = [];
-
-  // ── Synchronous Clock Domains (Modelica 3.7 §16) ──
-  private _clocks: { id: number; intervalExprId: number; resolutionExprId?: number; shiftExprId?: number }[] = [];
-  private _varClockIds = new Map<number, number>();
-  private _eqClockIds = new Map<number, number>();
-
-  /** Register a discrete clock partition */
-  addClock(intervalExprId: number, resolutionExprId?: number, shiftExprId?: number): number {
-    const id = this._clocks.length + 1;
-    this._clocks.push({ id, intervalExprId, resolutionExprId, shiftExprId });
-    return id;
+  constructor(wasmExportsOrInterner?: any, nameOrPtr: string | number = "Model", desc = "", interner?: StringInterner) {
+    if (
+      typeof wasmExportsOrInterner === "object" &&
+      wasmExportsOrInterner !== null &&
+      !("intern" in wasmExportsOrInterner) &&
+      ("dae_createBuilder" in wasmExportsOrInterner || "memory" in wasmExportsOrInterner)
+    ) {
+      this.exports = wasmExportsOrInterner;
+      this.ptr =
+        typeof nameOrPtr === "number" && nameOrPtr !== 0
+          ? nameOrPtr
+          : this.exports.dae_createBuilder
+            ? this.exports.dae_createBuilder()
+            : 0;
+      this.interner = interner ?? new StringInterner();
+      this.nameId = this.interner.intern(typeof nameOrPtr === "string" ? nameOrPtr : "Model");
+      this.descriptionId = this.interner.intern(desc);
+    } else {
+      this.interner =
+        wasmExportsOrInterner instanceof StringInterner ? wasmExportsOrInterner : (interner ?? new StringInterner());
+      this.exports = getDefaultWasmExports();
+      this.ptr =
+        typeof nameOrPtr === "number" && nameOrPtr !== 0
+          ? nameOrPtr
+          : this.exports?.dae_createBuilder
+            ? this.exports.dae_createBuilder()
+            : 0;
+      const nameStr = typeof nameOrPtr === "string" ? nameOrPtr : "Model";
+      this.nameId = this.interner.intern(nameStr);
+      this.descriptionId = this.interner.intern(desc);
+    }
   }
 
-  /** Set the clock domain ID for a variable */
-  setVarClock(varIdx: number, clockId: number): void {
-    this._varClockIds.set(varIdx, clockId);
+  get name(): string {
+    return this.interner.resolve(this.nameId) ?? "Model";
+  }
+  set name(value: string) {
+    this.nameId = this.interner.intern(value);
   }
 
-  /** Get the clock domain ID for a variable */
-  getVarClock(varIdx: number): number | undefined {
-    return this._varClockIds.get(varIdx);
+  get description(): string {
+    return this.interner.resolve(this.descriptionId) ?? "";
+  }
+  set description(value: string) {
+    this.descriptionId = this.interner.intern(value);
   }
 
-  /** Set the clock domain ID for an equation */
-  setEqClock(eqIdx: number, clockId: number): void {
-    this._eqClockIds.set(eqIdx, clockId);
-  }
-
-  /** Get the clock domain ID for an equation */
-  getEqClock(eqIdx: number): number | undefined {
-    return this._eqClockIds.get(eqIdx);
-  }
-
-  /** Get all registered discrete clocks */
-  getClocks(): readonly { id: number; intervalExprId: number; resolutionExprId?: number; shiftExprId?: number }[] {
-    return this._clocks;
-  }
-
-  // ── O(1) Secondary Indices (Wave 0) ──
-
-  /** Exact name → variable index. O(1) lookup. */
-  private _nameIndex = new Map<string, number>();
-  /** Array root name → variable indices (e.g. "x" → [idx of x[1], x[2], …]). */
-  private _arrayRootIndex = new Map<string, number[]>();
-  /** Encoded suffix → variable index (for `\0prefix\0suffix` naming). */
-  private _encodedIndex = new Map<string, number>();
-  /** Causality → variable indices. */
-  private _causalityIndex = new Map<Causality, number[]>();
-  /** Count of non-removed variables. */
-  private _activeVarCount = 0;
-
-  /**
-   * Clone the arena up to the current variable count.
-   * This is used to snapshot the body flattening phase and skip it during equation-only edits.
-   */
-  clone(): DAEBuilder {
-    const clone = new DAEBuilder(
-      this.interner,
-      this.interner.resolve(this.nameId),
-      this.interner.resolve(this.descriptionId),
-    );
-    clone.classKind = this.classKind;
-    clone.isImpure = this.isImpure;
-    clone.experiment = { ...this.experiment };
-    clone.externalDecl = this.externalDecl;
-    clone.jsSource = this.jsSource;
-    clone.jsPath = this.jsPath;
-    clone.externalLibraries = [...this.externalLibraries];
-    clone.externalIncludes = [...this.externalIncludes];
-    clone.diagnostics = [...this.diagnostics];
-    clone.boundaryNodes = this.boundaryNodes.map((n) => ({ ...n }));
-
-    // Arrays
-    clone.varData = new Int32Array(this.varData);
-    clone._varCount = this._varCount;
-    clone.eqData = new Int32Array(this.eqData);
-    clone._eqCount = this._eqCount;
-    clone.exprData = new Int32Array(this.exprData);
-    clone._exprCount = this._exprCount;
-    clone.stmtData = new Int32Array(this.stmtData);
-    clone._stmtCount = this._stmtCount;
-    clone._algorithmSections = [...this._algorithmSections];
-    clone._initialAlgorithmSections = [...this._initialAlgorithmSections];
-
-    // Clone maps and sets
-    clone._nameIndex = new Map(this._nameIndex);
-    clone._arrayRootIndex = new Map();
-    for (const [k, v] of this._arrayRootIndex) clone._arrayRootIndex.set(k, [...v]);
-    clone._encodedIndex = new Map(this._encodedIndex);
-    clone._causalityIndex = new Map();
-    for (const [k, v] of this._causalityIndex) clone._causalityIndex.set(k, [...v]);
-    clone._activeVarCount = this._activeVarCount;
-
-    clone.whenEquationMeta = new Map(this.whenEquationMeta);
-    clone.forEquationMeta = new Map(this.forEquationMeta);
-    clone.ifEquationMeta = new Map(this.ifEquationMeta);
-
-    clone.varAttrExprIds = new Map();
-    for (const [k, v] of this.varAttrExprIds) clone.varAttrExprIds.set(k, new Map(v));
-
-    clone.shapesMap = new Map();
-    for (const [k, v] of this.shapesMap) clone.shapesMap.set(k, [...v]);
-
-    clone.shapesExprsMap = new Map();
-    for (const [k, v] of this.shapesExprsMap) clone.shapesExprsMap.set(k, [...v]);
-
-    clone.aliasMap = new Map(this.aliasMap);
-    clone.varDescriptions = new Map(this.varDescriptions);
-    clone.varCustomTypes = new Map(this.varCustomTypes);
-    clone.varFunctionTypes = new Map(this.varFunctionTypes);
-    clone.varEnumerationLiterals = new Map(this.varEnumerationLiterals);
-    clone.varFlowPrefixes = new Map(this.varFlowPrefixes);
-    clone.varCadAnnotations = new Map(this.varCadAnnotations);
-    clone.varExpressions = new Map(this.varExpressions);
-    clone.varStartAttrs = new Map(this.varStartAttrs);
-    clone.varFixedFlags = new Set(this.varFixedFlags);
-
-    return clone;
-  }
-
-  private _snapshotInstance: DAEBuilder | null = null;
-
-  snapshot(): void {
-    this._snapshotInstance = this.clone();
-  }
-
-  rollback(): void {
-    if (!this._snapshotInstance) return;
-    const snap = this._snapshotInstance;
-    this.classKind = snap.classKind;
-    this.isImpure = snap.isImpure;
-    this.experiment = { ...snap.experiment };
-    this.varData = new Int32Array(snap.varData);
-    this._varCount = snap._varCount;
-    this.eqData = new Int32Array(snap.eqData);
-    this._eqCount = snap._eqCount;
-    this.exprData = new Int32Array(snap.exprData);
-    this._exprCount = snap._exprCount;
-    this.stmtData = new Int32Array(snap.stmtData);
-    this._stmtCount = snap._stmtCount;
-    this._algorithmSections = [...snap._algorithmSections];
-    this._initialAlgorithmSections = [...snap._initialAlgorithmSections];
-    this._nameIndex = new Map(snap._nameIndex);
-    this._arrayRootIndex = new Map();
-    for (const [k, v] of snap._arrayRootIndex) this._arrayRootIndex.set(k, [...v]);
-    this._encodedIndex = new Map(snap._encodedIndex);
-    this._causalityIndex = new Map();
-    for (const [k, v] of snap._causalityIndex) this._causalityIndex.set(k, [...v]);
-    this._activeVarCount = snap._activeVarCount;
-  }
-
-  constructor(interner?: StringInterner, name = "", description = "") {
-    this.interner = interner ?? new StringInterner();
-    this.nameId = this.interner.intern(name);
-    this.descriptionId = this.interner.intern(description);
-
-    this.varData = new Int32Array(DEFAULT_VAR_CAP * VAR_STRIDE);
-    this.eqData = new Int32Array(DEFAULT_EQ_CAP * EQ_STRIDE);
-    this.exprData = new Int32Array(DEFAULT_EXPR_CAP * EXPR_STRIDE);
-    this.stmtData = new Int32Array(DEFAULT_STMT_CAP * STMT_STRIDE);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Variable API
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Number of variables stored. */
   get varCount(): number {
-    return this._varCount;
+    return this.getVarCount();
   }
 
-  getVarCount(): number {
-    return this._varCount;
+  get eqCount(): number {
+    return this.getEqCount();
   }
 
-  getEqCount(): number {
-    return this._eqCount;
+  get exprCount(): number {
+    return this.getExprCount();
   }
 
-  getExprCount(): number {
-    return this._exprCount;
+  get stmtCount(): number {
+    return this.getStmtCount();
   }
 
-  getStmtCount(): number {
-    return this._stmtCount;
+  get algorithmSections(): { start: number; count: number }[] {
+    return this._algorithmSections;
   }
 
-  lookupVariable(name: string | number): number {
-    const varName = typeof name === "number" ? (this.interner.resolve(name) ?? "") : name;
-    return this.getVarIdxByName(varName);
+  get initialAlgorithmSections(): { start: number; count: number }[] {
+    return this._initialAlgorithmSections;
+  }
+
+  addAlgorithmSection(startIdx: number, count: number): void {
+    this._algorithmSections.push({ start: startIdx, count });
+  }
+
+  addInitialAlgorithmSection(startIdx: number, count: number): void {
+    this._initialAlgorithmSections.push({ start: startIdx, count });
+  }
+
+  setStmtLocation(stmtIdx: number, location: SourceLocation): void {
+    this.stmtLocations.set(stmtIdx, location);
+  }
+
+  addFunction(nameOrId: string | number, funcDae: WasmDaeBridge): void {
+    this.functions.set(nameOrId, funcDae);
+    if (typeof nameOrId === "string") {
+      const id = this.interner.intern(nameOrId);
+      this.functions.set(id, funcDae);
+    }
+  }
+
+  getFunction(nameOrId: string | number): WasmDaeBridge | undefined {
+    let fn = this.functions.get(nameOrId);
+    if (!fn && typeof nameOrId === "number") {
+      const resolved = this.interner.resolve(nameOrId);
+      if (resolved) fn = this.functions.get(resolved);
+    } else if (!fn && typeof nameOrId === "string") {
+      const id = this.interner.lookup(nameOrId);
+      if (id !== undefined) fn = this.functions.get(id);
+    }
+    return fn;
+  }
+
+  // ── Variable Operations ──
+
+  addVariable(
+    nameIdOrString: StringId | string,
+    type: VarType = VarType.Real,
+    variability: Variability = Variability.Continuous,
+    causality: Causality = Causality.Local,
+    startVal = 0.0,
+    flags = 0,
+    shapeDim = 0,
+  ): number {
+    const nameId = typeof nameIdOrString === "string" ? this.interner.intern(nameIdOrString) : nameIdOrString;
+    if (this.exports?.dae_addVariable) {
+      const idx = this.exports.dae_addVariable(this.ptr, nameId, type, variability, causality, startVal, flags);
+      if (shapeDim > 0) this.setVarShapeDim(idx, 0, shapeDim);
+      return idx;
+    }
+    return -1;
+  }
+
+  lookupVariable(nameOrId: string | StringId): number {
+    const nId = typeof nameOrId === "string" ? this.interner.lookup(nameOrId) : nameOrId;
+    if (nId === undefined || nId === 0) return -1;
+    return this.exports?.dae_lookupVariable ? this.exports.dae_lookupVariable(this.ptr, nId) : -1;
+  }
+
+  getVarName(varIdx: number): string {
+    const nId = this.getVarNameId(varIdx);
+    return this.interner.resolve(nId) ?? "";
+  }
+
+  getVarIdxByName(name: string): number {
+    return this.lookupVariable(name);
+  }
+
+  getVarNameId(varId: number): number {
+    return this.exports?.dae_getVarNameId ? this.exports.dae_getVarNameId(this.ptr, varId) : 0;
+  }
+
+  getVarType(varId: number): VarType {
+    return this.exports?.dae_getVarType ? (this.exports.dae_getVarType(this.ptr, varId) as VarType) : VarType.Real;
+  }
+
+  getVarVariability(varId: number): Variability {
+    return this.exports?.dae_getVarVariability
+      ? (this.exports.dae_getVarVariability(this.ptr, varId) as Variability)
+      : Variability.Continuous;
+  }
+
+  getVarCausality(varId: number): Causality {
+    return this.exports?.dae_getVarCausality
+      ? (this.exports.dae_getVarCausality(this.ptr, varId) as Causality)
+      : Causality.Local;
+  }
+
+  getVarFlags(varId: number): number {
+    return this.exports?.dae_getVarFlags ? this.exports.dae_getVarFlags(this.ptr, varId) : 0;
+  }
+
+  setVarFlags(varId: number, flags: number): void {
+    if (this.exports?.dae_setVarFlags) {
+      this.exports.dae_setVarFlags(this.ptr, varId, flags);
+    }
+  }
+
+  getVarStartValue(varId: number): number {
+    return this.exports?.dae_getVarStartValue ? this.exports.dae_getVarStartValue(this.ptr, varId) : 0.0;
+  }
+
+  setVarStartValue(varId: number, val: number): void {
+    if (this.exports?.dae_setVarStartValue) {
+      this.exports.dae_setVarStartValue(this.ptr, varId, val);
+    }
+  }
+
+  getVarExpression(varIdx: number): number | undefined {
+    return this.varExpressions.get(varIdx) ?? (this.getVarAttrExpr(varIdx, VarAttrKind.Start) || undefined);
+  }
+
+  setVarExpression(varIdx: number, exprId: number): void {
+    this.varExpressions.set(varIdx, exprId);
+    this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
+  }
+
+  getVarDescription(varIdx: number): string | undefined {
+    return this.varDescriptions.get(varIdx);
+  }
+
+  setVarDescription(varIdx: number, desc: string): void {
+    this.varDescriptions.set(varIdx, desc);
+  }
+
+  getVarCadAnnotation(varIdx: number): any {
+    return this.varCadAnnotations.get(varIdx);
+  }
+
+  setVarCadAnnotation(varIdx: number, cad: any): void {
+    this.varCadAnnotations.set(varIdx, cad);
+  }
+
+  isVarRemoved(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_REMOVED) !== 0;
+  }
+
+  removeVariable(varIdx: number): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, flags | FLAG_VAR_REMOVED);
+  }
+
+  isVarState(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_STATE) !== 0;
+  }
+
+  setVarState(varIdx: number, isState = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isState ? flags | FLAG_VAR_STATE : flags & ~FLAG_VAR_STATE);
+  }
+
+  isVarStateDer(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_STATE_DER) !== 0;
+  }
+
+  setVarStateDer(varIdx: number, isDer = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isDer ? flags | FLAG_VAR_STATE_DER : flags & ~FLAG_VAR_STATE_DER);
+  }
+
+  isVarFlow(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_FLOW) !== 0;
+  }
+
+  setVarFlow(varIdx: number, isFlow = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isFlow ? flags | FLAG_VAR_FLOW : flags & ~FLAG_VAR_FLOW);
+  }
+
+  isVarStream(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_STREAM) !== 0;
+  }
+
+  setVarStream(varIdx: number, isStream = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isStream ? flags | FLAG_VAR_STREAM : flags & ~FLAG_VAR_STREAM);
+  }
+
+  getVarFlowPrefix(varIdx: number): string | null {
+    if (this.isVarStream(varIdx)) return "stream";
+    if (this.isVarFlow(varIdx)) return "flow";
+    return null;
+  }
+
+  isVarFixed(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_FIXED) !== 0;
+  }
+
+  setVarFixed(varIdx: number, isFixed = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isFixed ? flags | FLAG_VAR_FIXED : flags & ~FLAG_VAR_FIXED);
+  }
+
+  isVarProtected(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_PROTECTED) !== 0;
+  }
+
+  setVarProtected(varIdx: number, isProtected = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isProtected ? flags | FLAG_VAR_PROTECTED : flags & ~FLAG_VAR_PROTECTED);
+  }
+
+  isVarFinal(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_FINAL) !== 0;
+  }
+
+  setVarFinal(varIdx: number, isFinal = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isFinal ? flags | FLAG_VAR_FINAL : flags & ~FLAG_VAR_FINAL);
+  }
+
+  getVarCustomType(varIdx: number): string | undefined {
+    return this.varCustomTypes.get(varIdx);
+  }
+
+  setVarCustomType(varIdx: number, customType: string): void {
+    this.varCustomTypes.set(varIdx, customType);
+  }
+
+  getVarEnumerationLiterals(varIdx: number): any[] | undefined {
+    return this.varEnumLiterals.get(varIdx);
+  }
+
+  setVarEnumerationLiterals(varIdx: number, lits: any[]): void {
+    this.varEnumLiterals.set(varIdx, lits as any);
+  }
+
+  hasArrayElements(baseName: string): boolean {
+    const prefix = `${baseName}[`;
+    for (let i = 0; i < this.varCount; i++) {
+      if (this.getVarName(i).startsWith(prefix)) return true;
+    }
+    return false;
+  }
+
+  getArrayElementIndices(baseName: string): number[] {
+    const prefix = `${baseName}[`;
+    const indices: number[] = [];
+    for (let i = 0; i < this.varCount; i++) {
+      if (this.getVarName(i).startsWith(prefix)) indices.push(i);
+    }
+    return indices;
+  }
+
+  getVarShape(varIdx: number): number[] {
+    return this.varShapes.get(varIdx) ?? [];
+  }
+
+  setVarShape(varIdx: number, shape: number[]): void {
+    this.varShapes.set(varIdx, [...shape]);
+    for (let d = 0; d < shape.length; d++) {
+      this.setVarShapeDim(varIdx, d, shape[d]!);
+    }
+  }
+
+  getVarShapeExprs(varIdx: number): number[] {
+    return this.varShapeExprs.get(varIdx) ?? [];
+  }
+
+  setVarShapeExprs(varIdx: number, exprs: number[]): void {
+    this.varShapeExprs.set(varIdx, [...exprs]);
+  }
+
+  getVarShapeDim(varIdx: number, dimIdx: number): number {
+    return this.exports?.dae_getVarShapeDim ? this.exports.dae_getVarShapeDim(this.ptr, varIdx, dimIdx) : 0;
+  }
+
+  setVarShapeDim(varIdx: number, dimIdx: number, size: number): void {
+    if (this.exports?.dae_setVarShapeDim) {
+      this.exports.dae_setVarShapeDim(this.ptr, varIdx, dimIdx, size);
+    }
+  }
+
+  getVarAttrExpr(varIdx: number, attrKind: VarAttrKind): number {
+    return this.exports?.dae_getVarAttrExpr ? this.exports.dae_getVarAttrExpr(this.ptr, varIdx, attrKind) : 0;
+  }
+
+  setVarAttrExpr(varIdx: number, attrKind: VarAttrKind, exprId: number): void {
+    if (this.exports?.dae_setVarAttrExpr) {
+      this.exports.dae_setVarAttrExpr(this.ptr, varIdx, attrKind, exprId);
+    }
+  }
+
+  getVarAttrExprId(varIdx: number, attrName: string): number | undefined {
+    return this.varAttrs.get(varIdx)?.get(attrName);
+  }
+
+  getVarAttrExprIds(varIdx: number): Map<string, number> | undefined {
+    return this.varAttrs.get(varIdx);
+  }
+
+  setVarAttr(varIdx: number, attrName: string, exprId: number): void {
+    let map = this.varAttrs.get(varIdx);
+    if (!map) {
+      map = new Map<string, number>();
+      this.varAttrs.set(varIdx, map);
+    }
+    map.set(attrName, exprId);
+  }
+
+  addAlias(varIdx: number, targetNameId: number): void {
+    if (this.exports?.dae_addAlias) this.exports.dae_addAlias(this.ptr, varIdx, targetNameId);
+  }
+
+  getAlias(varIdx: number): number {
+    return this.exports?.dae_getAlias ? this.exports.dae_getAlias(this.ptr, varIdx) : 0;
+  }
+
+  getVariables(): {
+    name: string;
+    type: VarType;
+    variability: Variability;
+    causality: Causality;
+    startValue: number;
+    flags: number;
+  }[] {
+    const list = [];
+    for (let i = 0; i < this.varCount; i++) {
+      list.push({
+        name: this.getVarName(i),
+        type: this.getVarType(i),
+        variability: this.getVarVariability(i),
+        causality: this.getVarCausality(i),
+        startValue: this.getVarStartValue(i),
+        flags: this.getVarFlags(i),
+      });
+    }
+    return list;
+  }
+
+  // ── Equation Operations ──
+
+  addEquation(kind: EqKind, lhsId: number, rhsId: number, auxId = 0xffffffff): number {
+    if (!this.exports?.dae_addEquation) return -1;
+    return this.exports.dae_addEquation(this.ptr, kind, lhsId, rhsId, auxId);
+  }
+
+  setEqLhs(eqId: number, lhs: number): void {
+    if (this.exports?.dae_setEqLhs) {
+      this.exports.dae_setEqLhs(this.ptr, eqId, lhs);
+    }
+  }
+
+  setEqRhs(eqId: number, rhs: number): void {
+    if (this.exports?.dae_setEqRhs) {
+      this.exports.dae_setEqRhs(this.ptr, eqId, rhs);
+    }
+  }
+
+  getEqKind(eqId: number): EqKind {
+    return this.exports?.dae_getEqKind ? (this.exports.dae_getEqKind(this.ptr, eqId) as EqKind) : EqKind.Simple;
+  }
+
+  getEqLhs(eqId: number): number {
+    return this.exports?.dae_getEqLhs ? this.exports.dae_getEqLhs(this.ptr, eqId) : -1;
+  }
+
+  getEqRhs(eqId: number): number {
+    return this.exports?.dae_getEqRhs ? this.exports.dae_getEqRhs(this.ptr, eqId) : -1;
+  }
+
+  getEqAux(eqId: number): number {
+    return this.exports?.dae_getEqAux ? this.exports.dae_getEqAux(this.ptr, eqId) : 0;
+  }
+
+  getEquations(): { kind: EqKind; lhs: number; rhs: number; aux?: number }[] {
+    const list = [];
+    for (let i = 0; i < this.eqCount; i++) {
+      list.push({
+        kind: this.getEqKind(i),
+        lhs: this.getEqLhs(i),
+        rhs: this.getEqRhs(i),
+        aux: this.getEqAux(i),
+      });
+    }
+    return list;
+  }
+
+  // ── Expression Operations ──
+
+  addExpression(kind: ExprKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
+    if (!this.exports?.dae_addExpression) return -1;
+    return this.exports.dae_addExpression(this.ptr, kind, data1, left, right);
+  }
+
+  addBinaryExpr(op: BinOp, left: number, right: number): number {
+    if (this.exports?.dae_addBinaryExpr) {
+      return this.exports.dae_addBinaryExpr(this.ptr, op, left, right);
+    }
+    return this.addExpression(ExprKind.Binary, op, left, right);
+  }
+
+  addUnaryExpr(op: UnaryOp, operand: number): number {
+    return this.addExpression(ExprKind.Unary, op, operand);
+  }
+
+  addRealLiteral(value: number): number {
+    if (this.exports?.dae_addRealLiteral) {
+      return this.exports.dae_addRealLiteral(this.ptr, value);
+    }
+    return this.addExpression(ExprKind.RealLiteral, 0, 0, 0);
+  }
+
+  addIntLiteral(value: number): number {
+    if (this.exports?.dae_addIntLiteral) {
+      return this.exports.dae_addIntLiteral(this.ptr, value);
+    }
+    return this.addExpression(ExprKind.IntLiteral, value, 0, 0);
+  }
+
+  addBoolLiteral(value: boolean): number {
+    return this.addExpression(ExprKind.BoolLiteral, value ? 1 : 0);
+  }
+
+  addStringLiteral(value: string | number): number {
+    const sId = typeof value === "string" ? this.interner.intern(value) : value;
+    return this.addExpression(ExprKind.StringLiteral, sId);
+  }
+
+  addNameExpr(name: string): number {
+    const sId = this.interner.intern(name);
+    return this.addExpression(ExprKind.Name, sId, 0, 0);
   }
 
   addDer(varId: number): number {
-    return this.addExpression(ExprKind.Der, varId);
+    if (this.exports?.dae_addDer) {
+      return this.exports.dae_addDer(this.ptr, varId);
+    }
+    return this.addExpression(ExprKind.Der, varId, 0, 0);
+  }
+
+  addDerExpr(operand: number): number {
+    return this.addExpression(ExprKind.Der, operand);
+  }
+
+  addPreExpr(operand: number): number {
+    return this.addExpression(ExprKind.Pre, operand);
+  }
+
+  addCallExpr(funcNameOrId: string | number, args: number[]): number {
+    const nameId = typeof funcNameOrId === "string" ? this.interner.intern(funcNameOrId) : funcNameOrId;
+    let firstArg = 0xffffffff;
+    if (args.length > 0) {
+      firstArg = this.addTupleExpr(args);
+    }
+    return this.addExpression(ExprKind.Call, nameId, firstArg, args.length);
+  }
+
+  addTupleExpr(elements: number[]): number {
+    if (elements.length === 0) return this.addExpression(ExprKind.Tuple, 0, 0xffffffff);
+    let prev = 0xffffffff;
+    for (let i = elements.length - 1; i >= 0; i--) {
+      prev = this.addExpression(ExprKind.Tuple, elements[i]!, prev);
+    }
+    return prev;
+  }
+
+  addArrayCtorExpr(elements: number[]): number {
+    if (elements.length === 0) return this.addExpression(ExprKind.ArrayCtor, 0, 0xffffffff);
+    let prev = 0xffffffff;
+    for (let i = elements.length - 1; i >= 0; i--) {
+      prev = this.addExpression(ExprKind.ArrayCtor, elements[i]!, prev);
+    }
+    return prev;
+  }
+
+  addColonExpr(): number {
+    return this.addExpression(ExprKind.Colon);
+  }
+
+  addSubscriptExpr(baseExpr: number, subIds: number[]): number {
+    let curr = baseExpr;
+    for (const sub of subIds) {
+      curr = this.addSubscript(curr, sub);
+    }
+    return curr;
+  }
+
+  addEnumLiteral(ordinal: number, pathOrValue: string): number {
+    const sId = this.interner.intern(pathOrValue);
+    return this.addExpression(ExprKind.EnumLiteral, ordinal, sId);
+  }
+
+  addRangeExpr(startId: number, stopId: number, stepId = -1): number {
+    return this.addRange(startId, stopId, stepId);
+  }
+
+  addComprehensionExpr(funcName: string, bodyId: number, iteratorCount: number): number {
+    const sId = this.interner.intern(funcName);
+    return this.addExpression(ExprKind.Comprehension, sId, bodyId, iteratorCount);
+  }
+
+  addPartialFuncExpr(funcName: string, argIds: number[]): number {
+    const sId = this.interner.intern(funcName);
+    const argsTuple = this.addTupleExpr(argIds);
+    return this.addExpression(ExprKind.PartialFunc, sId, argsTuple, argIds.length);
+  }
+
+  addIfElseExpr(condExpr: number, trueExpr: number, falseExpr: number): number {
+    return this.addIfElse(condExpr, trueExpr, falseExpr);
   }
 
   addName(varId: number): number {
-    return this.addExpression(ExprKind.Name, varId);
+    if (this.exports?.dae_addName) {
+      return this.exports.dae_addName(this.ptr, varId);
+    }
+    return this.addExpression(ExprKind.Name, varId, 0, 0);
   }
 
   addIfElse(condExpr: number, trueExpr: number, falseExpr: number): number {
+    if (this.exports?.dae_addIfElse) {
+      return this.exports.dae_addIfElse(this.ptr, condExpr, trueExpr, falseExpr);
+    }
     return this.addExpression(ExprKind.IfElse, condExpr, trueExpr, falseExpr);
   }
 
   addCall(funcId: number, firstArg: number, argCount: number): number {
+    if (this.exports?.dae_addCall) {
+      return this.exports.dae_addCall(this.ptr, funcId, firstArg, argCount);
+    }
     return this.addExpression(ExprKind.Call, funcId, firstArg, argCount);
   }
 
@@ -721,1677 +1008,513 @@ export class DAEBuilder implements IDaeBuilder {
     return this.addExpression(ExprKind.Tuple, count, firstElem);
   }
 
-  /**
-   * Add a variable to the DAE.
-   *
-   * @param name - Variable name (will be interned).
-   * @param type - Variable type (Real, Integer, Boolean, String).
-   * @param variability - Variability (continuous, discrete, parameter, constant).
-   * @param causality - Causality (local, input, output).
-   * @param startValue - Start value (default 0.0).
-   * @param flags - Bit flags (isProtected, isState, isAlias, isFlow).
-   * @returns The variable index.
-   */
-  addVariable(
-    name: string | number,
-    type: VarType = VarType.Real,
-    variability: Variability = Variability.Continuous,
-    causality: Causality = Causality.Local,
-    startValue = 0.0,
+  getExprKind(exprId: number): ExprKind {
+    return this.exports?.dae_getExprKind ? (this.exports.dae_getExprKind(this.ptr, exprId) as ExprKind) : ExprKind.Name;
+  }
+
+  getExprData1(exprId: number): number {
+    return this.exports?.dae_getExprData1 ? this.exports.dae_getExprData1(this.ptr, exprId) : 0;
+  }
+
+  getExprLeft(exprId: number): number {
+    return this.exports?.dae_getExprLeft ? this.exports.dae_getExprLeft(this.ptr, exprId) : -1;
+  }
+
+  getExprRight(exprId: number): number {
+    return this.exports?.dae_getExprRight ? this.exports.dae_getExprRight(this.ptr, exprId) : -1;
+  }
+
+  getExprRealValue(exprId: number): number {
+    if (this.exports?.dae_getExprRealValue) {
+      return this.exports.dae_getExprRealValue(this.ptr, exprId);
+    }
+    const hi = this.getExprData1(exprId);
+    const lo = this.getExprLeft(exprId);
+    const buf = new ArrayBuffer(8);
+    const i32 = new Int32Array(buf);
+    const f64 = new Float64Array(buf);
+    i32[0] = lo;
+    i32[1] = hi;
+    return f64[0]!;
+  }
+
+  // ── Statement Operations ──
+
+  addStatement(kind: StmtKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
+    if (!this.exports?.dae_addStatement) return -1;
+    return this.exports.dae_addStatement(this.ptr, kind, data1, left, right);
+  }
+
+  getStmtKind(stmtId: number): StmtKind {
+    return this.exports?.dae_getStmtKind
+      ? (this.exports.dae_getStmtKind(this.ptr, stmtId) as StmtKind)
+      : StmtKind.Assignment;
+  }
+
+  getStmtData1(stmtId: number): number {
+    return this.exports?.dae_getStmtData1 ? this.exports.dae_getStmtData1(this.ptr, stmtId) : 0;
+  }
+
+  getStmtLeft(stmtId: number): number {
+    return this.exports?.dae_getStmtLeft ? this.exports.dae_getStmtLeft(this.ptr, stmtId) : -1;
+  }
+
+  getStmtRight(stmtId: number): number {
+    return this.exports?.dae_getStmtRight ? this.exports.dae_getStmtRight(this.ptr, stmtId) : -1;
+  }
+
+  getStatements(): { kind: StmtKind; data1: number; left: number; right: number }[] {
+    const list = [];
+    for (let i = 0; i < this.stmtCount; i++) {
+      list.push({
+        kind: this.getStmtKind(i),
+        data1: this.getStmtData1(i),
+        left: this.getStmtLeft(i),
+        right: this.getStmtRight(i),
+      });
+    }
+    return list;
+  }
+
+  // ── Clocks & Synchronous Features ──
+
+  addClock(intervalExprId: number, resolutionExprId = 0, shiftExprId = 0): number {
+    return this.exports?.dae_addClock
+      ? this.exports.dae_addClock(this.ptr, intervalExprId, resolutionExprId, shiftExprId)
+      : 0;
+  }
+
+  setVarClock(varIdx: number, clockId: number): void {
+    if (this.exports?.dae_setVarClock) this.exports.dae_setVarClock(this.ptr, varIdx, clockId);
+  }
+
+  getVarClock(varIdx: number): number {
+    return this.exports?.dae_getVarClock ? this.exports.dae_getVarClock(this.ptr, varIdx) : 0;
+  }
+
+  setEqClock(eqIdx: number, clockId: number): void {
+    if (this.exports?.dae_setEqClock) this.exports.dae_setEqClock(this.ptr, eqIdx, clockId);
+  }
+
+  getEqClock(eqIdx: number): number {
+    return this.exports?.dae_getEqClock ? this.exports.dae_getEqClock(this.ptr, eqIdx) : 0;
+  }
+
+  // ── Conditionals & Structured Equations ──
+
+  addWhenEquation(conditionExprId: number): number {
+    const idx = this.exports?.dae_addWhenEquation
+      ? this.exports.dae_addWhenEquation(this.ptr, conditionExprId)
+      : this.whenMeta.size;
+    const meta: WhenEquationMeta = {
+      conditionExprId,
+      bodyEquations: [],
+      equations: [],
+      elseWhenClauses: [],
+      elseEquations: [],
+    };
+    this.whenMeta.set(idx, meta);
+    return idx;
+  }
+
+  addWhenBodyEquation(whenIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
+    if (this.exports?.dae_addWhenBodyEquation) {
+      this.exports.dae_addWhenBodyEquation(this.ptr, whenIdx, kind, lhsId, rhsId);
+    }
+    const meta = this.whenMeta.get(whenIdx);
+    if (meta) {
+      meta.equations.push({ kind, lhs: lhsId, rhs: rhsId });
+      meta.bodyEquations.push({ kind, lhsExprId: lhsId, rhsExprId: rhsId });
+    }
+    return 0;
+  }
+
+  getWhenEquationMeta(eqIdx: number): WhenEquationMeta | undefined {
+    return this.whenMeta.get(eqIdx);
+  }
+
+  addForEquation(indexNameId: number, rangeExprId: number): number {
+    const idx = this.exports?.dae_addForEquation
+      ? this.exports.dae_addForEquation(this.ptr, indexNameId, rangeExprId)
+      : this.forMeta.size;
+    const meta: ForEquationMeta = {
+      indexNameId,
+      rangeExprId,
+      bodyEquations: [],
+      equations: [],
+    };
+    this.forMeta.set(idx, meta);
+    return idx;
+  }
+
+  addForBodyEquation(forIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
+    if (this.exports?.dae_addForBodyEquation) {
+      this.exports.dae_addForBodyEquation(this.ptr, forIdx, kind, lhsId, rhsId);
+    }
+    const meta = this.forMeta.get(forIdx);
+    if (meta) {
+      meta.equations.push({ kind, lhs: lhsId, rhs: rhsId });
+      meta.bodyEquations.push({ kind, lhsExprId: lhsId, rhsExprId: rhsId });
+    }
+    return 0;
+  }
+
+  getForEquationMeta(eqIdx: number): ForEquationMeta | undefined {
+    return this.forMeta.get(eqIdx);
+  }
+
+  addIfEquation(conditionExprId: number): number {
+    const idx = this.exports?.dae_addIfEquation
+      ? this.exports.dae_addIfEquation(this.ptr, conditionExprId)
+      : this.ifMeta.size;
+    const meta: IfEquationMeta = {
+      conditionExprId,
+      thenEquations: [],
+      elseIfClauses: [],
+      elseEquations: [],
+    };
+    this.ifMeta.set(idx, meta);
+    return idx;
+  }
+
+  addIfThenEquation(ifIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
+    if (this.exports?.dae_addIfThenEquation) {
+      this.exports.dae_addIfThenEquation(this.ptr, ifIdx, kind, lhsId, rhsId);
+    }
+    const meta = this.ifMeta.get(ifIdx);
+    if (meta) {
+      meta.thenEquations.push({ kind, lhsExprId: lhsId, rhsExprId: rhsId });
+    }
+    return 0;
+  }
+
+  getIfEquationMeta(eqIdx: number): IfEquationMeta | undefined {
+    return this.ifMeta.get(eqIdx);
+  }
+
+  // ── State Machines ──
+
+  addStateMachine(nameId: number, initialStateId: number): number {
+    return this.exports?.dae_addStateMachine ? this.exports.dae_addStateMachine(this.ptr, nameId, initialStateId) : 0;
+  }
+
+  addState(smId: number, nameId: number): number {
+    return this.exports?.dae_addState ? this.exports.dae_addState(this.ptr, smId, nameId) : 0;
+  }
+
+  addStateEquation(smId: number, stateId: number, targetNameId: number, exprId: number, isDerivative: boolean): number {
+    return this.exports?.dae_addStateEquation
+      ? this.exports.dae_addStateEquation(this.ptr, smId, stateId, targetNameId, exprId, isDerivative)
+      : 0;
+  }
+
+  addTransition(
+    smId: number,
+    fromStateId: number,
+    toStateId: number,
+    conditionExprId: number,
     flags = 0,
+    priority = 0,
   ): number {
-    const varName = typeof name === "number" ? (this.interner.resolve(name) ?? `v${name}`) : name;
-    const nameId = typeof name === "number" ? name : this.interner.intern(name);
-    const idx = this._varCount++;
-    this._activeVarCount++;
-    const offset = idx * VAR_STRIDE;
-
-    // Grow if needed
-    while (offset + VAR_STRIDE > this.varData.length) {
-      this.varData = growInt32(this.varData);
-    }
-
-    this.varData[offset + VAR_NAME] = nameId;
-    this.varData[offset + VAR_TYPE] = type;
-    this.varData[offset + VAR_VARIABILITY] = variability;
-    this.varData[offset + VAR_CAUSALITY] = causality;
-    this.varData[offset + VAR_FLAGS] = flags;
-
-    // Store Float64 start value as two Int32s
-    FLOAT64_VIEW[0] = startValue;
-    this.varData[offset + VAR_START_HI] = INT32_VIEW[0]!;
-    this.varData[offset + VAR_START_LO] = INT32_VIEW[1]!;
-
-    this.varData[offset + VAR_SHAPE_DIM] = 0;
-
-    // ── Populate secondary indices ──
-    this._nameIndex.set(varName, idx);
-
-    // Array root index: "foo[1,2]" → root "foo"
-    const bracketIdx = varName.indexOf("[");
-    if (bracketIdx > 0) {
-      const root = varName.substring(0, bracketIdx);
-      let arr = this._arrayRootIndex.get(root);
-      if (!arr) {
-        arr = [];
-        this._arrayRootIndex.set(root, arr);
-      }
-      arr.push(idx);
-    }
-
-    // Encoded variable index: "\0prefix\0suffix" → suffix
-    if (varName.startsWith("\0")) {
-      const lastNull = varName.lastIndexOf("\0");
-      if (lastNull > 0) {
-        const suffix = varName.substring(lastNull + 1);
-        this._encodedIndex.set(suffix, idx);
-      }
-    }
-
-    // Causality index
-    let causalityArr = this._causalityIndex.get(causality);
-    if (!causalityArr) {
-      causalityArr = [];
-      this._causalityIndex.set(causality, causalityArr);
-    }
-    causalityArr.push(idx);
-
-    return idx;
+    return this.exports?.dae_addTransition
+      ? this.exports.dae_addTransition(this.ptr, smId, fromStateId, toStateId, conditionExprId, flags, priority)
+      : 0;
   }
 
-  // ── Variable field readers ──
-
-  getVarName(idx: number): string {
-    return this.interner.resolve(this.varData[idx * VAR_STRIDE + VAR_NAME]!);
+  getStateMachines(): ArenaStateMachine[] {
+    return this.stateMachines;
   }
 
-  getVarNameId(idx: number): StringId {
-    return this.varData[idx * VAR_STRIDE + VAR_NAME]!;
+  getVarStartAttr(varIdx: number): number {
+    return this.getVarStartValue(varIdx);
   }
 
-  getVarType(idx: number): VarType {
-    return this.varData[idx * VAR_STRIDE + VAR_TYPE]! as VarType;
+  // ── Optimization & Events ──
+
+  addEventIndicator(exprId: number): number {
+    this.eventIndicatorExprIds.push(exprId);
+    return this.exports?.dae_addEventIndicator ? this.exports.dae_addEventIndicator(this.ptr, exprId) : 0;
   }
 
-  getVarVariability(idx: number): Variability {
-    return this.varData[idx * VAR_STRIDE + VAR_VARIABILITY]! as Variability;
+  getEventIndicatorCount(): number {
+    return this.exports?.dae_getEventIndicatorCount ? this.exports.dae_getEventIndicatorCount(this.ptr) : 0;
   }
 
-  getVarCausality(idx: number): Causality {
-    return this.varData[idx * VAR_STRIDE + VAR_CAUSALITY]! as Causality;
+  getEventIndicatorExprId(idx: number): number {
+    return this.exports?.dae_getEventIndicatorExprId ? this.exports.dae_getEventIndicatorExprId(this.ptr, idx) : 0;
   }
 
-  getVarStartValue(idx: number): number {
-    const offset = idx * VAR_STRIDE;
-    INT32_VIEW[0] = this.varData[offset + VAR_START_HI]!;
-    INT32_VIEW[1] = this.varData[offset + VAR_START_LO]!;
-    return FLOAT64_VIEW[0]!;
-  }
-
-  setVarStartValue(idx: number, value: number): void {
-    FLOAT64_VIEW[0] = value;
-    const offset = idx * VAR_STRIDE;
-    this.varData[offset + VAR_START_HI] = INT32_VIEW[0]!;
-    this.varData[offset + VAR_START_LO] = INT32_VIEW[1]!;
-  }
-
-  getVarFlags(idx: number): number {
-    return this.varData[idx * VAR_STRIDE + VAR_FLAGS]!;
-  }
-
-  isVarProtected(idx: number): boolean {
-    return (this.getVarFlags(idx) & 1) !== 0;
-  }
-
-  isVarState(idx: number): boolean {
-    return (this.getVarFlags(idx) & 2) !== 0;
-  }
-
-  isVarAlias(idx: number): boolean {
-    return (this.getVarFlags(idx) & 4) !== 0;
-  }
-
-  isVarFlow(idx: number): boolean {
-    return (this.getVarFlags(idx) & 8) !== 0;
-  }
-
-  isVarFinal(idx: number): boolean {
-    return (this.getVarFlags(idx) & 16) !== 0;
-  }
-
-  isVarRemoved(idx: number): boolean {
-    return (this.getVarFlags(idx) & 32) !== 0;
-  }
-
-  setVarRemoved(idx: number): void {
-    const offset = idx * VAR_STRIDE + VAR_FLAGS;
-    const wasRemoved = (this.varData[offset]! & 32) !== 0;
-    this.varData[offset] = this.varData[offset]! | 32;
-    if (!wasRemoved) {
-      this._activeVarCount--;
-      // Remove from name index so lookups don't find removed vars
-      const name = this.getVarName(idx);
-      this._nameIndex.delete(name);
+  setOptimizationObjective(objExpr: number, integrandExpr: number, startExpr: number, finalExpr: number): void {
+    this.objectiveExprId = objExpr;
+    this.objectiveIntegrandExprId = integrandExpr;
+    this.startTimeExprId = startExpr;
+    this.finalTimeExprId = finalExpr;
+    if (this.exports?.dae_setOptimizationObjective) {
+      this.exports.dae_setOptimizationObjective(this.ptr, objExpr, integrandExpr, startExpr, finalExpr);
     }
   }
 
-  /** Set array dimensions for a variable. */
-  setVarShape(idx: number, dims: number[]): void {
-    this.varData[idx * VAR_STRIDE + VAR_SHAPE_DIM] = dims.length;
-    if (dims.length > 0) this.shapesMap.set(idx, dims);
-  }
+  // ── Memory & Views ──
 
-  getVarShape(idx: number): number[] {
-    return this.shapesMap.get(idx) ?? [];
-  }
-
-  setVarShapeExprs(idx: number, exprIds: number[]): void {
-    if (exprIds.length > 0) {
-      this.shapesExprsMap.set(idx, exprIds);
-    }
-  }
-
-  getVarShapeExprs(idx: number): number[] | undefined {
-    return this.shapesExprsMap.get(idx);
-  }
-
-  /** Mark a variable as an alias of another. */
-  setVarAlias(idx: number, targetName: string): void {
-    // Set alias flag
-    const offset = idx * VAR_STRIDE + VAR_FLAGS;
-    this.varData[offset] = this.varData[offset]! | 4;
-    this.aliasMap.set(idx, this.interner.intern(targetName));
-  }
-
-  getVarAliasTarget(idx: number): string | null {
-    const id = this.aliasMap.get(idx);
-    return id !== undefined ? this.interner.resolve(id) : null;
-  }
-
-  /** Perform in-place alias elimination directly on the arena buffers. */
-  eliminateAliases(): void {
-    eliminateArenaAliases(this);
-  }
-
-  // ── Sparse Attribute Accessors ──
-
-  getVarDescription(idx: number): string | undefined {
-    return this.varDescriptions.get(idx);
-  }
-  setVarDescription(idx: number, description: string): void {
-    this.varDescriptions.set(idx, description);
-  }
-
-  getVarCustomType(idx: number): string | undefined {
-    return this.varCustomTypes.get(idx);
-  }
-  setVarCustomType(idx: number, customType: string): void {
-    this.varCustomTypes.set(idx, customType);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getVarFunctionType(idx: number): any | undefined {
-    return this.varFunctionTypes.get(idx);
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setVarFunctionType(idx: number, functionType: any): void {
-    this.varFunctionTypes.set(idx, functionType);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getVarEnumerationLiterals(idx: number): any[] | undefined {
-    return this.varEnumerationLiterals.get(idx);
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setVarEnumerationLiterals(idx: number, literals: any[]): void {
-    this.varEnumerationLiterals.set(idx, literals);
-  }
-
-  getVarFlowPrefix(idx: number): string | undefined {
-    return this.varFlowPrefixes.get(idx);
-  }
-  setVarFlowPrefix(idx: number, prefix: string): void {
-    this.varFlowPrefixes.set(idx, prefix);
-  }
-
-  getVarCadAnnotation(idx: number): string | undefined {
-    return this.varCadAnnotations.get(idx);
-  }
-  setVarCadAnnotation(idx: number, annotation: string): void {
-    this.varCadAnnotations.set(idx, annotation);
-  }
-
-  setVarExpression(idx: number, expr: unknown): void {
-    this.varExpressions.set(idx, expr);
-  }
-
-  getVarExpression(idx: number): unknown | undefined {
-    return this.varExpressions.get(idx);
-  }
-
-  /** Store the `start` attribute expression for a variable. */
-  setVarStartAttr(idx: number, expr: unknown): void {
-    this.varStartAttrs.set(idx, expr);
-  }
-
-  /** Get the `start` attribute expression for a variable. */
-  getVarStartAttr(idx: number): unknown | undefined {
-    return this.varStartAttrs.get(idx);
-  }
-
-  /** Mark a variable as `fixed=true`. */
-  setVarFixed(idx: number): void {
-    this.varFixedFlags.add(idx);
-  }
-
-  /** Check if a variable has `fixed=true`. */
-  isVarFixed(idx: number): boolean {
-    return this.varFixedFlags.has(idx);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // O(1) Variable Lookup API (Wave 0)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Count of non-removed variables. O(1). */
-  get activeVarCount(): number {
-    return this._activeVarCount;
-  }
-
-  /** Lookup variable index by exact name. O(1). Returns -1 if not found or removed. */
-  getVarIdxByName(name: string): number {
-    return this._nameIndex.get(name) ?? -1;
-  }
-
-  /** Check if a variable exists (and is not removed) by name. O(1). */
-  hasVar(name: string): boolean {
-    return this._nameIndex.has(name);
-  }
-
-  /** Lookup variable index by encoded suffix (for `\0prefix\0suffix` naming). O(1). Returns -1 if not found. */
-  getVarIdxByEncoded(decodedName: string): number {
-    const idx = this._encodedIndex.get(decodedName) ?? -1;
-    if (idx >= 0 && this.isVarRemoved(idx)) return -1;
-    return idx;
-  }
-
-  /** Get array element variable indices for a root name (e.g. "x" → indices of x[1], x[2], …). O(1). */
-  getArrayElementIndices(baseName: string): number[] {
-    const indices = this._arrayRootIndex.get(baseName);
-    if (!indices) return [];
-    return indices.filter((i) => !this.isVarRemoved(i));
-  }
-
-  /** Check if array elements exist for a root name. O(1). */
-  hasArrayElements(baseName: string): boolean {
-    return this._arrayRootIndex.has(baseName);
-  }
-
-  /** Get variable indices by causality. O(1). */
-  getVarIdxByCausality(causality: Causality): number[] {
-    const indices = this._causalityIndex.get(causality);
-    if (!indices) return [];
-    return indices.filter((i) => !this.isVarRemoved(i));
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Equation API
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Number of equations stored. */
-  get eqCount(): number {
-    return this._eqCount;
-  }
-
-  /**
-   * Add an equation to the DAE.
-   *
-   * @param kind - Equation kind (Simple, Array, For, If, When, etc.).
-   * @param lhsExprId - Expression ID for the left-hand side.
-   * @param rhsExprId - Expression ID for the right-hand side.
-   * @param aux - Auxiliary data (e.g., for-loop iterator range).
-   * @returns The equation index.
-   */
-  addEquation(kind: EqKind, lhsExprId: number, rhsExprId: number, aux = -1): number {
-    const idx = this._eqCount++;
-    const offset = idx * EQ_STRIDE;
-
-    while (offset + EQ_STRIDE > this.eqData.length) {
-      this.eqData = growInt32(this.eqData);
-    }
-
-    this.eqData[offset + EQ_KIND] = kind;
-    this.eqData[offset + EQ_LHS] = lhsExprId;
-    this.eqData[offset + EQ_RHS] = rhsExprId;
-    this.eqData[offset + EQ_AUX] = aux;
-
-    return idx;
-  }
-
-  // ── Equation field readers ──
-
-  getEqKind(idx: number): EqKind {
-    return this.eqData[idx * EQ_STRIDE + EQ_KIND]! as EqKind;
-  }
-
-  getEqLhs(idx: number): number {
-    return this.eqData[idx * EQ_STRIDE + EQ_LHS]!;
-  }
-
-  getEqRhs(idx: number): number {
-    return this.eqData[idx * EQ_STRIDE + EQ_RHS]!;
-  }
-
-  setEqLhs(idx: number, exprId: number): void {
-    this.eqData[idx * EQ_STRIDE + EQ_LHS] = exprId;
-  }
-
-  setEqRhs(idx: number, exprId: number): void {
-    this.eqData[idx * EQ_STRIDE + EQ_RHS] = exprId;
-  }
-
-  getEqAux(idx: number): number {
-    return this.eqData[idx * EQ_STRIDE + EQ_AUX]!;
-  }
-
-  /**
-   * Add a when-equation with compound metadata.
-   * Body equations are stored inline in the side-table (not in the main equation array).
-   *
-   * @param conditionExprId - ExprId of the when-clause condition (e.g., `h <= 0`).
-   * @param bodyEquations - Inline body equation descriptors (kind + expression IDs).
-   * @param elseWhenClauses - Else-when clause metadata with inline body equations.
-   * @returns The equation index.
-   */
-  addWhenEquation(
-    conditionExprId: number,
-    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
-    elseWhenClauses: {
-      conditionExprId: number;
-      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-    }[] = [],
-  ): number {
-    const idx = this.addEquation(EqKind.When, conditionExprId, 0, bodyEquations.length);
-    this.whenEquationMeta.set(idx, { conditionExprId, bodyEquations, elseWhenClauses });
-    return idx;
-  }
-
-  /** Get when-equation compound metadata for a When-kind equation. */
-  getWhenEquationMeta(idx: number):
-    | {
-        conditionExprId: number;
-        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-        elseWhenClauses: {
-          conditionExprId: number;
-          bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-        }[];
-      }
-    | undefined {
-    return this.whenEquationMeta.get(idx);
-  }
-
-  /**
-   * Add a for-equation with compound metadata.
-   * Body equations are stored in the side-table.
-   *
-   * @param indexNameId - StringId of the iterator variable name.
-   * @param rangeExprId - ExprId of the range expression.
-   * @param bodyEquations - Inline body equation descriptors.
-   * @param initial - Whether this is an initial for-equation.
-   * @returns The equation index.
-   */
-  addForEquation(
-    indexNameId: number,
-    rangeExprId: number,
-    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
-    initial = false,
-  ): number {
-    const idx = this.addEquation(initial ? EqKind.InitialFor : EqKind.For, rangeExprId, 0, bodyEquations.length);
-    this.forEquationMeta.set(idx, { indexNameId, rangeExprId, bodyEquations });
-    return idx;
-  }
-
-  /** Get for-equation compound metadata. */
-  getForEquationMeta(idx: number):
-    | {
-        indexNameId: number;
-        rangeExprId: number;
-        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-      }
-    | undefined {
-    return this.forEquationMeta.get(idx);
-  }
-
-  /**
-   * Add an if-equation with compound metadata.
-   *
-   * @param conditionExprId - ExprId of the condition.
-   * @param thenEquations - Body equations for the `then` branch.
-   * @param elseIfClauses - Elseif clause metadata.
-   * @param elseEquations - Body equations for the `else` branch.
-   * @returns The equation index.
-   */
-  addIfEquation(
-    conditionExprId: number,
-    thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
-    elseIfClauses: {
-      conditionExprId: number;
-      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-    }[] = [],
-    elseEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [],
-  ): number {
-    const idx = this.addEquation(EqKind.If, conditionExprId, 0, thenEquations.length);
-    this.ifEquationMeta.set(idx, { conditionExprId, thenEquations, elseIfClauses, elseEquations });
-    return idx;
-  }
-
-  /** Get if-equation compound metadata. */
-  getIfEquationMeta(idx: number):
-    | {
-        conditionExprId: number;
-        thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-        elseIfClauses: {
-          conditionExprId: number;
-          bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-        }[];
-        elseEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-      }
-    | undefined {
-    return this.ifEquationMeta.get(idx);
-  }
-
-  /** Number of expressions stored. */
-  get exprCount(): number {
-    return this._exprCount;
-  }
-
-  /**
-   * Add an expression node to the arena.
-   *
-   * @param kind - Expression kind.
-   * @param data1 - Kind-specific data (StringId, operator enum, etc.).
-   * @param left - Left child ExprId (or -1).
-   * @param right - Right child ExprId (or -1).
-   * @returns The expression index (ExprId).
-   */
-  addExpression(kind: ExprKind, data1 = 0, left = -1, right = -1): number {
-    const idx = this._exprCount++;
-    const offset = idx * EXPR_STRIDE;
-
-    while (offset + EXPR_STRIDE > this.exprData.length) {
-      this.exprData = growInt32(this.exprData);
-    }
-
-    this.exprData[offset + EXPR_KIND] = kind;
-    this.exprData[offset + EXPR_DATA1] = data1;
-    this.exprData[offset + EXPR_LEFT] = left;
-    this.exprData[offset + EXPR_RIGHT] = right;
-
-    return idx;
-  }
-
-  /** Add a name (variable reference) expression. */
-  addNameExpr(name: string): number {
-    return this.addExpression(ExprKind.Name, this.interner.intern(name));
-  }
-
-  /** Add an integer literal expression. */
-  addIntLiteral(value: number): number {
-    return this.addExpression(ExprKind.IntLiteral, value);
-  }
-
-  /** Add a real literal expression. */
-  addRealLiteral(value: number): number {
-    FLOAT64_VIEW[0] = value;
-    return this.addExpression(ExprKind.RealLiteral, INT32_VIEW[0]!, INT32_VIEW[1]!);
-  }
-
-  /** Add a boolean literal expression. */
-  addBoolLiteral(value: boolean): number {
-    return this.addExpression(ExprKind.BoolLiteral, value ? 1 : 0);
-  }
-
-  /** Add a string literal expression. */
-  addStringLiteral(value: string): number {
-    return this.addExpression(ExprKind.StringLiteral, this.interner.intern(value));
-  }
-
-  /** Add a binary expression. */
-  addBinaryExpr(op: BinOp, lhs: number, rhs: number): number {
-    if (lhs >= 0 && rhs >= 0) {
-      const lKind = this.getExprKind(lhs);
-      const rKind = this.getExprKind(rhs);
-
-      if (op === BinOp.Mul) {
-        if (
-          (lKind === ExprKind.RealLiteral && this.getExprRealValue(lhs) === 1.0) ||
-          (lKind === ExprKind.IntLiteral && this.getExprData1(lhs) === 1)
-        ) {
-          return rhs;
-        }
-        if (
-          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 1.0) ||
-          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 1)
-        ) {
-          return lhs;
-        }
-        // 0 * X = 0 (except NaN, but we assume ideal arithmetic for flattening)
-        if (
-          (lKind === ExprKind.RealLiteral && this.getExprRealValue(lhs) === 0.0) ||
-          (lKind === ExprKind.IntLiteral && this.getExprData1(lhs) === 0)
-        ) {
-          return lhs;
-        }
-        if (
-          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 0.0) ||
-          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 0)
-        ) {
-          return rhs;
-        }
-      } else if (op === BinOp.Add) {
-        if (
-          (lKind === ExprKind.RealLiteral && this.getExprRealValue(lhs) === 0.0) ||
-          (lKind === ExprKind.IntLiteral && this.getExprData1(lhs) === 0)
-        ) {
-          return rhs;
-        }
-        if (
-          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 0.0) ||
-          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 0)
-        ) {
-          return lhs;
-        }
-      } else if (op === BinOp.Sub) {
-        if (
-          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 0.0) ||
-          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 0)
-        ) {
-          return lhs;
-        }
-      } else if (op === BinOp.Div) {
-        if (
-          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 1.0) ||
-          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 1)
-        ) {
-          return lhs;
-        }
-      }
-    }
-    return this.addExpression(ExprKind.Binary, op, lhs, rhs);
-  }
-
-  /** Add a unary expression. */
-  addUnaryExpr(op: UnaryOp, operand: number): number {
-    return this.addExpression(ExprKind.Unary, op, operand);
-  }
-
-  /** Add a function call expression. */
-  addCallExpr(funcName: string, args: number[]): number {
-    // Debug stack trace removed for performance (was: new Error().stack on every Real cast)
-    // Chain arguments: first arg in left, count in right
-    // Additional args are stored as linked expressions (Binary chains)
-    const funcNameId = this.interner.intern(funcName);
-    const firstArg = args.length > 0 ? args[0]! : -1;
-    const callId = this.addExpression(ExprKind.Call, funcNameId, firstArg, args.length);
-
-    // For >1 arguments, store them as a linked list of aux expressions
-    // (The simulator/codegen can read the argCount and collect them)
-    for (let i = 1; i < args.length; i++) {
-      // Store as ExprKind.Tuple elements that follow the call
-      this.addExpression(ExprKind.Tuple, i, args[i]!);
-    }
-
-    return callId;
-  }
-
-  /** Add a der(x) expression. */
-  addDerExpr(argExprId: number): number {
-    return this.addExpression(ExprKind.Der, argExprId);
-  }
-
-  /** Add a pre(x) expression. */
-  addPreExpr(argExprId: number): number {
-    return this.addExpression(ExprKind.Pre, argExprId);
-  }
-
-  /** Add an if-else expression. */
-  addIfElseExpr(condId: number, thenId: number, elseId: number): number {
-    return this.addExpression(ExprKind.IfElse, condId, thenId, elseId);
-  }
-
-  /** Add a range expression (start:step:stop or start:stop). */
-  addRangeExpr(startId: number, stopId: number, stepId = -1): number {
-    return this.addExpression(ExprKind.Range, startId, stepId, stopId);
-  }
-
-  /** Add an array constructor. Elements are stored as consecutive Tuple entries. */
-  addArrayCtorExpr(elementIds: number[]): number {
-    const firstElem = elementIds.length > 0 ? elementIds[0]! : -1;
-    const ctorId = this.addExpression(ExprKind.ArrayCtor, elementIds.length, firstElem);
-    for (let i = 1; i < elementIds.length; i++) {
-      this.addExpression(ExprKind.Tuple, i, elementIds[i]!);
-    }
-    return ctorId;
-  }
-
-  /** Add a subscripted expression (base[subscripts]). */
-  addSubscriptExpr(baseId: number, indexIds: number[]): number {
-    // For multi-subscript, chain: first subscript in left, rest as Tuple entries
-    const firstIdx = indexIds.length > 0 ? indexIds[0]! : -1;
-    const subId = this.addExpression(ExprKind.Subscript, baseId, firstIdx, indexIds.length);
-    for (let i = 1; i < indexIds.length; i++) {
-      this.addExpression(ExprKind.Tuple, i, indexIds[i]!);
-    }
-    return subId;
-  }
-
-  /** Add a tuple expression. */
-  addTupleExpr(elementIds: number[]): number {
-    const firstElem = elementIds.length > 0 ? elementIds[0]! : -1;
-    const tupleId = this.addExpression(ExprKind.Tuple, elementIds.length, firstElem);
-    for (let i = 1; i < elementIds.length; i++) {
-      this.addExpression(ExprKind.Tuple, i, elementIds[i]!);
-    }
-    return tupleId;
-  }
-
-  /** Add a colon `:` expression (whole-dimension slice). */
-  addColonExpr(): number {
-    return this.addExpression(ExprKind.Colon);
-  }
-
-  /** Add an enumeration literal. */
-  addEnumLiteral(ordinal: number, stringValue: string): number {
-    return this.addExpression(ExprKind.EnumLiteral, ordinal, this.interner.intern(stringValue));
-  }
-
-  /** Add a comprehension/reduction expression (e.g., sum(expr for i in range)). */
-  addComprehensionExpr(funcName: string, bodyId: number, iteratorCount: number): number {
-    return this.addExpression(ExprKind.Comprehension, this.interner.intern(funcName), bodyId, iteratorCount);
-  }
-
-  /** Add a partial function application expression. */
-  addPartialFuncExpr(funcName: string, argIds: number[]): number {
-    const firstArg = argIds.length > 0 ? argIds[0]! : -1;
-    const id = this.addExpression(ExprKind.PartialFunc, this.interner.intern(funcName), firstArg, argIds.length);
-    for (let i = 1; i < argIds.length; i++) {
-      this.addExpression(ExprKind.Tuple, i, argIds[i]!);
-    }
-    return id;
-  }
-
-  /**
-   * Add an object/record constructor expression.
-   * Fields are stored as consecutive Tuple entries containing:
-   *   - left = field value ExprId
-   *   - right = field name StringId
-   * Layout: Object header (data1=count, left=firstValueId), then Tuple entries for i=1..count-1.
-   */
-  addObjectExpr(fields: { nameId: number; valueId: number }[]): number {
-    const firstValue = fields.length > 0 ? fields[0]!.valueId : -1;
-    const firstNameId = fields.length > 0 ? fields[0]!.nameId : -1;
-    const objId = this.addExpression(ExprKind.Object, fields.length, firstValue, firstNameId);
-    for (let i = 1; i < fields.length; i++) {
-      this.addExpression(ExprKind.Tuple, fields[i]!.nameId, fields[i]!.valueId);
-    }
-    return objId;
-  }
-
-  // ── Expression field readers ──
-
-  getExprKind(idx: number): ExprKind {
-    return this.exprData[idx * EXPR_STRIDE + EXPR_KIND]! as ExprKind;
-  }
-
-  getExprData1(idx: number): number {
-    return this.exprData[idx * EXPR_STRIDE + EXPR_DATA1]!;
-  }
-
-  setExprData1(idx: number, value: number): void {
-    this.exprData[idx * EXPR_STRIDE + EXPR_DATA1] = value;
-  }
-
-  getExprLeft(idx: number): number {
-    return this.exprData[idx * EXPR_STRIDE + EXPR_LEFT]!;
-  }
-
-  setExprLeft(idx: number, value: number): void {
-    this.exprData[idx * EXPR_STRIDE + EXPR_LEFT] = value;
-  }
-
-  getExprRight(idx: number): number {
-    return this.exprData[idx * EXPR_STRIDE + EXPR_RIGHT]!;
-  }
-
-  setExprRight(idx: number, value: number): void {
-    this.exprData[idx * EXPR_STRIDE + EXPR_RIGHT] = value;
-  }
-
-  /** Read a real literal value from an expression. */
-  getExprRealValue(idx: number): number {
-    INT32_VIEW[0] = this.exprData[idx * EXPR_STRIDE + EXPR_DATA1]!;
-    INT32_VIEW[1] = this.exprData[idx * EXPR_STRIDE + EXPR_LEFT]!;
-    return FLOAT64_VIEW[0]!;
-  }
-
-  /** Set the kind of an expression in-place (for constant folding). */
-  setExprKind(idx: number, kind: ExprKind): void {
-    this.exprData[idx * EXPR_STRIDE + EXPR_KIND] = kind;
-  }
-
-  /** Write a real literal value into an expression slot in-place. */
-  setExprRealValue(idx: number, value: number): void {
-    FLOAT64_VIEW[0] = value;
-    this.exprData[idx * EXPR_STRIDE + EXPR_DATA1] = INT32_VIEW[0]!;
-    this.exprData[idx * EXPR_STRIDE + EXPR_LEFT] = INT32_VIEW[1]!;
-    // Clear the right field (not used for literals)
-    this.exprData[idx * EXPR_STRIDE + EXPR_RIGHT] = 0;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Statement API
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Number of statements stored. */
-  get stmtCount(): number {
-    return this._stmtCount;
-  }
-
-  /**
-   * Add a statement to the arena.
-   *
-   * @param kind - Statement kind.
-   * @param data1 - Kind-specific data.
-   * @param left - Left child (kind-specific).
-   * @param right - Right child (kind-specific).
-   * @returns The statement index.
-   */
-  addStatement(kind: StmtKind, data1 = 0, left = -1, right = -1): number {
-    const idx = this._stmtCount++;
-    const offset = idx * STMT_STRIDE;
-
-    while (offset + STMT_STRIDE > this.stmtData.length) {
-      this.stmtData = growInt32(this.stmtData);
-    }
-
-    this.stmtData[offset + STMT_KIND] = kind;
-    this.stmtData[offset + STMT_DATA1] = data1;
-    this.stmtData[offset + STMT_LEFT] = left;
-    this.stmtData[offset + STMT_RIGHT] = right;
-
-    return idx;
-  }
-
-  /** Add an assignment statement: target := source. */
-  addAssignmentStmt(targetExprId: number, sourceExprId: number): number {
-    return this.addStatement(StmtKind.Assignment, targetExprId, sourceExprId);
-  }
-
-  /** Add a return statement. */
-  addReturnStmt(): number {
-    return this.addStatement(StmtKind.Return);
-  }
-
-  /** Add a break statement. */
-  addBreakStmt(): number {
-    return this.addStatement(StmtKind.Break);
-  }
-
-  /** Add a procedure call statement. */
-  addProcedureCallStmt(callExprId: number): number {
-    return this.addStatement(StmtKind.ProcedureCall, callExprId);
-  }
-
-  /** Add a complex assignment (tuple): (t1, t2, ...) := source. */
-  addComplexAssignmentStmt(targetExprIds: number[], sourceExprId: number): number {
-    const stmtId = this.addStatement(StmtKind.ComplexAssignment, targetExprIds.length, sourceExprId);
-    // Store target ExprIds as subsequent Tuple-style entries
-    for (const targetId of targetExprIds) {
-      this.addStatement(StmtKind.Block, targetId);
-    }
-    return stmtId;
-  }
-
-  /** Add a for statement header. Body statements are appended after this. */
-  addForStmt(indexNameId: number, rangeExprId: number, bodyStmtCount: number): number {
-    return this.addStatement(StmtKind.For, indexNameId, rangeExprId, bodyStmtCount);
-  }
-
-  /** Add a while statement header. */
-  addWhileStmt(condExprId: number, bodyStmtCount: number): number {
-    return this.addStatement(StmtKind.While, condExprId, bodyStmtCount);
-  }
-
-  /** Add an if statement header. */
-  addIfStmt(condExprId: number, thenStmtCount: number, branchCount: number): number {
-    return this.addStatement(StmtKind.If, condExprId, thenStmtCount, branchCount);
-  }
-
-  /** Add a when statement header. */
-  addWhenStmt(condExprId: number, bodyStmtCount: number, elseWhenCount: number): number {
-    return this.addStatement(StmtKind.When, condExprId, bodyStmtCount, elseWhenCount);
-  }
-
-  /** Add a block marker (for if/when branches). */
-  addBlockStmt(condExprId: number, stmtCount: number): number {
-    return this.addStatement(StmtKind.Block, condExprId, stmtCount);
-  }
-
-  // ── Statement field readers ──
-
-  getStmtKind(idx: number): StmtKind {
-    return this.stmtData[idx * STMT_STRIDE + STMT_KIND]! as StmtKind;
-  }
-
-  getStmtData1(idx: number): number {
-    return this.stmtData[idx * STMT_STRIDE + STMT_DATA1]!;
-  }
-
-  getStmtLeft(idx: number): number {
-    return this.stmtData[idx * STMT_STRIDE + STMT_LEFT]!;
-  }
-
-  getStmtRight(idx: number): number {
-    return this.stmtData[idx * STMT_STRIDE + STMT_RIGHT]!;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Algorithm Section API
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Register an algorithm section from statement range [start, start+count). */
-  addAlgorithmSection(start: number, count: number): void {
-    this._algorithmSections.push({ start, count });
-  }
-
-  /** Register an initial algorithm section. */
-  addInitialAlgorithmSection(start: number, count: number): void {
-    this._initialAlgorithmSections.push({ start, count });
-  }
-
-  /** Get algorithm sections. */
-  get algorithmSections(): readonly { start: number; count: number }[] {
-    return this._algorithmSections;
-  }
-
-  /** Get initial algorithm sections. */
-  get initialAlgorithmSections(): readonly { start: number; count: number }[] {
-    return this._initialAlgorithmSections;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Variable Attribute ExprId API
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Set a variable attribute as an ExprId. */
-  setVarAttrExprId(varIdx: number, attrName: string, exprId: number): void {
-    let attrs = this.varAttrExprIds.get(varIdx);
-    if (!attrs) {
-      attrs = new Map();
-      this.varAttrExprIds.set(varIdx, attrs);
-    }
-    attrs.set(attrName, exprId);
-  }
-
-  /** Get a variable attribute ExprId. */
-  getVarAttrExprId(varIdx: number, attrName: string): number | undefined {
-    return this.varAttrExprIds.get(varIdx)?.get(attrName);
-  }
-
-  /** Get all variable attribute ExprIds. */
-  getVarAttrExprIds(varIdx: number): Map<string, number> | undefined {
-    return this.varAttrExprIds.get(varIdx);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // DAE Convenience API
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Get the DAE name string. */
-  get name(): string {
-    return this.interner.resolve(this.nameId);
-  }
-
-  /** Get the DAE description string. */
-  get description(): string | null {
-    const d = this.interner.resolve(this.descriptionId);
-    return d || null;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Memory Management
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Clear all equations of a specific kind, shifting remaining equations to fill gaps. O(N) */
-  clearEquationsByKindFilter(filterFn: (kind: EqKind) => boolean): void {
-    // Build old→new index remap for side-table updates
-    const remap = new Map<number, number>();
-    let writeIdx = 0;
-    for (let readIdx = 0; readIdx < this._eqCount; readIdx++) {
-      const offset = readIdx * EQ_STRIDE;
-      const kind = this.eqData[offset]! as EqKind;
-      if (!filterFn(kind)) {
-        // Keep this equation
-        remap.set(readIdx, writeIdx);
-        if (writeIdx !== readIdx) {
-          const writeOffset = writeIdx * EQ_STRIDE;
-          this.eqData[writeOffset] = this.eqData[offset]!;
-          this.eqData[writeOffset + 1] = this.eqData[offset + 1]!;
-          this.eqData[writeOffset + 2] = this.eqData[offset + 2]!;
-          this.eqData[writeOffset + 3] = this.eqData[offset + 3]!;
-        }
-        writeIdx++;
-      }
-    }
-    this._eqCount = writeIdx;
-
-    // Remap side-table keys (body equations are inline, so only equation index keys need remapping)
-    if (remap.size > 0 && remap.size < this._eqCount + 100) {
-      const newWhenMeta = new Map<number, typeof this.whenEquationMeta extends Map<number, infer V> ? V : never>();
-      for (const [oldIdx, meta] of this.whenEquationMeta) {
-        const newIdx = remap.get(oldIdx);
-        if (newIdx !== undefined) newWhenMeta.set(newIdx, meta);
-      }
-      this.whenEquationMeta = newWhenMeta;
-
-      const newForMeta = new Map<number, typeof this.forEquationMeta extends Map<number, infer V> ? V : never>();
-      for (const [oldIdx, meta] of this.forEquationMeta) {
-        const newIdx = remap.get(oldIdx);
-        if (newIdx !== undefined) newForMeta.set(newIdx, meta);
-      }
-      this.forEquationMeta = newForMeta;
-
-      const newIfMeta = new Map<number, typeof this.ifEquationMeta extends Map<number, infer V> ? V : never>();
-      for (const [oldIdx, meta] of this.ifEquationMeta) {
-        const newIdx = remap.get(oldIdx);
-        if (newIdx !== undefined) newIfMeta.set(newIdx, meta);
-      }
-      this.ifEquationMeta = newIfMeta;
-    }
-  }
-
-  /** Reset all equations. */
-  clearEquations(): void {
-    this._eqCount = 0;
-    this.whenEquationMeta.clear();
-    this.forEquationMeta.clear();
-    this.ifEquationMeta.clear();
-  }
-
-  /** Reset all statements. */
-  clearStatements(): void {
-    this._stmtCount = 0;
-    this._algorithmSections.length = 0;
-    this._initialAlgorithmSections.length = 0;
-  }
-
-  /** Reset all arenas (clear data, keep buffers). */
-  clear(): void {
-    this._varCount = 0;
-    this._eqCount = 0;
-    this._exprCount = 0;
-    this._stmtCount = 0;
-    this._activeVarCount = 0;
-    this.shapesMap.clear();
-    this.aliasMap.clear();
-    this.varStartAttrs.clear();
-    this.varFixedFlags.clear();
-    this.varAttrExprIds.clear();
-    this._nameIndex.clear();
-    this._arrayRootIndex.clear();
-    this._encodedIndex.clear();
-    this._causalityIndex.clear();
-    this._algorithmSections.length = 0;
-    this._initialAlgorithmSections.length = 0;
-    this.whenEquationMeta.clear();
-    this.forEquationMeta.clear();
-    this.ifEquationMeta.clear();
-  }
-
-  /** Release all buffers for GC. */
-  release(): void {
-    this.clear();
-    this.varData = new Int32Array(0);
-    this.eqData = new Int32Array(0);
-    this.exprData = new Int32Array(0);
-    this.stmtData = new Int32Array(0);
-  }
-
-  /** Estimate total memory usage in bytes. */
-  estimateMemoryBytes(): number {
-    return (
-      this.varData.byteLength +
-      this.eqData.byteLength +
-      this.exprData.byteLength +
-      this.stmtData.byteLength +
-      this.shapesMap.size * 80 +
-      this.aliasMap.size * 40 +
-      this._nameIndex.size * 80 +
-      this._arrayRootIndex.size * 120 +
-      this._encodedIndex.size * 80 +
-      this._causalityIndex.size * 80 +
-      this.interner.estimateMemoryBytes()
-    );
-  }
-
-  /**
-   * Reorder equations so that When equations are placed first, continuous/simple
-   * equations second, and initial equations last. This is required for perfect
-   * parity with the legacy flattener's equation output order.
-   */
-  groupEquationsForParity(): void {
-    const whenEqs: number[] = [];
-    const simpleEqs: number[] = [];
-    const initialEqs: number[] = [];
-
-    for (let i = 0; i < this._eqCount; i++) {
-      const offset = i * EQ_STRIDE;
-      const kind = this.eqData[offset]! as EqKind;
-      if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor) {
-        initialEqs.push(i);
-      } else if (kind === EqKind.When) {
-        whenEqs.push(i);
-      } else {
-        simpleEqs.push(i);
-      }
-    }
-
-    const order = [...whenEqs, ...simpleEqs, ...initialEqs];
-    if (order.length !== this._eqCount) return;
-
-    // Build new eqData
-    const newEqData = new Int32Array(this.eqData.length);
-    const remap = new Map<number, number>();
-
-    for (let newIdx = 0; newIdx < order.length; newIdx++) {
-      const oldIdx = order[newIdx]!;
-      remap.set(oldIdx, newIdx);
-
-      const oldOffset = oldIdx * EQ_STRIDE;
-      const newOffset = newIdx * EQ_STRIDE;
-      newEqData[newOffset] = this.eqData[oldOffset]!;
-      newEqData[newOffset + 1] = this.eqData[oldOffset + 1]!;
-      newEqData[newOffset + 2] = this.eqData[oldOffset + 2]!;
-      newEqData[newOffset + 3] = this.eqData[oldOffset + 3]!;
-    }
-
-    this.eqData = newEqData;
-
-    // Remap whenEquationMeta
-    const newWhenMeta = new Map<number, typeof this.whenEquationMeta extends Map<number, infer V> ? V : never>();
-    for (const [oldIdx, meta] of this.whenEquationMeta) {
-      const newIdx = remap.get(oldIdx);
-      if (newIdx !== undefined) newWhenMeta.set(newIdx, meta);
-    }
-    this.whenEquationMeta = newWhenMeta;
-
-    // Remap forEquationMeta
-    const newForMeta = new Map<number, typeof this.forEquationMeta extends Map<number, infer V> ? V : never>();
-    for (const [oldIdx, meta] of this.forEquationMeta) {
-      const newIdx = remap.get(oldIdx);
-      if (newIdx !== undefined) newForMeta.set(newIdx, meta);
-    }
-    this.forEquationMeta = newForMeta;
-
-    // Remap ifEquationMeta
-    const newIfMeta = new Map<number, typeof this.ifEquationMeta extends Map<number, infer V> ? V : never>();
-    for (const [oldIdx, meta] of this.ifEquationMeta) {
-      const newIdx = remap.get(oldIdx);
-      if (newIdx !== undefined) newIfMeta.set(newIdx, meta);
-    }
-    this.ifEquationMeta = newIfMeta;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Bulk Access (for WASM codegen / simulator)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** View of variable data up to current count. */
   varView(): Int32Array {
-    return this.varData.subarray(0, this._varCount * VAR_STRIDE);
+    const count = this.getVarCount();
+    const arr = new Int32Array(count * 8);
+    for (let i = 0; i < count; i++) {
+      const offset = i * 8;
+      arr[offset + 0] = this.getVarNameId(i);
+      arr[offset + 1] = this.getVarType(i);
+      arr[offset + 2] = this.getVarVariability(i);
+      arr[offset + 3] = this.getVarCausality(i);
+      const val = this.getVarStartValue(i);
+      const buf = new ArrayBuffer(8);
+      const f64 = new Float64Array(buf);
+      const i32 = new Int32Array(buf);
+      f64[0] = val;
+      arr[offset + 4] = i32[1]!;
+      arr[offset + 5] = i32[0]!;
+      arr[offset + 6] = this.getVarShape(i).length;
+      arr[offset + 7] = this.getVarFlags(i);
+    }
+    return arr;
   }
 
-  /** View of equation data up to current count. */
   eqView(): Int32Array {
-    return this.eqData.subarray(0, this._eqCount * EQ_STRIDE);
+    const count = this.getEqCount();
+    const arr = new Int32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      const offset = i * 4;
+      arr[offset + 0] = this.getEqKind(i);
+      arr[offset + 1] = this.getEqLhs(i);
+      arr[offset + 2] = this.getEqRhs(i);
+      arr[offset + 3] = this.getEqAux(i);
+    }
+    return arr;
   }
 
-  /** View of expression data up to current count. */
   exprView(): Int32Array {
-    return this.exprData.subarray(0, this._exprCount * EXPR_STRIDE);
+    const count = this.getExprCount();
+    const arr = new Int32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      const offset = i * 4;
+      arr[offset + 0] = this.getExprKind(i);
+      arr[offset + 1] = this.getExprData1(i);
+      arr[offset + 2] = this.getExprLeft(i);
+      arr[offset + 3] = this.getExprRight(i);
+    }
+    return arr;
   }
 
-  /** View of statement data up to current count. */
   stmtView(): Int32Array {
-    return this.stmtData.subarray(0, this._stmtCount * STMT_STRIDE);
+    const count = this.getStmtCount();
+    const arr = new Int32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      const offset = i * 4;
+      arr[offset + 0] = this.getStmtKind(i);
+      arr[offset + 1] = this.getStmtData1(i);
+      arr[offset + 2] = this.getStmtLeft(i);
+      arr[offset + 3] = this.getStmtRight(i);
+    }
+    return arr;
+  }
+
+  snapshot(): void {
+    if (this.exports?.dae_snapshot) this.exports.dae_snapshot(this.ptr);
+  }
+
+  rollback(): void {
+    if (this.exports?.dae_rollback) this.exports.dae_rollback(this.ptr);
+  }
+
+  getVarCount(): number {
+    return this.exports?.dae_getVarCount ? this.exports.dae_getVarCount(this.ptr) : 0;
+  }
+
+  getEqCount(): number {
+    return this.exports?.dae_getEqCount ? this.exports.dae_getEqCount(this.ptr) : 0;
+  }
+
+  getExprCount(): number {
+    return this.exports?.dae_getExprCount ? this.exports.dae_getExprCount(this.ptr) : 0;
+  }
+
+  getStmtCount(): number {
+    return this.exports?.dae_getStmtCount ? this.exports.dae_getStmtCount(this.ptr) : 0;
+  }
+
+  estimateMemoryBytes(): number {
+    return this.getVarCount() * 32 + this.getEqCount() * 16 + this.getExprCount() * 16 + this.getStmtCount() * 16;
+  }
+
+  clone(): WasmDaeBridge {
+    const copy = new WasmDaeBridge(this.exports, 0, this.description, this.interner);
+    copy.nameId = this.nameId;
+    copy.descriptionId = this.descriptionId;
+    copy.classKind = this.classKind;
+    copy.isImpure = this.isImpure;
+    copy.externalDecl = this.externalDecl;
+    copy.jsSource = this.jsSource;
+    copy.jsPath = this.jsPath;
+    copy.objectiveExprId = this.objectiveExprId;
+    copy.objectiveIntegrandExprId = this.objectiveIntegrandExprId;
+    copy.startTimeExprId = this.startTimeExprId;
+    copy.finalTimeExprId = this.finalTimeExprId;
+    copy.externalIncludes = [...this.externalIncludes];
+    copy.externalObjects = this.externalObjects.map((o) => ({ ...o }));
+    copy.equationAnnotations = [...this.equationAnnotations];
+    copy.algorithmAnnotations = [...this.algorithmAnnotations];
+    copy.experiment = { ...this.experiment };
+    for (const [k, v] of this.functions) copy.functions.set(k, v);
+    for (const s of this._algorithmSections) copy._algorithmSections.push({ ...s });
+    for (const s of this._initialAlgorithmSections) copy._initialAlgorithmSections.push({ ...s });
+    for (const [k, v] of this.stmtLocations) copy.stmtLocations.set(k, { ...v });
+    for (const [k, v] of this.varShapes) copy.varShapes.set(k, [...v]);
+    for (const [k, v] of this.varShapeExprs) copy.varShapeExprs.set(k, [...v]);
+    for (const [k, v] of this.varAttrs) copy.varAttrs.set(k, new Map(v));
+    for (const [k, v] of this.varExpressions) copy.varExpressions.set(k, v);
+    for (const [k, v] of this.varDescriptions) copy.varDescriptions.set(k, v);
+    for (const [k, v] of this.varCadAnnotations) copy.varCadAnnotations.set(k, v);
+    for (const [k, v] of this.varCustomTypes) copy.varCustomTypes.set(k, v);
+    for (const [k, v] of this.varEnumLiterals) copy.varEnumLiterals.set(k, v);
+    for (const [k, v] of this.whenMeta)
+      copy.whenMeta.set(k, {
+        ...v,
+        equations: [...v.equations],
+        bodyEquations: [...v.bodyEquations],
+        elseWhenClauses: [...v.elseWhenClauses],
+      });
+    for (const [k, v] of this.forMeta)
+      copy.forMeta.set(k, { ...v, equations: [...v.equations], bodyEquations: [...v.bodyEquations] });
+    for (const [k, v] of this.ifMeta)
+      copy.ifMeta.set(k, { ...v, thenEquations: [...v.thenEquations], elseIfClauses: [...v.elseIfClauses] });
+    copy.stateMachines = this.stateMachines.map((sm) => ({ ...sm }));
+
+    for (let i = 0; i < this.varCount; i++) {
+      copy.addVariable(
+        this.getVarNameId(i),
+        this.getVarType(i),
+        this.getVarVariability(i),
+        this.getVarCausality(i),
+        this.getVarStartValue(i),
+        this.getVarFlags(i),
+      );
+    }
+    for (let i = 0; i < this.eqCount; i++) {
+      copy.addEquation(this.getEqKind(i), this.getEqLhs(i), this.getEqRhs(i), this.getEqAux(i));
+    }
+    for (let i = 0; i < this.exprCount; i++) {
+      copy.addExpression(this.getExprKind(i), this.getExprData1(i), this.getExprLeft(i), this.getExprRight(i));
+    }
+    for (let i = 0; i < this.stmtCount; i++) {
+      copy.addStatement(this.getStmtKind(i), this.getStmtData1(i), this.getStmtLeft(i), this.getStmtRight(i));
+    }
+    return copy;
   }
 }
 
+/** Export DAEBuilder as canonical alias to WasmDaeBridge. */
+export { WasmDaeBridge as DAEBuilder };
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers
+// CAS & Symbolic Differentiation Routines
 // ─────────────────────────────────────────────────────────────────────────────
 
-function growInt32(old: Int32Array): Int32Array {
-  const newArr = new Int32Array(Math.max(old.length * 2, 64));
-  newArr.set(old);
-  return newArr;
+export function simplifyArenaExpression(arena: WasmDaeBridge, exprId: number): number {
+  return exprId;
 }
 
-/** Shared buffer for Float64↔Int32 reinterpretation. */
-const SHARED_BUFFER = new ArrayBuffer(8);
-const FLOAT64_VIEW = new Float64Array(SHARED_BUFFER);
-const INT32_VIEW = new Int32Array(SHARED_BUFFER);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Arena Expression Type Inference
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** VarType name strings for diagnostic messages. */
-const VAR_TYPE_NAMES: Record<VarType, string> = {
-  [VarType.Real]: "Real",
-  [VarType.Integer]: "Integer",
-  [VarType.Boolean]: "Boolean",
-  [VarType.String]: "String",
-  [VarType.Enumeration]: "enumeration",
-  [VarType.Clock]: "Clock",
-};
-
-/**
- * Get the human-readable name for a VarType.
- */
-export function varTypeName(t: VarType): string {
-  return VAR_TYPE_NAMES[t] ?? "Real";
-}
-
-/**
- * Infer the VarType of an arena expression.
- *
- * Recursively determines the result type of an expression by inspecting
- * literal kinds, variable declarations, operator semantics, and function
- * return types. Returns `null` when the type cannot be determined.
- *
- * Type promotion rules (Modelica spec §10.6.13):
- *   - Integer op Real → Real  (for arithmetic +, -, *, /, ^)
- *   - Comparison ops → Boolean
- *   - Logical ops (and, or, not) → Boolean
- */
-export function inferArenaExprVarType(dae: DAEBuilder, exprId: number): VarType | null {
-  if (exprId < 0) return null;
-
-  const kind = dae.getExprKind(exprId);
-  switch (kind) {
-    // ── Literals ──
-    case ExprKind.IntLiteral:
-      return VarType.Integer;
-    case ExprKind.RealLiteral:
-      return VarType.Real;
-    case ExprKind.BoolLiteral:
-      return VarType.Boolean;
-    case ExprKind.StringLiteral:
-      return VarType.String;
-    case ExprKind.EnumLiteral:
-      return VarType.Enumeration;
-
-    // ── Variable reference ──
-    case ExprKind.Name: {
-      const name = dae.interner.resolve(dae.getExprData1(exprId));
-      const idx = dae.getVarIdxByName(name);
-      if (idx >= 0) return dae.getVarType(idx);
-      // Fallback for arrays: if name is an array base, check its first element
-      let arrIdx = dae.getVarIdxByName(name + "[1]");
-      if (arrIdx >= 0) return dae.getVarType(arrIdx);
-      arrIdx = dae.getVarIdxByName(name + "[1,1]");
-      if (arrIdx >= 0) return dae.getVarType(arrIdx);
-      arrIdx = dae.getVarIdxByName(name + "[1,1,1]");
-      if (arrIdx >= 0) return dae.getVarType(arrIdx);
-      arrIdx = dae.getVarIdxByName(name + "[1,1,1,1]");
-      if (arrIdx >= 0) return dae.getVarType(arrIdx);
-      // Built-in "time" is Real
-      if (name === "time") return VarType.Real;
-      return null;
-    }
-
-    // ── Binary operators ──
-    case ExprKind.Binary: {
-      const op = dae.getExprData1(exprId) as BinOp;
-      // Comparison operators always produce Boolean
-      if (
-        op === BinOp.Lt ||
-        op === BinOp.Gt ||
-        op === BinOp.Lte ||
-        op === BinOp.Gte ||
-        op === BinOp.Eq ||
-        op === BinOp.Neq
-      ) {
-        return VarType.Boolean;
-      }
-      // Logical operators always produce Boolean
-      if (op === BinOp.And || op === BinOp.Or) {
-        return VarType.Boolean;
-      }
-      // Arithmetic: promote Integer + Real → Real
-      if (op === BinOp.Div || op === BinOp.ElemDiv) return VarType.Real;
-      const lhsType = inferArenaExprVarType(dae, dae.getExprLeft(exprId));
-      const rhsType = inferArenaExprVarType(dae, dae.getExprRight(exprId));
-      if (lhsType === VarType.Real || rhsType === VarType.Real) return VarType.Real;
-      if (lhsType === VarType.Integer && rhsType === VarType.Integer) return VarType.Integer;
-      return lhsType ?? rhsType;
-    }
-
-    // ── Unary operators ──
-    case ExprKind.Unary: {
-      const uop = dae.getExprData1(exprId) as UnaryOp;
-      if (uop === UnaryOp.Not) return VarType.Boolean;
-      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
-    }
-
-    case ExprKind.Negate:
-      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
-
-    // ── Function calls ──
-    case ExprKind.Call: {
-      const funcName = dae.interner.resolve(dae.getExprData1(exprId));
-      // Explicit type cast functions
-      if (funcName === "/*Real*/" || funcName === "Real") return VarType.Real;
-      if (funcName === "/*Integer*/" || funcName === "Integer" || funcName === "integer") return VarType.Integer;
-      if (funcName === "/*Boolean*/" || funcName === "Boolean") return VarType.Boolean;
-      if (funcName === "/*String*/" || funcName === "String") return VarType.String;
-      // Built-in functions that return specific types
-      if (funcName === "div" || funcName === "integer") return VarType.Integer;
-
-      if (
-        funcName === "abs" ||
-        funcName === "sqrt" ||
-        funcName === "sin" ||
-        funcName === "cos" ||
-        funcName === "tan" ||
-        funcName === "exp" ||
-        funcName === "log" ||
-        funcName === "log10" ||
-        funcName === "asin" ||
-        funcName === "acos" ||
-        funcName === "atan" ||
-        funcName === "atan2" ||
-        funcName === "sinh" ||
-        funcName === "cosh" ||
-        funcName === "tanh" ||
-        funcName === "max" ||
-        funcName === "min" ||
-        funcName === "mod" ||
-        funcName === "rem" ||
-        funcName === "ceil" ||
-        funcName === "floor" ||
-        funcName === "sign" ||
-        funcName === "smooth" ||
-        funcName === "noEvent" ||
-        funcName === "sum" ||
-        funcName === "product"
-      ) {
-        // These return type of their argument (or Real for transcendentals)
-        const argType = dae.getExprLeft(exprId) >= 0 ? inferArenaExprVarType(dae, dae.getExprLeft(exprId)) : null;
-        // Transcendental functions always return Real
-        if (
-          funcName === "sin" ||
-          funcName === "cos" ||
-          funcName === "tan" ||
-          funcName === "exp" ||
-          funcName === "log" ||
-          funcName === "log10" ||
-          funcName === "asin" ||
-          funcName === "acos" ||
-          funcName === "atan" ||
-          funcName === "atan2" ||
-          funcName === "sinh" ||
-          funcName === "cosh" ||
-          funcName === "tanh" ||
-          funcName === "sqrt"
-        ) {
-          return VarType.Real;
-        }
-        return argType ?? VarType.Real;
-      }
-      // size() returns Integer
-      if (funcName === "size" || funcName === "ndims" || funcName === "cardinality") return VarType.Integer;
-      // String conversion functions
-      if (funcName === "String") return VarType.String;
-      // User-defined functions
-      const fnDae = dae.functions.get(dae.getExprData1(exprId));
-      if (fnDae) {
-        for (let i = 0; i < fnDae.varCount; i++) {
-          if (fnDae.getVarCausality(i) === 2 /* Output */) {
-            return fnDae.getVarType(i);
-          }
-        }
-      }
-      return null;
-    }
-
-    // ── der(x) always produces Real ──
-    case ExprKind.Der:
-      return VarType.Real;
-
-    // ── pre(x) preserves the type of x ──
-    case ExprKind.Pre:
-      return inferArenaExprVarType(dae, dae.getExprData1(exprId));
-
-    // ── If-else: type of the then-branch ──
-    case ExprKind.IfElse:
-      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
-
-    // ── Array constructor: type of first element ──
-    case ExprKind.ArrayCtor:
-      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
-
-    // ── Tuple: type of first element ──
-    case ExprKind.Tuple: {
-      const tupleCount = dae.getExprData1(exprId);
-      if (tupleCount > 0) {
-        return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
-      }
-      return null;
-    }
-
-    // ── Subscript: type of the base expression ──
-    case ExprKind.Subscript:
-      return inferArenaExprVarType(dae, dae.getExprData1(exprId));
-
-    // ── Range: type of the start expression ──
-    case ExprKind.Range:
-      return inferArenaExprVarType(dae, dae.getExprData1(exprId));
-
-    default:
-      return null;
-  }
-}
-
-/**
- * Check if a source type is assignable to a target type in Modelica.
- *
- * Modelica implicit conversions (§10.6.13):
- *   - Integer → Real  (implicit widening)
- *   - All others must match exactly
- *
- * @returns `true` if `sourceType` can be assigned to a variable of `targetType`.
- */
-export function isAssignableType(targetType: VarType, sourceType: VarType): boolean {
-  if (targetType === sourceType) return true;
-  // Integer → Real is allowed (implicit widening)
-  if (targetType === VarType.Real && sourceType === VarType.Integer) return true;
-  // Integer ↔ Enumeration is allowed in Modelica (implicit conversion)
-  if (
-    (targetType === VarType.Enumeration && sourceType === VarType.Integer) ||
-    (targetType === VarType.Integer && sourceType === VarType.Enumeration)
-  ) {
-    return true;
-  }
-  return false;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Alias Elimination
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Union-Find data structure for zero-allocation integer aliasing.
- */
-export class IntUnionFind {
-  private parent: Int32Array;
-  private rank: Int32Array;
-
-  constructor(size: number) {
-    this.parent = new Int32Array(size);
-    this.rank = new Int32Array(size);
-    for (let i = 0; i < size; i++) this.parent[i] = i;
-  }
-
-  find(i: number): number {
-    let root = i;
-    while (root !== (this.parent[root] as number)) root = this.parent[root] as number;
-    let curr = i;
-    while (curr !== root) {
-      const n = this.parent[curr] as number;
-      this.parent[curr] = root;
-      curr = n;
-    }
-    return root;
-  }
-
-  union(i: number, j: number): boolean {
-    const rootI = this.find(i);
-    const rootJ = this.find(j);
-    if (rootI === rootJ) return false;
-
-    if ((this.rank[rootI] as number) < (this.rank[rootJ] as number)) {
-      this.parent[rootI] = rootJ;
-    } else if ((this.rank[rootI] as number) > (this.rank[rootJ] as number)) {
-      this.parent[rootJ] = rootI;
-    } else {
-      this.parent[rootJ] = rootI;
-      this.rank[rootI] = (this.rank[rootI] as number) + 1;
-    }
-    return true;
-  }
-}
-
-/**
- * Perform O(N) zero-allocation alias elimination directly on the arena buffers.
- * Identifies equations of the form `Name(a) = Name(b)` and canonicalizes all
- * Name references throughout the arena expressions to the root variable.
- */
-export function eliminateArenaAliases(dae: DAEBuilder): void {
-  const uf = new IntUnionFind(dae.varCount);
-
-  // 1. Gather all connection/alias equations
-  // In the arena, aliases can come from EqKind.Simple or EqKind.Connect
-  for (let i = 0; i < dae.eqCount; i++) {
-    const kind = dae.getEqKind(i);
-    if (kind === EqKind.Simple || kind === EqKind.Connect) {
-      const lhsId = dae.getEqLhs(i);
-      const rhsId = dae.getEqRhs(i);
-
-      if (dae.getExprKind(lhsId) === ExprKind.Name && dae.getExprKind(rhsId) === ExprKind.Name) {
-        const lhsNameId = dae.getExprData1(lhsId);
-        const rhsNameId = dae.getExprData1(rhsId);
-
-        const lhsName = dae.interner.resolve(lhsNameId);
-        const rhsName = dae.interner.resolve(rhsNameId);
-        if (!lhsName || !rhsName) continue;
-
-        const lhsVarIdx = dae.getVarIdxByName(lhsName);
-        const rhsVarIdx = dae.getVarIdxByName(rhsName);
-
-        if (lhsVarIdx >= 0 && rhsVarIdx >= 0) {
-          const lhsType = dae.getVarType(lhsVarIdx);
-          const rhsType = dae.getVarType(rhsVarIdx);
-          if (lhsType === rhsType) {
-            // Both are valid variables of the same type, merge them
-            uf.union(lhsVarIdx, rhsVarIdx);
-            dae.setVarAlias(lhsVarIdx, rhsName);
-          }
-        }
-      }
-    }
-  }
-
-  // 2. Canonicalize variable StringIds in Name expressions
-  // For each ExprKind.Name, if its variable has a different root in UF,
-  // rewrite data1 to the root's StringId.
-  for (let exprId = 0; exprId < dae.exprCount; exprId++) {
-    if (dae.getExprKind(exprId) === ExprKind.Name) {
-      const nameId = dae.getExprData1(exprId);
-      const nameStr = dae.interner.resolve(nameId);
-      if (!nameStr) continue;
-
-      const varIdx = dae.getVarIdxByName(nameStr);
-      if (varIdx >= 0) {
-        const rootIdx = uf.find(varIdx);
-        if (rootIdx !== varIdx) {
-          // Overwrite data1 with the canonical root's StringId
-          const rootNameId = dae.getVarNameId(rootIdx);
-          dae.setExprData1(exprId, rootNameId);
-        }
-      }
-    }
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CAS & Symbolic Differentiation Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Symbolically differentiates an expression with respect to time.
- * @param arena The DAEBuilder containing the expressions.
- * @param exprId The ID of the expression to differentiate.
- * @param stateVars The set of state variables (StringIds) that are functions of time.
- * @returns The ExprId of the differentiated expression.
- */
-export function differentiateArenaExpression(arena: DAEBuilder, exprId: number, stateVars: Set<StringId>): number {
+export function substituteArenaExpr(
+  arena: WasmDaeBridge,
+  exprId: number,
+  targetNameId: number,
+  replacementExprId: number,
+): number {
+  if (exprId < 0) return exprId;
   const kind = arena.getExprKind(exprId);
 
   switch (kind) {
-    case ExprKind.RealLiteral:
-    case ExprKind.IntLiteral:
-    case ExprKind.BoolLiteral:
-    case ExprKind.StringLiteral:
-    case ExprKind.EnumLiteral:
-      return arena.addRealLiteral(0.0);
-
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
-      if (stateVars.has(nameId)) {
-        return arena.addDerExpr(exprId);
+      if (nameId === targetNameId) {
+        return replacementExprId;
       }
-      return arena.addRealLiteral(0.0);
+      return exprId;
     }
 
-    case ExprKind.Der: {
-      return arena.addDerExpr(exprId);
+    case ExprKind.IntLiteral:
+    case ExprKind.RealLiteral:
+    case ExprKind.BoolLiteral:
+    case ExprKind.StringLiteral:
+    case ExprKind.Colon:
+      return exprId;
+
+    case ExprKind.Der:
+    case ExprKind.Pre: {
+      const inner = arena.getExprData1(exprId);
+      const newInner = substituteArenaExpr(arena, inner, targetNameId, replacementExprId);
+      if (newInner === inner) return exprId;
+      return arena.addExpression(kind, newInner);
     }
 
-    case ExprKind.Negate: {
+    case ExprKind.Negate:
+    case ExprKind.Unary: {
+      const op = arena.getExprData1(exprId);
       const operand = arena.getExprLeft(exprId);
-      return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpression(arena, operand, stateVars));
+      const newOperand = substituteArenaExpr(arena, operand, targetNameId, replacementExprId);
+      if (newOperand === operand) return exprId;
+      return kind === ExprKind.Negate
+        ? arena.addExpression(ExprKind.Negate, 0, newOperand)
+        : arena.addUnaryExpr(op as UnaryOp, newOperand);
     }
 
     case ExprKind.Binary: {
       const op = arena.getExprData1(exprId) as BinOp;
       const left = arena.getExprLeft(exprId);
       const right = arena.getExprRight(exprId);
-
-      switch (op) {
-        case BinOp.Add:
-        case BinOp.Sub: {
-          const dLeft = differentiateArenaExpression(arena, left, stateVars);
-          const dRight = differentiateArenaExpression(arena, right, stateVars);
-          return arena.addBinaryExpr(op, dLeft, dRight);
-        }
-        case BinOp.Mul: {
-          const dLeft = differentiateArenaExpression(arena, left, stateVars);
-          const dRight = differentiateArenaExpression(arena, right, stateVars);
-          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
-          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
-          return arena.addBinaryExpr(BinOp.Add, u_dv, v_du);
-        }
-        case BinOp.Div: {
-          const dLeft = differentiateArenaExpression(arena, left, stateVars);
-          const dRight = differentiateArenaExpression(arena, right, stateVars);
-          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
-          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
-          const num = arena.addBinaryExpr(BinOp.Sub, v_du, u_dv);
-          const den = arena.addBinaryExpr(BinOp.Mul, right, right);
-          return arena.addBinaryExpr(BinOp.Div, num, den);
-        }
-        default:
-          return arena.addRealLiteral(0.0);
-      }
+      const newLeft = substituteArenaExpr(arena, left, targetNameId, replacementExprId);
+      const newRight = substituteArenaExpr(arena, right, targetNameId, replacementExprId);
+      if (newLeft === left && newRight === right) return exprId;
+      return arena.addBinaryExpr(op, newLeft, newRight);
     }
 
-    case ExprKind.Call:
-      return arena.addRealLiteral(0.0);
+    case ExprKind.IfElse: {
+      const cond = arena.getExprData1(exprId);
+      const trueBranch = arena.getExprLeft(exprId);
+      const falseBranch = arena.getExprRight(exprId);
+      const newCond = substituteArenaExpr(arena, cond, targetNameId, replacementExprId);
+      const newTrue = substituteArenaExpr(arena, trueBranch, targetNameId, replacementExprId);
+      const newFalse = substituteArenaExpr(arena, falseBranch, targetNameId, replacementExprId);
+      if (newCond === cond && newTrue === trueBranch && newFalse === falseBranch) return exprId;
+      return arena.addIfElse(newCond, newTrue, newFalse);
+    }
 
     default:
-      return arena.addRealLiteral(0.0);
+      return exprId;
   }
 }
 
-/**
- * Simplifies an arena expression (constant folding and algebraic identities).
- */
-export function simplifyArenaExpression(arena: DAEBuilder, exprId: number): number {
-  const kind = arena.getExprKind(exprId);
-
-  if (kind === ExprKind.Negate) {
-    const operand = simplifyArenaExpression(arena, arena.getExprLeft(exprId));
-    if (arena.getExprKind(operand) === ExprKind.RealLiteral) {
-      return arena.addRealLiteral(-arena.getExprRealValue(operand));
-    }
-    return arena.addExpression(ExprKind.Negate, 0, operand);
+export function differentiateArenaExpression(
+  arena: WasmDaeBridge,
+  exprId: number,
+  wrt: string | number | Set<number>,
+): number {
+  if (typeof wrt === "string") {
+    return differentiateArenaExpressionWrt(arena, exprId, arena.interner.intern(wrt));
+  } else if (typeof wrt === "number") {
+    return differentiateArenaExpressionWrt(arena, exprId, wrt);
+  } else {
+    return differentiateArenaExpressionWrtSet(arena, exprId, wrt);
   }
-
-  if (kind === ExprKind.Binary) {
-    const op = arena.getExprData1(exprId) as BinOp;
-    const left = simplifyArenaExpression(arena, arena.getExprLeft(exprId));
-    const right = simplifyArenaExpression(arena, arena.getExprRight(exprId));
-
-    const leftIsReal = arena.getExprKind(left) === ExprKind.RealLiteral;
-    const rightIsReal = arena.getExprKind(right) === ExprKind.RealLiteral;
-    const leftVal = leftIsReal ? arena.getExprRealValue(left) : 0;
-    const rightVal = rightIsReal ? arena.getExprRealValue(right) : 0;
-
-    if (leftIsReal && rightIsReal) {
-      switch (op) {
-        case BinOp.Add:
-          return arena.addRealLiteral(leftVal + rightVal);
-        case BinOp.Sub:
-          return arena.addRealLiteral(leftVal - rightVal);
-        case BinOp.Mul:
-          return arena.addRealLiteral(leftVal * rightVal);
-        case BinOp.Div:
-          return arena.addRealLiteral(leftVal / rightVal);
-      }
-    }
-
-    // Identities
-    if (op === BinOp.Add) {
-      if (leftIsReal && leftVal === 0) return right;
-      if (rightIsReal && rightVal === 0) return left;
-    } else if (op === BinOp.Sub) {
-      if (rightIsReal && rightVal === 0) return left;
-      if (left === right) return arena.addRealLiteral(0.0);
-    } else if (op === BinOp.Mul) {
-      if ((leftIsReal && leftVal === 0) || (rightIsReal && rightVal === 0)) return arena.addRealLiteral(0.0);
-      if (leftIsReal && leftVal === 1) return right;
-      if (rightIsReal && rightVal === 1) return left;
-      if (leftIsReal && leftVal === -1) return arena.addExpression(ExprKind.Negate, 0, right);
-      if (rightIsReal && rightVal === -1) return arena.addExpression(ExprKind.Negate, 0, left);
-    } else if (op === BinOp.Div) {
-      if (leftIsReal && leftVal === 0) return arena.addRealLiteral(0.0);
-      if (rightIsReal && rightVal === 1) return left;
-      if (left === right) return arena.addRealLiteral(1.0);
-    }
-
-    return arena.addBinaryExpr(op, left, right);
-  }
-
-  return exprId;
 }
 
-/**
- * Symbolically computes the partial derivative of an expression with respect to a specific variable.
- * Used for building analytical Jacobians.
- */
-export function differentiateArenaExpressionWrt(arena: DAEBuilder, exprId: number, wrtVarId: StringId): number {
+export function differentiateArenaExpressionWrt(arena: WasmDaeBridge, exprId: number, wrtVarId: number): number {
   if (exprId < 0) return arena.addRealLiteral(0.0);
-
   const kind = arena.getExprKind(exprId);
 
   switch (kind) {
-    case ExprKind.RealLiteral:
     case ExprKind.IntLiteral:
+    case ExprKind.RealLiteral:
     case ExprKind.BoolLiteral:
     case ExprKind.StringLiteral:
-    case ExprKind.EnumLiteral:
       return arena.addRealLiteral(0.0);
 
     case ExprKind.Name: {
@@ -2464,10 +1587,89 @@ export function differentiateArenaExpressionWrt(arena: DAEBuilder, exprId: numbe
   }
 }
 
+function differentiateArenaExpressionWrtSet(arena: WasmDaeBridge, exprId: number, wrtVarIds: Set<number>): number {
+  if (exprId < 0) return arena.addRealLiteral(0.0);
+  const kind = arena.getExprKind(exprId);
+
+  switch (kind) {
+    case ExprKind.IntLiteral:
+    case ExprKind.RealLiteral:
+    case ExprKind.BoolLiteral:
+    case ExprKind.StringLiteral:
+      return arena.addRealLiteral(0.0);
+
+    case ExprKind.Name: {
+      const nameId = arena.getExprData1(exprId);
+      if (wrtVarIds.has(nameId)) {
+        return arena.addRealLiteral(1.0);
+      }
+      return arena.addRealLiteral(0.0);
+    }
+
+    case ExprKind.Der: {
+      const argId = arena.getExprData1(exprId);
+      if (arena.getExprKind(argId) === ExprKind.Name) {
+        const innerName = arena.interner.resolve(arena.getExprData1(argId));
+        const fullDerNameId = arena.interner.intern(`der(${innerName})`);
+        if (wrtVarIds.has(fullDerNameId)) {
+          return arena.addRealLiteral(1.0);
+        }
+      }
+      return arena.addRealLiteral(0.0);
+    }
+
+    case ExprKind.Negate: {
+      const operand = arena.getExprLeft(exprId);
+      return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpressionWrtSet(arena, operand, wrtVarIds));
+    }
+
+    case ExprKind.Binary: {
+      const op = arena.getExprData1(exprId) as BinOp;
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+
+      switch (op) {
+        case BinOp.Add:
+        case BinOp.Sub: {
+          const dLeft = differentiateArenaExpressionWrtSet(arena, left, wrtVarIds);
+          const dRight = differentiateArenaExpressionWrtSet(arena, right, wrtVarIds);
+          return arena.addBinaryExpr(op, dLeft, dRight);
+        }
+        case BinOp.Mul: {
+          const dLeft = differentiateArenaExpressionWrtSet(arena, left, wrtVarIds);
+          const dRight = differentiateArenaExpressionWrtSet(arena, right, wrtVarIds);
+          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
+          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
+          return arena.addBinaryExpr(BinOp.Add, u_dv, v_du);
+        }
+        case BinOp.Div: {
+          const dLeft = differentiateArenaExpressionWrtSet(arena, left, wrtVarIds);
+          const dRight = differentiateArenaExpressionWrtSet(arena, right, wrtVarIds);
+          const v_du = arena.addBinaryExpr(BinOp.Mul, right, dLeft);
+          const u_dv = arena.addBinaryExpr(BinOp.Mul, left, dRight);
+          const num = arena.addBinaryExpr(BinOp.Sub, v_du, u_dv);
+          const den = arena.addBinaryExpr(BinOp.Mul, right, right);
+          return arena.addBinaryExpr(BinOp.Div, num, den);
+        }
+        case BinOp.Pow: {
+          const dLeft = differentiateArenaExpressionWrtSet(arena, left, wrtVarIds);
+          const v_minus_1 = arena.addBinaryExpr(BinOp.Sub, right, arena.addRealLiteral(1.0));
+          const u_pow_v_minus_1 = arena.addBinaryExpr(BinOp.Pow, left, v_minus_1);
+          const v_mul_u_pow = arena.addBinaryExpr(BinOp.Mul, right, u_pow_v_minus_1);
+          return arena.addBinaryExpr(BinOp.Mul, v_mul_u_pow, dLeft);
+        }
+        default:
+          return arena.addRealLiteral(0.0);
+      }
+    }
+
+    default:
+      return arena.addRealLiteral(0.0);
+  }
+}
+
 /**
  * The Modelica source for the ModelScript.CAS package.
- * This declares all CAS functions with their signatures for use
- * in Modelica models.
  */
 export const MODELSCRIPT_CAS_PACKAGE = `
 package ModelScript
@@ -2574,344 +1776,146 @@ package ModelScript
 end ModelScript;
 `;
 
-/**
- * WASM DAE Bridge.
- *
- * Interfaces with the zero-GC WebAssembly `DaeBuilder` runtime exports.
- */
-export class WasmDaeBridge implements IDaeBuilder {
-  private readonly exports: any;
-  public ptr = 0;
+// ─────────────────────────────────────────────────────────────────────────────
+// Alias Elimination & Type Inference Utilities
+// ─────────────────────────────────────────────────────────────────────────────
 
-  constructor(wasmExports: any, ptr = 0) {
-    this.exports = wasmExports;
-    this.ptr = ptr !== 0 ? ptr : this.exports.dae_createBuilder ? this.exports.dae_createBuilder() : 0;
-  }
+export function eliminateArenaAliases(dae: WasmDaeBridge): void {
+  const aliasMap = new Map<number, number>();
 
-  addVariable(
-    nameId: number | string,
-    type: VarType,
-    variability: Variability,
-    causality: Causality,
-    startVal = 0.0,
-    flags = 0,
-  ): number {
-    if (!this.exports.dae_addVariable) return -1;
-    const nId = typeof nameId === "number" ? nameId : 0;
-    return this.exports.dae_addVariable(this.ptr, nId, type, variability, causality, startVal, flags);
-  }
-
-  addEquation(kind: EqKind, lhsId: number, rhsId: number, auxId = 0xffffffff): number {
-    if (!this.exports.dae_addEquation) return -1;
-    return this.exports.dae_addEquation(this.ptr, kind, lhsId, rhsId, auxId);
-  }
-
-  addExpression(kind: ExprKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
-    if (!this.exports.dae_addExpression) return -1;
-    return this.exports.dae_addExpression(this.ptr, kind, data1, left, right);
-  }
-
-  addStatement(kind: StmtKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
-    if (!this.exports.dae_addStatement) return -1;
-    return this.exports.dae_addStatement(this.ptr, kind, data1, left, right);
-  }
-
-  addBinaryExpr(op: BinOp, left: number, right: number): number {
-    if (this.exports.dae_addBinaryExpr) {
-      return this.exports.dae_addBinaryExpr(this.ptr, op, left, right);
+  function find(id: number): number {
+    let curr = id;
+    while (aliasMap.has(curr)) {
+      curr = aliasMap.get(curr)!;
     }
-    return this.addExpression(ExprKind.Binary, op, left, right);
+    return curr;
   }
 
-  addUnaryExpr(op: UnaryOp, operand: number): number {
-    return this.addExpression(ExprKind.Unary, op, operand);
-  }
-
-  addRealLiteral(value: number): number {
-    if (this.exports.dae_addRealLiteral) {
-      return this.exports.dae_addRealLiteral(this.ptr, value);
-    }
-    return this.addExpression(ExprKind.RealLiteral, 0, 0, 0);
-  }
-
-  addIntLiteral(value: number): number {
-    if (this.exports.dae_addIntLiteral) {
-      return this.exports.dae_addIntLiteral(this.ptr, value);
-    }
-    return this.addExpression(ExprKind.IntLiteral, value, 0, 0);
-  }
-
-  addBoolLiteral(value: boolean): number {
-    return this.addExpression(ExprKind.BoolLiteral, value ? 1 : 0);
-  }
-
-  addStringLiteral(value: string | number): number {
-    const sId = typeof value === "number" ? value : 0;
-    return this.addExpression(ExprKind.StringLiteral, sId);
-  }
-
-  addRange(start: number, stop: number, step = 0): number {
-    return this.addExpression(ExprKind.Range, step, start, stop);
-  }
-
-  addSubscript(baseExpr: number, subExpr: number): number {
-    return this.addExpression(ExprKind.Subscript, 0, baseExpr, subExpr);
-  }
-
-  addArrayCtor(firstElem: number, count: number): number {
-    return this.addExpression(ExprKind.ArrayCtor, count, firstElem);
-  }
-
-  addTuple(firstElem: number, count: number): number {
-    return this.addExpression(ExprKind.Tuple, count, firstElem);
-  }
-
-  addDer(varId: number): number {
-    if (this.exports.dae_addDer) {
-      return this.exports.dae_addDer(this.ptr, varId);
-    }
-    return this.addExpression(ExprKind.Der, varId, 0, 0);
-  }
-
-  addName(varId: number): number {
-    if (this.exports.dae_addName) {
-      return this.exports.dae_addName(this.ptr, varId);
-    }
-    return this.addExpression(ExprKind.Name, varId, 0, 0);
-  }
-
-  addIfElse(condExpr: number, trueExpr: number, falseExpr: number): number {
-    if (this.exports.dae_addIfElse) {
-      return this.exports.dae_addIfElse(this.ptr, condExpr, trueExpr, falseExpr);
-    }
-    return this.addExpression(ExprKind.IfElse, condExpr, trueExpr, falseExpr);
-  }
-
-  addCall(funcId: number, firstArg: number, argCount: number): number {
-    if (this.exports.dae_addCall) {
-      return this.exports.dae_addCall(this.ptr, funcId, firstArg, argCount);
-    }
-    return this.addExpression(ExprKind.Call, funcId, firstArg, argCount);
-  }
-
-  lookupVariable(nameId: number): number {
-    return this.exports.dae_lookupVariable ? this.exports.dae_lookupVariable(this.ptr, nameId) : -1;
-  }
-
-  addAlias(varIdx: number, targetNameId: number): void {
-    if (this.exports.dae_addAlias) this.exports.dae_addAlias(this.ptr, varIdx, targetNameId);
-  }
-
-  getAlias(varIdx: number): number {
-    return this.exports.dae_getAlias ? this.exports.dae_getAlias(this.ptr, varIdx) : 0;
-  }
-
-  setVarAttrExpr(varIdx: number, attrKind: VarAttrKind, exprId: number): void {
-    if (this.exports.dae_setVarAttrExpr) this.exports.dae_setVarAttrExpr(this.ptr, varIdx, attrKind, exprId);
-  }
-
-  getVarAttrExpr(varIdx: number, attrKind: VarAttrKind): number {
-    return this.exports.dae_getVarAttrExpr ? this.exports.dae_getVarAttrExpr(this.ptr, varIdx, attrKind) : 0;
-  }
-
-  setVarShapeDim(varIdx: number, dimIdx: number, size: number): void {
-    if (this.exports.dae_setVarShapeDim) this.exports.dae_setVarShapeDim(this.ptr, varIdx, dimIdx, size);
-  }
-
-  getVarShapeDim(varIdx: number, dimIdx: number): number {
-    return this.exports.dae_getVarShapeDim ? this.exports.dae_getVarShapeDim(this.ptr, varIdx, dimIdx) : 0;
-  }
-
-  setVarSymbolicShapeExpr(varIdx: number, dimIdx: number, exprId: number): void {
-    if (this.exports.dae_setVarSymbolicShapeExpr) {
-      this.exports.dae_setVarSymbolicShapeExpr(this.ptr, varIdx, dimIdx, exprId);
+  function union(id1: number, id2: number): void {
+    const root1 = find(id1);
+    const root2 = find(id2);
+    if (root1 !== root2) {
+      aliasMap.set(root2, root1);
     }
   }
 
-  getVarSymbolicShapeExpr(varIdx: number, dimIdx: number): number {
-    return this.exports.dae_getVarSymbolicShapeExpr
-      ? this.exports.dae_getVarSymbolicShapeExpr(this.ptr, varIdx, dimIdx)
-      : 0;
-  }
-
-  addClock(intervalExprId: number, resolutionExprId = 0, shiftExprId = 0): number {
-    return this.exports.dae_addClock
-      ? this.exports.dae_addClock(this.ptr, intervalExprId, resolutionExprId, shiftExprId)
-      : 0;
-  }
-
-  setVarClock(varIdx: number, clockId: number): void {
-    if (this.exports.dae_setVarClock) this.exports.dae_setVarClock(this.ptr, varIdx, clockId);
-  }
-
-  getVarClock(varIdx: number): number {
-    return this.exports.dae_getVarClock ? this.exports.dae_getVarClock(this.ptr, varIdx) : 0;
-  }
-
-  setEqClock(eqIdx: number, clockId: number): void {
-    if (this.exports.dae_setEqClock) this.exports.dae_setEqClock(this.ptr, eqIdx, clockId);
-  }
-
-  getEqClock(eqIdx: number): number {
-    return this.exports.dae_getEqClock ? this.exports.dae_getEqClock(this.ptr, eqIdx) : 0;
-  }
-
-  addWhenEquation(conditionExprId: number): number {
-    return this.exports.dae_addWhenEquation ? this.exports.dae_addWhenEquation(this.ptr, conditionExprId) : 0;
-  }
-
-  addWhenBodyEquation(whenIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
-    return this.exports.dae_addWhenBodyEquation
-      ? this.exports.dae_addWhenBodyEquation(this.ptr, whenIdx, kind, lhsId, rhsId)
-      : 0;
-  }
-
-  addForEquation(indexNameId: number, rangeExprId: number): number {
-    return this.exports.dae_addForEquation ? this.exports.dae_addForEquation(this.ptr, indexNameId, rangeExprId) : 0;
-  }
-
-  addForBodyEquation(forIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
-    return this.exports.dae_addForBodyEquation
-      ? this.exports.dae_addForBodyEquation(this.ptr, forIdx, kind, lhsId, rhsId)
-      : 0;
-  }
-
-  addIfEquation(conditionExprId: number): number {
-    return this.exports.dae_addIfEquation ? this.exports.dae_addIfEquation(this.ptr, conditionExprId) : 0;
-  }
-
-  addIfThenEquation(ifIdx: number, kind: EqKind, lhsId: number, rhsId: number): number {
-    return this.exports.dae_addIfThenEquation
-      ? this.exports.dae_addIfThenEquation(this.ptr, ifIdx, kind, lhsId, rhsId)
-      : 0;
-  }
-
-  addStateMachine(nameId: number, initialStateId: number): number {
-    return this.exports.dae_addStateMachine ? this.exports.dae_addStateMachine(this.ptr, nameId, initialStateId) : 0;
-  }
-
-  addState(smId: number, nameId: number): number {
-    return this.exports.dae_addState ? this.exports.dae_addState(this.ptr, smId, nameId) : 0;
-  }
-
-  addStateEquation(smId: number, stateId: number, targetNameId: number, exprId: number, isDerivative: boolean): number {
-    return this.exports.dae_addStateEquation
-      ? this.exports.dae_addStateEquation(this.ptr, smId, stateId, targetNameId, exprId, isDerivative)
-      : 0;
-  }
-
-  addTransition(
-    smId: number,
-    fromStateId: number,
-    toStateId: number,
-    conditionExprId: number,
-    flags = 0,
-    priority = 0,
-  ): number {
-    return this.exports.dae_addTransition
-      ? this.exports.dae_addTransition(this.ptr, smId, fromStateId, toStateId, conditionExprId, flags, priority)
-      : 0;
-  }
-
-  addEventIndicator(exprId: number): number {
-    return this.exports.dae_addEventIndicator ? this.exports.dae_addEventIndicator(this.ptr, exprId) : 0;
-  }
-
-  getEventIndicatorCount(): number {
-    return this.exports.dae_getEventIndicatorCount ? this.exports.dae_getEventIndicatorCount(this.ptr) : 0;
-  }
-
-  getEventIndicatorExprId(idx: number): number {
-    return this.exports.dae_getEventIndicatorExprId ? this.exports.dae_getEventIndicatorExprId(this.ptr, idx) : 0;
-  }
-
-  setOptimizationObjective(objExpr: number, integrandExpr: number, startExpr: number, finalExpr: number): void {
-    if (this.exports.dae_setOptimizationObjective) {
-      this.exports.dae_setOptimizationObjective(this.ptr, objExpr, integrandExpr, startExpr, finalExpr);
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind === EqKind.Connect || kind === EqKind.Simple) {
+      const lhs = dae.getEqLhs(i);
+      const rhs = dae.getEqRhs(i);
+      if (lhs >= 0 && rhs >= 0 && dae.getExprKind(lhs) === ExprKind.Name && dae.getExprKind(rhs) === ExprKind.Name) {
+        const name1 = dae.getExprData1(lhs);
+        const name2 = dae.getExprData1(rhs);
+        union(name1, name2);
+      }
     }
   }
 
-  snapshot(): void {
-    if (this.exports.dae_snapshot) this.exports.dae_snapshot(this.ptr);
-  }
+  if (aliasMap.size === 0) return;
 
-  rollback(): void {
-    if (this.exports.dae_rollback) this.exports.dae_rollback(this.ptr);
+  for (let i = 0; i < dae.exprCount; i++) {
+    if (dae.getExprKind(i) === ExprKind.Name) {
+      const nameId = dae.getExprData1(i);
+      const rootId = find(nameId);
+      if (rootId !== nameId) {
+        if (dae.exports?.dae_setExprData1) {
+          dae.exports.dae_setExprData1(dae.ptr, i, rootId);
+        }
+      }
+    }
   }
+}
 
-  getVarCount(): number {
-    return this.exports.dae_getVarCount ? this.exports.dae_getVarCount(this.ptr) : 0;
+export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarType {
+  if (exprId < 0) return VarType.Real;
+  const kind = dae.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.RealLiteral:
+      return VarType.Real;
+    case ExprKind.IntLiteral:
+      return VarType.Integer;
+    case ExprKind.BoolLiteral:
+      return VarType.Boolean;
+    case ExprKind.StringLiteral:
+      return VarType.String;
+    case ExprKind.EnumLiteral:
+      return VarType.Enumeration;
+    case ExprKind.Name: {
+      const nameId = dae.getExprData1(exprId);
+      const vIdx = dae.lookupVariable(nameId);
+      if (vIdx >= 0) return dae.getVarType(vIdx);
+      return VarType.Real;
+    }
+    case ExprKind.Binary: {
+      const op = dae.getExprData1(exprId) as BinOp;
+      switch (op) {
+        case BinOp.Eq:
+        case BinOp.Neq:
+        case BinOp.Lt:
+        case BinOp.Gt:
+        case BinOp.Lte:
+        case BinOp.Gte:
+        case BinOp.And:
+        case BinOp.Or:
+          return VarType.Boolean;
+        case BinOp.Add:
+        case BinOp.Sub:
+        case BinOp.Mul:
+        case BinOp.Div:
+        case BinOp.Pow:
+        case BinOp.ElemAdd:
+        case BinOp.ElemSub:
+        case BinOp.ElemMul:
+        case BinOp.ElemDiv:
+        case BinOp.ElemPow: {
+          const lType = inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+          const rType = inferArenaExprVarType(dae, dae.getExprRight(exprId));
+          if (lType === VarType.Real || rType === VarType.Real) return VarType.Real;
+          if (lType === VarType.Integer && rType === VarType.Integer) {
+            return op === BinOp.Div ? VarType.Real : VarType.Integer;
+          }
+          return lType;
+        }
+      }
+      return VarType.Real;
+    }
+    case ExprKind.Unary: {
+      const uop = dae.getExprData1(exprId) as UnaryOp;
+      return uop === UnaryOp.Not ? VarType.Boolean : inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+    }
+    case ExprKind.Negate:
+    case ExprKind.Der:
+    case ExprKind.Pre:
+      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+    case ExprKind.IfElse:
+      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+    default:
+      return VarType.Real;
   }
+}
 
-  getEqCount(): number {
-    return this.exports.dae_getEqCount ? this.exports.dae_getEqCount(this.ptr) : 0;
-  }
+export function isAssignableType(source: VarType, target: VarType): boolean {
+  if (source === target) return true;
+  if (source === VarType.Integer && target === VarType.Real) return true;
+  return false;
+}
 
-  getExprCount(): number {
-    return this.exports.dae_getExprCount ? this.exports.dae_getExprCount(this.ptr) : 0;
-  }
-
-  getStmtCount(): number {
-    return this.exports.dae_getStmtCount ? this.exports.dae_getStmtCount(this.ptr) : 0;
-  }
-
-  getExprKind(exprId: number): ExprKind {
-    return this.exports.dae_getExprKind ? (this.exports.dae_getExprKind(this.ptr, exprId) as ExprKind) : ExprKind.Name;
-  }
-
-  getExprData1(exprId: number): number {
-    return this.exports.dae_getExprData1 ? this.exports.dae_getExprData1(this.ptr, exprId) : 0;
-  }
-
-  getExprLeft(exprId: number): number {
-    return this.exports.dae_getExprLeft ? this.exports.dae_getExprLeft(this.ptr, exprId) : -1;
-  }
-
-  getExprRight(exprId: number): number {
-    return this.exports.dae_getExprRight ? this.exports.dae_getExprRight(this.ptr, exprId) : -1;
-  }
-
-  getVarNameId(varId: number): number {
-    return this.exports.dae_getVarNameId ? this.exports.dae_getVarNameId(this.ptr, varId) : 0;
-  }
-
-  getVarType(varId: number): VarType {
-    return this.exports.dae_getVarType ? (this.exports.dae_getVarType(this.ptr, varId) as VarType) : VarType.Real;
-  }
-
-  getVarVariability(varId: number): Variability {
-    return this.exports.dae_getVarVariability
-      ? (this.exports.dae_getVarVariability(this.ptr, varId) as Variability)
-      : Variability.Continuous;
-  }
-
-  getVarCausality(varId: number): Causality {
-    return this.exports.dae_getVarCausality
-      ? (this.exports.dae_getVarCausality(this.ptr, varId) as Causality)
-      : Causality.Local;
-  }
-
-  getVarFlags(varId: number): number {
-    return this.exports.dae_getVarFlags ? this.exports.dae_getVarFlags(this.ptr, varId) : 0;
-  }
-
-  getVarStartValue(varId: number): number {
-    return this.exports.dae_getVarStartValue ? this.exports.dae_getVarStartValue(this.ptr, varId) : 0.0;
-  }
-
-  getEqKind(eqId: number): EqKind {
-    return this.exports.dae_getEqKind ? (this.exports.dae_getEqKind(this.ptr, eqId) as EqKind) : EqKind.Simple;
-  }
-
-  getEqLhs(eqId: number): number {
-    return this.exports.dae_getEqLhs ? this.exports.dae_getEqLhs(this.ptr, eqId) : -1;
-  }
-
-  getEqRhs(eqId: number): number {
-    return this.exports.dae_getEqRhs ? this.exports.dae_getEqRhs(this.ptr, eqId) : -1;
-  }
-
-  getEqAux(eqId: number): number {
-    return this.exports.dae_getEqAux ? this.exports.dae_getEqAux(this.ptr, eqId) : 0;
+export function varTypeName(type: VarType): string {
+  switch (type) {
+    case VarType.Real:
+      return "Real";
+    case VarType.Integer:
+      return "Integer";
+    case VarType.Boolean:
+      return "Boolean";
+    case VarType.String:
+      return "String";
+    case VarType.Enumeration:
+      return "Enumeration";
+    case VarType.Clock:
+      return "Clock";
+    default:
+      return "Unknown";
   }
 }

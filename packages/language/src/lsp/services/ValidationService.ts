@@ -7,7 +7,6 @@ import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
 import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
-import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
 import { LSPBridge, PositionIndex, QueryEngine, ScopeResolver, VerificationRunner } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
@@ -750,7 +749,7 @@ export class ValidationService {
         }
 
         const bridge = createSysML2LSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
-        this.documentLSPBridges.set(textDocument.uri, bridge);
+        this.documentLSPBridges.set(textDocument.uri, bridge as any);
 
         // Collect parse errors from the tree
         const sysmlDiagnostics: Diagnostic[] = [];
@@ -1110,7 +1109,7 @@ export class ValidationService {
 
       const changedIdsObj = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
       changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
-      const structuralChangedIds = changedIdsObj ? changedIdsObj.structuralChangedIds : null;
+      const structuralChangedIds = (changedIdsObj as any) ? (changedIdsObj as any).structuralChangedIds : null;
       const engineNeedsUpdate = textChanged || (changedIds && changedIds.size > 0);
 
       if (engineNeedsUpdate) {
@@ -1190,7 +1189,7 @@ export class ValidationService {
       const currentDoc = this.documentManager.documents.get(uri);
       const currentText = currentDoc ? currentDoc.getText() : text;
       const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, currentText, uri);
-      this.documentLSPBridges.set(uri, bridge);
+      this.documentLSPBridges.set(uri, bridge as any);
       this.connection.console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
 
       // Yield before expensive linting
@@ -1257,11 +1256,11 @@ export class ValidationService {
       }
       this.connection.console.info(`[perf] Step 3 (Lints): ${(performance.now() - t0).toFixed(2)}ms`);
 
-      // ── Step 5 (moved before Step 4): Create ModelicaClassInstance wrappers
+      // ── Step 5 (moved before Step 4): Create class descriptors
       // Wrappers are needed by the project tree and diagram rendering.
       // They don't depend on reference resolution, so run them now.
       const db = engine!.toQueryDB();
-      const thisDocInstances: ModelicaClassInstance[] = [];
+      const thisDocInstances: any[] = [];
       const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
       const matchUri = normUri(effectiveUri);
 
@@ -1276,7 +1275,17 @@ export class ValidationService {
           const parentEntry = unifiedIndex.symbols.get(entry.parentId);
           if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) continue;
         }
-        const wrapper = new ModelicaClassInstance(id, db) as unknown as ModelicaClassInstance;
+        const wrapper = {
+          id,
+          db,
+          entry,
+          name: entry.name ?? "",
+          kind: entry.kind ?? "Class",
+          classKind: (entry.metadata as any)?.classKind ?? "class",
+          compositeName: entry.name ?? "",
+          description: (entry.metadata as any)?.description ?? null,
+          isClassInstance: true,
+        };
         thisDocInstances.push(wrapper);
       }
       this.workspaceManager.workspaceInstances.set(uri, thisDocInstances);
@@ -1544,8 +1553,11 @@ export class ValidationService {
         const targetDB = targetEngine
           ? (targetEngine as any).toQueryDB()
           : (this.workspaceManager.unifiedWorkspace as any).engine?.toQueryDB() || sysmlDB;
-        const targetModel = new ModelicaClassInstance(simTargetId, targetDB) as any;
-        targetModel.instantiate();
+        const targetModel = {
+          id: simTargetId,
+          name: targetDB.symbol(simTargetId)?.name ?? "",
+          compositeName: targetDB.symbol(simTargetId)?.name ?? "",
+        };
 
         const context = this.parserService.sharedContext;
         if (!context) return { ok: false, error: "Context not initialized" };

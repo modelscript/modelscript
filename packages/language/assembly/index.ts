@@ -1,5 +1,6 @@
 /* eslint-disable */
-// AssemblyScript implementation of Bipartite Matching and Tarjan's SCC
+// AssemblyScript implementation of WebAssembly Solvers, DAE Builder & BLT
+export * from "../src/codegen/runtime/dae";
 
 // We will use Typed Arrays instead of Map/Set for much higher performance
 // since our variable and equation IDs are densely packed integers [0, N-1].

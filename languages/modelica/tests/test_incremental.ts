@@ -1,9 +1,11 @@
-import Modelica from "@modelscript/modelica/parser";
-import Parser from "tree-sitter";
+import { createWasmParser } from "@modelscript/language";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createModelicaScopeResolver, createModelicaWorkspaceIndex } from "../../../languages/modelica/factory.js";
 
-const parser = new Parser();
-parser.setLanguage(Modelica);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+const { parser } = await createWasmParser(modelicaWasm);
 
 async function runTest() {
   const wsIndex = createModelicaWorkspaceIndex();

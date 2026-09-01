@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
-import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import owl2Lang from "@modelscript/owl2/language";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import { Context, extractIndexerHooks, QueryEngine, UnifiedWorkspace } from "../../compiler/index.js";
@@ -15,8 +14,8 @@ export class WorkspaceManager {
   public stepWorkspaceIndex: any; // Requires step-workspace-index
   public unifiedWorkspace = new UnifiedWorkspace();
   public allWorkspaceIndices = new Map<string, any>();
-  public workspaceInstances = new Map<string, ModelicaClassInstance[]>();
-  public documentInstances = new Map<string, ModelicaClassInstance[]>();
+  public workspaceInstances = new Map<string, any[]>();
+  public documentInstances = new Map<string, any[]>();
   public documentContexts = new Map<string, Context>();
 
   public globalModelicaQueryEngine: QueryEngine | null = null;
@@ -58,7 +57,7 @@ export class WorkspaceManager {
     };
   }
 
-  public resolveModelicaClassInstance(uri: string, className?: string): ModelicaClassInstance | null {
+  public resolveModelicaClassInstance(uri: string, className?: string): any | null {
     if (className) {
       const idx = this.unifiedWorkspace.toUnifiedPartial();
       let symbolIds = idx.byName.get(className) || [];
@@ -93,8 +92,18 @@ export class WorkspaceManager {
           : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
         if (engine) {
-          const classInstance = new ModelicaClassInstance(entry.id, engine.toQueryDB() as any);
-          return classInstance;
+          const db = engine.toQueryDB() as any;
+          return {
+            id: entry.id,
+            db,
+            entry,
+            name: entry.name ?? "",
+            kind: entry.kind ?? "Class",
+            classKind: (entry.metadata as any)?.classKind ?? "class",
+            compositeName: className,
+            description: (entry.metadata as any)?.description ?? null,
+            isClassInstance: true,
+          };
         }
       }
       return null;
@@ -108,7 +117,18 @@ export class WorkspaceManager {
           : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
         if (engine) {
-          return new ModelicaClassInstance(entry.id, engine.toQueryDB() as any);
+          const db = engine.toQueryDB() as any;
+          return {
+            id: entry.id,
+            db,
+            entry,
+            name: entry.name ?? "",
+            kind: entry.kind ?? "Class",
+            classKind: (entry.metadata as any)?.classKind ?? "class",
+            compositeName: entry.name ?? "",
+            description: (entry.metadata as any)?.description ?? null,
+            isClassInstance: true,
+          };
         }
       }
     }

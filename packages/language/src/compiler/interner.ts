@@ -157,6 +157,17 @@ export class StringInterner {
   }
 
   /**
+   * Look up an already interned string without inserting it.
+   */
+  lookup(s: string): StringId | undefined {
+    if (s.length < 16) {
+      const id = this.shortTable.get(s);
+      if (id !== undefined) return id;
+    }
+    return this.table.get(s);
+  }
+
+  /**
    * Resolve a StringId back to the original string.
    *
    * @param id - The StringId to resolve.

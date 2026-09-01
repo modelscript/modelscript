@@ -3,7 +3,6 @@
 import { Context } from "@modelscript/modelica/context";
 import { renderDiagram, renderIcon } from "@modelscript/modelica/diagram";
 import Modelica from "@modelscript/modelica/parser";
-import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { registerWindow } from "@svgdotjs/svg.js";
 import path from "node:path";
 import { createSVGWindow } from "svgdom";
@@ -60,7 +59,7 @@ export const Render: CommandModule<{}, RenderArgs> = {
       console.error(`'${args.name}' not found`);
       return;
     }
-    if (!(instance instanceof ModelicaClassInstance)) {
+    if (instance.isClassInstance === false || (instance.kind && instance.kind === "Component")) {
       console.error(`'${args.name}' is not a class`);
       return;
     }

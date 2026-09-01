@@ -15,7 +15,7 @@
  *  - **Load Factor Threshold**: Automatically resizes (doubles capacity) when `size * 2 >= capacity` (50% load factor).
  *  - **Reserved Null Slot**: Key `0` is reserved for empty/unoccupied slots. Input key `0` is mapped to `1`.
  */
-import { atomicChunkAlloc } from "./arena";
+import { atomicChunkAlloc } from "./array";
 
 /**
  * Unmanaged 64-bit Hash Set using open addressing and linear probing.
