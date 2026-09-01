@@ -18,7 +18,7 @@
 
 import { deflateRaw } from "pako";
 import {
-  type ArenaDAEBuilder,
+  type DAEBuilder,
   BinOp,
   Causality,
   EqKind,
@@ -69,8 +69,8 @@ export interface FmuArchiveResult {
   files: string[];
 }
 
-/** Serialize ArenaDAEBuilder into a JSON structure matching the legacy DAE schema. */
-export function serializeArenaToJson(dae: ArenaDAEBuilder): Record<string, unknown> {
+/** Serialize DAEBuilder into a JSON structure matching the legacy DAE schema. */
+export function serializeArenaToJson(dae: DAEBuilder): Record<string, unknown> {
   const serializeExpr = (exprId: number): unknown => {
     if (exprId < 0) return null;
     const kind = dae.getExprKind(exprId);
@@ -307,7 +307,7 @@ export function serializeArenaToJson(dae: ArenaDAEBuilder): Record<string, unkno
  * @returns FMU archive result with the ZIP bytes
  */
 export function buildFmuArchive(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   options: FmuArchiveOptions,
   stateVars: Set<string> = new Set<string>(),
 ): FmuArchiveResult {
@@ -414,7 +414,7 @@ export function buildFmuArchive(
 
   // ── Inject JS/TS Dependencies ──
   const crawledJsPaths = new Set<string>();
-  const crawlDaeForJs = (d: ArenaDAEBuilder) => {
+  const crawlDaeForJs = (d: DAEBuilder) => {
     if (d.jsSource && d.jsPath && !crawledJsPaths.has(d.jsPath)) {
       crawledJsPaths.add(d.jsPath);
       const basename = d.jsPath.split(/[/\\]/).pop() ?? "dependency.js";

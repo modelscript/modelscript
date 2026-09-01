@@ -3,7 +3,7 @@
 /**
  * Dedicated Initialization BLT Transformer & Initial Equation Solver.
  *
- * Constructs bipartite graphs and solves initial conditions natively on the ArenaDAEBuilder
+ * Constructs bipartite graphs and solves initial conditions natively on the DAEBuilder
  * at t=0 before time integration begins:
  *   - Treats `fixed=true` variables and parameters as hard knowns
  *   - Rotates derivatives der(x) into pure algebraic unknowns
@@ -13,8 +13,8 @@
 
 import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
 import {
-  ArenaDAEBuilder,
   BinOp,
+  DAEBuilder,
   EqKind,
   ExprKind,
   VarType,
@@ -108,7 +108,7 @@ export interface HomotopyStrategy {
 // ─────────────────────────────────────────────────────────────────────────
 
 /** Unroll nested array constructor / tuple expressions into a flat list of scalar expression IDs. */
-function flatElements(exprId: number, arena: ArenaDAEBuilder): number[] {
+function flatElements(exprId: number, arena: DAEBuilder): number[] {
   if (exprId < 0) return [];
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.ArrayCtor || kind === ExprKind.Tuple) {
@@ -125,7 +125,7 @@ function flatElements(exprId: number, arena: ArenaDAEBuilder): number[] {
 }
 
 /** Collect all variable names referenced in an expression. */
-function collectExprVarNames(exprId: number, arena: ArenaDAEBuilder, names: Set<string>): void {
+function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<string>): void {
   if (exprId < 0) return;
   const kind = arena.getExprKind(exprId);
   switch (kind) {
@@ -252,7 +252,7 @@ function collectExprVarNames(exprId: number, arena: ArenaDAEBuilder, names: Set<
  * @param dae The flattened DAE with initialEquations and variables
  * @returns Ordered sequence of init blocks ready for solving
  */
-export function buildInitBLT(dae: ArenaDAEBuilder): InitBLTResult {
+export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
   // 1. Classify knowns vs unknowns
   const knowns = new Set<string>();
   const discreteVarNames = new Set<string>();
@@ -503,7 +503,7 @@ function augmentInit(
   return false;
 }
 
-function extractSimpleName(exprId: number, arena: ArenaDAEBuilder): string | null {
+function extractSimpleName(exprId: number, arena: DAEBuilder): string | null {
   if (exprId < 0) return null;
   if (arena.getExprKind(exprId) === ExprKind.Name) {
     return arena.interner.resolve(arena.getExprData1(exprId));
@@ -511,7 +511,7 @@ function extractSimpleName(exprId: number, arena: ArenaDAEBuilder): string | nul
   return null;
 }
 
-function extractDerName(exprId: number, arena: ArenaDAEBuilder): string | null {
+function extractDerName(exprId: number, arena: DAEBuilder): string | null {
   if (exprId < 0) return null;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Der) {
@@ -594,7 +594,7 @@ function solveLU(A: number[][], b: number[], n: number): number[] {
   return x;
 }
 
-function collectExprNameIds(arena: ArenaDAEBuilder, exprId: number, nameIds: Set<number>): void {
+function collectExprNameIds(arena: DAEBuilder, exprId: number, nameIds: Set<number>): void {
   if (exprId < 0) return;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Name) {
@@ -665,14 +665,14 @@ function collectExprNameIds(arena: ArenaDAEBuilder, exprId: number, nameIds: Set
 }
 
 /**
- * Solve the initial equations natively on the ArenaDAEBuilder using Newton-Raphson
+ * Solve the initial equations natively on the DAEBuilder using Newton-Raphson
  * with structural sparsity, exact symbolic Jacobians, and homotopy continuation fallback.
  *
- * @param arena The ArenaDAEBuilder containing the equations.
+ * @param arena The DAEBuilder containing the equations.
  * @param initialValues A Float64Array populated with start values and parameters.
  * @returns Solver result with computed initial values.
  */
-export function solveInitialEquationsArena(arena: ArenaDAEBuilder, initialValues: Float64Array): ArenaInitSolverResult {
+export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Float64Array): ArenaInitSolverResult {
   const result: ArenaInitSolverResult = {
     valuesByStringId: new Float64Array(initialValues),
     iterations: 0,
@@ -827,7 +827,7 @@ export function solveInitialEquationsArena(arena: ArenaDAEBuilder, initialValues
 }
 
 function runNewton(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   result: ArenaInitSolverResult,
   residualExprIds: number[],
   jacobianExprIds: (number | -1)[][],
@@ -892,7 +892,7 @@ function runNewton(
 }
 
 function runHomotopy(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   result: ArenaInitSolverResult,
   residualExprIds: number[],
   jacobianExprIds: (number | -1)[][],

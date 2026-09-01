@@ -122,9 +122,9 @@ async function main() {
   const { initBltWasm } = await import("../src/runtime/wasm_blt.js");
   await initBltWasm();
 
-  const { ArenaDAEBuilder, BinOp, EqKind, UnaryOp, VarType, Variability } = await import("../src/compiler/index.js");
+  const { DAEBuilder, BinOp, EqKind, UnaryOp, VarType, Variability } = await import("../src/compiler/index.js");
 
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous, 0, 5.0);
   arena.setVarStartValue(xIdx, 5.0);
 

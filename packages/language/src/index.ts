@@ -20,7 +20,7 @@ export * from "./runtime/wasm_bdf.js";
 export * from "./runtime/wasm_blt.js";
 export * from "./runtime/wasm_cache_store.js";
 export * from "./runtime/wasm_cosim.js";
-export { ArenaDAEBuilder, WasmDaeBridge, type IDaeBuilder } from "./runtime/wasm_dae.js";
+export { DAEBuilder, WasmDaeBridge, type IDaeBuilder } from "./runtime/wasm_dae.js";
 export * from "./runtime/wasm_dae_printer.js";
 export * from "./runtime/wasm_doe.js";
 export * from "./runtime/wasm_dopri5.js";

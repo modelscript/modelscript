@@ -8,7 +8,7 @@
  * divergence, allowing the GPU compiler to optimize aggressively.
  */
 
-import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../../../runtime/wasm_dae.js";
+import { type DAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "../../../runtime/wasm_dae.js";
 import type { GPUArenaBuffers } from "./gpu-buffers.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ const BINOP_WGSL: Record<number, string> = {
  * Emit a WGSL expression string for an arena expression node.
  * Recursively traverses the expression tree and produces inlined WGSL code.
  */
-export function emitExprWGSL(arena: ArenaDAEBuilder, exprId: number): string {
+export function emitExprWGSL(arena: DAEBuilder, exprId: number): string {
   if (exprId < 0) return "vec2<f32>(0.0, 0.0)";
   const kind = arena.getExprKind(exprId);
 
@@ -158,7 +158,7 @@ export function emitExprWGSL(arena: ArenaDAEBuilder, exprId: number): string {
   }
 }
 
-function emitCallWGSL(arena: ArenaDAEBuilder, exprId: number): string {
+function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
   const funcName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
   const argCount = arena.getExprRight(exprId);
   const firstArgId = arena.getExprLeft(exprId);
@@ -291,11 +291,7 @@ export interface WGSLCodegenOptions {
  * @param options - Codegen options.
  * @returns Complete WGSL shader source code.
  */
-export function generateWGSL(
-  arena: ArenaDAEBuilder,
-  gpuBuffers: GPUArenaBuffers,
-  options?: WGSLCodegenOptions,
-): string {
+export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, options?: WGSLCodegenOptions): string {
   const workgroupSize = options?.workgroupSize ?? 64;
   const debug = options?.debugComments ?? false;
   const plan = gpuBuffers.blockPlan;
@@ -303,7 +299,7 @@ export function generateWGSL(
 
   // ── Header ──
   lines.push("// Auto-generated WGSL compute shader for ModelScript DAE simulation");
-  lines.push("// Do not edit — regenerated from ArenaDAEBuilder on each model change.");
+  lines.push("// Do not edit — regenerated from DAEBuilder on each model change.");
   lines.push("");
 
   // ── DS (Double-Single) Arithmetic Library ──
@@ -517,7 +513,7 @@ function formatF32(v: number): string {
 }
 
 /** Resolve a StringId to a varIdx via the arena's name index. */
-function resolveVarIdx(arena: ArenaDAEBuilder, nameId: number): number {
+function resolveVarIdx(arena: DAEBuilder, nameId: number): number {
   const name = arena.interner.resolve(nameId);
   if (!name) return -1;
   return arena.getVarIdxByName(name);

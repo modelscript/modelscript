@@ -16,7 +16,7 @@
  */
 
 import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
-import { ArenaDAEBuilder, Variability } from "../../index.js";
+import { DAEBuilder, Variability } from "../../index.js";
 import { ArenaSimulator, simulateArena } from "../../simulator/core/simulate-arena.js";
 import type { SolverOptions } from "../../simulator/core/solver-options.js";
 import type { MonteCarloOptions, RandomVariable } from "../../simulator/uq/monte-carlo.js";
@@ -472,11 +472,11 @@ function sqpSolve(
 // ── ModelicaOptimizer ──
 
 export class ModelicaOptimizer {
-  private dae: ArenaDAEBuilder;
+  private dae: DAEBuilder;
   private simulator: ArenaSimulator;
   private problem: OptimizationProblem;
 
-  constructor(dae: ArenaDAEBuilder, problem: OptimizationProblem) {
+  constructor(dae: DAEBuilder, problem: OptimizationProblem) {
     this.dae = dae;
     this.simulator = new ArenaSimulator(dae);
     this.problem = problem;

@@ -1,4 +1,4 @@
-import { ArenaDAEBuilder, Causality } from "../../compiler/index.js";
+import { Causality, DAEBuilder } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
 import type { CoSimParticipant, CosimValue, ParticipantMetadata } from "../../cosim/index.js";
 
@@ -6,10 +6,10 @@ export class ModelScriptParticipant implements CoSimParticipant {
   id: string;
   modelName: string;
   metadata: ParticipantMetadata;
-  private arena: ArenaDAEBuilder;
+  private arena: DAEBuilder;
   private currentValues: Map<string, number>;
 
-  constructor(id: string, modelName: string, arena: ArenaDAEBuilder) {
+  constructor(id: string, modelName: string, arena: DAEBuilder) {
     this.id = id;
     this.modelName = modelName;
     this.arena = arena;

@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ArenaDAEBuilder, ArenaDAEPrinter, ExprKind, VarType, Variability } from "../../compiler/index.js";
+import { ArenaDAEPrinter, DAEBuilder, ExprKind, VarType, Variability } from "../../compiler/index.js";
 
 /**
- * Port getParameterInfo to work on ArenaDAEBuilder.
+ * Port getParameterInfo to work on DAEBuilder.
  */
-export function getArenaParameterInfo(arena: ArenaDAEBuilder): any[] {
+export function getArenaParameterInfo(arena: DAEBuilder): any[] {
   const infos: any[] = [];
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
@@ -26,7 +26,7 @@ export function getArenaParameterInfo(arena: ArenaDAEBuilder): any[] {
   return infos;
 }
 
-export function printArenaExpression(arena: ArenaDAEBuilder, exprId: number): string {
+export function printArenaExpression(arena: DAEBuilder, exprId: number): string {
   const chunks: string[] = [];
   const writer = {
     write: (s: string) => {
@@ -38,7 +38,7 @@ export function printArenaExpression(arena: ArenaDAEBuilder, exprId: number): st
   return chunks.join("");
 }
 
-export function evaluateArenaExprToNum(arena: ArenaDAEBuilder, exprId: number | undefined): number | null {
+export function evaluateArenaExprToNum(arena: DAEBuilder, exprId: number | undefined): number | null {
   if (exprId === undefined || exprId < 0) return null;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.RealLiteral) {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  ArenaDAEBuilder,
   BinOp,
   Causality,
+  DAEBuilder,
   EqKind,
   ExprKind,
   UnaryOp,
@@ -29,7 +29,7 @@ console.log("=== Testing WASM Constant Folding & Algebraic Reduction Suite ===")
 // ── Test 1: Arithmetic Expression Constant Evaluation ──
 console.log("Test 1: Arithmetic & built-in math constant folding...");
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
 
   // (2.0 * 3.0) + 4.0 = 10.0
   const two = arena.addRealLiteral(2.0);
@@ -57,7 +57,7 @@ console.log("Test 1: Arithmetic & built-in math constant folding...");
 // ── Test 2: Relational, Boolean Logic, and IfElse Pruning ──
 console.log("Test 2: Relational logic and IfElse branch pruning...");
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
 
   // (10.0 > 5.0) && (3.0 <= 4.0) === true
   const ten = arena.addRealLiteral(10.0);
@@ -86,7 +86,7 @@ console.log("Test 2: Relational logic and IfElse branch pruning...");
 // ── Test 3: Cascading Multi-Pass DAE Parameter & Equation Folding ──
 console.log("Test 3: Multi-pass cascading fixed-point parameter & equation folding...");
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
 
   // Variables:
   // parameter Real a; (binding: 2.0)

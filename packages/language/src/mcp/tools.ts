@@ -318,7 +318,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         daeObj = flattener.flatten(firstId);
       }
 
-      // `daeObj` is now an ArenaDAEBuilder instance — use the arena simulation path directly.
+      // `daeObj` is now an DAEBuilder instance — use the arena simulation path directly.
       const result = simulateArena(daeObj, {
         startTime: startTime ?? 0,
         stopTime: stopTime ?? 10,

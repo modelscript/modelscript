@@ -3,13 +3,7 @@
 
 import type { StringId } from "../compiler/interner.js";
 import { collectArenaExprDeps } from "./wasm_blt.js";
-import {
-  ArenaDAEBuilder,
-  EqKind,
-  ExprKind,
-  differentiateArenaExpression,
-  simplifyArenaExpression,
-} from "./wasm_dae.js";
+import { DAEBuilder, EqKind, ExprKind, differentiateArenaExpression, simplifyArenaExpression } from "./wasm_dae.js";
 
 /**
  * Result of Pantelides Index Reduction on the arena.
@@ -26,7 +20,7 @@ export interface ArenaPantelidesResult {
 /**
  * Returns true if the expression contains a derivative operator `der()`.
  */
-export function containsDerivative(arena: ArenaDAEBuilder, exprId: number): boolean {
+export function containsDerivative(arena: DAEBuilder, exprId: number): boolean {
   if (exprId < 0) return false;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Der) return true;
@@ -62,11 +56,11 @@ export function containsDerivative(arena: ArenaDAEBuilder, exprId: number): bool
 }
 
 /**
- * Pantelides index reduction using ArenaDAEBuilder indices.
+ * Pantelides index reduction using DAEBuilder indices.
  * Identifies algebraic constraints between states and differentiates them.
  */
 export function pantelidesIndexReductionArena(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   stateVars: Set<number>,
   derivativeVars: Set<number>,
   parameters: Set<number>,

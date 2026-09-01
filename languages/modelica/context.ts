@@ -5,7 +5,7 @@ import {
   Context as BaseContext,
   MODELSCRIPT_CAS_PACKAGE,
   printArenaDAE,
-  type ArenaDAEBuilder,
+  type DAEBuilder,
   type HomotopyMode,
   type InitSolverConfig,
   type ModelicaCompilerOptions,
@@ -365,12 +365,12 @@ export class Context extends BaseContext {
    * Flatten a Modelica class using the arena-native pipeline.
    *
    * This is the new canonical flattening API. It bypasses the legacy object graph entirely,
-   * using `ArenaQueryFlattener` → `ArenaDAEBuilder` directly.
+   * using `ArenaQueryFlattener` → `DAEBuilder` directly.
    *
    * @param name - The fully qualified name of the Modelica class to flatten.
-   * @returns An `ArenaDAEBuilder` containing the flattened DAE, or null if the class is not found.
+   * @returns An `DAEBuilder` containing the flattened DAE, or null if the class is not found.
    */
-  flattenArena(name: string, classId?: any, uri?: string, options?: FlattenOptions): ArenaDAEBuilder | null {
+  flattenArena(name: string, classId?: any, uri?: string, options?: FlattenOptions): DAEBuilder | null {
     let symbolIds: any[] | undefined = undefined;
 
     if (classId !== undefined) {

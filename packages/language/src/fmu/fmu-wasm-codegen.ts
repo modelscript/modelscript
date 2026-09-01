@@ -3,11 +3,11 @@
 /**
  * WASM-targeted C source code generator.
  *
- * Transpiles an ArenaDAEBuilder expression tree into a single, self-contained C
+ * Transpiles an DAEBuilder expression tree into a single, self-contained C
  * source file that compiles to WebAssembly via Emscripten.
  */
 
-import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "../compiler/index.js";
+import { type DAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "../compiler/index.js";
 
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";
@@ -27,11 +27,7 @@ export interface FmuWasmSourceResult {
 /**
  * Generate a self-contained C source file targeting Emscripten/WASM.
  */
-export function generateFmuWasmSource(
-  dae: ArenaDAEBuilder,
-  fmuResult: FmuResult,
-  options: FmuOptions,
-): FmuWasmSourceResult {
+export function generateFmuWasmSource(dae: DAEBuilder, fmuResult: FmuResult, options: FmuOptions): FmuWasmSourceResult {
   const id = options.modelIdentifier;
   const vars = fmuResult.scalarVariables;
   const nStates = fmuResult.modelStructure.derivatives.length;
@@ -87,7 +83,7 @@ function varToC(name: string): string {
   return `v_${sanitizeIdentifier(baseName)}`;
 }
 
-function exprToC(dae: ArenaDAEBuilder, id: number): string {
+function exprToC(dae: DAEBuilder, id: number): string {
   if (id < 0) return "0.0";
   switch (dae.getExprKind(id)) {
     case ExprKind.RealLiteral:
@@ -146,7 +142,7 @@ function exprToC(dae: ArenaDAEBuilder, id: number): string {
 
 // ── DAE Analysis Helpers ──
 
-function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number): string {
+function conditionToZeroCrossingC(dae: DAEBuilder, id: number): string {
   if (id < 0) return "0.0";
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
@@ -163,14 +159,14 @@ function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number): string {
   return `(${exprToC(dae, id)} ? 1.0 : -1.0)`;
 }
 
-function extractAssignmentTarget(dae: ArenaDAEBuilder, id: number): string | null {
+function extractAssignmentTarget(dae: DAEBuilder, id: number): string | null {
   if (id >= 0 && dae.getExprKind(id) === ExprKind.Name) {
     return dae.interner.resolve(dae.getExprData1(id));
   }
   return null;
 }
 
-function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
+function extractDerName(dae: DAEBuilder, exprId: number): string | null {
   if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.Der) {
     const operand = dae.getExprData1(exprId);
     if (operand >= 0 && dae.getExprKind(operand) === ExprKind.Name) {
@@ -186,7 +182,7 @@ function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
   return null;
 }
 
-function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<string>): void {
+function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>): void {
   if (id < 0) return;
   switch (dae.getExprKind(id)) {
     case ExprKind.Name: {
@@ -247,7 +243,7 @@ function generateWasmC(
   nVars: number,
   nStates: number,
   nEventIndicators: number,
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   result: FmuResult,
 ): string {
   const L: string[] = [];

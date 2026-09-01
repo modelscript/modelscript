@@ -18,7 +18,7 @@
  */
 
 import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
-import { ArenaDAEBuilder, BinOp, ExprKind } from "./wasm_dae.js";
+import { BinOp, DAEBuilder, ExprKind } from "./wasm_dae.js";
 import { type ImplicitInitBlock } from "./wasm_init.js";
 
 /** Result of the MINLP freeze-and-solve iteration. */
@@ -51,7 +51,7 @@ export function freezeAndSolve(
   block: ImplicitInitBlock,
   env: Map<string, number>,
   discreteSet: Set<string>,
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   maxOuter = 10,
   maxNewton = 30,
   tol = 1e-10,
@@ -173,7 +173,7 @@ function evaluateDiscreteFromResiduals(
   varName: string,
   block: ImplicitInitBlock,
   env: Map<string, number>,
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
 ): number | null {
   for (const eq of block.equations) {
     if (isSimpleName(eq.lhs, varName, arena)) {
@@ -186,7 +186,7 @@ function evaluateDiscreteFromResiduals(
   return null;
 }
 
-function isSimpleName(exprId: number, name: string, arena: ArenaDAEBuilder): boolean {
+function isSimpleName(exprId: number, name: string, arena: DAEBuilder): boolean {
   if (exprId < 0) return false;
   if (arena.getExprKind(exprId) === ExprKind.Name) {
     const varName = arena.interner.resolve(arena.getExprData1(exprId));
@@ -195,7 +195,7 @@ function isSimpleName(exprId: number, name: string, arena: ArenaDAEBuilder): boo
   return false;
 }
 
-function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: ArenaDAEBuilder): number | null {
+function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: DAEBuilder): number | null {
   if (exprId < 0) return null;
   const kind = arena.getExprKind(exprId);
   switch (kind) {

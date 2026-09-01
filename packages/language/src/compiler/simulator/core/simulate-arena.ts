@@ -9,8 +9,8 @@ import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
 import { solveInitialEquationsArena } from "../../../runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "../../../runtime/wasm_statement_executor.js";
 import {
-  ArenaDAEBuilder,
   BinOp,
+  DAEBuilder,
   EqKind,
   ExprKind,
   Variability,
@@ -82,7 +82,7 @@ export class ArenaSimulator {
 
   public preValuesByStringId!: Float64Array;
 
-  constructor(public arena: ArenaDAEBuilder) {}
+  constructor(public arena: DAEBuilder) {}
 
   prepare() {
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
@@ -1858,7 +1858,7 @@ export interface ArenaSimulateOptions {
  *   4. Execute the simulation (RK4 or Euler)
  *   5. Transform output into the standard `{ t, y, states }` format
  */
-export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOptions): ArenaSimulationResult {
+export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions): ArenaSimulationResult {
   // ── Step 1: Prepare the simulator ──
   const sim = new ArenaSimulator(arena);
   if (options?.fmuRegistry) {
@@ -1977,7 +1977,7 @@ export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOpt
  * Async variant of `simulateArena()` with cooperative yielding and abort support.
  */
 export async function simulateArenaAsync(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   options?: ArenaSimulateOptions,
 ): Promise<ArenaSimulationResult> {
   const sim = new ArenaSimulator(arena);

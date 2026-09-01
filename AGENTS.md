@@ -46,10 +46,10 @@
 
 There are **two flattening pipelines** in the codebase:
 
-| Pipeline         | Entry Point                                      | Status                    | Output                               |
-| ---------------- | ------------------------------------------------ | ------------------------- | ------------------------------------ |
-| **Legacy**       | `Context.flattenDAE()` → `ModelicaFlattener`     | Full-featured, 12k+ lines | `ModelicaDAE` object graph           |
-| **Arena-native** | `Context.flattenArena()` → `ArenaQueryFlattener` | New canonical pipeline    | `ArenaDAEBuilder` (struct-of-arrays) |
+| Pipeline         | Entry Point                                      | Status                    | Output                          |
+| ---------------- | ------------------------------------------------ | ------------------------- | ------------------------------- |
+| **Legacy**       | `Context.flattenDAE()` → `ModelicaFlattener`     | Full-featured, 12k+ lines | `ModelicaDAE` object graph      |
+| **Arena-native** | `Context.flattenArena()` → `ArenaQueryFlattener` | New canonical pipeline    | `DAEBuilder` (struct-of-arrays) |
 
 The arena-native pipeline is the target architecture. All new work should go into the arena pipeline unless fixing a bug in the legacy flattener.
 
@@ -61,16 +61,16 @@ Source (.mo) → tree-sitter → CST
     → WorkspaceIndex → Unified SymbolIndex (multi-file)
     → QueryEngine (Salsa memoization)
     → Linting (lint__ query hooks)
-    → ArenaQueryFlattener → ArenaDAEBuilder
+    → ArenaQueryFlattener → DAEBuilder
     → BLT / Simulation
 ```
 
 ### Key Packages
 
-| Package               | Responsibility                                                                                                                                                                                                                                            |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `languages/modelica/` | tree-sitter grammar, AST wrappers, indexer hooks, `ArenaQueryFlattener`, `ArenaExprVisitor`                                                                                                                                                               |
-| `packages/language/`  | Salsa query engine, `SymbolIndexer`, `WorkspaceIndex`, `ArenaDAEBuilder`, `ArenaDAEPrinter`, BLT solver, Simulation, Optimization, DSL compiler, parser/lexer codegen, WASM runtime, OWL2 reasoner, Datalog & SMT solver, LSP, MCP server, core utilities |
+| Package               | Responsibility                                                                                                                                                                                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `languages/modelica/` | tree-sitter grammar, AST wrappers, indexer hooks, `ArenaQueryFlattener`, `ArenaExprVisitor`                                                                                                                                                          |
+| `packages/language/`  | Salsa query engine, `SymbolIndexer`, `WorkspaceIndex`, `DAEBuilder`, `ArenaDAEPrinter`, BLT solver, Simulation, Optimization, DSL compiler, parser/lexer codegen, WASM runtime, OWL2 reasoner, Datalog & SMT solver, LSP, MCP server, core utilities |
 
 ### SymbolIndex Data Model
 
@@ -106,7 +106,7 @@ The `QueryEngine` wraps the `SymbolIndex` with memoized queries. Key queries:
 
 Located at `languages/modelica/flattener-query.ts`. Two-layer architecture:
 
-- **Layer 1 (Components):** Reads Salsa queries (`instantiate`, `classInstance`) to emit variables into the `ArenaDAEBuilder`.
+- **Layer 1 (Components):** Reads Salsa queries (`instantiate`, `classInstance`) to emit variables into the `DAEBuilder`.
 - **Layer 2 (Equations):** Retrieves the CST via `db.cstNode(classId)`, wraps it in AST nodes (`ModelicaClassDefinitionSyntaxNode`), iterates `classDef.sections`, and uses `ArenaExprVisitor` to compile expressions into arena expression IDs.
 
 ### ArenaExprVisitor
@@ -120,7 +120,7 @@ Located at `languages/modelica/arena-expr-visitor.ts`. Walks AST expression node
 3. **Real coercion in bindings:** When a `VarType.Real` variable has a binding expression, `castToRealExpr()` is applied to convert any integer literals to real (e.g., `parameter Real R = 100` → `parameter Real R = 100.0`).
 4. **Literal kind for bindings:** When a literal binding is set, check `varType` — use `addIntLiteral()` for `VarType.Integer`, `addRealLiteral()` for everything else numeric.
 
-### ArenaDAEBuilder
+### DAEBuilder
 
 Located at `packages/language/src/runtime/wasm_dae.ts`. A **data-oriented** (struct-of-arrays) container:
 

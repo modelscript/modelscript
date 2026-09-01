@@ -3,11 +3,11 @@
 /**
  * WASM Evaluator runtime module.
  * Provides high-performance expression evaluation and forward-mode Automatic Differentiation (AD)
- * over the ArenaDAEBuilder AST.
+ * over the DAEBuilder AST.
  */
 
 import type { QueryDB, SymbolEntry, SymbolId } from "../compiler/runtime.js";
-import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
+import { BinOp, DAEBuilder, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
 
 /**
  * Dual numbers for forward-mode automatic differentiation.
@@ -151,7 +151,7 @@ export class Dual {
   }
 }
 
-function collectArgIds(arena: ArenaDAEBuilder, baseExprId: number, firstElem: number, count: number): number[] {
+function collectArgIds(arena: DAEBuilder, baseExprId: number, firstElem: number, count: number): number[] {
   if (count === 0) return [];
   const ids = [firstElem];
   for (let i = 1; i < count; i++) {
@@ -164,7 +164,7 @@ function collectArgIds(arena: ArenaDAEBuilder, baseExprId: number, firstElem: nu
  * Expression evaluator using dual numbers for forward-mode automatic differentiation.
  */
 export function evaluateArenaDualExpression(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   exprId: number,
   dualVarsByStringId: Map<number, Dual> | (Dual | undefined)[],
 ): Dual | null {
@@ -365,7 +365,7 @@ export function evaluateArenaDualExpression(
  * Evaluates an arena expression using a dense, flat Float64Array for variable lookups.
  */
 export function evaluateArenaRuntime(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   exprId: number,
   valuesByStringId: Float64Array,
   preValuesByStringId?: Float64Array,
@@ -694,7 +694,7 @@ export function isArenaObject(v: ArenaValue): v is ArenaObjectValue {
 }
 
 export function getSequenceElements(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   baseExprId: number,
   count: number,
   firstElement: number,
@@ -1096,10 +1096,10 @@ function evalReduction(args: ArenaValue[], op: "sum" | "product" | "min" | "max"
 }
 
 /**
- * Evaluates an expression tree stored in an ArenaDAEBuilder symbolically.
+ * Evaluates an expression tree stored in an DAEBuilder symbolically.
  */
 export function evaluateArenaExpression(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   exprId: number,
   parameters = new Map<string, ArenaValue>(),
   db?: QueryDB,

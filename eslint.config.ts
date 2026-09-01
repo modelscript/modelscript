@@ -20,6 +20,7 @@ export default defineConfig([
       "packages/language/src/codegen/typescript.mjs",
       "packages/language/src/compiler/wasm/sundials.js",
       "packages/language/src/compiler/wasm/**",
+      "packages/language/src/ide/**",
       "languages/**/src-gen/**",
       "languages/**/bindings/**",
     ],

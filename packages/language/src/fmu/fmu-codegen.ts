@@ -3,7 +3,7 @@
 /**
  * FMI 2.0 C source code generator.
  *
- * Transpiles an ArenaDAEBuilder expression tree into standalone C source files
+ * Transpiles an DAEBuilder expression tree into standalone C source files
  * that implement the FMI 2.0 API for both Model Exchange and Co-Simulation.
  *
  * Generated files:
@@ -15,9 +15,9 @@
  */
 
 import {
-  ArenaDAEBuilder,
   BinOp,
   Causality,
+  DAEBuilder,
   EqKind,
   ExprKind,
   StaticTapeBuilder,
@@ -48,7 +48,7 @@ let spatialDistCounter = 0;
 /**
  * Generate FMI 2.0 C source files from a DAE and FMU result.
  */
-export function generateFmuCSources(dae: ArenaDAEBuilder, fmuResult: FmuResult, options: FmuOptions): FmuCSourceFiles {
+export function generateFmuCSources(dae: DAEBuilder, fmuResult: FmuResult, options: FmuOptions): FmuCSourceFiles {
   const id = options.modelIdentifier;
   const vars = fmuResult.scalarVariables;
   let maxVr = 0;
@@ -88,7 +88,7 @@ export function generateFmuCSources(dae: ArenaDAEBuilder, fmuResult: FmuResult, 
 }
 
 /** Recursively convert an expression ID to a C string representation. */
-function exprToC(dae: ArenaDAEBuilder, id: number): string {
+function exprToC(dae: DAEBuilder, id: number): string {
   if (id < 0) return "0.0 /* null */";
   switch (dae.getExprKind(id)) {
     case ExprKind.RealLiteral:
@@ -172,7 +172,7 @@ function varToC(name: string): string {
   return sanitizeIdentifier(name);
 }
 
-function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number): string {
+function conditionToZeroCrossingC(dae: DAEBuilder, id: number): string {
   if (id < 0) return "0.0";
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
@@ -185,7 +185,7 @@ function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number): string {
   return `(${exprToC(dae, id)} ? 1.0 : -1.0)`;
 }
 
-function extractTimeEventThresholdC(dae: ArenaDAEBuilder, id: number): string | null {
+function extractTimeEventThresholdC(dae: DAEBuilder, id: number): string | null {
   if (id < 0) return null;
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
@@ -205,7 +205,7 @@ function extractTimeEventThresholdC(dae: ArenaDAEBuilder, id: number): string | 
   return null;
 }
 
-function extractAssignmentTarget(dae: ArenaDAEBuilder, id: number): string | null {
+function extractAssignmentTarget(dae: DAEBuilder, id: number): string | null {
   if (id >= 0 && dae.getExprKind(id) === ExprKind.Name) {
     return dae.interner.resolve(dae.getExprData1(id));
   }
@@ -220,7 +220,7 @@ function generateModelH(
   nStates: number,
   nStringVars: number,
   nnz: number,
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   result: FmuResult,
 ): string {
   const lines: string[] = [];
@@ -314,12 +314,7 @@ function generateModelH(
   return lines.join("\n");
 }
 
-function generateAlgebraicLoopSolvers(
-  id: string,
-  dae: ArenaDAEBuilder,
-  result: FmuResult,
-  options: FmuOptions,
-): string {
+function generateAlgebraicLoopSolvers(id: string, dae: DAEBuilder, result: FmuResult, options: FmuOptions): string {
   const method = options.solverOptions?.jacobian ?? "ad-forward";
 
   const lines: string[] = [];
@@ -581,7 +576,7 @@ function generateAlgebraicLoopSolvers(
  * Generate _initializeSolve() — Newton-Raphson solver for initial equations
  * using exact AD Jacobians from StaticTapeBuilder.
  */
-function generateInitializeSolve(id: string, dae: ArenaDAEBuilder, result: FmuResult): string[] {
+function generateInitializeSolve(id: string, dae: DAEBuilder, result: FmuResult): string[] {
   const lines: string[] = [];
 
   const initEqs: { lhs: number; rhs: number }[] = [];
@@ -719,7 +714,7 @@ function generateInitializeSolve(id: string, dae: ArenaDAEBuilder, result: FmuRe
   return lines;
 }
 
-function generateModelC(id: string, dae: ArenaDAEBuilder, result: FmuResult): string {
+function generateModelC(id: string, dae: DAEBuilder, result: FmuResult): string {
   // Reset buffer counters for this codegen invocation
   delayBufferCounter = 0;
   spatialDistCounter = 0;
@@ -1026,7 +1021,7 @@ function generateFmi2FunctionsC(
   nVars: number,
   nStates: number,
   nStringVars: number,
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   result: FmuResult,
 ): string {
   const lines: string[] = [];
@@ -1801,7 +1796,7 @@ function generateCMakeLists(id: string, _externalIncludes: string[]): string {
   return lines.join("\n");
 }
 
-function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
+function extractDerName(dae: DAEBuilder, exprId: number): string | null {
   if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.Der) {
     const operand = dae.getExprData1(exprId);
     if (operand >= 0 && dae.getExprKind(operand) === ExprKind.Name) {
@@ -1818,7 +1813,7 @@ function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
 }
 
 /** Recursively collect all variable names referenced in an expression. */
-function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<string>): void {
+function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>): void {
   if (id < 0) return;
   switch (dae.getExprKind(id)) {
     case ExprKind.Name: {
@@ -1994,7 +1989,7 @@ function generateIntegratorCode(
   return lines;
 }
 
-export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder, result: FmuResult): string {
+export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuResult): string {
   const lines: string[] = [];
   lines.push("/* Auto-generated by ModelScript — FMI 3.0 API */");
   lines.push(`#include "${id}_model.h"`);
@@ -2477,7 +2472,7 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder, result:
   return lines.join("\n");
 }
 
-function generateEventHandlingLogic(dae: ArenaDAEBuilder, result: FmuResult, fmiVersion: "fmi2" | "fmi3"): string {
+function generateEventHandlingLogic(dae: DAEBuilder, result: FmuResult, fmiVersion: "fmi2" | "fmi3"): string {
   const lines: string[] = [];
   const whenEqIdxs: number[] = [];
   for (let idx = 0; idx < dae.eqCount; idx++) {
@@ -2642,11 +2637,7 @@ function generateEventHandlingLogic(dae: ArenaDAEBuilder, result: FmuResult, fmi
   return lines.join("\n");
 }
 
-function generateGetJacobianSparse(
-  id: string,
-  dae: ArenaDAEBuilder,
-  result: FmuResult,
-): { code: string[]; nnz: number } {
+function generateGetJacobianSparse(id: string, dae: DAEBuilder, result: FmuResult): { code: string[]; nnz: number } {
   const lines: string[] = [];
   lines.push(`/* Exact Sparse Analytical Jacobian (CSC) */`);
   lines.push(`void ${id}_getJacobianSparse(${id}_Instance* inst, int* colptrs, int* rowvals, double* data) {`);

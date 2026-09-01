@@ -3,7 +3,7 @@
 /**
  * Arena GPU Buffer Serialization — Phase 0 of the WebGPU simulation backend.
  *
- * Serializes the flat struct-of-arrays data from ArenaDAEBuilder into
+ * Serializes the flat struct-of-arrays data from DAEBuilder into
  * GPU-mappable typed arrays. Because the arena already stores data as
  * Int32Array columns with fixed strides, serialization is essentially
  * zero-cost — just typed array copies or subarray views.
@@ -13,7 +13,7 @@
  */
 
 import type { ArenaBltResult } from "../../../runtime/wasm_blt.js";
-import { type ArenaDAEBuilder, Variability } from "../../../runtime/wasm_dae.js";
+import { type DAEBuilder, Variability } from "../../../runtime/wasm_dae.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -128,7 +128,7 @@ export interface GPUBlockPlan {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Serialize an ArenaDAEBuilder and its BLT result into GPU-mappable buffers.
+ * Serialize an DAEBuilder and its BLT result into GPU-mappable buffers.
  *
  * This is a compile-time operation. The returned buffers are immutable
  * descriptions of the DAE structure. The `stateBuffer` is the only
@@ -140,7 +140,7 @@ export interface GPUBlockPlan {
  * @returns GPU-ready buffer pack.
  */
 export function serializeArenaForGPU(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   bltResult: ArenaBltResult,
   stateVars: Set<number>,
 ): GPUArenaBuffers {
@@ -285,7 +285,7 @@ function packBlockPlan(blt: ArenaBltResult): GPUBlockPlan {
  * @param parameterOverrides - Optional parameter value overrides.
  */
 export function initializeGPUStateBuffer(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   buffers: GPUArenaBuffers,
   parameterOverrides?: Map<string, number>,
 ): void {

@@ -2,12 +2,12 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
- * ArenaDAEBuilder — Flat, arena-backed storage for flattened DAE data.
+ * DAEBuilder — Flat, arena-backed storage for flattened DAE data.
  *
  * ## Usage
  *
  * ```typescript
- * const builder = new ArenaDAEBuilder(interner);
+ * const builder = new DAEBuilder(interner);
  *
  * // Flattener appends variables
  * builder.addVariable("resistor1.R", VarType.Real, Variability.Parameter, Causality.Local, 100.0);
@@ -271,7 +271,7 @@ const STMT_LEFT = 2; // Left child
 const STMT_RIGHT = 3; // Right child
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ArenaDAEBuilder
+// DAEBuilder
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Default capacity for each arena segment. */
@@ -280,7 +280,7 @@ const DEFAULT_EQ_CAP = 1024;
 const DEFAULT_STMT_CAP = 256;
 const DEFAULT_EXPR_CAP = 4096;
 /**
- * Universal DAE Builder interface shared by host-side ArenaDAEBuilder and WebAssembly WasmDaeBridge.
+ * Universal DAE Builder interface shared by host-side DAEBuilder and WebAssembly WasmDaeBridge.
  */
 export interface IDaeBuilder {
   addVariable(
@@ -317,9 +317,9 @@ export interface IDaeBuilder {
 /**
  * Host-side Struct-of-Arrays (SoA) Builder for flat Differential Algebraic Equations.
  *
- * @deprecated Prefer using `WasmDaeBridge` or `IDaeBuilder`. `ArenaDAEBuilder` will be removed once all flattening pipelines emit directly into WebAssembly linear memory.
+ * @deprecated Prefer using `WasmDaeBridge` or `IDaeBuilder`. `DAEBuilder` will be removed once all flattening pipelines emit directly into WebAssembly linear memory.
  */
-export class ArenaDAEBuilder implements IDaeBuilder {
+export class DAEBuilder implements IDaeBuilder {
   // ── Variable arena ──
   private varData: Int32Array;
   private _varCount = 0;
@@ -405,7 +405,7 @@ export class ArenaDAEBuilder implements IDaeBuilder {
   stateMachines: ArenaStateMachine[] = [];
 
   /** Child function DAEs. */
-  functions = new Map<StringId, ArenaDAEBuilder>();
+  functions = new Map<StringId, DAEBuilder>();
 
   /** Inline body equation descriptor for when-clause metadata. */
 
@@ -552,8 +552,8 @@ export class ArenaDAEBuilder implements IDaeBuilder {
    * Clone the arena up to the current variable count.
    * This is used to snapshot the body flattening phase and skip it during equation-only edits.
    */
-  clone(): ArenaDAEBuilder {
-    const clone = new ArenaDAEBuilder(
+  clone(): DAEBuilder {
+    const clone = new DAEBuilder(
       this.interner,
       this.interner.resolve(this.nameId),
       this.interner.resolve(this.descriptionId),
@@ -617,7 +617,7 @@ export class ArenaDAEBuilder implements IDaeBuilder {
     return clone;
   }
 
-  private _snapshotInstance: ArenaDAEBuilder | null = null;
+  private _snapshotInstance: DAEBuilder | null = null;
 
   snapshot(): void {
     this._snapshotInstance = this.clone();
@@ -1915,7 +1915,7 @@ export function varTypeName(t: VarType): string {
  *   - Comparison ops → Boolean
  *   - Logical ops (and, or, not) → Boolean
  */
-export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): VarType | null {
+export function inferArenaExprVarType(dae: DAEBuilder, exprId: number): VarType | null {
   if (exprId < 0) return null;
 
   const kind = dae.getExprKind(exprId);
@@ -2178,7 +2178,7 @@ export class IntUnionFind {
  * Identifies equations of the form `Name(a) = Name(b)` and canonicalizes all
  * Name references throughout the arena expressions to the root variable.
  */
-export function eliminateArenaAliases(dae: ArenaDAEBuilder): void {
+export function eliminateArenaAliases(dae: DAEBuilder): void {
   const uf = new IntUnionFind(dae.varCount);
 
   // 1. Gather all connection/alias equations
@@ -2241,12 +2241,12 @@ export function eliminateArenaAliases(dae: ArenaDAEBuilder): void {
 
 /**
  * Symbolically differentiates an expression with respect to time.
- * @param arena The ArenaDAEBuilder containing the expressions.
+ * @param arena The DAEBuilder containing the expressions.
  * @param exprId The ID of the expression to differentiate.
  * @param stateVars The set of state variables (StringIds) that are functions of time.
  * @returns The ExprId of the differentiated expression.
  */
-export function differentiateArenaExpression(arena: ArenaDAEBuilder, exprId: number, stateVars: Set<StringId>): number {
+export function differentiateArenaExpression(arena: DAEBuilder, exprId: number, stateVars: Set<StringId>): number {
   const kind = arena.getExprKind(exprId);
 
   switch (kind) {
@@ -2318,7 +2318,7 @@ export function differentiateArenaExpression(arena: ArenaDAEBuilder, exprId: num
 /**
  * Simplifies an arena expression (constant folding and algebraic identities).
  */
-export function simplifyArenaExpression(arena: ArenaDAEBuilder, exprId: number): number {
+export function simplifyArenaExpression(arena: DAEBuilder, exprId: number): number {
   const kind = arena.getExprKind(exprId);
 
   if (kind === ExprKind.Negate) {
@@ -2381,7 +2381,7 @@ export function simplifyArenaExpression(arena: ArenaDAEBuilder, exprId: number):
  * Symbolically computes the partial derivative of an expression with respect to a specific variable.
  * Used for building analytical Jacobians.
  */
-export function differentiateArenaExpressionWrt(arena: ArenaDAEBuilder, exprId: number, wrtVarId: StringId): number {
+export function differentiateArenaExpressionWrt(arena: DAEBuilder, exprId: number, wrtVarId: StringId): number {
   if (exprId < 0) return arena.addRealLiteral(0.0);
 
   const kind = arena.getExprKind(exprId);

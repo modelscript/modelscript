@@ -30,7 +30,7 @@
  */
 
 import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
-import { ArenaDAEBuilder } from "../../index.js";
+import { DAEBuilder } from "../../index.js";
 import { ArenaSimulator, simulateArena } from "../../simulator/core/simulate-arena.js";
 
 // ── Public interfaces ──
@@ -81,11 +81,11 @@ export interface CalibrationResult {
 // ── Calibrator ──
 
 export class ModelicaCalibrator {
-  private dae: ArenaDAEBuilder;
+  private dae: DAEBuilder;
   private simulator: ArenaSimulator;
   private problem: CalibrationProblem;
 
-  constructor(dae: ArenaDAEBuilder, simulator: ArenaSimulator, problem: CalibrationProblem) {
+  constructor(dae: DAEBuilder, simulator: ArenaSimulator, problem: CalibrationProblem) {
     this.dae = dae;
     this.simulator = simulator;
     this.problem = problem;

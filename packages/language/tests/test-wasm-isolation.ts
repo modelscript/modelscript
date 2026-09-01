@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert";
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, VarType, Variability } from "../src/compiler/index.js";
+import { BinOp, DAEBuilder, EqKind, ExprKind, VarType, Variability } from "../src/compiler/index.js";
 import {
   WasmIsolationEngine,
   isExplicitlySolvableArena,
@@ -13,7 +13,7 @@ console.log("=== Testing WASM Symbolic Equation Isolation & Loop Optimization ==
 
 // 1. Test Explicit Solvability
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const yIdx = arena.addVariable("y", VarType.Real, Variability.Continuous);
 
@@ -38,7 +38,7 @@ console.log("=== Testing WASM Symbolic Equation Isolation & Loop Optimization ==
 
 // 2. Test Linear Equation Isolation (A*x + B = 0 -> x = -B/A)
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const xExpr = arena.addNameExpr("x");
   const three = arena.addRealLiteral(3.0);
@@ -57,7 +57,7 @@ console.log("=== Testing WASM Symbolic Equation Isolation & Loop Optimization ==
 
 // 3. Test Nonlinear Single-Occurrence Inversion: exp(2*x) = 10 -> 2*x = log(10) -> x = log(10)/2
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const xExpr = arena.addNameExpr("x");
   const two = arena.addRealLiteral(2.0);
@@ -76,7 +76,7 @@ console.log("=== Testing WASM Symbolic Equation Isolation & Loop Optimization ==
 
 // 4. Test Trigonometric Inversion: sin(x) = y -> x = asin(y)
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const yIdx = arena.addVariable("y", VarType.Real, Variability.Continuous);
   const xExpr = arena.addNameExpr("x");
@@ -96,7 +96,7 @@ console.log("=== Testing WASM Symbolic Equation Isolation & Loop Optimization ==
 
 // 5. Test Algebraic Loop Optimization with Gröbner Basis
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const yIdx = arena.addVariable("y", VarType.Real, Variability.Continuous);
 
@@ -119,7 +119,7 @@ console.log("=== Testing WASM Symbolic Equation Isolation & Loop Optimization ==
 // 6. Test WasmIsolationEngine wrapper instance
 {
   const engine = new WasmIsolationEngine();
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const xExpr = arena.addNameExpr("x");
   const five = arena.addRealLiteral(5.0);

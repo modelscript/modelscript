@@ -8,7 +8,7 @@
  * eliminating object allocations and pointer chasing.
  */
 
-import type { ArenaDAEBuilder } from "../runtime/wasm_dae.js";
+import type { DAEBuilder } from "../runtime/wasm_dae.js";
 import { BinOp, ExprKind, UnaryOp } from "../runtime/wasm_dae.js";
 import { StringInterner } from "./interner.js";
 
@@ -137,7 +137,7 @@ export class StaticTapeBuilder {
     return idx;
   }
 
-  public addExpression(exprId: number, arena: ArenaDAEBuilder): number {
+  public addExpression(exprId: number, arena: DAEBuilder): number {
     if (exprId < 0) return this.pushScalarOp(TapeOpKind.Const, 0, 0, 0, 0);
 
     const kind = arena.getExprKind(exprId);
@@ -246,7 +246,7 @@ export class StaticTapeBuilder {
     }
   }
 
-  public addArrayExpression(exprId: number, arena: ArenaDAEBuilder): number[] {
+  public addArrayExpression(exprId: number, arena: DAEBuilder): number[] {
     const kind = arena.getExprKind(exprId);
     if (kind === ExprKind.ArrayCtor || kind === ExprKind.Tuple) {
       const count = arena.getExprData1(exprId);
@@ -261,7 +261,7 @@ export class StaticTapeBuilder {
     return [this.addExpression(exprId, arena)];
   }
 
-  public walkArrayVectorized(exprId: number, arena: ArenaDAEBuilder): { startIdx: number; size: number } {
+  public walkArrayVectorized(exprId: number, arena: DAEBuilder): { startIdx: number; size: number } {
     const kind = arena.getExprKind(exprId);
     if (kind !== ExprKind.ArrayCtor && kind !== ExprKind.Tuple) {
       return { startIdx: this.addExpression(exprId, arena), size: 1 };
@@ -812,7 +812,7 @@ export class StaticTapeBuilder {
 }
 
 /** Extract derivative name from expression like der(x). */
-function extractDer(arena: ArenaDAEBuilder, exprId: number): string | null {
+function extractDer(arena: DAEBuilder, exprId: number): string | null {
   if (exprId < 0) return null;
   if (arena.getExprKind(exprId) === ExprKind.Der) {
     const argId = arena.getExprData1(exprId);
@@ -1061,7 +1061,7 @@ export function evaluateTapeReverse(
  * Returns a function `(t: number, y: number[]) => number[][]` that computes
  * the exact Jacobian of the derivative equations w.r.t. the state variables.
  */
-export function buildAdJacobian(dae: ArenaDAEBuilder): ((t: number, y: number[]) => number[][]) | null {
+export function buildAdJacobian(dae: DAEBuilder): ((t: number, y: number[]) => number[][]) | null {
   // Gather derivative equations: der(x) = f(x, u)
   const derEqs: { state: string; rhsExprId: number }[] = [];
 

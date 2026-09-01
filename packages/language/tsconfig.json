@@ -31,5 +31,5 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["src/codegen/runtime/**/*", "dist", "build", "node_modules"]
+  "exclude": ["src/codegen/runtime/**/*", "src/ide", "dist", "build", "node_modules"]
 }

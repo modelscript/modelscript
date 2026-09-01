@@ -28,7 +28,7 @@ import { type SysML2Layout } from "./sysml2-layout.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/tree-sitter.js";
 
 import { ArenaQueryFlattener } from "@modelscript/modelica";
-import { ArenaDAEBuilder, Context, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
+import { Context, DAEBuilder, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
 
 import { ModelicaClassDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 
@@ -74,7 +74,7 @@ import { type LoaderContext, loadRegistryPackages } from "./vfs/library-loader.j
  * Flatten a class instance using the arena-native pipeline.
  * Bridges the LSP's ModelicaClassInstance world with Context.flattenArena().
  */
-function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context: Context): ArenaDAEBuilder {
+function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context: Context): DAEBuilder {
   const className = classInstance.compositeName || classInstance.name;
   if (!className) throw new Error("Class instance has no name");
 
@@ -683,7 +683,7 @@ let diagramDispatch: ReturnType<typeof createDiagramDispatch> | null = null;
 const cosimSimulators = new Map<
   string,
   {
-    arena: ArenaDAEBuilder;
+    arena: DAEBuilder;
     currentValues: Map<string, number>;
     stepSize: number;
   }

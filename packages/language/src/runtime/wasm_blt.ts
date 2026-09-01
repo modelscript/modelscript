@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./wasm_dae.js";
+import { DAEBuilder, EqKind, ExprKind, Variability } from "./wasm_dae.js";
 
 // WASM Exports mapped globally within this module
 export let alloc: (size: number) => number;
@@ -72,12 +72,7 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
  *   the dependency set. This is needed for BLT matching where `der(x) = expr`
  *   defines der(x), not x. The integrator handles state updates.
  */
-export function collectArenaExprDeps(
-  arena: ArenaDAEBuilder,
-  exprId: number,
-  deps: Set<number>,
-  excludeDer = false,
-): void {
+export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Set<number>, excludeDer = false): void {
   if (exprId < 0) return;
   const kind = arena.getExprKind(exprId);
 
@@ -165,9 +160,9 @@ export function collectArenaExprDeps(
 
 /**
  * Resolves a StringId to a VarIdx.
- * Note: ArenaDAEBuilder should ideally have a Map<StringId, number> for O(1) lookup.
+ * Note: DAEBuilder should ideally have a Map<StringId, number> for O(1) lookup.
  */
-function resolveArenaVarIdx(arena: ArenaDAEBuilder, nameId: number): number {
+function resolveArenaVarIdx(arena: DAEBuilder, nameId: number): number {
   // O(1): resolve StringId → name string → VarIdx via name index
   const name = arena.interner.resolve(nameId);
   if (!name) return -1;
@@ -180,11 +175,11 @@ export interface ArenaBltResult {
 }
 
 /**
- * Performs Block Lower Triangular (BLT) transformation natively on the ArenaDAEBuilder
+ * Performs Block Lower Triangular (BLT) transformation natively on the DAEBuilder
  * by constructing adjacency matrices directly from arena expression graphs.
  */
 export function performBltTransformationArena(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   stateVars?: Set<string | number>,
   dummyDerivatives?: Set<string | number>,
 ): ArenaBltResult {

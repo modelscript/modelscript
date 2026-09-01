@@ -12,7 +12,7 @@
  * with `gcc -O3 -lm` and executed as a subprocess.
  */
 
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
+import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
 import type { FmiScalarVariable, FmuResult } from "@modelscript/language/fmu";
 
 // ── Public interface ──
@@ -27,7 +27,7 @@ export interface SimulationCOptions {
 /**
  * Generate a standalone C simulation source from a DAE.
  */
-export function generateSimulationC(dae: ArenaDAEBuilder, fmuResult: FmuResult, options: SimulationCOptions): string {
+export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, options: SimulationCOptions): string {
   const { modelIdentifier: id, startTime, stopTime, stepSize } = options;
   const vars = fmuResult.scalarVariables;
   const nVars = vars.length;
@@ -482,7 +482,7 @@ function generatePrintfLine(outputVars: FmiScalarVariable[]): string {
 
 // ── DAE Analysis Helpers ──
 
-function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number, vars: FmiScalarVariable[]): string {
+function conditionToZeroCrossingC(dae: DAEBuilder, id: number, vars: FmiScalarVariable[]): string {
   if (id < 0) return "0.0";
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
@@ -499,7 +499,7 @@ function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number, vars: FmiSca
   return `(${exprToC(dae, id, vars)} ? 1.0 : -1.0)`;
 }
 
-function extractAssignmentTarget(dae: ArenaDAEBuilder, id: number): string | null {
+function extractAssignmentTarget(dae: DAEBuilder, id: number): string | null {
   if (id >= 0 && dae.getExprKind(id) === ExprKind.Name) {
     return dae.interner.resolve(dae.getExprData1(id));
   }
@@ -516,7 +516,7 @@ function sanitizeIdentifier(name: string): string {
     .replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-function varToC(dae: ArenaDAEBuilder, name: string, vars: FmiScalarVariable[]): string {
+function varToC(dae: DAEBuilder, name: string, vars: FmiScalarVariable[]): string {
   if (name === "time") return "g_time";
 
   // Handle der(v) and pre(v)
@@ -619,7 +619,7 @@ function mapFunctionName(name: string): string {
   return builtins[name] ?? sanitizeIdentifier(name);
 }
 
-function exprToC(dae: ArenaDAEBuilder, id: number, vars: FmiScalarVariable[]): string {
+function exprToC(dae: DAEBuilder, id: number, vars: FmiScalarVariable[]): string {
   if (id < 0) return "0.0 /* null */";
   switch (dae.getExprKind(id)) {
     case ExprKind.RealLiteral:
@@ -684,7 +684,7 @@ function exprToC(dae: ArenaDAEBuilder, id: number, vars: FmiScalarVariable[]): s
 
 // ── DAE analysis helpers ──
 
-function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
+function extractDerName(dae: DAEBuilder, exprId: number): string | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.Der) {
@@ -696,7 +696,7 @@ function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
   return null;
 }
 
-function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<string>): void {
+function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>): void {
   if (id < 0) return;
   const kind = dae.getExprKind(id);
   switch (kind) {

@@ -6,13 +6,13 @@
  * End-to-end API that chains:
  *   ArenaDoE sampling → ROM training → (optional) FMU registration
  *
- * Works directly from an `ArenaDAEBuilder` model without requiring
+ * Works directly from an `DAEBuilder` model without requiring
  * an external FMU subsystem. Uses the high-performance `simulateArena`
  * pipeline for data generation.
  */
 
 import { FmuSubsystemRegistry, NeuralNetFmuSubsystem } from "../../../runtime/wasm_fmu_subsystem.js";
-import { ArenaDAEBuilder } from "../../index.js";
+import { DAEBuilder } from "../../index.js";
 import type { ArenaDoEConfig, ArenaDoEResult } from "../uq/doe.js";
 import { runArenaDoE, runArenaDoEAsync } from "../uq/doe.js";
 import type { ROMTrainConfig, TrainedROM } from "./rom-trainer.js";
@@ -89,7 +89,7 @@ export type ArenaSurrogateProgressCallback = (phase: ArenaSurrogatePhase, progre
  * ```
  */
 export function buildArenaSurrogate(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   config: ArenaSurrogatePipelineConfig,
   onProgress?: ArenaSurrogateProgressCallback,
 ): ArenaSurrogatePipelineResult {
@@ -159,7 +159,7 @@ export function buildArenaSurrogate(
  * Async variant of `buildArenaSurrogate()` with abort support.
  */
 export async function buildArenaSurrogateAsync(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   config: ArenaSurrogatePipelineConfig & { signal?: AbortSignal },
   onProgress?: ArenaSurrogateProgressCallback,
 ): Promise<ArenaSurrogatePipelineResult> {

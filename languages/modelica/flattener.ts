@@ -9,7 +9,7 @@
 
 import { createChunkedUint32Array, EqKind, ExprKind, type ChunkedUint32Array } from "@modelscript/language";
 import {
-  ArenaDAEBuilder,
+  DAEBuilder,
   eliminateArenaAliases,
   foldArenaConstants,
   scalarizeArena,
@@ -63,7 +63,7 @@ export class ModelicaModificationEnv {
  * High-performance Salsa Query Flattener delegating to native WASM flattening kernel.
  */
 export class ModelicaFlattener {
-  bodySnapshot: ArenaDAEBuilder | null = null;
+  bodySnapshot: DAEBuilder | null = null;
 
   private options: Required<Pick<FlattenOptions, "arrayMode" | "functionInlining" | "omcCompatibility">> &
     Pick<FlattenOptions, "eliminateAliases">;
@@ -83,7 +83,7 @@ export class ModelicaFlattener {
   /**
    * Flattens a Modelica class definition (Context compatibility signature).
    */
-  flatten(rootClassId: SymbolId, cachedArena?: ArenaDAEBuilder | null, options?: FlattenOptions): ArenaDAEBuilder {
+  flatten(rootClassId: SymbolId, cachedArena?: DAEBuilder | null, options?: FlattenOptions): DAEBuilder {
     if (options) {
       if (options.arrayMode !== undefined) this.options.arrayMode = options.arrayMode;
       if (options.functionInlining !== undefined) this.options.functionInlining = options.functionInlining;
@@ -98,10 +98,10 @@ export class ModelicaFlattener {
   /**
    * Flattens a Modelica class definition into a flat Arena DAE.
    */
-  flattenClass(rootClassId: SymbolId): ArenaDAEBuilder {
+  flattenClass(rootClassId: SymbolId): DAEBuilder {
     const rootEntry = this.db.symbol(rootClassId);
     const className = rootEntry?.name ?? "Model";
-    const dae = new ArenaDAEBuilder(undefined, className, "");
+    const dae = new DAEBuilder(undefined, className, "");
 
     // 1. Layer 1: Component instantiation via Salsa database
     const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
@@ -133,8 +133,8 @@ export class ModelicaFlattener {
   /**
    * Flattens a multi-domain system from a SysML TopologyGraph.
    */
-  flattenFromTopology(graph: TopologyGraph): ArenaDAEBuilder {
-    const dae = new ArenaDAEBuilder(undefined, "HybridSystem", "");
+  flattenFromTopology(graph: TopologyGraph): DAEBuilder {
+    const dae = new DAEBuilder(undefined, "HybridSystem", "");
 
     for (const rootId of graph.rootIds) {
       const node = graph.nodes.get(rootId);
@@ -165,7 +165,7 @@ export class ModelicaFlattener {
     return dae;
   }
 
-  private instantiateElements(elements: SymbolId[], prefix: string, dae: ArenaDAEBuilder): void {
+  private instantiateElements(elements: SymbolId[], prefix: string, dae: DAEBuilder): void {
     for (const elemId of elements) {
       const elem = this.db.symbol(elemId);
       if (!elem) continue;
@@ -181,7 +181,7 @@ export class ModelicaFlattener {
     }
   }
 
-  private extractClassEquations(classId: SymbolId, prefix: string, dae: ArenaDAEBuilder): void {
+  private extractClassEquations(classId: SymbolId, prefix: string, dae: DAEBuilder): void {
     const children = this.db.childrenOf(classId);
     for (const child of children) {
       if (child.kind === "Equation") {

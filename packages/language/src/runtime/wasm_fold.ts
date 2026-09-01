@@ -2,11 +2,11 @@
 
 /**
  * Generic WASM Constant Folding & Algebraic Reduction Framework.
- * Operates directly on ArenaDAEBuilder and WebAssembly memory buffers.
+ * Operates directly on DAEBuilder and WebAssembly memory buffers.
  */
 
 import type { QueryDB, SymbolId } from "../compiler/runtime.js";
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
+import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
 
 export type ArenaConstantValue = number | boolean | string | ArenaConstantValue[];
 
@@ -63,10 +63,10 @@ function evalMathBuiltin(funcName: string, arg1: number, arg2 = 0.0): number {
 }
 
 /**
- * Evaluates an expression node in ArenaDAEBuilder to a scalar constant if possible.
+ * Evaluates an expression node in DAEBuilder to a scalar constant if possible.
  */
 export function evaluateConstantArenaExpression(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   exprId: number,
   paramMap?: Map<string, number>,
   nameToIdx?: Map<string, number>,
@@ -208,7 +208,7 @@ export function evaluateConstantArenaExpression(
  * where possible. This is done iteratively until fixed point or maxIterations.
  */
 export function foldArenaConstants(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   db?: QueryDB,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -364,11 +364,11 @@ function generateIndices(shape: number[]): number[][] {
 
 /**
  * Deferred Batch Scalarization Pass.
- * Takes an ArenaDAEBuilder where array variables and equations have been preserved,
+ * Takes an DAEBuilder where array variables and equations have been preserved,
  * and scalarizes them into a flat DAE of individual scalar variables and equations.
  */
-export function scalarizeArena(dae: ArenaDAEBuilder): ArenaDAEBuilder {
-  const out = new ArenaDAEBuilder(dae.interner);
+export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
+  const out = new DAEBuilder(dae.interner);
   const arrayShapes = new Map<string, number[]>();
 
   for (let i = 0; i < dae.varCount; i++) {

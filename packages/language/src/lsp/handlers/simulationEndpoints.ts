@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-import { ArenaDAEBuilder, Causality } from "../../compiler/index.js";
+import { Causality, DAEBuilder } from "../../compiler/index.js";
 import { simulateArena, simulateArenaAsync } from "../../compiler/simulator/index.js";
 import { CoSimSession, Orchestrator } from "../../cosim/index.js";
 import { WasmOpenFoamProvider } from "../../cosim/participants/cfd-provider.js";
@@ -51,7 +51,7 @@ function flattenTargetClass(
   context: LspContext,
   uri: string,
   className?: string,
-): { arena: ArenaDAEBuilder; target: { symbolId: number; className: string; classKind: string } } | { error: string } {
+): { arena: DAEBuilder; target: { symbolId: number; className: string; classKind: string } } | { error: string } {
   const target = resolveTargetClass(context, uri, className);
   if (!target) {
     return { error: `No class definition found for '${className || uri}'` };
@@ -485,7 +485,7 @@ export function registerSimulationEndpoints(context: LspContext) {
         const step = exp.interval ?? (stopTime - startTime) / 100;
 
         const debuggerHook = {
-          onArenaStatement: async (arenaBuilder: ArenaDAEBuilder, stmtIdx: number, valuesByStringId: Float64Array) => {
+          onArenaStatement: async (arenaBuilder: DAEBuilder, stmtIdx: number, valuesByStringId: Float64Array) => {
             const loc = arenaBuilder.stmtLocations.get(stmtIdx);
             const line = loc ? loc.startLine : undefined;
             const col = loc ? loc.startCol : undefined;

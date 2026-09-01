@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import assert from "node:assert";
 import { StringInterner } from "../src/compiler/interner.js";
 import {
-  ArenaDAEBuilder,
   BinOp,
   Causality,
+  DAEBuilder,
   differentiateArenaExpression,
   eliminateArenaAliases,
   EqKind,
@@ -22,7 +21,7 @@ console.log("Testing WASM DAE Arena Architecture & Data Structures...");
 // Test 1: Variable and Equation construction
 {
   const interner = new StringInterner();
-  const dae = new ArenaDAEBuilder(interner);
+  const dae = new DAEBuilder(interner);
 
   const rIdx = dae.addVariable("resistor.R", VarType.Real, Variability.Parameter, Causality.Local, 100.0);
   const vIdx = dae.addVariable("resistor.v", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
@@ -50,7 +49,7 @@ console.log("Testing WASM DAE Arena Architecture & Data Structures...");
 // Test 2: Type Inference & Promotion
 {
   const interner = new StringInterner();
-  const dae = new ArenaDAEBuilder(interner);
+  const dae = new DAEBuilder(interner);
   dae.addVariable("x", VarType.Real, Variability.Continuous, Causality.Local);
   dae.addVariable("k", VarType.Integer, Variability.Parameter, Causality.Local);
 
@@ -70,7 +69,7 @@ console.log("Testing WASM DAE Arena Architecture & Data Structures...");
 // Test 3: Alias Elimination
 {
   const interner = new StringInterner();
-  const dae = new ArenaDAEBuilder(interner);
+  const dae = new DAEBuilder(interner);
   dae.addVariable("a.v", VarType.Real, Variability.Continuous, Causality.Local);
   dae.addVariable("b.v", VarType.Real, Variability.Continuous, Causality.Local);
 
@@ -91,7 +90,7 @@ console.log("Testing WASM DAE Arena Architecture & Data Structures...");
 // Test 4: Symbolic Differentiation & Simplification
 {
   const interner = new StringInterner();
-  const dae = new ArenaDAEBuilder(interner);
+  const dae = new DAEBuilder(interner);
   const stateVars = new Set([interner.intern("x")]);
 
   // expr = 3.0 * x + 5.0

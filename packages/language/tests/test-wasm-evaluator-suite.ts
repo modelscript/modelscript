@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArenaDAEBuilder, BinOp, Causality, EqKind, UnaryOp, VarType, Variability } from "../src/compiler/index.js";
+import { BinOp, Causality, DAEBuilder, EqKind, UnaryOp, VarType, Variability } from "../src/compiler/index.js";
 import {
   Dual,
   buildSparseAdJacobian,
@@ -28,7 +28,7 @@ console.log("=== Testing WASM Evaluator Suite ===");
 // ── Test 1: Expression Evaluator Parity ──
 console.log("Test 1: Expression Evaluator parity across operators & built-ins...");
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xId = arena.addVariable("x", VarType.Real, Variability.Continuous, Causality.Local, 3.0);
   const yId = arena.addVariable("y", VarType.Real, Variability.Continuous, Causality.Local, 4.0);
 
@@ -66,7 +66,7 @@ console.log("Test 1: Expression Evaluator parity across operators & built-ins...
 // ── Test 2: Dual Numbers & Forward Automatic Differentiation ──
 console.log("Test 2: Dual Numbers and forward AD...");
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xId = arena.addVariable("x", VarType.Real, Variability.Continuous, Causality.Local, 2.0);
   const yId = arena.addVariable("y", VarType.Real, Variability.Continuous, Causality.Local, 3.0);
   const xNameId = arena.getVarNameId(xId);
@@ -117,7 +117,7 @@ console.log("Test 2: Dual Numbers and forward AD...");
 // ── Test 3: Statement Executor ──
 console.log("Test 3: Procedural Algorithm Statement Execution...");
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const aId = arena.addVariable("a", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
   const sId = arena.addVariable("sum", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
   const aNameId = arena.getVarNameId(aId);
@@ -159,7 +159,7 @@ console.log("Test 3: Procedural Algorithm Statement Execution...");
 // ── Test 4: Sparse AD Jacobian Computation ──
 console.log("Test 4: Sparse AD Jacobian Construction & Graph Coloring...");
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xName = "x";
   const yName = "y";
   arena.addVariable(xName, VarType.Real, Variability.Continuous, Causality.Local, 1.0);

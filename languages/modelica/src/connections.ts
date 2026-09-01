@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArenaDAEBuilder, BinOp, EqKind, ExprKind } from "@modelscript/language/compiler";
+import { BinOp, DAEBuilder, EqKind, ExprKind } from "@modelscript/language/compiler";
 
 /**
  * Union-Find data structure with path compression and union-by-rank.
@@ -58,10 +58,10 @@ export class IntUnionFind {
 /* eslint-disable @typescript-eslint/no-extraneous-class */
 export class ModelicaPortBalancer {
   /**
-   * Finalizes all connection graphs on an ArenaDAEBuilder, expanding connect()
+   * Finalizes all connection graphs on an DAEBuilder, expanding connect()
    * equations into potential equalities, flow balance zero-sums, and stream equations.
    */
-  static expandConnections(dae: ArenaDAEBuilder, options?: { omcCompatibility?: boolean }): void {
+  static expandConnections(dae: DAEBuilder, options?: { omcCompatibility?: boolean }): void {
     const uf = new IntUnionFind(dae.varCount);
     const resolvedPairs: [number, number][] = [];
     const connectPairs: [number, number][] = [];

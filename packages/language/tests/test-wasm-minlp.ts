@@ -3,14 +3,14 @@
 
 import assert from "node:assert";
 import type { ImplicitInitBlock } from "../src/compiler/arena-init.js";
-import { ArenaDAEBuilder, BinOp, ExprKind, VarType } from "../src/runtime/wasm_dae.js";
+import { BinOp, DAEBuilder, ExprKind, VarType } from "../src/runtime/wasm_dae.js";
 import { freezeAndSolve } from "../src/runtime/wasm_minlp.js";
 
 console.log("Testing WASM MINLP Heuristics (Freeze-and-Solve)...");
 
 // Test 1: Mixed-Integer Initialization Block with If-Else Discrete Mode Selection
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   // Continuous variable: x (Real)
   // Discrete variable: mode (Integer)
   // Equations:

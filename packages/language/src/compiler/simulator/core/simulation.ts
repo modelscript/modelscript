@@ -1,4 +1,4 @@
-import type { ArenaDAEBuilder, ArenaStateMachine } from "../../index.js";
+import type { ArenaStateMachine, DAEBuilder } from "../../index.js";
 
 export interface SimulationResult {
   /** Time vector */
@@ -81,7 +81,7 @@ export interface ArenaStateMachineRuntime {
 /** Debugger hook interface for step-through simulation inspection. */
 export interface SimulationDebugger {
   /** Called on each arena algorithm statement execution. */
-  onArenaStatement?(arena: ArenaDAEBuilder, stmtIdx: number, values: Float64Array): Promise<void> | void;
+  onArenaStatement?(arena: DAEBuilder, stmtIdx: number, values: Float64Array): Promise<void> | void;
   /** Called on each simulation step. */
   onStep?(time: number, env: Float64Array): void;
 }

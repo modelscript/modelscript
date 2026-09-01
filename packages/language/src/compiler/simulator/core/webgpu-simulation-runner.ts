@@ -12,7 +12,7 @@
  */
 
 /// <reference types="@webgpu/types" />
-import { type ArenaDAEBuilder } from "../../../runtime/wasm_dae.js";
+import { type DAEBuilder } from "../../../runtime/wasm_dae.js";
 import { type GPUArenaBuffers } from "./gpu-buffers.js";
 import { getCachedWGSL, setCachedWGSL } from "./wgsl-cache.js";
 import { generateWGSL } from "./wgsl-codegen.js";
@@ -37,7 +37,7 @@ export class WebGPUSimulationRunner {
   private numStates: number;
 
   constructor(
-    public readonly arena: ArenaDAEBuilder,
+    public readonly arena: DAEBuilder,
     public readonly buffers: GPUArenaBuffers,
   ) {
     this.blockCount = buffers.blockPlan.blockCount;

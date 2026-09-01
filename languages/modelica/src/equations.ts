@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { DaeBuilder } from "@modelscript/language";
-import type { ArenaDAEBuilder } from "@modelscript/language/compiler";
+import type { DAEBuilder } from "@modelscript/language/compiler";
 import { EqKind, ExprKind } from "@modelscript/language/compiler";
 
 interface DAEAdapter {
@@ -16,10 +16,10 @@ interface DAEAdapter {
  * array equation scalarization, and lowers sequential algorithm blocks into SSA algebraic DAE equations.
  */
 export class ModelicaEquationFlattener {
-  dae: ArenaDAEBuilder | DaeBuilder | DAEAdapter;
+  dae: DAEBuilder | DaeBuilder | DAEAdapter;
   equationCount: number;
 
-  constructor(dae?: ArenaDAEBuilder | DaeBuilder | DAEAdapter) {
+  constructor(dae?: DAEBuilder | DaeBuilder | DAEAdapter) {
     if (dae) {
       this.dae = dae;
       this.equationCount = 0;
@@ -29,7 +29,7 @@ export class ModelicaEquationFlattener {
     }
   }
 
-  init(dae: ArenaDAEBuilder | DaeBuilder | DAEAdapter): void {
+  init(dae: DAEBuilder | DaeBuilder | DAEAdapter): void {
     this.dae = dae;
     this.equationCount = 0;
   }

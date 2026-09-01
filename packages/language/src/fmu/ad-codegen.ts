@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { type ArenaDAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "../compiler/index.js";
+import { type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "../compiler/index.js";
 
 import { type Fmi3Variable } from "./fmi3.js";
 
 /** Extract derivative name (like der(x)) from expression without depending on external module. */
-function extractDer(dae: ArenaDAEBuilder, exprId: number): string | null {
+function extractDer(dae: DAEBuilder, exprId: number): string | null {
   if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.Der) {
     const operand = dae.getExprData1(exprId);
     if (operand >= 0 && dae.getExprKind(operand) === ExprKind.Name) {
@@ -18,7 +18,7 @@ function extractDer(dae: ArenaDAEBuilder, exprId: number): string | null {
  * Compiles the entire system of derivative equations into a single C-function
  * that calculates the exact Jacobian Matrix via Reverse-Mode AD.
  */
-export function generateModelEvaluateJacobian(id: string, dae: ArenaDAEBuilder, vars: Fmi3Variable[]): string[] {
+export function generateModelEvaluateJacobian(id: string, dae: DAEBuilder, vars: Fmi3Variable[]): string[] {
   const L: string[] = [];
   L.push(`/* Exact Analytical Jacobian via Static C-Tape AD */`);
   L.push(`void ${id}_evaluate_jacobian(${id}_Instance* inst, double* jac_out) {`);
@@ -102,7 +102,7 @@ export function generateModelEvaluateJacobian(id: string, dae: ArenaDAEBuilder, 
 /**
  * Compiles the exact analytical gradient of the objective function via Reverse-Mode AD.
  */
-export function generateModelEvaluateObjective(id: string, dae: ArenaDAEBuilder, vars: Fmi3Variable[]): string[] {
+export function generateModelEvaluateObjective(id: string, dae: DAEBuilder, vars: Fmi3Variable[]): string[] {
   const L: string[] = [];
   L.push(`/* Exact Analytical Objective */`);
   L.push(`void ${id}_evaluate_objective(${id}_Instance* inst, double* obj_out) {`);
@@ -170,7 +170,7 @@ export function generateModelEvaluateObjective(id: string, dae: ArenaDAEBuilder,
 /**
  * Compiles the exact Hessian Matrix of the Lagrangian via Reverse-Over-Forward AD.
  */
-export function generateModelEvaluateHessian(id: string, dae: ArenaDAEBuilder, vars: Fmi3Variable[]): string[] {
+export function generateModelEvaluateHessian(id: string, dae: DAEBuilder, vars: Fmi3Variable[]): string[] {
   const L: string[] = [];
   L.push(`/* Exact Analytical Hessian of Lagrangian via Reverse-Over-Forward AD */`);
   L.push(`void ${id}_evaluate_hessian(${id}_Instance* inst, double obj_factor, double* lambda, double* hess_out) {`);
@@ -275,7 +275,7 @@ export function generateNlpC(
   nVars: number,
   nConstraints: number,
   nnzJacobian: number,
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   vars: Fmi3Variable[],
 ): string[] {
   const L: string[] = [];

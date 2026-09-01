@@ -4,14 +4,14 @@
  * FMI 2.0 Model Exchange & Co-Simulation FMU generator.
  *
  * Generates the modelDescription.xml, optional C source files, and
- * packages a .fmu ZIP archive from a flattened ArenaDAEBuilder.
+ * packages a .fmu ZIP archive from a flattened DAEBuilder.
  *
  * Works in both browser and Node.js environments.
  *
  * FMI 2.0 specification: https://fmi-standard.org/
  */
 
-import { type ArenaDAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "../compiler/index.js";
+import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "../compiler/index.js";
 import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──
@@ -107,7 +107,7 @@ export interface FmuResult {
 /**
  * Generate FMU 2.0 model description from an Arena DAE.
  */
-export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVars?: Set<string>): FmuResult {
+export function generateFmu(dae: DAEBuilder, options: FmuOptions, _stateVars?: Set<string>): FmuResult {
   void _stateVars;
   const guid = options.guid ?? generateGuid();
   const scalarVariables: FmiScalarVariable[] = [];
@@ -224,7 +224,7 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
 /**
  * Detect alias variable groups from trivial `a = b` equations.
  */
-function detectAliases(dae: ArenaDAEBuilder, scalarVariables: FmiScalarVariable[]): Map<string, string> {
+function detectAliases(dae: DAEBuilder, scalarVariables: FmiScalarVariable[]): Map<string, string> {
   const aliasMap = new Map<string, string>();
   const svByName = new Map<string, FmiScalarVariable>();
   for (const sv of scalarVariables) svByName.set(sv.name, sv);
@@ -273,7 +273,7 @@ function variabilityToDepKind2(v: FmiVariability): DepEntry2["kind"] {
 }
 
 function computeDependencies(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   scalarVariables: FmiScalarVariable[],
   outputRefs: number[],
   derivativeRefs: number[],
@@ -322,7 +322,7 @@ function computeDependencies(
   return deps;
 }
 
-function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<string>): void {
+function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>): void {
   if (id < 0) return;
   switch (dae.getExprKind(id)) {
     case ExprKind.Name: {
@@ -375,7 +375,7 @@ function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<str
 }
 
 /** Map an Arena DAE variable to an FMI scalar variable. */
-function mapVariable(dae: ArenaDAEBuilder, idx: number, valueRef: number): FmiScalarVariable {
+function mapVariable(dae: DAEBuilder, idx: number, valueRef: number): FmiScalarVariable {
   const name = dae.getVarName(idx);
   const sv: FmiScalarVariable = {
     valueReference: valueRef,
@@ -479,7 +479,7 @@ function mapInitial(
   return "calculated";
 }
 
-function extractNumericLiteral(dae: ArenaDAEBuilder, exprId: number): number | null {
+function extractNumericLiteral(dae: DAEBuilder, exprId: number): number | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.RealLiteral) {
@@ -491,7 +491,7 @@ function extractNumericLiteral(dae: ArenaDAEBuilder, exprId: number): number | n
   return null;
 }
 
-function extractStringLiteral(dae: ArenaDAEBuilder, exprId: number): string | null {
+function extractStringLiteral(dae: DAEBuilder, exprId: number): string | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.StringLiteral) {

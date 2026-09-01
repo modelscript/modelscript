@@ -3,7 +3,7 @@
 /**
  * FMI 3.0 Model Exchange & Co-Simulation FMU generator.
  *
- * Generates the FMI 3.0 modelDescription.xml from a flattened ArenaDAEBuilder.
+ * Generates the FMI 3.0 modelDescription.xml from a flattened DAEBuilder.
  *
  * Key differences from FMI 2.0:
  *   - Explicit precision types (Float64, Int32, etc.) instead of Real/Integer
@@ -15,7 +15,7 @@
  * FMI 3.0 specification: https://fmi-standard.org/
  */
 
-import { type ArenaDAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "../compiler/index.js";
+import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "../compiler/index.js";
 
 // ── Public interface ──
 
@@ -181,7 +181,7 @@ export interface Fmi3Result {
 /**
  * Generate FMI 3.0 model description from a DAE.
  */
-export function generateFmi3(dae: ArenaDAEBuilder, options: Fmi3Options, stateVars?: Set<string>): Fmi3Result {
+export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: Set<string>): Fmi3Result {
   const guid = options.guid ?? generateGuid();
   const variables: Fmi3Variable[] = [];
   let valueRef = 0;
@@ -501,7 +501,7 @@ function detectTerminals3(groupedVariables: Fmi3Variable[]): Fmi3Terminal[] {
 
 // ── Internal helpers ──
 
-function detectAliases3(dae: ArenaDAEBuilder, variables: Fmi3Variable[]): Map<string, string> {
+function detectAliases3(dae: DAEBuilder, variables: Fmi3Variable[]): Map<string, string> {
   const aliasMap = new Map<string, string>();
   const svByName = new Map<string, Fmi3Variable>();
   for (const sv of variables) svByName.set(sv.name, sv);
@@ -551,7 +551,7 @@ function variabilityToDepKind(v: Fmi3Variability): DepEntry3["kind"] {
 }
 
 function computeDependencies3(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   variables: Fmi3Variable[],
   outputRefs: number[],
   derivativeRefs: number[],
@@ -667,7 +667,7 @@ function computeDependencies3(
   return deps;
 }
 
-function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<string>): void {
+function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>): void {
   if (id < 0) return;
   switch (dae.getExprKind(id)) {
     case ExprKind.Name: {
@@ -720,7 +720,7 @@ function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<str
 }
 
 /** Map an Arena DAE variable to an FMI 3.0 variable. */
-function mapVariable3(dae: ArenaDAEBuilder, idx: number, valueRef: number): Fmi3Variable {
+function mapVariable3(dae: DAEBuilder, idx: number, valueRef: number): Fmi3Variable {
   const name = dae.getVarName(idx);
   const fv: Fmi3Variable = {
     valueReference: valueRef,
@@ -790,7 +790,7 @@ function mapVariable3(dae: ArenaDAEBuilder, idx: number, valueRef: number): Fmi3
   return fv;
 }
 
-function mapType3(dae: ArenaDAEBuilder, idx: number): Fmi3Type {
+function mapType3(dae: DAEBuilder, idx: number): Fmi3Type {
   const fmi3TypeAttr = dae.getVarAttrExprId(idx, "__fmi3_type");
   if (fmi3TypeAttr !== undefined && fmi3TypeAttr >= 0) {
     const val = extractStringLiteral(dae, fmi3TypeAttr);
@@ -1152,7 +1152,7 @@ export function generateTerminalsAndIconsXml(terminals: Fmi3Terminal[]): string 
 
 // ── Utility functions ──
 
-function extractNumericLiteral(dae: ArenaDAEBuilder, exprId: number): number | null {
+function extractNumericLiteral(dae: DAEBuilder, exprId: number): number | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.RealLiteral) {
@@ -1164,7 +1164,7 @@ function extractNumericLiteral(dae: ArenaDAEBuilder, exprId: number): number | n
   return null;
 }
 
-function extractStringLiteral(dae: ArenaDAEBuilder, exprId: number): string | null {
+function extractStringLiteral(dae: DAEBuilder, exprId: number): string | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.StringLiteral) {

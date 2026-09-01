@@ -3,11 +3,11 @@
 /**
  * Procedural algorithm statement execution module.
  * Executes Modelica algorithm sections (`for`, `while`, `assignment`, `if`, `when`, `return`, `break`)
- * using the ArenaDAEBuilder AST and dense environment vectors.
+ * using the DAEBuilder AST and dense environment vectors.
  */
 
 import type { QueryDB, SymbolId } from "../compiler/runtime.js";
-import { ArenaDAEBuilder, ExprKind, StmtKind, VarType } from "./wasm_dae.js";
+import { DAEBuilder, ExprKind, StmtKind, VarType } from "./wasm_dae.js";
 import { evaluateArenaExpression, evaluateArenaRuntime, type ArenaValue } from "./wasm_evaluator.js";
 
 /** Sentinel thrown when a `return` statement is executed. */
@@ -25,10 +25,10 @@ const MAX_CALL_DEPTH = 256;
 let currentCallDepth = 0;
 
 /**
- * Execute a range of statements from the ArenaDAEBuilder.
+ * Execute a range of statements from the DAEBuilder.
  */
 export function executeArenaStatements(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   startStmtIdx: number,
   stmtCount: number,
   valuesByStringId: Float64Array,
@@ -240,7 +240,7 @@ export function executeArenaStatements(
 }
 
 function executeArenaForStatement(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   indexNameId: number,
   rangeExprId: number,
   bodyStartIdx: number,
@@ -306,7 +306,7 @@ function executeArenaForStatement(
 }
 
 function executeArenaWhileStatement(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   condExprId: number,
   bodyStartIdx: number,
   bodyStmtCount: number,
@@ -334,7 +334,7 @@ function executeArenaWhileStatement(
  * Execute a user-defined Modelica function DAE using its native arena.
  */
 export function executeArenaFunction(
-  funcArena: ArenaDAEBuilder,
+  funcArena: DAEBuilder,
   argValues: number[],
   parentLookup?: (nameId: number, args: number[]) => number | null,
 ): number | null {
@@ -395,7 +395,7 @@ export function executeArenaFunction(
 }
 
 export async function executeArenaStatementsAsync(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   startStmtIdx: number,
   stmtCount: number,
   valuesByStringId: Float64Array,
@@ -656,7 +656,7 @@ export async function executeArenaStatementsAsync(
 }
 
 async function executeArenaForStatementAsync(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   indexNameId: number,
   rangeExprId: number,
   bodyStartIdx: number,
@@ -737,7 +737,7 @@ async function executeArenaForStatementAsync(
 }
 
 async function executeArenaWhileStatementAsync(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   condExprId: number,
   bodyStartIdx: number,
   bodyStmtCount: number,
@@ -770,7 +770,7 @@ async function executeArenaWhileStatementAsync(
 }
 
 export async function executeArenaFunctionAsync(
-  funcArena: ArenaDAEBuilder,
+  funcArena: DAEBuilder,
   argValues: number[],
   parentLookup?: (nameId: number, args: number[]) => number | null,
   debuggerHook?: import("../compiler/simulator/core/simulation.js").SimulationDebugger,
@@ -845,12 +845,7 @@ export async function executeArenaFunctionAsync(
 const ArenaCEvalReturnSignal = { __brand: "ArenaCEvalReturnSignal" as const };
 const ArenaCEvalBreakSignal = { __brand: "ArenaCEvalBreakSignal" as const };
 
-function getSequenceElementsLocal(
-  dae: ArenaDAEBuilder,
-  baseExprId: number,
-  count: number,
-  firstElement: number,
-): number[] {
+function getSequenceElementsLocal(dae: DAEBuilder, baseExprId: number, count: number, firstElement: number): number[] {
   if (count === 0) return [];
   const elements = [firstElement];
   for (let i = 1; i < count; i++) {
@@ -882,7 +877,7 @@ function updateNestedArray(arr: ArenaValue, indices: ArenaValue[], value: ArenaV
  * Execute statements in a compile-time context.
  */
 export function executeArenaCEvalStatements(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   startStmtIdx: number,
   stmtCount: number,
   env: Map<string, ArenaValue>,
@@ -1240,7 +1235,7 @@ export function executeArenaCEvalStatements(
  * Evaluate a user-defined function inside the compile-time context.
  */
 export function evaluateArenaFunctionCall(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   funcNameId: number,
   argValues: ArenaValue[],
   db?: QueryDB,

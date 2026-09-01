@@ -3,7 +3,7 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 
-import { dropComponentGhost, initGraph, setDiagramOptions, updateParameterText } from "@modelscript/language/diagram";
+import { dropComponentGhost, initGraph, setDiagramOptions, updateParameterText } from "../../diagram/index.js";
 
 // Add global binding for close button
 window.addEventListener("DOMContentLoaded", () => {

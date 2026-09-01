@@ -562,3 +562,195 @@ export function bundleExtension(
 
   return files;
 }
+
+/**
+ * Builds the complete production ModelScript VS Code IDE extension to a target directory.
+ */
+export async function buildIdeExtension(outDir: string, options?: ExtensionOptions): Promise<void> {
+  const fs = await import("fs");
+  const path = await import("path");
+  const esbuild = await import("esbuild");
+
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.mkdirSync(path.join(outDir, "dist"), { recursive: true });
+  fs.mkdirSync(path.join(outDir, "server", "dist"), { recursive: true });
+
+  // 1. Normalize default polyglot languages
+  const builtInLanguages: any[] = [];
+  try {
+    const modelicaLang = (await import("@modelscript/modelica/language")).default;
+    builtInLanguages.push(modelicaLang);
+  } catch {
+    // optional
+  }
+  try {
+    const sysml2Lang = (await import("@modelscript/sysml2/language")).default;
+    builtInLanguages.push(sysml2Lang);
+  } catch {
+    // optional
+  }
+  try {
+    const stepLang = (await import("@modelscript/step/language")).default;
+    builtInLanguages.push(stepLang);
+  } catch {
+    // optional
+  }
+  try {
+    const owl2Lang = (await import("@modelscript/owl2/language")).default;
+    builtInLanguages.push(owl2Lang);
+  } catch {
+    // optional
+  }
+  try {
+    const csvLang = (await import("@modelscript/csv/language")).default;
+    builtInLanguages.push(csvLang);
+  } catch {
+    // optional
+  }
+
+  const languages = normalizeLanguages(
+    builtInLanguages.length > 0 ? builtInLanguages : [{ name: "modelica", lsp: { fileExtensions: [".mo"] } }],
+  );
+
+  // 2. Generate package.json manifest
+  const pkg = generatePackageJson(languages, {
+    name: "modelscript",
+    displayName: "ModelScript — Modelica & Polyglot Systems IDE",
+    description:
+      "Complete Modelica, SysML, STEP, and OWL2 development environment — diagram editing, simulation, scripting, notebooks, and bundled MSL.",
+    version: options?.version || "0.0.10",
+    ...options,
+    features: {
+      diagramEditor: true,
+      cad3dViewer: true,
+      simulationPanels: true,
+      notebooks: true,
+      mcpBridge: true,
+      chatParticipant: true,
+      ...options?.features,
+    },
+  });
+
+  // Set browser client entry point
+  pkg.browser = "./dist/browserClientMain.js";
+  fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkg, null, 2), "utf-8");
+
+  // 3. Write language configs and syntaxes
+  for (const lang of languages) {
+    fs.writeFileSync(
+      path.join(outDir, `language-configuration-${lang.id}.json`),
+      generateLanguageConfiguration(lang),
+      "utf-8",
+    );
+
+    const syntaxesDir = path.join(outDir, "syntaxes");
+    fs.mkdirSync(syntaxesDir, { recursive: true });
+    try {
+      const tm = generateTextMate(lang.options);
+      fs.writeFileSync(path.join(syntaxesDir, `${lang.id}.tmLanguage.json`), tm.tm, "utf-8");
+    } catch {
+      fs.writeFileSync(
+        path.join(syntaxesDir, `${lang.id}.tmLanguage.json`),
+        JSON.stringify({ name: lang.displayName, scopeName: `source.${lang.id}`, patterns: [] }, null, 2),
+        "utf-8",
+      );
+    }
+  }
+
+  // 4. Compile with esbuild
+  const currentDir = path.dirname(new URL(import.meta.url).pathname);
+  const ideDir = path.resolve(currentDir, "../ide");
+
+  // Build browser client
+  const clientMainPath = path.join(ideDir, "browserClientMain.ts");
+  if (fs.existsSync(clientMainPath)) {
+    await esbuild.build({
+      entryPoints: [clientMainPath],
+      outfile: path.join(outDir, "dist", "browserClientMain.js"),
+      bundle: true,
+      format: "cjs",
+      platform: "browser",
+      external: ["vscode"],
+      define: {
+        "process.env": JSON.stringify({}),
+        "process.browser": "true",
+      },
+      sourcemap: "inline",
+    });
+  }
+
+  // Build webviews
+  const webviewEntries = [
+    "webview/diagram.ts",
+    "webview/simulationWebview.ts",
+    "webview/cosimWebview.ts",
+    "webview/chatWebview.ts",
+    "webview/chatWorker.ts",
+    "webview/cadWebview.tsx",
+    "webview/stepWebview.tsx",
+    "webview/multibodyAnimationWebview.tsx",
+    "webview/analysisWebview.ts",
+    "webview/calibrationWebview.tsx",
+    "webview/optimizationWebview.tsx",
+    "webview/uncertaintyWebview.tsx",
+    "webview/markdownPreview.ts",
+    "webview/surrogateWebview.tsx",
+    "webview/physicsSetupWebview.tsx",
+    "webview/gcodeWebview.tsx",
+    "webview/vrVisualizationWebview.tsx",
+  ]
+    .map((rel) => path.join(ideDir, rel))
+    .filter((p) => fs.existsSync(p));
+
+  if (webviewEntries.length > 0) {
+    await esbuild.build({
+      entryPoints: webviewEntries,
+      outdir: path.join(outDir, "dist"),
+      bundle: true,
+      format: "iife",
+      platform: "browser",
+      sourcemap: "inline",
+      external: ["@kitware/vtk.js", "@kitware/vtk.js/*"],
+    });
+  }
+
+  // Build notebook renderer
+  const notebookRendererPath = path.join(ideDir, "webview", "notebookRenderer.ts");
+  if (fs.existsSync(notebookRendererPath)) {
+    await esbuild.build({
+      entryPoints: [notebookRendererPath],
+      outfile: path.join(outDir, "dist", "notebookRenderer.js"),
+      bundle: true,
+      format: "esm",
+      platform: "browser",
+      sourcemap: "inline",
+    });
+  }
+
+  // 5. Copy WASM and library assets
+  const repoRoot = path.resolve(currentDir, "../../../..");
+  const candidateAssets = [
+    [path.join(repoRoot, "languages/modelica/tree-sitter-modelica.wasm"), "server/dist/tree-sitter-modelica.wasm"],
+    [path.join(repoRoot, "languages/modelica/dist/parser.wasm"), "server/dist/tree-sitter-modelica.wasm"],
+    [path.join(repoRoot, "languages/sysml2/dist/parser.wasm"), "server/dist/tree-sitter-sysml2.wasm"],
+    [path.join(repoRoot, "languages/step/dist/parser.wasm"), "server/dist/tree-sitter-step.wasm"],
+    [path.join(repoRoot, "languages/owl2/dist/parser.wasm"), "server/dist/tree-sitter-owl2.wasm"],
+    [path.join(repoRoot, "languages/csv/tree-sitter-csv.wasm"), "server/dist/tree-sitter-csv.wasm"],
+    [path.join(repoRoot, "packages/language/build/release.wasm"), "server/dist/release.wasm"],
+    [path.join(repoRoot, "node_modules/occt-import-js/dist/occt-import-js.wasm"), "server/dist/occt-import-js.wasm"],
+    [
+      path.join(repoRoot, "scripts/ModelicaStandardLibrary_v4.1.0.zip"),
+      "server/dist/ModelicaStandardLibrary_v4.1.0.zip",
+    ],
+    [path.join(repoRoot, "scripts/SysML-v2-Release-2026-03.zip"), "server/dist/SysML-v2-Release-2026-03.zip"],
+    [path.join(repoRoot, "packages/language/dist/lsp"), "server/dist"],
+  ];
+
+  for (const [src, dest] of candidateAssets) {
+    const destPath = path.join(outDir, dest);
+    if (fs.existsSync(src)) {
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.cpSync(src, destPath, { recursive: true });
+    }
+  }
+}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Arena-based DAE printer — reads directly from ArenaDAEBuilder
+ * Arena-based DAE printer — reads directly from DAEBuilder
  * without materializing any legacy ModelicaExpression objects.
  *
  * Moved from `@modelscript/symbolics/systems/arena-printer.ts` to
@@ -11,7 +11,7 @@
  */
 
 import type { Writer } from "../utils/index.js";
-import { BinOp, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType, type ArenaDAEBuilder } from "./wasm_dae.js";
+import { BinOp, DAEBuilder, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
 
 // ── Inlined Modelica operator strings ──
 // (Avoids circular dependency on @modelscript/modelica/ast)
@@ -61,10 +61,10 @@ const ASSOCIATIVE_OPS = new Set([BinOp.Add, BinOp.Mul, BinOp.ElemAdd, BinOp.Elem
 export class ArenaDAEPrinter {
   private out: Writer;
   private depth = 0;
-  private arena: ArenaDAEBuilder;
+  private arena: DAEBuilder;
   private omcCompatibility: boolean;
 
-  constructor(out: Writer, arena: ArenaDAEBuilder, omcCompatibility = false) {
+  constructor(out: Writer, arena: DAEBuilder, omcCompatibility = false) {
     this.out = out;
     this.arena = arena;
     this.omcCompatibility = omcCompatibility;
@@ -1131,7 +1131,7 @@ export class ArenaDAEPrinter {
 
   // ── Top-level DAE printing ──
 
-  printDAE(dae: ArenaDAEBuilder): void {
+  printDAE(dae: DAEBuilder): void {
     // Emit function definitions
     const sortedFns = Array.from(dae.functions.values()).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
@@ -1217,7 +1217,7 @@ export class ArenaDAEPrinter {
     this.out.write("end " + dae.name + ";\n");
   }
 
-  private isDeclarationBinding(a: ArenaDAEBuilder, idx: number): boolean {
+  private isDeclarationBinding(a: DAEBuilder, idx: number): boolean {
     const kind = a.getEqKind(idx);
     if (kind === EqKind.Simple || kind === EqKind.Array) {
       const lhsId = a.getEqLhs(idx);
@@ -1238,7 +1238,7 @@ export class ArenaDAEPrinter {
     return false;
   }
 
-  printFunction(fn: ArenaDAEBuilder): void {
+  printFunction(fn: DAEBuilder): void {
     const oldArena = this.arena;
     this.arena = fn;
 
@@ -1298,9 +1298,9 @@ export class ArenaDAEPrinter {
 }
 
 /**
- * Convenience function: print an ArenaDAEBuilder to a string.
+ * Convenience function: print an DAEBuilder to a string.
  */
-export function printArenaDAE(arena: ArenaDAEBuilder, omcCompatibility = false): string {
+export function printArenaDAE(arena: DAEBuilder, omcCompatibility = false): string {
   const chunks: string[] = [];
   const writer: Writer = {
     write: (s: string) => {

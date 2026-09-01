@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
-import { ArenaDAEBuilder, StaticTapeBuilder, TapeOpKind } from "../compiler/index.js";
+import { DAEBuilder, StaticTapeBuilder, TapeOpKind } from "../compiler/index.js";
 import {
   type ArenaSimulateOptions,
   type ArenaSimulationResult,
@@ -862,7 +862,7 @@ export function runMonteCarloSimulation(
 }
 
 export function runMonteCarloArena(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   randomVars: RandomVariable[],
   options?: ArenaMonteCarloOptions,
 ): MonteCarloResult {
@@ -880,7 +880,7 @@ export function runMonteCarloArena(
 }
 
 export async function runMonteCarloArenaAsync(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   randomVars: RandomVariable[],
   options?: ArenaMonteCarloOptions,
 ): Promise<MonteCarloResult> {
@@ -949,7 +949,7 @@ export async function runMonteCarloArenaAsync(
 }
 
 export function runSensitivityAnalysisArena(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   parameterNames: string[],
   nominalValues: Map<string, number>,
   perturbationFactor = 0.01,
@@ -1149,12 +1149,12 @@ export class WasmMonteCarloEngine {
     return runMonteCarloTape(tape, randomVars, outputIndex, options);
   }
 
-  runArenaMC(arena: ArenaDAEBuilder, randomVars: RandomVariable[], options?: ArenaMonteCarloOptions): MonteCarloResult {
+  runArenaMC(arena: DAEBuilder, randomVars: RandomVariable[], options?: ArenaMonteCarloOptions): MonteCarloResult {
     return runMonteCarloArena(arena, randomVars, options);
   }
 
   runSensitivity(
-    arena: ArenaDAEBuilder,
+    arena: DAEBuilder,
     paramNames: string[],
     nominalValues: Map<string, number>,
     perturbationFactor = 0.01,

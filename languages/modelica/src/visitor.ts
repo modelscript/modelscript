@@ -1,7 +1,7 @@
 import {
-  ArenaDAEBuilder,
   BinOp,
   Causality,
+  DAEBuilder,
   evaluateArenaExpression,
   evaluateArenaFunctionCall,
   ExprKind,
@@ -88,7 +88,7 @@ const ARENA_BUILTIN_FOLDS = new Map<string, BuiltinFoldDef>([
 
 /**
  * Translates a Modelica CST/AST expression tree into integer-based `ExprId`s
- * inside the given `ArenaDAEBuilder`.
+ * inside the given `DAEBuilder`.
  */
 
 // ── Operator name mapping for operator record dispatch ──
@@ -127,7 +127,7 @@ export class ArenaExprVisitor {
   private localIterators: Set<string>;
   private inNoEvent = false;
   constructor(
-    private dae: ArenaDAEBuilder,
+    private dae: DAEBuilder,
     loopVars?: Map<string, number>,
     private onFunctionCall?: (funcName: string) => string | undefined,
     private cardinalityMap?: Map<string, number>,

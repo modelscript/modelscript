@@ -3,8 +3,8 @@
 
 import assert from "node:assert";
 import {
-  ArenaDAEBuilder,
   BinOp,
+  DAEBuilder,
   EqKind,
   StaticTapeBuilder,
   TapeOpKind,
@@ -157,7 +157,7 @@ await initBltWasm();
 
 // 6. Test Arena DAE Monte Carlo Sweep & Sensitivity Analysis
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous, 0, 1.0);
   arena.setVarStartValue(xIdx, 1.0);
 

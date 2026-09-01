@@ -9,7 +9,7 @@
  * parameter sweeps, and response surface methodology directly from Modelica models.
  */
 
-import { ArenaDAEBuilder } from "../compiler/index.js";
+import { DAEBuilder } from "../compiler/index.js";
 import {
   type ArenaSimulateOptions,
   type ArenaSimulationResult,
@@ -283,7 +283,7 @@ export function generateDoESamplePoints(
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * Run a Design of Experiments directly on an `ArenaDAEBuilder` model
+ * Run a Design of Experiments directly on an `DAEBuilder` model
  * using the high-performance `simulateArena` pipeline.
  *
  * Each sample point sets parameter overrides, runs a full simulation,
@@ -293,7 +293,7 @@ export function generateDoESamplePoints(
  * @param config DoE configuration.
  * @returns      The collected input-output dataset.
  */
-export function runArenaDoE(arena: ArenaDAEBuilder, config: ArenaDoEConfig): ArenaDoEResult {
+export function runArenaDoE(arena: DAEBuilder, config: ArenaDoEConfig): ArenaDoEResult {
   const wallStart = performance.now();
   const inputNames = Array.from(config.inputs.keys());
   const outputNames = config.outputs;
@@ -367,7 +367,7 @@ export function runArenaDoE(arena: ArenaDAEBuilder, config: ArenaDoEConfig): Are
  * Async variant with cooperative yielding and abort support.
  */
 export async function runArenaDoEAsync(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   config: ArenaDoEConfig & { signal?: AbortSignal },
 ): Promise<ArenaDoEResult> {
   const wallStart = performance.now();

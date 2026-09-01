@@ -6,7 +6,7 @@
  * Jacobians for stiff ODE/DAE solvers and optimization routines.
  */
 
-import { ArenaDAEBuilder, EqKind, ExprKind } from "./wasm_dae.js";
+import { DAEBuilder, EqKind, ExprKind } from "./wasm_dae.js";
 import { Dual, evaluateArenaDualExpression } from "./wasm_evaluator.js";
 
 /** Compressed Column Storage sparse matrix. */
@@ -71,7 +71,7 @@ export interface SparseJacobian {
   nnz: number;
 }
 
-function getArenaExprVariables(arena: ArenaDAEBuilder, exprId: number, vars: Set<number>) {
+function getArenaExprVariables(arena: DAEBuilder, exprId: number, vars: Set<number>) {
   if (exprId < 0) return;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Name) {
@@ -83,7 +83,7 @@ function getArenaExprVariables(arena: ArenaDAEBuilder, exprId: number, vars: Set
   if (right >= 0) getArenaExprVariables(arena, right, vars);
 }
 
-function extractDerArena(arena: ArenaDAEBuilder, exprId: number): string | null {
+function extractDerArena(arena: DAEBuilder, exprId: number): string | null {
   if (exprId < 0) return null;
   if (arena.getExprKind(exprId) === ExprKind.Der) {
     const argId = arena.getExprData1(exprId);
@@ -98,7 +98,7 @@ function extractDerArena(arena: ArenaDAEBuilder, exprId: number): string | null 
  * Construct a compressed sparse Jacobian evaluator using forward-mode AD and graph coloring.
  */
 export function buildSparseAdJacobian(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   stateNames: string[],
 ): { evaluator: (time: number, y: number[]) => SparseJacobian; numColors: number; nnz: number } | null {
   const derEqs: { state: string; rhsExprId: number }[] = [];

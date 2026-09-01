@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
-import { ArenaDAEBuilder } from "./wasm_dae.js";
+import { DAEBuilder } from "./wasm_dae.js";
 
 /**
  * WebAssembly-backed Interval Arithmetic, McCormick Relaxations,
@@ -684,7 +684,7 @@ function solveLULocal(A: number[][], b: number[], n: number): number[] {
  * Build tape data from a DAE for use with the sBB solver.
  */
 export function buildSbbFromDAE(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   objectiveExprId: number,
   constraintExprIds: number[],
 ): {
@@ -709,7 +709,7 @@ export function buildSbbFromDAE(
 /**
  * Expand array variable bounds in a DomainBox.
  */
-export function expandArrayBounds(box: DomainBox, dae: ArenaDAEBuilder): DomainBox {
+export function expandArrayBounds(box: DomainBox, dae: DAEBuilder): DomainBox {
   const expanded: DomainBox = new Map();
   for (const [name, interval] of box) {
     const vIdx = dae.getVarIdxByName(name);

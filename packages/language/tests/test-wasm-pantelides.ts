@@ -2,14 +2,14 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import assert from "node:assert";
-import { ArenaDAEBuilder, BinOp, EqKind, Variability, VarType } from "../src/runtime/wasm_dae.js";
+import { BinOp, DAEBuilder, EqKind, Variability, VarType } from "../src/runtime/wasm_dae.js";
 import { containsDerivative, pantelidesIndexReductionArena, WasmPantelides } from "../src/runtime/wasm_pantelides.js";
 
 console.log("Testing Pantelides Index Reduction & WASM Runtime...");
 
 // Test 1: Contains derivative checks
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
   const x = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const derX = arena.addVariable("der(x)", VarType.Real, Variability.Continuous);
 
@@ -27,7 +27,7 @@ console.log("Testing Pantelides Index Reduction & WASM Runtime...");
 
 // Test 2: Index Reduction on Parallel Capacitors (x - y = 0)
 {
-  const arena = new ArenaDAEBuilder();
+  const arena = new DAEBuilder();
 
   // Variables: x, y (states), der(x), der(y) (derivatives)
   const x = arena.addVariable("x", VarType.Real, Variability.Continuous);

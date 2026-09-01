@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { initBltWasm, type ArenaDAEBuilder } from "@modelscript/language/compiler";
+import { initBltWasm, type DAEBuilder } from "@modelscript/language/compiler";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmu";
 import {
   ArenaSimulator,
@@ -190,7 +190,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 // ── JS Engine ──
 
 function simulateJs(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,
@@ -232,7 +232,7 @@ function simulateJs(
 // ── Arena Engine ──
 
 async function simulateArenaEngine(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,
@@ -278,7 +278,7 @@ async function simulateArenaEngine(
 // ── WASM Engine ──
 
 async function simulateWasm(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,
@@ -359,7 +359,7 @@ async function simulateWasm(
 // ── C Engine ──
 
 async function simulateC(
-  arena: ArenaDAEBuilder,
+  arena: DAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,

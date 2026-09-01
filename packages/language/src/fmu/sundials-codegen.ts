@@ -4,7 +4,7 @@
  * SUNDIALS C glue-code generator.
  */
 
-import type { ArenaDAEBuilder } from "../compiler/index.js";
+import type { DAEBuilder } from "../compiler/index.js";
 import type { FmuResult } from "./fmi.js";
 import type { SolverOptions } from "./solver-options.js";
 import { formatCDouble } from "./transpiler-utils.js";
@@ -49,7 +49,7 @@ export interface SundialsCodegenResult {
  * Generate SUNDIALS simulation driver C code from a DAE and FMU result.
  */
 export function generateSundialsMainC(
-  dae: ArenaDAEBuilder,
+  dae: DAEBuilder,
   fmuResult: FmuResult,
   options: SundialsCodegenOptions,
 ): SundialsCodegenResult {
@@ -280,7 +280,7 @@ target_link_libraries(\${PROJECT_NAME} PRIVATE
 // ── Helpers ──
 
 /** Detect whether to use CVODE or IDA based on DAE structure. */
-function detectSolverChoice(_dae: ArenaDAEBuilder): "cvode" | "ida" {
+function detectSolverChoice(_dae: DAEBuilder): "cvode" | "ida" {
   void _dae;
   return "cvode";
 }
