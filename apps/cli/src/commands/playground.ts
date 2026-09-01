@@ -246,6 +246,22 @@ end ChuaCircuit;`;
           res.writeHead(404);
           res.end();
         }
+      } else if (urlPath === "/api/export-extension" && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", async () => {
+          try {
+            const payload = JSON.parse(body);
+            const { bundleExtension } = await import("@modelscript/language");
+            const langInput = payload.languages || payload.language || { name: payload.name || "dsl", rules: {} };
+            const files = bundleExtension(langInput, payload.options);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, files }));
+          } catch (e: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));
+          }
+        });
       } else {
         res.writeHead(404);
         res.end("Not found");

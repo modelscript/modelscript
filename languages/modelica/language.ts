@@ -7090,4 +7090,5 @@ const modelicaLang = language({
   },
 });
 
+export { modelicaLang, modelicaLang as modelicaLanguage };
 export default modelicaLang;

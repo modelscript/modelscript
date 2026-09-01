@@ -8,8 +8,27 @@ export * from "./modelica-types.js";
 export * from "./runtime.js";
 export * from "./tape.js";
 
-// Language workbench infrastructure
 export type { GraphicsConfig } from "../diagram/polyglot-diagram-builder.js";
+export {
+  alias,
+  choice,
+  def,
+  error,
+  field,
+  info,
+  language,
+  optional,
+  prec,
+  ref,
+  repeat,
+  repeat1,
+  seq,
+  token,
+  warning,
+  type RuleLike as Rule,
+  type RuleBuilder,
+  type RuleLike,
+} from "../dsl/index.js";
 export * from "../runtime/wasm_bdf.js";
 export * from "../runtime/wasm_blt.js";
 export * from "../runtime/wasm_cache_store.js";
@@ -36,7 +55,6 @@ export * from "./context.js";
 export * from "./hook-extractor.js";
 export * from "./i18n-extractor.js";
 export * from "./interner.js";
-export type { DiffConfig } from "./language-dsl.js";
 export * from "./line-index.js";
 export * from "./lsp-bridge.js";
 export * from "./resolver.js";

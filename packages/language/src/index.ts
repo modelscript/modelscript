@@ -6,6 +6,7 @@ export * from "./codegen/compile_rules.js";
 export * from "./codegen/compile_tgg.js";
 export * from "./codegen/config.js";
 export * from "./codegen/egraph.js";
+export * from "./codegen/extension-generator.js";
 export * from "./codegen/parser.js";
 export * from "./codegen/textmate.js";
 export * from "./codegen/transpiler.js";

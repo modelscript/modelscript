@@ -29,7 +29,7 @@ export default language({
     SourceFile: ($) =>
       def({
         syntax: seq(field("rows", $.Row), repeat(seq($._newline, field("rows", $.Row))), optional($._newline)),
-        symbol: (self) => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Class",
           name: self.rows, // dummy access to record namePath
         }),

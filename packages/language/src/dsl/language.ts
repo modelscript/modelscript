@@ -1,3 +1,5 @@
+import type { QueryDB, SymbolEntry } from "../compiler/runtime.js";
+
 /**
  * Represents a single rule in the grammar's AST representation.
  */
@@ -1205,27 +1207,27 @@ export function reserved<F extends string = string>(wordset: string, rule: RuleL
  * Resolves GLR shift/reduce or reduce/reduce conflicts by assigning static or dynamic precedences.
  */
 export interface PrecFunction {
-  <F extends string = string>(value: number, rule: Rule<F>): Rule<F>;
+  <F extends string = string>(value: number, rule: RuleLike<F>): Rule<F>;
   /** Assigns a static precedence level with left associativity. */
-  left<F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  left<F extends string = string>(value: number | RuleLike<F>, rule?: RuleLike<F>): Rule<F>;
   /** Assigns a static precedence level with right associativity. */
-  right<F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  right<F extends string = string>(value: number | RuleLike<F>, rule?: RuleLike<F>): Rule<F>;
   /** Assigns a dynamic precedence for GLR tie-breaking at runtime. */
-  dynamic<F extends string = string>(value: number, rule: Rule<F>): Rule<F>;
+  dynamic<F extends string = string>(value: number, rule: RuleLike<F>): Rule<F>;
 }
 
-export const prec: PrecFunction = function <F extends string = string>(value: number, rule: Rule<F>): Rule<F> {
+export const prec: PrecFunction = function <F extends string = string>(value: number, rule: RuleLike<F>): Rule<F> {
   return { type: "PREC", value, children: [toRule(rule)] };
 } as PrecFunction;
 
-prec.left = function <F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
-  const r = rule !== undefined ? rule : (value as Rule<F>);
+prec.left = function <F extends string = string>(value: number | RuleLike<F>, rule?: RuleLike<F>): Rule<F> {
+  const r = rule !== undefined ? rule : (value as RuleLike<F>);
   const val = rule !== undefined ? (value as number) : 0;
   return { type: "PREC_LEFT", value: val, children: [toRule(r)] };
 };
 
-prec.right = function <F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
-  const r = rule !== undefined ? rule : (value as Rule<F>);
+prec.right = function <F extends string = string>(value: number | RuleLike<F>, rule?: RuleLike<F>): Rule<F> {
+  const r = rule !== undefined ? rule : (value as RuleLike<F>);
   const val = rule !== undefined ? (value as number) : 0;
   return { type: "PREC_RIGHT", value: val, children: [toRule(r)] };
 };
@@ -1268,12 +1270,41 @@ export function hint(message: string, options?: LintRangeOptions): LintResult {
   return { message, severity: "hint", ...options };
 }
 
-export function def<F extends string = string>(config: any): Rule<F> {
+export type QueryFnOrObject =
+  | ((db: QueryDB, self: SymbolEntry, ...args: any[]) => any)
+  | {
+      execute: (db: QueryDB, self: SymbolEntry, ...args: any[]) => any;
+      recovery?: (self: SymbolEntry, ...args: any[]) => any;
+    };
+
+export interface DefConfig<F extends string = string> {
+  syntax?: RuleLike<F>;
+  symbol?: (self: any) => any;
+  queries?: Record<string, QueryFnOrObject>;
+  lint?: Record<string, (db: QueryDB, self: SymbolEntry, ...args: any[]) => LintResult | LintResult[] | null>;
+  adapters?: Record<string, any>;
+  diff?: any;
+  model?: any;
+  [key: string]: any;
+}
+
+export interface RefConfig<F extends string = string> {
+  syntax?: RuleLike<F>;
+  symbol?: (self: any) => any;
+  queries?: Record<string, QueryFnOrObject>;
+  lint?: Record<string, (db: QueryDB, self: SymbolEntry, ...args: any[]) => LintResult | LintResult[] | null>;
+  adapters?: Record<string, any>;
+  diff?: any;
+  model?: any;
+  [key: string]: any;
+}
+
+export function def<F extends string = string>(config: DefConfig<F>): Rule<F> {
   const { syntax, ...options } = config;
   return { type: "DEF" as any, value: options, children: syntax ? [toRule(syntax)] : [] } as any;
 }
 
-export function ref<F extends string = string>(config: any): Rule<F> {
+export function ref<F extends string = string>(config: RefConfig<F>): Rule<F> {
   const { syntax, ...options } = config;
   return { type: "REF" as any, value: options, children: syntax ? [toRule(syntax)] : [] } as any;
 }

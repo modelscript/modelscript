@@ -12,10 +12,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { buildParser } from "@modelscript/language";
-import { modelicaLanguage } from "./src/language.js";
+import { modelicaLanguage } from "./language.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const languagePath = path.join(__dirname, "src", "language.ts");
+const languagePath = path.join(__dirname, "language.ts");
 const result = buildParser(modelicaLanguage, { sourcePath: languagePath });
 
 // 1. Write AssemblyScript files to as-gen/ for asc

@@ -1,4 +1,14 @@
 import { SemanticNode, type NodeFactory } from "./semantic-node.js";
+export interface DiffConfig {
+  /** Deterministic identity generator for unnamed or ordered nodes when mapping versions. */
+  identity?: string | ((self: any) => string);
+  /** Semantic fields to ignore in diff tracking (like documentation or formatting annotations). */
+  ignore?: string[];
+  /** Attributes where changes are flagged as non-breaking/minor. */
+  minor?: string[];
+  /** Attributes where changes trigger high-priority breaking diff alerts. */
+  breaking?: string[];
+}
 
 export type DiffAction = "insert" | "delete" | "update" | "move" | "none";
 
