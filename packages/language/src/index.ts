@@ -14,7 +14,6 @@ export * as csg from "./csg/index.js";
 export * from "./diagram/polyglot-diagram-builder.js";
 export * from "./dsl/index.js";
 export * as ecad from "./ecad/index.js";
-export * from "./reasoner/index.js";
 export * from "./runtime/config_client.js";
 export * from "./runtime/wasm_bdf.js";
 export * from "./runtime/wasm_cache_store.js";

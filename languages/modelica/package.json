@@ -12,8 +12,8 @@
       "default": "./dist/src/index.js"
     },
     "./flattener": {
-      "types": "./dist/src/flattener.d.ts",
-      "default": "./dist/src/flattener.js"
+      "types": "./dist/flattener.d.ts",
+      "default": "./dist/flattener.js"
     },
     "./connections": {
       "types": "./dist/src/connections.d.ts",

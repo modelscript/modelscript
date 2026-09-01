@@ -16,7 +16,12 @@ export interface RuntimeAdapter {
   getInputBuffer(): number;
   ensureInputBuffer?(size: number): number;
   setInputEncoding?(enc: number): void;
-  parse(oldTreePtr: number, editStart: number, editOldEnd: number, editNewEnd: number): number;
+  parse(
+    oldTreePtr: number,
+    editStart: number,
+    editOldEnd: number,
+    editNewEnd: number,
+  ): number;
   getNodeFirstChild(ptr: number): number;
   getNodeNextSibling(ptr: number): number;
   getNodeType?(ptr: number): number;
@@ -51,7 +56,12 @@ export declare class Parser {
    * Parses the given source string or byte array, optionally performing an incremental parse
    * if an old tree and edit bounds are provided.
    */
-  parse(source: string | Uint8Array, oldTree?: ASTNode | null, editStart?: number, editOldEnd?: number): ASTNode | null;
+  parse(
+    source: string | Uint8Array,
+    oldTree?: ASTNode | null,
+    editStart?: number,
+    editOldEnd?: number,
+  ): ASTNode | null;
   /** Reads a WASM-allocated length-prefixed string into a JavaScript string. */
   readString(ptr: number): string;
 }
@@ -73,7 +83,12 @@ export declare class WasmRuntime implements RuntimeAdapter {
   getInputBuffer(): number;
   ensureInputBuffer(size: number): number;
   setInputEncoding(enc: number): void;
-  parse(oldTreePtr: number, editStart: number, editOldEnd: number, editNewEnd: number): number;
+  parse(
+    oldTreePtr: number,
+    editStart: number,
+    editOldEnd: number,
+    editNewEnd: number,
+  ): number;
   getNodeFirstChild(ptr: number): number;
   getNodeNextSibling(ptr: number): number;
   getNodeType(ptr: number): number;
@@ -96,7 +111,12 @@ export declare class NativeRuntime implements RuntimeAdapter {
   getInputBuffer(): number;
   ensureInputBuffer(size: number): number;
   setInputEncoding(enc: number): void;
-  parse(oldTreePtr: number, editStart: number, editOldEnd: number, editNewEnd: number): number;
+  parse(
+    oldTreePtr: number,
+    editStart: number,
+    editOldEnd: number,
+    editNewEnd: number,
+  ): number;
   getNodeFirstChild(ptr: number): number;
   getNodeNextSibling(ptr: number): number;
   getNodeType(ptr: number): number;
@@ -476,11 +496,27 @@ export declare class LspFacade {
     score: number;
   }[];
   /** Shifts byte offsets in-place across all stubs in a file after an interior edit. */
-  shiftStubByteOffsets(fileId: number, fromByte: number, deltaBytes: number): number;
+  shiftStubByteOffsets(
+    fileId: number,
+    fromByte: number,
+    deltaBytes: number,
+  ): number;
   /** Gets or looks up an incremental Salsa 3.0 query node. */
-  queryGetNode(queryType: number, arg1: number, arg2?: number, arg3?: number, arg4?: number): number;
+  queryGetNode(
+    queryType: number,
+    arg1: number,
+    arg2?: number,
+    arg3?: number,
+    arg4?: number,
+  ): number;
   /** Allocates a new incremental Salsa 3.0 query node. */
-  queryAllocNode(queryType: number, arg1: number, arg2?: number, arg3?: number, arg4?: number): number;
+  queryAllocNode(
+    queryType: number,
+    arg1: number,
+    arg2?: number,
+    arg3?: number,
+    arg4?: number,
+  ): number;
   /** Invalidates a query node and cascades dirtying to all subscribers. */
   queryInvalidate(queryNodePtr: number): void;
   /** Gets the cached result value of a query node. */
@@ -508,19 +544,32 @@ export declare class LspFacade {
   /** Invalidates queries waiting for a symbol name when that symbol is introduced. */
   salsaInvalidateNegativeDependencies(name: string): number;
   /** Performs O(1) Merkle backdating on a query result. Returns true if semantically identical. */
-  salsaBackdateQuery(nodePtr: number, newMerkleLow: number, newMerkleHigh: number): boolean;
+  salsaBackdateQuery(
+    nodePtr: number,
+    newMerkleLow: number,
+    newMerkleHigh: number,
+  ): boolean;
   /** Gets the version counter for a language in the polyglot arena. */
   polyglotGetLangVersion(arenaPtr: number, langId: number): number;
   /** Increments the version counter for a language in the polyglot arena. */
   polyglotIncrementLangVersion(arenaPtr: number, langId: number): number;
   /** Checks if a language version has changed since snapshotVersion. */
-  polyglotHasLangChanged(arenaPtr: number, langId: number, snapshotVersion: number): boolean;
+  polyglotHasLangChanged(
+    arenaPtr: number,
+    langId: number,
+    snapshotVersion: number,
+  ): boolean;
   /** Returns the number of declarative MCP tools registered in WASM. */
   mcpGetToolCount(): number;
   /** Returns the DJB2 name hash for an MCP tool index. */
   mcpGetToolNameHash(index: number): number;
   /** Dispatches an MCP tool call directly in WASM linear memory. */
-  mcpDispatchTool(toolIndex: number, arg1?: number, arg2?: number, arg3?: number): number;
+  mcpDispatchTool(
+    toolIndex: number,
+    arg1?: number,
+    arg2?: number,
+    arg3?: number,
+  ): number;
   /** Returns the pointer to the MCP result output buffer in WASM linear memory. */
   mcpGetOutputBuffer(): number;
   /** Returns the length of the MCP result output buffer in bytes. */
@@ -688,7 +737,13 @@ export declare class LspFacade {
   /** Creates a modification environment in WASM linear memory. */
   flattenerCreateEnv(parentPtr?: number): number;
   /** Binds a parameter override into the modification environment. */
-  flattenerEnvBind(envPtr: number, keyHash: number, valExprId: number, isFinal?: boolean, isEach?: boolean): void;
+  flattenerEnvBind(
+    envPtr: number,
+    keyHash: number,
+    valExprId: number,
+    isFinal?: boolean,
+    isEach?: boolean,
+  ): void;
   /** Looks up a parameter override in the modification environment. */
   flattenerEnvLookup(envPtr: number, keyHash: number): number;
   /** Executes a named in-DSL compilation pipeline (e.g. 'flatten') in WebAssembly. */
@@ -703,7 +758,14 @@ export declare class LspFacade {
   /** Evaluates CSG sphere Signed Distance Function in WASM. */
   csgSdfSphere(px: number, py: number, pz: number, r: number): number;
   /** Evaluates CSG box Signed Distance Function in WASM. */
-  csgSdfBox(px: number, py: number, pz: number, hx: number, hy: number, hz: number): number;
+  csgSdfBox(
+    px: number,
+    py: number,
+    pz: number,
+    hx: number,
+    hy: number,
+    hz: number,
+  ): number;
   /** CSG Boolean Operations. */
   csgOpUnion(d1: number, d2: number): number;
   csgOpIntersect(d1: number, d2: number): number;
@@ -715,7 +777,13 @@ export declare class LspFacade {
   /** Creates an Automatic Differentiation Tape instance in WASM. */
   createAdTape(): number;
   /** Pushes an elementary operation node to the AD tape. */
-  tapePushOp(tapePtr: number, op: number, left: number, right: number, val: number): number;
+  tapePushOp(
+    tapePtr: number,
+    op: number,
+    left: number,
+    right: number,
+    val: number,
+  ): number;
   /** Runs the reverse-mode AD pass backwards from rootNode. */
   tapeBackward(tapePtr: number, rootNode: number): void;
   /** Retrieves the accumulated gradient for a node on the AD tape. */
@@ -765,7 +833,13 @@ export declare class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text: string, editStart?: number, editOldEnd?: number, editNewEnd?: number, uri?: string): number;
+  parse(
+    text: string,
+    editStart?: number,
+    editOldEnd?: number,
+    editNewEnd?: number,
+    uri?: string,
+  ): number;
   /**
    * Compares two ASTs generated before and after an edit, and emits
    * a minimal sequence of insertion, deletion, and update events.
@@ -774,7 +848,11 @@ export declare class LspFacade {
    * and higher-level tooling (like the LSP reasoner) that needs to know exactly
    * what semantic nodes changed.
    */
-  walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void;
+  walkAstDiff(
+    oldRoot: number,
+    newRoot: number,
+    listener: AstChangeListener,
+  ): void;
 }
 export interface Point {
   row: number;
@@ -908,7 +986,11 @@ export declare class SyntaxNode {
   /** Finds the smallest named syntax node covering the given Point range. */
   namedDescendantForPosition(start: Point, end?: Point): SyntaxNode | null;
   /** Finds all descendants of the given type name(s). */
-  descendantsOfType(types: string | string[], start?: Point, end?: Point): SyntaxNode[];
+  descendantsOfType(
+    types: string | string[],
+    start?: Point,
+    end?: Point,
+  ): SyntaxNode[];
   /** Finds the closest ancestor node (or self) matching the given type(s). */
   closest(types: string | string[]): SyntaxNode | null;
   /** Generates the canonical S-expression string representation for this node. */

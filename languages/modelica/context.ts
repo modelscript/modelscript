@@ -15,7 +15,7 @@ import {
 } from "@modelscript/language/compiler";
 import type { FileSystem, Parser, Tree } from "@modelscript/language/utils";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
-import { ArenaQueryFlattener, type FlattenOptions } from "./flattener-query.js";
+import { ModelicaFlattener, type FlattenOptions } from "./flattener.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./po.js";
 import { ModelicaClassInstance, type ModelicaElement } from "./semantic-model.js";
 
@@ -440,7 +440,7 @@ export class Context extends BaseContext {
     if (firstId === undefined) return null;
 
     const queryDB = this.#queryEngine.toQueryDB();
-    const flattener = new ArenaQueryFlattener(queryDB, options);
+    const flattener = new ModelicaFlattener(queryDB, options);
 
     const currentStructuralRevision = this.#workspaceIndex.structuralRevision;
     const cacheKey = firstId;

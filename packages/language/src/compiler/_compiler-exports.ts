@@ -9,7 +9,6 @@ export * from "./tape.js";
 
 // Language workbench infrastructure
 export type { GraphicsConfig } from "../diagram/polyglot-diagram-builder.js";
-export * from "../reasoner/types.js";
 export * from "../runtime/wasm_bdf.js";
 export * from "../runtime/wasm_cache_store.js";
 export * from "../runtime/wasm_cosim.js";

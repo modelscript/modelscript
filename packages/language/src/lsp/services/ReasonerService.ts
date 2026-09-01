@@ -1,6 +1,5 @@
 import { Connection } from "vscode-languageserver/browser.js";
-import { OntologyBuilder } from "../../reasoner/ontology-builder.js";
-import { TableauReasoner } from "../../reasoner/tableau-reasoner.js";
+import { OntologyBuilder, TableauReasoner } from "../../runtime/wasm_ontology.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
 export class ReasonerService {

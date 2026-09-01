@@ -11,7 +11,7 @@ import {
   parseDLQuery,
   parsePropertyPathExpression,
   TableauReasoner,
-} from "../src/reasoner/index.js";
+} from "../src/runtime/wasm_ontology.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

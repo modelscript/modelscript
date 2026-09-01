@@ -6,8 +6,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AdapterRegistry } from "../src/compiler/adapter-registry.js";
 import type { SymbolEntry, SymbolIndex } from "../src/compiler/runtime.js";
-import type { OWL2Axiom } from "../src/reasoner/types.js";
-import { AXIOM_CLASS_DECL, AXIOM_SUBCLASS_OF, WasmOntologyStore } from "../src/runtime/wasm_ontology.js";
+import {
+  AXIOM_CLASS_DECL,
+  AXIOM_SUBCLASS_OF,
+  type OWL2Axiom,
+  WasmOntologyStore,
+} from "../src/runtime/wasm_ontology.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

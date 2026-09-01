@@ -25,7 +25,9 @@ export class ASTNode {
   }
   /** Gets the semantic type ID of this node. */
   getTypeId() {
-    return this.runtime.getNodeType ? this.runtime.getNodeType(this.ptr) : this.runtime.readU32(this.ptr) & 0x03ff;
+    return this.runtime.getNodeType
+      ? this.runtime.getNodeType(this.ptr)
+      : this.runtime.readU32(this.ptr) & 0x03ff;
   }
   /** Gets the first child of this node in the AST. */
   getFirstChild() {
@@ -71,11 +73,19 @@ export class Parser {
     // Explicitly set the input length so the WASM parser knows the byte bounds
     if (this.runtime.wasmExports && this.runtime.wasmExports.setInputLength) {
       this.runtime.wasmExports.setInputLength(view.length);
-    } else if (this.runtime.nativeAddon && this.runtime.nativeAddon.setInputLength) {
+    } else if (
+      this.runtime.nativeAddon &&
+      this.runtime.nativeAddon.setInputLength
+    ) {
       this.runtime.nativeAddon.setInputLength(view.length);
     }
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
-    const astRoot = this.runtime.parse(oldTreePtr, editStart, editOldEnd, view.length);
+    const astRoot = this.runtime.parse(
+      oldTreePtr,
+      editStart,
+      editOldEnd,
+      view.length,
+    );
     return astRoot === 0 ? null : new ASTNode(this.runtime, astRoot);
   }
   /** Reads a WASM-allocated length-prefixed string into a JavaScript string. */
@@ -112,7 +122,10 @@ export class WasmRuntime {
     this.mem8 = new Uint8Array(memory.buffer);
   }
   ensureMemory() {
-    if (this.mem32.byteLength === 0 || this.mem32.buffer !== this.memory.buffer) {
+    if (
+      this.mem32.byteLength === 0 ||
+      this.mem32.buffer !== this.memory.buffer
+    ) {
       this.mem32 = new Uint32Array(this.memory.buffer);
       this.mem16 = new Uint16Array(this.memory.buffer);
       this.mem8 = new Uint8Array(this.memory.buffer);
@@ -138,13 +151,21 @@ export class WasmRuntime {
         : 0;
   }
   ensureInputBuffer(size) {
-    return this.wasmExports.ensureInputBuffer ? this.wasmExports.ensureInputBuffer(size) : this.getInputBuffer();
+    return this.wasmExports.ensureInputBuffer
+      ? this.wasmExports.ensureInputBuffer(size)
+      : this.getInputBuffer();
   }
   setInputEncoding(enc) {
-    if (this.wasmExports.setInputEncoding) this.wasmExports.setInputEncoding(enc);
+    if (this.wasmExports.setInputEncoding)
+      this.wasmExports.setInputEncoding(enc);
   }
   parse(oldTreePtr, editStart, editOldEnd, editNewEnd) {
-    return this.wasmExports.parse(oldTreePtr, editStart, editOldEnd, editNewEnd);
+    return this.wasmExports.parse(
+      oldTreePtr,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+    );
   }
   getNodeFirstChild(ptr) {
     this.ensureMemory();
@@ -166,7 +187,9 @@ export class WasmRuntime {
           const memory = getMemory();
           if (!memory) return;
           const memoryArray = new Uint16Array(memory.buffer);
-          const lenBytes = new Uint32Array(memory.buffer)[(newSourcePtr - 4) / 4];
+          const lenBytes = new Uint32Array(memory.buffer)[
+            (newSourcePtr - 4) / 4
+          ];
           const lenChars = lenBytes / 2;
           let str = "";
           const offset = newSourcePtr / 2;
@@ -201,13 +224,21 @@ export class NativeRuntime {
     return this.nativeAddon.getInputBuffer();
   }
   ensureInputBuffer(size) {
-    return this.nativeAddon.ensureInputBuffer ? this.nativeAddon.ensureInputBuffer(size) : this.getInputBuffer();
+    return this.nativeAddon.ensureInputBuffer
+      ? this.nativeAddon.ensureInputBuffer(size)
+      : this.getInputBuffer();
   }
   setInputEncoding(enc) {
-    if (this.nativeAddon.setInputEncoding) this.nativeAddon.setInputEncoding(enc);
+    if (this.nativeAddon.setInputEncoding)
+      this.nativeAddon.setInputEncoding(enc);
   }
   parse(oldTreePtr, editStart, editOldEnd, editNewEnd) {
-    return this.nativeAddon.parse(oldTreePtr, editStart, editOldEnd, editNewEnd);
+    return this.nativeAddon.parse(
+      oldTreePtr,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+    );
   }
   getNodeFirstChild(ptr) {
     return this.nativeAddon.getNodeFirstChild(ptr);
@@ -216,2539 +247,28 @@ export class NativeRuntime {
     return this.nativeAddon.getNodeNextSibling(ptr);
   }
   getNodeType(ptr) {
-    return this.nativeAddon.getNodeType ? this.nativeAddon.getNodeType(ptr) : this.readU32(ptr) & 0x03ff;
+    return this.nativeAddon.getNodeType
+      ? this.nativeAddon.getNodeType(ptr)
+      : this.readU32(ptr) & 0x03ff;
   }
 }
 export const SYNTAX_NAMES =
-  typeof [
-    "ERROR",
-    "/\\s+/",
-    '"end if"',
-    '"end for"',
-    '"end while"',
-    '"end when"',
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    '"final"',
-    '";"',
-    '"within"',
-    '"encapsulated"',
-    '"partial"',
-    '"class"',
-    '"model"',
-    '"block"',
-    '"type"',
-    '"package"',
-    '"expandable"',
-    '"connector"',
-    '"pure"',
-    '"impure"',
-    '"function"',
-    '"operator"',
-    '"record"',
-    '"end"',
-    '"extends"',
-    '"="',
-    '"enumeration"',
-    '"("',
-    '":"',
-    '")"',
-    '"der"',
-    '","',
-    '"input"',
-    '"output"',
-    '"public"',
-    '"protected"',
-    '"external"',
-    '"redeclare"',
-    '"inner"',
-    '"outer"',
-    '"replaceable"',
-    '"import"',
-    '".*"',
-    '"."',
-    '"*"',
-    '"{"',
-    '"}"',
-    '"constrainedby"',
-    '"break"',
-    '"flow"',
-    '"stream"',
-    '"discrete"',
-    '"parameter"',
-    '"constant"',
-    '"if"',
-    '"each"',
-    '"initial"',
-    '"equation"',
-    '"algorithm"',
-    '":="',
-    '"return"',
-    '"then"',
-    '"elseif"',
-    '"else"',
-    '"for"',
-    '"loop"',
-    '"in"',
-    '"while"',
-    '"when"',
-    '"elsewhen"',
-    '"connect"',
-    '"or"',
-    '"and"',
-    '"not"',
-    '"<"',
-    '"<="',
-    '">"',
-    '">="',
-    '"=="',
-    '"<>"',
-    '"+"',
-    '"-"',
-    '".+"',
-    '".-"',
-    '"/"',
-    '"./"',
-    '"^"',
-    '".^"',
-    '"\'"',
-    '"false"',
-    '"true"',
-    '"time"',
-    '"["',
-    '"]"',
-    '"annotation"',
-    "/[a-zA-Z_][a-zA-Z0-9_]*/",
-    '/"[^"]*"/',
-    "/\\d+/",
-    "/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/",
-    "program",
-    "stored_definition",
-    "within_clause",
-    "class_definition",
-    "class_prefixes",
-    "class_specifier",
-    "long_class_specifier",
-    "short_class_specifier",
-    "der_class_specifier",
-    "base_prefix",
-    "enum_list",
-    "enumeration_literal",
-    "composition",
-    "external_clause",
-    "language_specification",
-    "external_function_call",
-    "element_list",
-    "element",
-    "import_clause",
-    "import_list",
-    "extends_clause",
-    "constraining_clause",
-    "class_or_inheritance_modification",
-    "argument_or_inheritance_modification_list",
-    "inheritance_modification",
-    "component_clause",
-    "type_prefix",
-    "component_list",
-    "component_declaration",
-    "condition_attribute",
-    "declaration",
-    "modification",
-    "modification_expression",
-    "class_modification",
-    "argument_list",
-    "argument",
-    "element_modification_or_replaceable",
-    "element_modification",
-    "element_redeclaration",
-    "element_replaceable",
-    "component_clause1",
-    "component_declaration1",
-    "short_class_definition",
-    "equation_section",
-    "algorithm_section",
-    "some_equation",
-    "equation_or_procedure",
-    "simple_equation",
-    "statement",
-    "statement_or_procedure",
-    "assignment_statement",
-    "function_call",
-    "if_equation",
-    "if_statement",
-    "for_equation",
-    "for_statement",
-    "for_indices",
-    "for_index",
-    "while_statement",
-    "when_equation",
-    "when_statement",
-    "connect_equation",
-    "expression",
-    "primary",
-    "unsigned_number",
-    "type_specifier",
-    "name",
-    "component_reference",
-    "result_reference",
-    "function_call_args",
-    "function_arguments",
-    "function_arguments_non_first",
-    "array_arguments",
-    "array_arguments_non_first",
-    "named_arguments",
-    "named_argument",
-    "function_argument",
-    "function_partial_application",
-    "output_expression_list",
-    "expression_list",
-    "array_subscripts",
-    "subscript",
-    "description",
-    "description_string",
-    "annotation_clause",
-    "_START",
-    "_(within_clause | ())",
-    '_("final" | ())',
-    '_(("final" | ()) class_definition ";")*',
-    "_(name | ())",
-    '_("encapsulated" | ())',
-    '_("partial" | ())',
-    '_("class" | "model" | "block" | "type" | "package" | (("expandable" | ()) "connector") | ((("pure" | "impure") | ()) "function") | ("operator" (("record" | "function") | ())) | "record")',
-    '_("expandable" | ())',
-    '_("pure" | "impure")',
-    '_(("pure" | "impure") | ())',
-    '_("record" | "function")',
-    '_(("record" | "function") | ())',
-    "_(long_class_specifier | short_class_specifier | der_class_specifier)",
-    "_(identifier | ())",
-    '_((identifier description_string composition "end" (identifier | ())) | ("extends" identifier (class_modification | ()) description_string composition "end" (identifier | ())))',
-    "_(class_modification | ())",
-    "_(array_subscripts | ())",
-    '_((identifier "=" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier "=" "enumeration" "(" ((enum_list | ()) | ":") ")" description))',
-    "_(enum_list | ())",
-    '_((enum_list | ()) | ":")',
-    '_("," identifier)*',
-    '_("input" | "output")',
-    '_(("input" | "output") | ())',
-    '_("," enumeration_literal)*',
-    '_(("public" element_list) | ("protected" element_list) | equation_section | algorithm_section)',
-    '_(("public" element_list) | ("protected" element_list) | equation_section | algorithm_section)*',
-    '_((external_clause ";") | ())',
-    '_((annotation_clause ";") | ())',
-    "_(language_specification | ())",
-    "_(external_function_call | ())",
-    "_(annotation_clause | ())",
-    '_((component_reference "=") | ())',
-    "_(expression_list | ())",
-    '_(element ";")*',
-    '_(import_clause | extends_clause | (("redeclare" | ()) ("final" | ()) ("inner" | ()) ("outer" | ()) (class_definition | component_clause | ("replaceable" (class_definition | component_clause) ((constraining_clause description) | ())))))',
-    '_("redeclare" | ())',
-    '_("inner" | ())',
-    '_("outer" | ())',
-    '_(class_definition | component_clause | ("replaceable" (class_definition | component_clause) ((constraining_clause description) | ())))',
-    "_(class_definition | component_clause)",
-    "_((constraining_clause description) | ())",
-    '_((identifier "=" name) | (name ((".*" | ("." ("*" | ("{" import_list "}")))) | ())))',
-    '_(".*" | ("." ("*" | ("{" import_list "}"))))',
-    '_("*" | ("{" import_list "}"))',
-    '_((".*" | ("." ("*" | ("{" import_list "}")))) | ())',
-    "_(class_or_inheritance_modification | ())",
-    "_(argument_or_inheritance_modification_list | ())",
-    "_(argument | inheritance_modification)",
-    '_("," (argument | inheritance_modification))*',
-    "_(connect_equation | identifier)",
-    "_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))",
-    '_("flow" | "stream")',
-    '_("discrete" | "parameter" | "constant")',
-    '_(("discrete" | "parameter" | "constant") | ())',
-    '_((("flow" | "stream") (("discrete" | "parameter" | "constant") | ()) (("input" | "output") | ())) | (("discrete" | "parameter" | "constant") (("input" | "output") | ())) | ("input" | "output"))',
-    '_("," component_declaration)*',
-    "_(condition_attribute | ())",
-    "_(modification | ())",
-    '_(("=" modification_expression) | ())',
-    '_((class_modification (("=" modification_expression) | ())) | ("=" modification_expression))',
-    '_(expression | "break")',
-    "_(argument_list | ())",
-    '_("," argument)*',
-    "_(element_modification_or_replaceable | element_redeclaration)",
-    '_("each" | ())',
-    "_(element_modification | element_replaceable)",
-    "_(short_class_definition | component_clause1 | element_replaceable)",
-    "_(short_class_definition | component_clause1)",
-    "_(constraining_clause | ())",
-    "_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))",
-    '_("initial" | ())',
-    '_(some_equation ";")*',
-    '_(statement ";")*',
-    "_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)",
-    "_(simple_equation | function_call)",
-    '_(statement_or_procedure | ("(" output_expression_list ")" ":=" function_call) | "break" | "return" | if_statement | for_statement | while_statement | when_statement)',
-    "_(function_call | assignment_statement)",
-    '_((component_reference ":=" expression) | ("der" "(" component_reference ")" ":=" expression))',
-    '_("elseif" expression "then" (some_equation ";")*)*',
-    '_(("else" (some_equation ";")*) | ())',
-    '_("elseif" expression "then" (statement ";")*)*',
-    '_(("else" (statement ";")*) | ())',
-    '_("," for_index)*',
-    '_(("in" expression) | ())',
-    '_("elsewhen" expression "then" (some_equation ";")*)*',
-    '_("elsewhen" expression "then" (statement ";")*)*',
-    '_(primary | ("if" expression "then" expression ("elseif" expression "then" expression)* "else" expression) | ((expression ":" expression ":" expression) | (expression ":" expression)) | (expression "or" expression) | (expression "and" expression) | ("not" expression) | (expression ("<" | "<=" | ">" | ">=" | "==" | "<>") expression) | (expression ("+" | "-" | ".+" | ".-") expression) | (("+" | "-" | ".+" | ".-") expression) | (expression ("*" | "/" | ".*" | "./") expression) | (expression ("^" | ".^") expression) | (primary "\'"))',
-    '_("elseif" expression "then" expression)*',
-    '_("if" expression "then" expression ("elseif" expression "then" expression)* "else" expression)',
-    '_((expression ":" expression ":" expression) | (expression ":" expression))',
-    '_(expression "or" expression)',
-    '_(expression "and" expression)',
-    '_("not" expression)',
-    '_("<" | "<=" | ">" | ">=" | "==" | "<>")',
-    '_(expression ("<" | "<=" | ">" | ">=" | "==" | "<>") expression)',
-    '_("+" | "-" | ".+" | ".-")',
-    '_(expression ("+" | "-" | ".+" | ".-") expression)',
-    '_("+" | "-" | ".+" | ".-")_1',
-    '_(("+" | "-" | ".+" | ".-") expression)',
-    '_("*" | "/" | ".*" | "./")',
-    '_(expression ("*" | "/" | ".*" | "./") expression)',
-    '_("^" | ".^")',
-    '_(expression ("^" | ".^") expression)',
-    '_(primary "\'")',
-    '_(unsigned_number | string_literal | "false" | "true" | "time" | (component_reference function_call_args) | ("der" "(" expression_list ")") | ("initial" "(" ")") | ("pure" "(" (function_arguments | ()) ")") | component_reference | ("(" (expression | output_expression_list) ")" ((array_subscripts | ("." identifier)) | ())) | ("[" expression_list (";" expression_list)* "]") | ("{" array_arguments "}"))',
-    "_(function_arguments | ())",
-    "_(expression | output_expression_list)",
-    '_(array_subscripts | ("." identifier))',
-    '_((array_subscripts | ("." identifier)) | ())',
-    '_(";" expression_list)*',
-    "_(unsigned_integer | unsigned_real)",
-    '_(("." name) | name)',
-    '_("." identifier)*',
-    '_("." identifier (array_subscripts | ()))*',
-    '_((identifier (array_subscripts | ()) ("." identifier (array_subscripts | ()))*) | ("." identifier (array_subscripts | ()) ("." identifier (array_subscripts | ()))*))',
-    '_(component_reference | "time" | ("der" "(" (component_reference | "time") (("," unsigned_integer) | ()) ")"))',
-    '_(component_reference | "time")',
-    '_(("," unsigned_integer) | ())',
-    '_(("(" ")") | ("(" function_arguments ")"))',
-    '_(expression_list | (expression "for" for_indices) | (function_partial_application (("," function_arguments_non_first) | ())) | named_arguments)',
-    '_(("," function_arguments_non_first) | ())',
-    '_((function_argument (("," function_arguments_non_first) | ())) | named_arguments)',
-    '_(("," array_arguments_non_first) | ("for" for_indices))',
-    '_((("," array_arguments_non_first) | ("for" for_indices)) | ())',
-    '_(("," array_arguments_non_first) | ())',
-    '_(("," named_arguments) | ())',
-    "_(function_partial_application | expression)",
-    "_(named_arguments | ())",
-    '_(() | ((expression | ()) "," (expression | ()) ("," (expression | ()))*))',
-    "_(expression | ())",
-    '_("," (expression | ()))*',
-    '_("," expression)*',
-    '_("," subscript)*',
-    '_(":" | expression)',
-    '_("+" string_literal)*',
-    '_((string_literal ("+" string_literal)*) | ())',
-    "identifier",
-    "string_literal",
-    "unsigned_integer",
-    "unsigned_real",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "UNKNOWN",
-    "EOF",
-  ] !== "undefined"
-    ? [
-        "ERROR",
-        "/\\s+/",
-        '"end if"',
-        '"end for"',
-        '"end while"',
-        '"end when"',
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        '"final"',
-        '";"',
-        '"within"',
-        '"encapsulated"',
-        '"partial"',
-        '"class"',
-        '"model"',
-        '"block"',
-        '"type"',
-        '"package"',
-        '"expandable"',
-        '"connector"',
-        '"pure"',
-        '"impure"',
-        '"function"',
-        '"operator"',
-        '"record"',
-        '"end"',
-        '"extends"',
-        '"="',
-        '"enumeration"',
-        '"("',
-        '":"',
-        '")"',
-        '"der"',
-        '","',
-        '"input"',
-        '"output"',
-        '"public"',
-        '"protected"',
-        '"external"',
-        '"redeclare"',
-        '"inner"',
-        '"outer"',
-        '"replaceable"',
-        '"import"',
-        '".*"',
-        '"."',
-        '"*"',
-        '"{"',
-        '"}"',
-        '"constrainedby"',
-        '"break"',
-        '"flow"',
-        '"stream"',
-        '"discrete"',
-        '"parameter"',
-        '"constant"',
-        '"if"',
-        '"each"',
-        '"initial"',
-        '"equation"',
-        '"algorithm"',
-        '":="',
-        '"return"',
-        '"then"',
-        '"elseif"',
-        '"else"',
-        '"for"',
-        '"loop"',
-        '"in"',
-        '"while"',
-        '"when"',
-        '"elsewhen"',
-        '"connect"',
-        '"or"',
-        '"and"',
-        '"not"',
-        '"<"',
-        '"<="',
-        '">"',
-        '">="',
-        '"=="',
-        '"<>"',
-        '"+"',
-        '"-"',
-        '".+"',
-        '".-"',
-        '"/"',
-        '"./"',
-        '"^"',
-        '".^"',
-        '"\'"',
-        '"false"',
-        '"true"',
-        '"time"',
-        '"["',
-        '"]"',
-        '"annotation"',
-        "/[a-zA-Z_][a-zA-Z0-9_]*/",
-        '/"[^"]*"/',
-        "/\\d+/",
-        "/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/",
-        "program",
-        "stored_definition",
-        "within_clause",
-        "class_definition",
-        "class_prefixes",
-        "class_specifier",
-        "long_class_specifier",
-        "short_class_specifier",
-        "der_class_specifier",
-        "base_prefix",
-        "enum_list",
-        "enumeration_literal",
-        "composition",
-        "external_clause",
-        "language_specification",
-        "external_function_call",
-        "element_list",
-        "element",
-        "import_clause",
-        "import_list",
-        "extends_clause",
-        "constraining_clause",
-        "class_or_inheritance_modification",
-        "argument_or_inheritance_modification_list",
-        "inheritance_modification",
-        "component_clause",
-        "type_prefix",
-        "component_list",
-        "component_declaration",
-        "condition_attribute",
-        "declaration",
-        "modification",
-        "modification_expression",
-        "class_modification",
-        "argument_list",
-        "argument",
-        "element_modification_or_replaceable",
-        "element_modification",
-        "element_redeclaration",
-        "element_replaceable",
-        "component_clause1",
-        "component_declaration1",
-        "short_class_definition",
-        "equation_section",
-        "algorithm_section",
-        "some_equation",
-        "equation_or_procedure",
-        "simple_equation",
-        "statement",
-        "statement_or_procedure",
-        "assignment_statement",
-        "function_call",
-        "if_equation",
-        "if_statement",
-        "for_equation",
-        "for_statement",
-        "for_indices",
-        "for_index",
-        "while_statement",
-        "when_equation",
-        "when_statement",
-        "connect_equation",
-        "expression",
-        "primary",
-        "unsigned_number",
-        "type_specifier",
-        "name",
-        "component_reference",
-        "result_reference",
-        "function_call_args",
-        "function_arguments",
-        "function_arguments_non_first",
-        "array_arguments",
-        "array_arguments_non_first",
-        "named_arguments",
-        "named_argument",
-        "function_argument",
-        "function_partial_application",
-        "output_expression_list",
-        "expression_list",
-        "array_subscripts",
-        "subscript",
-        "description",
-        "description_string",
-        "annotation_clause",
-        "_START",
-        "_(within_clause | ())",
-        '_("final" | ())',
-        '_(("final" | ()) class_definition ";")*',
-        "_(name | ())",
-        '_("encapsulated" | ())',
-        '_("partial" | ())',
-        '_("class" | "model" | "block" | "type" | "package" | (("expandable" | ()) "connector") | ((("pure" | "impure") | ()) "function") | ("operator" (("record" | "function") | ())) | "record")',
-        '_("expandable" | ())',
-        '_("pure" | "impure")',
-        '_(("pure" | "impure") | ())',
-        '_("record" | "function")',
-        '_(("record" | "function") | ())',
-        "_(long_class_specifier | short_class_specifier | der_class_specifier)",
-        "_(identifier | ())",
-        '_((identifier description_string composition "end" (identifier | ())) | ("extends" identifier (class_modification | ()) description_string composition "end" (identifier | ())))',
-        "_(class_modification | ())",
-        "_(array_subscripts | ())",
-        '_((identifier "=" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier "=" "enumeration" "(" ((enum_list | ()) | ":") ")" description))',
-        "_(enum_list | ())",
-        '_((enum_list | ()) | ":")',
-        '_("," identifier)*',
-        '_("input" | "output")',
-        '_(("input" | "output") | ())',
-        '_("," enumeration_literal)*',
-        '_(("public" element_list) | ("protected" element_list) | equation_section | algorithm_section)',
-        '_(("public" element_list) | ("protected" element_list) | equation_section | algorithm_section)*',
-        '_((external_clause ";") | ())',
-        '_((annotation_clause ";") | ())',
-        "_(language_specification | ())",
-        "_(external_function_call | ())",
-        "_(annotation_clause | ())",
-        '_((component_reference "=") | ())',
-        "_(expression_list | ())",
-        '_(element ";")*',
-        '_(import_clause | extends_clause | (("redeclare" | ()) ("final" | ()) ("inner" | ()) ("outer" | ()) (class_definition | component_clause | ("replaceable" (class_definition | component_clause) ((constraining_clause description) | ())))))',
-        '_("redeclare" | ())',
-        '_("inner" | ())',
-        '_("outer" | ())',
-        '_(class_definition | component_clause | ("replaceable" (class_definition | component_clause) ((constraining_clause description) | ())))',
-        "_(class_definition | component_clause)",
-        "_((constraining_clause description) | ())",
-        '_((identifier "=" name) | (name ((".*" | ("." ("*" | ("{" import_list "}")))) | ())))',
-        '_(".*" | ("." ("*" | ("{" import_list "}"))))',
-        '_("*" | ("{" import_list "}"))',
-        '_((".*" | ("." ("*" | ("{" import_list "}")))) | ())',
-        "_(class_or_inheritance_modification | ())",
-        "_(argument_or_inheritance_modification_list | ())",
-        "_(argument | inheritance_modification)",
-        '_("," (argument | inheritance_modification))*',
-        "_(connect_equation | identifier)",
-        "_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))",
-        '_("flow" | "stream")',
-        '_("discrete" | "parameter" | "constant")',
-        '_(("discrete" | "parameter" | "constant") | ())',
-        '_((("flow" | "stream") (("discrete" | "parameter" | "constant") | ()) (("input" | "output") | ())) | (("discrete" | "parameter" | "constant") (("input" | "output") | ())) | ("input" | "output"))',
-        '_("," component_declaration)*',
-        "_(condition_attribute | ())",
-        "_(modification | ())",
-        '_(("=" modification_expression) | ())',
-        '_((class_modification (("=" modification_expression) | ())) | ("=" modification_expression))',
-        '_(expression | "break")',
-        "_(argument_list | ())",
-        '_("," argument)*',
-        "_(element_modification_or_replaceable | element_redeclaration)",
-        '_("each" | ())',
-        "_(element_modification | element_replaceable)",
-        "_(short_class_definition | component_clause1 | element_replaceable)",
-        "_(short_class_definition | component_clause1)",
-        "_(constraining_clause | ())",
-        "_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))",
-        '_("initial" | ())',
-        '_(some_equation ";")*',
-        '_(statement ";")*',
-        "_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)",
-        "_(simple_equation | function_call)",
-        '_(statement_or_procedure | ("(" output_expression_list ")" ":=" function_call) | "break" | "return" | if_statement | for_statement | while_statement | when_statement)',
-        "_(function_call | assignment_statement)",
-        '_((component_reference ":=" expression) | ("der" "(" component_reference ")" ":=" expression))',
-        '_("elseif" expression "then" (some_equation ";")*)*',
-        '_(("else" (some_equation ";")*) | ())',
-        '_("elseif" expression "then" (statement ";")*)*',
-        '_(("else" (statement ";")*) | ())',
-        '_("," for_index)*',
-        '_(("in" expression) | ())',
-        '_("elsewhen" expression "then" (some_equation ";")*)*',
-        '_("elsewhen" expression "then" (statement ";")*)*',
-        '_(primary | ("if" expression "then" expression ("elseif" expression "then" expression)* "else" expression) | ((expression ":" expression ":" expression) | (expression ":" expression)) | (expression "or" expression) | (expression "and" expression) | ("not" expression) | (expression ("<" | "<=" | ">" | ">=" | "==" | "<>") expression) | (expression ("+" | "-" | ".+" | ".-") expression) | (("+" | "-" | ".+" | ".-") expression) | (expression ("*" | "/" | ".*" | "./") expression) | (expression ("^" | ".^") expression) | (primary "\'"))',
-        '_("elseif" expression "then" expression)*',
-        '_("if" expression "then" expression ("elseif" expression "then" expression)* "else" expression)',
-        '_((expression ":" expression ":" expression) | (expression ":" expression))',
-        '_(expression "or" expression)',
-        '_(expression "and" expression)',
-        '_("not" expression)',
-        '_("<" | "<=" | ">" | ">=" | "==" | "<>")',
-        '_(expression ("<" | "<=" | ">" | ">=" | "==" | "<>") expression)',
-        '_("+" | "-" | ".+" | ".-")',
-        '_(expression ("+" | "-" | ".+" | ".-") expression)',
-        '_("+" | "-" | ".+" | ".-")_1',
-        '_(("+" | "-" | ".+" | ".-") expression)',
-        '_("*" | "/" | ".*" | "./")',
-        '_(expression ("*" | "/" | ".*" | "./") expression)',
-        '_("^" | ".^")',
-        '_(expression ("^" | ".^") expression)',
-        '_(primary "\'")',
-        '_(unsigned_number | string_literal | "false" | "true" | "time" | (component_reference function_call_args) | ("der" "(" expression_list ")") | ("initial" "(" ")") | ("pure" "(" (function_arguments | ()) ")") | component_reference | ("(" (expression | output_expression_list) ")" ((array_subscripts | ("." identifier)) | ())) | ("[" expression_list (";" expression_list)* "]") | ("{" array_arguments "}"))',
-        "_(function_arguments | ())",
-        "_(expression | output_expression_list)",
-        '_(array_subscripts | ("." identifier))',
-        '_((array_subscripts | ("." identifier)) | ())',
-        '_(";" expression_list)*',
-        "_(unsigned_integer | unsigned_real)",
-        '_(("." name) | name)',
-        '_("." identifier)*',
-        '_("." identifier (array_subscripts | ()))*',
-        '_((identifier (array_subscripts | ()) ("." identifier (array_subscripts | ()))*) | ("." identifier (array_subscripts | ()) ("." identifier (array_subscripts | ()))*))',
-        '_(component_reference | "time" | ("der" "(" (component_reference | "time") (("," unsigned_integer) | ()) ")"))',
-        '_(component_reference | "time")',
-        '_(("," unsigned_integer) | ())',
-        '_(("(" ")") | ("(" function_arguments ")"))',
-        '_(expression_list | (expression "for" for_indices) | (function_partial_application (("," function_arguments_non_first) | ())) | named_arguments)',
-        '_(("," function_arguments_non_first) | ())',
-        '_((function_argument (("," function_arguments_non_first) | ())) | named_arguments)',
-        '_(("," array_arguments_non_first) | ("for" for_indices))',
-        '_((("," array_arguments_non_first) | ("for" for_indices)) | ())',
-        '_(("," array_arguments_non_first) | ())',
-        '_(("," named_arguments) | ())',
-        "_(function_partial_application | expression)",
-        "_(named_arguments | ())",
-        '_(() | ((expression | ()) "," (expression | ()) ("," (expression | ()))*))',
-        "_(expression | ())",
-        '_("," (expression | ()))*',
-        '_("," expression)*',
-        '_("," subscript)*',
-        '_(":" | expression)',
-        '_("+" string_literal)*',
-        '_((string_literal ("+" string_literal)*) | ())',
-        "identifier",
-        "string_literal",
-        "unsigned_integer",
-        "unsigned_real",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "UNKNOWN",
-        "EOF",
-      ]
+  typeof ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"flow\"","\"stream\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/\"[^\"]*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_(within_clause | ())","_(\"final\" | ())","_((\"final\" | ()) class_definition \";\")*","_(name | ())","_(\"encapsulated\" | ())","_(\"partial\" | ())","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | ((\"expandable\" | ()) \"connector\") | (((\"pure\" | \"impure\") | ()) \"function\") | (\"operator\" ((\"record\" | \"function\") | ())) | \"record\")","_(\"expandable\" | ())","_(\"pure\" | \"impure\")","_((\"pure\" | \"impure\") | ())","_(\"record\" | \"function\")","_((\"record\" | \"function\") | ())","_(long_class_specifier | short_class_specifier | der_class_specifier)","_(identifier | ())","_((identifier description_string composition \"end\" (identifier | ())) | (\"extends\" identifier (class_modification | ()) description_string composition \"end\" (identifier | ())))","_(class_modification | ())","_(array_subscripts | ())","_((identifier \"=\" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier \"=\" \"enumeration\" \"(\" ((enum_list | ()) | \":\") \")\" description))","_(enum_list | ())","_((enum_list | ()) | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\")","_((\"input\" | \"output\") | ())","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_((external_clause \";\") | ())","_((annotation_clause \";\") | ())","_(language_specification | ())","_(external_function_call | ())","_(annotation_clause | ())","_((component_reference \"=\") | ())","_(expression_list | ())","_(element \";\")*","_(import_clause | extends_clause | ((\"redeclare\" | ()) (\"final\" | ()) (\"inner\" | ()) (\"outer\" | ()) (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))))","_(\"redeclare\" | ())","_(\"inner\" | ())","_(\"outer\" | ())","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))","_(class_definition | component_clause)","_((constraining_clause description) | ())","_((identifier \"=\" name) | (name ((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())","_(class_or_inheritance_modification | ())","_(argument_or_inheritance_modification_list | ())","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_((\"discrete\" | \"parameter\" | \"constant\") | ())","_(((\"flow\" | \"stream\") ((\"discrete\" | \"parameter\" | \"constant\") | ()) ((\"input\" | \"output\") | ())) | ((\"discrete\" | \"parameter\" | \"constant\") ((\"input\" | \"output\") | ())) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_(condition_attribute | ())","_(modification | ())","_((\"=\" modification_expression) | ())","_((class_modification ((\"=\" modification_expression) | ())) | (\"=\" modification_expression))","_(expression | \"break\")","_(argument_list | ())","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_(\"each\" | ())","_(element_modification | element_replaceable)","_(short_class_definition | component_clause1 | element_replaceable)","_(short_class_definition | component_clause1)","_(constraining_clause | ())","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_(\"initial\" | ())","_(some_equation \";\")*","_(statement \";\")*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_((\"else\" (some_equation \";\")*) | ())","_(\"elseif\" expression \"then\" (statement \";\")*)*","_((\"else\" (statement \";\")*) | ())","_(\",\" for_index)*","_((\"in\" expression) | ())","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | ((expression \":\" expression \":\" expression) | (expression \":\" expression)) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_((expression \":\" expression \":\" expression) | (expression \":\" expression))","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" (function_arguments | ()) \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" ((array_subscripts | (\".\" identifier)) | ())) | (\"[\" expression_list (\";\" expression_list)* \"]\") | (\"{\" array_arguments \"}\"))","_(function_arguments | ())","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_((array_subscripts | (\".\" identifier)) | ())","_(\";\" expression_list)*","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(\".\" identifier)*","_(\".\" identifier (array_subscripts | ()))*","_((identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*) | (\".\" identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") ((\",\" unsigned_integer) | ()) \")\"))","_(component_reference | \"time\")","_((\",\" unsigned_integer) | ())","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(expression_list | (expression \"for\" for_indices) | (function_partial_application ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" function_arguments_non_first) | ())","_((function_argument ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_(((\",\" array_arguments_non_first) | (\"for\" for_indices)) | ())","_((\",\" array_arguments_non_first) | ())","_((\",\" named_arguments) | ())","_(function_partial_application | expression)","_(named_arguments | ())","_(() | ((expression | ()) \",\" (expression | ()) (\",\" (expression | ()))*))","_(expression | ())","_(\",\" (expression | ()))*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","_((string_literal (\"+\" string_literal)*) | ())","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"flow\"","\"stream\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/\"[^\"]*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_(within_clause | ())","_(\"final\" | ())","_((\"final\" | ()) class_definition \";\")*","_(name | ())","_(\"encapsulated\" | ())","_(\"partial\" | ())","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | ((\"expandable\" | ()) \"connector\") | (((\"pure\" | \"impure\") | ()) \"function\") | (\"operator\" ((\"record\" | \"function\") | ())) | \"record\")","_(\"expandable\" | ())","_(\"pure\" | \"impure\")","_((\"pure\" | \"impure\") | ())","_(\"record\" | \"function\")","_((\"record\" | \"function\") | ())","_(long_class_specifier | short_class_specifier | der_class_specifier)","_(identifier | ())","_((identifier description_string composition \"end\" (identifier | ())) | (\"extends\" identifier (class_modification | ()) description_string composition \"end\" (identifier | ())))","_(class_modification | ())","_(array_subscripts | ())","_((identifier \"=\" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier \"=\" \"enumeration\" \"(\" ((enum_list | ()) | \":\") \")\" description))","_(enum_list | ())","_((enum_list | ()) | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\")","_((\"input\" | \"output\") | ())","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_((external_clause \";\") | ())","_((annotation_clause \";\") | ())","_(language_specification | ())","_(external_function_call | ())","_(annotation_clause | ())","_((component_reference \"=\") | ())","_(expression_list | ())","_(element \";\")*","_(import_clause | extends_clause | ((\"redeclare\" | ()) (\"final\" | ()) (\"inner\" | ()) (\"outer\" | ()) (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))))","_(\"redeclare\" | ())","_(\"inner\" | ())","_(\"outer\" | ())","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))","_(class_definition | component_clause)","_((constraining_clause description) | ())","_((identifier \"=\" name) | (name ((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())","_(class_or_inheritance_modification | ())","_(argument_or_inheritance_modification_list | ())","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_((\"discrete\" | \"parameter\" | \"constant\") | ())","_(((\"flow\" | \"stream\") ((\"discrete\" | \"parameter\" | \"constant\") | ()) ((\"input\" | \"output\") | ())) | ((\"discrete\" | \"parameter\" | \"constant\") ((\"input\" | \"output\") | ())) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_(condition_attribute | ())","_(modification | ())","_((\"=\" modification_expression) | ())","_((class_modification ((\"=\" modification_expression) | ())) | (\"=\" modification_expression))","_(expression | \"break\")","_(argument_list | ())","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_(\"each\" | ())","_(element_modification | element_replaceable)","_(short_class_definition | component_clause1 | element_replaceable)","_(short_class_definition | component_clause1)","_(constraining_clause | ())","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_(\"initial\" | ())","_(some_equation \";\")*","_(statement \";\")*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_((\"else\" (some_equation \";\")*) | ())","_(\"elseif\" expression \"then\" (statement \";\")*)*","_((\"else\" (statement \";\")*) | ())","_(\",\" for_index)*","_((\"in\" expression) | ())","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | ((expression \":\" expression \":\" expression) | (expression \":\" expression)) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_((expression \":\" expression \":\" expression) | (expression \":\" expression))","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" (function_arguments | ()) \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" ((array_subscripts | (\".\" identifier)) | ())) | (\"[\" expression_list (\";\" expression_list)* \"]\") | (\"{\" array_arguments \"}\"))","_(function_arguments | ())","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_((array_subscripts | (\".\" identifier)) | ())","_(\";\" expression_list)*","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(\".\" identifier)*","_(\".\" identifier (array_subscripts | ()))*","_((identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*) | (\".\" identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") ((\",\" unsigned_integer) | ()) \")\"))","_(component_reference | \"time\")","_((\",\" unsigned_integer) | ())","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(expression_list | (expression \"for\" for_indices) | (function_partial_application ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" function_arguments_non_first) | ())","_((function_argument ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_(((\",\" array_arguments_non_first) | (\"for\" for_indices)) | ())","_((\",\" array_arguments_non_first) | ())","_((\",\" named_arguments) | ())","_(function_partial_application | expression)","_(named_arguments | ())","_(() | ((expression | ()) \",\" (expression | ()) (\",\" (expression | ()))*))","_(expression | ())","_(\",\" (expression | ()))*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","_((string_literal (\"+\" string_literal)*) | ())","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
-  typeof {
-    1003: (target) => `Empty array constructor '${target.text}' is not valid in Modelica.`,
-    2005: (target, startId, endId) =>
-      `Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,
-    4005: (target) => `Protected element '${target.text}' may not be modified from outside.`,
-    4006: (target) => `Element '${target.text}' is not allowed in function context with algorithm section.`,
-    4007: (target) =>
-      `Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,
-    4011: (target) =>
-      `Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,
-    4013: () => `Nested when statements are not allowed in Modelica.`,
-    4014: () =>
-      `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,
-    4017: () => `Equations are not allowed in records or connectors.`,
-    4018: (target) => `Illegal to instantiate partial class '${target.text}'.`,
-    4019: (target) => `Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,
-    4020: (target) =>
-      `The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,
-    4022: (target) => `Range of type enumeration '${target.text}' may not specify a step size.`,
-    4023: (target) => `connect equation '${target.text}' may not be used inside when-equations.`,
-    4024: (target) => `Connect equation '${target.text}' is not allowed in initial equation sections.`,
-    4026: (target) => `Trying to override final element '${target.text}' with modifier.`,
-    4032: (target) => `Invalid prefix '${target.text}' on formal parameter in function.`,
-    4033: () => `Function has more than one algorithm section or external declaration.`,
-    4036: (target) => `Variable '${target.text}' in package must be declared as constant.`,
-    4038: (target) => `Prefix '${target.text}' used outside connector declaration.`,
-    4042: (target) => `Constant '${target.text}' has no value.`,
-    4047: (target) =>
-      `Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,
-    4025: (target) =>
-      `connect equation '${target.text}' may not be used inside if-equations with non-parametric conditions.`,
-    4028: (target) => `Component '${target.text}' has partial type.`,
-    4048: (target) => `Expected '${target.text}' to be a component instance, but found class instead.`,
-    4051: (target) => `A class extending from builtin type '${target.text}' may not have other elements.`,
-    3001: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
-    3001: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
-    3009: (target) => `Array index '${target.text}' has invalid type: expected Integer or Boolean.`,
-    4003: (target) =>
-      `Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,
-    3001: (target) => `Array element type mismatch in '${target.text}'.`,
-    5001: (target) => `Type mismatch in equation '${target.text}'.`,
-    5005: (target) => `Division by literal zero in '${target.text}'.`,
-    5006: (target) => `Type mismatch in assignment statement '${target.text}'.`,
-    5008: (target) => `Trying to assign to constant component '${target.text}'.`,
-    5009: (target) => `Trying to assign to input component '${target.text}'.`,
-    5013: (target) => `Operand '${target.text}' is not a stream variable.`,
-    5007: (target) => `Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,
-    3010: (target) => `Unit mismatch in equation '${target.text}'.`,
-    3010: (target) => `Unit mismatch in component binding '${target.text}'.`,
-    2002: (target) => `Variable '${target.text}' not found in scope.`,
-    2001: (target) => `Variable '${target.text}' not found in scope.`,
-    2003: (target) => `Class or type '${target.text}' not found in scope.`,
-    4001: (target) => `Extends cycle detected for '${target.text}'.`,
-    4002: (target) => `Duplicate modification of element '${target.text}'.`,
-    4004: (target, eqCount, varCount) =>
-      `Model '${target.name || target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,
-    4027: (target) =>
-      `Component '${target.text}' of variability parameter has binding of higher continuous variability.`,
-    4030: (target) => `Modifier found on outer element '${target.text}'.`,
-    4034: (target) => `Base class '${target.text}' in extends is replaceable.`,
-    4043: (target) => `Component '${target.text}' of variability constant has binding of higher variability.`,
-    4044: (target) => `Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,
-    5010: () => `The same variables must be solved in elsewhen clause as in the when clause.`,
-    4039: (target) =>
-      `Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,
-    4045: (target, typeName) => `Modified element '${target.text}' not found in class '${typeName.text}'.`,
-    5004: (target, lhsFlows, rhsFlows) =>
-      `Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,
-    4037: (target) => `Invalid variability prefix '${target.text}' on connector.`,
-    4046: (target) => `Constant declaration '${target.text}' must be fixed.`,
-    2000: (target) => `No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,
-    6001: (target) => `Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,
-    6002: (target) => `Sample factor '${target.text}' must be a positive non-zero integer.`,
-    6003: (target) => `previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,
-    6004: () => `hold() operator cannot be called in continuous equation section without boundary causality.`,
-    6010: (target) => `More than one state marked as initialState in state machine '${target.name}'.`,
-    6020: (target) => `Pure function cannot call impure function '${target.text}'.`,
-    6021: (target) => `Impure function '${target.text}' may only be called in algorithm sections or when equations.`,
-    6040: (target) => `Break connection '${target.text}' does not exist in inherited base classes.`,
-  } !== "undefined"
-    ? {
-        1003: (target) => `Empty array constructor '${target.text}' is not valid in Modelica.`,
-        2005: (target, startId, endId) =>
-          `Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,
-        4005: (target) => `Protected element '${target.text}' may not be modified from outside.`,
-        4006: (target) => `Element '${target.text}' is not allowed in function context with algorithm section.`,
-        4007: (target) =>
-          `Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,
-        4011: (target) =>
-          `Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,
-        4013: () => `Nested when statements are not allowed in Modelica.`,
-        4014: () =>
-          `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,
-        4017: () => `Equations are not allowed in records or connectors.`,
-        4018: (target) => `Illegal to instantiate partial class '${target.text}'.`,
-        4019: (target) => `Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,
-        4020: (target) =>
-          `The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,
-        4022: (target) => `Range of type enumeration '${target.text}' may not specify a step size.`,
-        4023: (target) => `connect equation '${target.text}' may not be used inside when-equations.`,
-        4024: (target) => `Connect equation '${target.text}' is not allowed in initial equation sections.`,
-        4026: (target) => `Trying to override final element '${target.text}' with modifier.`,
-        4032: (target) => `Invalid prefix '${target.text}' on formal parameter in function.`,
-        4033: () => `Function has more than one algorithm section or external declaration.`,
-        4036: (target) => `Variable '${target.text}' in package must be declared as constant.`,
-        4038: (target) => `Prefix '${target.text}' used outside connector declaration.`,
-        4042: (target) => `Constant '${target.text}' has no value.`,
-        4047: (target) =>
-          `Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,
-        4025: (target) =>
-          `connect equation '${target.text}' may not be used inside if-equations with non-parametric conditions.`,
-        4028: (target) => `Component '${target.text}' has partial type.`,
-        4048: (target) => `Expected '${target.text}' to be a component instance, but found class instead.`,
-        4051: (target) => `A class extending from builtin type '${target.text}' may not have other elements.`,
-        3001: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
-        3001: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
-        3009: (target) => `Array index '${target.text}' has invalid type: expected Integer or Boolean.`,
-        4003: (target) =>
-          `Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,
-        3001: (target) => `Array element type mismatch in '${target.text}'.`,
-        5001: (target) => `Type mismatch in equation '${target.text}'.`,
-        5005: (target) => `Division by literal zero in '${target.text}'.`,
-        5006: (target) => `Type mismatch in assignment statement '${target.text}'.`,
-        5008: (target) => `Trying to assign to constant component '${target.text}'.`,
-        5009: (target) => `Trying to assign to input component '${target.text}'.`,
-        5013: (target) => `Operand '${target.text}' is not a stream variable.`,
-        5007: (target) => `Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,
-        3010: (target) => `Unit mismatch in equation '${target.text}'.`,
-        3010: (target) => `Unit mismatch in component binding '${target.text}'.`,
-        2002: (target) => `Variable '${target.text}' not found in scope.`,
-        2001: (target) => `Variable '${target.text}' not found in scope.`,
-        2003: (target) => `Class or type '${target.text}' not found in scope.`,
-        4001: (target) => `Extends cycle detected for '${target.text}'.`,
-        4002: (target) => `Duplicate modification of element '${target.text}'.`,
-        4004: (target, eqCount, varCount) =>
-          `Model '${target.name || target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,
-        4027: (target) =>
-          `Component '${target.text}' of variability parameter has binding of higher continuous variability.`,
-        4030: (target) => `Modifier found on outer element '${target.text}'.`,
-        4034: (target) => `Base class '${target.text}' in extends is replaceable.`,
-        4043: (target) => `Component '${target.text}' of variability constant has binding of higher variability.`,
-        4044: (target) =>
-          `Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,
-        5010: () => `The same variables must be solved in elsewhen clause as in the when clause.`,
-        4039: (target) =>
-          `Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,
-        4045: (target, typeName) => `Modified element '${target.text}' not found in class '${typeName.text}'.`,
-        5004: (target, lhsFlows, rhsFlows) =>
-          `Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,
-        4037: (target) => `Invalid variability prefix '${target.text}' on connector.`,
-        4046: (target) => `Constant declaration '${target.text}' must be fixed.`,
-        2000: (target) => `No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,
-        6001: (target) => `Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,
-        6002: (target) => `Sample factor '${target.text}' must be a positive non-zero integer.`,
-        6003: (target) =>
-          `previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,
-        6004: () => `hold() operator cannot be called in continuous equation section without boundary causality.`,
-        6010: (target) => `More than one state marked as initialState in state machine '${target.name}'.`,
-        6020: (target) => `Pure function cannot call impure function '${target.text}'.`,
-        6021: (target) =>
-          `Impure function '${target.text}' may only be called in algorithm sections or when equations.`,
-        6040: (target) => `Break connection '${target.text}' does not exist in inherited base classes.`,
-      }
+  typeof {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed in Modelica.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect equation '${target.text}' may not be used inside when-equations.`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect equation '${target.text}' may not be used inside if-equations with non-parametric conditions.`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3001": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`} !== "undefined"
+    ? {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed in Modelica.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect equation '${target.text}' may not be used inside when-equations.`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect equation '${target.text}' may not be used inside if-equations with non-parametric conditions.`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3001": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`}
     : {};
 export const LINT_SEVERITIES =
-  typeof {
-    1003: 1,
-    2005: 1,
-    4005: 1,
-    4006: 1,
-    4007: 2,
-    4011: 1,
-    4013: 1,
-    4014: 1,
-    4017: 1,
-    4018: 1,
-    4019: 1,
-    4020: 1,
-    4022: 1,
-    4023: 1,
-    4024: 1,
-    4026: 1,
-    4032: 1,
-    4033: 1,
-    4036: 1,
-    4038: 2,
-    4042: 1,
-    4047: 1,
-    4025: 1,
-    4028: 1,
-    4048: 1,
-    4051: 1,
-    3001: 1,
-    3001: 1,
-    3009: 1,
-    4003: 1,
-    3001: 1,
-    5001: 1,
-    5005: 1,
-    5006: 1,
-    5008: 1,
-    5009: 1,
-    5013: 1,
-    5007: 1,
-    3010: 2,
-    3010: 2,
-    2002: 1,
-    2001: 1,
-    2003: 1,
-    4001: 1,
-    4002: 1,
-    4004: 2,
-    4027: 1,
-    4030: 1,
-    4034: 1,
-    4043: 1,
-    4044: 1,
-    5010: 1,
-    4039: 1,
-    4045: 1,
-    5004: 2,
-    4037: 1,
-    4046: 1,
-    2000: 2,
-    6001: 1,
-    6002: 1,
-    6003: 1,
-    6004: 1,
-    6010: 1,
-    6020: 1,
-    6021: 1,
-    6040: 1,
-  } !== "undefined"
-    ? {
-        1003: 1,
-        2005: 1,
-        4005: 1,
-        4006: 1,
-        4007: 2,
-        4011: 1,
-        4013: 1,
-        4014: 1,
-        4017: 1,
-        4018: 1,
-        4019: 1,
-        4020: 1,
-        4022: 1,
-        4023: 1,
-        4024: 1,
-        4026: 1,
-        4032: 1,
-        4033: 1,
-        4036: 1,
-        4038: 2,
-        4042: 1,
-        4047: 1,
-        4025: 1,
-        4028: 1,
-        4048: 1,
-        4051: 1,
-        3001: 1,
-        3001: 1,
-        3009: 1,
-        4003: 1,
-        3001: 1,
-        5001: 1,
-        5005: 1,
-        5006: 1,
-        5008: 1,
-        5009: 1,
-        5013: 1,
-        5007: 1,
-        3010: 2,
-        3010: 2,
-        2002: 1,
-        2001: 1,
-        2003: 1,
-        4001: 1,
-        4002: 1,
-        4004: 2,
-        4027: 1,
-        4030: 1,
-        4034: 1,
-        4043: 1,
-        4044: 1,
-        5010: 1,
-        4039: 1,
-        4045: 1,
-        5004: 2,
-        4037: 1,
-        4046: 1,
-        2000: 2,
-        6001: 1,
-        6002: 1,
-        6003: 1,
-        6004: 1,
-        6010: 1,
-        6020: 1,
-        6021: 1,
-        6040: 1,
-      }
+  typeof {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3001": 1,"3009": 1,"4003": 1,"3001": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1} !== "undefined"
+    ? {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3001": 1,"3009": 1,"4003": 1,"3001": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1}
     : {};
 export const LINT_CODES =
-  typeof {
-    1003: 1003,
-    2005: 2005,
-    4005: 4005,
-    4006: 4006,
-    4007: 4007,
-    4011: 4011,
-    4013: 4013,
-    4014: 4014,
-    4017: 4017,
-    4018: 4018,
-    4019: 4019,
-    4020: 4020,
-    4022: 4022,
-    4023: 4023,
-    4024: 4024,
-    4026: 4026,
-    4032: 4032,
-    4033: 4033,
-    4036: 4036,
-    4038: 4038,
-    4042: 4042,
-    4047: 4047,
-    4025: 4025,
-    4028: 4028,
-    4048: 4048,
-    4051: 4051,
-    3001: 3001,
-    3001: 3001,
-    3009: 3009,
-    4003: 4003,
-    3001: 3001,
-    5001: 5001,
-    5005: 5005,
-    5006: 5006,
-    5008: 5008,
-    5009: 5009,
-    5013: 5013,
-    5007: 5007,
-    3010: 3010,
-    3010: 3010,
-    2002: 2002,
-    2001: 2001,
-    2003: 2003,
-    4001: 4001,
-    4002: 4002,
-    4004: 4004,
-    4027: 4027,
-    4030: 4030,
-    4034: 4034,
-    4043: 4043,
-    4044: 4044,
-    5010: 5010,
-    4039: 4039,
-    4045: 4045,
-    5004: 5004,
-    4037: 4037,
-    4046: 4046,
-    2000: 0,
-    6001: 6001,
-    6002: 6002,
-    6003: 6003,
-    6004: 6004,
-    6010: 6010,
-    6020: 6020,
-    6021: 6021,
-    6040: 6040,
-  } !== "undefined"
-    ? {
-        1003: 1003,
-        2005: 2005,
-        4005: 4005,
-        4006: 4006,
-        4007: 4007,
-        4011: 4011,
-        4013: 4013,
-        4014: 4014,
-        4017: 4017,
-        4018: 4018,
-        4019: 4019,
-        4020: 4020,
-        4022: 4022,
-        4023: 4023,
-        4024: 4024,
-        4026: 4026,
-        4032: 4032,
-        4033: 4033,
-        4036: 4036,
-        4038: 4038,
-        4042: 4042,
-        4047: 4047,
-        4025: 4025,
-        4028: 4028,
-        4048: 4048,
-        4051: 4051,
-        3001: 3001,
-        3001: 3001,
-        3009: 3009,
-        4003: 4003,
-        3001: 3001,
-        5001: 5001,
-        5005: 5005,
-        5006: 5006,
-        5008: 5008,
-        5009: 5009,
-        5013: 5013,
-        5007: 5007,
-        3010: 3010,
-        3010: 3010,
-        2002: 2002,
-        2001: 2001,
-        2003: 2003,
-        4001: 4001,
-        4002: 4002,
-        4004: 4004,
-        4027: 4027,
-        4030: 4030,
-        4034: 4034,
-        4043: 4043,
-        4044: 4044,
-        5010: 5010,
-        4039: 4039,
-        4045: 4045,
-        5004: 5004,
-        4037: 4037,
-        4046: 4046,
-        2000: 0,
-        6001: 6001,
-        6002: 6002,
-        6003: 6003,
-        6004: 6004,
-        6010: 6010,
-        6020: 6020,
-        6021: 6021,
-        6040: 6040,
-      }
-    : {};
+  typeof {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3001": 3001,"3009": 3009,"4003": 4003,"3001": 3001,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} !== "undefined" ? {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3001": 3001,"3009": 3009,"4003": 4003,"3001": 3001,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
-  typeof {
-    class_specifier: 1,
-    name: 2,
-    end_name: 3,
-    type_specifier: 4,
-    type_prefix: 5,
-    declaration: 6,
-    lhs: 7,
-    rhs: 8,
-    target: 9,
-    value: 10,
-    args: 11,
-    left: 12,
-    right: 13,
-    operand: 14,
-  } !== "undefined"
-    ? {
-        class_specifier: 1,
-        name: 2,
-        end_name: 3,
-        type_specifier: 4,
-        type_prefix: 5,
-        declaration: 6,
-        lhs: 7,
-        rhs: 8,
-        target: 9,
-        value: 10,
-        args: 11,
-        left: 12,
-        right: 13,
-        operand: 14,
-      }
-    : {};
+  typeof {"class_specifier":1,"name":2,"end_name":3,"type_specifier":4,"type_prefix":5,"declaration":6,"lhs":7,"rhs":8,"target":9,"value":10,"args":11,"left":12,"right":13,"operand":14} !== "undefined" ? {"class_specifier":1,"name":2,"end_name":3,"type_specifier":4,"type_prefix":5,"declaration":6,"lhs":7,"rhs":8,"target":9,"value":10,"args":11,"left":12,"right":13,"operand":14} : {};
 export function createWasmImports(grammar, facade) {
   const hostQueries = grammar.hostQueries || {};
   const queryKeys = Object.keys(hostQueries);
@@ -2772,7 +292,10 @@ export function createWasmImports(grammar, facade) {
  */
 export class LspFacade {
   syntaxNames = SYNTAX_NAMES;
-  extrasRegex = new RegExp(EXTRAS_PATTERN !== "\\s" ? EXTRAS_PATTERN : "\\s", "u");
+  extrasRegex = new RegExp(
+    EXTRAS_PATTERN !== "\\s" ? EXTRAS_PATTERN : "\\s",
+    "u",
+  );
   wasmMemory;
   exports;
   lastAstRoot = 0;
@@ -2797,7 +320,9 @@ export class LspFacade {
     if (this.exports.graph_getStringLength && this.exports.graph_copyString) {
       const len = this.exports.graph_getStringLength(id);
       if (len === 0) return "";
-      const bufPtr = this.exports.lsp_getBinaryBuffer ? this.exports.lsp_getBinaryBuffer() : 0;
+      const bufPtr = this.exports.lsp_getBinaryBuffer
+        ? this.exports.lsp_getBinaryBuffer()
+        : 0;
       if (bufPtr === 0) return "";
       this.exports.graph_copyString(id, bufPtr);
       const u8 = new Uint8Array(len);
@@ -2815,14 +340,17 @@ export class LspFacade {
   currentInputLength = 0;
   constructor(wasmMemoryOrInstance, exports) {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
-      this.wasmMemory = wasmMemoryOrInstance.exports.memory || wasmMemoryOrInstance.memory;
+      this.wasmMemory =
+        wasmMemoryOrInstance.exports.memory || wasmMemoryOrInstance.memory;
       this.exports = wasmMemoryOrInstance.exports;
     } else if (exports) {
       this.wasmMemory = wasmMemoryOrInstance;
       this.exports = exports;
     } else if (
       wasmMemoryOrInstance &&
-      (wasmMemoryOrInstance.memory || wasmMemoryOrInstance.parse || wasmMemoryOrInstance.getInputBuffer)
+      (wasmMemoryOrInstance.memory ||
+        wasmMemoryOrInstance.parse ||
+        wasmMemoryOrInstance.getInputBuffer)
     ) {
       this.wasmMemory = wasmMemoryOrInstance.memory;
       this.exports = wasmMemoryOrInstance;
@@ -2847,7 +375,10 @@ export class LspFacade {
       }
       return this.lastAstRoot;
     }
-    if (typeof uriOrFileId === "string" && this.documentRoots.has(uriOrFileId)) {
+    if (
+      typeof uriOrFileId === "string" &&
+      this.documentRoots.has(uriOrFileId)
+    ) {
       return this.documentRoots.get(uriOrFileId);
     }
     return this.lastAstRoot;
@@ -2888,7 +419,8 @@ export class LspFacade {
    */
   getAllDocumentRoots() {
     const roots = Array.from(this.documentRoots.values()).filter((r) => r > 0);
-    if (roots.length === 0 && this.lastAstRoot > 0) roots.push(this.lastAstRoot);
+    if (roots.length === 0 && this.lastAstRoot > 0)
+      roots.push(this.lastAstRoot);
     return roots;
   }
   /**
@@ -2931,7 +463,13 @@ export class LspFacade {
         ? this.exports.lsp_getInputEncoding()
         : 1;
   }
-  setParserConfig(enableBranchA1, enableBranchB, enableBranchC, enableIslandMode = false, enableMultiFile = true) {
+  setParserConfig(
+    enableBranchA1,
+    enableBranchB,
+    enableBranchC,
+    enableIslandMode = false,
+    enableMultiFile = true,
+  ) {
     if (this.exports.configEnableBranchA1) {
       this.exports.configEnableBranchA1.value = enableBranchA1 ? 1 : 0;
     }
@@ -2957,7 +495,8 @@ export class LspFacade {
    * @param newTotalLength - The new total length of the document in UTF-16 characters.
    */
   parseIncremental(changeText, rangeOffset, rangeLength, newTotalLength, uri) {
-    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    const getInputBuf =
+      this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
     // Invalidate cached line starts on every edit.
     // The full rescan in getLineStarts() is O(N) but runs lazily once per edit.
@@ -2969,7 +508,8 @@ export class LspFacade {
     const prevAstRoot = this.getDocumentRoot(uri);
     // Fast path for empty input (e.g., clearing the editor)
     if (newTotalLength <= 0) {
-      if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+      if (this.exports.lsp_setInputEncoding)
+        this.exports.lsp_setInputEncoding(1);
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
@@ -2989,13 +529,19 @@ export class LspFacade {
     // and detach existing typed array views
     let oldSnapshot = null;
     if (oldTotalLength > 0) {
-      const oldView = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
+      const oldView = new Uint16Array(
+        this.wasmMemory.buffer,
+        oldTextPtr,
+        oldTotalLength,
+      );
       oldSnapshot = new Uint16Array(oldTotalLength);
       oldSnapshot.set(oldView);
     }
     const maxLen = Math.max(oldTotalLength, newTotalLength);
     const lenBytesAlloc = maxLen * 2;
-    const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytesAlloc) : oldTextPtr;
+    const textPtr = this.exports.ensureInputBuffer
+      ? this.exports.ensureInputBuffer(lenBytesAlloc)
+      : oldTextPtr;
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
     // If the buffer was reallocated, copy the snapshot into the new buffer
     if (oldTextPtr !== textPtr && oldSnapshot) {
@@ -3019,9 +565,11 @@ export class LspFacade {
     this._inputEncoding = 1;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
-    if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
+    if (this.exports.lsp_setInputLength)
+      this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
-    const preview = changeText.length > 30 ? changeText.substring(0, 30) + "..." : changeText;
+    const preview =
+      changeText.length > 30 ? changeText.substring(0, 30) + "..." : changeText;
     console.log(
       `[Bindings] parseIncremental START: changeText="${preview.replace(/\n/g, "\\n")}" (len ${changeText.length}), offset=${rangeOffset}, rangeLen=${rangeLength}, newTotalLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
     );
@@ -3029,15 +577,25 @@ export class LspFacade {
     let editOldEnd = (rangeOffset + rangeLength) * 2;
     let editNewEnd = (rangeOffset + changeText.length) * 2;
     let baseRoot = prevAstRoot;
-    if (baseRoot === 0 || (editStart === 0 && editOldEnd === 0 && editNewEnd === 0)) {
+    if (
+      baseRoot === 0 ||
+      (editStart === 0 && editOldEnd === 0 && editNewEnd === 0)
+    ) {
       baseRoot = 0; // Force full reparse internally if offsets are zeroed or initial parse
       editStart = 0;
       editOldEnd = 0;
       editNewEnd = 0;
     }
-    const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    let newAstRoot = this.exports.parse(baseRoot, editStart, editOldEnd, editNewEnd);
-    const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const _t0 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    let newAstRoot = this.exports.parse(
+      baseRoot,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+    );
+    const _t1 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
     console.log(
       `[Bindings] parseIncremental WASM parse finished in ${Math.round(_t1 - _t0)}ms -> newAstRoot=${newAstRoot}`,
     );
@@ -3046,11 +604,14 @@ export class LspFacade {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
       }
     }
-    const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const _t2 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
     console.log(
       `[Bindings] parseIncremental diff finished in ${Math.round(_t2 - _t1)}ms (total ${Math.round(_t2 - _t0)}ms)`,
     );
-    const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
+    const isCatastrophic = this.exports.lsp_isCatastrophicError
+      ? this.exports.lsp_isCatastrophicError()
+      : false;
     if (isCatastrophic) {
       this.lastAstRoot = 0;
       if (uri) this.setDocumentRoot(uri, 0);
@@ -3083,7 +644,8 @@ export class LspFacade {
    * and triggering a single reparse to minimize overhead.
    */
   parseIncrementalBatch(edits, newTotalLength, uri) {
-    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    const getInputBuf =
+      this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
     if (!edits || edits.length === 0) return this.getDocumentRoot(uri);
     this._cachedLineStarts = null;
@@ -3100,10 +662,14 @@ export class LspFacade {
       netDelta += edit.text.length - edit.rangeLength;
     }
     if (minOrigStart === Infinity) minOrigStart = 0;
-    const oldTotalLength = this.currentInputLength > 0 ? this.currentInputLength : newTotalLength - netDelta;
+    const oldTotalLength =
+      this.currentInputLength > 0
+        ? this.currentInputLength
+        : newTotalLength - netDelta;
     const prevAstRoot = this.getDocumentRoot(uri);
     if (newTotalLength <= 0) {
-      if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+      if (this.exports.lsp_setInputEncoding)
+        this.exports.lsp_setInputEncoding(1);
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
@@ -3123,13 +689,19 @@ export class LspFacade {
     const oldTextPtr = this.exports.getInputBuffer();
     let oldSnapshot = null;
     if (oldTotalLength > 0) {
-      const oldView = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
+      const oldView = new Uint16Array(
+        this.wasmMemory.buffer,
+        oldTextPtr,
+        oldTotalLength,
+      );
       oldSnapshot = new Uint16Array(oldTotalLength);
       oldSnapshot.set(oldView);
     }
     const maxLen = Math.max(oldTotalLength, newTotalLength);
     const lenBytesAlloc = maxLen * 2;
-    const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytesAlloc) : oldTextPtr;
+    const textPtr = this.exports.ensureInputBuffer
+      ? this.exports.ensureInputBuffer(lenBytesAlloc)
+      : oldTextPtr;
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
     if (oldTextPtr !== textPtr && oldSnapshot) {
       const safeCopyLen = Math.min(oldSnapshot.length, memArray16.length);
@@ -3139,7 +711,9 @@ export class LspFacade {
       `[Bindings] parseIncrementalBatch START: ${edits.length} edits, netDelta=${netDelta}, oldLen=${oldTotalLength}, newLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
     );
     // Sort edits in descending order so mutations at higher offsets do not shift lower offsets
-    const sortedEdits = edits.slice().sort((a, b) => b.rangeOffset - a.rangeOffset);
+    const sortedEdits = edits
+      .slice()
+      .sort((a, b) => b.rangeOffset - a.rangeOffset);
     let currentLen = oldTotalLength;
     for (const edit of sortedEdits) {
       if (edit.text.length !== edit.rangeLength) {
@@ -3162,22 +736,33 @@ export class LspFacade {
     this.currentInputLength = newTotalLength;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
-    if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
+    if (this.exports.lsp_setInputLength)
+      this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
     const maxNewEnd = maxOrigEnd + netDelta;
     let editStartByte = minOrigStart * 2;
     let editOldEndByte = maxOrigEnd * 2;
     let editNewEndByte = maxNewEnd * 2;
     let baseRoot = prevAstRoot;
-    if (baseRoot === 0 || (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)) {
+    if (
+      baseRoot === 0 ||
+      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+    ) {
       baseRoot = 0;
       editStartByte = 0;
       editOldEndByte = 0;
       editNewEndByte = 0;
     }
-    const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const newAstRoot = this.exports.parse(baseRoot, editStartByte, editOldEndByte, editNewEndByte);
-    const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const _t0 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    const newAstRoot = this.exports.parse(
+      baseRoot,
+      editStartByte,
+      editOldEndByte,
+      editNewEndByte,
+    );
+    const _t1 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
     console.log(
       `[Bindings] parseIncrementalBatch WASM parse finished in ${Math.round(_t1 - _t0)}ms -> newAstRoot=${newAstRoot}`,
     );
@@ -3186,11 +771,14 @@ export class LspFacade {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
       }
     }
-    const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const _t2 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
     console.log(
       `[Bindings] parseIncrementalBatch diff finished in ${Math.round(_t2 - _t1)}ms (total ${Math.round(_t2 - _t0)}ms)`,
     );
-    const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
+    const isCatastrophic = this.exports.lsp_isCatastrophicError
+      ? this.exports.lsp_isCatastrophicError()
+      : false;
     if (isCatastrophic) {
       this.lastAstRoot = 0;
       if (uri) this.setDocumentRoot(uri, 0);
@@ -3257,7 +845,9 @@ export class LspFacade {
     // [0..prefixEnd) unchanged + newLineStarts + [suffixStart..end) shifted by delta
     const beforeCount = prefixEnd;
     const afterCount = old.length - suffixStart;
-    const result = new Uint32Array(beforeCount + newLineStarts.length + afterCount);
+    const result = new Uint32Array(
+      beforeCount + newLineStarts.length + afterCount,
+    );
     // Copy unchanged prefix
     for (let i = 0; i < beforeCount; i++) {
       result[i] = old[i];
@@ -3286,14 +876,20 @@ export class LspFacade {
     if (encoding === 1) lenBytes *= 2;
     else if (encoding === 2) lenBytes *= 4;
     if (this.currentInputLength === 0) {
-      lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength ?? 0;
+      lenBytes =
+        this.exports.inputLength?.value ?? this.exports.inputLength ?? 0;
     }
     const starts = [0];
-    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    const getInputBuf =
+      this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     const inputBufPtr = getInputBuf ? getInputBuf() : 0;
     if (encoding === 0) {
       const lenChars = lenBytes;
-      const textBuffer = new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
+      const textBuffer = new Uint8Array(
+        this.wasmMemory.buffer,
+        inputBufPtr,
+        lenChars,
+      );
       for (let i = 0; i < lenChars; i++) {
         const c = textBuffer[i];
         if (c === 13) {
@@ -3309,7 +905,11 @@ export class LspFacade {
       }
     } else {
       const lenChars = lenBytes / 2;
-      const textBuffer = new Uint16Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
+      const textBuffer = new Uint16Array(
+        this.wasmMemory.buffer,
+        inputBufPtr,
+        lenChars,
+      );
       for (let i = 0; i < lenChars; i++) {
         const c = textBuffer[i];
         if (c === 13) {
@@ -3359,7 +959,9 @@ export class LspFacade {
     if (line < lineStarts.length) {
       return lineStarts[line] + character * charMult;
     }
-    return lineStarts.length > 0 ? lineStarts[lineStarts.length - 1] + character * charMult : character * charMult;
+    return lineStarts.length > 0
+      ? lineStarts[lineStarts.length - 1] + character * charMult
+      : character * charMult;
   }
   /**
    * Retrieves syntax and semantic diagnostics from the WASM parser.
@@ -3408,7 +1010,9 @@ export class LspFacade {
         const envHashPadding = memory[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 22;
         const isFat = ((envHashPadding >>> 23) & 1) === 1;
-        return isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        return isFat && this.exports.getFatPaddingPtr
+          ? memory[this.exports.getFatPaddingPtr(rawPad) / 4]
+          : rawPad;
       };
       const getNodeLen = (ptr) => {
         return memory[(ptr + 4) / 4] & 0x007fffff;
@@ -3470,15 +1074,21 @@ export class LspFacade {
       if (arg0 > 0 && offsetCache.has(arg0)) {
         startByte = offsetCache.get(arg0);
         const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
-        endByte = startByte + (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
+        endByte =
+          startByte +
+          (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
       }
       const rawLintId = lintId & 0x7fff;
-      let msg = lintId > 0 && lintId < 0x8000 ? `Linter Rule ${lintId}` : "Syntax Error";
+      let msg =
+        lintId > 0 && lintId < 0x8000
+          ? `Linter Rule ${lintId}`
+          : "Syntax Error";
       let severity = lintId > 0 && lintId < 0x8000 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
       let codeStr = lintId > 0 && lintId < 0x8000 ? lintId : undefined;
       if (rawLintId === 0) {
         if (arg0 === 1 && arg1 > 0) {
-          let symName = (this.syntaxNames && this.syntaxNames[arg1]) || `token_${arg1}`;
+          let symName =
+            (this.syntaxNames && this.syntaxNames[arg1]) || `token_${arg1}`;
           if (symName.startsWith("T_")) symName = symName.substring(2);
           if (symName.startsWith('"') && symName.endsWith('"')) {
             symName = symName.substring(1, symName.length - 1);
@@ -3509,10 +1119,21 @@ export class LspFacade {
                 ? this.exports.lsp_getInputBuffer()
                 : 0;
             let chars = "";
-            if (inputBufPtr > 0 && startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
+            if (
+              inputBufPtr > 0 &&
+              startByte < lenBytes &&
+              endByte <= lenBytes &&
+              startByte <= endByte
+            ) {
               const sliceLen = endByte - startByte;
               const slice = new Uint8Array(sliceLen);
-              slice.set(new Uint8Array(this.wasmMemory.buffer, inputBufPtr + startByte, sliceLen));
+              slice.set(
+                new Uint8Array(
+                  this.wasmMemory.buffer,
+                  inputBufPtr + startByte,
+                  sliceLen,
+                ),
+              );
               const encoding = this.getInputEncoding();
               if (encoding === 1) {
                 chars = new TextDecoder("utf-16le").decode(slice);
@@ -3530,16 +1151,24 @@ export class LspFacade {
                       ? this.exports.lsp_getInputBuffer()
                       : 0;
                   const totalLenBytes =
-                    this.exports.inputLength && typeof this.exports.inputLength.value === "number"
+                    this.exports.inputLength &&
+                    typeof this.exports.inputLength.value === "number"
                       ? this.exports.inputLength.value
                       : this.currentInputLength > 0
                         ? this.currentInputLength * 2
                         : 0;
                   const totalLenChars = Math.floor(totalLenBytes / 2);
-                  if (inputPtr > 0 && start >= 0 && end <= totalLenChars && start <= end) {
+                  if (
+                    inputPtr > 0 &&
+                    start >= 0 &&
+                    end <= totalLenChars &&
+                    start <= end
+                  ) {
                     const byteLen = (end - start) * 2;
                     const u8 = new Uint8Array(byteLen);
-                    u8.set(new Uint8Array(currentBuf, inputPtr + start * 2, byteLen));
+                    u8.set(
+                      new Uint8Array(currentBuf, inputPtr + start * 2, byteLen),
+                    );
                     return new TextDecoder("utf-16le").decode(u8);
                   }
                   return "";
@@ -3552,7 +1181,10 @@ export class LspFacade {
             const createContext = (nodePtr, fallbackText) => {
               let syntaxNode = null;
               let text = fallbackText;
-              const isAlignedAddress = nodePtr > 0 && nodePtr % 4 === 0 && nodePtr / 4 < memory.length - 4;
+              const isAlignedAddress =
+                nodePtr > 0 &&
+                nodePtr % 4 === 0 &&
+                nodePtr / 4 < memory.length - 4;
               if (isAlignedAddress && this.exports.getChildByFieldId) {
                 const typeFlags = memory[nodePtr / 4];
                 const typeId = typeFlags & 0x03ff;
@@ -3563,7 +1195,11 @@ export class LspFacade {
                   actualByteStart = offsetCache.get(nodePtr);
                 } else if (this.exports.lsp_findNodeOffset) {
                   try {
-                    const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr, 0);
+                    const offset = this.exports.lsp_findNodeOffset(
+                      astRoot,
+                      nodePtr,
+                      0,
+                    );
                     memory = new Uint32Array(this.wasmMemory.buffer);
                     if (offset >= 0) {
                       actualByteStart = offset;
@@ -3573,33 +1209,54 @@ export class LspFacade {
                   }
                 }
                 if (actualByteStart >= 0) {
-                  syntaxNode = new SyntaxNode(dummyTree, nodePtr, actualByteStart, null, 0, len, typeId);
-                  text = dummyTree.sourceCode.substring(syntaxNode.startIndex, syntaxNode.endIndex);
+                  syntaxNode = new SyntaxNode(
+                    dummyTree,
+                    nodePtr,
+                    actualByteStart,
+                    null,
+                    0,
+                    len,
+                    typeId,
+                  );
+                  text = dummyTree.sourceCode.substring(
+                    syntaxNode.startIndex,
+                    syntaxNode.endIndex,
+                  );
                 }
               }
               const isAstNode = syntaxNode !== null;
-              const nodeText = isAstNode ? text : fallbackText !== "" ? fallbackText : String(nodePtr);
+              const nodeText = isAstNode
+                ? text
+                : fallbackText !== ""
+                  ? fallbackText
+                  : String(nodePtr);
               return new Proxy(
                 {},
                 {
                   get: (target, prop) => {
                     if (prop === "text") return nodeText;
-                    if (prop === "field") return (name) => (syntaxNode ? syntaxNode.childText(name) : "");
+                    if (prop === "field")
+                      return (name) =>
+                        syntaxNode ? syntaxNode.childText(name) : "";
                     if (prop === "asNumber") return () => Number(nodePtr);
-                    if (prop === "asSymbol") return () => this.getStringFromPool(nodePtr) || String(nodePtr);
+                    if (prop === "asSymbol")
+                      return () =>
+                        this.getStringFromPool(nodePtr) || String(nodePtr);
                     if (prop === "toString") return () => nodeText;
                     if (prop === "valueOf") return () => Number(nodePtr);
                     if (prop === "fields") {
                       return new Proxy(
                         {},
                         {
-                          get: (_, fieldName) => (syntaxNode ? syntaxNode.childText(fieldName) : ""),
+                          get: (_, fieldName) =>
+                            syntaxNode ? syntaxNode.childText(fieldName) : "",
                         },
                       );
                     }
                     if (typeof prop === "symbol") {
                       if (prop === Symbol.toPrimitive) {
-                        return (hint) => (hint === "number" ? Number(nodePtr) : nodeText);
+                        return (hint) =>
+                          hint === "number" ? Number(nodePtr) : nodeText;
                       }
                       return undefined;
                     }
@@ -3636,7 +1293,11 @@ export class LspFacade {
           if (LINT_CODES[lintId.toString()] !== undefined) {
             codeStr = LINT_CODES[lintId.toString()];
           }
-        } else if (rawLintId < 1000 && this.syntaxNames && rawLintId < this.syntaxNames.length) {
+        } else if (
+          rawLintId < 1000 &&
+          this.syntaxNames &&
+          rawLintId < this.syntaxNames.length
+        ) {
           let name = this.syntaxNames[rawLintId];
           if (name && name.startsWith('"') && name.endsWith('"')) {
             name = name.slice(1, -1);
@@ -3686,7 +1347,8 @@ export class LspFacade {
       }
     }
     uniqueDiags.sort((a, b) => {
-      if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
+      if (a.range.start.line !== b.range.start.line)
+        return a.range.start.line - b.range.start.line;
       return a.range.start.character - b.range.start.character;
     });
     const mergedDiags = [];
@@ -3698,13 +1360,19 @@ export class LspFacade {
           (prev.endCharOffset !== undefined &&
             d.startCharOffset !== undefined &&
             (d.startCharOffset <= prev.endCharOffset ||
-              (isStartSameLine && d.startCharOffset <= prev.endCharOffset + 1))) ||
-          (isStartSameLine && prev.range.end.character + 1 >= d.range.start.character) ||
-          (prev.range.start.line <= d.range.start.line && prev.range.end.line >= d.range.start.line);
+              (isStartSameLine &&
+                d.startCharOffset <= prev.endCharOffset + 1))) ||
+          (isStartSameLine &&
+            prev.range.end.character + 1 >= d.range.start.character) ||
+          (prev.range.start.line <= d.range.start.line &&
+            prev.range.end.line >= d.range.start.line);
         if (isOverlapping && prev.code === undefined && d.code === undefined) {
           const prevIsSpecific =
-            prev.message.startsWith("Expected ") || prev.message.startsWith("Syntax Error: Missing ");
-          const dIsSpecific = d.message.startsWith("Expected ") || d.message.startsWith("Syntax Error: Missing ");
+            prev.message.startsWith("Expected ") ||
+            prev.message.startsWith("Syntax Error: Missing ");
+          const dIsSpecific =
+            d.message.startsWith("Expected ") ||
+            d.message.startsWith("Syntax Error: Missing ");
           const prevIsGeneric = prev.message === "Syntax Error";
           const dIsGeneric = d.message === "Syntax Error";
           if (prevIsGeneric && dIsSpecific) {
@@ -3719,8 +1387,14 @@ export class LspFacade {
             if (d.range.end.character > prev.range.end.character) {
               prev.range.end = d.range.end;
             }
-            if (prev.endCharOffset !== undefined && d.endCharOffset !== undefined) {
-              prev.endCharOffset = Math.max(prev.endCharOffset, d.endCharOffset);
+            if (
+              prev.endCharOffset !== undefined &&
+              d.endCharOffset !== undefined
+            ) {
+              prev.endCharOffset = Math.max(
+                prev.endCharOffset,
+                d.endCharOffset,
+              );
             }
             continue;
           }
@@ -3736,7 +1410,11 @@ export class LspFacade {
    * Array layout is: [lineDelta, charDelta, length, typeId] repeating.
    */
   getSemanticTokens(astRoot) {
-    if (!this.exports.lsp_semanticTokens_full || !this.exports.lsp_getBinaryBuffer) return new Uint32Array();
+    if (
+      !this.exports.lsp_semanticTokens_full ||
+      !this.exports.lsp_getBinaryBuffer
+    )
+      return new Uint32Array();
     const numElements = this.exports.lsp_semanticTokens_full(astRoot);
     if (numElements === 0) return new Uint32Array();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -3747,7 +1425,8 @@ export class LspFacade {
   }
   /** Retrieves a list of collapsable folding ranges from the parsed syntax tree. */
   getFoldingRanges(astRoot) {
-    if (!this.exports.lsp_getFoldingRanges || !this.exports.lsp_getBinaryBuffer) return [];
+    if (!this.exports.lsp_getFoldingRanges || !this.exports.lsp_getBinaryBuffer)
+      return [];
     const lineStarts = this.getLineStarts();
     const numElements = this.exports.lsp_getFoldingRanges(astRoot);
     const ranges = [];
@@ -3764,7 +1443,11 @@ export class LspFacade {
   }
   /** Extracts document symbols (e.g. classes, functions) for the document outline view. */
   getDocumentSymbols(astRoot) {
-    if (!this.exports.lsp_getDocumentSymbols || !this.exports.lsp_getBinaryBuffer) return [];
+    if (
+      !this.exports.lsp_getDocumentSymbols ||
+      !this.exports.lsp_getBinaryBuffer
+    )
+      return [];
     const lineStarts = this.getLineStarts();
     const numElements = this.exports.lsp_getDocumentSymbols(astRoot);
     const symbols = [];
@@ -3783,7 +1466,8 @@ export class LspFacade {
   }
   /** Locates the definition of the symbol at the given byte offset. */
   getDefinition(astRoot, targetOffset) {
-    if (!this.exports.lsp_getDefinition || !this.exports.lsp_getBinaryBuffer) return null;
+    if (!this.exports.lsp_getDefinition || !this.exports.lsp_getBinaryBuffer)
+      return null;
     const numElements = this.exports.lsp_getDefinition(astRoot, targetOffset);
     if (numElements < 2) return null;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -3803,7 +1487,8 @@ export class LspFacade {
   }
   /** Locates all references to the symbol at the given byte offset across registered workspace files. */
   getReferences(astRoot, targetOffset) {
-    if (!this.exports.lsp_getReferences || !this.exports.lsp_getBinaryBuffer) return [];
+    if (!this.exports.lsp_getReferences || !this.exports.lsp_getBinaryBuffer)
+      return [];
     const numElements = this.exports.lsp_getReferences(astRoot, targetOffset);
     const references = [];
     if (numElements === 0) return references;
@@ -3823,7 +1508,11 @@ export class LspFacade {
    * Inspects CST around cursorOffset and returns target expression and replacement range.
    */
   getCompletionContext(astRoot, cursorOffset) {
-    if (!this.exports.lsp_getCompletionContext || !this.exports.lsp_getBinaryBuffer) return null;
+    if (
+      !this.exports.lsp_getCompletionContext ||
+      !this.exports.lsp_getBinaryBuffer
+    )
+      return null;
     const count = this.exports.lsp_getCompletionContext(astRoot, cursorOffset);
     if (count < 4) return null;
     const dirPtr = this.exports.lsp_getBinaryBuffer();
@@ -3839,10 +1528,21 @@ export class LspFacade {
         ? this.exports.lsp_getInputBuffer()
         : 0;
     if (inputBufPtr > 0 && targetEnd > targetStart) {
-      const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
-      const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
-      const rawBytes = new Uint8Array(this.wasmMemory.buffer, inputBufPtr + targetStart, targetEnd - targetStart);
-      targetText = decoder.decode(new Uint8Array(rawBytes)).replace(/\0/g, "").trim();
+      const isUtf16 = this.getInputEncoding
+        ? this.getInputEncoding() === 1
+        : false;
+      const decoder = isUtf16
+        ? new TextDecoder("utf-16le")
+        : new TextDecoder("utf-8");
+      const rawBytes = new Uint8Array(
+        this.wasmMemory.buffer,
+        inputBufPtr + targetStart,
+        targetEnd - targetStart,
+      );
+      targetText = decoder
+        .decode(new Uint8Array(rawBytes))
+        .replace(/\0/g, "")
+        .trim();
     }
     return {
       hasTarget: true,
@@ -3874,9 +1574,15 @@ export class LspFacade {
         : Number(this.exports.inputLength) || 0
       : 0;
     const textBuffer =
-      inputBufPtr > 0 && lenBytes > 0 ? new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes) : null;
-    const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
-    const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
+      inputBufPtr > 0 && lenBytes > 0
+        ? new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes)
+        : null;
+    const isUtf16 = this.getInputEncoding
+      ? this.getInputEncoding() === 1
+      : false;
+    const decoder = isUtf16
+      ? new TextDecoder("utf-16le")
+      : new TextDecoder("utf-8");
     let offset = dirPtr >>> 2;
     for (let i = 0; i < numRecords; i++) {
       const kind = mem32[offset];
@@ -3893,11 +1599,23 @@ export class LspFacade {
         const rotation = mem32[offset + 9] | 0;
         const flags = mem32[offset + 12];
         let nodeText = "";
-        if (inputBufPtr > 0 && lenBytes > 0 && startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
+        if (
+          inputBufPtr > 0 &&
+          lenBytes > 0 &&
+          startByte < lenBytes &&
+          endByte <= lenBytes &&
+          startByte <= endByte
+        ) {
           try {
             const sliceLen = endByte - startByte;
             const slice = new Uint8Array(sliceLen);
-            slice.set(new Uint8Array(this.wasmMemory.buffer, inputBufPtr + startByte, sliceLen));
+            slice.set(
+              new Uint8Array(
+                this.wasmMemory.buffer,
+                inputBufPtr + startByte,
+                sliceLen,
+              ),
+            );
             nodeText = decoder.decode(slice);
           } catch (e) {}
         }
@@ -3969,21 +1687,30 @@ export class LspFacade {
         offset += 7;
       }
     }
-    const updatedLen = this.exports.lsp_applyDiagramEdits(actionPtr, actions.length);
+    const updatedLen = this.exports.lsp_applyDiagramEdits(
+      actionPtr,
+      actions.length,
+    );
     let updatedText = "";
     if (updatedLen > 0 && this.exports.lsp_getBinaryBuffer) {
       const dirPtr = this.exports.lsp_getBinaryBuffer();
       const mem8 = new Uint8Array(updatedLen);
       mem8.set(new Uint8Array(this.wasmMemory.buffer, dirPtr, updatedLen));
-      const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
-      const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
+      const isUtf16 = this.getInputEncoding
+        ? this.getInputEncoding() === 1
+        : false;
+      const decoder = isUtf16
+        ? new TextDecoder("utf-16le")
+        : new TextDecoder("utf-8");
       updatedText = decoder.decode(mem8);
     }
     return { text: updatedText, edits: [] };
   }
   /** Returns current allocated heap bytes in the WASM linear memory arena. */
   getMemoryUsage() {
-    return this.exports.arena_getMemoryUsage ? this.exports.arena_getMemoryUsage() : 0;
+    return this.exports.arena_getMemoryUsage
+      ? this.exports.arena_getMemoryUsage()
+      : 0;
   }
   /** Registers a document AST root for multi-file workspace LSP operations. */
   registerDocument(fileId, astRoot) {
@@ -4106,7 +1833,8 @@ export class LspFacade {
   }
   /** Finds all stub symbols matching a name string across the workspace. */
   findStubsByName(name) {
-    if (!this.exports.stub_findByName || !this.exports.stub_getBinaryBuffer) return [];
+    if (!this.exports.stub_findByName || !this.exports.stub_getBinaryBuffer)
+      return [];
     const hash = this.hashString(name);
     const numStubs = this.exports.stub_findByName(hash);
     if (numStubs === 0) return [];
@@ -4133,9 +1861,16 @@ export class LspFacade {
   }
   /** Finds all stub symbols matching a name string using WASM SIMD 128-bit vector search. */
   findStubsByNameSIMD(name, preferredFileId = 0) {
-    if (!this.exports.stub_findByNameHashSIMD || !this.exports.stub_getBinaryBuffer) return [];
+    if (
+      !this.exports.stub_findByNameHashSIMD ||
+      !this.exports.stub_getBinaryBuffer
+    )
+      return [];
     const hash = this.hashString(name);
-    const numStubs = this.exports.stub_findByNameHashSIMD(hash, preferredFileId);
+    const numStubs = this.exports.stub_findByNameHashSIMD(
+      hash,
+      preferredFileId,
+    );
     if (numStubs === 0) return [];
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.stub_getBinaryBuffer();
@@ -4160,7 +1895,8 @@ export class LspFacade {
   }
   /** Queries all symbols for a given fileId (fast LSP document symbol outline). */
   getFileSymbols(fileId) {
-    if (!this.exports.stub_getFileSymbols || !this.exports.stub_getBinaryBuffer) return [];
+    if (!this.exports.stub_getFileSymbols || !this.exports.stub_getBinaryBuffer)
+      return [];
     const numStubs = this.exports.stub_getFileSymbols(fileId);
     if (numStubs === 0) return [];
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -4186,7 +1922,8 @@ export class LspFacade {
   }
   /** Queries child stub symbols for a parent symbol ID. */
   getStubChildren(parentSymbolId) {
-    if (!this.exports.stub_getChildren || !this.exports.stub_getBinaryBuffer) return [];
+    if (!this.exports.stub_getChildren || !this.exports.stub_getBinaryBuffer)
+      return [];
     const numStubs = this.exports.stub_getChildren(parentSymbolId);
     if (numStubs === 0) return [];
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -4227,7 +1964,8 @@ export class LspFacade {
   }
   /** Imports Tier 1 stub store and string arena from a binary snapshot. */
   importStubBinary(buffer) {
-    if (!this.exports.stub_importBinary || buffer.byteLength === 0) return false;
+    if (!this.exports.stub_importBinary || buffer.byteLength === 0)
+      return false;
     const ptr = this.allocMem(buffer.byteLength);
     if (ptr === 0) return false;
     const mem8 = new Uint8Array(this.wasmMemory.buffer);
@@ -4251,7 +1989,9 @@ export class LspFacade {
   }
   /** Indexes all stubs into the Dex-style trigram inverted search map. */
   indexTrigrams() {
-    return this.exports.trigram_indexAllStubs ? this.exports.trigram_indexAllStubs() : 0;
+    return this.exports.trigram_indexAllStubs
+      ? this.exports.trigram_indexAllStubs()
+      : 0;
   }
   /** Dex-style Sub-Millisecond Fuzzy Symbol Search across all indexed stubs in the workspace. */
   fuzzyFindSymbols(query, maxResults = 50) {
@@ -4260,7 +2000,9 @@ export class LspFacade {
     }
     const queryHandle = this.allocStringInArena(query);
     const count = this.exports.trigram_fuzzyFind(queryHandle, maxResults);
-    const dirPtr = this.exports.stub_getBinaryBuffer ? this.exports.stub_getBinaryBuffer() : 0;
+    const dirPtr = this.exports.stub_getBinaryBuffer
+      ? this.exports.stub_getBinaryBuffer()
+      : 0;
     const memBuffer = this.wasmMemory
       ? this.wasmMemory.buffer
       : this.exports.memory
@@ -4308,7 +2050,9 @@ export class LspFacade {
   }
   /** Gets the cached result value of a query node. */
   queryGetValue(queryNodePtr) {
-    return this.exports.query_getValue ? this.exports.query_getValue(queryNodePtr) : 0;
+    return this.exports.query_getValue
+      ? this.exports.query_getValue(queryNodePtr)
+      : 0;
   }
   /** Sets the cached result value of a query node. */
   querySetValue(queryNodePtr, val) {
@@ -4318,7 +2062,9 @@ export class LspFacade {
   }
   /** Gets the cached revision of a query node. */
   queryGetRevision(queryNodePtr) {
-    return this.exports.query_getRevision ? this.exports.query_getRevision(queryNodePtr) : 0;
+    return this.exports.query_getRevision
+      ? this.exports.query_getRevision(queryNodePtr)
+      : 0;
   }
   /** Sets the cached revision of a query node. */
   querySetRevision(queryNodePtr, rev) {
@@ -4328,11 +2074,15 @@ export class LspFacade {
   }
   /** Gets the cached result Merkle low 32-bits. */
   queryGetMerkleLow(queryNodePtr) {
-    return this.exports.query_getMerkleLow ? this.exports.query_getMerkleLow(queryNodePtr) >>> 0 : 0;
+    return this.exports.query_getMerkleLow
+      ? this.exports.query_getMerkleLow(queryNodePtr) >>> 0
+      : 0;
   }
   /** Gets the cached result Merkle high 32-bits. */
   queryGetMerkleHigh(queryNodePtr) {
-    return this.exports.query_getMerkleHigh ? this.exports.query_getMerkleHigh(queryNodePtr) >>> 0 : 0;
+    return this.exports.query_getMerkleHigh
+      ? this.exports.query_getMerkleHigh(queryNodePtr) >>> 0
+      : 0;
   }
   /** Sets the cached result Merkle 64-bit hash. */
   querySetMerkle(queryNodePtr, low, high) {
@@ -4348,7 +2098,9 @@ export class LspFacade {
   }
   /** Gets the global database revision counter. */
   queryGetGlobalRevision() {
-    return this.exports.query_getGlobalRevision ? this.exports.query_getGlobalRevision() : 0;
+    return this.exports.query_getGlobalRevision
+      ? this.exports.query_getGlobalRevision()
+      : 0;
   }
   /** Increments the global database revision counter. */
   queryIncrementRevision() {
@@ -4371,11 +2123,16 @@ export class LspFacade {
   /** Performs O(1) Merkle backdating on a query result. Returns true if semantically identical. */
   salsaBackdateQuery(nodePtr, newMerkleLow, newMerkleHigh) {
     if (!this.exports.salsa_backdateQuery) return false;
-    return this.exports.salsa_backdateQuery(nodePtr, newMerkleLow, newMerkleHigh) === 1;
+    return (
+      this.exports.salsa_backdateQuery(nodePtr, newMerkleLow, newMerkleHigh) ===
+      1
+    );
   }
   /** Gets the version counter for a language in the polyglot arena. */
   polyglotGetLangVersion(arenaPtr, langId) {
-    return this.exports.polyglot_getLangVersion ? this.exports.polyglot_getLangVersion(arenaPtr, langId) : 0;
+    return this.exports.polyglot_getLangVersion
+      ? this.exports.polyglot_getLangVersion(arenaPtr, langId)
+      : 0;
   }
   /** Increments the version counter for a language in the polyglot arena. */
   polyglotIncrementLangVersion(arenaPtr, langId) {
@@ -4386,7 +2143,13 @@ export class LspFacade {
   /** Checks if a language version has changed since snapshotVersion. */
   polyglotHasLangChanged(arenaPtr, langId, snapshotVersion) {
     if (!this.exports.polyglot_hasLangChanged) return true;
-    return this.exports.polyglot_hasLangChanged(arenaPtr, langId, snapshotVersion) === 1;
+    return (
+      this.exports.polyglot_hasLangChanged(
+        arenaPtr,
+        langId,
+        snapshotVersion,
+      ) === 1
+    );
   }
   /** Returns the number of declarative MCP tools registered in WASM. */
   mcpGetToolCount() {
@@ -4394,19 +2157,27 @@ export class LspFacade {
   }
   /** Returns the DJB2 name hash for an MCP tool index. */
   mcpGetToolNameHash(index) {
-    return this.exports.mcp_getToolNameHash ? this.exports.mcp_getToolNameHash(index) : 0;
+    return this.exports.mcp_getToolNameHash
+      ? this.exports.mcp_getToolNameHash(index)
+      : 0;
   }
   /** Dispatches an MCP tool call directly in WASM linear memory. */
   mcpDispatchTool(toolIndex, arg1 = 0, arg2 = 0, arg3 = 0) {
-    return this.exports.mcp_dispatchTool ? this.exports.mcp_dispatchTool(toolIndex, arg1, arg2, arg3) : 0;
+    return this.exports.mcp_dispatchTool
+      ? this.exports.mcp_dispatchTool(toolIndex, arg1, arg2, arg3)
+      : 0;
   }
   /** Returns the pointer to the MCP result output buffer in WASM linear memory. */
   mcpGetOutputBuffer() {
-    return this.exports.mcp_getOutputBuffer ? this.exports.mcp_getOutputBuffer() : 0;
+    return this.exports.mcp_getOutputBuffer
+      ? this.exports.mcp_getOutputBuffer()
+      : 0;
   }
   /** Returns the length of the MCP result output buffer in bytes. */
   mcpGetOutputLength() {
-    return this.exports.mcp_getOutputLength ? this.exports.mcp_getOutputLength() : 0;
+    return this.exports.mcp_getOutputLength
+      ? this.exports.mcp_getOutputLength()
+      : 0;
   }
   /** Reads the MCP output buffer as a UTF-8 string. */
   mcpGetOutputText() {
@@ -4417,12 +2188,43 @@ export class LspFacade {
     return new TextDecoder().decode(bytes);
   }
   /** Adds an OWL 2 axiom to the indexed WASM ontology store. */
-  addOntologyAxiom(axiomType, sourceLangId, subject, predicate = "", object = "", flags = 0, extra = 0) {
+  addOntologyAxiom(
+    axiomType,
+    sourceLangId,
+    subject,
+    predicate = "",
+    object = "",
+    flags = 0,
+    extra = 0,
+  ) {
     if (!this.exports.ontology_addAxiom) return 0;
-    const sHash = typeof subject === "number" ? subject : subject ? this.hashString(subject) : 0;
-    const pHash = typeof predicate === "number" ? predicate : predicate ? this.hashString(predicate) : 0;
-    const oHash = typeof object === "number" ? object : object ? this.hashString(object) : 0;
-    return this.exports.ontology_addAxiom(axiomType, sourceLangId, sHash, pHash, oHash, flags, extra);
+    const sHash =
+      typeof subject === "number"
+        ? subject
+        : subject
+          ? this.hashString(subject)
+          : 0;
+    const pHash =
+      typeof predicate === "number"
+        ? predicate
+        : predicate
+          ? this.hashString(predicate)
+          : 0;
+    const oHash =
+      typeof object === "number"
+        ? object
+        : object
+          ? this.hashString(object)
+          : 0;
+    return this.exports.ontology_addAxiom(
+      axiomType,
+      sourceLangId,
+      sHash,
+      pHash,
+      oHash,
+      flags,
+      extra,
+    );
   }
   /** Evaluates transitive SubClassOf subsumption directly in WASM memory. */
   isSubClassOf(subClass, superClass) {
@@ -4447,7 +2249,11 @@ export class LspFacade {
   }
   /** Computes the transitive closure of reachable nodes along a property from a source individual. */
   getTransitiveClosure(property, source) {
-    if (!this.exports.ontology_getTransitiveClosure || !this.exports.ontology_getQueryBuffer) return [];
+    if (
+      !this.exports.ontology_getTransitiveClosure ||
+      !this.exports.ontology_getQueryBuffer
+    )
+      return [];
     const pHash = property ? this.hashString(property) : 0xffffffff;
     const sHash = this.hashString(source);
     const count = this.exports.ontology_getTransitiveClosure(pHash, sHash);
@@ -4462,12 +2268,18 @@ export class LspFacade {
   }
   /** Computes the transitive closure with traversal path edges. */
   getTransitiveClosureWithPath(property, source) {
-    if (!this.exports.ontology_getTransitiveClosureWithPath || !this.exports.ontology_getQueryBuffer) {
+    if (
+      !this.exports.ontology_getTransitiveClosureWithPath ||
+      !this.exports.ontology_getQueryBuffer
+    ) {
       return { reachable: [], path: [] };
     }
     const pHash = property ? this.hashString(property) : 0xffffffff;
     const sHash = this.hashString(source);
-    const count = this.exports.ontology_getTransitiveClosureWithPath(pHash, sHash);
+    const count = this.exports.ontology_getTransitiveClosureWithPath(
+      pHash,
+      sHash,
+    );
     if (count === 0) return { reachable: [], path: [] };
     const dirPtr = this.exports.ontology_getQueryBuffer();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -4488,7 +2300,11 @@ export class LspFacade {
   }
   /** Explains why a subsumption holds by returning the chain of justifying axioms. */
   explainSubsumption(subClass, superClass) {
-    if (!this.exports.ontology_explainSubsumption || !this.exports.ontology_getQueryBuffer) return [];
+    if (
+      !this.exports.ontology_explainSubsumption ||
+      !this.exports.ontology_getQueryBuffer
+    )
+      return [];
     const subHash = this.hashString(subClass);
     const superHash = this.hashString(superClass);
     const count = this.exports.ontology_explainSubsumption(subHash, superHash);
@@ -4512,7 +2328,10 @@ export class LspFacade {
   }
   /** Audits global ontology consistency, returning conflicting axioms if inconsistent. */
   checkConsistency() {
-    if (!this.exports.ontology_checkConsistency || !this.exports.ontology_getQueryBuffer) {
+    if (
+      !this.exports.ontology_checkConsistency ||
+      !this.exports.ontology_getQueryBuffer
+    ) {
       return { isConsistent: true, conflictingAxioms: [] };
     }
     const count = this.exports.ontology_checkConsistency();
@@ -4540,7 +2359,10 @@ export class LspFacade {
   }
   /** Classifies an individual, returning direct types and all transitive types. */
   classifyIndividual(individual) {
-    if (!this.exports.ontology_classifyIndividual || !this.exports.ontology_getQueryBuffer) {
+    if (
+      !this.exports.ontology_classifyIndividual ||
+      !this.exports.ontology_getQueryBuffer
+    ) {
       return { directTypes: [], allTypes: [] };
     }
     const indHash = this.hashString(individual);
@@ -4563,7 +2385,11 @@ export class LspFacade {
   }
   /** Returns all taxonomy nodes from the ontology. */
   getTaxonomy() {
-    if (!this.exports.ontology_getTaxonomy || !this.exports.ontology_getQueryBuffer) return [];
+    if (
+      !this.exports.ontology_getTaxonomy ||
+      !this.exports.ontology_getQueryBuffer
+    )
+      return [];
     const classCount = this.exports.ontology_getTaxonomy();
     if (classCount === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
@@ -4575,13 +2401,15 @@ export class LspFacade {
       const classHash = mem32[offset++];
       const superCount = mem32[offset++];
       const directSuperClasses = [];
-      for (let s = 0; s < superCount; s++) directSuperClasses.push(mem32[offset++]);
+      for (let s = 0; s < superCount; s++)
+        directSuperClasses.push(mem32[offset++]);
       const subCount = mem32[offset++];
       const directSubClasses = [];
       for (let s = 0; s < subCount; s++) directSubClasses.push(mem32[offset++]);
       const equivCount = mem32[offset++];
       const equivalentClasses = [];
-      for (let e = 0; e < equivCount; e++) equivalentClasses.push(mem32[offset++]);
+      for (let e = 0; e < equivCount; e++)
+        equivalentClasses.push(mem32[offset++]);
       nodes.push({
         classHash,
         directSuperClasses,
@@ -4596,12 +2424,26 @@ export class LspFacade {
       this.exports.ontology_computeIntervalIndex();
     }
   }
-  evaluateOntologyPropertyPath(propertyName, pathOp, stepPropertyName2, sourceName) {
-    if (!this.exports.ontology_evaluatePropertyPath || !this.exports.ontology_getQueryBuffer) return [];
+  evaluateOntologyPropertyPath(
+    propertyName,
+    pathOp,
+    stepPropertyName2,
+    sourceName,
+  ) {
+    if (
+      !this.exports.ontology_evaluatePropertyPath ||
+      !this.exports.ontology_getQueryBuffer
+    )
+      return [];
     const pHash = propertyName ? this.hashString(propertyName) : 0;
     const p2Hash = stepPropertyName2 ? this.hashString(stepPropertyName2) : 0;
     const sHash = sourceName ? this.hashString(sourceName) : 0;
-    const count = this.exports.ontology_evaluatePropertyPath(pHash, pathOp, p2Hash, sHash);
+    const count = this.exports.ontology_evaluatePropertyPath(
+      pHash,
+      pathOp,
+      p2Hash,
+      sHash,
+    );
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -4619,10 +2461,20 @@ export class LspFacade {
     return 0;
   }
   /** Queries indexed triples via SPO / POS / OSP pattern matching in WASM memory. */
-  queryOntologyTriples(subjectPattern = "", predicatePattern = "", objectPattern = "") {
-    if (!this.exports.ontology_queryTriples || !this.exports.ontology_getQueryBuffer) return [];
+  queryOntologyTriples(
+    subjectPattern = "",
+    predicatePattern = "",
+    objectPattern = "",
+  ) {
+    if (
+      !this.exports.ontology_queryTriples ||
+      !this.exports.ontology_getQueryBuffer
+    )
+      return [];
     const sPat = subjectPattern ? this.hashString(subjectPattern) : 0xffffffff;
-    const pPat = predicatePattern ? this.hashString(predicatePattern) : 0xffffffff;
+    const pPat = predicatePattern
+      ? this.hashString(predicatePattern)
+      : 0xffffffff;
     const oPat = objectPattern ? this.hashString(objectPattern) : 0xffffffff;
     const count = this.exports.ontology_queryTriples(sPat, pPat, oPat);
     if (count === 0) return [];
@@ -4645,11 +2497,15 @@ export class LspFacade {
   }
   /** Returns total asserted OWL 2 axioms in the store. */
   getOntologyAxiomCount() {
-    return this.exports.ontology_getAxiomCount ? this.exports.ontology_getAxiomCount() : 0;
+    return this.exports.ontology_getAxiomCount
+      ? this.exports.ontology_getAxiomCount()
+      : 0;
   }
   /** Retracts an axiom by ID in WASM memory using DRed over-deletion and rederivation. */
   retractOntologyAxiom(axiomId) {
-    return this.exports.ontology_retractAxiom ? this.exports.ontology_retractAxiom(axiomId) : 0;
+    return this.exports.ontology_retractAxiom
+      ? this.exports.ontology_retractAxiom(axiomId)
+      : 0;
   }
   /** Applies an incremental delta of additions and retractions in WASM linear memory. */
   applyOntologyDelta(adds, retractions) {
@@ -4659,7 +2515,8 @@ export class LspFacade {
     const addBuffer = new Uint32Array(addCount * 6);
     for (let i = 0; i < addCount; i++) {
       const a = adds[i];
-      const typeAndLang = (a.axiomType & 0xffff) | (((a.sourceLangId || 1) & 0xffff) << 16);
+      const typeAndLang =
+        (a.axiomType & 0xffff) | (((a.sourceLangId || 1) & 0xffff) << 16);
       addBuffer[i * 6 + 0] = typeAndLang;
       addBuffer[i * 6 + 1] = a.subject ? this.hashString(a.subject) : 0;
       addBuffer[i * 6 + 2] = a.predicate ? this.hashString(a.predicate) : 0;
@@ -4677,23 +2534,42 @@ export class LspFacade {
       retBuffer[i * 6 + 4] = 0;
       retBuffer[i * 6 + 5] = 0;
     }
-    const addPtr = this.exports.atomicChunkAlloc ? this.exports.atomicChunkAlloc(addCount * 24) : 0;
-    const retPtr = this.exports.atomicChunkAlloc ? this.exports.atomicChunkAlloc(retractCount * 24) : 0;
+    const addPtr = this.exports.atomicChunkAlloc
+      ? this.exports.atomicChunkAlloc(addCount * 24)
+      : 0;
+    const retPtr = this.exports.atomicChunkAlloc
+      ? this.exports.atomicChunkAlloc(retractCount * 24)
+      : 0;
     if (addPtr && addCount > 0) {
-      new Uint32Array(this.wasmMemory.buffer, addPtr, addCount * 6).set(addBuffer);
+      new Uint32Array(this.wasmMemory.buffer, addPtr, addCount * 6).set(
+        addBuffer,
+      );
     }
     if (retPtr && retractCount > 0) {
-      new Uint32Array(this.wasmMemory.buffer, retPtr, retractCount * 6).set(retBuffer);
+      new Uint32Array(this.wasmMemory.buffer, retPtr, retractCount * 6).set(
+        retBuffer,
+      );
     }
-    return this.exports.ontology_applyDelta(addCount, addPtr, retractCount, retPtr);
+    return this.exports.ontology_applyDelta(
+      addCount,
+      addPtr,
+      retractCount,
+      retPtr,
+    );
   }
   /** Saturates functional object properties and unifies individual equivalence classes. */
   saturateFunctionalOntology() {
-    return this.exports.ontology_saturateFunctional ? this.exports.ontology_saturateFunctional() : 0;
+    return this.exports.ontology_saturateFunctional
+      ? this.exports.ontology_saturateFunctional()
+      : 0;
   }
   /** Isolates a Minimal Unsatisfiable Subset (MUS) using QuickXplain in WASM linear memory. */
   quickXplainOntology() {
-    if (!this.exports.ontology_quickXplain || !this.exports.ontology_getQueryBuffer) return [];
+    if (
+      !this.exports.ontology_quickXplain ||
+      !this.exports.ontology_getQueryBuffer
+    )
+      return [];
     const count = this.exports.ontology_quickXplain();
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
@@ -4717,7 +2593,8 @@ export class LspFacade {
   }
   /** Enumerates all minimal unsatisfiable subsets using Reiter's Hitting Set Tree (HST). */
   allMusOntology(maxCores = 16) {
-    if (!this.exports.ontology_allMus || !this.exports.ontology_getQueryBuffer) return [];
+    if (!this.exports.ontology_allMus || !this.exports.ontology_getQueryBuffer)
+      return [];
     const coreCount = this.exports.ontology_allMus(maxCores);
     if (coreCount === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
@@ -4744,11 +2621,17 @@ export class LspFacade {
   }
   /** Runs the full hybrid interleaved fixpoint cycle in WASM memory. */
   runHybridFixpoint() {
-    return this.exports.ontology_runHybridFixpoint ? this.exports.ontology_runHybridFixpoint() : 0;
+    return this.exports.ontology_runHybridFixpoint
+      ? this.exports.ontology_runHybridFixpoint()
+      : 0;
   }
   /** Validates advanced OWL 2 / SHACL constraints (asymmetry, irreflexivity, disjoint properties). */
   validateAdvancedConstraints() {
-    if (!this.exports.ontology_validateAdvancedConstraints || !this.exports.ontology_getQueryBuffer) return [];
+    if (
+      !this.exports.ontology_validateAdvancedConstraints ||
+      !this.exports.ontology_getQueryBuffer
+    )
+      return [];
     const count = this.exports.ontology_validateAdvancedConstraints();
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
@@ -4773,10 +2656,19 @@ export class LspFacade {
   }
   /** Projects all indexed declaration stubs into OWL 2 axioms. */
   projectStubsToOntology(sourceLangId) {
-    return this.exports.projection_projectAllStubs ? this.exports.projection_projectAllStubs(sourceLangId) : 0;
+    return this.exports.projection_projectAllStubs
+      ? this.exports.projection_projectAllStubs(sourceLangId)
+      : 0;
   }
   /** Projects synthetic symbol with conflict deduplication against real declarations. */
-  projectSyntheticSymbol(fileId, symbolId, parentSymbolId, kind, name, parentFqn = "") {
+  projectSyntheticSymbol(
+    fileId,
+    symbolId,
+    parentSymbolId,
+    kind,
+    name,
+    parentFqn = "",
+  ) {
     if (!this.exports.stub_projectSyntheticSymbol) return 0;
     const nameHash = this.hashString(name);
     const nameHandle = this.allocStringInArena(name);
@@ -4793,35 +2685,69 @@ export class LspFacade {
   }
   /** Creates an arena-native flattener attached to a DaeBuilder. */
   createFlattener(daePtr) {
-    return this.exports.flattener_create ? this.exports.flattener_create(daePtr) : 0;
+    return this.exports.flattener_create
+      ? this.exports.flattener_create(daePtr)
+      : 0;
   }
   /** Flattens an AST class definition into DAE variables and equations. */
   flattenerFlattenClass(flattenerPtr, classNodePtr) {
-    return this.exports.flattener_flattenClass ? this.exports.flattener_flattenClass(flattenerPtr, classNodePtr) : 0;
+    return this.exports.flattener_flattenClass
+      ? this.exports.flattener_flattenClass(flattenerPtr, classNodePtr)
+      : 0;
   }
   /** Adds a connector connection equation to the flattener. */
-  flattenerAddConnection(flattenerPtr, p1VarId, p2VarId, isFlow, isBoundary = false) {
+  flattenerAddConnection(
+    flattenerPtr,
+    p1VarId,
+    p2VarId,
+    isFlow,
+    isBoundary = false,
+  ) {
     return this.exports.flattener_addConnection
-      ? this.exports.flattener_addConnection(flattenerPtr, p1VarId, p2VarId, isFlow ? 1 : 0, isBoundary ? 1 : 0)
+      ? this.exports.flattener_addConnection(
+          flattenerPtr,
+          p1VarId,
+          p2VarId,
+          isFlow ? 1 : 0,
+          isBoundary ? 1 : 0,
+        )
       : 0;
   }
   /** Finalizes connection graphs and synthesizes zero-sum flow equations. */
   flattenerFinalizeConnections(flattenerPtr) {
-    return this.exports.flattener_finalizeConnections ? this.exports.flattener_finalizeConnections(flattenerPtr) : 0;
+    return this.exports.flattener_finalizeConnections
+      ? this.exports.flattener_finalizeConnections(flattenerPtr)
+      : 0;
   }
   /** Creates a modification environment in WASM linear memory. */
   flattenerCreateEnv(parentPtr = 0) {
-    return this.exports.flattener_createEnv ? this.exports.flattener_createEnv(parentPtr) : 0;
+    return this.exports.flattener_createEnv
+      ? this.exports.flattener_createEnv(parentPtr)
+      : 0;
   }
   /** Binds a parameter override into the modification environment. */
-  flattenerEnvBind(envPtr, keyHash, valExprId, isFinal = false, isEach = false) {
+  flattenerEnvBind(
+    envPtr,
+    keyHash,
+    valExprId,
+    isFinal = false,
+    isEach = false,
+  ) {
     if (this.exports.flattener_envBind) {
-      this.exports.flattener_envBind(envPtr, keyHash, valExprId, isFinal ? 1 : 0, isEach ? 1 : 0);
+      this.exports.flattener_envBind(
+        envPtr,
+        keyHash,
+        valExprId,
+        isFinal ? 1 : 0,
+        isEach ? 1 : 0,
+      );
     }
   }
   /** Looks up a parameter override in the modification environment. */
   flattenerEnvLookup(envPtr, keyHash) {
-    return this.exports.flattener_envLookup ? this.exports.flattener_envLookup(envPtr, keyHash) >>> 0 : 0xffffffff;
+    return this.exports.flattener_envLookup
+      ? this.exports.flattener_envLookup(envPtr, keyHash) >>> 0
+      : 0xffffffff;
   }
   /** Executes a named in-DSL compilation pipeline (e.g. 'flatten') in WebAssembly. */
   runPipeline(pipelineName, rootNode = 0) {
@@ -4852,25 +2778,37 @@ export class LspFacade {
   }
   /** Evaluates CSG sphere Signed Distance Function in WASM. */
   csgSdfSphere(px, py, pz, r) {
-    return this.exports.csg_sdf_sphere ? this.exports.csg_sdf_sphere(px, py, pz, r) : 0;
+    return this.exports.csg_sdf_sphere
+      ? this.exports.csg_sdf_sphere(px, py, pz, r)
+      : 0;
   }
   /** Evaluates CSG box Signed Distance Function in WASM. */
   csgSdfBox(px, py, pz, hx, hy, hz) {
-    return this.exports.csg_sdf_box ? this.exports.csg_sdf_box(px, py, pz, hx, hy, hz) : 0;
+    return this.exports.csg_sdf_box
+      ? this.exports.csg_sdf_box(px, py, pz, hx, hy, hz)
+      : 0;
   }
   /** CSG Boolean Operations. */
   csgOpUnion(d1, d2) {
-    return this.exports.csg_op_union ? this.exports.csg_op_union(d1, d2) : Math.min(d1, d2);
+    return this.exports.csg_op_union
+      ? this.exports.csg_op_union(d1, d2)
+      : Math.min(d1, d2);
   }
   csgOpIntersect(d1, d2) {
-    return this.exports.csg_op_intersect ? this.exports.csg_op_intersect(d1, d2) : Math.max(d1, d2);
+    return this.exports.csg_op_intersect
+      ? this.exports.csg_op_intersect(d1, d2)
+      : Math.max(d1, d2);
   }
   csgOpDifference(d1, d2) {
-    return this.exports.csg_op_difference ? this.exports.csg_op_difference(d1, d2) : Math.max(d1, -d2);
+    return this.exports.csg_op_difference
+      ? this.exports.csg_op_difference(d1, d2)
+      : Math.max(d1, -d2);
   }
   /** Simplifies an algebraic expression using CAS rewrite rules and constant folding in WASM. */
   casSimplify(daePtr, exprId) {
-    return this.exports.cas_export_simplify ? this.exports.cas_export_simplify(daePtr, exprId) : exprId;
+    return this.exports.cas_export_simplify
+      ? this.exports.cas_export_simplify(daePtr, exprId)
+      : exprId;
   }
   /** Computes the exact symbolic derivative d(expr) / d(varId) in WASM. */
   casDifferentiate(daePtr, exprId, targetVarId) {
@@ -4884,7 +2822,9 @@ export class LspFacade {
   }
   /** Pushes an elementary operation node to the AD tape. */
   tapePushOp(tapePtr, op, left, right, val) {
-    return this.exports.tape_pushOp ? this.exports.tape_pushOp(tapePtr, op, left, right, val) : 0;
+    return this.exports.tape_pushOp
+      ? this.exports.tape_pushOp(tapePtr, op, left, right, val)
+      : 0;
   }
   /** Runs the reverse-mode AD pass backwards from rootNode. */
   tapeBackward(tapePtr, rootNode) {
@@ -4894,7 +2834,9 @@ export class LspFacade {
   }
   /** Retrieves the accumulated gradient for a node on the AD tape. */
   tapeGetGrad(tapePtr, nodeIdx) {
-    return this.exports.tape_getGrad ? this.exports.tape_getGrad(tapePtr, nodeIdx) : 0;
+    return this.exports.tape_getGrad
+      ? this.exports.tape_getGrad(tapePtr, nodeIdx)
+      : 0;
   }
   /** Resets the AD tape for the next evaluation pass. */
   tapeReset(tapePtr) {
@@ -4904,7 +2846,9 @@ export class LspFacade {
   }
   /** Creates a fast snapshot checkpoint of the arena allocation state. */
   createArenaSnapshot() {
-    return this.exports.arena_createSnapshot ? this.exports.arena_createSnapshot() : 0;
+    return this.exports.arena_createSnapshot
+      ? this.exports.arena_createSnapshot()
+      : 0;
   }
   /** Restores the arena allocation state to a previous snapshot checkpoint. */
   restoreArenaSnapshot(snapshotPtr) {
@@ -4914,8 +2858,12 @@ export class LspFacade {
   }
   /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
   formatDocument(astRoot, preserveFormatting = false) {
-    if (!this.exports.lsp_formatDocument || !this.exports.lsp_getBinaryBuffer) return "";
-    const numBytes = this.exports.lsp_formatDocument(astRoot, preserveFormatting ? 1 : 0);
+    if (!this.exports.lsp_formatDocument || !this.exports.lsp_getBinaryBuffer)
+      return "";
+    const numBytes = this.exports.lsp_formatDocument(
+      astRoot,
+      preserveFormatting ? 1 : 0,
+    );
     if (numBytes === 0) return "";
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const bytes = new Uint8Array(numBytes);
@@ -4943,7 +2891,8 @@ export class LspFacade {
   }
   /** Retrieves available compiler pipelines that can be executed. */
   getPipelines() {
-    if (!this.exports.lsp_getPipelinesInfo || !this.exports.lsp_getBinaryBuffer) return [];
+    if (!this.exports.lsp_getPipelinesInfo || !this.exports.lsp_getBinaryBuffer)
+      return [];
     const numElements = this.exports.lsp_getPipelinesInfo();
     if (numElements === 0) return [];
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -4973,7 +2922,9 @@ export class LspFacade {
       }
       this.exports.lsp_executePipeline(astRoot, hash >>> 0);
     }
-    const daePtr = this.exports.graph_getDaeBuilder ? this.exports.graph_getDaeBuilder() : 0;
+    const daePtr = this.exports.graph_getDaeBuilder
+      ? this.exports.graph_getDaeBuilder()
+      : 0;
     if (daePtr === 0 || !this.exports.dae_getVarCount) {
       return {
         pipelineId,
@@ -4988,23 +2939,49 @@ export class LspFacade {
       };
     }
     const numVars = this.exports.dae_getVarCount(daePtr);
-    const numEqs = this.exports.dae_getEqCount ? this.exports.dae_getEqCount(daePtr) : 0;
-    const varTypeNames = ["Real", "Integer", "Boolean", "String", "Enumeration", "Clock"];
-    const variabilityNames = ["continuous", "discrete", "parameter", "constant"];
+    const numEqs = this.exports.dae_getEqCount
+      ? this.exports.dae_getEqCount(daePtr)
+      : 0;
+    const varTypeNames = [
+      "Real",
+      "Integer",
+      "Boolean",
+      "String",
+      "Enumeration",
+      "Clock",
+    ];
+    const variabilityNames = [
+      "continuous",
+      "discrete",
+      "parameter",
+      "constant",
+    ];
     const causalityNames = ["local", "input", "output"];
     const variables = [];
     for (let i = 0; i < numVars; i++) {
-      const nameId = this.exports.dae_getVarNameId ? this.exports.dae_getVarNameId(daePtr, i) : 0;
+      const nameId = this.exports.dae_getVarNameId
+        ? this.exports.dae_getVarNameId(daePtr, i)
+        : 0;
       const name = this.getStringFromPool(nameId) || `v_${i}`;
-      const typeIdx = this.exports.dae_getVarType ? this.exports.dae_getVarType(daePtr, i) : 0;
+      const typeIdx = this.exports.dae_getVarType
+        ? this.exports.dae_getVarType(daePtr, i)
+        : 0;
       const varType = varTypeNames[typeIdx] || "Real";
-      const varIdx = this.exports.dae_getVarVariability ? this.exports.dae_getVarVariability(daePtr, i) : 0;
+      const varIdx = this.exports.dae_getVarVariability
+        ? this.exports.dae_getVarVariability(daePtr, i)
+        : 0;
       const variability = variabilityNames[varIdx] || "continuous";
-      const causIdx = this.exports.dae_getVarCausality ? this.exports.dae_getVarCausality(daePtr, i) : 0;
+      const causIdx = this.exports.dae_getVarCausality
+        ? this.exports.dae_getVarCausality(daePtr, i)
+        : 0;
       const causality = causalityNames[causIdx] || "local";
-      const flags = this.exports.dae_getVarFlags ? this.exports.dae_getVarFlags(daePtr, i) : 0;
+      const flags = this.exports.dae_getVarFlags
+        ? this.exports.dae_getVarFlags(daePtr, i)
+        : 0;
       const isFlow = (flags & (1 << 1)) !== 0;
-      const startVal = this.exports.dae_getVarStartValue ? this.exports.dae_getVarStartValue(daePtr, i) : 0;
+      const startVal = this.exports.dae_getVarStartValue
+        ? this.exports.dae_getVarStartValue(daePtr, i)
+        : 0;
       // Read array shape dimensions
       const dimensions = [];
       if (this.exports.dae_getVarShapeDim) {
@@ -5028,11 +3005,18 @@ export class LspFacade {
       });
     }
     const decompileExpr = (exprId) => {
-      if (exprId === 0xffffffff || exprId < 0 || !this.exports.dae_getExprKind) return "";
+      if (exprId === 0xffffffff || exprId < 0 || !this.exports.dae_getExprKind)
+        return "";
       const kind = this.exports.dae_getExprKind(daePtr, exprId);
-      const data1 = this.exports.dae_getExprData1 ? this.exports.dae_getExprData1(daePtr, exprId) : 0;
-      const left = this.exports.dae_getExprLeft ? this.exports.dae_getExprLeft(daePtr, exprId) : 0xffffffff;
-      const right = this.exports.dae_getExprRight ? this.exports.dae_getExprRight(daePtr, exprId) : 0xffffffff;
+      const data1 = this.exports.dae_getExprData1
+        ? this.exports.dae_getExprData1(daePtr, exprId)
+        : 0;
+      const left = this.exports.dae_getExprLeft
+        ? this.exports.dae_getExprLeft(daePtr, exprId)
+        : 0xffffffff;
+      const right = this.exports.dae_getExprRight
+        ? this.exports.dae_getExprRight(daePtr, exprId)
+        : 0xffffffff;
       switch (kind) {
         case 0: {
           return this.getStringFromPool(data1) || `var_${data1}`;
@@ -5061,13 +3045,25 @@ export class LspFacade {
     };
     const equations = [];
     for (let i = 0; i < numEqs; i++) {
-      const eqKind = this.exports.dae_getEqKind ? this.exports.dae_getEqKind(daePtr, i) : 0;
-      const lhs = this.exports.dae_getEqLhs ? this.exports.dae_getEqLhs(daePtr, i) : 0;
-      const rhs = this.exports.dae_getEqRhs ? this.exports.dae_getEqRhs(daePtr, i) : 0;
+      const eqKind = this.exports.dae_getEqKind
+        ? this.exports.dae_getEqKind(daePtr, i)
+        : 0;
+      const lhs = this.exports.dae_getEqLhs
+        ? this.exports.dae_getEqLhs(daePtr, i)
+        : 0;
+      const rhs = this.exports.dae_getEqRhs
+        ? this.exports.dae_getEqRhs(daePtr, i)
+        : 0;
       const lhsStr = decompileExpr(lhs);
       const rhsStr = decompileExpr(rhs);
-      const eqText = eqKind === 6 ? `connect(${lhsStr}, ${rhsStr})` : rhsStr ? `${lhsStr} = ${rhsStr}` : lhsStr;
-      const kindStr = eqKind === 6 ? "connect" : eqKind === 7 ? "initial" : "simple";
+      const eqText =
+        eqKind === 6
+          ? `connect(${lhsStr}, ${rhsStr})`
+          : rhsStr
+            ? `${lhsStr} = ${rhsStr}`
+            : lhsStr;
+      const kindStr =
+        eqKind === 6 ? "connect" : eqKind === 7 ? "initial" : "simple";
       equations.push({
         kind: kindStr,
         text: eqText,
@@ -5087,8 +3083,12 @@ export class LspFacade {
         equations: [eq.text],
       });
     }
-    const continuousVars = variables.filter((v) => v.variability !== "parameter" && v.variability !== "constant");
-    const paramVars = variables.filter((v) => v.variability === "parameter" || v.variability === "constant");
+    const continuousVars = variables.filter(
+      (v) => v.variability !== "parameter" && v.variability !== "constant",
+    );
+    const paramVars = variables.filter(
+      (v) => v.variability === "parameter" || v.variability === "constant",
+    );
     const flatLines = [];
     flatLines.push("model FlattenedModel");
     if (continuousVars.length > 0) {
@@ -5096,7 +3096,10 @@ export class LspFacade {
       for (const v of continuousVars) {
         const prefix = v.isFlow ? "flow " : "";
         const startStr = v.start !== null ? ` (start = ${v.start})` : "";
-        const dimStr = v.dimensions && v.dimensions.length > 0 ? `[${v.dimensions.join(", ")}]` : "";
+        const dimStr =
+          v.dimensions && v.dimensions.length > 0
+            ? `[${v.dimensions.join(", ")}]`
+            : "";
         flatLines.push(`  ${prefix}${v.type} ${v.name}${dimStr}${startStr};`);
       }
     }
@@ -5105,8 +3108,13 @@ export class LspFacade {
       flatLines.push("  // --- Parameters & Constants ---");
       for (const p of paramVars) {
         const startStr = p.start !== null ? ` = ${p.start}` : "";
-        const dimStr = p.dimensions && p.dimensions.length > 0 ? `[${p.dimensions.join(", ")}]` : "";
-        flatLines.push(`  ${p.variability} ${p.type} ${p.name}${dimStr}${startStr};`);
+        const dimStr =
+          p.dimensions && p.dimensions.length > 0
+            ? `[${p.dimensions.join(", ")}]`
+            : "";
+        flatLines.push(
+          `  ${p.variability} ${p.type} ${p.name}${dimStr}${startStr};`,
+        );
       }
     }
     if (equations.length > 0) {
@@ -5118,8 +3126,12 @@ export class LspFacade {
     }
     flatLines.push("end FlattenedModel;");
     const flatText = flatLines.join("\n");
-    const clockCount = this.exports.dae_getClockCount ? this.exports.dae_getClockCount(daePtr) : 0;
-    const smCount = this.exports.dae_getStateMachineCount ? this.exports.dae_getStateMachineCount(daePtr) : 0;
+    const clockCount = this.exports.dae_getClockCount
+      ? this.exports.dae_getClockCount(daePtr)
+      : 0;
+    const smCount = this.exports.dae_getStateMachineCount
+      ? this.exports.dae_getStateMachineCount(daePtr)
+      : 0;
     const eventIndicatorCount = this.exports.dae_getEventIndicatorCount
       ? this.exports.dae_getEventIndicatorCount(daePtr)
       : 0;
@@ -5145,7 +3157,8 @@ export class LspFacade {
    */
   readCachedErrorRanges() {
     const errorRanges = [];
-    if (!this.exports.lsp_getBinaryBuffer || this._lastDiagBinaryLength === 0) return errorRanges;
+    if (!this.exports.lsp_getBinaryBuffer || this._lastDiagBinaryLength === 0)
+      return errorRanges;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < this._lastDiagBinaryLength; i += 7) {
@@ -5173,12 +3186,16 @@ export class LspFacade {
       if (!ptr) return { strs: [], nextOffset: currentOffset };
       const typeFlags = mem32[ptr / 4];
       const typeId = typeFlags & 0x03ff;
-      let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
+      let typeName =
+        (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
       const envHashPadding = mem32[(ptr + 4) / 4];
       const rawPad = typeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+      const pad =
+        isFat && this.exports.getFatPaddingPtr
+          ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
+          : rawPad;
       const len = envHashPadding & 0x007fffff;
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -5189,7 +3206,10 @@ export class LspFacade {
       const isInvisible = (typeFlags & (1 << 14)) !== 0;
       const shouldPrint =
         verbose ||
-        (!typeName.startsWith("_") && !typeName.startsWith('"') && !typeName.startsWith("node_") && !isInvisible);
+        (!typeName.startsWith("_") &&
+          !typeName.startsWith('"') &&
+          !typeName.startsWith("node_") &&
+          !isInvisible);
       let childStrs = [];
       let childOffset = startOffset;
       let childPtr = mem32[(ptr + 12) / 4];
@@ -5200,7 +3220,11 @@ export class LspFacade {
           childStrs.push("(CYCLE)");
           break;
         }
-        const childResult = toSExpr(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
+        const childResult = toSExpr(
+          childPtr,
+          childOffset,
+          shouldPrint ? depth + 1 : depth,
+        );
         for (const s of childResult.strs) {
           if (s) childStrs.push(s);
         }
@@ -5263,12 +3287,16 @@ export class LspFacade {
       if (!ptr) return currentOffset;
       const typeFlags = mem32[ptr / 4];
       const typeId = typeFlags & 0x03ff;
-      let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
+      let typeName =
+        (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
       const envHashPadding = mem32[(ptr + 4) / 4];
       const rawPad = typeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+      const pad =
+        isFat && this.exports.getFatPaddingPtr
+          ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
+          : rawPad;
       const len = envHashPadding & 0x007fffff;
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -5294,19 +3322,34 @@ export class LspFacade {
       while (childPtr) {
         if (step !== 0 && childPtr === slowPtr) {
           if (shouldPrint) {
-            lines.push(`<div style="margin-left: ${(depth + 1) * 20}px; color: #8c959f; margin-top: 4px;">CYCLE</div>`);
+            lines.push(
+              `<div style="margin-left: ${(depth + 1) * 20}px; color: #8c959f; margin-top: 4px;">CYCLE</div>`,
+            );
           }
           break;
         }
-        childOffset = toHtml(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
+        childOffset = toHtml(
+          childPtr,
+          childOffset,
+          shouldPrint ? depth + 1 : depth,
+        );
         renderedChildren++;
         childPtr = mem32[(childPtr + 16) / 4];
         if (step % 2 === 1) slowPtr = mem32[(slowPtr + 16) / 4];
         step++;
       }
-      if (shouldPrint && nodeIndex !== -1 && len === 0 && renderedChildren === 0 && typeName !== "ERROR") {
+      if (
+        shouldPrint &&
+        nodeIndex !== -1 &&
+        len === 0 &&
+        renderedChildren === 0 &&
+        typeName !== "ERROR"
+      ) {
         // Retrospectively add ghost-node class if it ended up having no children
-        lines[nodeIndex] = lines[nodeIndex].replace('"ast-node"', '"ast-node ghost-node"');
+        lines[nodeIndex] = lines[nodeIndex].replace(
+          '"ast-node"',
+          '"ast-node ghost-node"',
+        );
       }
       return endOffset;
     };
@@ -5347,20 +3390,28 @@ export class LspFacade {
    * Used as a fallback or for initial parsing.
    */
   parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri) {
-    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    const getInputBuf =
+      this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
     if (this.exports.abortSuspend) this.exports.abortSuspend();
     const lenBytes = text.length * 2;
-    const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytes) : getInputBuf();
-    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, text.length);
+    const textPtr = this.exports.ensureInputBuffer
+      ? this.exports.ensureInputBuffer(lenBytes)
+      : getInputBuf();
+    const memArray16 = new Uint16Array(
+      this.wasmMemory.buffer,
+      textPtr,
+      text.length,
+    );
     for (let i = 0; i < text.length; i++) {
       memArray16[i] = text.charCodeAt(i);
     }
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
-    if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
+    if (this.exports.lsp_setInputLength)
+      this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
     this.currentInputLength = text.length;
     const prevAstRoot = this.getDocumentRoot(uri);
@@ -5369,7 +3420,12 @@ export class LspFacade {
       editNewEnd = lenBytes;
       baseRoot = 0;
     }
-    const newAstRoot = this.exports.parse(baseRoot, editStart, editOldEnd, editNewEnd);
+    const newAstRoot = this.exports.parse(
+      baseRoot,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+    );
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
         for (const listener of this.astListeners) {
@@ -5396,7 +3452,9 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot, newRoot, listener) {
-    console.log(`[Bindings] walkAstDiff START: oldRoot=${oldRoot}, newRoot=${newRoot}`);
+    console.log(
+      `[Bindings] walkAstDiff START: oldRoot=${oldRoot}, newRoot=${newRoot}`,
+    );
     let mem32 = new Uint32Array(this.wasmMemory.buffer);
     const getMem32 = () => {
       if (mem32.buffer !== this.wasmMemory.buffer || mem32.byteLength === 0) {
@@ -5427,7 +3485,11 @@ export class LspFacade {
         if (this.exports.getFieldIdForChild) {
           try {
             const currType = mem32[curr / 4] & 0x03ff;
-            fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex, currType);
+            fieldId = this.exports.getFieldIdForChild(
+              parentTypeId,
+              childIndex,
+              currType,
+            );
           } catch {
             fieldId = -1;
           }
@@ -5462,18 +3524,29 @@ export class LspFacade {
           const mem32 = getMem32();
           const cTypeFlags = mem32[childPtr / 4];
           const typeId = cTypeFlags & 0x03ff;
-          let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
-          const isInvisible = (cTypeFlags & (1 << 14)) !== 0 || typeName.startsWith("_");
+          let typeName =
+            (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
+          const isInvisible =
+            (cTypeFlags & (1 << 14)) !== 0 || typeName.startsWith("_");
           const parentTypeId = mem32[nodePtr / 4] & 0x03ff;
           let fieldId = -1;
           if (this.exports.getFieldIdForChild) {
             try {
-              fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex, typeId);
+              fieldId = this.exports.getFieldIdForChild(
+                parentTypeId,
+                childIndex,
+                typeId,
+              );
             } catch {
               fieldId = -1;
             }
           }
-          const field = fieldId >= 0 ? fieldIdToName[fieldId] : isInvisible ? parentField : null;
+          const field =
+            fieldId >= 0
+              ? fieldIdToName[fieldId]
+              : isInvisible
+                ? parentField
+                : null;
           const childEnvHashPadding = mem32[(childPtr + 4) / 4];
           const childRawPad = cTypeFlags >>> 22;
           const childIsFat = (childEnvHashPadding >>> 23) & 1;
@@ -5505,7 +3578,12 @@ export class LspFacade {
               currentAccumulatedPad += childPad + childLen;
             }
           } else {
-            children.push({ ptr: childPtr, field, fieldId, invisiblePad: currentAccumulatedPad });
+            children.push({
+              ptr: childPtr,
+              field,
+              fieldId,
+              invisiblePad: currentAccumulatedPad,
+            });
             currentAccumulatedPad = 0;
           }
           childPtr = mem32[(childPtr + 16) / 4];
@@ -5537,20 +3615,35 @@ export class LspFacade {
         const mem32 = getMem32();
         const typeFlags = mem32[ptr / 4];
         const typeId = typeFlags & 0x03ff;
-        let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
+        let typeName =
+          (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
         const envHashPadding = mem32[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        let pad =
+          isFat && this.exports.getFatPaddingPtr
+            ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
+            : rawPad;
         const len = envHashPadding & 0x007fffff;
         const children = getFlattenedChildren(ptr);
         pad += item.invisiblePad;
         const flags = (typeFlags >> 10) & 0x0fff;
-        listener.onNodeInserted(ptr, typeId, typeName, pad, len, flags, children);
+        listener.onNodeInserted(
+          ptr,
+          typeId,
+          typeName,
+          pad,
+          len,
+          flags,
+          children,
+        );
         // Push children in reverse so they are processed in forward order
         for (let i = children.length - 1; i >= 0; i--) {
-          stack.push({ ptr: children[i].ptr, invisiblePad: children[i].invisiblePad });
+          stack.push({
+            ptr: children[i].ptr,
+            invisiblePad: children[i].invisiblePad,
+          });
         }
       }
     };
@@ -5569,7 +3662,12 @@ export class LspFacade {
         }
       }
     };
-    const diffNodes = (oldPtr, newPtr, oldInvisiblePad = 0, newInvisiblePad = 0) => {
+    const diffNodes = (
+      oldPtr,
+      newPtr,
+      oldInvisiblePad = 0,
+      newInvisiblePad = 0,
+    ) => {
       if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
       if (oldPtr === newPtr && oldInvisiblePad === newInvisiblePad) {
         if (oldPtr !== oldRoot) {
@@ -5583,17 +3681,31 @@ export class LspFacade {
         const mem32 = getMem32();
         const newTypeFlags = mem32[newPtr / 4];
         const newTypeId = newTypeFlags & 0x03ff;
-        let typeName = (this.syntaxNames && this.syntaxNames[newTypeId]) || `node_${newTypeId}`;
+        let typeName =
+          (this.syntaxNames && this.syntaxNames[newTypeId]) ||
+          `node_${newTypeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
         const envHashPadding = mem32[(newPtr + 4) / 4];
         const rawPad = newTypeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        let pad =
+          isFat && this.exports.getFatPaddingPtr
+            ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
+            : rawPad;
         const len = envHashPadding & 0x007fffff;
         const flags = (newTypeFlags >> 10) & 0x0fff;
         const newCh = getFlattenedChildren(newPtr);
         pad += newInvisiblePad;
-        listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, flags, newCh);
+        listener.onNodeUpdated(
+          newPtr,
+          oldPtr,
+          newTypeId,
+          typeName,
+          pad,
+          len,
+          flags,
+          newCh,
+        );
         opsCount++;
         return;
       }
@@ -5614,21 +3726,39 @@ export class LspFacade {
         return;
       }
       const newTypeFlags = mem32[newPtr / 4];
-      let typeName = (this.syntaxNames && this.syntaxNames[newTypeId]) || `node_${newTypeId}`;
+      let typeName =
+        (this.syntaxNames && this.syntaxNames[newTypeId]) ||
+        `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
       const envHashPadding = mem32[(newPtr + 4) / 4];
       const rawPad = newTypeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
-      let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+      let pad =
+        isFat && this.exports.getFatPaddingPtr
+          ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
+          : rawPad;
       const len = envHashPadding & 0x007fffff;
       const oldCh = getFlattenedChildren(oldPtr);
       const newCh = getFlattenedChildren(newPtr);
       pad += newInvisiblePad;
       const flags = (newTypeFlags >> 10) & 0x0fff;
-      listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, flags, newCh);
+      listener.onNodeUpdated(
+        newPtr,
+        oldPtr,
+        newTypeId,
+        typeName,
+        pad,
+        len,
+        flags,
+        newCh,
+      );
       opsCount++;
       let start = 0;
-      while (start < oldCh.length && start < newCh.length && oldCh[start].ptr === newCh[start].ptr) {
+      while (
+        start < oldCh.length &&
+        start < newCh.length &&
+        oldCh[start].ptr === newCh[start].ptr
+      ) {
         if (oldCh[start].invisiblePad !== newCh[start].invisiblePad) break;
         const mem32s = getMem32();
         const sFlags = (mem32s[newCh[start].ptr / 4] >> 10) & 0x0fff;
@@ -5637,13 +3767,21 @@ export class LspFacade {
       }
       let oldEnd = oldCh.length - 1;
       let newEnd = newCh.length - 1;
-      while (oldEnd >= start && newEnd >= start && oldCh[oldEnd].ptr === newCh[newEnd].ptr) {
+      while (
+        oldEnd >= start &&
+        newEnd >= start &&
+        oldCh[oldEnd].ptr === newCh[newEnd].ptr
+      ) {
         if (oldCh[oldEnd].invisiblePad !== newCh[newEnd].invisiblePad) break;
         oldEnd--;
         newEnd--;
       }
       const maxMiddle = Math.max(oldEnd - start + 1, newEnd - start + 1);
-      if (maxMiddle === 1 && oldEnd - start + 1 === 1 && newEnd - start + 1 === 1) {
+      if (
+        maxMiddle === 1 &&
+        oldEnd - start + 1 === 1 &&
+        newEnd - start + 1 === 1
+      ) {
         const oPtr = oldCh[start].ptr;
         const nPtr = newCh[start].ptr;
         const oPad = oldCh[start].invisiblePad;
@@ -5656,7 +3794,8 @@ export class LspFacade {
           if (oldCh[i].ptr) buildDeletions(oldCh[i].ptr);
         }
         for (let i = start; i <= newEnd; i++) {
-          if (newCh[i].ptr) buildInsertions(newCh[i].ptr, newCh[i].invisiblePad);
+          if (newCh[i].ptr)
+            buildInsertions(newCh[i].ptr, newCh[i].invisiblePad);
         }
       }
       for (let i = newEnd + 1; i < newCh.length; i++) {
@@ -5690,7 +3829,9 @@ export class LspFacade {
         }
       }
     }
-    console.log(`[Bindings] walkAstDiff COMPLETE: oldRoot=${oldRoot}, newRoot=${newRoot}, total opsCount=${opsCount}`);
+    console.log(
+      `[Bindings] walkAstDiff COMPLETE: oldRoot=${oldRoot}, newRoot=${newRoot}, total opsCount=${opsCount}`,
+    );
   }
 }
 /**
@@ -5706,7 +3847,15 @@ export class SyntaxNode {
   _cachedPad;
   _cachedLen;
   _cachedTypeId;
-  constructor(tree, ptr, _startOffset, parent, _cachedPad, _cachedLen, _cachedTypeId) {
+  constructor(
+    tree,
+    ptr,
+    _startOffset,
+    parent,
+    _cachedPad,
+    _cachedLen,
+    _cachedTypeId,
+  ) {
     this.tree = tree;
     this.ptr = ptr;
     this._startOffset = _startOffset;
@@ -5723,7 +3872,8 @@ export class SyntaxNode {
   get type() {
     if (this._cachedTypeId === 0) return "ERROR";
     let name =
-      (this.tree.facade?.syntaxNames && this.tree.facade.syntaxNames[this._cachedTypeId]) ||
+      (this.tree.facade?.syntaxNames &&
+        this.tree.facade.syntaxNames[this._cachedTypeId]) ||
       (SYNTAX_NAMES && SYNTAX_NAMES[this._cachedTypeId]) ||
       `node_${this._cachedTypeId}`;
     if (name.startsWith("T_")) name = name.substring(2);
@@ -5802,7 +3952,8 @@ export class SyntaxNode {
         const typeFlags = mem32[currentChildPtr / 4];
         const typeId = typeFlags & 0x03ff;
         const name =
-          (this.tree.facade?.syntaxNames && this.tree.facade.syntaxNames[typeId]) ||
+          (this.tree.facade?.syntaxNames &&
+            this.tree.facade.syntaxNames[typeId]) ||
           (SYNTAX_NAMES && SYNTAX_NAMES[typeId]) ||
           `node_${typeId}`;
         const envHashPadding = mem32[(currentChildPtr + 4) / 4];
@@ -5822,7 +3973,17 @@ export class SyntaxNode {
           currentOffset = currentOffset + pad;
           continue;
         } else {
-          kids.push(new SyntaxNode(this.tree, currentChildPtr, currentOffset, this, pad, len, typeId));
+          kids.push(
+            new SyntaxNode(
+              this.tree,
+              currentChildPtr,
+              currentOffset,
+              this,
+              pad,
+              len,
+              typeId,
+            ),
+          );
         }
         currentOffset = nextOffset;
         currentChildPtr = nextChildPtr;
@@ -5871,7 +4032,9 @@ export class SyntaxNode {
   get nextSibling() {
     if (!this.parent) return null;
     const siblings = this.parent.children;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
+    const idx = siblings.findIndex(
+      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
+    );
     if (idx >= 0 && idx < siblings.length - 1) {
       return siblings[idx + 1];
     }
@@ -5881,7 +4044,9 @@ export class SyntaxNode {
   get previousSibling() {
     if (!this.parent) return null;
     const siblings = this.parent.children;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
+    const idx = siblings.findIndex(
+      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
+    );
     if (idx > 0) {
       return siblings[idx - 1];
     }
@@ -5891,7 +4056,9 @@ export class SyntaxNode {
   get nextNamedSibling() {
     if (!this.parent) return null;
     const siblings = this.parent.namedChildren;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
+    const idx = siblings.findIndex(
+      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
+    );
     if (idx >= 0 && idx < siblings.length - 1) {
       return siblings[idx + 1];
     }
@@ -5901,7 +4068,9 @@ export class SyntaxNode {
   get previousNamedSibling() {
     if (!this.parent) return null;
     const siblings = this.parent.namedChildren;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
+    const idx = siblings.findIndex(
+      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
+    );
     if (idx > 0) {
       return siblings[idx - 1];
     }
@@ -5943,7 +4112,10 @@ export class SyntaxNode {
    */
   childForFieldId(fieldId) {
     if (!this.tree.facade.exports.getChildByFieldId || !this.ptr) return null;
-    const childPtr = this.tree.facade.exports.getChildByFieldId(this.ptr, fieldId);
+    const childPtr = this.tree.facade.exports.getChildByFieldId(
+      this.ptr,
+      fieldId,
+    );
     if (!childPtr) return null;
     const kids = this.children;
     for (const kid of kids) {
@@ -5957,7 +4129,8 @@ export class SyntaxNode {
   childForFieldName(name) {
     const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
-    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    const fieldId =
+      FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
     if (fieldId !== undefined) {
       const node = this.childForFieldId(fieldId);
       if (node) return node;
@@ -5969,7 +4142,8 @@ export class SyntaxNode {
         kt === name ||
         kt === snake ||
         kt === camel ||
-        (name === "condition" && (kt === "expression" || kt === "simple_expression"))
+        (name === "condition" &&
+          (kt === "expression" || kt === "simple_expression"))
       ) {
         return kid;
       }
@@ -5990,7 +4164,8 @@ export class SyntaxNode {
   childrenForFieldName(name) {
     const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
-    const fieldId = FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    const fieldId =
+      FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
     if (fieldId !== undefined) {
       const byId = this.childrenForFieldId(fieldId);
       if (byId.length > 0) return byId;
@@ -6014,7 +4189,10 @@ export class SyntaxNode {
     if (!typeId || typeId <= 0) return null;
     if (!this.tree.facade.exports.getFieldIdForChild) return null;
     try {
-      const fieldId = this.tree.facade.exports.getFieldIdForChild(typeId, childIndex);
+      const fieldId = this.tree.facade.exports.getFieldIdForChild(
+        typeId,
+        childIndex,
+      );
       if (fieldId <= 0) return null;
       for (const [name, id] of Object.entries(FIELD_NAMES)) {
         if (id === fieldId) return name;
@@ -6028,7 +4206,8 @@ export class SyntaxNode {
    * Returns the field name associated with a named child at namedChildIndex.
    */
   fieldNameForNamedChild(namedChildIndex) {
-    if (namedChildIndex < 0 || namedChildIndex >= this.namedChildren.length) return null;
+    if (namedChildIndex < 0 || namedChildIndex >= this.namedChildren.length)
+      return null;
     const target = this.namedChildren[namedChildIndex];
     const rawIndex = this.children.indexOf(target);
     return rawIndex >= 0 ? this.fieldNameForChild(rawIndex) : null;
@@ -6099,14 +4278,16 @@ export class SyntaxNode {
       if (
         start &&
         (node.endPosition.row < start.row ||
-          (node.endPosition.row === start.row && node.endPosition.column < start.column))
+          (node.endPosition.row === start.row &&
+            node.endPosition.column < start.column))
       ) {
         return;
       }
       if (
         end &&
         (node.startPosition.row > end.row ||
-          (node.startPosition.row === end.row && node.startPosition.column > end.column))
+          (node.startPosition.row === end.row &&
+            node.startPosition.column > end.column))
       ) {
         return;
       }
@@ -6149,7 +4330,11 @@ export class SyntaxNode {
   /** Returns true if this node is equal to other. */
   equals(other) {
     if (!other) return false;
-    return this.ptr === other.ptr && this.startIndex === other.startIndex && this.endIndex === other.endIndex;
+    return (
+      this.ptr === other.ptr &&
+      this.startIndex === other.startIndex &&
+      this.endIndex === other.endIndex
+    );
   }
   /** Creates a stateful TreeCursor for traversing the tree starting at this node. */
   walk() {
@@ -6311,7 +4496,10 @@ export class Tree {
     while (low <= high) {
       const mid = (low + high) >> 1;
       if (this.lineStarts[mid] <= offset) {
-        if (mid === this.lineStarts.length - 1 || this.lineStarts[mid + 1] > offset) {
+        if (
+          mid === this.lineStarts.length - 1 ||
+          this.lineStarts[mid + 1] > offset
+        ) {
           return { row: mid, column: (offset - this.lineStarts[mid]) / 2 };
         }
         low = mid + 1;
@@ -6354,7 +4542,8 @@ export class TreeSitterParser {
     } else {
       facade = this.languageBinding;
     }
-    const code = typeof source === "string" ? source : new TextDecoder().decode(source);
+    const code =
+      typeof source === "string" ? source : new TextDecoder().decode(source);
     const astRoot = facade.parse(code);
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
@@ -6392,7 +4581,11 @@ export class LruAstCache {
     return undefined;
   }
   set(fileId, astRoot, isDirty = false) {
-    this.activeRoots.set(fileId, { astRoot, lastAccessed: Date.now(), isDirty });
+    this.activeRoots.set(fileId, {
+      astRoot,
+      lastAccessed: Date.now(),
+      isDirty,
+    });
     this.facade.registerDocument(fileId, astRoot);
     this.evictIfNecessary();
   }
@@ -6417,7 +4610,10 @@ export class LruAstCache {
       .filter(([_, v]) => !v.isDirty)
       .sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
     for (const [fId] of entries) {
-      if (this.activeRoots.size <= this.maxActiveAsts && this.facade.getMemoryUsage() <= this.maxAstMemoryBytes) {
+      if (
+        this.activeRoots.size <= this.maxActiveAsts &&
+        this.facade.getMemoryUsage() <= this.maxAstMemoryBytes
+      ) {
         break;
       }
       this.evict(fId);
@@ -6462,7 +4658,16 @@ export class LspWorkspaceManager {
     const symbols = this.facade.getDocumentSymbols(astRoot);
     for (let i = 0; i < symbols.length; i++) {
       const s = symbols[i];
-      this.facade.registerStub(fileId, i + 1, 0, s.typeId, 0, `symbol_${s.typeId}_${i}`, s.start.line, s.end.line);
+      this.facade.registerStub(
+        fileId,
+        i + 1,
+        0,
+        s.typeId,
+        0,
+        `symbol_${s.typeId}_${i}`,
+        s.start.line,
+        s.end.line,
+      );
     }
     if (keepAst) {
       this.astCache.set(fileId, astRoot);
@@ -6519,7 +4724,10 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
         const modName = "node" + ":fs";
         const fs = await Function("m", "return import(m)")(modName);
         const buf = fs.readFileSync(wasmUrlOrBytes);
-        bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        bytes = buf.buffer.slice(
+          buf.byteOffset,
+          buf.byteOffset + buf.byteLength,
+        );
       }
     } else {
       const modName = "node" + ":fs";
@@ -6572,7 +4780,9 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
     },
   };
   const wasmModule = await WebAssembly.instantiate(bytes, imports);
-  const exports = wasmModule.instance ? wasmModule.instance.exports : wasmModule.exports;
+  const exports = wasmModule.instance
+    ? wasmModule.instance.exports
+    : wasmModule.exports;
   const facade = new LspFacade(exports);
   if (syntaxNames && syntaxNames.length > 0) {
     facade.syntaxNames = syntaxNames;
@@ -6582,7 +4792,4 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
   return { facade, parser };
 }
 
-export const semanticLegend = {
-  tokenTypes: ["class", "enumMember", "property", "function", "string", "number"],
-  tokenModifiers: ["declaration"],
-};
+export const semanticLegend = { tokenTypes: ["class","enumMember","property","function","string","number"], tokenModifiers: ["declaration"] };

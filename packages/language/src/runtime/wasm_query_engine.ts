@@ -610,7 +610,14 @@ export class WasmQueryEngine {
     if (!entry) return undefined;
 
     const hooks = this.hooksByRule.get(entry.ruleName);
-    const queryFn = hooks?.[queryName] as QueryFn | undefined;
+    const rawQuery = hooks?.[queryName];
+    if (!rawQuery) return undefined;
+    const queryFn: QueryFn | undefined =
+      typeof rawQuery === "function"
+        ? (rawQuery as QueryFn)
+        : typeof (rawQuery as any)?.execute === "function"
+          ? (rawQuery as any).execute
+          : undefined;
     if (!queryFn) return undefined;
 
     const key = this.memoKey(queryName, symbolId, argsHash);

@@ -14,7 +14,7 @@ import {
   ModelicaSyntaxNode,
 } from "./ast.js";
 import { evaluateCSTExpression } from "./diagram/annotation-evaluator.js";
-import { ArenaQueryFlattener } from "./src/flattener.js";
+import { ModelicaFlattener } from "./flattener.js";
 
 // Basic scope for script variables
 export class ScriptScope {
@@ -240,7 +240,7 @@ export class ArenaScriptInterpreter {
     const stopTime = (getNamedArg("stopTime") ?? getPositionalArg(2) ?? 10) as number;
 
     const queryDB = this.queryEngine.toQueryDB();
-    const flattener = new ArenaQueryFlattener(queryDB);
+    const flattener = new ModelicaFlattener(queryDB);
 
     const entries = this.queryEngine.index.byName.get(modelName) || [];
     const firstId = entries[0];
@@ -328,7 +328,7 @@ export class ArenaScriptInterpreter {
 
     // Flatten and prepare the model
     const queryDB = this.queryEngine.toQueryDB();
-    const flattener = new ArenaQueryFlattener(queryDB);
+    const flattener = new ModelicaFlattener(queryDB);
 
     const entries = this.queryEngine.index.byName.get(modelName) || [];
     const firstId = entries[0];

@@ -11,7 +11,7 @@ import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
 import { LSPBridge, PositionIndex, QueryEngine, ScopeResolver, VerificationRunner } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
-import { TableauReasoner } from "../../reasoner/tableau-reasoner.js";
+import { TableauReasoner } from "../../runtime/wasm_ontology.js";
 import type { SyntaxNode } from "../../utils/tree-sitter.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";

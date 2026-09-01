@@ -4,7 +4,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import { buildParser } from "../src/dsl/api.js";
 import { field, language, repeat, semanticToken, seq } from "../src/dsl/language.js";
-import { TableauReasoner } from "../src/reasoner/index.js";
+import { TableauReasoner } from "../src/runtime/wasm_ontology.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

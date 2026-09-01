@@ -314,6 +314,11 @@ export interface IDaeBuilder {
   rollback(): void;
 }
 
+/**
+ * Host-side Struct-of-Arrays (SoA) Builder for flat Differential Algebraic Equations.
+ *
+ * @deprecated Prefer using `WasmDaeBridge` or `IDaeBuilder`. `ArenaDAEBuilder` will be removed once all flattening pipelines emit directly into WebAssembly linear memory.
+ */
 export class ArenaDAEBuilder implements IDaeBuilder {
   // ── Variable arena ──
   private varData: Int32Array;

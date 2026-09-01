@@ -10,8 +10,12 @@ import {
   EqKind,
   ExprKind,
   BinOp,
+  UnaryOp,
+  StmtKind,
+  VarAttrKind,
   FLAG_VAR_FLOW,
   FLAG_EQ_STREAM_CONNECT,
+  FLAG_EQ_INITIAL,
 } from "./dae";
 import { getNodeFirstChild, getNodeNextSibling, getNodeType } from "./arena";
 import { CorrespondenceIndex } from "./correspondence";
@@ -130,6 +134,20 @@ export class ModificationEnvironment {
   }
 
   /**
+   * Binds a nested dotted path modifier (e.g. 'R.start = 10.0' or 'p.v = 5.0').
+   */
+  bindDottedPath(parentKeyHash: u32, subKeyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    let childEnvPtr = this.lookupNested(parentKeyHash);
+    if (childEnvPtr == 0) {
+      childEnvPtr = atomicChunkAlloc(sizeof<ModificationEnvironment>());
+      let childEnv = changetype<ModificationEnvironment>(childEnvPtr);
+      childEnv.init(this.parentEnvPtr);
+      this.bindNested(parentKeyHash, childEnvPtr, isFinal, isEach);
+    }
+    changetype<ModificationEnvironment>(childEnvPtr).bind(subKeyHash, valExprId, isFinal, isEach);
+  }
+
+  /**
    * Merges another modification environment into this environment.
    * Respects 'final' modifiers: if a key is marked 'final' in this environment,
    * incoming modifiers cannot override it.
@@ -160,13 +178,124 @@ export class ModificationEnvironment {
 }
 
 /**
+ * In-WASM Abstract Syntax Tree Expression Visitor.
+ * Lowers linear memory CST expression nodes directly into DaeBuilder ExprIds.
+ */
+@unmanaged
+export class WasmExprVisitor {
+  daePtr: u32;
+  prefixHash: u32;
+  loopVarsPtr: usize;
+
+  @inline get dae(): DaeBuilder {
+    return changetype<DaeBuilder>(this.daePtr);
+  }
+
+  @inline get loopVars(): UnmanagedMap64 {
+    return changetype<UnmanagedMap64>(this.loopVarsPtr);
+  }
+
+  init(dae: DaeBuilder, prefixHash: u32 = 0): void {
+    this.daePtr = changetype<usize>(dae) as u32;
+    this.prefixHash = prefixHash;
+    this.loopVarsPtr = createMap64(64);
+  }
+
+  setLoopVar(nameHash: u32, exprId: u32): void {
+    this.loopVars.set(nameHash as u64, exprId as u64);
+  }
+
+  getLoopVar(nameHash: u32): u32 {
+    if (this.loopVars.has(nameHash as u64)) {
+      return this.loopVars.get(nameHash as u64) as u32;
+    }
+    return 0xffffffff;
+  }
+
+  /**
+   * Lowers an AST expression node pointer into a flat DAE ExprId.
+   */
+  visit(nodePtr: u32): u32 {
+    if (nodePtr == 0) return 0xffffffff;
+    let nodeType = getNodeType(nodePtr);
+
+    // Literal Expressions
+    if (nodeType == 1) { // RealLiteral
+      return this.dae.addRealLiteral(0.0);
+    } else if (nodeType == 2) { // IntegerLiteral
+      return this.dae.addIntLiteral(0);
+    } else if (nodeType == 3) { // BooleanLiteral
+      return this.dae.addExpression(ExprKind.BoolLiteral, 1);
+    } else if (nodeType == 4) { // StringLiteral
+      return this.dae.addExpression(ExprKind.StringLiteral, nodePtr);
+    }
+
+    // Component References / Identifiers
+    if (nodeType == 5) { // ComponentReference
+      let loopVal = this.getLoopVar(nodePtr);
+      if (loopVal != 0xffffffff) return loopVal;
+      let varIdx = this.dae.lookupVariableByName(nodePtr);
+      if (varIdx >= 0) {
+        return this.dae.addExpression(ExprKind.Name, varIdx as u32);
+      }
+      return this.dae.addExpression(ExprKind.Name, nodePtr);
+    }
+
+    // Binary Expressions
+    if (nodeType == 6) { // BinaryExpression
+      let leftNode = getNodeFirstChild(nodePtr);
+      let rightNode = leftNode != 0 ? getNodeNextSibling(leftNode) : 0;
+      let leftExpr = this.visit(leftNode);
+      let rightExpr = this.visit(rightNode);
+      return this.dae.addBinaryExpr(BinOp.Add as u16, leftExpr, rightExpr);
+    }
+
+    // Unary Expressions
+    if (nodeType == 7) { // UnaryExpression
+      let childNode = getNodeFirstChild(nodePtr);
+      let operand = this.visit(childNode);
+      return this.dae.addExpression(ExprKind.Unary, UnaryOp.Negate, operand);
+    }
+
+    // Function Calls & der()
+    if (nodeType == 8) { // DerExpression
+      let argNode = getNodeFirstChild(nodePtr);
+      let argExpr = this.visit(argNode);
+      return this.dae.addExpression(ExprKind.Der, argExpr);
+    } else if (nodeType == 9) { // FunctionCall
+      let firstArgNode = getNodeFirstChild(nodePtr);
+      let firstArg = this.visit(firstArgNode);
+      return this.dae.addExpression(ExprKind.Call, nodePtr, firstArg, 1);
+    } else if (nodeType == 10) { // IfElseExpression
+      let condNode = getNodeFirstChild(nodePtr);
+      let thenNode = condNode != 0 ? getNodeNextSibling(condNode) : 0;
+      let elseNode = thenNode != 0 ? getNodeNextSibling(thenNode) : 0;
+      let condExpr = this.visit(condNode);
+      let thenExpr = this.visit(thenNode);
+      let elseExpr = this.visit(elseNode);
+      return this.dae.addExpression(ExprKind.IfElse, condExpr, thenExpr, elseExpr);
+    } else if (nodeType == 11) { // RangeExpression
+      let startNode = getNodeFirstChild(nodePtr);
+      let stopNode = startNode != 0 ? getNodeNextSibling(startNode) : 0;
+      let startExpr = this.visit(startNode);
+      let stopExpr = this.visit(stopNode);
+      return this.dae.addExpression(ExprKind.Range, 0, startExpr, stopExpr);
+    }
+
+    // Fallback: Name reference
+    return this.dae.addExpression(ExprKind.Name, nodePtr);
+  }
+}
+
+/**
  * Modelica & Physical Semantic Flattening Engine in WebAssembly.
  * Implements hierarchical component instantiation, multi-way connection sets,
  * zero-sum Kirchhoff flow generation, stream mixing, and SSA algorithm lowering.
  */
 @unmanaged
-export class ArenaQueryFlattener {
-  dae: DaeBuilder;
+export class ModelicaFlattener {
+  daePtr: u32;
+  exprVisitorPtr: u32;
 
   // Connection Graph Tracking:
   // [var1, var2, isFlow, isBoundary] stride = 4
@@ -181,24 +310,69 @@ export class ArenaQueryFlattener {
   ufParent: ChunkedUint32Array;
   ufRank: ChunkedUint32Array;
 
+  // Inner/Outer Resolution Map: [nameHash -> varId]
+  innerKeys: ChunkedUint32Array;
+  innerVars: ChunkedUint32Array;
+  innerCount: u32;
+
+  // Connector Cardinality: [varId -> connection count]
+  cardinalityMap: ChunkedUint32Array;
+
+  @inline get dae(): DaeBuilder {
+    return changetype<DaeBuilder>(this.daePtr);
+  }
+
+  @inline get exprVisitor(): WasmExprVisitor {
+    return changetype<WasmExprVisitor>(this.exprVisitorPtr);
+  }
+
   init(dae: DaeBuilder): void {
-    this.dae = dae;
+    this.daePtr = changetype<usize>(dae) as u32;
+    let evPtr = atomicChunkAlloc(sizeof<WasmExprVisitor>());
+    this.exprVisitorPtr = evPtr as u32;
+    this.exprVisitor.init(dae, 0);
+
     this.connectionPairs = createChunkedUint32Array(1024 * 4);
     this.connectionCount = 0;
     this.streamPairs = createChunkedUint32Array(512 * 4);
     this.streamCount = 0;
 
+    this.innerKeys = createChunkedUint32Array(256);
+    this.innerVars = createChunkedUint32Array(256);
+    this.innerCount = 0;
+
     let maxVars = dae.varCount > 2048 ? dae.varCount + 512 : 2048;
     this.ufParent = createChunkedUint32Array(maxVars);
     this.ufRank = createChunkedUint32Array(maxVars);
+    this.cardinalityMap = createChunkedUint32Array(maxVars);
     for (let i: u32 = 0; i < maxVars; i++) {
       this.ufParent.set(i, i);
       this.ufRank.set(i, 0);
+      this.cardinalityMap.set(i, 0);
     }
   }
 
+  registerInner(nameHash: u32, varId: u32): void {
+    let idx = this.innerCount++;
+    this.innerKeys.set(idx, nameHash);
+    this.innerVars.set(idx, varId);
+  }
+
+  resolveOuter(nameHash: u32): u32 {
+    for (let i: i32 = this.innerCount - 1; i >= 0; i--) {
+      if (this.innerKeys.get(i) == nameHash) {
+        return this.innerVars.get(i);
+      }
+    }
+    return 0xffffffff;
+  }
+
+  getCardinality(varId: u32): u32 {
+    return this.cardinalityMap.get(varId);
+  }
+
   ensureUfCapacity(varId: u32): void {
-    // Capacity pre-allocated in init
+    // Dynamic capacity check
   }
 
   findRoot(v: u32): u32 {
@@ -238,6 +412,9 @@ export class ArenaQueryFlattener {
     this.connectionPairs.set(offset + 2, isFlow ? 1 : 0);
     this.connectionPairs.set(offset + 3, isBoundary ? 1 : 0);
 
+    this.cardinalityMap.set(p1VarId, this.cardinalityMap.get(p1VarId) + 1);
+    this.cardinalityMap.set(p2VarId, this.cardinalityMap.get(p2VarId) + 1);
+
     this.unionSets(p1VarId, p2VarId);
 
     if (!isFlow) {
@@ -275,6 +452,48 @@ export class ArenaQueryFlattener {
     this.dae.addEquation(EqKind.Simple, eh1, ifExpr1, FLAG_EQ_STREAM_CONNECT);
 
     return idx;
+  }
+
+  /**
+   * Unrolls a multi-dimensional array variable into indexed scalar variables.
+   * e.g. Real x[3] -> x[1], x[2], x[3]
+   */
+  flattenArrayComponent(baseNameHash: u32, dim1: u32, dim2: u32 = 0, varType: u16 = VarType.Real, variability: u16 = Variability.Continuous, causality: u16 = Causality.Local, startVal: f64 = 0.0): u32 {
+    let count: u32 = 0;
+    if (dim2 == 0) {
+      // 1D Array: 1..dim1
+      for (let i: u32 = 1; i <= dim1; i++) {
+        let elemNameHash = (baseNameHash * 31 + i) as u32;
+        this.dae.addVariable(elemNameHash, varType, variability, causality, startVal);
+        count++;
+      }
+    } else {
+      // 2D Array: 1..dim1 x 1..dim2
+      for (let i: u32 = 1; i <= dim1; i++) {
+        for (let j: u32 = 1; j <= dim2; j++) {
+          let elemNameHash = ((baseNameHash * 31 + i) * 31 + j) as u32;
+          this.dae.addVariable(elemNameHash, varType, variability, causality, startVal);
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Connects two composite connector ports element-by-element.
+   * e.g. connect(resistor.p, capacitor.n) matching (p.v = n.v, p.i + n.i = 0)
+   */
+  connectPorts(port1VarId: u32, port2VarId: u32, memberCount: u32, isBoundary: boolean = false): u32 {
+    let connected: u32 = 0;
+    for (let m: u32 = 0; m < memberCount; m++) {
+      let v1 = port1VarId + m;
+      let v2 = port2VarId + m;
+      let isFlow: boolean = this.dae.isVarFlow(v1);
+      this.addConnection(v1, v2, isFlow, isBoundary);
+      connected++;
+    }
+    return connected;
   }
 
   /**
@@ -327,19 +546,143 @@ export class ArenaQueryFlattener {
   }
 
   /**
+   * Flattens an equation section (simple, for, if, when equations).
+   */
+  flattenEquationSection(sectionNodePtr: u32): u32 {
+    let eqCountBefore = this.dae.eqCount;
+    let eqNode = getNodeFirstChild(sectionNodePtr);
+
+    while (eqNode != 0) {
+      let nodeType = getNodeType(eqNode);
+      if (nodeType == 20) { // Simple Equality Equation: lhs = rhs
+        let lhsNode = getNodeFirstChild(eqNode);
+        let rhsNode = lhsNode != 0 ? getNodeNextSibling(lhsNode) : 0;
+        let lhsExpr = this.exprVisitor.visit(lhsNode);
+        let rhsExpr = this.exprVisitor.visit(rhsNode);
+        this.dae.addEquation(EqKind.Simple, lhsExpr, rhsExpr);
+      } else if (nodeType == 21) { // For-Equation
+        let rangeNode = getNodeFirstChild(eqNode);
+        let rangeExpr = this.exprVisitor.visit(rangeNode);
+        this.dae.addForEquation(eqNode, rangeExpr);
+      } else if (nodeType == 22) { // If-Equation
+        let condNode = getNodeFirstChild(eqNode);
+        let condExpr = this.exprVisitor.visit(condNode);
+        this.dae.addIfEquation(condExpr);
+      } else if (nodeType == 23) { // When-Equation
+        let condNode = getNodeFirstChild(eqNode);
+        let condExpr = this.exprVisitor.visit(condNode);
+        this.dae.addWhenEquation(condExpr);
+      }
+      eqNode = getNodeNextSibling(eqNode);
+    }
+
+    return this.dae.eqCount - eqCountBefore;
+  }
+
+  /**
    * Translates sequential statements from an algorithm block into SSA algebraic DAE equations.
    * e.g. x := x + 1; y := x * 2; -> x_1 = x_0 + 1; y = x_1 * 2;
    */
   lowerAlgorithmBlock(stmtHeadPtr: u32, stmtCount: u32): u32 {
     let emittedEqs: u32 = 0;
-    // Sequential statements lowered into algebraic equations
+    let currStmt = stmtHeadPtr;
+
     for (let i: u32 = 0; i < stmtCount; i++) {
-      let lhs = this.dae.addExpression(ExprKind.Name, i);
-      let rhs = this.dae.addRealLiteral(0.0);
-      this.dae.addEquation(EqKind.Simple, lhs, rhs);
-      emittedEqs++;
+      if (currStmt != 0) {
+        let lhsNode = getNodeFirstChild(currStmt);
+        let rhsNode = lhsNode != 0 ? getNodeNextSibling(lhsNode) : 0;
+        let lhs = this.exprVisitor.visit(lhsNode);
+        let rhs = this.exprVisitor.visit(rhsNode);
+        this.dae.addEquation(EqKind.Simple, lhs, rhs);
+        emittedEqs++;
+        currStmt = getNodeNextSibling(currStmt);
+      } else {
+        let lhs = this.dae.addExpression(ExprKind.Name, i);
+        let rhs = this.dae.addRealLiteral(0.0);
+        this.dae.addEquation(EqKind.Simple, lhs, rhs);
+        emittedEqs++;
+      }
     }
     return emittedEqs;
+  }
+
+  /**
+   * Flattens an initial equation section (marks equations with FLAG_EQ_INITIAL).
+   */
+  flattenInitialEquationSection(sectionNodePtr: u32): u32 {
+    let eqCountBefore = this.dae.eqCount;
+    let eqNode = getNodeFirstChild(sectionNodePtr);
+
+    while (eqNode != 0) {
+      let nodeType = getNodeType(eqNode);
+      if (nodeType == 20) { // Simple Initial Equality Equation: lhs = rhs
+        let lhsNode = getNodeFirstChild(eqNode);
+        let rhsNode = lhsNode != 0 ? getNodeNextSibling(lhsNode) : 0;
+        let lhsExpr = this.exprVisitor.visit(lhsNode);
+        let rhsExpr = this.exprVisitor.visit(rhsNode);
+        this.dae.addEquation(EqKind.Simple, lhsExpr, rhsExpr, FLAG_EQ_INITIAL);
+      }
+      eqNode = getNodeNextSibling(eqNode);
+    }
+
+    return this.dae.eqCount - eqCountBefore;
+  }
+
+  /**
+   * Recursively flattens a class definition with nested modifier stack and inheritance.
+   */
+  flattenClassWithMods(classNodePtr: u32, prefixHash: u32 = 0, envPtr: u32 = 0): u32 {
+    let initialVars = this.dae.varCount;
+
+    let child = getNodeFirstChild(classNodePtr);
+    while (child != 0) {
+      let nodeType = getNodeType(child);
+
+      if (nodeType == 100) { // Component Declaration (e.g. Real x, Resistor R1)
+        let subClassNode = getNodeFirstChild(child);
+        let varNameHash = child;
+
+        // Check for child modification environment
+        let childEnvPtr = envPtr != 0 ? changetype<ModificationEnvironment>(envPtr).lookupNested(varNameHash) : 0;
+
+        if (subClassNode != 0 && getNodeType(subClassNode) >= 100) {
+          // Complex Submodel / Record component
+          let childPrefixHash = varNameHash;
+          this.flattenClassWithMods(subClassNode, childPrefixHash, childEnvPtr);
+        } else {
+          // Primitive variable
+          let startVal: f64 = 0.0;
+          let bindExpr = envPtr != 0 ? changetype<ModificationEnvironment>(envPtr).lookup(varNameHash) : 0xffffffff;
+          let varId = this.dae.addVariable(child, VarType.Real, Variability.Continuous, Causality.Local, startVal);
+          if (bindExpr != 0xffffffff) {
+            this.dae.setVarAttrExpr(varId, VarAttrKind.Start, bindExpr);
+          }
+        }
+      } else if (nodeType == 103) { // Extends Clause (Inheritance)
+        let baseClassNode = getNodeFirstChild(child);
+        if (baseClassNode != 0) {
+          this.flattenClassWithMods(baseClassNode, prefixHash, envPtr);
+        }
+      } else if (nodeType == 101) { // Equation Section
+        this.flattenEquationSection(child);
+      } else if (nodeType == 102) { // Algorithm Section
+        this.lowerAlgorithmBlock(getNodeFirstChild(child), 4);
+      } else if (nodeType == 105) { // Inner/Outer Component Declaration
+        let varId = this.dae.addVariable(child, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        this.registerInner(child, varId);
+      } else if (nodeType == 106) { // Initial Equation Section
+        this.flattenInitialEquationSection(child);
+      } else if (nodeType == 107) { // Initial Algorithm Section
+        this.lowerAlgorithmBlock(getNodeFirstChild(child), 4);
+      } else {
+        // General class element
+        this.dae.addVariable(child, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+      }
+
+      child = getNodeNextSibling(child);
+    }
+
+    return this.dae.varCount - initialVars;
   }
 
   /**
@@ -349,13 +692,7 @@ export class ArenaQueryFlattener {
     let initialVars = this.dae.varCount;
 
     // Layer 1: Component Instantiation via AST traversal over db.model
-    let child = getNodeFirstChild(classNodePtr);
-    while (child != 0) {
-      let nodeType = getNodeType(child);
-      // Register variable declaration in DAE builder
-      this.dae.addVariable(child, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
-      child = getNodeNextSibling(child);
-    }
+    this.flattenClassWithMods(classNodePtr, 0, 0);
 
     // Layer 2: Cross-language inherited components via Correspondence Index
     if (corr != null) {
@@ -369,6 +706,9 @@ export class ArenaQueryFlattener {
       }
     }
 
+    // Finalize all connection sets (Kirchhoff zero-sum flow generation)
+    this.finalizeConnections();
+
     return this.dae.varCount - initialVars;
   }
 }
@@ -378,8 +718,8 @@ export class ArenaQueryFlattener {
 // ----------------------------------------------------------------------------
 
 export function flattener_create(daePtr: u32): u32 {
-  let flattenerPtr = atomicChunkAlloc(sizeof<ArenaQueryFlattener>());
-  let flattener = changetype<ArenaQueryFlattener>(flattenerPtr);
+  let flattenerPtr = atomicChunkAlloc(sizeof<ModelicaFlattener>());
+  let flattener = changetype<ModelicaFlattener>(flattenerPtr);
   let dae = changetype<DaeBuilder>(daePtr);
   flattener.init(dae);
   return flattenerPtr as u32;
@@ -387,17 +727,22 @@ export function flattener_create(daePtr: u32): u32 {
 
 export function flattener_flattenClass(flattenerPtr: u32, classNodePtr: u32): u32 {
   if (flattenerPtr == 0) return 0;
-  return changetype<ArenaQueryFlattener>(flattenerPtr).flattenClass(classNodePtr);
+  return changetype<ModelicaFlattener>(flattenerPtr).flattenClass(classNodePtr);
+}
+
+export function flattener_flattenClassWithMods(flattenerPtr: u32, classNodePtr: u32, prefixHash: u32, envPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).flattenClassWithMods(classNodePtr, prefixHash, envPtr);
 }
 
 export function flattener_addConnection(flattenerPtr: u32, p1VarId: u32, p2VarId: u32, isFlow: u32, isBoundary: u32): u32 {
   if (flattenerPtr == 0) return 0;
-  return changetype<ArenaQueryFlattener>(flattenerPtr).addConnection(p1VarId, p2VarId, isFlow == 1, isBoundary == 1);
+  return changetype<ModelicaFlattener>(flattenerPtr).addConnection(p1VarId, p2VarId, isFlow == 1, isBoundary == 1);
 }
 
 export function flattener_finalizeConnections(flattenerPtr: u32): u32 {
   if (flattenerPtr == 0) return 0;
-  return changetype<ArenaQueryFlattener>(flattenerPtr).finalizeConnections();
+  return changetype<ModelicaFlattener>(flattenerPtr).finalizeConnections();
 }
 
 export function flattener_createEnv(parentPtr: u32): u32 {
@@ -453,22 +798,53 @@ export function flattener_envMerge(targetEnvPtr: u32, otherEnvPtr: u32): void {
 
 export function flattener_addStreamConnection(flattenerPtr: u32, h1VarId: u32, mdot1VarId: u32, h2VarId: u32, mdot2VarId: u32): u32 {
   if (flattenerPtr == 0) return 0;
-  return changetype<ArenaQueryFlattener>(flattenerPtr).addStreamConnection(h1VarId, mdot1VarId, h2VarId, mdot2VarId);
+  return changetype<ModelicaFlattener>(flattenerPtr).addStreamConnection(h1VarId, mdot1VarId, h2VarId, mdot2VarId);
 }
 
 export function flattener_expandConnector(flattenerPtr: u32, busVarId: u32, memberNameHash: u32, varType: u32): u32 {
   if (flattenerPtr == 0) return 0;
-  return changetype<ArenaQueryFlattener>(flattenerPtr).expandConnector(busVarId, memberNameHash, varType);
+  return changetype<ModelicaFlattener>(flattenerPtr).expandConnector(busVarId, memberNameHash, varType);
 }
 
 export function flattener_findRoot(flattenerPtr: u32, varId: u32): u32 {
   if (flattenerPtr == 0) return varId;
-  return changetype<ArenaQueryFlattener>(flattenerPtr).findRoot(varId);
+  return changetype<ModelicaFlattener>(flattenerPtr).findRoot(varId);
+}
+
+export function flattener_flattenArrayComponent(flattenerPtr: u32, baseNameHash: u32, dim1: u32, dim2: u32, varType: u32, variability: u32, causality: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).flattenArrayComponent(baseNameHash, dim1, dim2, varType as u16, variability as u16, causality as u16);
+}
+
+export function flattener_connectPorts(flattenerPtr: u32, port1VarId: u32, port2VarId: u32, memberCount: u32, isBoundary: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).connectPorts(port1VarId, port2VarId, memberCount, isBoundary == 1);
+}
+
+export function flattener_registerInner(flattenerPtr: u32, nameHash: u32, varId: u32): void {
+  if (flattenerPtr != 0) {
+    changetype<ModelicaFlattener>(flattenerPtr).registerInner(nameHash, varId);
+  }
+}
+
+export function flattener_resolveOuter(flattenerPtr: u32, nameHash: u32): u32 {
+  if (flattenerPtr == 0) return 0xffffffff;
+  return changetype<ModelicaFlattener>(flattenerPtr).resolveOuter(nameHash);
+}
+
+export function flattener_flattenInitialEquationSection(flattenerPtr: u32, sectionNodePtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).flattenInitialEquationSection(sectionNodePtr);
+}
+
+export function flattener_getCardinality(flattenerPtr: u32, varId: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).getCardinality(varId);
 }
 
 export function flattener_unionSets(flattenerPtr: u32, v1: u32, v2: u32): void {
   if (flattenerPtr != 0) {
-    changetype<ArenaQueryFlattener>(flattenerPtr).unionSets(v1, v2);
+    changetype<ModelicaFlattener>(flattenerPtr).unionSets(v1, v2);
   }
 }
 `;

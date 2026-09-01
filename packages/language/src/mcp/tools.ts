@@ -26,7 +26,7 @@ import {
   formatQueryResult,
   OntologyBuilder,
   TableauReasoner,
-} from "../reasoner/index.js";
+} from "../runtime/wasm_ontology.js";
 import { NodeFileSystem } from "./filesystem.js";
 import type { ServerContext } from "./types.js";
 
