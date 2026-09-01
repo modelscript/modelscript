@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-// @ts-nocheck
-import { buildSysML2DiagramData, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
+import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
 import { Connection } from "vscode-languageserver";
 import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "../diagramApi.js";
 import { buildDiagramData } from "../diagramData.js";
@@ -154,7 +152,6 @@ export class DiagramService {
           // Delegate to the existing SysML2 diagram data builder inline
           try {
             const unified = this.workspaceManager.unifiedWorkspace.toUnified();
-            const resolver = createSysML2ScopeResolver(unified);
             const diagramTypeRaw = params.diagramType ?? "All";
             const validTypes = [
               "All",
@@ -181,7 +178,7 @@ export class DiagramService {
                   | "Sequence"
                   | "Package")
               : "All";
-            const data = buildSysML2DiagramData(unified, params.uri, resolver, diagramType);
+            const data = buildSysML2DiagramData(unified, params.uri, undefined, diagramType);
 
             // Merge stored layout positions
             const layout = this.sysml2Layouts.get(params.uri);

@@ -9,8 +9,7 @@
  */
 
 import type { AdapterRegistry, ProjectionResult } from "../compiler/adapter-registry.js";
-import type { SymbolEntry, SymbolIndex } from "../compiler/runtime.js";
-import { IdTrieMap, StringTrieMap } from "../compiler/utils/radix-trie.js";
+import type { SymbolEntry, SymbolId, SymbolIndex } from "../compiler/runtime.js";
 
 // ---------------------------------------------------------------------------
 // OWL2 Axiom Types
@@ -2284,9 +2283,9 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   }
 
   toSyntheticSymbolEntries(): SymbolIndex {
-    const symbols = new IdTrieMap<SymbolEntry>();
-    const byName = new StringTrieMap<number[]>();
-    const childrenOf = new IdTrieMap<number[]>();
+    const symbols = new Map<SymbolId, SymbolEntry>();
+    const byName = new Map<string, number[]>();
+    const childrenOf = new Map<SymbolId | null, number[]>();
 
     let nextId = -1_000_000;
 

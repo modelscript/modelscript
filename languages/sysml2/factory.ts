@@ -9,7 +9,6 @@ import {
   LSPBridge,
   PositionIndex,
   QueryEngine,
-  ScopeResolver,
   WorkspaceIndex,
   extractIndexerHooks,
   extractQueryHooksMap,
@@ -55,57 +54,16 @@ export function createSysML2QueryEngine(index: any, tree?: any, cacheStore?: any
 }
 
 /**
- * KerML primitive types that are always implicitly in scope in SysML2.
- * These come from kernel library packages (ScalarValues, Base, etc.)
- * defined in `.kerml` files that the SysML2 parser cannot parse.
- * Per the SysML2 spec, every package implicitly imports the kernel libraries.
- */
-const KERML_IMPLICIT_NAMES = new Set([
-  // ScalarValues (import ScalarValues::*)
-  "ScalarValue",
-  "Boolean",
-  "String",
-  "NumericalValue",
-  "Number",
-  "Complex",
-  "Real",
-  "Rational",
-  "Integer",
-  "Natural",
-  "Positive",
-  // Base (import Base::*)
-  "Anything",
-  "DataValue",
-  "Object",
-  "Performance",
-  "Occurrence",
-  // BaseFunctions
-  "sum",
-  "size",
-  // Common KerML classifiers
-  "Null",
-]);
-
-/**
- * Creates a configured ScopeResolver for a given SysML2 SymbolIndex.
- */
-export function createSysML2ScopeResolver(index: any): ScopeResolver {
-  const resolver = new ScopeResolver(index, refHooks, indexerHooks);
-  resolver.setImplicitNames(KERML_IMPLICIT_NAMES);
-  return resolver;
-}
-
-/**
  * Creates an LSPBridge for a specific SysML2 document.
  */
-export function createSysML2LSPBridge(
-  index: any,
-  engine: any,
-  resolver: any,
-  sourceText: string,
-  documentUri: string,
-): LSPBridge {
-  return new LSPBridge(index, engine, resolver, new PositionIndex(sourceText), documentUri);
+export function createSysML2LSPBridge(index: any, engine: any, arg3: any, arg4?: any, arg5?: any): LSPBridge {
+  if (arg5 !== undefined) {
+    return new LSPBridge(index, engine, new PositionIndex(arg4), arg5);
+  }
+  if (arg4 !== undefined) {
+    return new LSPBridge(index, engine, new PositionIndex(arg3), arg4);
+  }
+  return new LSPBridge(index, engine, new PositionIndex(""), "");
 }
 
 /**

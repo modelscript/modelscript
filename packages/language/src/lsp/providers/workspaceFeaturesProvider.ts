@@ -15,9 +15,41 @@ export function registerWorkspaceFeaturesProvider(
   documentTrees: Map<string, any>,
   flushValidation: (uri: string) => Promise<void>,
   getUnifiedIndex: (isSysML2: boolean) => Promise<any>,
-  getResolver: (isSysML2: boolean, unifiedIndex: any) => any,
-  getGlobalWorkspaceIndex: () => any,
+  getResolverOrIndex?: any,
+  getGlobalWorkspaceIndex?: () => any,
 ) {
+  const getWorkspaceIndex =
+    typeof getResolverOrIndex === "function" && getGlobalWorkspaceIndex === undefined
+      ? getResolverOrIndex
+      : getGlobalWorkspaceIndex || (() => null);
+
+  const isDecl = (entry: any): boolean => {
+    return entry.kind !== "Reference" && entry.kind !== "ConnectEquation" && entry.kind !== "FunctionCall";
+  };
+
+  const resolveRef = (entry: any, index: any): any[] => {
+    if (isDecl(entry)) return [entry];
+    const ids = index.byName.get(entry.name) || [];
+    const decls: any[] = [];
+    for (const id of ids) {
+      const sym = index.symbols.get(id);
+      if (sym && isDecl(sym)) decls.push(sym);
+    }
+    return decls;
+  };
+
+  const findRefs = (declId: number, index: any): any[] => {
+    const decl = index.symbols.get(declId);
+    if (!decl) return [];
+    const ids = index.byName.get(decl.name) || [];
+    const refs: any[] = [];
+    for (const id of ids) {
+      const sym = index.symbols.get(id);
+      if (sym && !isDecl(sym)) refs.push(sym);
+    }
+    return refs;
+  };
+
   connection.onReferences(async (params) => {
     await flushValidation(params.textDocument.uri);
     const document = documents.get(params.textDocument.uri);
@@ -25,7 +57,6 @@ export function registerWorkspaceFeaturesProvider(
 
     const isSysML2 = params.textDocument.uri.endsWith(".sysml");
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
-    const resolver = isSysML2 ? getResolver(true, unifiedIndex) : getResolver(false, unifiedIndex);
 
     const offset = document.offsetAt(params.position);
     let targetEntry: any = null;
@@ -42,10 +73,10 @@ export function registerWorkspaceFeaturesProvider(
 
     // Find the declarations this symbol refers to (or itself if it is a declaration)
     let declarationIds: number[] = [];
-    if (resolver.isDeclaration(targetEntry)) {
+    if (isDecl(targetEntry)) {
       declarationIds = [targetEntry.id as number];
     } else {
-      const decls = resolver.resolve(targetEntry);
+      const decls = resolveRef(targetEntry, unifiedIndex);
       declarationIds = decls.map((d: any) => d.id as number);
     }
 
@@ -78,7 +109,7 @@ export function registerWorkspaceFeaturesProvider(
         addLocation(declEntry.resourceId, declEntry.startByte, declEntry.endByte);
       }
       // Include references
-      const refs = resolver.findReferences(declId);
+      const refs = findRefs(declId, unifiedIndex);
       for (const ref of refs) {
         if (ref.resourceId) {
           addLocation(ref.resourceId, ref.startByte, ref.endByte);
@@ -95,7 +126,6 @@ export function registerWorkspaceFeaturesProvider(
 
     const isSysML2 = params.textDocument.uri.endsWith(".sysml");
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
-    const resolver = isSysML2 ? getResolver(true, unifiedIndex) : getResolver(false, unifiedIndex);
 
     const offset = document.offsetAt(params.position);
     let targetEntry: any = null;
@@ -111,10 +141,10 @@ export function registerWorkspaceFeaturesProvider(
     if (!targetEntry) return null;
 
     let declarationIds: number[] = [];
-    if (resolver.isDeclaration(targetEntry)) {
+    if (isDecl(targetEntry)) {
       declarationIds = [targetEntry.id as number];
     } else {
-      const decls = resolver.resolve(targetEntry);
+      const decls = resolveRef(targetEntry, unifiedIndex);
       declarationIds = decls.map((d: any) => d.id as number);
     }
 
@@ -150,17 +180,9 @@ export function registerWorkspaceFeaturesProvider(
       // Include declaration
       const declEntry = unifiedIndex.symbols.get(declId);
       if (declEntry && declEntry.resourceId && declEntry.name) {
-        // The entry byte range might include keywords/type, we just want to replace the name.
-        // E.g., `part engine : Engine`, `declEntry` spans the whole thing.
-        // Actually `targetName` length is from `declEntry.name.length`, but `declEntry.nameLoc` isn't available.
-        // In ModelScript indexing, `startByte` to `endByte` is usually the identifier for refs.
-        // For declarations, `startByte` to `endByte` is the WHOLE declaration body. That's a problem for rename!
-        // Let's use `name` and match the identifier.
-
         const text = documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
         if (text) {
           const dummyDoc = TextDocument.create(declEntry.resourceId, "temp", 1, text);
-          // Find exact occurrence of declaration name near the start
           const nameMatch = text.substring(declEntry.startByte, declEntry.endByte).indexOf(declEntry.name);
           if (nameMatch !== -1) {
             const matchStart = declEntry.startByte + nameMatch;
@@ -170,7 +192,7 @@ export function registerWorkspaceFeaturesProvider(
         }
       }
       // Include references
-      const refs = resolver.findReferences(declId);
+      const refs = findRefs(declId, unifiedIndex);
       for (const ref of refs) {
         if (ref.resourceId) {
           addEdit(ref.resourceId, ref.startByte, ref.endByte);

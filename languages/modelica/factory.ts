@@ -17,7 +17,6 @@ import {
   LSPBridge,
   PositionIndex,
   QueryEngine,
-  ScopeResolver,
   WorkspaceIndex,
 } from "@modelscript/language/compiler";
 
@@ -195,110 +194,17 @@ export function createModelicaQueryEngine(
 }
 
 /**
- * Creates a configured ScopeResolver for a given SymbolIndex.
- */
-const BUILTIN_MODELICA_NAMES = new Set([
-  "Real",
-  "Integer",
-  "Boolean",
-  "String",
-  "enumeration",
-  "Clock",
-  "time",
-  "AssertionLevel",
-  "StateSelect",
-  "sin",
-  "cos",
-  "tan",
-  "asin",
-  "acos",
-  "atan",
-  "atan2",
-  "sinh",
-  "cosh",
-  "tanh",
-  "exp",
-  "log",
-  "log10",
-  "sqrt",
-  "abs",
-  "sign",
-  "der",
-  "pre",
-  "edge",
-  "change",
-  "reinit",
-  "initial",
-  "terminal",
-  "sample",
-  "noEvent",
-  "smooth",
-  "delay",
-  "cardinality",
-  "homotopy",
-  "semiLinear",
-  "inStream",
-  "actualStream",
-  "spatialDistribution",
-  "getInstanceName",
-  "sum",
-  "product",
-  "ndims",
-  "size",
-  "scalar",
-  "vector",
-  "matrix",
-  "identity",
-  "diagonal",
-  "zeros",
-  "ones",
-  "fill",
-  "linspace",
-  "min",
-  "max",
-  "mod",
-  "rem",
-  "ceil",
-  "floor",
-  "integer",
-  "cross",
-  "skew",
-  "outerProduct",
-  "symmetric",
-  "sort",
-  "cat",
-  "div",
-  "Connections",
-  "Subtask",
-  "super",
-  // Modelica Script (.mos) built-in functions
-  "loadFile",
-  "loadString",
-  "loadModel",
-  "simulate",
-  "calibrate",
-  "getClassNames",
-  "print",
-]);
-
-export function createModelicaScopeResolver(index: any): ScopeResolver {
-  const resolver = new ScopeResolver(index, refHooks, allIndexerHooks);
-  resolver.setImplicitNames(BUILTIN_MODELICA_NAMES);
-  return resolver;
-}
-
-/**
  * Creates an LSPBridge for a specific document.
  */
-export function createModelicaLSPBridge(
-  index: any,
-  engine: any,
-  resolver: any,
-  sourceText: string,
-  documentUri: string,
-): LSPBridge {
-  return new LSPBridge(index, engine, resolver, new PositionIndex(sourceText), documentUri);
+export function createModelicaLSPBridge(index: any, engine: any, arg3: any, arg4?: any, arg5?: any): LSPBridge {
+  if (arg5 !== undefined) {
+    return new LSPBridge(index, engine, new PositionIndex(arg4), arg5);
+  }
+  if (arg4 !== undefined) {
+    return new LSPBridge(index, engine, new PositionIndex(arg3), arg4);
+  }
+  return new LSPBridge(index, engine, new PositionIndex(""), "");
 }
 
 import { MsimParser } from "./msim-parser.js";
-export { injectPredefinedTypes, LSPBridge, MsimParser, PositionIndex, QueryEngine, ScopeResolver, WorkspaceIndex };
+export { injectPredefinedTypes, LSPBridge, MsimParser, PositionIndex, QueryEngine, WorkspaceIndex };

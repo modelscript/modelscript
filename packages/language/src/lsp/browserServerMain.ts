@@ -30,13 +30,9 @@ import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/tree-sitter.js
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { Context, DAEBuilder, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
 
-import {
-  createModelicaQueryEngine,
-  createModelicaScopeResolver,
-  injectPredefinedTypes,
-} from "@modelscript/modelica/factory";
+import { createModelicaQueryEngine, injectPredefinedTypes } from "@modelscript/modelica/factory";
 
-import { createSysML2QueryEngine, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
+import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 
@@ -634,8 +630,6 @@ registerWorkspaceFeaturesProvider(
     isSysML2
       ? await workspaceManager.sysml2WorkspaceIndex.toUnifiedAsync()
       : await workspaceManager.globalWorkspaceIndex.toUnifiedAsync(),
-  (isSysML2, unifiedIndex) =>
-    isSysML2 ? createSysML2ScopeResolver(unifiedIndex) : createModelicaScopeResolver(unifiedIndex),
   () => workspaceManager.globalWorkspaceIndex,
 );
 

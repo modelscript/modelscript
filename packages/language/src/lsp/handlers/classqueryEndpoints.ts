@@ -281,8 +281,6 @@ export function registerClassQueryEndpoints(context: LspContext) {
             : context.workspaceManager.globalModelicaQueryEngine;
           if (engine) {
             engine.updateIndex(fullIndex);
-            const resolver = (engine as any).__resolverCache;
-            if (resolver) resolver.updateIndex(fullIndex);
           }
 
           if (params.uri) {

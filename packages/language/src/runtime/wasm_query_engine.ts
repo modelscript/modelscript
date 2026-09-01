@@ -23,7 +23,6 @@ import type {
   SymbolId,
   SymbolIndex,
 } from "../compiler/runtime.js";
-import { IdTrieMap } from "../compiler/utils/radix-trie.js";
 
 // -- Public Types --
 
@@ -185,7 +184,7 @@ export class WasmQueryEngine {
   private hooksByRule: Map<string, QueryHooks>;
 
   // Virtual entry infrastructure (specialization)
-  private virtualEntries = new IdTrieMap<SymbolEntry>();
+  private virtualEntries = new Map<SymbolId, SymbolEntry>();
   private specializationArgs = new Map<SymbolId, SpecializationArgs>();
   private specializationBases = new Map<SymbolId, SymbolId>();
   private specializeCache = new Map<string, SymbolId>();

@@ -1,4 +1,3 @@
-import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
@@ -105,11 +104,11 @@ export class SymbolArena {
   // ── Index structures (mirrors SymbolIndex) ──
 
   /** Name string → SymbolId[] for fast byName lookups. */
-  private byNameIndex = new StringTrieMap<SymbolId[]>();
+  private byNameIndex = new Map<string, SymbolId[]>();
   /** Parent SymbolId → child SymbolId[] for fast childrenOf lookups. */
-  private childrenOfIndex = new IdTrieMap<SymbolId[]>();
+  private childrenOfIndex = new Map<SymbolId | null, SymbolId[]>();
   /** Resource URI → SymbolId[] for fast per-file iteration. */
-  private symbolsByResourceIndex = new StringTrieMap<SymbolId[]>();
+  private symbolsByResourceIndex = new Map<string, SymbolId[]>();
 
   constructor(interner?: StringInterner, initialCapacity = DEFAULT_CAPACITY) {
     this.interner = interner ?? new StringInterner();
@@ -228,7 +227,7 @@ export class SymbolArena {
    * read directly from the arena — no copying occurs.
    */
   toSymbolIndex(): SymbolIndex {
-    const symbols = new IdTrieMap<SymbolEntry>();
+    const symbols = new Map<SymbolId, SymbolEntry>();
 
     // Create Flyweight views for all allocated slots
     for (let id = 0; id < this._length; id++) {

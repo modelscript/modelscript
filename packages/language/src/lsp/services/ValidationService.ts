@@ -6,9 +6,9 @@ import { DocumentManager } from "./DocumentManager.js";
 import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
-import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
-import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
-import { LSPBridge, PositionIndex, QueryEngine, ScopeResolver, VerificationRunner } from "../../compiler/index.js";
+import { createModelicaLSPBridge } from "@modelscript/modelica/factory";
+import { createSysML2LSPBridge } from "@modelscript/sysml2/factory";
+import { LSPBridge, PositionIndex, QueryEngine, VerificationRunner } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
 import { TableauReasoner } from "../../runtime/wasm_ontology.js";
 import type { SyntaxNode } from "../../utils/tree-sitter.js";
@@ -242,9 +242,6 @@ export class ValidationService {
           this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
         if (this.workspaceManager.globalSysML2QueryEngine) {
           this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
-          // Invalidate the SysML2 resolver cache so it sees the new STEP symbols
-          const cachedResolver = (this.workspaceManager.globalSysML2QueryEngine as any).__resolverCache;
-          if (cachedResolver) cachedResolver.updateIndex(unifiedIndex);
         }
 
         // Create/update STEP query engine + resolver + bridge
@@ -257,15 +254,7 @@ export class ValidationService {
         }
 
         const engine = this.workspaceManager.globalStepQueryEngine;
-        let resolver = (engine as any).__resolverCache;
-        if (!resolver) {
-          resolver = new ScopeResolver(unifiedIndex, {} as any, {} as any);
-          (engine as any).__resolverCache = resolver;
-        } else {
-          resolver.updateIndex(unifiedIndex);
-        }
-
-        const bridge = new LSPBridge(unifiedIndex, engine, resolver, new PositionIndex(text), textDocument.uri);
+        const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
         this.documentLSPBridges.set(textDocument.uri, bridge);
         this.connection.console.info(`[step] LSPBridge created for ${textDocument.uri}`);
 
@@ -290,23 +279,6 @@ export class ValidationService {
             }
           };
           collectErrors(tree.rootNode);
-
-          // Check for unresolved semantic references
-          try {
-            const unresolved = resolver.resolveAllReferences(textDocument.uri);
-            for (const unres of unresolved) {
-              const start = bridge["positions"].offsetToPosition(unres.startByte);
-              const end = bridge["positions"].offsetToPosition(unres.endByte);
-              stepDiagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                range: { start, end },
-                message: unres.message,
-                source: "step",
-              });
-            }
-          } catch {
-            // resolveAllReferences might not exist for the STEP resolver — that's ok
-          }
         }
       } catch (e: any) {
         this.connection.console.error(
@@ -496,16 +468,7 @@ export class ValidationService {
           this.workspaceManager.globalOWL2QueryEngine = new QueryEngine(unifiedIndex, {} as any);
         }
         const engine = this.workspaceManager.globalOWL2QueryEngine;
-
-        let resolver = (engine as any).__resolverCache;
-        if (!resolver) {
-          resolver = new ScopeResolver(unifiedIndex, {} as any, {} as any);
-          (engine as any).__resolverCache = resolver;
-        } else {
-          resolver.updateIndex(unifiedIndex);
-        }
-
-        const bridge = new LSPBridge(unifiedIndex, engine, resolver, new PositionIndex(text), textDocument.uri);
+        const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
         this.documentLSPBridges.set(textDocument.uri, bridge);
 
         const owl2Diagnostics: Diagnostic[] = [];
@@ -550,26 +513,6 @@ export class ValidationService {
               severity,
               range: { start, end },
               message: d.message,
-              source: "owl2",
-            });
-          }
-
-          // Collect unresolved references
-          const unresolvedRefs = await (resolver as any).resolveAllReferencesAsync(textDocument.uri, async () => {
-            await new Promise<void>((r) => setTimeout(r, 0));
-            return false;
-          });
-          for (const r of unresolvedRefs) {
-            const start = bridge["positions"].offsetToPosition(r.startByte);
-            const end = bridge["positions"].offsetToPosition(r.endByte);
-            let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-            if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
-            if (r.severity === "info") severity = DiagnosticSeverity.Information;
-
-            owl2Diagnostics.push({
-              severity,
-              range: { start, end },
-              message: r.message,
               source: "owl2",
             });
           }
@@ -739,16 +682,7 @@ export class ValidationService {
           this.workspaceManager.globalSysML2QueryEngine = createSysML2QueryEngine(unifiedIndex) as any;
         }
         const engine = this.workspaceManager.globalSysML2QueryEngine;
-
-        let resolver = (engine as any).__resolverCache;
-        if (!resolver) {
-          resolver = createSysML2ScopeResolver(unifiedIndex);
-          (engine as any).__resolverCache = resolver;
-        } else {
-          resolver.updateIndex(unifiedIndex);
-        }
-
-        const bridge = createSysML2LSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
+        const bridge = createSysML2LSPBridge(unifiedIndex, engine, undefined, text, textDocument.uri);
         this.documentLSPBridges.set(textDocument.uri, bridge as any);
 
         // Collect parse errors from the tree
@@ -792,31 +726,6 @@ export class ValidationService {
               severity,
               range: { start, end },
               message: d.message,
-              source: "sysml2",
-            });
-          }
-
-          // Collect unresolved references
-          // Skip unresolved-reference diagnostics while the SysML2 standard library
-          // is still loading — primitive types like Real/Integer/Boolean/String live
-          // in the stdlib and produce false positives until it's indexed.
-          const unresolvedRefs = this.dependenciesReady
-            ? await (resolver as any).resolveAllReferencesAsync(textDocument.uri, async () => {
-                await new Promise<void>((r) => setTimeout(r, 0));
-                return false;
-              })
-            : [];
-          for (const r of unresolvedRefs) {
-            const start = bridge["positions"].offsetToPosition(r.startByte);
-            const end = bridge["positions"].offsetToPosition(r.endByte);
-            let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-            if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
-            if (r.severity === "info") severity = DiagnosticSeverity.Information;
-
-            sysmlDiagnostics.push({
-              severity,
-              range: { start, end },
-              message: r.message,
               source: "sysml2",
             });
           }
@@ -1174,21 +1083,9 @@ export class ValidationService {
       context.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
       const engine = this.workspaceManager.globalModelicaQueryEngine;
 
-      let resolver = (engine as any).__resolverCache;
-      if (!resolver) {
-        resolver = createModelicaScopeResolver(unifiedIndex);
-        (engine as any).__resolverCache = resolver;
-      } else if (engineNeedsUpdate) {
-        resolver.updateIndex(unifiedIndex);
-      }
-      // Pass changedIds for incremental reference caching
-      if (resolver.setChangedIds) {
-        resolver.setChangedIds(changedIds ?? null);
-      }
-
       const currentDoc = this.documentManager.documents.get(uri);
       const currentText = currentDoc ? currentDoc.getText() : text;
-      const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, currentText, uri);
+      const bridge = createModelicaLSPBridge(unifiedIndex, engine, undefined, currentText, uri);
       this.documentLSPBridges.set(uri, bridge as any);
       this.connection.console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
 
@@ -1297,109 +1194,12 @@ export class ValidationService {
       // The user sees lint errors and the project tree immediately.
       if (isStale()) return;
 
-      const preservedRefDiags: Diagnostic[] = [];
-      const cachedRefs = (resolver as any).getPreservedDiagnostics?.(uri) || [];
-      for (const r of cachedRefs) {
-        if (r.fqn) {
-          const uriToFix = (this.workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
-          if (uriToFix && !this.workspaceManager.globalWorkspaceIndex.has(uriToFix)) {
-            continue;
-          }
-        }
-        const start = (bridge as any).positions.offsetToPosition(r.startByte);
-        const end = (bridge as any).positions.offsetToPosition(r.endByte);
-        let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-        if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
-        if (r.severity === "info") severity = DiagnosticSeverity.Information;
-        preservedRefDiags.push({ severity, range: { start, end }, message: r.message, source: "modelscript" });
-      }
-
-      this.lastSemanticDiagnostics.set(uri, [...newSemanticDiagnostics, ...preservedRefDiags]);
-      const earlyDiags = [...baseDiagnostics, ...newSemanticDiagnostics, ...preservedRefDiags];
-      if (earlyDiags.length > 1000) earlyDiags.length = 1000;
-      this.connection.sendDiagnostics({ uri, diagnostics: earlyDiags });
+      this.lastSemanticDiagnostics.set(uri, newSemanticDiagnostics);
+      const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+      if (diagnostics.length > 1000) diagnostics.length = 1000;
+      this.connection.sendDiagnostics({ uri, diagnostics });
       this.connection.sendNotification("modelscript/projectTreeChanged");
-      this.connection.console.info(
-        `[perf] Immediate delivery for ${uri} in ${(performance.now() - t0).toFixed(2)}ms (preserved ${preservedRefDiags.length} ref errors)`,
-      );
-
-      // ── Step 4 (deferred): Resolve references in the background ─────────
-      // Reference resolution can take 4+ seconds on cold cache. Run it
-      // asynchronously and send an augmented diagnostic update when done.
-      // IMPORTANT: We track this as part of the pipeline promise via
-      // deferredResolve so the inflight check prevents redundant pipeline starts.
-      if (!skipHeavyLints && this.dependenciesReady) {
-        // Capture values needed by the async closure
-        const capturedUri = uri;
-        const capturedBaseDiagnostics = [...baseDiagnostics];
-        const capturedLintDiagnostics = [...newSemanticDiagnostics];
-        const capturedBridge = bridge;
-        const capturedResolver = resolver;
-        const capturedRevision = revisionAtStart;
-        const capturedT0 = t0;
-
-        // Yield to the event loop to let the Tier 2 timer settle.
-        // The pipeline's outer promise (tracked in activeValidationPromises)
-        // won't resolve until this await completes, keeping "inflight" true.
-        await new Promise<void>((r) => setTimeout(r, 0));
-
-        // If a new edit arrived during the yield, abort deferred work
-        if (capturedRevision !== null && (this.documentRevisions.get(capturedUri) ?? 0) !== capturedRevision) {
-          this.connection.console.info(`[perf] Step 4 (deferred) skipped — stale revision for ${capturedUri}`);
-        } else {
-          try {
-            this.connection.console.info(`[perf] Step 4 (deferred) starting for ${capturedUri}`);
-            const refT0 = performance.now();
-
-            const yieldAndCheckStaleDeferred = async () => {
-              await new Promise<void>((r) => setTimeout(r, 0));
-              return capturedRevision !== null && (this.documentRevisions.get(capturedUri) ?? 0) !== capturedRevision;
-            };
-
-            const unresolvedRefs = await (capturedResolver as any).resolveAllReferencesAsync(
-              capturedUri,
-              yieldAndCheckStaleDeferred,
-            );
-
-            // Check again after resolution
-            if (capturedRevision !== null && (this.documentRevisions.get(capturedUri) ?? 0) !== capturedRevision) {
-              this.connection.console.info(
-                `[perf] Step 4 (deferred) aborted — stale after resolution for ${capturedUri}`,
-              );
-            } else {
-              const refDiagnostics: Diagnostic[] = [];
-              for (const r of unresolvedRefs) {
-                if (r.fqn) {
-                  const uriToFix = (this.workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
-                  if (uriToFix && !this.workspaceManager.globalWorkspaceIndex.has(uriToFix)) {
-                    this.workspaceManager.globalWorkspaceIndex.getFileIndex(uriToFix);
-                    continue;
-                  }
-                }
-                const start = (capturedBridge as any).positions.offsetToPosition(r.startByte);
-                const end = (capturedBridge as any).positions.offsetToPosition(r.endByte);
-                let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-                if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
-                if (r.severity === "info") severity = DiagnosticSeverity.Information;
-                refDiagnostics.push({ severity, range: { start, end }, message: r.message, source: "modelscript" });
-              }
-
-              // Merge lint + reference diagnostics and send update
-              const allSemanticDiags = [...capturedLintDiagnostics, ...refDiagnostics];
-              this.lastSemanticDiagnostics.set(capturedUri, allSemanticDiags);
-              const finalDiags = [...capturedBaseDiagnostics, ...allSemanticDiags];
-              if (finalDiags.length > 1000) finalDiags.length = 1000;
-              this.connection.sendDiagnostics({ uri: capturedUri, diagnostics: finalDiags });
-
-              this.connection.console.info(
-                `[perf] Step 4 (deferred) completed for ${capturedUri} in ${(performance.now() - refT0).toFixed(2)}ms (total pipeline: ${(performance.now() - capturedT0).toFixed(2)}ms), refDiags=${refDiagnostics.length}`,
-              );
-            }
-          } catch (e: any) {
-            this.connection.console.warn(`[perf] Step 4 (deferred) failed: ${e?.message ?? e}`);
-          }
-        }
-      }
+      this.connection.console.info(`[perf] Delivery for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`);
 
       this.connection.console.info(
         `[perf] Finished this.runSemanticPipeline for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`,

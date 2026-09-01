@@ -1,6 +1,5 @@
 /* eslint-disable */
 import type { QueryEngine } from "../runtime/wasm_query_engine.js";
-import type { ScopeResolver } from "./resolver.js";
 import type { SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 
 // ---------------------------------------------------------------------------
@@ -132,13 +131,129 @@ export class PositionIndex {
  * and the JSON-RPC protocol used by LSP clients.
  */
 export class LSPBridge {
+  private positions: PositionIndex;
+  private documentUri: string;
+
   constructor(
     private index: SymbolIndex,
     private engine: QueryEngine,
-    private resolver: ScopeResolver,
-    private positions: PositionIndex,
-    private documentUri: string,
-  ) {}
+    arg3?: any,
+    arg4?: any,
+    arg5?: any,
+  ) {
+    if (arg5 !== undefined) {
+      // (index, engine, resolver, positions, documentUri)
+      this.positions = arg4;
+      this.documentUri = arg5;
+    } else if (arg4 !== undefined) {
+      // (index, engine, positions, documentUri)
+      this.positions = arg3;
+      this.documentUri = arg4;
+    } else {
+      this.positions = arg3 ?? ({} as any);
+      this.documentUri = "";
+    }
+  }
+
+  private isDecl(entry: SymbolEntry): boolean {
+    return entry.kind !== "Reference" && entry.kind !== "ConnectEquation" && entry.kind !== "FunctionCall";
+  }
+
+  private resolveRef(refEntry: SymbolEntry): SymbolEntry[] {
+    if (this.isDecl(refEntry)) return [refEntry];
+    return this.resolveName(refEntry.name, refEntry.parentId);
+  }
+
+  private resolveName(name: string, scopeId: SymbolId | null): SymbolEntry[] {
+    let current = scopeId;
+    while (current !== null) {
+      const children = this.index.childrenOf.get(current) || [];
+      for (const childId of children) {
+        const entry = this.index.symbols.get(childId);
+        if (entry && entry.name === name && this.isDecl(entry)) {
+          return [entry];
+        }
+      }
+      const parent = this.index.symbols.get(current);
+      current = parent?.parentId ?? null;
+    }
+    const globalIds = this.index.byName.get(name) || [];
+    const results: SymbolEntry[] = [];
+    for (const id of globalIds) {
+      const entry = this.index.symbols.get(id);
+      if (entry && this.isDecl(entry)) {
+        results.push(entry);
+      }
+    }
+    return results;
+  }
+
+  private getVisibleSymbols(scopeId: SymbolId | null): SymbolEntry[] {
+    const visible: SymbolEntry[] = [];
+    const seenNames = new Set<string>();
+    let current = scopeId;
+    while (current !== null) {
+      const children = this.index.childrenOf.get(current) || [];
+      for (const childId of children) {
+        const entry = this.index.symbols.get(childId);
+        if (entry && this.isDecl(entry) && !seenNames.has(entry.name)) {
+          visible.push(entry);
+          seenNames.add(entry.name);
+        }
+      }
+      const parent = this.index.symbols.get(current);
+      current = parent?.parentId ?? null;
+    }
+    const topLevel = this.index.childrenOf.get(null) || this.index.childrenOf.get(0) || [];
+    for (const childId of topLevel) {
+      const entry = this.index.symbols.get(childId);
+      if (entry && this.isDecl(entry) && !seenNames.has(entry.name)) {
+        visible.push(entry);
+        seenNames.add(entry.name);
+      }
+    }
+    return visible;
+  }
+
+  private getInheritedMembers(typeId: SymbolId): SymbolEntry[] {
+    const inherited: SymbolEntry[] = [];
+    const seen = new Set<SymbolId>();
+    const queue = [typeId];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      if (seen.has(currentId)) continue;
+      seen.add(currentId);
+      const entry = this.index.symbols.get(currentId);
+      if (!entry) continue;
+      for (const inheritPath of entry.inherits || []) {
+        const targetDecls = this.resolveName(inheritPath, entry.parentId);
+        for (const target of targetDecls) {
+          queue.push(target.id);
+          const children = this.getExportedChildren(target.id);
+          for (const child of children) {
+            if (this.isDecl(child)) {
+              inherited.push(child);
+            }
+          }
+        }
+      }
+    }
+    return inherited;
+  }
+
+  private findRefs(declId: SymbolId): SymbolEntry[] {
+    const decl = this.index.symbols.get(declId);
+    if (!decl) return [];
+    const matchingIds = this.index.byName.get(decl.name) || [];
+    const refs: SymbolEntry[] = [];
+    for (const id of matchingIds) {
+      const entry = this.index.symbols.get(id);
+      if (entry && !this.isDecl(entry)) {
+        refs.push(entry);
+      }
+    }
+    return refs;
+  }
 
   // =========================================================================
   // textDocument/documentSymbol
@@ -228,7 +343,7 @@ export class LSPBridge {
     const refEntry = this.findEntryAtOffset(byteOffset);
     if (!refEntry) return null;
 
-    const targets = this.resolver.resolve(refEntry);
+    const targets = this.resolveRef(refEntry);
     if (targets.length === 0) return null;
 
     return targets[0];
@@ -263,7 +378,7 @@ export class LSPBridge {
     const scopeEntry = this.findScopeAtOffset(byteOffset);
     const scopeId = scopeEntry?.id ?? null;
 
-    const visible = this.resolver.visibleSymbols(scopeId);
+    const visible = this.getVisibleSymbols(scopeId);
     const seen = new Set<string>();
     const results: LSPCompletionItem[] = [];
     for (const entry of visible) {
@@ -296,7 +411,7 @@ export class LSPBridge {
     const scopeId = scopeEntry?.id ?? null;
 
     // 2. Resolve `varName` lexically to find its declaration
-    let varDecls = this.resolver.resolveName(varName, scopeId);
+    let varDecls = this.resolveName(varName, scopeId);
 
     // Fallback: global name search across the entire index.
     // This handles cases where tree-sitter parse errors (from incomplete text
@@ -307,7 +422,7 @@ export class LSPBridge {
       if (globalIds) {
         for (const id of globalIds) {
           const entry = this.index.symbols.get(id);
-          if (entry && this.resolver.isDeclaration(entry)) {
+          if (entry && this.isDecl(entry)) {
             varDecls.push(entry);
           }
         }
@@ -328,7 +443,7 @@ export class LSPBridge {
     const children = this.getExportedChildren(varDecl.id);
     if (children.length > 0) {
       return children
-        .filter((child) => this.resolver.isDeclaration(child))
+        .filter((child) => this.isDecl(child))
         .map((child) => ({
           label: child.name,
           kind: this.mapSymbolKind(child.kind),
@@ -355,8 +470,8 @@ export class LSPBridge {
     if (entry.metadata) {
       for (const value of Object.values(entry.metadata)) {
         if (typeof value === "string" && value.length > 0) {
-          const typeDecls = this.resolver.resolveName(value, entry.parentId);
-          if (typeDecls.length > 0 && this.resolver.isDeclaration(typeDecls[0])) {
+          const typeDecls = this.resolveName(value, entry.parentId);
+          if (typeDecls.length > 0 && this.isDecl(typeDecls[0])) {
             return typeDecls[0];
           }
         }
@@ -365,23 +480,23 @@ export class LSPBridge {
 
     // Strategy 2: Check child Reference entries (from ref() hooks)
     // Use both parentId scan AND childrenOf map for resilience
-    const childRefs = this.getExportedChildren(entry.id).filter((c) => !this.resolver.isDeclaration(c));
+    const childRefs = this.getExportedChildren(entry.id).filter((c) => !this.isDecl(c));
     for (const ref of childRefs) {
       if (ref.name && ref.name.length > 0) {
         // Try lexical resolution first, then global byName fallback
-        let typeDecls = this.resolver.resolveName(ref.name, entry.parentId);
+        let typeDecls = this.resolveName(ref.name, entry.parentId);
         if (typeDecls.length === 0) {
           const globalIds = this.index.byName.get(ref.name);
           if (globalIds) {
             for (const id of globalIds) {
               const globalEntry = this.index.symbols.get(id);
-              if (globalEntry && this.resolver.isDeclaration(globalEntry)) {
+              if (globalEntry && this.isDecl(globalEntry)) {
                 typeDecls.push(globalEntry);
               }
             }
           }
         }
-        if (typeDecls.length > 0 && this.resolver.isDeclaration(typeDecls[0])) {
+        if (typeDecls.length > 0 && this.isDecl(typeDecls[0])) {
           return typeDecls[0];
         }
       }
@@ -425,7 +540,7 @@ export class LSPBridge {
     // Resolve the type
     const scopeEntry = this.findScopeAtOffset(byteOffset);
     const scopeId = scopeEntry?.id ?? null;
-    const typeDecls = this.resolver.resolveName(typeName, scopeId);
+    const typeDecls = this.resolveName(typeName, scopeId);
     if (typeDecls.length === 0) return null;
 
     return this.membersOf(typeDecls[0]);
@@ -440,7 +555,7 @@ export class LSPBridge {
 
     // Direct children (exclude reference-site entries like extends clauses)
     for (const child of this.getExportedChildren(typeEntry.id)) {
-      if (!this.resolver.isDeclaration(child)) continue;
+      if (!this.isDecl(child)) continue;
       if (!seen.has(child.name)) {
         seen.add(child.name);
         results.push({
@@ -452,7 +567,7 @@ export class LSPBridge {
     }
 
     // Inherited members via resolver
-    const inherited = this.resolver.inheritedMembersOf(typeEntry.id);
+    const inherited = this.getInheritedMembers(typeEntry.id);
     for (const member of inherited) {
       if (!seen.has(member.name)) {
         seen.add(member.name);
@@ -511,7 +626,7 @@ export class LSPBridge {
 
     let targetDecl = entry;
     if (entry.kind === "Reference") {
-      const resolved = this.resolver.resolve(entry);
+      const resolved = this.resolveRef(entry);
       if (resolved.length > 0) {
         targetDecl = resolved[0];
       }
@@ -652,7 +767,7 @@ export class LSPBridge {
     const typeName = declMatch[1];
     const scopeEntry = this.findScopeAtOffset(byteOffset);
     const scopeId = scopeEntry?.id ?? null;
-    const typeDecls = this.resolver.resolveName(typeName, scopeId);
+    const typeDecls = this.resolveName(typeName, scopeId);
     if (typeDecls.length === 0) return null;
 
     const typeEntry = typeDecls[0];
@@ -660,12 +775,12 @@ export class LSPBridge {
 
     const children = this.getExportedChildren(typeEntry.id);
     for (const child of children) {
-      if (child.name === word && this.resolver.isDeclaration(child)) {
+      if (child.name === word && this.isDecl(child)) {
         return { contents: this.hoverEntry(child), range: hoverRange };
       }
     }
 
-    const inherited = this.resolver.inheritedMembersOf(typeEntry.id);
+    const inherited = this.getInheritedMembers(typeEntry.id);
     for (const member of inherited) {
       if (member.name === word) {
         return { contents: this.hoverEntry(member), range: hoverRange };
@@ -695,7 +810,7 @@ export class LSPBridge {
     if (!refEntry) return null;
 
     let targetDecl = refEntry;
-    const resolved = this.resolver.resolve(refEntry);
+    const resolved = this.resolveRef(refEntry);
     if (resolved.length > 0) {
       targetDecl = resolved[0];
     }
@@ -710,7 +825,7 @@ export class LSPBridge {
     const children = this.getExportedChildren(targetDecl.id);
     const typeRef = children.find((c) => c.kind === "Reference");
     if (typeRef) {
-      const typeResolved = this.resolver.resolve(typeRef);
+      const typeResolved = this.resolveRef(typeRef);
       if (typeResolved.length > 0) return typeResolved[0];
     }
     return null;
@@ -730,13 +845,13 @@ export class LSPBridge {
     // Is the user hovering over a usage/reference instead of the definition?
     // In SysML2, usage rule names end with "Usage" (e.g. "PartUsage"), but more generally
     // we can check if it resolves to something.
-    const resolved = this.resolver.resolve(entry);
+    const resolved = this.resolveRef(entry);
     if (resolved.length > 0) {
       targetDecl = resolved[0];
     }
 
     // Find all references mapping to the target declaration (workspace-wide)
-    const references = this.resolver.findReferences(targetDecl.id);
+    const references = this.findRefs(targetDecl.id);
     return { declaration: targetDecl, references };
   }
 

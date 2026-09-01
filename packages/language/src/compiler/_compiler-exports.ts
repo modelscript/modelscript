@@ -58,7 +58,6 @@ export * from "./i18n-extractor.js";
 export * from "./interner.js";
 export * from "./line-index.js";
 export * from "./lsp-bridge.js";
-export * from "./resolver.js";
 export * from "./scope.js";
 export * from "./semantic-diff.js";
 export * from "./semantic-node.js";

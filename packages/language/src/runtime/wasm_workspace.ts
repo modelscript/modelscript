@@ -1,6 +1,5 @@
 import { AdapterRegistry } from "../compiler/adapter-registry.js";
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "../compiler/runtime.js";
-import { IdTrieMap, StringTrieMap } from "../compiler/utils/radix-trie.js";
 import { WasmOntologyStore } from "./wasm_ontology.js";
 
 export interface IWorkspaceIndex {
@@ -157,9 +156,9 @@ export class WasmWorkspaceIndex {
   private hookMap = new Map<string, IndexerHook>();
   private fileSymbols = new Map<string, SymbolId[]>();
   private unifiedIndex: SymbolIndex = {
-    symbols: new IdTrieMap<SymbolEntry>(),
-    byName: new StringTrieMap<SymbolId[]>(),
-    childrenOf: new IdTrieMap<SymbolId[]>(),
+    symbols: new Map<SymbolId, SymbolEntry>(),
+    byName: new Map<string, SymbolId[]>(),
+    childrenOf: new Map<SymbolId | null, SymbolId[]>(),
   };
 
   constructor(instanceOrHooks: WasmLanguageInstance | IndexerHook[] | any = {}) {
@@ -508,9 +507,9 @@ export class UnifiedWorkspace {
       }
     }
     return {
-      symbols: new IdTrieMap<SymbolEntry>(),
-      byName: new StringTrieMap<SymbolId[]>(),
-      childrenOf: new IdTrieMap<SymbolId[]>(),
+      symbols: new Map<SymbolId, SymbolEntry>(),
+      byName: new Map<string, SymbolId[]>(),
+      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
   }
 
@@ -524,9 +523,9 @@ export class UnifiedWorkspace {
       }
     }
     return {
-      symbols: new IdTrieMap<SymbolEntry>(),
-      byName: new StringTrieMap<SymbolId[]>(),
-      childrenOf: new IdTrieMap<SymbolId[]>(),
+      symbols: new Map<SymbolId, SymbolEntry>(),
+      byName: new Map<string, SymbolId[]>(),
+      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
   }
 
@@ -540,9 +539,9 @@ export class UnifiedWorkspace {
       }
     }
     return {
-      symbols: new IdTrieMap<SymbolEntry>(),
-      byName: new StringTrieMap<SymbolId[]>(),
-      childrenOf: new IdTrieMap<SymbolId[]>(),
+      symbols: new Map<SymbolId, SymbolEntry>(),
+      byName: new Map<string, SymbolId[]>(),
+      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
   }
 
