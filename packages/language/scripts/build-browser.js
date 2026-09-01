@@ -149,9 +149,14 @@ esbuild
               "util",
               "worker_threads",
               "zlib",
+              "assemblyscript",
+              "assemblyscript/asc",
               "assemblyscript/dist/asc.js",
+              "binaryen",
             ];
-            const filter = new RegExp(`^(node:)?(?:${builtins.join("|")})$`);
+            const filter = new RegExp(
+              `^(node:)?(?:${builtins.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`,
+            );
             build.onResolve({ filter }, (args) => ({ path: args.path, namespace: "ignore" }));
             build.onLoad({ filter: /.*/, namespace: "ignore" }, () => ({ contents: "", loader: "js" }));
           },

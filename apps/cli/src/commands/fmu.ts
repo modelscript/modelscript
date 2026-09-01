@@ -7,8 +7,10 @@ import {
   FMI2_FUNCTION_TYPES_H,
   FMI2_TYPES_PLATFORM_H,
   buildFmuArchive,
+  compileAsToWasm,
   compileToWasm,
   generateFmu,
+  generateFmuAsSources,
   generateFmuCSources,
   generateFmuWasmSource,
 } from "@modelscript/language/fmi";
@@ -41,6 +43,7 @@ interface FmuArgs {
   "xml-only"?: boolean;
   xmlOnly?: boolean;
   type?: string;
+  target?: "wasm" | "c" | "js" | "all";
   source?: boolean;
   compile?: boolean;
   "fmi-version": string;
@@ -97,6 +100,12 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         type: "string",
         default: "both",
         choices: ["me", "cs", "both"],
+      })
+      .option("target", {
+        description: "export target: 'wasm' (WebAssembly), 'c' (C sources), 'js' (JavaScript), or 'all' (multi-target)",
+        type: "string",
+        default: "all",
+        choices: ["wasm", "c", "js", "all"],
       })
       .option("source", {
         description: "include C source files in the FMU archive",
@@ -205,6 +214,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     // ── Full FMU archive mode ──
     const fmiVersionStr =
       String(args["fmi-version"]) === "3" ? "3" : String(args["fmi-version"]) === "2" ? "2" : "both";
+    const target = args.target ?? (args.wasm ? "wasm" : "all");
     const archiveOptions: FmuArchiveOptions = {
       modelIdentifier,
       description: args.description,
@@ -213,7 +223,9 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       stopTime,
       stepSize,
       fmuType,
-      includeSources: args.source !== false,
+      target,
+      includeSources:
+        target === "c" || target === "all" || (args.source !== false && target !== "wasm" && target !== "js"),
       includeModelJson: true,
       fmiVersion: fmiVersionStr,
     };
@@ -225,24 +237,33 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     const outputPath = args.output ?? `${modelIdentifier}.fmu`;
 
     // ── Compile WASM ──
-    if (args.wasm) {
+    if (args.wasm || target === "wasm" || target === "all") {
       profiler.start("compilation_wasm");
-      const wasmSource = generateFmuWasmSource(arena, result.fmuResult, archiveOptions);
-      const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions);
-      profiler.end("compilation_wasm");
+      const asSource = generateFmuAsSources(arena, result.fmuResult, archiveOptions);
+      const asCompileResult = await compileAsToWasm(asSource, modelIdentifier, { optimize: true });
 
-      if (compileResult.success && compileResult.wasm && compileResult.jsGlue) {
+      if (asCompileResult.success && asCompileResult.wasm) {
         archiveOptions.includeWasm = true;
-        archiveOptions.wasmBinary = compileResult.wasm;
-        archiveOptions.wasmJsGlue = compileResult.jsGlue;
-        // Re-build archive to include WASM files
+        archiveOptions.wasmBinary = asCompileResult.wasm;
         profiler.start("codegen");
         result = buildFmuArchive(arena, archiveOptions, stateVars);
         profiler.end("codegen");
-        console.log(`  Compiled WebAssembly module.`);
+        console.log(`  Compiled WebAssembly module via native AssemblyScript (${asCompileResult.wasm.length} bytes).`);
       } else {
-        console.error(`WASM compilation failed: ${compileResult.message}`);
+        // Fallback to C / Emscripten if AssemblyScript failed
+        const wasmSource = generateFmuWasmSource(arena, result.fmuResult, archiveOptions);
+        const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions);
+        if (compileResult.success && compileResult.wasm && compileResult.jsGlue) {
+          archiveOptions.includeWasm = true;
+          archiveOptions.wasmBinary = compileResult.wasm;
+          archiveOptions.wasmJsGlue = compileResult.jsGlue;
+          profiler.start("codegen");
+          result = buildFmuArchive(arena, archiveOptions, stateVars);
+          profiler.end("codegen");
+          console.log(`  Compiled WebAssembly module via Emscripten.`);
+        }
       }
+      profiler.end("compilation_wasm");
     }
 
     // ── Compile Native C ──

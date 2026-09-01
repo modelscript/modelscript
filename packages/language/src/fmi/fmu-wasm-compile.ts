@@ -145,6 +145,79 @@ export async function compileToWasm(
 }
 
 /**
+ * Compile an AssemblyScript source string to WebAssembly using the embedded AssemblyScript compiler.
+ * Works without requiring any external C compiler or Emscripten.
+ *
+ * @param asSource            The AssemblyScript source code to compile
+ * @param modelIdentifier     Model name (used for output file naming)
+ * @param options             Optional compiler settings
+ * @returns Compilation result with WASM bytes
+ */
+export async function compileAsToWasm(
+  asSource: string,
+  modelIdentifier: string,
+  options?: {
+    optimize?: boolean;
+    shrink?: boolean;
+  },
+): Promise<WasmCompileResult> {
+  try {
+    const asc = await import("assemblyscript/asc");
+    const outputFiles: Record<string, Uint8Array | string> = {};
+
+    const flags = ["model.ts", "--outFile", `${modelIdentifier}.wasm`, "--optimize", "--noAssert", "--runtime", "stub"];
+
+    if (options?.shrink) {
+      flags.push("--shrinkLevel", "2");
+    }
+
+    const { error } = await asc.main(flags, {
+      readFile(filename: string) {
+        if (filename === "model.ts" || filename.endsWith("/model.ts")) {
+          return asSource;
+        }
+        return null;
+      },
+      writeFile(filename: string, contents: Uint8Array | string) {
+        outputFiles[filename] = contents;
+      },
+      listFiles() {
+        return [];
+      },
+    });
+
+    const wasmKey = `${modelIdentifier}.wasm`;
+    if (error || !outputFiles[wasmKey]) {
+      return {
+        wasm: null,
+        jsGlue: null,
+        success: false,
+        message: `AssemblyScript compilation failed: ${error?.message ?? "unknown error"}`,
+      };
+    }
+
+    const wasm =
+      typeof outputFiles[wasmKey] === "string"
+        ? new TextEncoder().encode(outputFiles[wasmKey] as string)
+        : (outputFiles[wasmKey] as Uint8Array);
+
+    return {
+      wasm,
+      jsGlue: null,
+      success: true,
+      message: `Successfully compiled to WASM via AssemblyScript (${wasm.length} bytes)`,
+    };
+  } catch (err: unknown) {
+    return {
+      wasm: null,
+      jsGlue: null,
+      success: false,
+      message: `AssemblyScript compilation error: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+/**
  * Check whether Emscripten is available on the system.
  * @returns true if `emcc --version` succeeds
  */
