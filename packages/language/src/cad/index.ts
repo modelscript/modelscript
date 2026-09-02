@@ -50,3 +50,6 @@ export { assembly, part } from "./assembly.js";
 
 // STEP compiler
 export { compileAssemblyToStep, compileToStep } from "./step-compiler.js";
+
+// CSG OpenCascade Worker
+export { CSGWorker, type CSGExecutionGraph, type CSGNode } from "./worker.js";

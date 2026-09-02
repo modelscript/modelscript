@@ -105,9 +105,8 @@ function evaluateModValue(value: ModificationValue, scope: SymbolEntry | null, d
  * Evaluate a Modelica expression from its source text.
  *
  * This is a lightweight evaluator for common expression patterns
- * that appear in modifications. For full expression evaluation
- * (needed by the flattener), the CST-based ModelicaInterpreter
- * in the compatibility layer handles complex cases.
+ * that appear in modifications. For full expression evaluation,
+ * the WASM-based ArenaExprEvaluator handles complex cases.
  */
 function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB): unknown {
   const trimmed = text.trim();

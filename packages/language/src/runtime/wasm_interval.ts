@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
 import { DAEBuilder } from "./wasm_dae.js";
+import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "./wasm_tape.js";
 
 /**
  * WebAssembly-backed Interval Arithmetic, McCormick Relaxations,

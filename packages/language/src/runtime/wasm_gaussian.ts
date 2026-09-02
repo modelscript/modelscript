@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
-import { StaticTapeBuilder, TapeOpKind } from "../compiler/tape.js";
+import { StaticTapeBuilder, TapeOpKind } from "./wasm_tape.js";
 
 /**
  * WebAssembly-backed Gaussian Uncertainty Propagation & Dense Linear Algebra.

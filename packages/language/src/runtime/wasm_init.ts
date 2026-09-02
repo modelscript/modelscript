@@ -11,7 +11,6 @@
  *   - Provides multi-strategy homotopy continuation fallback for stiff/nonlinear initialization
  */
 
-import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
 import {
   BinOp,
   DAEBuilder,
@@ -22,6 +21,7 @@ import {
   differentiateArenaExpressionWrt,
 } from "./wasm_dae.js";
 import { evaluateArenaRuntime } from "./wasm_evaluator.js";
+import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "./wasm_tape.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public Types: Initialization BLT

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { StringId } from "../compiler/interner.js";
 import { collectArenaExprDeps } from "./wasm_blt.js";
 import { DAEBuilder, EqKind, ExprKind, differentiateArenaExpression, simplifyArenaExpression } from "./wasm_dae.js";
+import type { StringId } from "./wasm_string_pool.js";
 
 /**
  * Result of Pantelides Index Reduction on the arena.

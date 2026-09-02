@@ -8,9 +8,9 @@
  * eliminating object allocations and pointer chasing.
  */
 
-import type { DAEBuilder } from "../runtime/wasm_dae.js";
-import { BinOp, ExprKind, UnaryOp } from "../runtime/wasm_dae.js";
-import { StringInterner } from "./interner.js";
+import type { DAEBuilder } from "./wasm_dae.js";
+import { BinOp, ExprKind, UnaryOp } from "./wasm_dae.js";
+import { StringInterner } from "./wasm_string_pool.js";
 
 export enum TapeOpKind {
   Const = 0,

@@ -17,9 +17,9 @@
  *   "Mixed-integer nonlinear optimization", Acta Numerica.
  */
 
-import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "../compiler/tape.js";
 import { BinOp, DAEBuilder, ExprKind } from "./wasm_dae.js";
 import { type ImplicitInitBlock } from "./wasm_init.js";
+import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "./wasm_tape.js";
 
 /** Result of the MINLP freeze-and-solve iteration. */
 export interface MinlpResult {

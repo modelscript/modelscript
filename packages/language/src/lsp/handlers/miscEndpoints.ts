@@ -142,7 +142,6 @@ export function registerMiscEndpoints(context: LspContext) {
 
         const hooks = isSysml ? sysml2IndexerHooks : modelicaIndexerHooks;
         const qHooks = isSysml ? sysml2QueryHooks : modelicaQueryHooks;
-        const wrapEntry = isSysml ? sysml2WrapEntry : modelicaWrapEntry;
         const langParser = isSysml ? sysml2Parser : parser;
 
         if (!langParser) continue;
@@ -162,39 +161,17 @@ export function registerMiscEndpoints(context: LspContext) {
 
           const maxLen = Math.max(oldRootEntries.length, newRootEntries.length);
           for (let i = 0; i < maxLen; i++) {
-            let oldNode = null;
-            let newNode = null;
-            if (i < oldRootEntries.length) {
-              const entry = oldIndex.symbols.get(oldRootEntries[i]);
-              if (entry) oldNode = wrapEntry(entry, oldDb.toQueryDB());
-            }
-            if (i < newRootEntries.length) {
-              const entry = newIndex.symbols.get(newRootEntries[i]);
-              if (entry) newNode = wrapEntry(entry, newDb.toQueryDB());
-            }
+            const oldId = i < oldRootEntries.length ? oldRootEntries[i] : null;
+            const newId = i < newRootEntries.length ? newRootEntries[i] : null;
 
-            if (!oldNode && !newNode) continue;
+            if (oldId === null && newId === null) continue;
 
-            // Special handling if one side is null (deleted or inserted root node)
-            let diff: SemanticEdit;
-            if (!oldNode && newNode) {
-              diff = {
-                action: "insert",
-                newNode,
-                description: `Added ${newNode.entry.kind} '${newNode.entry.name || "unnamed"}'`,
-              };
-            } else if (oldNode && !newNode) {
-              diff = {
-                action: "delete",
-                oldNode,
-                description: `Deleted ${oldNode.entry.kind} '${oldNode.entry.name || "unnamed"}'`,
-              };
-            } else {
-              diff = computeSemanticDiff(oldNode!, newNode!, {
-                nodeFactory: wrapEntry as any,
-                orderAgnostic: true,
-              });
-            }
+            const oldNode = oldId !== null ? { id: oldId, db: oldDb.toQueryDB() } : null;
+            const newNode = newId !== null ? { id: newId, db: newDb.toQueryDB() } : null;
+
+            const diff = computeSemanticDiff(oldNode, newNode, {
+              orderAgnostic: true,
+            });
 
             const collectDescriptions = (edit: SemanticEdit) => {
               if (edit.description) descriptions.push(edit.description);
@@ -230,7 +207,6 @@ export function registerMiscEndpoints(context: LspContext) {
 
       const hooks = isSysml ? sysml2IndexerHooks : modelicaIndexerHooks;
       const qHooks = isSysml ? sysml2QueryHooks : modelicaQueryHooks;
-      const wrapEntry = isSysml ? sysml2WrapEntry : modelicaWrapEntry;
       const langParser = isSysml ? sysml2Parser : parser;
 
       if (!langParser) return { diffs: [] };
@@ -255,38 +231,17 @@ export function registerMiscEndpoints(context: LspContext) {
         const diffs: FlatSemanticEdit[] = [];
 
         for (let i = 0; i < maxLen; i++) {
-          let oldNode = null;
-          let newNode = null;
-          if (i < oldRootEntries.length) {
-            const entry = oldIndex.symbols.get(oldRootEntries[i]);
-            if (entry) oldNode = wrapEntry(entry, oldDb.toQueryDB());
-          }
-          if (i < newRootEntries.length) {
-            const entry = newIndex.symbols.get(newRootEntries[i]);
-            if (entry) newNode = wrapEntry(entry, newDb.toQueryDB());
-          }
+          const oldId = i < oldRootEntries.length ? oldRootEntries[i] : null;
+          const newId = i < newRootEntries.length ? newRootEntries[i] : null;
 
-          if (!oldNode && !newNode) continue;
+          if (oldId === null && newId === null) continue;
 
-          let diff: SemanticEdit;
-          if (!oldNode && newNode) {
-            diff = {
-              action: "insert",
-              newNode,
-              description: `Inserted ${newNode.entry.kind} '${newNode.entry.name || "unnamed"}'`,
-            };
-          } else if (oldNode && !newNode) {
-            diff = {
-              action: "delete",
-              oldNode,
-              description: `Deleted ${oldNode.entry.kind} '${oldNode.entry.name || "unnamed"}'`,
-            };
-          } else {
-            diff = computeSemanticDiff(oldNode!, newNode!, {
-              nodeFactory: wrapEntry as any,
-              orderAgnostic: true,
-            });
-          }
+          const oldNode = oldId !== null ? { id: oldId, db: oldDb.toQueryDB() } : null;
+          const newNode = newId !== null ? { id: newId, db: newDb.toQueryDB() } : null;
+
+          const diff = computeSemanticDiff(oldNode, newNode, {
+            orderAgnostic: true,
+          });
 
           const flattenDiffs = (edit: SemanticEdit) => {
             if (edit.action !== "none" && edit.description) {
@@ -295,28 +250,28 @@ export function registerMiscEndpoints(context: LspContext) {
                 description: edit.description,
               };
 
-              if (edit.oldNode) {
-                const startPos = oldDoc.positionAt(edit.oldNode.entry.startByte);
-                const endPos = oldDoc.positionAt(edit.oldNode.entry.endByte);
+              if (edit.oldEntry) {
+                const startPos = oldDoc.positionAt(edit.oldEntry.startByte);
+                const endPos = oldDoc.positionAt(edit.oldEntry.endByte);
                 flatEdit.oldRange = {
                   startLine: startPos.line,
                   startCharacter: startPos.character,
                   endLine: endPos.line,
                   endCharacter: endPos.character,
                 };
-                flatEdit.kind = edit.oldNode.entry.kind;
+                flatEdit.kind = edit.oldEntry.kind;
               }
 
-              if (edit.newNode) {
-                const startPos = newDoc.positionAt(edit.newNode.entry.startByte);
-                const endPos = newDoc.positionAt(edit.newNode.entry.endByte);
+              if (edit.newEntry) {
+                const startPos = newDoc.positionAt(edit.newEntry.startByte);
+                const endPos = newDoc.positionAt(edit.newEntry.endByte);
                 flatEdit.newRange = {
                   startLine: startPos.line,
                   startCharacter: startPos.character,
                   endLine: endPos.line,
                   endCharacter: endPos.character,
                 };
-                flatEdit.kind = edit.newNode.entry.kind;
+                flatEdit.kind = edit.newEntry.kind;
               }
 
               diffs.push(flatEdit);

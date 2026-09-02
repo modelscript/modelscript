@@ -1,6 +1,26 @@
 /* eslint-disable */
 // AssemblyScript implementation of WebAssembly Solvers, DAE Builder & BLT
+export * from "../src/codegen/runtime/alias";
+export * from "../src/codegen/runtime/bdf";
+export * from "../src/codegen/runtime/branch_and_bound";
+export * from "../src/codegen/runtime/coloring";
+export * from "../src/codegen/runtime/cse";
 export * from "../src/codegen/runtime/dae";
+export * from "../src/codegen/runtime/doe";
+export * from "../src/codegen/runtime/events";
+export * from "../src/codegen/runtime/fold";
+export * from "../src/codegen/runtime/groebner";
+export * from "../src/codegen/runtime/integrators";
+export * from "../src/codegen/runtime/interval";
+export * from "../src/codegen/runtime/mccormick";
+export * from "../src/codegen/runtime/monte_carlo";
+export * from "../src/codegen/runtime/pantelides";
+export * from "../src/codegen/runtime/scalarize";
+export * from "../src/codegen/runtime/sparse_cholesky";
+export * from "../src/codegen/runtime/sparse_lu";
+export * from "../src/codegen/runtime/string_pool";
+export * from "../src/codegen/runtime/tape";
+export * from "../src/codegen/runtime/tearing";
 
 // We will use Typed Arrays instead of Map/Set for much higher performance
 // since our variable and equation IDs are densely packed integers [0, N-1].

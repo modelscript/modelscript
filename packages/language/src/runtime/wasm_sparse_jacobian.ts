@@ -72,15 +72,30 @@ export interface SparseJacobian {
 }
 
 function getArenaExprVariables(arena: DAEBuilder, exprId: number, vars: Set<number>) {
-  if (exprId < 0) return;
+  if (exprId < 0 || exprId === 0xffffffff) return;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Name) {
     vars.add(arena.getExprData1(exprId));
+    return;
+  }
+  if (
+    kind === ExprKind.RealLiteral ||
+    kind === ExprKind.IntLiteral ||
+    kind === ExprKind.BoolLiteral ||
+    kind === ExprKind.StringLiteral ||
+    kind === ExprKind.EnumLiteral
+  ) {
+    return;
+  }
+  if (kind === ExprKind.Der || kind === ExprKind.Pre) {
+    const inner = arena.getExprData1(exprId);
+    if (inner >= 0 && inner !== 0xffffffff) getArenaExprVariables(arena, inner, vars);
+    return;
   }
   const left = arena.getExprLeft(exprId);
   const right = arena.getExprRight(exprId);
-  if (left >= 0) getArenaExprVariables(arena, left, vars);
-  if (right >= 0) getArenaExprVariables(arena, right, vars);
+  if (left >= 0 && left !== 0xffffffff && left !== exprId) getArenaExprVariables(arena, left, vars);
+  if (right >= 0 && right !== 0xffffffff && right !== exprId) getArenaExprVariables(arena, right, vars);
 }
 
 function extractDerArena(arena: DAEBuilder, exprId: number): string | null {

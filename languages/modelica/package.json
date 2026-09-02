@@ -132,14 +132,6 @@
       "types": "./dist/ast-visitor.d.ts",
       "default": "./dist/ast-visitor.js"
     },
-    "./modelica-scopes": {
-      "types": "./dist/modelica-scopes.d.ts",
-      "default": "./dist/modelica-scopes.js"
-    },
-    "./interpreter": {
-      "types": "./dist/interpreter.d.ts",
-      "default": "./dist/interpreter.js"
-    },
     "./studies": {
       "types": "./dist/studies.d.ts",
       "default": "./dist/studies.js"

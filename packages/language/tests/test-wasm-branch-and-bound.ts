@@ -2,7 +2,6 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import assert from "node:assert";
-import { StaticTapeBuilder, TapeOpKind } from "../src/compiler/tape.js";
 import {
   Interval,
   WasmIntervalEngine,
@@ -11,6 +10,7 @@ import {
   solveSBB,
   type DomainBox,
 } from "../src/runtime/wasm_interval.js";
+import { StaticTapeBuilder, TapeOpKind } from "../src/runtime/wasm_tape.js";
 
 console.log("Testing WASM Interval, McCormick & Spatial Branch-and-Bound...");
 

@@ -2,7 +2,6 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import assert from "node:assert";
-import { StaticTapeBuilder, TapeOpKind } from "../src/compiler/tape.js";
 import {
   GaussianTuple,
   WasmGaussian,
@@ -16,6 +15,7 @@ import {
   luSolve,
   unscentedTransform,
 } from "../src/runtime/wasm_gaussian.js";
+import { StaticTapeBuilder, TapeOpKind } from "../src/runtime/wasm_tape.js";
 
 console.log("Testing WASM Gaussian Uncertainty & Linear Algebra...");
 

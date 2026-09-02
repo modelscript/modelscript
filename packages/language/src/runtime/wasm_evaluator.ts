@@ -506,6 +506,11 @@ export function evaluateArenaRuntime(
       return evaluateArenaRuntime(arena, startId, valuesByStringId, preValuesByStringId);
     }
 
+    case ExprKind.Tuple: {
+      const elem = arena.getExprData1(exprId);
+      return evaluateArenaRuntime(arena, elem, valuesByStringId, preValuesByStringId);
+    }
+
     case ExprKind.Colon:
     case ExprKind.Comprehension:
       return 0;

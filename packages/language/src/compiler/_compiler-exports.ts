@@ -4,8 +4,8 @@ export * from "../runtime/wasm_query_engine.js";
 export * from "../runtime/wasm_sparse_jacobian.js";
 export * from "../runtime/wasm_statement_executor.js";
 export { evaluateArenaFunctionCall } from "../runtime/wasm_statement_executor.js";
+export * from "../runtime/wasm_tape.js";
 export * from "./runtime.js";
-export * from "./tape.js";
 
 export type { GraphicsConfig } from "../diagram/polyglot-diagram-builder.js";
 export {
@@ -66,9 +66,7 @@ export * from "./i18n-extractor.js";
 export * from "./interner.js";
 export * from "./line-index.js";
 export * from "./lsp-bridge.js";
-export * from "./scope.js";
 export * from "./semantic-diff.js";
-export * from "./semantic-node.js";
 export * from "./simulator/core/gpu-buffers.js";
 export * from "./topology.js";
 export * from "./workers/indexer-protocol.js";

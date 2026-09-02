@@ -8,6 +8,7 @@ import { type FmuSubsystem, type FmuSubsystemRegistry } from "../../../runtime/w
 import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
 import { solveInitialEquationsArena } from "../../../runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "../../../runtime/wasm_statement_executor.js";
+import { buildAdJacobian } from "../../../runtime/wasm_tape.js";
 import {
   BinOp,
   DAEBuilder,
@@ -21,7 +22,6 @@ import {
   tryOptimizeLoopWithGroebner,
   type ArenaStateMachine,
 } from "../../index.js";
-import { buildAdJacobian } from "../../tape.js";
 import {
   type ArenaAssertion,
   type ArenaEventIndicator,

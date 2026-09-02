@@ -1,4 +1,5 @@
-import { SemanticNode, type NodeFactory } from "./semantic-node.js";
+import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
+
 export interface DiffConfig {
   /** Deterministic identity generator for unnamed or ordered nodes when mapping versions. */
   identity?: string | ((self: any) => string);
@@ -12,12 +13,21 @@ export interface DiffConfig {
 
 export type DiffAction = "insert" | "delete" | "update" | "move" | "none";
 
+export interface SymbolRef {
+  id: SymbolId;
+  db: QueryDB;
+}
+
 export interface SemanticEdit {
   action: DiffAction;
-  /** The node from the 'old' tree (if applicable) */
-  oldNode?: SemanticNode | null;
-  /** The node from the 'new' tree (if applicable) */
-  newNode?: SemanticNode | null;
+  /** The symbol reference from the 'old' tree (if applicable) */
+  oldSymbol?: SymbolRef | null;
+  /** The symbol reference from the 'new' tree (if applicable) */
+  newSymbol?: SymbolRef | null;
+  /** The underlying symbol entry from the old tree */
+  oldEntry?: SymbolEntry | null;
+  /** The underlying symbol entry from the new tree */
+  newEntry?: SymbolEntry | null;
   /** Description of the change */
   description?: string;
   /** Nested edits for children */
@@ -30,154 +40,155 @@ export interface SemanticDiffOptions {
    * Useful for declarative sections like Modelica equations.
    */
   orderAgnostic?: boolean;
-  /**
-   * Factory function to wrap generic SymbolEntries back into SemanticNodes.
-   */
-  nodeFactory: NodeFactory;
 }
 
 /**
- * Computes a structural / semantic diff between two SemanticNode trees.
+ * Computes a structural / semantic diff between two symbol nodes in their respective QueryDBs.
  */
 export function computeSemanticDiff(
-  oldNode: SemanticNode | null,
-  newNode: SemanticNode | null,
-  options: SemanticDiffOptions,
+  oldNode: SymbolRef | null,
+  newNode: SymbolRef | null,
+  options: SemanticDiffOptions = {},
 ): SemanticEdit {
   if (!oldNode && !newNode) {
     throw new Error("Both oldNode and newNode cannot be null");
   }
 
+  const oldEntry = oldNode ? (oldNode.db.symbol(oldNode.id) ?? null) : null;
+  const newEntry = newNode ? (newNode.db.symbol(newNode.id) ?? null) : null;
+
   // Pure Insert
-  if (!oldNode && newNode) {
+  if (!oldNode && newNode && newEntry) {
     return {
       action: "insert",
-      newNode,
-      description: `Inserted ${newNode.kind} '${newNode.entry.name || "unnamed"}'`,
+      newSymbol: newNode,
+      newEntry,
+      description: `Inserted ${newEntry.kind} '${newEntry.name || "unnamed"}'`,
     };
   }
 
   // Pure Delete
-  if (oldNode && !newNode) {
+  if (oldNode && !newNode && oldEntry) {
     return {
       action: "delete",
-      oldNode,
-      description: `Deleted ${oldNode.kind} '${oldNode.entry.name || "unnamed"}'`,
+      oldSymbol: oldNode,
+      oldEntry,
+      description: `Deleted ${oldEntry.kind} '${oldEntry.name || "unnamed"}'`,
     };
   }
 
-  if (!oldNode || !newNode) {
-    throw new Error("Unreachable: both nodes must be defined here");
+  if (!oldNode || !newNode || !oldEntry || !newEntry) {
+    throw new Error("Unreachable: both nodes and entries must be defined here");
   }
 
-  // Different kind or name? Might be purely an Update or we treat it as Delete + Insert.
-  // We'll treat same kind + same name as "Update"
-  if (oldNode.kind !== newNode.kind || oldNode.entry.name !== newNode.entry.name) {
-    // If the identity completely changed, it's a replacement (Delete then Insert)
-    // We can represent this as an update with both nodes.
+  // Different kind or name? Replacement (Update with both nodes)
+  if (oldEntry.kind !== newEntry.kind || oldEntry.name !== newEntry.name) {
     return {
       action: "update",
-      oldNode,
-      newNode,
-      description: `Replaced ${oldNode.kind} with ${newNode.kind}`,
+      oldSymbol: oldNode,
+      newSymbol: newNode,
+      oldEntry,
+      newEntry,
+      description: `Replaced ${oldEntry.kind} with ${newEntry.kind}`,
     };
   }
 
-  // Same identity, but hash differs. This means children or metadata/args changed.
+  // Same identity, but metadata or args or children may have changed
   const edits: SemanticEdit[] = [];
   let isUpdated = false;
 
-  const oldMetadataStr = JSON.stringify(oldNode.entry.metadata);
-  const newMetadataStr = JSON.stringify(newNode.entry.metadata);
+  const oldMetadataStr = JSON.stringify(oldEntry.metadata);
+  const newMetadataStr = JSON.stringify(newEntry.metadata);
   if (oldMetadataStr !== newMetadataStr) {
     isUpdated = true;
     edits.push({
       action: "update",
-      oldNode,
-      newNode,
+      oldSymbol: oldNode,
+      newSymbol: newNode,
+      oldEntry,
+      newEntry,
       description: "Metadata updated",
     });
   }
 
-  const oldArgs = oldNode.specializationArgs?.hash;
-  const newArgs = newNode.specializationArgs?.hash;
+  const oldArgs = oldNode.db.argsOf(oldNode.id)?.hash;
+  const newArgs = newNode.db.argsOf(newNode.id)?.hash;
   if (oldArgs !== newArgs) {
     isUpdated = true;
     edits.push({
       action: "update",
-      oldNode,
-      newNode,
+      oldSymbol: oldNode,
+      newSymbol: newNode,
+      oldEntry,
+      newEntry,
       description: "Specialization arguments updated",
     });
   }
 
-  // Diff children
-  const factory = options.nodeFactory;
-  const oldChildren = oldNode.childEntries.map((e) => factory(e, oldNode.db));
-  const newChildren = newNode.childEntries.map((e) => factory(e, newNode.db));
+  // Diff children directly from QueryDB
+  const oldChildren = oldNode.db.childrenOf(oldNode.id);
+  const newChildren = newNode.db.childrenOf(newNode.id);
 
   if (options.orderAgnostic) {
-    // Order agnostic matching
-    const matchedNew = new Set<string>();
+    const matchedNew = new Set<SymbolId>();
 
     for (const oc of oldChildren) {
-      // Find a matching kind + name in new
-      const matchIdx = newChildren.findIndex(
-        (nc) => !matchedNew.has(nc.id.toString()) && oc.kind === nc.kind && oc.entry.name === nc.entry.name,
-      );
+      const match = newChildren.find((nc) => !matchedNew.has(nc.id) && oc.kind === nc.kind && oc.name === nc.name);
 
-      if (matchIdx >= 0) {
-        const nc = newChildren[matchIdx];
-        matchedNew.add(nc.id.toString());
-        const childDiff = computeSemanticDiff(oc, nc, options);
+      if (match) {
+        matchedNew.add(match.id);
+        const childDiff = computeSemanticDiff({ id: oc.id, db: oldNode.db }, { id: match.id, db: newNode.db }, options);
         if (childDiff.action !== "none") {
           edits.push(childDiff);
         }
       } else {
-        // Child was deleted
         edits.push({
           action: "delete",
-          oldNode: oc,
-          description: `Deleted child ${oc.kind} '${oc.entry.name || "unnamed"}'`,
+          oldSymbol: { id: oc.id, db: oldNode.db },
+          oldEntry: oc,
+          description: `Deleted child ${oc.kind} '${oc.name || "unnamed"}'`,
         });
       }
     }
 
-    // Any remaining new children are insertions
     for (const nc of newChildren) {
-      if (!matchedNew.has(nc.id.toString())) {
+      if (!matchedNew.has(nc.id)) {
         edits.push({
           action: "insert",
-          newNode: nc,
-          description: `Inserted child ${nc.kind} '${nc.entry.name || "unnamed"}'`,
+          newSymbol: { id: nc.id, db: newNode.db },
+          newEntry: nc,
+          description: `Inserted child ${nc.kind} '${nc.name || "unnamed"}'`,
         });
       }
     }
   } else {
-    // Simple ordered matching (assumes same indices for simplicty to start)
-    // A more advanced Diff would use Myers or Levenshtein on children array
     const maxLen = Math.max(oldChildren.length, newChildren.length);
     for (let i = 0; i < maxLen; i++) {
       if (i < oldChildren.length && i < newChildren.length) {
-        const childDiff = computeSemanticDiff(oldChildren[i], newChildren[i], options);
+        const childDiff = computeSemanticDiff(
+          { id: oldChildren[i]!.id, db: oldNode.db },
+          { id: newChildren[i]!.id, db: newNode.db },
+          options,
+        );
         if (childDiff.action !== "none") {
           edits.push(childDiff);
         }
       } else if (i < oldChildren.length) {
-        edits.push(computeSemanticDiff(oldChildren[i], null, options));
+        edits.push(computeSemanticDiff({ id: oldChildren[i]!.id, db: oldNode.db }, null, options));
       } else {
-        edits.push(computeSemanticDiff(null, newChildren[i], options));
+        edits.push(computeSemanticDiff(null, { id: newChildren[i]!.id, db: newNode.db }, options));
       }
     }
   }
 
-  // If there are child edits or direct updates, the node itself is considered "updated" structurally
   if (edits.length > 0 || isUpdated) {
     const descriptions = edits.map((e) => e.description).filter(Boolean);
     return {
       action: "update",
-      oldNode,
-      newNode,
+      oldSymbol: oldNode,
+      newSymbol: newNode,
+      oldEntry,
+      newEntry,
       description: descriptions.length > 0 ? descriptions.join(", ") : undefined,
       children: edits.length > 0 ? edits : undefined,
     };
@@ -185,7 +196,9 @@ export function computeSemanticDiff(
 
   return {
     action: "none",
-    oldNode,
-    newNode,
+    oldSymbol: oldNode,
+    newSymbol: newNode,
+    oldEntry,
+    newEntry,
   };
 }

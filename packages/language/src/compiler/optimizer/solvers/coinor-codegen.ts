@@ -15,8 +15,8 @@
  *   4. Output results
  */
 
+import { StaticTapeBuilder } from "../../../runtime/wasm_tape.js";
 import type { SolverOptions } from "../../simulator/index.js";
-import { StaticTapeBuilder } from "../../tape.js";
 
 // Represent the legacy expression AST structurally to avoid circular dependency
 type ModelicaExpression = any;

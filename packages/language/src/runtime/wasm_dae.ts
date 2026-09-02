@@ -9,9 +9,9 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { StringId } from "../compiler/interner.js";
-import { StringInterner } from "../compiler/interner.js";
 import type { SourceLocation } from "./runtime.js";
+import type { StringId } from "./wasm_string_pool.js";
+import { StringInterner, WasmStringPool } from "./wasm_string_pool.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums (stored as small integers in Uint8Array columns)
@@ -413,12 +413,11 @@ export class WasmDaeBridge implements IDaeBuilder {
           : this.exports.dae_createBuilder
             ? this.exports.dae_createBuilder()
             : 0;
-      this.interner = interner ?? new StringInterner();
+      const poolPtr = this.ptr && this.exports.dae_getStringPool ? this.exports.dae_getStringPool(this.ptr) : 0;
+      this.interner = interner ?? new WasmStringPool(this.exports, poolPtr);
       this.nameId = this.interner.intern(typeof nameOrPtr === "string" ? nameOrPtr : "Model");
       this.descriptionId = this.interner.intern(desc);
     } else {
-      this.interner =
-        wasmExportsOrInterner instanceof StringInterner ? wasmExportsOrInterner : (interner ?? new StringInterner());
       this.exports = getDefaultWasmExports();
       this.ptr =
         typeof nameOrPtr === "number" && nameOrPtr !== 0
@@ -426,6 +425,12 @@ export class WasmDaeBridge implements IDaeBuilder {
           : this.exports?.dae_createBuilder
             ? this.exports.dae_createBuilder()
             : 0;
+      const poolPtr = this.ptr && this.exports?.dae_getStringPool ? this.exports.dae_getStringPool(this.ptr) : 0;
+      this.interner =
+        wasmExportsOrInterner instanceof WasmStringPool ||
+        (wasmExportsOrInterner && typeof wasmExportsOrInterner.intern === "function")
+          ? wasmExportsOrInterner
+          : (interner ?? new WasmStringPool(this.exports, poolPtr));
       const nameStr = typeof nameOrPtr === "string" ? nameOrPtr : "Model";
       this.nameId = this.interner.intern(nameStr);
       this.descriptionId = this.interner.intern(desc);
@@ -869,7 +874,13 @@ export class WasmDaeBridge implements IDaeBuilder {
     if (this.exports?.dae_addRealLiteral) {
       return this.exports.dae_addRealLiteral(this.ptr, value);
     }
-    return this.addExpression(ExprKind.RealLiteral, 0, 0, 0);
+    const buf = new ArrayBuffer(8);
+    const f64 = new Float64Array(buf);
+    const i32 = new Int32Array(buf);
+    f64[0] = value;
+    const lo = i32[0]!;
+    const hi = i32[1]!;
+    return this.addExpression(ExprKind.RealLiteral, lo, hi, 0);
   }
 
   addIntLiteral(value: number): number {
@@ -952,8 +963,13 @@ export class WasmDaeBridge implements IDaeBuilder {
     return this.addExpression(ExprKind.EnumLiteral, ordinal, sId);
   }
 
-  addRangeExpr(startId: number, stopId: number, stepId = -1): number {
-    return this.addRange(startId, stopId, stepId);
+  addRangeExpr(startId: number, arg2: number, arg3 = -1): number {
+    if (arg3 !== -1 && arg3 !== 0xffffffff) {
+      // 3-arg syntax: start, step, stop
+      return this.addRange(startId, arg3, arg2);
+    }
+    // 2-arg syntax: start, stop
+    return this.addRange(startId, arg2, -1);
   }
 
   addComprehensionExpr(funcName: string, bodyId: number, iteratorCount: number): number {
@@ -992,8 +1008,8 @@ export class WasmDaeBridge implements IDaeBuilder {
     return this.addExpression(ExprKind.Call, funcId, firstArg, argCount);
   }
 
-  addRange(start: number, stop: number, step = 0): number {
-    return this.addExpression(ExprKind.Range, step, start, stop);
+  addRange(start: number, stop: number, step = -1): number {
+    return this.addExpression(ExprKind.Range, start, stop, step);
   }
 
   addSubscript(baseExpr: number, subExpr: number): number {
@@ -1028,8 +1044,8 @@ export class WasmDaeBridge implements IDaeBuilder {
     if (this.exports?.dae_getExprRealValue) {
       return this.exports.dae_getExprRealValue(this.ptr, exprId);
     }
-    const hi = this.getExprData1(exprId);
-    const lo = this.getExprLeft(exprId);
+    const lo = this.getExprData1(exprId);
+    const hi = this.getExprLeft(exprId);
     const buf = new ArrayBuffer(8);
     const i32 = new Int32Array(buf);
     const f64 = new Float64Array(buf);
@@ -1043,6 +1059,34 @@ export class WasmDaeBridge implements IDaeBuilder {
   addStatement(kind: StmtKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
     if (!this.exports?.dae_addStatement) return -1;
     return this.exports.dae_addStatement(this.ptr, kind, data1, left, right);
+  }
+
+  addAssignmentStmt(targetExpr: number, valueExpr: number): number {
+    return this.addStatement(StmtKind.Assignment, targetExpr, valueExpr);
+  }
+
+  addIfStmt(condExpr: number, bodyCount: number, elseCount = 0): number {
+    return this.addStatement(StmtKind.If, condExpr, bodyCount, elseCount);
+  }
+
+  addForStmt(iteratorNameId: number, rangeExpr: number, bodyCount: number): number {
+    return this.addStatement(StmtKind.For, iteratorNameId, rangeExpr, bodyCount);
+  }
+
+  addWhileStmt(condExpr: number, bodyCount: number): number {
+    return this.addStatement(StmtKind.While, condExpr, bodyCount);
+  }
+
+  addWhenStmt(condExpr: number, bodyCount: number, elseCount = 0): number {
+    return this.addStatement(StmtKind.When, condExpr, bodyCount, elseCount);
+  }
+
+  addReturnStmt(): number {
+    return this.addStatement(StmtKind.Return);
+  }
+
+  addBreakStmt(): number {
+    return this.addStatement(StmtKind.Break);
   }
 
   getStmtKind(stmtId: number): StmtKind {

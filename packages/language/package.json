@@ -51,12 +51,12 @@
       "default": "./dist/ecad/*.js"
     },
     "./csg": {
-      "types": "./dist/csg/index.d.ts",
-      "default": "./dist/csg/index.js"
+      "types": "./dist/cad/index.d.ts",
+      "default": "./dist/cad/index.js"
     },
     "./csg/*": {
-      "types": "./dist/csg/*.d.ts",
-      "default": "./dist/csg/*.js"
+      "types": "./dist/cad/*.d.ts",
+      "default": "./dist/cad/*.js"
     },
     "./diagram": {
       "types": "./dist/diagram/index.d.ts",

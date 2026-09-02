@@ -1,5 +1,6 @@
 import { ChunkedInt32Array, createChunkedInt32Array, atomicChunkAlloc } from "./array";
 import { UnmanagedMap64, createMap64 } from "./hashmap";
+import { ArenaStringPool } from "./string_pool";
 
 // Strides & Flags
 export const VAR_STRIDE: u32 = 8;
@@ -182,6 +183,7 @@ export class DaeBuilder {
   // Secondary Indices & Maps
   nameIndexPtr: usize;
   aliasDataPtr: usize;
+  stringPoolPtr: usize;
 
   // Attributes & Shapes
   varAttrDataPtr: usize;
@@ -249,6 +251,7 @@ export class DaeBuilder {
   @inline getStmtData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stmtDataPtr"))); }
   @inline getNameIndex(): UnmanagedMap64 { return changetype<UnmanagedMap64>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("nameIndexPtr"))); }
   @inline getAliasData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("aliasDataPtr"))); }
+  @inline getStringPool(): ArenaStringPool { return changetype<ArenaStringPool>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stringPoolPtr"))); }
   @inline getVarAttrData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varAttrDataPtr"))); }
   @inline getVarShapes(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varShapesPtr"))); }
   @inline getVarSymbolicShapes(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varSymbolicShapesPtr"))); }
@@ -275,6 +278,7 @@ export class DaeBuilder {
   @inline get stmtData(): ChunkedInt32Array { return this.getStmtData(); }
   @inline get nameIndex(): UnmanagedMap64 { return this.getNameIndex(); }
   @inline get aliasData(): ChunkedInt32Array { return this.getAliasData(); }
+  @inline get stringPool(): ArenaStringPool { return this.getStringPool(); }
   @inline get varAttrData(): ChunkedInt32Array { return this.getVarAttrData(); }
   @inline get varShapes(): ChunkedInt32Array { return this.getVarShapes(); }
   @inline get varSymbolicShapes(): ChunkedInt32Array { return this.getVarSymbolicShapes(); }
@@ -313,6 +317,10 @@ export class DaeBuilder {
     this.nameIndexPtr = createMap64();
     this.getNameIndex().init(512);
     this.aliasDataPtr = changetype<usize>(createChunkedInt32Array(512));
+
+    let spPtr = atomicChunkAlloc(sizeof<ArenaStringPool>());
+    this.stringPoolPtr = spPtr;
+    this.getStringPool().init();
 
     this.varAttrDataPtr = changetype<usize>(createChunkedInt32Array(512 * VAR_ATTR_STRIDE));
     this.varShapesPtr = changetype<usize>(createChunkedInt32Array(512 * 4));
@@ -1229,8 +1237,8 @@ export function dae_getExprCount(ptr: u32): u32 {
 
 export function dae_getExprRealValue(ptr: u32, exprId: u32): f64 {
   let builder = changetype<DaeBuilder>(ptr);
-  let hi = (builder.getExprData().get(exprId * 4 + 1) as u64) << 32;
-  let lo = (builder.getExprData().get(exprId * 4 + 2) as u64) & 0xffffffff;
+  let lo = (builder.getExprData().get(exprId * 4 + 1) as u64) & 0xffffffff;
+  let hi = (builder.getExprData().get(exprId * 4 + 2) as u64) << 32;
   let bits = hi | lo;
   return f64.reinterpret_i64(bits as i64);
 }
@@ -1368,6 +1376,11 @@ export function dae_getSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32): 
 export function dae_setSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32, val: f64): void {
   if (viewPtr == 0) return;
   changetype<ArraySliceView>(viewPtr).setValue(index, varValuesPtr, val);
+}
+
+export function dae_getStringPool(builderPtr: u32): u32 {
+  if (builderPtr == 0) return 0;
+  return changetype<DaeBuilder>(builderPtr).stringPoolPtr as u32;
 }
 
 

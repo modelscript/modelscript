@@ -10,7 +10,7 @@ export * from "../../runtime/wasm_interval.js";
 export * from "../../runtime/wasm_minlp.js";
 export * from "../../runtime/wasm_sparse_jacobian.js";
 export * from "../../runtime/wasm_statement_executor.js";
-export { buildAdJacobian, evaluateTapeForward, evaluateTapeReverse } from "../tape.js";
+export { buildAdJacobian, evaluateTapeForward, evaluateTapeReverse } from "../../runtime/wasm_tape.js";
 export * from "./core/gpu-buffers.js";
 export * from "./core/simulate-arena.js";
 export * from "./core/simulation.js";

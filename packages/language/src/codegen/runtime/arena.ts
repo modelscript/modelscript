@@ -8,7 +8,6 @@ import {
 } from "./array";
 export { atomicChunkAlloc };
 import { inputEncoding } from "./parser";
-import { getChildByFieldId } from "./engine";
 
 @external("engine", "debugLog")
 export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
@@ -708,7 +707,7 @@ export function allocGen0(sizeBytes: u32): u32 {
   let ptrLoc: usize = changetype<usize>(S()) + (isGen2 ? offsetof<SharedState>("gen2_offset") : offsetof<SharedState>("gen0_offset"));
 
   // Atomically claim the size
-  let ptr = atomic.add<u32>(ptrLoc, sizeBytes);
+  let ptr: u32 = atomic.add<u32>(ptrLoc, sizeBytes);
 
   let endLimit = isGen2 ? S().gen2_endLimit : S().gen0_endLimit;
 
@@ -719,7 +718,7 @@ export function allocGen0(sizeBytes: u32): u32 {
     // Acquire spinlock to handle rollover safely across threads
     while (atomic.cmpxchg<u32>(lockLoc, 0, 1) != 0) { /* spin */ }
     
-    let currentPtrLoc = atomic.load<u32>(ptrLoc);
+    let currentPtrLoc: u32 = atomic.load<u32>(ptrLoc);
     let currentEndLimit = isGen2 ? S().gen2_endLimit : S().gen0_endLimit;
     
     if (currentPtrLoc + sizeBytes > currentEndLimit) {
@@ -946,8 +945,18 @@ export function getNodeNextSibling(ptr: u32): u32 {
   return changetype<ASTNode>(ptr).nextSibling;
 }
 
+export function getNodeFieldId(ptr: u32): u16 {
+  if (ptr == 0) return 0;
+  return ((changetype<ASTNode>(ptr).word0 >> 10) & 0x0fff) as u16;
+}
+
 export function getNodeField(ptr: u32, fieldId: u16): u32 {
-  return getChildByFieldId(ptr, fieldId as i32);
+  let curr = getNodeFirstChild(ptr);
+  while (curr != 0) {
+    if (getNodeFieldId(curr) == fieldId) return curr;
+    curr = getNodeNextSibling(curr);
+  }
+  return 0;
 }
 
 export function getNodeTextSlice(nodePtr: u32, outBuffer: usize): u32 {

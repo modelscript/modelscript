@@ -972,7 +972,29 @@ class ScopeAPI {
   }
 
   @inline internNode(nodeId: u32): u32 {
-    return this.pool.internAstNode(nodeId);
+    if (nodeId == 0) return 0;
+    let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+    if (offset < 0) return 0;
+    let len: u32 = getNodeByteLength(nodeId);
+    let step: u32 = getEncodingStep();
+    let pad: u32 = lsp_getNodeLeadingPad(nodeId);
+    let actualOffset: u32 = (offset as u32) + pad * step;
+    let buffer: usize = getInputBuffer();
+
+    while (true) {
+      let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+      if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+        actualOffset += step;
+        if (len >= step) len -= step;
+      } else {
+        break;
+      }
+    }
+
+    let charLen: u32 = len / step;
+    if (charLen == 0) return 0;
+    let srcPtr = buffer + actualOffset;
+    return this.pool.intern(srcPtr, charLen);
   }
 
   @inline concatPrefix(prefixId: u32, suffixId: u32): u32 {

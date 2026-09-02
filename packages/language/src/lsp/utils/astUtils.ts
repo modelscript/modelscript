@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Scope } from "../../compiler/index.js";
 import type { SyntaxNode } from "../../utils/tree-sitter.js";
 
 export function isClassInstance(obj: any): boolean {
@@ -63,7 +62,7 @@ export function computeTreeEdit(
 }
 
 /* Resolve a modification/annotation path element to its named element */
-export function resolvePathElement(node: SyntaxNode, scope: Scope): any | null {
+export function resolvePathElement(node: SyntaxNode, scope: any): any | null {
   let pathNode: SyntaxNode | null = node;
   const parameterPath: string[] = [];
   let baseElement: any = null;
