@@ -952,9 +952,6 @@ export interface LanguageOptions<
    * Defines custom extractor lambdas, manifest routing, and polyglot target projections.
    */
   container?: ContainerDeclaration<RuleName>;
-
-  /** Cross-language projection adapter configuration */
-  adapters?: any;
 }
 
 /**
@@ -1288,7 +1285,6 @@ export interface DefConfig<F extends string = string> {
   symbol?: (self: any) => any;
   queries?: Record<string, QueryFnOrObject>;
   lint?: Record<string, (db: QueryDB, self: SymbolEntry, ...args: any[]) => LintResult | LintResult[] | null>;
-  adapters?: Record<string, any>;
   diff?: any;
   model?: any;
   [key: string]: any;
@@ -1299,7 +1295,6 @@ export interface RefConfig<F extends string = string> {
   symbol?: (self: any) => any;
   queries?: Record<string, QueryFnOrObject>;
   lint?: Record<string, (db: QueryDB, self: SymbolEntry, ...args: any[]) => LintResult | LintResult[] | null>;
-  adapters?: Record<string, any>;
   diff?: any;
   model?: any;
   [key: string]: any;

@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // ts-check
 
-import { createModelicaQueryEngine, MsimParser } from "@modelscript/modelica/factory";
+import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { createWasmParser } from "../../bindings/javascript/bindings.js";
-import { Context, LineIndex, TokenData } from "../../compiler/index.js";
+import { LineIndex, TokenData } from "../../compiler/index.js";
 import { FederatedQueryCacheStore, IndexedDBQueryCacheStore } from "../../runtime/wasm_cache_store.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../../utils/tree-sitter.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
@@ -34,7 +34,7 @@ export class ParserService {
   public sysml2Parser: any = null;
   public stepParserReady = false;
   public stepParser: any = null;
-  public sharedContext: Context | null = null;
+  public sharedContext: any = null;
   public owl2ParserReady = false;
   public owl2Parser: any = null;
   public csvParserReady = false;
@@ -59,10 +59,10 @@ export class ParserService {
         if (!lazyCache && this.sharedContext) {
           try {
             const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
-            let text = this.sharedContext.fs.read(fsPath);
+            let text = this.sharedContext.fs?.read(fsPath);
             if (!text && uri.startsWith("modelica:")) {
               const stripped = uri.replace(/^modelica:\/?\/?/, "/");
-              text = this.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
+              text = this.sharedContext.fs?.read(stripped.startsWith("/") ? stripped : "/" + stripped);
             }
             if (text) {
               const tree = this.sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
@@ -81,7 +81,7 @@ export class ParserService {
                 this.documentManager.lazyLibTrees.delete(oldest);
               }
             }
-          } catch (e) {
+          } catch {
             // ignore
           }
         }
@@ -314,9 +314,6 @@ export class ParserService {
 
       const modelicaResult = await createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`);
       this.parser = modelicaResult.parser;
-      Context.registerParser(".mo", this.parser);
-      Context.registerParser(".mos", this.parser);
-      Context.registerParser(".msim", new MsimParser() as any);
       this.parserReady = true;
       this.connection.console.info("ModelScript Modelica parser initialized");
 
@@ -339,7 +336,6 @@ export class ParserService {
       try {
         const sysmlResult = await createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`);
         this.sysml2Parser = sysmlResult.parser;
-        Context.registerParser(".sysml", this.sysml2Parser as any);
         this.sysml2ParserReady = true;
         this.connection.console.info("ModelScript SysML2 parser initialized");
       } catch (e) {
@@ -350,9 +346,6 @@ export class ParserService {
       try {
         const stepResult = await createWasmParser(`${serverDistBase}/tree-sitter-step.wasm`);
         this.stepParser = stepResult.parser;
-        Context.registerParser(".step", this.stepParser as any);
-        Context.registerParser(".stp", this.stepParser as any);
-        Context.registerParser(".p21", this.stepParser as any);
         this.stepParserReady = true;
         this.connection.console.info("ModelScript STEP parser initialized");
       } catch (e) {
@@ -363,7 +356,6 @@ export class ParserService {
       try {
         const owl2Result = await createWasmParser(`${serverDistBase}/tree-sitter-owl2.wasm`);
         this.owl2Parser = owl2Result.parser;
-        Context.registerParser(".owl", this.owl2Parser as any);
         this.owl2ParserReady = true;
         this.connection.console.info("ModelScript OWL2 parser initialized");
       } catch (e) {
@@ -374,7 +366,6 @@ export class ParserService {
       try {
         const csvResult = await createWasmParser(`${serverDistBase}/tree-sitter-csv.wasm`);
         this.csvParser = csvResult.parser;
-        Context.registerParser(".csv", this.csvParser as any);
         this.csvParserReady = true;
         this.connection.console.info("ModelScript CSV parser initialized");
       } catch (e) {
@@ -396,11 +387,13 @@ export class ParserService {
         cacheStore,
         MAX_MEMOS,
       ) as any;
-      this.sharedContext = new Context(
-        (globalThis as any).sharedFs,
-        this.workspaceManager.globalWorkspaceIndex,
-        this.workspaceManager.globalModelicaQueryEngine!,
-      );
+      this.sharedContext = {
+        fs: (globalThis as any).sharedFs,
+        parse: (ext: string, input: string) => {
+          if (ext === ".sysml") return this.sysml2Parser?.parse(input);
+          return this.parser?.parse(input);
+        },
+      };
       (globalThis as any).sharedContext = this.sharedContext;
       this.workspaceManager.globalModelicaQueryEngine!.updateTree(this.getSharedCstTreeWrapper());
       const loaderCtx: LoaderContext = {

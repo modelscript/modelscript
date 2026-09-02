@@ -1,6 +1,5 @@
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { Context } from "../compiler/index.js";
 import { DiagramService } from "./services/DiagramService.js";
 import { DocumentManager } from "./services/DocumentManager.js";
 import { ParserService } from "./services/ParserService.js";
@@ -18,7 +17,7 @@ export interface LspContext {
 
   state: {
     activeValidationPromises: Map<string, Promise<void>>;
-    sharedContext: Context | null;
+    sharedContext: any | null;
     fqnCache: Map<string, unknown>;
     fqnCacheIndex: Map<string, unknown>;
     documentRevisions: Map<string, number>;

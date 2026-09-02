@@ -28,7 +28,7 @@ import { type SysML2Layout } from "./sysml2-layout.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/tree-sitter.js";
 
 import { ArenaQueryFlattener } from "@modelscript/modelica";
-import { Context, DAEBuilder, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
+import { DAEBuilder, LineIndex, QueryEngine, initBltWasm } from "../compiler/index.js";
 
 import { createModelicaQueryEngine, injectPredefinedTypes } from "@modelscript/modelica/factory";
 
@@ -65,7 +65,7 @@ import { type LoaderContext, loadRegistryPackages } from "./vfs/library-loader.j
 /**
  * Flatten a class instance using the arena-native pipeline.
  */
-function flattenArenaFromInstance(classInstance: any, context: Context): DAEBuilder {
+function flattenArenaFromInstance(classInstance: any, _context?: any): DAEBuilder {
   const className = classInstance.compositeName || classInstance.name;
   if (!className) throw new Error("Class instance has no name");
 
@@ -88,7 +88,7 @@ const connection = createConnection(messageReader, messageWriter);
 /* Shared filesystem + context (populated with MSL during init) */
 
 const sharedFs = new BrowserFileSystem();
-let sharedContext: Context | null = null;
+let sharedContext: any | null = null;
 
 /* Loader context — saved from initTreeSitter so notification handlers can reuse it */
 let savedLoaderCtx: LoaderContext | null = null;
@@ -241,17 +241,6 @@ const getReadyMessage = () => {
 globalThis.getReadyMessage = getReadyMessage;
 workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, {
   name: "step",
-  adapters: {
-    sysml2: {
-      EntityInstance: (_db: any, foreignNode: any) => ({
-        target: "PackageMember",
-        props: {
-          name: foreignNode.name,
-          entityType: (foreignNode.metadata as any)?.entityType,
-        },
-      }),
-    },
-  },
 });
 
 // ── Multi-Body generation from STEP ───────────────────────────────

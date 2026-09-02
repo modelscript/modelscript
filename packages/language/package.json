@@ -26,10 +26,6 @@
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./context": {
-      "types": "./dist/context.d.ts",
-      "default": "./dist/context.js"
-    },
     "./dsl": {
       "types": "./dist/dsl/index.d.ts",
       "default": "./dist/dsl/index.js"

@@ -2,14 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  Context as BaseContext,
   MODELSCRIPT_CAS_PACKAGE,
   printArenaDAE,
   type DAEBuilder,
   type HomotopyMode,
-  type InitSolverConfig,
-  type ModelicaCompilerOptions,
-  type PreconditionerMode,
   type QueryEngine,
   type WorkspaceIndex,
 } from "@modelscript/language/compiler";
@@ -21,7 +17,34 @@ import { ModelicaPoParser, ModelicaTranslation } from "./po.js";
 import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./geometry.js";
 import { MODELSCRIPT_STUDIES_PACKAGE } from "./studies.js";
 
-export type { HomotopyMode, InitSolverConfig, ModelicaCompilerOptions, PreconditionerMode };
+export type PreconditionerMode = "none" | "branch-and-bound";
+export interface InitSolverConfig {
+  preconditioner?: PreconditionerMode;
+  homotopyMode?: HomotopyMode;
+  mccormickRelaxation?: boolean;
+  maxHomotopySteps?: number;
+}
+
+export interface ModelicaCompilerOptions {
+  arrayMode?: "scalarize" | "preserve";
+  functionInlining?: "inline" | "preserve";
+  fmiVersion?: "2.0" | "3.0";
+  solver?: InitSolverConfig;
+  canonicalizeEquations?: boolean;
+  /**
+   * Batch mode: disables Salsa memoization and triggers manual GC between
+   * compilation phases (parse → index → flatten).
+   *
+   * This should be enabled implicitly by one-shot execution environments
+   * (like the CLI or CI pipelines) to stay within V8 heap limits. It should
+   * NOT be used by long-lived processes (LSP, Web IDE) which rely on the cache.
+   *
+   * Requires Node.js to be started with `--expose-gc` for GC to take effect.
+   */
+  batch?: boolean;
+}
+
+export type { HomotopyMode };
 
 export type ModelicaElement = any;
 
@@ -55,7 +78,7 @@ export class ModelicaLibrary {
  * owns a QueryEngine (Salsa-style incremental computation) and a WorkspaceIndex
  * (arena-backed symbol storage). Name resolution is handled by the QueryDB.
  */
-export class Context extends BaseContext {
+export class Context {
   #classes: any[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
@@ -83,6 +106,20 @@ export class Context extends BaseContext {
 
   getTree(uri: string): Tree | undefined {
     return this.#trees.get(uri);
+  }
+
+  getTreeText(resourceId: string | undefined, startByte: number, endByte: number): string | null {
+    if (!resourceId) return null;
+    const tree = this.#trees.get(resourceId);
+    if (!tree) return null;
+    return tree.rootNode.text.substring(startByte, endByte);
+  }
+
+  getTreeNode(resourceId: string | undefined, startByte: number, endByte: number): any | null {
+    if (!resourceId) return null;
+    const tree = this.#trees.get(resourceId);
+    if (!tree) return null;
+    return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
   }
 
   static _parsers = new Map<string, Parser>();
@@ -115,8 +152,6 @@ export class Context extends BaseContext {
     };
 
     const queryEngine = createModelicaQueryEngine(workspaceIndex.toUnified(), contextTree, cacheStore, maxMemos);
-    super(fs, workspaceIndex, queryEngine);
-    this._trees = this.#trees;
 
     this.#fs = fs;
     this.#workspaceIndex = workspaceIndex;

@@ -22,7 +22,7 @@ import type {
   SymbolEntry,
   SymbolId,
   SymbolIndex,
-} from "../compiler/runtime.js";
+} from "./runtime.js";
 
 // -- Public Types --
 

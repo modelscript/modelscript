@@ -2,7 +2,7 @@
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import owl2Lang from "@modelscript/owl2/language";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
-import { Context, extractIndexerHooks, QueryEngine, UnifiedWorkspace } from "../../compiler/index.js";
+import { extractIndexerHooks, QueryEngine, UnifiedWorkspace } from "../../compiler/index.js";
 import { DocumentManager } from "./DocumentManager.js";
 
 const owl2IndexerHooks = extractIndexerHooks(owl2Lang);
@@ -16,7 +16,7 @@ export class WorkspaceManager {
   public allWorkspaceIndices = new Map<string, any>();
   public workspaceInstances = new Map<string, any[]>();
   public documentInstances = new Map<string, any[]>();
-  public documentContexts = new Map<string, Context>();
+  public documentContexts = new Map<string, any>();
 
   public globalModelicaQueryEngine: QueryEngine | null = null;
   public globalSysML2QueryEngine: QueryEngine | null = null;
@@ -29,8 +29,8 @@ export class WorkspaceManager {
     this.documentManager = documentManager;
     // Step integration is handled in browserServerMain or by a setter
 
-    // Wire up CST providers for cross-language adapters
-    this.unifiedWorkspace.adapterRegistry.cstNodeProvider = (id) => {
+    // Wire up CST providers for cross-language polyglot queries
+    this.unifiedWorkspace.cstNodeProvider = (id) => {
       const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
       const engine = entry.resourceId.endsWith(".sysml")
@@ -39,7 +39,7 @@ export class WorkspaceManager {
       return engine?.toQueryDB().cstNode(id) ?? null;
     };
 
-    this.unifiedWorkspace.adapterRegistry.cstTextProvider = (startByte, endByte, entry) => {
+    this.unifiedWorkspace.cstTextProvider = (startByte, endByte, entry) => {
       if (!entry.resourceId) return null;
       const engine = entry.resourceId.endsWith(".sysml")
         ? this.globalSysML2QueryEngine
@@ -47,7 +47,7 @@ export class WorkspaceManager {
       return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
     };
 
-    this.unifiedWorkspace.adapterRegistry.queryProvider = (queryName, id) => {
+    this.unifiedWorkspace.queryProvider = (queryName, id) => {
       const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
       const engine = entry.resourceId.endsWith(".sysml")

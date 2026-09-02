@@ -1,5 +1,5 @@
-import { AdapterRegistry } from "../compiler/adapter-registry.js";
-import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "../compiler/runtime.js";
+import { PolyglotTransformer, type PolyglotNode } from "../transformers/polyglot-transformer.js";
+import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 import { WasmOntologyStore } from "./wasm_ontology.js";
 
 export interface IWorkspaceIndex {
@@ -466,13 +466,18 @@ export class WasmWorkspaceIndex {
 }
 
 export class UnifiedWorkspace {
-  public adapterRegistry = new AdapterRegistry();
   public owl2Store: WasmOntologyStore;
   private workspaces = new Map<string, any>();
+  private queryEngines = new Map<string, any>();
+  private configs = new Map<string, any>();
   private _version = 0;
 
+  public cstNodeProvider?: (id: SymbolId) => unknown | null;
+  public cstTextProvider?: (startByte: number, endByte: number, entry: SymbolEntry) => string | null;
+  public queryProvider?: (queryName: string, id: SymbolId) => unknown | null;
+
   constructor() {
-    this.owl2Store = new WasmOntologyStore(this.adapterRegistry);
+    this.owl2Store = new WasmOntologyStore();
   }
 
   get version(): number {
@@ -491,13 +496,41 @@ export class UnifiedWorkspace {
     return r;
   }
 
-  registerWorkspace(language: string, index: any, _config?: any): void {
+  registerWorkspace(language: string, index: any, config?: any): void {
     this.workspaces.set(language, index);
+    if (config) {
+      this.configs.set(language, config);
+    }
     this._version++;
   }
 
   getWorkspace(language: string): any {
     return this.workspaces.get(language);
+  }
+
+  getLanguageConfig(language: string): any {
+    return this.configs.get(language);
+  }
+
+  createPolyglotTransformer(language: string): PolyglotTransformer | null {
+    const config = this.configs.get(language);
+    if (!config?.polyglot) return null;
+    return new PolyglotTransformer(config.polyglot);
+  }
+
+  projectPolyglot(sourceLang: string, targetLang: string, node: PolyglotNode): string | null {
+    const transformer = this.createPolyglotTransformer(sourceLang);
+    if (!transformer) return null;
+    return transformer.transform(node, targetLang);
+  }
+
+  registerQueryEngine(language: string, engine: any): void {
+    this.queryEngines.set(language, engine);
+    this._version++;
+  }
+
+  getQueryEngine(language: string): any {
+    return this.queryEngines.get(language);
   }
 
   toUnified(): SymbolIndex {

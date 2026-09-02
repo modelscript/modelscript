@@ -9,7 +9,7 @@
  *  - FederatedQueryCacheStore: multi-endpoint remote query cache store
  */
 
-import type { Memo, QueryCacheStore } from "../compiler/runtime.js";
+import type { Memo, QueryCacheStore } from "./runtime.js";
 
 /**
  * An in-memory implementation of the QueryCacheStore.

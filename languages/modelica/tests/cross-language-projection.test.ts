@@ -1,104 +1,39 @@
-import { ProjectionResult, UnifiedWorkspace } from "@modelscript/language/compiler";
-import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
-import modelicaConfig from "@modelscript/modelica/language";
-import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
-import sysml2Config from "@modelscript/sysml2/language";
+import { compileTGGRules } from "@modelscript/language";
+import assert from "node:assert";
+import sysml2Config from "../../sysml2/src/language.js";
+import modelicaConfig from "../language.js";
 
-import Modelica from "@modelscript/modelica/parser";
-import Parser from "tree-sitter";
+console.log("Testing Cross-Language TGG Polyglot Rules: Modelica <-> SysML v2...");
 
-describe("Cross-Language Projection: Modelica to SysML v2", () => {
-  it("projects simple equations to SysML2 constraints", async () => {
-    // 1. Setup parser
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
+// 1. Verify Modelica -> SysML2 TGG compilation
+{
+  assert.ok(modelicaConfig.polyglot, "Modelica should define polyglot configuration");
+  const compiled = compileTGGRules(modelicaConfig.polyglot);
+  assert.ok(compiled.ruleCount > 0, "Modelica should have TGG transformation rules");
+  assert.ok(compiled.ruleNames.includes("ModelicaModelToSysmlBlock"));
+  assert.ok(compiled.ruleNames.includes("ModelicaComponentToSysmlPart"));
+  assert.ok(compiled.ruleNames.includes("ModelicaConnectToSysmlConnection"));
+  assert.ok(compiled.ruleNames.includes("ModelicaEquationToSysmlConstraint"));
+  assert.ok(compiled.sourceCode.includes("export function tgg_forward_ModelicaModelToSysmlBlock"));
+  assert.ok(compiled.sourceCode.includes("export function tgg_backward_ModelicaModelToSysmlBlock"));
+  assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
+  console.log("  ✔ Modelica TGG rules compilation passed");
+}
 
-    const sourceText = `
-      model RC_Circuit
-        Real R = 10.0;
-        Real C = 0.1;
-        Real u;
-      equation
-        R * u = 5.0;
-      end RC_Circuit;
-    `;
-    const tree = parser.parse(sourceText);
+// 2. Verify SysML2 -> Modelica TGG compilation
+{
+  assert.ok(sysml2Config.polyglot, "SysML2 should define polyglot configuration");
+  const compiled = compileTGGRules(sysml2Config.polyglot);
+  assert.ok(compiled.ruleCount > 0, "SysML2 should have TGG transformation rules");
+  assert.ok(compiled.ruleNames.includes("PartDefToModelicaModel"));
+  assert.ok(compiled.ruleNames.includes("AttributeDefToModelicaRecord"));
+  assert.ok(compiled.ruleNames.includes("PortDefToModelicaConnector"));
+  assert.ok(compiled.ruleNames.includes("AttributeUsageToModelicaParameter"));
+  assert.ok(compiled.ruleNames.includes("PartUsageToModelicaComponent"));
+  assert.ok(compiled.sourceCode.includes("export function tgg_forward_PartDefToModelicaModel"));
+  assert.ok(compiled.sourceCode.includes("export function tgg_backward_PartDefToModelicaModel"));
+  assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
+  console.log("  ✔ SysML v2 TGG rules compilation passed");
+}
 
-    // 2. Setup Unified Workspace
-    const uw = new UnifiedWorkspace();
-
-    // Modelica setup
-    const modelicaIndex = createModelicaWorkspaceIndex();
-    modelicaIndex.register("file:///test.mo", () => tree.rootNode as unknown);
-    await modelicaIndex.toUnifiedAsync();
-
-    const sysmlIndex = createSysML2WorkspaceIndex();
-
-    uw.registerWorkspace("modelica", modelicaIndex, modelicaConfig);
-    uw.registerWorkspace("sysml2", sysmlIndex, sysml2Config);
-
-    const contextTree = {
-      getText: (startByte: number, endByte: number) => sourceText.substring(startByte, endByte),
-      getNode: (startByte: number, endByte: number) =>
-        tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte)),
-    };
-    const modelicaEngine = createModelicaQueryEngine(modelicaIndex.toUnifiedPartial(), contextTree);
-    uw.registerQueryEngine("modelica", modelicaEngine);
-
-    // 3. Perform Projection
-    const projections = uw.adapterRegistry.projectAll("modelica", "sysml2");
-
-    // 4. Verify Projection
-    expect(projections.length).toBeGreaterThan(0);
-    const rcCircuit = projections.find((p: ProjectionResult) => p.props.name === "RC_Circuit");
-    expect(rcCircuit).toBeDefined();
-
-    // Check that constraints were extracted
-    const constraints = rcCircuit.props.constraints as unknown[];
-    expect(constraints).toBeDefined();
-    expect(constraints.length).toBe(1);
-    expect(constraints[0].kind).toBe("ConstraintUsage");
-    expect(constraints[0].expression.replace(/\s+/g, "")).toContain("R*u=5.0;");
-  });
-
-  it("projects when-equations to SysML2 actions", async () => {
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-
-    const sourceText = `
-      model BouncingBall
-        Real h(start=1.0);
-        Real v;
-      equation
-        when h <= 0.0 then
-          reinit(v, -0.9 * pre(v));
-        end when;
-      end BouncingBall;
-    `;
-    const tree = parser.parse(sourceText);
-
-    const uw = new UnifiedWorkspace();
-    const modelicaIndex = createModelicaWorkspaceIndex();
-    modelicaIndex.register("file:///bounce.mo", () => tree.rootNode as unknown);
-    await modelicaIndex.toUnifiedAsync();
-
-    uw.registerWorkspace("modelica", modelicaIndex, modelicaConfig);
-    const contextTree = {
-      getText: (startByte: number, endByte: number) => sourceText.substring(startByte, endByte),
-      getNode: (startByte: number, endByte: number) =>
-        tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte)),
-    };
-    const modelicaEngine = createModelicaQueryEngine(modelicaIndex.toUnifiedPartial(), contextTree);
-    uw.registerQueryEngine("modelica", modelicaEngine);
-
-    const projections = uw.adapterRegistry.projectAll("modelica", "sysml2");
-    const bouncingBall = projections.find((p: ProjectionResult) => p.props.name === "BouncingBall");
-    expect(bouncingBall).toBeDefined();
-
-    const actions = bouncingBall.props.actions as unknown[];
-    expect(actions).toBeDefined();
-    expect(actions.length).toBe(1);
-    expect(actions[0].kind).toBe("ActionUsage");
-    expect(actions[0].body).toContain("reinit(v");
-  });
-});
+console.log("=== All Cross-Language TGG Polyglot Tests Passed Cleanly ===");

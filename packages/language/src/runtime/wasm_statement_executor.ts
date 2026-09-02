@@ -6,7 +6,7 @@
  * using the DAEBuilder AST and dense environment vectors.
  */
 
-import type { QueryDB, SymbolId } from "../compiler/runtime.js";
+import type { QueryDB, SymbolId } from "./runtime.js";
 import { DAEBuilder, ExprKind, StmtKind, VarType } from "./wasm_dae.js";
 import { evaluateArenaExpression, evaluateArenaRuntime, type ArenaValue } from "./wasm_evaluator.js";
 

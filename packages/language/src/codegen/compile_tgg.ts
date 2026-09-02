@@ -82,6 +82,15 @@ export function compileTGGRules(
       } else if (c.kind === "typeMap") {
         const [sourceVar, targetVar, mapKey] = c.args;
         code += `  // Type mapping: ${sourceVar} -> ${targetVar} using ${typeof mapKey === "string" ? mapKey : "custom map"}\n`;
+      } else if (c.kind === "formatUri") {
+        const [idVar, prefix, targetVar] = c.args;
+        code += `  // Format URI: ${targetVar} = ${JSON.stringify(prefix)} + ${idVar}\n`;
+      } else if (c.kind === "mapList") {
+        const [sourceListVar, targetListVar] = c.args;
+        code += `  // Map List: ${sourceListVar} -> ${targetListVar}\n`;
+      } else if (c.kind === "compute") {
+        const [targetVar, queryName, sourceVar] = c.args;
+        code += `  // Compute: ${targetVar} = query("${queryName}", ${sourceVar})\n`;
       }
     }
 

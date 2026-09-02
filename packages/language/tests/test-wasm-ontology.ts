@@ -4,8 +4,6 @@ import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AdapterRegistry } from "../src/compiler/adapter-registry.js";
-import type { SymbolEntry, SymbolIndex } from "../src/compiler/runtime.js";
 import {
   AXIOM_CLASS_DECL,
   AXIOM_SUBCLASS_OF,
@@ -20,72 +18,25 @@ async function main() {
   console.log("Testing WasmOntologyStore & WASM Runtime...");
 
   // 1. Test Host-side WasmOntologyStore functionality
-  const registry = new AdapterRegistry();
-
-  const mockIndex: SymbolIndex = {
-    symbols: new Map([
-      [
-        1,
-        {
-          id: 1,
-          name: "Resistor",
-          ruleName: "model",
-          namePath: "Resistor",
-          startByte: 0,
-          endByte: 10,
-          parentId: null,
-          exports: [],
-          inherits: [],
-          language: "modelica",
-        },
-      ],
-    ]),
-    byName: new Map([["Resistor", [1]]]),
-    childrenOf: new Map(),
-  };
-
-  const mockLangConfig = {
-    name: "modelica",
-    rules: {
-      model: (_$: any) => ({
-        type: "def",
-        options: {
-          adapters: {
-            owl2: {
-              target: "ClassDeclaration",
-              transform: (_db: any, entry: SymbolEntry) => {
-                const name = entry.name;
-                const axioms: OWL2Axiom[] = [
-                  {
-                    type: "ClassDeclaration",
-                    iri: `mo:${name}`,
-                    sourceLang: "modelica",
-                  },
-                ];
-                if (name === "Resistor") {
-                  axioms.push({
-                    type: "SubClassOf",
-                    subClassIri: "mo:Resistor",
-                    superClassIri: "mo:Component",
-                    sourceLang: "modelica",
-                  });
-                }
-                return { axioms };
-              },
-            },
-          },
-        },
-      }),
-    },
-  };
-
-  registry.registerLanguage(mockLangConfig, mockIndex);
-
-  const store = new WasmOntologyStore(registry);
+  const store = new WasmOntologyStore();
   store.registerSourceLanguage("modelica");
 
-  // Project language
-  const delta = store.projectLanguage("modelica");
+  const mockAxioms: OWL2Axiom[] = [
+    {
+      type: "ClassDeclaration",
+      iri: "mo:Resistor",
+      sourceLang: "modelica",
+    },
+    {
+      type: "SubClassOf",
+      subClassIri: "mo:Resistor",
+      superClassIri: "mo:Component",
+      sourceLang: "modelica",
+    },
+  ];
+
+  // Add axioms directly to store
+  const delta = store.addAxioms("modelica", mockAxioms);
   assert.strictEqual(delta.assertions.length, 2, "Should assert 2 axioms for Resistor");
   assert.strictEqual(delta.retractions.length, 0, "Should have 0 retractions");
   assert.strictEqual(store.size, 2, "Store size should be 2");

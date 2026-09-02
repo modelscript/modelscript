@@ -6,7 +6,9 @@ import {
   optional,
   repeat,
   seq,
-  type AdapterDB,
+  tggDefaultVal,
+  tggEq,
+  tggRule,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
@@ -44,24 +46,6 @@ export default language({
               byNameMap.set(child.name, child);
             }
             return (name: string) => byNameMap.get(name) ?? null;
-          },
-        },
-        adapters: {
-          modelica: {
-            target: "ClassDefinition",
-            transform: (db: AdapterDB, self: SymbolEntry | Record<string, unknown>) => {
-              const entry = self as SymbolEntry;
-              return {
-                name: entry.name,
-                classKind: "package",
-                isAbstract: false,
-                components: db
-                  .childrenOf(entry.id)
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                nestedClasses: [],
-              };
-            },
           },
         },
       }),
@@ -133,21 +117,29 @@ export default language({
             };
           },
         },
-        adapters: {
-          modelica: {
-            target: "ComponentClause",
-            transform: (db: AdapterDB, self: SymbolEntry | Record<string, unknown>) => {
-              const entry = self as SymbolEntry;
-              const metadata = entry.metadata as CsvMetadata | undefined;
-              return {
-                name: entry.name,
-                typeSpecifier: metadata?.typeSpecifier ?? "Real",
-                causality: "local",
-                variability: "constant",
-              };
-            },
-          },
-        },
       }),
+  },
+
+  polyglot: {
+    languages: ["modelica"],
+    rules: [
+      tggRule({
+        name: "CsvDocumentToModelicaPackage",
+        source: ($, v) => $.SourceFile({ rows: v("docName") }),
+        target: ($, v) => $.ClassDefinition({ name: v("docName"), classKind: "package" }),
+        where: (v) => [tggEq(v("docName"), v("docName")), tggDefaultVal(v("isAbstract"), false)],
+      }),
+      tggRule({
+        name: "CsvVirtualComponentToModelicaComponent",
+        source: ($, v) => $.CSVVirtualComponent({ name: v("varName"), typeSpecifier: v("typeName") }),
+        target: ($, v) => $.ComponentClause({ name: v("varName"), typeSpecifier: v("typeName") }),
+        where: (v) => [
+          tggEq(v("varName"), v("varName")),
+          tggEq(v("typeName"), v("typeName")),
+          tggDefaultVal(v("causality"), "local"),
+          tggDefaultVal(v("variability"), "constant"),
+        ],
+      }),
+    ],
   },
 });

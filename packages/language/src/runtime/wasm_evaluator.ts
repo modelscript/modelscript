@@ -6,7 +6,7 @@
  * over the DAEBuilder AST.
  */
 
-import type { QueryDB, SymbolEntry, SymbolId } from "../compiler/runtime.js";
+import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
 import { BinOp, DAEBuilder, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
 
 /**

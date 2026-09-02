@@ -215,7 +215,12 @@ function resolveClassName(context: Context, testCase: TestCase): string {
   // Otherwise, use the last non-function, non-package class (OMC flattens the last model)
   const lastModel = [...classes]
     .reverse()
-    .find((c) => c.classKind !== ModelicaClassKind.FUNCTION && c.classKind !== ModelicaClassKind.PACKAGE);
+    .find(
+      (c) =>
+        c.classKind !== ModelicaClassKind.FUNCTION &&
+        c.classKind !== ModelicaClassKind.PACKAGE &&
+        c.classKind !== ModelicaClassKind.TYPE,
+    );
   if (lastModel?.name) {
     // For packages with nested models, look inside
     if (lastModel.classKind === ModelicaClassKind.PACKAGE) {

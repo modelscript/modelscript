@@ -5,11 +5,13 @@
  *
  * Maintains a unified, incrementally-updated OWL2 ontology derived from
  * all source language workspaces (Modelica, SysML2, STEP, OWL2) via the
- * AdapterRegistry and WebAssembly zero-GC runtime.
+ * TGG polyglot correspondence index and WebAssembly zero-GC runtime.
  */
 
-import type { AdapterRegistry, ProjectionResult } from "../compiler/adapter-registry.js";
-import type { SymbolEntry, SymbolId, SymbolIndex } from "../compiler/runtime.js";
+export interface OntologyProjectionResult {
+  props: Record<string, unknown>;
+}
+import type { SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 
 // ---------------------------------------------------------------------------
 // OWL2 Axiom Types
@@ -468,7 +470,7 @@ export const AXIOM_SHACL_RULE = 27;
 // Conversion from ProjectionResult
 // ---------------------------------------------------------------------------
 
-export function projectionToAxioms(result: ProjectionResult): OWL2Axiom[] {
+export function projectionToAxioms(result: OntologyProjectionResult): OWL2Axiom[] {
   const props = result.props;
   const axiomType = props.axiomType as string | undefined;
 
@@ -2093,11 +2095,9 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   private _projectedVersions = new Map<string, number>();
   private _lastDelta: OWL2AxiomDelta = { retractions: [], assertions: [] };
   private _sourceLanguages: string[] = [];
-  private _registry: AdapterRegistry;
   private _wasmInstance: WasmOntologyInstance | null = null;
 
-  constructor(registry: AdapterRegistry, wasmInstance?: WasmOntologyInstance | null) {
-    this._registry = registry;
+  constructor(wasmInstance?: WasmOntologyInstance | null) {
     this._wasmInstance = wasmInstance ?? null;
   }
 
@@ -2138,98 +2138,76 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     }
   }
 
-  fullProjection(): void {
-    const previousAxioms = [...this._axioms];
-    this._axiomsBySource.clear();
-    const allAxioms: OWL2Axiom[] = [];
-
-    for (const lang of this._sourceLanguages) {
-      const projections = this._registry.projectAll(lang, "owl2");
-      const langAxioms: OWL2Axiom[] = [];
-
-      for (const projection of projections) {
-        langAxioms.push(...projectionToAxioms(projection));
-      }
-
-      this._axiomsBySource.set(lang, langAxioms);
-      allAxioms.push(...langAxioms);
-    }
-
-    this._axioms = allAxioms;
-    this._lastDelta = computeDelta(previousAxioms, allAxioms);
-    this._revision++;
-  }
-
-  projectLanguage(language: string): OWL2AxiomDelta {
-    const previousLangAxioms = this._axiomsBySource.get(language) ?? [];
-    const newLangAxioms: OWL2Axiom[] = [];
-
-    if (language === "sysml2" && this._registry.queryProvider) {
-      const index = this._registry.getIndex("sysml2");
-      if (index) {
-        for (const entry of index.symbols.values()) {
-          if (entry.parentId === null) {
-            const axioms = this._registry.queryProvider("emitAxioms", entry.id) as OWL2Axiom[] | null;
-            if (axioms) {
-              newLangAxioms.push(...axioms);
-            }
-          }
-        }
-      }
-    } else {
-      const projections = this._registry.projectAll(language, "owl2");
-      for (const projection of projections) {
-        newLangAxioms.push(...projectionToAxioms(projection));
-      }
-    }
-
-    this._axiomsBySource.set(language, newLangAxioms);
+  addAxioms(sourceLang: string, axioms: OWL2Axiom[]): OWL2AxiomDelta {
+    const previousAxioms = this._axiomsBySource.get(sourceLang) ?? [];
+    const updatedAxioms = [...previousAxioms, ...axioms];
+    this._axiomsBySource.set(sourceLang, updatedAxioms);
 
     const allAxioms: OWL2Axiom[] = [];
     for (const langAxioms of this._axiomsBySource.values()) {
       allAxioms.push(...langAxioms);
     }
 
-    const delta = computeDelta(previousLangAxioms, newLangAxioms);
+    const delta = computeDelta(previousAxioms, updatedAxioms);
     this._axioms = allAxioms;
     this._lastDelta = delta;
     this._revision++;
     return delta;
   }
 
-  update(workspaceVersions: Map<string, number>): OWL2AxiomDelta | null {
-    const changedLanguages: string[] = [];
+  setAxioms(sourceLang: string, axioms: OWL2Axiom[]): OWL2AxiomDelta {
+    const previousAxioms = this._axiomsBySource.get(sourceLang) ?? [];
+    this._axiomsBySource.set(sourceLang, axioms);
 
+    const allAxioms: OWL2Axiom[] = [];
+    for (const langAxioms of this._axiomsBySource.values()) {
+      allAxioms.push(...langAxioms);
+    }
+
+    const delta = computeDelta(previousAxioms, axioms);
+    this._axioms = allAxioms;
+    this._lastDelta = delta;
+    this._revision++;
+    return delta;
+  }
+
+  clearAxioms(sourceLang?: string): void {
+    if (sourceLang) {
+      this._axiomsBySource.delete(sourceLang);
+    } else {
+      this._axiomsBySource.clear();
+    }
+    const allAxioms: OWL2Axiom[] = [];
+    for (const langAxioms of this._axiomsBySource.values()) {
+      allAxioms.push(...langAxioms);
+    }
+    this._axioms = allAxioms;
+    this._revision++;
+  }
+
+  fullProjection(): void {
+    this._revision++;
+  }
+
+  projectLanguage(language: string): OWL2AxiomDelta {
+    return { assertions: [], retractions: [] };
+  }
+
+  update(workspaceVersions: Map<string, number>): OWL2AxiomDelta | null {
+    let changed = false;
     for (const lang of this._sourceLanguages) {
       const currentVersion = workspaceVersions.get(lang);
       if (currentVersion === undefined) continue;
 
       const lastVersion = this._projectedVersions.get(lang);
       if (lastVersion === undefined || currentVersion !== lastVersion) {
-        changedLanguages.push(lang);
+        changed = true;
         this._projectedVersions.set(lang, currentVersion);
       }
     }
 
-    if (changedLanguages.length === 0) return null;
-
-    const allRetractions: OWL2Axiom[] = [];
-    const allAssertions: OWL2Axiom[] = [];
-
-    for (const lang of changedLanguages) {
-      const delta = this.projectLanguage(lang);
-      allRetractions.push(...delta.retractions);
-      allAssertions.push(...delta.assertions);
-    }
-
-    this._lastDelta = { retractions: allRetractions, assertions: allAssertions };
+    if (!changed) return null;
     return this._lastDelta;
-  }
-
-  projectSymbol(entry: SymbolEntry, sourceLang: string): OWL2Axiom[] {
-    const result = this._registry.project(entry, sourceLang, "owl2");
-    if (!result) return [];
-    return projectionToAxioms(result);
   }
 
   isSubClassOf(subClassHash: number, superClassHash: number): boolean {

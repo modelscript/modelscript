@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { StringId } from "../compiler/interner.js";
 import { StringInterner } from "../compiler/interner.js";
-import type { SourceLocation } from "../compiler/modelica-types.js";
+import type { SourceLocation } from "./runtime.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums (stored as small integers in Uint8Array columns)

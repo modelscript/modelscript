@@ -7,7 +7,7 @@
  * integrating symbol/CST resolution with zero-allocation in-WASM vector checking.
  */
 
-import type { QueryDB, SymbolEntry } from "../compiler/runtime.js";
+import type { QueryDB, SymbolEntry } from "./runtime.js";
 
 export interface SimulationResult {
   t: number[];

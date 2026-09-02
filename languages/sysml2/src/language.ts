@@ -23,6 +23,11 @@ import {
   repeat,
   repeat1,
   seq,
+  tggDefaultVal,
+  tggEq,
+  tggFormatUri,
+  tggRule,
+  tggTypeMap,
   token,
   warning,
 } from "@modelscript/language";
@@ -2110,207 +2115,6 @@ const sysmlEdgeGraphics = (opts: {
   },
 });
 
-// ---------------------------------------------------------------------------
-// Cross-Language Adapters — SysML2 → Modelica helpers
-// ---------------------------------------------------------------------------
-
-import type { AdapterDB } from "@modelscript/language/compiler";
-
-/** Project a SysML2 Definition as a Modelica ClassDefinition. */
-const modelicaClassAdapter = (classKind: string) => ({
-  modelica: {
-    target: "ClassDefinition",
-    transform: (db: AdapterDB, self: SymbolEntry | any) => {
-      const s = self as SymbolEntry;
-      const children = db.childrenOf(s.id);
-      return {
-        name: s.name,
-        classKind,
-        isAbstract: false,
-        components: children
-          .filter((c) => c.kind === "Usage")
-          .map((c) => db.project(c, "modelica"))
-          .filter(Boolean),
-        nestedClasses: children
-          .filter((c) => c.kind === "Definition")
-          .map((c) => db.project(c, "modelica"))
-          .filter(Boolean),
-        connectEquations: children
-          .filter((c) => c.ruleName === "ConnectionUsage" || c.ruleName === "BindingConnectorAsUsage")
-          .map((c) => db.project(c, "modelica"))
-          .filter(Boolean),
-        extendsClause: (db.query
-          ? db.query<string[]>("inferredSuperClasses", s.id) || []
-          : children.filter((c) => c.ruleName === "OwnedSubclassification").map((c) => c.name || "")
-        )
-          .filter(Boolean)
-          .map((name) => ({
-            kind: "Extends",
-            typeSpecifier: name,
-          })),
-        equations: children
-          .filter((c) => c.ruleName === "ConstraintUsage" || c.ruleName === "AssertConstraintUsage")
-          .map((c) => {
-            const cst = db.cstNode(c.id) as any;
-            return {
-              kind: "SimpleEquation",
-              constraintName: c.name,
-              expression: cst ? db.cstText(cst.startIndex, cst.endIndex, s) : (c.name ?? ""),
-            };
-          })
-          .filter(Boolean),
-        algorithmStatements: children
-          .filter((c) => c.ruleName === "ActionUsage" || c.ruleName === "StateActionUsage")
-          .map((c) => {
-            const cst = db.cstNode(c.id) as any;
-            return {
-              kind: "ActionUsage",
-              body: cst ? db.cstText(cst.startIndex, cst.endIndex, s) : "",
-            };
-          })
-          .filter(Boolean),
-      };
-    },
-  },
-});
-
-/** Project a SysML2 Usage as a Modelica ComponentClause. */
-const modelicaComponentAdapter = (opts?: { variability?: string; mapDirection?: boolean }) => ({
-  modelica: {
-    target: "Component",
-    transform: (db: AdapterDB, self: SymbolEntry | any) => {
-      const s = self as SymbolEntry;
-      // Resolve type from child OwnedFeatureTyping ref
-      const typeChild = db.childrenOf(s.id).find((c) => c.ruleName === "OwnedFeatureTyping");
-      const dir = (s.metadata as Record<string, unknown>)?.direction;
-      let typeName = typeChild?.name ?? null;
-      if (typeName === "KerML::Real" || typeName === "ISQ::Real") typeName = "Real";
-      if (typeName === "KerML::Integer") typeName = "Integer";
-      if (typeName === "KerML::Boolean") typeName = "Boolean";
-
-      const lowerStr = s.metadata?.multiplicityLower as string | undefined;
-      let upperStr = s.metadata?.multiplicityUpper as string | undefined;
-      if (!upperStr && lowerStr) upperStr = lowerStr;
-
-      let multiplicity: number | undefined = undefined;
-      if (upperStr) {
-        if (upperStr === "*" || upperStr.includes("Infinity")) {
-          multiplicity = Infinity;
-        } else {
-          // We might have an expression like 'N' instead of a pure number
-          const p = parseFloat(upperStr);
-          if (!isNaN(p)) multiplicity = p;
-          else multiplicity = undefined; // Will be handled dynamically if needed, or we can just pass the string!
-        }
-      }
-
-      // To pass strings like 'N' to the Modelica flattener, we pass it via metadata
-      const multiplicityStr = upperStr;
-
-      return {
-        id: s.id,
-        kind: "Component",
-        name: s.name,
-        typeSpecifier: typeName,
-        causality: opts?.mapDirection ? (dir === "in" ? "input" : dir === "out" ? "output" : null) : null,
-        variability: opts?.variability ?? null,
-        metadata: {
-          resolvedTypeName: typeName,
-          multiplicityUpper: multiplicity,
-          multiplicityStr: multiplicityStr,
-        },
-      };
-    },
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Cross-Language Adapters — SysML2 → OWL2 helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Project a SysML2 Definition (part def, item def, etc.) as OWL2 axioms.
- * Generates: ClassDeclaration + SubClassOf from specializations.
- */
-const owl2ClassAdapter = (defKind: string) => ({
-  owl2: {
-    target: "ClassEntity",
-    transform: (db: AdapterDB, self: SymbolEntry | any) => {
-      const s = self as SymbolEntry;
-      const iri = `sysml:${s.name}`;
-      const children = db.childrenOf(s.id);
-      const axioms: Record<string, unknown>[] = [];
-
-      // Class declaration
-      axioms.push({
-        type: "ClassDeclaration",
-        iri,
-        sourceLang: "sysml2",
-        sourceQualifiedName: s.name,
-      });
-
-      // SubClassOf from OwnedSubsetting / specialization
-      for (const c of children) {
-        if (
-          c.ruleName === "OwnedSubsetting" ||
-          c.ruleName === "OwnedRedefinition" ||
-          c.ruleName === "OwnedCrossSubsetting"
-        ) {
-          axioms.push({
-            type: "SubClassOf",
-            subClassIri: iri,
-            superClassIri: `sysml:${c.name}`,
-            sourceLang: "sysml2",
-          });
-        }
-      }
-
-      return { axioms };
-    },
-  },
-});
-
-/**
- * Project a SysML2 port definition as an OWL2 ObjectProperty.
- */
-const owl2PortAdapter = () => ({
-  owl2: {
-    target: "ObjectPropertyEntity",
-    transform: (_db: AdapterDB, self: SymbolEntry | any) => {
-      const s = self as SymbolEntry;
-      return {
-        axiomType: "ObjectPropertyDeclaration",
-        iri: `sysml:hasPort_${s.name}`,
-        sourceLang: "sysml2",
-      };
-    },
-  },
-});
-
-/**
- * Project a SysML2 constraint definition as OWL2 restriction axioms.
- */
-const owl2ConstraintAdapter = () => ({
-  owl2: {
-    target: "ClassEntity",
-    transform: (db: AdapterDB, self: SymbolEntry | any) => {
-      const s = self as SymbolEntry;
-      const iri = `sysml:${s.name}`;
-      const axioms: Record<string, unknown>[] = [];
-
-      // Class declaration for the constraint
-      axioms.push({
-        type: "ClassDeclaration",
-        iri,
-        sourceLang: "sysml2",
-        sourceQualifiedName: s.name,
-      });
-
-      return { axioms };
-    },
-  },
-});
-
 export const sysml2Language = language({
   name: "sysml2",
 
@@ -3078,7 +2882,6 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: { ...modelicaClassAdapter("record"), ...owl2ClassAdapter("attribute") },
         graphics: () => sysmlNodeGraphics({ stereotype: "attribute def", fill: "#fce4ec", stroke: "#e91e63" }),
       }),
 
@@ -3089,7 +2892,6 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        adapters: modelicaComponentAdapter({ variability: "parameter" }),
         graphics: () => sysmlUsageGraphics({ stereotype: "attribute", fill: "#fce4ec", stroke: "#f48fb1" }),
       }),
 
@@ -3203,7 +3005,6 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: { ...modelicaClassAdapter("model"), ...owl2ClassAdapter("part") },
         graphics: () =>
           sysmlNodeGraphics({ stereotype: "part def", fill: "#e8f5e9", stroke: "#43a047", portQuery: "ownedPorts" }),
         diff: {
@@ -3219,7 +3020,6 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        adapters: modelicaComponentAdapter(),
         graphics: () => sysmlUsageGraphics({ stereotype: "part", fill: "#e8f5e9", stroke: "#66bb6a" }),
       }),
 
@@ -3235,7 +3035,6 @@ export const sysml2Language = language({
         model: definitionModel,
         lints: definitionLints,
         graphics: () => sysmlNodeGraphics({ stereotype: "port def", fill: "#fff9c4", stroke: "#f57f17" }),
-        adapters: { ...modelicaClassAdapter("connector"), ...owl2PortAdapter() },
         diff: {
           ignore: ["annotationClause", "description"],
           breaking: ["direction"],
@@ -3249,7 +3048,6 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        adapters: modelicaComponentAdapter({ mapDirection: true }),
         graphics: () => ({
           role: "port-owner" as const,
           node: {
@@ -3298,7 +3096,6 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: { ...modelicaClassAdapter("model"), ...owl2ClassAdapter("connection") },
         graphics: () => sysmlNodeGraphics({ stereotype: "connection def", fill: "#eceff1", stroke: "#546e7a" }),
       }),
 
@@ -3321,28 +3118,6 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        adapters: {
-          modelica: {
-            target: "ConnectEquation",
-            transform: (db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              const ends = db
-                .childrenOf(s.id)
-                .filter((c) => c.ruleName === "ConnectorEnd" || c.ruleName === "ConnectorEndMember");
-              // ConnectorEnd children hold the reference via OwnedReferenceSubsetting
-              const resolveEnd = (endEntry: SymbolEntry): string | null => {
-                const refChildren = db.childrenOf(endEntry.id);
-                const refSub = refChildren.find((c) => c.ruleName === "OwnedReferenceSubsetting");
-                return refSub?.name ?? endEntry.name ?? null;
-              };
-              return {
-                kind: "ConnectEquation",
-                ref1: ends[0] ? resolveEnd(ends[0]) : null,
-                ref2: ends[1] ? resolveEnd(ends[1]) : null,
-              };
-            },
-          },
-        },
         graphics: () => sysmlEdgeGraphics({ stroke: "#546e7a", label: "«connect»" }),
         diff: {
           identity: (self) => self.name || `connection_${self.id}`,
@@ -3371,27 +3146,6 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        adapters: {
-          modelica: {
-            target: "SimpleEquation",
-            transform: (db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              const ends = db
-                .childrenOf(s.id)
-                .filter((c) => c.ruleName === "ConnectorEnd" || c.ruleName === "ConnectorEndMember");
-              const resolveEnd = (endEntry: SymbolEntry): string | null => {
-                const refChildren = db.childrenOf(endEntry.id);
-                const refSub = refChildren.find((c) => c.ruleName === "OwnedReferenceSubsetting");
-                return refSub?.name ?? endEntry.name ?? null;
-              };
-              return {
-                kind: "SimpleEquation",
-                lhs: ends[0] ? resolveEnd(ends[0]) : null,
-                rhs: ends[1] ? resolveEnd(ends[1]) : null,
-              };
-            },
-          },
-        },
         graphics: () => sysmlEdgeGraphics({ label: "«bind»", stroke: "#37474f" }),
       }),
 
@@ -3593,37 +3347,6 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: {
-          modelica: {
-            target: "ClassDefinition",
-            transform: (db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              const children = db.childrenOf(s.id);
-              return {
-                name: s.name,
-                classKind: "function",
-                isAbstract: false,
-                components: children
-                  .filter((c) => c.kind === "Usage")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                nestedClasses: children
-                  .filter((c) => c.kind === "Definition")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                extendsClause: children
-                  .filter((c) => c.ruleName === "OwnedSubclassification")
-                  .map((c) => ({
-                    kind: "Extends",
-                    typeSpecifier: c.name,
-                  })),
-                // Algorithms deferred pending CST access in AdapterDB
-                algorithms: [],
-              };
-            },
-          },
-          ...owl2ClassAdapter("action"),
-        },
         graphics: () => sysmlNodeGraphics({ stereotype: "action def", fill: "#e3f2fd", stroke: "#1565c0" }),
       }),
 
@@ -3829,34 +3552,6 @@ export const sysml2Language = language({
         queries: calculationQueries,
         model: calculationDefinitionModel,
         lints: definitionLints,
-        adapters: {
-          modelica: {
-            target: "ClassDefinition",
-            transform: (db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              const children = db.childrenOf(s.id);
-              return {
-                name: s.name,
-                classKind: "function",
-                isAbstract: false,
-                components: children
-                  .filter((c) => c.kind === "Usage")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                nestedClasses: children
-                  .filter((c) => c.kind === "Definition")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                extendsClause: children
-                  .filter((c) => c.ruleName === "OwnedSubclassification")
-                  .map((c) => ({
-                    kind: "Extends",
-                    typeSpecifier: c.name,
-                  })),
-              };
-            },
-          },
-        },
         graphics: () => sysmlNodeGraphics({ stereotype: "calc def", fill: "#e0f7fa", stroke: "#00838f" }),
       }),
 
@@ -3911,40 +3606,6 @@ export const sysml2Language = language({
         queries: constraintDefinitionQueries,
         model: constraintDefinitionModel,
         lints: constraintDefinitionLints,
-        adapters: {
-          modelica: {
-            target: "ClassDefinition",
-            transform: (db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              const children = db.childrenOf(s.id);
-              return {
-                name: s.name,
-                classKind: "model",
-                isAbstract: false,
-                components: children
-                  .filter((c) => c.kind === "Usage")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                nestedClasses: children
-                  .filter((c) => c.kind === "Definition")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                // Extract constraint body expressions as Modelica equations
-                equations: children
-                  .filter((c) => c.ruleName === "ConstraintUsage" || c.ruleName === "AssertConstraintUsage")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-                extendsClause: children
-                  .filter((c) => c.ruleName === "OwnedSubclassification")
-                  .map((c) => ({
-                    kind: "Extends",
-                    typeSpecifier: c.name,
-                  })),
-              };
-            },
-          },
-          ...owl2ClassAdapter("requirement"),
-        },
         graphics: () => sysmlNodeGraphics({ stereotype: "constraint def", fill: "#ffebee", stroke: "#c62828" }),
       }),
 
@@ -3960,22 +3621,6 @@ export const sysml2Language = language({
         symbol: usageAttrs("constraint"),
         queries: constraintUsageQueries,
         model: constraintUsageModel,
-        adapters: {
-          modelica: {
-            target: "SimpleEquation",
-            transform: (_db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              // The constraint name or expression text serves as the equation
-              return {
-                kind: "SimpleEquation",
-                constraintName: s.name,
-                // Expression text is extracted from CST at query time;
-                // at adapter level we pass the entry's metadata for downstream resolution
-                expression: s.name ?? null,
-              };
-            },
-          },
-        },
         graphics: () => sysmlUsageGraphics({ stereotype: "constraint", fill: "#ffebee", stroke: "#b71c1c" }),
         lints: constraintUsageLintRules,
       }),
@@ -3995,20 +3640,6 @@ export const sysml2Language = language({
         symbol: usageAttrs("constraint"),
         queries: constraintUsageQueries,
         model: constraintUsageModel,
-        adapters: {
-          modelica: {
-            target: "SimpleEquation",
-            transform: (_db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              return {
-                kind: "SimpleEquation",
-                constraintName: s.name,
-                isAsserted: true,
-                expression: s.name ?? null,
-              };
-            },
-          },
-        },
         lints: constraintUsageLintRules,
       }),
 
@@ -4426,80 +4057,6 @@ export const sysml2Language = language({
         queries: stateQueries,
         model: stateDefinitionModel,
         lints: definitionLints,
-        adapters: {
-          modelica: {
-            target: "ClassDefinition",
-            transform: (db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              const children = db.childrenOf(s.id);
-              const states = children.filter((c) => c.ruleName === "StateUsage");
-              const transitions = children.filter((c) => c.ruleName === "TransitionUsage");
-              const isParallel = (s.metadata as Record<string, unknown>)?.isParallel;
-
-              // Build state index constants and a discrete activeState variable
-              const stateConstants = states.map((state, i) => ({
-                name: `STATE_${(state.name ?? `s${i}`).toUpperCase()}`,
-                typeSpecifier: "Integer",
-                variability: "constant",
-                binding: i + 1,
-              }));
-
-              // For parallel regions, create one activeState per region
-              const activeStateVars = isParallel
-                ? states.map((state, i) => ({
-                    name: `activeState_${state.name ?? `region${i}`}`,
-                    typeSpecifier: "Integer",
-                    variability: "discrete",
-                    start: 1,
-                  }))
-                : [{ name: "activeState", typeSpecifier: "Integer", variability: "discrete", start: 1 }];
-
-              // Map transitions to when equations
-              const whenEquations = transitions.map((t) => {
-                const meta = t.metadata as Record<string, unknown>;
-                return {
-                  kind: "WhenEquation",
-                  guard: meta?.guard ?? null,
-                  trigger: meta?.trigger ?? null,
-                  sourceState: meta?.source ?? null,
-                  targetState: (() => {
-                    // Resolve transition target from ConnectorEnd children
-                    const ends = db
-                      .childrenOf(t.id)
-                      .filter((c) => c.ruleName === "ConnectorEnd" || c.ruleName === "ConnectorEndMember");
-                    if (ends.length > 0) {
-                      const refChildren = db.childrenOf(ends[0].id);
-                      const refSub = refChildren.find((c) => c.ruleName === "OwnedReferenceSubsetting");
-                      return refSub?.name ?? ends[0].name ?? null;
-                    }
-                    return null;
-                  })(),
-                };
-              });
-
-              return {
-                name: s.name,
-                classKind: "model",
-                isAbstract: false,
-                isStateMachine: true,
-                components: [
-                  ...activeStateVars,
-                  ...stateConstants,
-                  // Include non-state child usages as regular components
-                  ...children
-                    .filter((c) => c.kind === "Usage" && c.ruleName !== "StateUsage")
-                    .map((c) => db.project(c, "modelica"))
-                    .filter(Boolean),
-                ],
-                equations: whenEquations,
-                nestedClasses: children
-                  .filter((c) => c.kind === "Definition")
-                  .map((c) => db.project(c, "modelica"))
-                  .filter(Boolean),
-              };
-            },
-          },
-        },
         graphics: () => sysmlNodeGraphics({ stereotype: "state def", fill: "#fff8e1", stroke: "#f9a825" }),
       }),
 
@@ -4547,22 +4104,6 @@ export const sysml2Language = language({
         queries: { ...usageQueries, ...stateQueries },
         model: stateUsageModel,
         lints: usageLints,
-        adapters: {
-          modelica: {
-            target: "ComponentDeclaration",
-            transform: (_db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              // A state usage in the parent's context becomes an Integer constant
-              // representing the state's index value
-              return {
-                name: s.name,
-                typeSpecifier: "Integer",
-                variability: "constant",
-                isState: true,
-              };
-            },
-          },
-        },
         graphics: () => sysmlUsageGraphics({ stereotype: "state", fill: "#fff8e1", stroke: "#fbc02d" }),
       }),
 
@@ -4623,33 +4164,6 @@ export const sysml2Language = language({
         }),
         queries: usageQueries,
         model: usageModel,
-        adapters: {
-          modelica: {
-            target: "WhenEquation",
-            transform: (db: AdapterDB, self: SymbolEntry | any) => {
-              const s = self as SymbolEntry;
-              const meta = s.metadata as Record<string, unknown>;
-              // Resolve transition target
-              const ends = db
-                .childrenOf(s.id)
-                .filter((c) => c.ruleName === "ConnectorEnd" || c.ruleName === "ConnectorEndMember");
-              let targetState: string | null = null;
-              if (ends.length > 0) {
-                const refChildren = db.childrenOf(ends[0].id);
-                const refSub = refChildren.find((c) => c.ruleName === "OwnedReferenceSubsetting");
-                targetState = refSub?.name ?? ends[0].name ?? null;
-              }
-              return {
-                kind: "WhenEquation",
-                sourceState: (meta?.source as string) ?? null,
-                targetState,
-                guard: (meta?.guard as string) ?? null,
-                trigger: (meta?.trigger as string) ?? null,
-                effect: (meta?.effect as string) ?? null,
-              };
-            },
-          },
-        },
         graphics: () =>
           sysmlEdgeGraphics({
             label: "«transition»",
@@ -5151,6 +4665,85 @@ export const sysml2Language = language({
     REGULAR_COMMENT: () => token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
     ML_NOTE: () => token(/\/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
     SL_NOTE: () => token(/\/\/[^\r\n]*/),
+  },
+
+  polyglot: {
+    languages: ["modelica", "owl2"],
+    typeMaps: {
+      modelica: {
+        "KerML::Real": "Real",
+        "ISQ::Real": "Real",
+        "KerML::Integer": "Integer",
+        "KerML::Boolean": "Boolean",
+        "KerML::String": "String",
+      },
+    },
+    rules: [
+      tggRule({
+        name: "PartDefToModelicaModel",
+        source: ($, v) => $.PartDefinition({ declaredName: v("className") }),
+        target: ($, v) => $.ClassDefinition({ name: v("className"), classKind: "model" }),
+        where: (v) => [tggEq(v("className"), v("className")), tggDefaultVal(v("isAbstract"), false)],
+      }),
+      tggRule({
+        name: "AttributeDefToModelicaRecord",
+        source: ($, v) => $.AttributeDefinition({ declaredName: v("className") }),
+        target: ($, v) => $.ClassDefinition({ name: v("className"), classKind: "record" }),
+        where: (v) => [tggEq(v("className"), v("className")), tggDefaultVal(v("isAbstract"), false)],
+      }),
+      tggRule({
+        name: "PortDefToModelicaConnector",
+        source: ($, v) => $.PortDefinition({ declaredName: v("className") }),
+        target: ($, v) => $.ClassDefinition({ name: v("className"), classKind: "connector" }),
+        where: (v) => [tggEq(v("className"), v("className")), tggDefaultVal(v("isAbstract"), false)],
+      }),
+      tggRule({
+        name: "ConnectionDefToModelicaModel",
+        source: ($, v) => $.ConnectionDefinition({ declaredName: v("className") }),
+        target: ($, v) => $.ClassDefinition({ name: v("className"), classKind: "model" }),
+        where: (v) => [tggEq(v("className"), v("className")), tggDefaultVal(v("isAbstract"), false)],
+      }),
+      tggRule({
+        name: "AttributeUsageToModelicaParameter",
+        source: ($, v) => $.AttributeUsage({ declaredName: v("compName"), declaredType: v("typeName") }),
+        target: ($, v) => $.ComponentClause({ name: v("compName"), typeSpecifier: v("typeName") }),
+        where: (v) => [
+          tggEq(v("compName"), v("compName")),
+          tggTypeMap(v("typeName"), v("typeName"), "modelica"),
+          tggDefaultVal(v("variability"), "parameter"),
+        ],
+      }),
+      tggRule({
+        name: "PartUsageToModelicaComponent",
+        source: ($, v) => $.PartUsage({ declaredName: v("compName"), declaredType: v("typeName") }),
+        target: ($, v) => $.ComponentClause({ name: v("compName"), typeSpecifier: v("typeName") }),
+        where: (v) => [tggEq(v("compName"), v("compName")), tggTypeMap(v("typeName"), v("typeName"), "modelica")],
+      }),
+      tggRule({
+        name: "PortUsageToModelicaComponent",
+        source: ($, v) => $.PortUsage({ declaredName: v("compName"), declaredType: v("typeName") }),
+        target: ($, v) => $.ComponentClause({ name: v("compName"), typeSpecifier: v("typeName") }),
+        where: (v) => [tggEq(v("compName"), v("compName")), tggTypeMap(v("typeName"), v("typeName"), "modelica")],
+      }),
+      tggRule({
+        name: "ConnectionUsageToModelicaConnect",
+        source: ($, v) => $.ConnectionUsage({ declaredName: v("connName") }),
+        target: ($, v) => $.ConnectClause({ name: v("connName") }),
+        where: (v) => [tggEq(v("connName"), v("connName"))],
+      }),
+      tggRule({
+        name: "ConstraintUsageToModelicaEquation",
+        source: ($, v) => $.ConstraintUsage({ declaredName: v("eqName") }),
+        target: ($, v) => $.EquationClause({ name: v("eqName") }),
+        where: (v) => [tggEq(v("eqName"), v("eqName"))],
+      }),
+      tggRule({
+        name: "SysML2ToOWL2Class",
+        source: ($, v) => $.PartDefinition({ declaredName: v("className") }),
+        target: ($, v) => $.ClassDeclaration({ iri: v("iri") }),
+        where: (v) => [tggFormatUri(v("className"), "sysml:", v("iri"))],
+      }),
+    ],
   },
 });
 

@@ -1,5 +1,3 @@
-import { Context } from "../../compiler/index.js";
-
 import type { BrowserFileSystem } from "./browser-file-system.js";
 import {
   getSalsaIndexCache,
@@ -20,7 +18,7 @@ export interface LoaderContext {
   connectionState: { sendNotification: (method: string, params: unknown) => void };
   logger: { log: (msg: string) => void; warn: (msg: string) => void; error: (msg: string, e: unknown) => void };
   sharedFs: BrowserFileSystem;
-  sharedContext: Context;
+  sharedContext: any;
   globalWorkspaceIndex: any;
   sysml2WorkspaceIndex: any;
   documentTrees: Map<string, { text: string; tree: Tree | null; classCache: Map<string, unknown> }>;

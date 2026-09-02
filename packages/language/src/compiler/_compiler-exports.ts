@@ -4,7 +4,6 @@ export * from "../runtime/wasm_query_engine.js";
 export * from "../runtime/wasm_sparse_jacobian.js";
 export * from "../runtime/wasm_statement_executor.js";
 export { evaluateArenaFunctionCall } from "../runtime/wasm_statement_executor.js";
-export * from "./modelica-types.js";
 export * from "./runtime.js";
 export * from "./tape.js";
 
@@ -23,11 +22,22 @@ export {
   repeat,
   repeat1,
   seq,
+  tggCompute,
+  tggDefaultVal,
+  tggEq,
+  tggFormatUri,
+  tggMapList,
+  tggRule,
+  tggTypeMap,
   token,
   warning,
+  type PolyglotConfig,
   type RuleLike as Rule,
   type RuleBuilder,
   type RuleLike,
+  type TGGConstraint,
+  type TGGPattern,
+  type TGGRuleOptions,
 } from "../dsl/index.js";
 export * from "../runtime/wasm_bdf.js";
 export * from "../runtime/wasm_blt.js";
@@ -51,8 +61,6 @@ export * from "../runtime/wasm_pantelides.js";
 export * from "../runtime/wasm_verifier.js";
 export * from "../runtime/wasm_workspace.js";
 export { WasmWorkspaceIndex as WorkspaceIndex } from "../runtime/wasm_workspace.js";
-export * from "./adapter-registry.js";
-export * from "./context.js";
 export * from "./hook-extractor.js";
 export * from "./i18n-extractor.js";
 export * from "./interner.js";

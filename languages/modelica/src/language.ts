@@ -273,8 +273,7 @@ export const modelicaLanguage = language({
   },
 
   symbols: {
-    class_definition: { name: "class_specifier.name", kind: "Class", scope: true },
-    short_class_specifier: { name: "name", kind: "Class", scope: true },
+    class_definition: { name: "name", kind: "Class", scope: true },
     component_declaration: { name: "declaration.name", kind: "Component", scope: false },
     extends_clause: { name: "type_specifier", kind: "Extends", scope: false },
     connect_equation: { name: "lhs", kind: "ConnectEquation", scope: false },

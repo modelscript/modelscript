@@ -35,6 +35,11 @@ import {
   repeat,
   repeat1,
   seq,
+  tggDefaultVal,
+  tggEq,
+  tggFormatUri,
+  tggRule,
+  tggTypeMap,
   warning,
   type QueryDB,
   type Rule,
@@ -7006,113 +7011,40 @@ const modelicaLang = language({
     BOM: () => /\u00EF\u00BB\u00BF/,
   },
 
-  // =====================================================================
-  // Top-Level Adapters (Approach C — language-wide registry)
-  // =====================================================================
-
-  adapters: {
-    sysml2: {
-      ClassDefinition: (db, node) => {
-        const children = db.childrenOf(node.id);
-        return {
-          target: "BlockDefinition",
-          props: {
-            name: node.name,
-            isAbstract: false,
-            defKind: "block",
-            classKind: (node.metadata as Record<string, unknown>)?.classPrefixes ?? "model",
-            hasBehavior: (() => {
-              const cp = ((node.metadata as Record<string, unknown>)?.classPrefixes as string) ?? "model";
-              return new Set(["model", "block", "class"]).has(cp);
-            })(),
-            parts: children
-              .filter((c) => c.kind === "Component")
-              .map((c) => {
-                const meta = c.metadata as Record<string, unknown>;
-                const typeName = meta?.typeSpecifier as string | undefined;
-                return {
-                  name: c.name,
-                  typeName,
-                  direction: (meta?.causality as string) ?? null,
-                  condition: meta?.conditionAttribute as string | undefined,
-                  isSpatial: typeName?.includes("Modelica.Mechanics.MultiBody.Interfaces") ?? false,
-                };
-              }),
-            connections: children
-              .filter((c) => c.kind === "ConnectEquation")
-              .map((c) => {
-                const meta = c.metadata as Record<string, unknown>;
-                return {
-                  source: (meta?.ref1 as string) ?? null,
-                  target: (meta?.ref2 as string) ?? null,
-                };
-              }),
-            specializations: children
-              .filter((c) => c.kind === "Extends")
-              .map((c) => ({
-                superclassifier: c.name,
-              })),
-          },
-        };
-      },
-    },
-    owl2: {
-      /**
-       * Project a Modelica connect() clause into an OWL2 ObjectPropertyAssertion.
-       * connect(a.p, b.p) → ObjectPropertyAssertion(mo:isConnectedTo, mo:a, mo:b)
-       */
-      ConnectClause: (_db, node) => ({
-        target: "ObjectPropertyAssertionAxiom",
-        props: {
-          axiomType: "ObjectPropertyAssertion",
-          propertyIri: "mo:isConnectedTo",
-          subjectIri: `mo:${node.name?.split(".")[0] ?? node.name}`,
-          objectIri: `mo:${((node.metadata as Record<string, unknown>)?.connectee as string)?.split(".")[0] ?? "unknown"}`,
-          sourceLang: "modelica",
-        },
+  polyglot: {
+    languages: ["sysml2", "owl2"],
+    rules: [
+      tggRule({
+        name: "ModelicaModelToSysmlBlock",
+        source: ($, v) => $.ClassDefinition({ name: v("className") }),
+        target: ($, v) => $.BlockDefinition({ declaredName: v("className") }),
+        where: (v) => [tggEq(v("className"), v("className")), tggDefaultVal(v("isAbstract"), false)],
       }),
-      /**
-       * Project a Modelica ComponentClause (variable declaration) into
-       * OWL2 data/object property assertions depending on the component type.
-       */
-      ComponentClause: (db, node) => {
-        const meta = node.metadata as Record<string, unknown> | undefined;
-        const typeSpec = meta?.typeSpecifier as string | undefined;
-        const variability = meta?.variability as string | undefined;
-        const parentId = node.parentId;
-        const parentName = parentId !== null ? db.symbol(parentId)?.name : undefined;
-
-        if (variability === "parameter" && parentName) {
-          return {
-            target: "DataPropertyAssertionAxiom",
-            props: {
-              axiomType: "DataPropertyAssertion",
-              propertyIri: `mo:hasParam_${node.name}`,
-              subjectIri: `mo:${parentName}`,
-              value: (meta?.defaultValue as string) ?? "",
-              datatype: typeSpec === "Real" ? "xsd:double" : typeSpec === "Integer" ? "xsd:integer" : `xsd:${typeSpec}`,
-              sourceLang: "modelica",
-            },
-          };
-        }
-
-        // Non-parameter components → object property (has-part relationship)
-        if (parentName && typeSpec) {
-          return {
-            target: "ObjectPropertyAssertionAxiom",
-            props: {
-              axiomType: "ObjectPropertyAssertion",
-              propertyIri: `mo:hasPart_${node.name}`,
-              subjectIri: `mo:${parentName}`,
-              objectIri: `mo:${typeSpec}`,
-              sourceLang: "modelica",
-            },
-          };
-        }
-
-        return { target: "ClassEntity", props: {} };
-      },
-    },
+      tggRule({
+        name: "ModelicaComponentToSysmlPart",
+        source: ($, v) => $.ComponentClause({ name: v("compName"), typeSpecifier: v("typeName") }),
+        target: ($, v) => $.PartUsage({ declaredName: v("compName"), declaredType: v("typeName") }),
+        where: (v) => [tggEq(v("compName"), v("compName")), tggTypeMap(v("typeName"), v("typeName"), "sysml2")],
+      }),
+      tggRule({
+        name: "ModelicaConnectToSysmlConnection",
+        source: ($, v) => $.ConnectClause({ name: v("connName") }),
+        target: ($, v) => $.ConnectionUsage({ declaredName: v("connName") }),
+        where: (v) => [tggEq(v("connName"), v("connName"))],
+      }),
+      tggRule({
+        name: "ModelicaEquationToSysmlConstraint",
+        source: ($, v) => $.EquationClause({ name: v("eqName") }),
+        target: ($, v) => $.ConstraintUsage({ declaredName: v("eqName") }),
+        where: (v) => [tggEq(v("eqName"), v("eqName"))],
+      }),
+      tggRule({
+        name: "ModelicaToOWL2Class",
+        source: ($, v) => $.ClassDefinition({ name: v("className") }),
+        target: ($, v) => $.ClassDeclaration({ iri: v("iri") }),
+        where: (v) => [tggFormatUri(v("className"), "mo:", v("iri"))],
+      }),
+    ],
   },
 });
 

@@ -5,7 +5,7 @@
  * Operates directly on DAEBuilder and WebAssembly memory buffers.
  */
 
-import type { QueryDB, SymbolId } from "../compiler/runtime.js";
+import type { QueryDB, SymbolId } from "./runtime.js";
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
 
 export type ArenaConstantValue = number | boolean | string | ArenaConstantValue[];

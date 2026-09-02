@@ -111,7 +111,7 @@ const wasmModelicaIndexerHooks: any[] = [
   {
     ruleName: "class_definition",
     kind: "Class",
-    namePath: "class_specifier.name",
+    namePath: "name",
     exportPaths: [],
     inheritPaths: [],
     metadataFieldPaths: {
@@ -207,4 +207,5 @@ export function createModelicaLSPBridge(index: any, engine: any, arg3: any, arg4
 }
 
 import { MsimParser } from "./msim-parser.js";
+export { Context } from "./context.js";
 export { injectPredefinedTypes, LSPBridge, MsimParser, PositionIndex, QueryEngine, WorkspaceIndex };
