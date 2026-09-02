@@ -18,6 +18,7 @@ export const FLAG_VAR_STREAM: i32 = 1 << 2;
 export const FLAG_VAR_STATE: i32 = 1 << 3;
 export const FLAG_VAR_STATE_DER: i32 = 1 << 4;
 export const FLAG_VAR_FIXED: i32 = 1 << 5;
+export const FLAG_VAR_REMOVED: i32 = 1 << 6;
 
 export const FLAG_EQ_INITIAL: i32 = 1 << 0;
 export const FLAG_EQ_OVERCONSTRAINED: i32 = 1 << 1;
@@ -836,6 +837,12 @@ export class DaeBuilder {
   }
 
   @inline
+  isVarRemoved(varIdx: u32): bool {
+    if (varIdx >= this.varCount) return true;
+    return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_REMOVED) != 0;
+  }
+
+  @inline
   getVarType(varIdx: u32): i32 {
     if (varIdx >= this.varCount) return -1;
     return this.getVarData().get(varIdx * VAR_STRIDE + VAR_TYPE);
@@ -1281,6 +1288,10 @@ export function dae_getVarCausality(ptr: u32, varId: u32): i32 {
 
 export function dae_getVarFlags(ptr: u32, varId: u32): i32 {
   return changetype<DaeBuilder>(ptr).getVarData().get(varId * VAR_STRIDE + VAR_FLAGS);
+}
+
+export function dae_isVarRemoved(ptr: u32, varId: u32): bool {
+  return changetype<DaeBuilder>(ptr).isVarRemoved(varId);
 }
 
 export function dae_getVarStartValue(ptr: u32, varId: u32): f64 {

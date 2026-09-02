@@ -28,6 +28,7 @@ export * from "./runtime/wasm_evaluator.js";
 export * from "./runtime/wasm_fmu_subsystem.js";
 export * from "./runtime/wasm_fold.js";
 export * from "./runtime/wasm_gaussian.js";
+export * from "./runtime/wasm_gpu_buffers.js";
 export * from "./runtime/wasm_groebner.js";
 export * from "./runtime/wasm_init.js";
 export * from "./runtime/wasm_interval.js";

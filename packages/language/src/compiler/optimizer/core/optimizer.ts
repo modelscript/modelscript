@@ -16,6 +16,7 @@
  */
 
 import { luFactor, luSolve } from "../../../runtime/wasm_gaussian.js";
+import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "../../../runtime/wasm_tape.js";
 import { DAEBuilder, Variability } from "../../index.js";
 import { ArenaSimulator, simulateArena } from "../../simulator/core/simulate-arena.js";
 import type { SolverOptions } from "../../simulator/core/solver-options.js";
@@ -36,14 +37,14 @@ export type TranscriptionMethod = "trapezoidal" | "lgr" | "multiple-shooting" | 
 export type RobustMethod = "worst-case" | "chance-constrained" | "expected-value" | "cvar" | "distributionally-robust";
 
 export interface OptimizationProblem {
-  /** Lagrange cost integrand expression string, e.g. "u^2" */
-  objective: string;
+  /** Lagrange cost integrand expression string or arena ExprId handle */
+  objective: string | number;
   /** Variable names treated as free controls */
   controls: string[];
   /** Box constraints on controls: name → { min, max } */
   controlBounds: Map<string, { min: number; max: number }>;
-  /** Optional Mayer terminal cost expression, e.g. "(x - 1)^2" */
-  terminalCost?: string;
+  /** Optional Mayer terminal cost expression string or arena ExprId handle */
+  terminalCost?: string | number;
   startTime: number;
   stopTime: number;
   /** Number of collocation intervals */
@@ -693,16 +694,30 @@ export class ModelicaOptimizer {
       return penalty;
     };
 
+    // Compile AD tape for arbitrary objective expression if ExprId handle is provided
+    let objTape: StaticTapeBuilder | null = null;
+    let objOutputIdx = -1;
+    if (typeof this.problem.objective === "number") {
+      objTape = new StaticTapeBuilder(this.dae.interner);
+      objOutputIdx = objTape.addExpression(this.problem.objective, this.dae);
+    }
+
     // Objective: trapezoidal integration of Lagrange cost
     const evalObjective = (z: Float64Array): number => {
       let cost = 0;
       for (let k = 0; k < nPoints; k++) {
         const uMap = getControlMap(z, k);
         let L = 0;
-        // Evaluate cost integrand: sum of u_i^2 (standard quadratic control cost)
-        // TODO: parse arbitrary objective expressions
-        for (const [, uVal] of uMap) {
-          L += uVal * uVal;
+        if (objTape && objOutputIdx >= 0) {
+          const pointMap = new Map<string, number>(getStateMap(z, k));
+          for (const [uName, uVal] of uMap) pointMap.set(uName, uVal);
+          const t = evaluateTapeForward(objTape, pointMap);
+          L = t[objOutputIdx] ?? 0;
+        } else {
+          // Evaluate cost integrand: sum of u_i^2 (standard quadratic control cost)
+          for (const [, uVal] of uMap) {
+            L += uVal * uVal;
+          }
         }
         const w = k === 0 || k === N ? 0.5 : 1.0;
         cost += w * dt * L;
@@ -733,16 +748,34 @@ export class ModelicaOptimizer {
         }
       }
     };
-    // Direct trapezoidal gradient computation for quadratic control objective
+
+    // Direct trapezoidal gradient computation (via reverse-mode AD or quadratic control)
     const evalGradient = (z: Float64Array, g: Float64Array): void => {
       g.fill(0);
       for (let k = 0; k < nPoints; k++) {
         const w = k === 0 || k === N ? 0.5 : 1.0;
-        for (let j = 0; j < nControls; j++) {
-          const idx = k * varsPerPoint + nStates + j;
-          const uVal = z[idx] ?? 0;
-          // ∂(w * dt * u^2)/∂u = 2 * w * dt * u
-          g[idx] = 2 * w * dt * uVal;
+        if (objTape && objOutputIdx >= 0) {
+          const pointMap = new Map<string, number>(getStateMap(z, k));
+          for (const [uName, uVal] of getControlMap(z, k)) pointMap.set(uName, uVal);
+          const t = evaluateTapeForward(objTape, pointMap);
+          const grads = evaluateTapeReverse(objTape, t, objOutputIdx);
+          for (let i = 0; i < nStates; i++) {
+            const sName = stateNames[i]!;
+            const gVal = grads.get(sName) ?? 0;
+            g[k * varsPerPoint + i] += w * dt * gVal;
+          }
+          for (let j = 0; j < nControls; j++) {
+            const cName = controls[j]!;
+            const gVal = grads.get(cName) ?? 0;
+            g[k * varsPerPoint + nStates + j] += w * dt * gVal;
+          }
+        } else {
+          for (let j = 0; j < nControls; j++) {
+            const idx = k * varsPerPoint + nStates + j;
+            const uVal = z[idx] ?? 0;
+            // ∂(w * dt * u^2)/∂u = 2 * w * dt * u
+            g[idx] += 2 * w * dt * uVal;
+          }
         }
       }
     };

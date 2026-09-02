@@ -13,7 +13,9 @@
  */
 
 import type { ArenaBltResult } from "../../../runtime/wasm_blt.js";
-import { type DAEBuilder, Variability } from "../../../runtime/wasm_dae.js";
+import { Variability, type DAEBuilder } from "../../../runtime/wasm_dae.js";
+import { serializeArenaForGPUWasm, type GPUArenaBufferPointers } from "../../../runtime/wasm_gpu_buffers.js";
+export { serializeArenaForGPUWasm, type GPUArenaBufferPointers };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -144,6 +146,12 @@ export function serializeArenaForGPU(
   bltResult: ArenaBltResult,
   stateVars: Set<number>,
 ): GPUArenaBuffers {
+  // 0. Fast-path: WASM-native linear-memory serialization
+  const wasmResult = serializeArenaForGPUWasm(arena, bltResult, stateVars);
+  if (wasmResult) {
+    return wasmResult;
+  }
+
   // 1. Direct copy of arena struct-of-arrays views
   const varBuffer = new Int32Array(arena.varView());
   const eqBuffer = new Int32Array(arena.eqView());

@@ -5,6 +5,7 @@ export * from "./core/optimizer.js";
 export * from "./core/stochastic-optimizer.js";
 export * from "./solvers/coinor-codegen.js";
 export * from "./solvers/coinor-wasm.js";
+export * from "./solvers/global-optimizer.js";
 export * from "./solvers/gpu-codegen.js";
 export * from "./solvers/ipopt-solver.js";
 

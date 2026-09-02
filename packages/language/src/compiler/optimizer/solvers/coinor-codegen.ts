@@ -15,11 +15,9 @@
  *   4. Output results
  */
 
+import type { DAEBuilder } from "../../../runtime/wasm_dae.js";
 import { StaticTapeBuilder } from "../../../runtime/wasm_tape.js";
 import type { SolverOptions } from "../../simulator/index.js";
-
-// Represent the legacy expression AST structurally to avoid circular dependency
-type ModelicaExpression = any;
 
 // ── Public interface ──
 
@@ -59,10 +57,14 @@ export interface NlpProblemDef {
   variableUB: number[];
   /** Initial guess. */
   x0: number[];
-  /** Objective expression (from DAE). */
-  objectiveExpr: ModelicaExpression;
+  /** DAE instance containing expression arena metadata (when using ExprId handles). */
+  dae?: DAEBuilder;
+  /** Objective expression (ExprId in dae or legacy AST). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  objectiveExpr: number | any;
   /** Constraint expressions (each evaluates to a residual that should be zero). */
-  constraintExprs: ModelicaExpression[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constraintExprs: (number | any)[];
   /** Constraint lower bounds. */
   constraintLB: number[];
   /** Constraint upper bounds. */
@@ -228,13 +230,17 @@ export function generateNlpMainC(problem: NlpProblemDef, options: CoinorCodegenO
   const nCons = problem.constraintExprs.length;
 
   // Build AD tapes for objective and constraints
-  const objTape = new StaticTapeBuilder();
-  const objIdx = objTape.walk(problem.objectiveExpr);
+  const interner = problem.dae?.interner;
+  const objTape = new StaticTapeBuilder(interner);
+  const objIdx =
+    typeof problem.objectiveExpr === "number" && problem.dae
+      ? objTape.addExpression(problem.objectiveExpr, problem.dae)
+      : objTape.walk(problem.objectiveExpr);
 
   const conTapes: { tape: StaticTapeBuilder; outputIdx: number }[] = [];
   for (const expr of problem.constraintExprs) {
-    const tape = new StaticTapeBuilder();
-    const idx = tape.walk(expr);
+    const tape = new StaticTapeBuilder(interner);
+    const idx = typeof expr === "number" && problem.dae ? tape.addExpression(expr, problem.dae) : tape.walk(expr);
     conTapes.push({ tape, outputIdx: idx });
   }
 

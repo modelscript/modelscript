@@ -9,6 +9,7 @@ export * from "../src/codegen/runtime/dae";
 export * from "../src/codegen/runtime/doe";
 export * from "../src/codegen/runtime/events";
 export * from "../src/codegen/runtime/fold";
+export * from "../src/codegen/runtime/gpu_buffers";
 export * from "../src/codegen/runtime/groebner";
 export * from "../src/codegen/runtime/integrators";
 export * from "../src/codegen/runtime/interval";
