@@ -1,7 +1,33 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-import type { GPUArenaBuffers, GPUBlockPlan } from "../compiler/simulator/core/gpu-buffers.js";
 import type { ArenaBltResult } from "./wasm_blt.js";
 import { type DAEBuilder, getDefaultWasmExports } from "./wasm_dae.js";
+
+/** GPU-ready serialization of the arena DAE data. */
+export interface GPUArenaBuffers {
+  varBuffer: Int32Array;
+  varCount: number;
+  eqBuffer: Int32Array;
+  eqCount: number;
+  exprBuffer: Int32Array;
+  exprCount: number;
+  stateBuffer: Float32Array;
+  nameToVarIdx: Int32Array;
+  blockPlan: GPUBlockPlan;
+  stateVarIndices: Uint32Array;
+  derivVarIndices: Uint32Array;
+}
+
+/** BLT block execution plan, packed for GPU consumption. */
+export interface GPUBlockPlan {
+  blockStarts: Uint32Array;
+  sortedEqs: Uint32Array;
+  blockFlags: Uint32Array;
+  blockVars: Uint32Array;
+  blockVarStarts: Uint32Array;
+  blockCount: number;
+  scalarBlockCount: number;
+  loopBlockCount: number;
+  maxBlockSize: number;
+}
 
 /** Direct WASM memory pointers for zero-copy WebGPU buffer uploads. */
 export interface GPUArenaBufferPointers {

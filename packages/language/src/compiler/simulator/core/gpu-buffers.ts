@@ -14,116 +14,13 @@
 
 import type { ArenaBltResult } from "../../../runtime/wasm_blt.js";
 import { Variability, type DAEBuilder } from "../../../runtime/wasm_dae.js";
-import { serializeArenaForGPUWasm, type GPUArenaBufferPointers } from "../../../runtime/wasm_gpu_buffers.js";
-export { serializeArenaForGPUWasm, type GPUArenaBufferPointers };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** GPU-ready serialization of the arena DAE data. */
-export interface GPUArenaBuffers {
-  /**
-   * Variable metadata: 8 × i32 per variable.
-   * Layout per variable: [nameId, type, variability, causality, startHi, startLo, shapeDim, flags]
-   * Direct copy from `arena.varView()`.
-   */
-  varBuffer: Int32Array;
-  /** Number of variables. */
-  varCount: number;
-
-  /**
-   * Equation metadata: 4 × i32 per equation.
-   * Layout per equation: [kind, lhsExprId, rhsExprId, aux]
-   * Direct copy from `arena.eqView()`.
-   */
-  eqBuffer: Int32Array;
-  /** Number of equations. */
-  eqCount: number;
-
-  /**
-   * Expression tree: 4 × i32 per expression node.
-   * Layout per node: [kind, data1, left, right]
-   * Direct copy from `arena.exprView()`.
-   */
-  exprBuffer: Int32Array;
-  /** Number of expression nodes. */
-  exprCount: number;
-
-  /**
-   * Variable state values, indexed by varIdx.
-   * Initialized from start values and parameter evaluations.
-   * This is the primary read/write buffer for the GPU simulation loop.
-   */
-  stateBuffer: Float32Array;
-
-  /**
-   * Name-to-variable-index lookup table.
-   * Indexed by StringId, value = varIdx or -1 if no mapping.
-   * Allows the GPU to resolve variable references by StringId.
-   */
-  nameToVarIdx: Int32Array;
-
-  /** BLT execution plan for dispatching compute shader workgroups. */
-  blockPlan: GPUBlockPlan;
-
-  /**
-   * Indices of state variables (continuous, non-removed, non-parameter).
-   * These are the variables whose derivatives are computed by the ODE solver.
-   */
-  stateVarIndices: Uint32Array;
-
-  /**
-   * Indices of derivative variables (`der(x)`) corresponding to stateVarIndices.
-   * `derivVarIndices[i]` is the varIdx for `der(stateVarNames[i])`.
-   */
-  derivVarIndices: Uint32Array;
-}
-
-/** BLT block execution plan, packed for GPU consumption. */
-export interface GPUBlockPlan {
-  /**
-   * Block boundary offsets into `sortedEqs`.
-   * Block `i` contains equations `sortedEqs[blockStarts[i] .. blockStarts[i+1])`.
-   * Length = blockCount + 1.
-   */
-  blockStarts: Uint32Array;
-
-  /** Sorted equation indices in BLT execution order. */
-  sortedEqs: Uint32Array;
-
-  /**
-   * Per-block flags (bit field).
-   * Bit 0: isAlgebraicLoop (block size > 1, requires Newton iteration).
-   * Length = blockCount.
-   */
-  blockFlags: Uint32Array;
-
-  /**
-   * Per-block variable assignments.
-   * `blockVars[blockVarStarts[i] .. blockVarStarts[i+1])` gives the
-   * variable indices assigned to block `i` by the BLT matching.
-   */
-  blockVars: Uint32Array;
-
-  /**
-   * Variable assignment boundary offsets into `blockVars`.
-   * Length = blockCount + 1.
-   */
-  blockVarStarts: Uint32Array;
-
-  /** Total number of BLT blocks. */
-  blockCount: number;
-
-  /** Number of scalar blocks (size 1, direct assignment). */
-  scalarBlockCount: number;
-
-  /** Number of algebraic loop blocks (size > 1, Newton iteration). */
-  loopBlockCount: number;
-
-  /** Maximum block size (for GPU shared memory allocation). */
-  maxBlockSize: number;
-}
+import {
+  serializeArenaForGPUWasm,
+  type GPUArenaBufferPointers,
+  type GPUArenaBuffers,
+  type GPUBlockPlan,
+} from "../../../runtime/wasm_gpu_buffers.js";
+export { serializeArenaForGPUWasm, type GPUArenaBufferPointers, type GPUArenaBuffers, type GPUBlockPlan };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serialization

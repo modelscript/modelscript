@@ -9,13 +9,13 @@
  * parameter sweeps, and response surface methodology directly from Modelica models.
  */
 
-import { DAEBuilder } from "../compiler/index.js";
 import {
   type ArenaSimulateOptions,
   type ArenaSimulationResult,
   simulateArena,
   simulateArenaAsync,
 } from "../compiler/simulator/core/simulate-arena.js";
+import { DAEBuilder } from "./wasm_dae.js";
 import { SobolSequence, Xoshiro256pp } from "./wasm_monte_carlo.js";
 
 // ─────────────────────────────────────────────────────────────────────

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
-import { DAEBuilder, StaticTapeBuilder, TapeOpKind } from "../compiler/index.js";
 import {
   type ArenaSimulateOptions,
   type ArenaSimulationResult,
   simulateArena,
   simulateArenaAsync,
 } from "../compiler/simulator/core/simulate-arena.js";
+import { DAEBuilder } from "./wasm_dae.js";
+import { StaticTapeBuilder, TapeOpKind } from "./wasm_tape.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Distribution & Option Types

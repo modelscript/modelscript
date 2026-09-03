@@ -34,6 +34,14 @@
       "types": "./dist/dsl/*.d.ts",
       "default": "./dist/dsl/*.js"
     },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "default": "./dist/runtime/index.js"
+    },
+    "./runtime/*": {
+      "types": "./dist/runtime/*.d.ts",
+      "default": "./dist/runtime/*.js"
+    },
     "./cad": {
       "types": "./dist/cad/index.d.ts",
       "default": "./dist/cad/index.js"
