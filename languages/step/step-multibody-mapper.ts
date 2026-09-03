@@ -40,25 +40,7 @@ export interface MultiBodyFixedTranslation {
   r: [number, number, number];
 }
 
-export interface StepAssemblyModel {
-  parts: Map<string, { id: string; name: string; shapeId?: string }>;
-  massProperties: Map<
-    string,
-    {
-      mass: number;
-      centerOfMass: [number, number, number];
-      inertiaTensor: { I_11: number; I_22: number; I_33: number; I_21: number; I_31: number; I_32: number };
-    }
-  >;
-  joints: {
-    partA: string;
-    partB: string;
-    type: string;
-    origin: [number, number, number];
-    axis: [number, number, number];
-  }[];
-  edges: { parentPartId: string; childPartId: string; placement: { location: [number, number, number] } }[];
-}
+import type { StepAssemblyModel } from "./src/physical-data.js";
 
 export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyModel): MultiBodyAssembly {
   const bodies: MultiBodyPart[] = [];

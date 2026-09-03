@@ -219,11 +219,33 @@ export class Context {
     if (!first) return null;
     let element = this.getNamedElement(first);
     if (!element) return null;
+    const db = this.#queryEngine.toQueryDB();
     for (let i = 1; i < parts.length; i++) {
       const nameStr = parts[i];
       if (!nameStr) return null;
-      if (typeof (element as any).resolveSimpleName !== "function") return null;
-      element = (element as any).resolveSimpleName(nameStr, false, true) as any;
+      if (typeof (element as any).resolveSimpleName === "function") {
+        element = (element as any).resolveSimpleName(nameStr, false, true) as any;
+      } else if (element.id !== undefined) {
+        const children = db.childrenOf(element.id);
+        const child = children.find((c) => c.name === nameStr);
+        if (child) {
+          element = {
+            id: child.id,
+            db,
+            entry: child,
+            name: child.name ?? "",
+            kind: child.kind ?? "Class",
+            classKind: (child.metadata as any)?.classKind ?? (child.metadata as any)?.classPrefixes ?? "class",
+            compositeName: `${element.compositeName}.${child.name}`,
+            description: (child.metadata as any)?.description ?? null,
+            isClassInstance: true,
+          };
+        } else {
+          return null;
+        }
+      } else {
+        return null;
+      }
       if (!element) return null;
     }
     return element;

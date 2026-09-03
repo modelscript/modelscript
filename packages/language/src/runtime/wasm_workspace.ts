@@ -277,6 +277,125 @@ export class WasmWorkspaceIndex {
 
     const newIds: SymbolId[] = [];
 
+    if (uri.endsWith(".csv")) {
+      const filename = uri.split(/[/\\]/).pop() || "";
+      const basename = filename.replace(/\.csv$/i, "");
+      const normalizedName = basename.replace(/[^a-zA-Z0-9_]/g, "_");
+
+      let parentId: SymbolId | null = null;
+      if (_parentFQN) {
+        const parentEntries = this.unifiedIndex.byName.get(_parentFQN);
+        if (parentEntries && parentEntries.length > 0) {
+          parentId = parentEntries[0]!;
+        }
+      }
+
+      const symId = this.nextSymbolId++;
+      newIds.push(symId);
+
+      const rootEntry: SymbolEntry = {
+        id: symId,
+        kind: "Class",
+        name: normalizedName,
+        ruleName: "SourceFile",
+        namePath: "",
+        fieldName: null,
+        parentId,
+        resourceId: uri,
+        startByte: rootNode.startByte ?? rootNode.startIndex ?? 0,
+        endByte: rootNode.endByte ?? rootNode.endIndex ?? 0,
+        exports: [],
+        inherits: [],
+        metadata: {
+          classPrefixes: "package",
+        },
+      };
+      this.unifiedIndex.symbols.set(symId, rootEntry);
+
+      const nameList = this.unifiedIndex.byName.get(normalizedName) || [];
+      nameList.push(symId);
+      this.unifiedIndex.byName.set(normalizedName, nameList);
+
+      if (_parentFQN) {
+        const fqn = `${_parentFQN}.${normalizedName}`;
+        const fqnList = this.unifiedIndex.byName.get(fqn) || [];
+        fqnList.push(symId);
+        this.unifiedIndex.byName.set(fqn, fqnList);
+      }
+
+      const parentChildList = this.unifiedIndex.childrenOf.get(parentId ?? 0) || [];
+      parentChildList.push(symId);
+      this.unifiedIndex.childrenOf.set(parentId ?? 0, parentChildList);
+
+      const rootNodeText = typeof rootNode.text === "string" ? rootNode.text : "";
+      const lines = rootNodeText.split(/\r?\n/).filter((l: string) => l.trim().length > 0);
+      if (lines.length > 0) {
+        const headerLine = lines[0] as string;
+        const delimiter = headerLine.includes("\t") ? "\t" : headerLine.includes(";") ? ";" : ",";
+        const headers = headerLine.split(delimiter).map((h) => h.trim().replace(/[^a-zA-Z0-9_]/g, "_"));
+        const numCols = headers.length;
+
+        const data: number[][] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const parts = (lines[i] as string).split(delimiter);
+          const row = parts.map((p) => parseFloat(p.trim()));
+          if (row.length === numCols && !row.some(isNaN)) {
+            data.push(row);
+          }
+        }
+        const numRows = data.length;
+
+        const addVirtualSymbol = (name: string, typeSpecifier: string, csvValue: any, arrayDimensions?: number[]) => {
+          const childId = this.nextSymbolId++;
+          newIds.push(childId);
+          const virtualEntry: SymbolEntry = {
+            id: childId,
+            kind: "Component",
+            name,
+            ruleName: "CSVVirtualComponent",
+            namePath: "",
+            fieldName: null,
+            startByte: 0,
+            endByte: 0,
+            parentId: symId,
+            exports: [],
+            inherits: [],
+            metadata: {
+              typeSpecifier,
+              csvValue,
+              _className: "CSVVirtualComponent",
+              ...(arrayDimensions ? { arrayDimensions } : {}),
+            },
+            resourceId: uri,
+          };
+          this.unifiedIndex.symbols.set(childId, virtualEntry);
+
+          const list = this.unifiedIndex.byName.get(name) || [];
+          list.push(childId);
+          this.unifiedIndex.byName.set(name, list);
+
+          const childList = this.unifiedIndex.childrenOf.get(symId) || [];
+          childList.push(childId);
+          this.unifiedIndex.childrenOf.set(symId, childList);
+        };
+
+        addVirtualSymbol("numRows", "Integer", numRows);
+        addVirtualSymbol("numCols", "Integer", numCols);
+        addVirtualSymbol("values", "Real", data, [numRows, numCols]);
+
+        for (let c = 0; c < numCols; c++) {
+          const colName = headers[c] || `col${c}`;
+          const colData = data.map((row) => row[c]);
+          addVirtualSymbol(colName, "Real", colData, [numRows]);
+        }
+      }
+
+      this.fileSymbols.set(uri, newIds);
+      this._version++;
+      this._structuralRevision++;
+      return;
+    }
+
     const walk = (node: any, parentId: SymbolId | null) => {
       let currentId = parentId;
       const hook = this.hookMap.get(node.type);

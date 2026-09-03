@@ -5,7 +5,7 @@
  * Operates directly on DAEBuilder and WebAssembly memory buffers.
  */
 
-import type { QueryDB, SymbolId } from "./runtime.js";
+import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
 
 export type ArenaConstantValue = number | boolean | string | ArenaConstantValue[];
@@ -71,7 +71,9 @@ export function evaluateConstantArenaExpression(
   paramMap?: Map<string, number>,
   nameToIdx?: Map<string, number>,
   visitedDepth = 0,
-): number | boolean | null {
+  db?: QueryDB,
+  scopeId?: SymbolId,
+): number | boolean | number[] | null {
   if (exprId < 0 || exprId >= arena.exprCount || visitedDepth > 100) {
     return null;
   }
@@ -103,12 +105,34 @@ export function evaluateConstantArenaExpression(
         return arena.getVarStartValue(varIdx);
       }
     }
+    if (db && scopeId !== undefined) {
+      const resolveName = db.query<(q: string) => SymbolEntry | null>("resolveName", scopeId);
+      if (resolveName) {
+        const resolved = resolveName(varName);
+        if (resolved) {
+          if (resolved.kind === "Component" && resolved.metadata) {
+            const csvValue = (resolved.metadata as any).csvValue;
+            if (csvValue !== undefined) {
+              return csvValue;
+            }
+          }
+        }
+      }
+    }
     return null;
   }
 
   if (kind === ExprKind.Negate) {
     const childId = arena.getExprLeft(exprId);
-    const childVal = evaluateConstantArenaExpression(arena, childId, paramMap, nameToIdx, visitedDepth + 1);
+    const childVal = evaluateConstantArenaExpression(
+      arena,
+      childId,
+      paramMap,
+      nameToIdx,
+      visitedDepth + 1,
+      db,
+      scopeId,
+    );
     if (typeof childVal === "number") return -childVal;
     return null;
   }
@@ -116,7 +140,15 @@ export function evaluateConstantArenaExpression(
   if (kind === ExprKind.Unary) {
     const op = arena.getExprData1(exprId);
     const childId = arena.getExprLeft(exprId);
-    const childVal = evaluateConstantArenaExpression(arena, childId, paramMap, nameToIdx, visitedDepth + 1);
+    const childVal = evaluateConstantArenaExpression(
+      arena,
+      childId,
+      paramMap,
+      nameToIdx,
+      visitedDepth + 1,
+      db,
+      scopeId,
+    );
     if (childVal === null) return null;
 
     if (op === UnaryOp.Not) {
@@ -133,13 +165,14 @@ export function evaluateConstantArenaExpression(
     const leftId = arena.getExprLeft(exprId);
     const rightId = arena.getExprRight(exprId);
 
-    const lVal = evaluateConstantArenaExpression(arena, leftId, paramMap, nameToIdx, visitedDepth + 1);
-    const rVal = evaluateConstantArenaExpression(arena, rightId, paramMap, nameToIdx, visitedDepth + 1);
+    const lVal = evaluateConstantArenaExpression(arena, leftId, paramMap, nameToIdx, visitedDepth + 1, db, scopeId);
+    const rVal = evaluateConstantArenaExpression(arena, rightId, paramMap, nameToIdx, visitedDepth + 1, db, scopeId);
 
     if (lVal === null || rVal === null) return null;
 
-    const lNum = typeof lVal === "boolean" ? (lVal ? 1 : 0) : lVal;
-    const rNum = typeof rVal === "boolean" ? (rVal ? 1 : 0) : rVal;
+    const lNum = typeof lVal === "boolean" ? (lVal ? 1 : 0) : typeof lVal === "number" ? lVal : null;
+    const rNum = typeof rVal === "boolean" ? (rVal ? 1 : 0) : typeof rVal === "number" ? rVal : null;
+    if (lNum === null || rNum === null) return null;
 
     switch (op) {
       case BinOp.Add:
@@ -173,11 +206,11 @@ export function evaluateConstantArenaExpression(
 
   if (kind === ExprKind.IfElse) {
     const condId = arena.getExprData1(exprId);
-    const condVal = evaluateConstantArenaExpression(arena, condId, paramMap, nameToIdx, visitedDepth + 1);
+    const condVal = evaluateConstantArenaExpression(arena, condId, paramMap, nameToIdx, visitedDepth + 1, db, scopeId);
     if (condVal !== null) {
       const isTrue = typeof condVal === "boolean" ? condVal : condVal !== 0;
       const branchId = isTrue ? arena.getExprLeft(exprId) : arena.getExprRight(exprId);
-      return evaluateConstantArenaExpression(arena, branchId, paramMap, nameToIdx, visitedDepth + 1);
+      return evaluateConstantArenaExpression(arena, branchId, paramMap, nameToIdx, visitedDepth + 1, db, scopeId);
     }
   }
 
@@ -187,11 +220,27 @@ export function evaluateConstantArenaExpression(
     const argCount = arena.getExprRight(exprId);
 
     if (argCount >= 1 && firstArgId >= 0) {
-      const arg1 = evaluateConstantArenaExpression(arena, firstArgId, paramMap, nameToIdx, visitedDepth + 1);
+      const arg1 = evaluateConstantArenaExpression(
+        arena,
+        firstArgId,
+        paramMap,
+        nameToIdx,
+        visitedDepth + 1,
+        db,
+        scopeId,
+      );
       if (typeof arg1 === "number") {
         let arg2 = 0.0;
         if (argCount >= 2) {
-          const arg2Val = evaluateConstantArenaExpression(arena, firstArgId + 1, paramMap, nameToIdx, visitedDepth + 1);
+          const arg2Val = evaluateConstantArenaExpression(
+            arena,
+            firstArgId + 1,
+            paramMap,
+            nameToIdx,
+            visitedDepth + 1,
+            db,
+            scopeId,
+          );
           if (typeof arg2Val !== "number") return null;
           arg2 = arg2Val;
         }
@@ -209,9 +258,7 @@ export function evaluateConstantArenaExpression(
  */
 export function foldArenaConstants(
   arena: DAEBuilder,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   db?: QueryDB,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   scopeId?: SymbolId,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   omcCompatibility = false,
@@ -242,22 +289,41 @@ export function foldArenaConstants(
         const name = arena.getVarName(i);
         const exprId = arena.getVarExpression(i);
         if (typeof exprId === "number" && exprId >= 0) {
-          const evalVal = evaluateConstantArenaExpression(arena, exprId, paramMap, nameToIdx);
-          if (typeof evalVal === "number") {
-            paramMap.set(name, evalVal);
-            if (arena.getVarStartValue(i) !== evalVal) {
-              arena.setVarStartValue(i, evalVal);
-              changed = true;
+          const evalVal = evaluateConstantArenaExpression(arena, exprId, paramMap, nameToIdx, 0, db, scopeId);
+          if (evalVal !== null) {
+            let foldedValue: number | boolean | number[] | null = evalVal;
+            const match = name.match(/\[([\d,]+)\]$/);
+            if (match && Array.isArray(foldedValue)) {
+              const indices = match[1].split(",").map(Number);
+              let current: any = foldedValue;
+              for (const idx of indices) {
+                if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                  current = current[idx - 1];
+                } else {
+                  foldedValue = null;
+                  break;
+                }
+              }
+              if (foldedValue !== null) {
+                foldedValue = current;
+              }
             }
-            continue;
-          } else if (typeof evalVal === "boolean") {
-            const numVal = evalVal ? 1.0 : 0.0;
-            paramMap.set(name, numVal);
-            if (arena.getVarStartValue(i) !== numVal) {
-              arena.setVarStartValue(i, numVal);
-              changed = true;
+            if (typeof foldedValue === "number") {
+              paramMap.set(name, foldedValue);
+              if (arena.getVarStartValue(i) !== foldedValue) {
+                arena.setVarStartValue(i, foldedValue);
+                changed = true;
+              }
+              continue;
+            } else if (typeof foldedValue === "boolean") {
+              const numVal = foldedValue ? 1.0 : 0.0;
+              paramMap.set(name, numVal);
+              if (arena.getVarStartValue(i) !== numVal) {
+                arena.setVarStartValue(i, numVal);
+                changed = true;
+              }
+              continue;
             }
-            continue;
           }
         }
         paramMap.set(name, arena.getVarStartValue(i));
@@ -272,27 +338,49 @@ export function foldArenaConstants(
 
       const exprId = arena.getVarExpression(i);
       if (typeof exprId === "number" && exprId >= 0) {
-        const folded = evaluateConstantArenaExpression(arena, exprId, paramMap, nameToIdx);
-        if (folded !== null) {
-          const varType = arena.getVarType(i);
-          let newLiteralId: number;
-          if (varType === VarType.Boolean && typeof folded === "boolean") {
-            newLiteralId = arena.addBoolLiteral(folded);
-          } else if (varType === VarType.Integer && typeof folded === "number") {
-            newLiteralId = arena.addIntLiteral(Math.trunc(folded));
-          } else if (typeof folded === "number") {
-            newLiteralId = arena.addRealLiteral(folded);
-          } else {
-            continue;
+        const evalVal = evaluateConstantArenaExpression(arena, exprId, paramMap, nameToIdx, 0, db, scopeId);
+        if (evalVal !== null) {
+          let folded: number | boolean | null = null;
+          const match = arena.getVarName(i).match(/\[([\d,]+)\]$/);
+          if (match && Array.isArray(evalVal)) {
+            const indices = match[1].split(",").map(Number);
+            let current: any = evalVal;
+            for (const idx of indices) {
+              if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                current = current[idx - 1];
+              } else {
+                current = null;
+                break;
+              }
+            }
+            if (current !== null && (typeof current === "number" || typeof current === "boolean")) {
+              folded = current;
+            }
+          } else if (typeof evalVal === "number" || typeof evalVal === "boolean") {
+            folded = evalVal;
           }
 
-          if (newLiteralId !== exprId) {
-            arena.setVarExpression(i, newLiteralId);
-            const numVal = typeof folded === "boolean" ? (folded ? 1.0 : 0.0) : folded;
-            if (arena.getVarStartValue(i) !== numVal) {
-              arena.setVarStartValue(i, numVal);
+          if (folded !== null) {
+            const varType = arena.getVarType(i);
+            let newLiteralId: number;
+            if (varType === VarType.Boolean && typeof folded === "boolean") {
+              newLiteralId = arena.addBoolLiteral(folded);
+            } else if (varType === VarType.Integer && typeof folded === "number") {
+              newLiteralId = arena.addIntLiteral(Math.trunc(folded));
+            } else if (typeof folded === "number") {
+              newLiteralId = arena.addRealLiteral(folded);
+            } else {
+              continue;
             }
-            changed = true;
+
+            if (newLiteralId !== exprId) {
+              arena.setVarExpression(i, newLiteralId);
+              const numVal = typeof folded === "boolean" ? (folded ? 1.0 : 0.0) : folded;
+              if (arena.getVarStartValue(i) !== numVal) {
+                arena.setVarStartValue(i, numVal);
+              }
+              changed = true;
+            }
           }
         }
       }

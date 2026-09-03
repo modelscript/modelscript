@@ -1,7 +1,7 @@
 import { compileTGGRules } from "@modelscript/language";
 import assert from "node:assert";
 import sysml2Config from "../../sysml2/src/language.js";
-import modelicaConfig from "../language.js";
+import modelicaConfig from "../src/language.js";
 
 console.log("Testing Cross-Language TGG Polyglot Rules: Modelica <-> SysML v2...");
 

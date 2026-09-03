@@ -66,4 +66,9 @@ declare global {
   var sharedFs: any;
   var connection: any;
 }
+
+declare module "occt-import-js" {
+  export default function initOpenCascade(): Promise<unknown>;
+}
+
 export {};

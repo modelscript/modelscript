@@ -1,25 +1,27 @@
-import Modelica from "@modelscript/modelica/parser";
-import { writeFileSync } from "fs";
-import { join } from "path";
-import Parser from "tree-sitter";
-import { Context } from "../context.js";
+import { createWasmParser } from "@modelscript/language";
+import { unlinkSync, writeFileSync } from "fs";
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+import { Context } from "../src/context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
-// Register parser for test environment
-const parser = new Parser();
-parser.setLanguage(Modelica);
-Context.registerParser(".mo", parser);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const modelicaWasm = join(__dirname, "../dist/parser.wasm");
+const { parser } = await createWasmParser(modelicaWasm);
+Context.registerParser(".mo", parser as any);
 
 describe("Phase 8: Batch CLI Mode", () => {
   it("Context.createBatch() creates a zero-memo context", () => {
     const ctx = Context.createBatch(new NodeFileSystem());
-    expect(ctx).toBeDefined();
+    assert.ok(ctx);
   });
 
   it("flattenArena works correctly in batch mode", async () => {
     const ctx = Context.createBatch(new NodeFileSystem());
 
-    const tempFile = join("/tmp", "dod_phase8_test.mo");
+    const tempFile = join(__dirname, "dod_phase8_test.mo");
     writeFileSync(
       tempFile,
       `
@@ -32,19 +34,25 @@ describe("Phase 8: Batch CLI Mode", () => {
     `,
     );
 
-    await ctx.addLibrary(tempFile);
-    const arena = ctx.flattenArena("BatchTest");
+    try {
+      await ctx.addLibrary(tempFile);
+      const arena = ctx.flattenArena("BatchTest");
 
-    expect(arena).not.toBeNull();
-    if (!arena) throw new Error("Arena is null");
-
-    // Validate that flattening produced correct output
-    expect(arena.varCount).toBeGreaterThanOrEqual(2); // x and k
-    expect(arena.eqCount).toBeGreaterThanOrEqual(1);
+      assert.ok(arena);
+      // Validate that flattening produced correct output
+      assert.ok(arena.varCount >= 2); // x and k
+      assert.ok(arena.eqCount >= 1);
+    } finally {
+      try {
+        unlinkSync(tempFile);
+      } catch {
+        // Ignore errors if tempFile was already deleted
+      }
+    }
   });
 
   it("gcBetweenPhases() is a safe no-op without --expose-gc", () => {
     // Should not throw
-    expect(() => Context.gcBetweenPhases()).not.toThrow();
+    assert.doesNotThrow(() => Context.gcBetweenPhases());
   });
 });

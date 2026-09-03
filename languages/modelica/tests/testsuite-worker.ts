@@ -34,7 +34,7 @@ import { createWasmParser } from "@modelscript/modelica/parser";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Context } from "../context.js";
+import { Context } from "../src/context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 const __filename = fileURLToPath(import.meta.url);

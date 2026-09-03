@@ -12,8 +12,8 @@
       "default": "./dist/src/index.js"
     },
     "./flattener": {
-      "types": "./dist/flattener.d.ts",
-      "default": "./dist/flattener.js"
+      "types": "./dist/src/flattener.d.ts",
+      "default": "./dist/src/flattener.js"
     },
     "./connections": {
       "types": "./dist/src/connections.d.ts",
@@ -28,113 +28,113 @@
       "default": "./dist/src/visitor.js"
     },
     "./context": {
-      "types": "./dist/context.d.ts",
-      "default": "./dist/context.js"
+      "types": "./dist/src/context.d.ts",
+      "default": "./dist/src/context.js"
     },
     "./factory": {
-      "types": "./dist/factory.d.ts",
-      "default": "./dist/factory.js"
+      "types": "./dist/src/factory.d.ts",
+      "default": "./dist/src/factory.js"
     },
     "./builtins": {
-      "types": "./dist/builtins.d.ts",
-      "default": "./dist/builtins.js"
+      "types": "./dist/src/builtins.d.ts",
+      "default": "./dist/src/builtins.js"
     },
     "./predefined": {
-      "types": "./dist/predefined.d.ts",
-      "default": "./dist/predefined.js"
+      "types": "./dist/src/predefined.d.ts",
+      "default": "./dist/src/predefined.js"
     },
     "./units": {
-      "types": "./dist/units.d.ts",
-      "default": "./dist/units.js"
+      "types": "./dist/src/units.d.ts",
+      "default": "./dist/src/units.js"
     },
     "./annotation": {
-      "types": "./dist/annotation.d.ts",
-      "default": "./dist/annotation.js"
+      "types": "./dist/src/annotation.d.ts",
+      "default": "./dist/src/annotation.js"
     },
     "./geometry": {
-      "types": "./dist/geometry.d.ts",
-      "default": "./dist/geometry.js"
+      "types": "./dist/src/geometry.d.ts",
+      "default": "./dist/src/geometry.js"
     },
     "./csg": {
-      "types": "./dist/csg.d.ts",
-      "default": "./dist/csg.js"
+      "types": "./dist/src/csg.d.ts",
+      "default": "./dist/src/csg.js"
     },
     "./scripting": {
-      "types": "./dist/scripting.d.ts",
-      "default": "./dist/scripting.js"
+      "types": "./dist/src/scripting.d.ts",
+      "default": "./dist/src/scripting.js"
     },
     "./errors": {
-      "types": "./dist/errors.d.ts",
-      "default": "./dist/errors.js"
+      "types": "./dist/src/errors.d.ts",
+      "default": "./dist/src/errors.js"
     },
     "./po": {
-      "types": "./dist/po.d.ts",
-      "default": "./dist/po.js"
+      "types": "./dist/src/po.d.ts",
+      "default": "./dist/src/po.js"
     },
     "./diagram": {
-      "types": "./dist/diagram/index.d.ts",
-      "default": "./dist/diagram/index.js"
+      "types": "./dist/src/diagram/index.d.ts",
+      "default": "./dist/src/diagram/index.js"
     },
     "./multibody-generator": {
-      "types": "./dist/multibody-generator.d.ts",
-      "default": "./dist/multibody-generator.js"
+      "types": "./dist/src/multibody-generator.d.ts",
+      "default": "./dist/src/multibody-generator.js"
     },
     "./modification-args": {
-      "types": "./dist/modification-args.d.ts",
-      "default": "./dist/modification-args.js"
+      "types": "./dist/src/modifications.d.ts",
+      "default": "./dist/src/modifications.js"
     },
     "./types": {
-      "types": "./dist/types.d.ts",
-      "default": "./dist/types.js"
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
     },
     "./transformers/sysml2": {
       "types": "./dist/transformers/sysml2-transformer.d.ts",
       "default": "./dist/transformers/sysml2-transformer.js"
     },
     "./flattener-query": {
-      "types": "./dist/flattener-query.d.ts",
-      "default": "./dist/flattener-query.js"
+      "types": "./dist/src/flattener.d.ts",
+      "default": "./dist/src/flattener.js"
     },
     "./shape-flattener": {
-      "types": "./dist/shape-flattener.d.ts",
-      "default": "./dist/shape-flattener.js"
+      "types": "./dist/src/shape-flattener.d.ts",
+      "default": "./dist/src/shape-flattener.js"
     },
     "./study-flattener": {
-      "types": "./dist/study-flattener.d.ts",
-      "default": "./dist/study-flattener.js"
+      "types": "./dist/src/study-flattener.d.ts",
+      "default": "./dist/src/study-flattener.js"
     },
     "./ast": {
-      "types": "./dist/ast.d.ts",
-      "default": "./dist/ast.js"
+      "types": "./dist/src/ast.d.ts",
+      "default": "./dist/src/ast.js"
     },
     "./expression-evaluator": {
-      "types": "./dist/expression-evaluator.d.ts",
-      "default": "./dist/expression-evaluator.js"
+      "types": "./dist/src/expression-evaluator.d.ts",
+      "default": "./dist/src/expression-evaluator.js"
     },
     "./predefined-types": {
-      "types": "./dist/predefined-types.d.ts",
-      "default": "./dist/predefined-types.js"
+      "types": "./dist/src/predefined-types.d.ts",
+      "default": "./dist/src/predefined-types.js"
     },
     "./language": {
-      "types": "./dist/language.d.ts",
-      "default": "./dist/language.js"
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
     },
     "./parser": {
       "types": "./src-gen/bindings.d.ts",
       "default": "./src-gen/bindings.js"
     },
     "./arena-script-interpreter": {
-      "types": "./dist/arena-script-interpreter.d.ts",
-      "default": "./dist/arena-script-interpreter.js"
+      "types": "./dist/src/arena-script-interpreter.d.ts",
+      "default": "./dist/src/arena-script-interpreter.js"
     },
     "./parser.wasm": "./dist/parser.wasm",
     "./ast-visitor": {
-      "types": "./dist/ast-visitor.d.ts",
-      "default": "./dist/ast-visitor.js"
+      "types": "./dist/src/ast-visitor.d.ts",
+      "default": "./dist/src/ast-visitor.js"
     },
     "./studies": {
-      "types": "./dist/studies.d.ts",
-      "default": "./dist/studies.js"
+      "types": "./dist/src/studies.d.ts",
+      "default": "./dist/src/studies.js"
     },
     "./dist/*": "./dist/*"
   },

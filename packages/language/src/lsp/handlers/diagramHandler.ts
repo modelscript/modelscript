@@ -1,12 +1,25 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
 
+import { generateDroneChassisGeometry } from "../../cad/mesh-fallbacks.js";
 import { LspContext } from "../LspContext.js";
 import { cadComponentsCache, simpleHash } from "../browserServerMain.js";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
-import { generateDroneChassisGeometry } from "./drone-chassis-geometry.js";
 
 export function registerDiagramHandlers(context: LspContext) {
+  context.connection.onRequest(
+    DiagramMethods.getData,
+    async (params: { uri: string; className?: string; diagramType?: string }) => {
+      return await context.diagramService.handleGetDiagramData(params);
+    },
+  );
+
+  context.connection.onRequest(
+    DiagramMethods.getComponentProperties,
+    async (params: { uri: string; componentName: string; className?: string }) => {
+      return await context.diagramService.getDiagramDispatch().getComponentProperties(params);
+    },
+  );
   context.connection.onRequest("modelscript/generateMultiBody", async (params: { uri: string }) => {
     const model = context.workspaceManager.stepWorkspaceIndex.getAssemblyModel(params.uri);
     if (!model) {

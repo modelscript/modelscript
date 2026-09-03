@@ -21,7 +21,7 @@ import {
 } from "@modelscript/language/compiler";
 
 import csvLangDef from "@modelscript/csv/language";
-import modelicaLangDef from "../language.js";
+import modelicaLangDef from "./language.js";
 
 const INDEXER_HOOKS = extractIndexerHooks(modelicaLangDef);
 const QUERY_HOOKS = extractQueryHooksMap(modelicaLangDef);
@@ -31,6 +31,7 @@ const csvIndexerHooks = extractIndexerHooks(csvLangDef);
 const csvQueryHooks = extractQueryHooksMap(csvLangDef);
 
 import { modelicaEvaluator } from "./expression-evaluator.js";
+import { modelicaQueryHooks } from "./queries.js";
 
 const baseIndexerHooks = [
   ...(INDEXER_HOOKS ?? (globalThis as any).__indexerHooksFallback ?? []),
@@ -47,6 +48,10 @@ function toSnakeCase(str: string): string {
 
 // Merge Modelica and CSV query hooks
 const mergedQueryHooks = new Map<string, any>();
+for (const [k, v] of modelicaQueryHooks.entries()) {
+  mergedQueryHooks.set(k, v);
+  mergedQueryHooks.set(toSnakeCase(k), v);
+}
 if (queryHooks instanceof Map) {
   for (const [k, v] of queryHooks.entries()) {
     mergedQueryHooks.set(k, v);

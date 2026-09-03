@@ -3,7 +3,7 @@
 import { createWasmParser } from "@modelscript/language";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Context } from "../context.js";
+import { Context } from "../src/context.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");

@@ -200,12 +200,10 @@ import { UnifiedWorkspace } from "../compiler/index.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
 import { registerAnalysisHandlers } from "./handlers/analysisHandler.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
-import { registerDiagramEndpoints } from "./handlers/diagramEndpoints.js";
 import { registerDiagramHandlers } from "./handlers/diagramHandler.js";
 import { registerInteropEndpoints } from "./handlers/interopEndpoints.js";
 import { registerMiscEndpoints } from "./handlers/miscEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
-import { registerSimulationHandlers } from "./handlers/simulationHandler.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
 import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerInlayHintProvider } from "./providers/inlayHintProvider.js";
@@ -892,7 +890,6 @@ const lspContext: LspContext = {
 };
 
 registerDiagramHandlers(lspContext);
-registerSimulationHandlers(lspContext);
 registerTreeHandlers(lspContext);
 registerAnalysisHandlers(lspContext);
 registerSimulationEndpoints(lspContext);
@@ -900,7 +897,6 @@ registerAnalysisEndpoints(lspContext);
 registerInteropEndpoints(lspContext);
 registerClassQueryEndpoints(lspContext);
 registerMiscEndpoints(lspContext);
-registerDiagramEndpoints(lspContext);
 
 registerSignatureHelpProvider(
   connection,

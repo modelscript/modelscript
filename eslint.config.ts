@@ -51,6 +51,7 @@ export default defineConfig([
             "languages/sysml2/bindings/node/index.d.ts",
             "scripts/compare-trajectories.ts",
             "scripts/generate-benchmark.ts",
+            "scripts/generate-drone-step.ts",
             "scripts/benchmark-incremental.ts",
             "scripts/fetch-reference-fmus.ts",
             "packages/language/validation/fmi/scripts/compare-csv.ts",

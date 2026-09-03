@@ -9,10 +9,13 @@
 
 import { createChunkedUint32Array, EqKind, ExprKind, type ChunkedUint32Array } from "@modelscript/language";
 import {
+  Causality,
   DAEBuilder,
   eliminateArenaAliases,
   foldArenaConstants,
   scalarizeArena,
+  Variability,
+  VarType,
   type QueryDB,
   type SymbolId,
   type TopologyGraph,
@@ -62,6 +65,18 @@ export class ModelicaModificationEnv {
 /**
  * High-performance Salsa Query Flattener delegating to native WASM flattening kernel.
  */
+interface ComponentInstanceData {
+  typeSpecifier?: string | null;
+  variability?: string | null;
+  causality?: string | null;
+  arrayDimensions?: number[] | null;
+  modification?: {
+    bindingExpression?: {
+      text?: string;
+    } | null;
+  } | null;
+}
+
 export class ModelicaFlattener {
   bodySnapshot: DAEBuilder | null = null;
 
@@ -172,21 +187,105 @@ export class ModelicaFlattener {
 
       const name = prefix ? `${prefix}.${elem.name}` : elem.name;
       if (elem.kind === "Component") {
-        const varType = (elem.metadata as Record<string, unknown>)?.varType ?? 0;
-        const variability = (elem.metadata as Record<string, unknown>)?.variability ?? 0;
-        const causality = (elem.metadata as Record<string, unknown>)?.causality ?? 0;
+        const compInst = this.db.query<ComponentInstanceData | null>("componentInstance", elem.id);
+        const meta = elem.metadata as Record<string, unknown> | undefined;
 
-        dae.addVariable(dae.interner.intern(name), varType as number, variability as number, causality as number, 0.0);
+        let varType = VarType.Real;
+        if (compInst?.typeSpecifier === "Integer") varType = VarType.Integer;
+        else if (compInst?.typeSpecifier === "Boolean") varType = VarType.Boolean;
+        else if (compInst?.typeSpecifier === "String") varType = VarType.String;
+        else if (typeof meta?.varType === "number") varType = meta.varType as number;
+
+        let variability = Variability.Continuous;
+        if (compInst?.variability === "parameter") variability = Variability.Parameter;
+        else if (compInst?.variability === "constant") variability = Variability.Constant;
+        else if (compInst?.variability === "discrete") variability = Variability.Discrete;
+        else if (typeof meta?.variability === "number") variability = meta.variability as number;
+
+        let causality = Causality.Local;
+        if (compInst?.causality === "input") causality = Causality.Input;
+        else if (compInst?.causality === "output") causality = Causality.Output;
+        else if (typeof meta?.causality === "number") causality = meta.causality as number;
+
+        const arrayDims =
+          compInst?.arrayDimensions ??
+          (Array.isArray(meta?.arrayDimensions) ? (meta.arrayDimensions as number[]) : null);
+        if (arrayDims && arrayDims.length > 0) {
+          const totalElements = arrayDims.reduce((acc: number, val: number) => acc * val, 1);
+          for (let idx = 1; idx <= totalElements; idx++) {
+            const arrVarName = `${name}[${idx}]`;
+            const varIdx = dae.addVariable(
+              dae.interner.intern(arrVarName),
+              varType as number,
+              variability as number,
+              causality as number,
+              0.0,
+            );
+            if (compInst?.modification?.bindingExpression?.text) {
+              const exprId = dae.addExpression(
+                ExprKind.Name,
+                dae.interner.intern(compInst.modification.bindingExpression.text),
+              );
+              dae.setVarExpression(varIdx, exprId);
+            }
+          }
+        } else {
+          const varIdx = dae.addVariable(
+            dae.interner.intern(name),
+            varType as number,
+            variability as number,
+            causality as number,
+            0.0,
+          );
+          if (compInst?.modification?.bindingExpression?.text) {
+            const exprId = dae.addExpression(
+              ExprKind.Name,
+              dae.interner.intern(compInst.modification.bindingExpression.text),
+            );
+            dae.setVarExpression(varIdx, exprId);
+          }
+        }
       }
     }
   }
 
   private extractClassEquations(classId: SymbolId, prefix: string, dae: DAEBuilder): void {
+    const cst = this.db.cstNode(classId);
+    if (cst) {
+      interface CSTWalkerNode {
+        type?: string;
+        text?: string;
+        children?: CSTWalkerNode[];
+      }
+      const walk = (node: CSTWalkerNode): void => {
+        if (!node) return;
+        if (
+          node.type === "simple_equation" ||
+          node.type === "SimpleEquation" ||
+          node.type === "equality_equation" ||
+          node.type === "EqualityEquation"
+        ) {
+          const expressions = (node.children || []).filter((c) => c.type === "expression" || c.type === "Expression");
+          if (expressions.length >= 2) {
+            const lhs = expressions[0];
+            const rhs = expressions[1];
+            const lhsExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(lhs?.text ? lhs.text.trim() : ""));
+            const rhsExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(rhs?.text ? rhs.text.trim() : ""));
+            dae.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
+          }
+        }
+        for (const kid of node.children || []) {
+          if (kid.type !== "class_definition" && kid.type !== "ClassDefinition") {
+            walk(kid);
+          }
+        }
+      };
+      walk(cst as CSTWalkerNode);
+    }
+
     const children = this.db.childrenOf(classId);
     for (const child of children) {
-      if (child.kind === "Equation") {
-        // Equation nodes
-      } else if (child.kind === "Extends") {
+      if (child.kind === "Extends") {
         const baseTargets = this.db.byName(child.name);
         for (const target of baseTargets) {
           if (target.kind === "Class") {

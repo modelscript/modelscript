@@ -1,24 +1,29 @@
 import CSV from "@modelscript/csv/parser";
-import Modelica from "@modelscript/modelica/parser";
-import { promises as fs } from "fs";
-import { join } from "path";
+import { createWasmParser } from "@modelscript/language";
+import assert from "node:assert";
+import { promises as fs } from "node:fs";
+import { dirname, join } from "node:path";
+import { after, before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import Parser from "tree-sitter";
-import { Context } from "../context.js";
+import { Context } from "../src/context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 // Register parsers
-const parser = new Parser();
-parser.setLanguage(Modelica);
-Context.registerParser(".mo", parser);
+const modelicaWasm = join(__dirname, "../dist/parser.wasm");
+const { parser: modelicaParser } = await createWasmParser(modelicaWasm);
+Context.registerParser(".mo", modelicaParser as any);
 
 const csvParser = new Parser();
 csvParser.setLanguage(CSV);
-Context.registerParser(".csv", csvParser);
+Context.registerParser(".csv", csvParser as any);
 
 describe("CSV to Tree-Sitter & Salsa Parser Migration", () => {
   const tempDir = join(__dirname, "csv_test_temp");
 
-  beforeAll(async () => {
+  before(async () => {
     // Create temp directory and files
     await fs.mkdir(tempDir, { recursive: true });
     await fs.writeFile(
@@ -47,7 +52,7 @@ end ModelUsingCsv;
     );
   });
 
-  afterAll(async () => {
+  after(async () => {
     // Clean up temporary files
     try {
       await fs.unlink(join(tempDir, "package.mo"));
@@ -65,35 +70,44 @@ end ModelUsingCsv;
 
     // Verify workspace index has the classes
     const list = Array.from(ctx.workspaceIndex.uris);
-    expect(list.some((uri) => uri.endsWith("package.mo"))).toBe(true);
-    expect(list.some((uri) => uri.endsWith("testdata.csv"))).toBe(true);
-    expect(list.some((uri) => uri.endsWith("ModelUsingCsv.mo"))).toBe(true);
+    assert.strictEqual(
+      list.some((uri) => uri.endsWith("package.mo")),
+      true,
+    );
+    assert.strictEqual(
+      list.some((uri) => uri.endsWith("testdata.csv")),
+      true,
+    );
+    assert.strictEqual(
+      list.some((uri) => uri.endsWith("ModelUsingCsv.mo")),
+      true,
+    );
 
     // Flatten using the target arena-native pipeline
     const arena = ctx.flattenArena("ModelUsingCsv") || ctx.flattenArena("csv_test_temp.ModelUsingCsv");
-    expect(arena).not.toBeNull();
+    assert.ok(arena !== null);
     if (!arena) throw new Error("Arena is null");
 
     // Spot-check variables and values
     // r = testdata.numRows (should be 3)
     const rIdx = arena.getVarIdxByName("r");
-    expect(rIdx).toBeGreaterThanOrEqual(0);
-    expect(arena.getVarStartValue(rIdx)).toBe(3);
+    assert.ok(rIdx >= 0);
+    assert.strictEqual(arena.getVarStartValue(rIdx), 3);
 
     // c = testdata.numCols (should be 3)
     const cIdx = arena.getVarIdxByName("c");
-    expect(cIdx).toBeGreaterThanOrEqual(0);
-    expect(arena.getVarStartValue(cIdx)).toBe(3);
+    assert.ok(cIdx >= 0);
+    assert.strictEqual(arena.getVarStartValue(cIdx), 3);
 
     // Let's check how arrays are represented
     for (let i = 1; i <= 3; i++) {
       const xIdx = arena.getVarIdxByName(`x_val[${i}]`);
-      expect(xIdx).toBeGreaterThanOrEqual(0);
-      expect(arena.getVarStartValue(xIdx)).toBe(i);
+      assert.ok(xIdx >= 0);
+      assert.strictEqual(arena.getVarStartValue(xIdx), i);
 
       const yIdx = arena.getVarIdxByName(`y_val[${i}]`);
-      expect(yIdx).toBeGreaterThanOrEqual(0);
-      expect(arena.getVarStartValue(yIdx)).toBe(i * 2);
+      assert.ok(yIdx >= 0);
+      assert.strictEqual(arena.getVarStartValue(yIdx), i * 2);
     }
   });
 });

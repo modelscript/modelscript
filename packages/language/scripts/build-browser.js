@@ -109,7 +109,6 @@ esbuild
     return esbuild.build({
       entryPoints: [
         path.join(pkgDir, "src/lsp/browserServerMain.ts"),
-        path.join(pkgDir, "src/lsp/step-worker.ts"),
         path.join(pkgDir, "src/lsp/workers/indexer.worker.ts"),
       ],
       outdir: path.join(pkgDir, "dist/lsp"),

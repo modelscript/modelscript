@@ -4,7 +4,7 @@ import nodeFs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Context } from "../context.js";
+import { Context } from "../src/context.js";
 import { extractCSGTopology } from "../src/csg.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 

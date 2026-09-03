@@ -32,7 +32,7 @@ if (shouldBuild) {
     delete pkg.type;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
-    execSync("npx --yes tree-sitter-cli generate", { stdio: "inherit", cwd: __dirname });
+    execSync("npx --yes tree-sitter-cli generate --abi=14", { stdio: "inherit", cwd: __dirname });
     let retries = 5;
     while (retries > 0) {
       try {

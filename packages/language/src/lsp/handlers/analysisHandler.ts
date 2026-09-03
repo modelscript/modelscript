@@ -2,6 +2,7 @@
 // @ts-nocheck
 
 import { LspContext } from "../LspContext.js";
+import { getRequirements } from "../requirements.js";
 
 export function registerAnalysisHandlers(context: LspContext) {
   context.connection.onRequest(

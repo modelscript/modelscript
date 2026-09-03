@@ -9,6 +9,11 @@ import {
   repeat,
   semanticToken,
   seq,
+  tggDefaultVal,
+  tggEq,
+  tggFormatUri,
+  tggRule,
+  tggTypeMap,
   token,
 } from "@modelscript/language";
 import { modelicaFlattenerWasmCode } from "./flattener-wasm.js";
@@ -898,6 +903,42 @@ export const modelicaLanguage = language({
   },
 
   extras: () => [/\s+/],
+
+  polyglot: {
+    languages: ["sysml2", "owl2"],
+    rules: [
+      tggRule({
+        name: "ModelicaModelToSysmlBlock",
+        source: ($, v) => $.ClassDefinition({ name: v("className") }),
+        target: ($, v) => $.BlockDefinition({ declaredName: v("className") }),
+        where: (v) => [tggEq(v("className"), v("className")), tggDefaultVal(v("isAbstract"), false)],
+      }),
+      tggRule({
+        name: "ModelicaComponentToSysmlPart",
+        source: ($, v) => $.ComponentClause({ name: v("compName"), typeSpecifier: v("typeName") }),
+        target: ($, v) => $.PartUsage({ declaredName: v("compName"), declaredType: v("typeName") }),
+        where: (v) => [tggEq(v("compName"), v("compName")), tggTypeMap(v("typeName"), v("typeName"), "sysml2")],
+      }),
+      tggRule({
+        name: "ModelicaConnectToSysmlConnection",
+        source: ($, v) => $.ConnectClause({ name: v("connName") }),
+        target: ($, v) => $.ConnectionUsage({ declaredName: v("connName") }),
+        where: (v) => [tggEq(v("connName"), v("connName"))],
+      }),
+      tggRule({
+        name: "ModelicaEquationToSysmlConstraint",
+        source: ($, v) => $.EquationClause({ name: v("eqName") }),
+        target: ($, v) => $.ConstraintUsage({ declaredName: v("eqName") }),
+        where: (v) => [tggEq(v("eqName"), v("eqName"))],
+      }),
+      tggRule({
+        name: "ModelicaToOWL2Class",
+        source: ($, v) => $.ClassDefinition({ name: v("className") }),
+        target: ($, v) => $.ClassDeclaration({ iri: v("iri") }),
+        where: (v) => [tggFormatUri(v("className"), "mo:", v("iri"))],
+      }),
+    ],
+  },
 });
 
 export default modelicaLanguage;

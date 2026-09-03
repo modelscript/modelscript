@@ -22,6 +22,22 @@
     "./mapper": {
       "types": "./dist/step-multibody-mapper.d.ts",
       "default": "./dist/step-multibody-mapper.js"
+    },
+    "./assembly": {
+      "types": "./dist/src/assembly-extractor.d.ts",
+      "default": "./dist/src/assembly-extractor.js"
+    },
+    "./schema": {
+      "types": "./dist/src/schema.d.ts",
+      "default": "./dist/src/schema.js"
+    },
+    "./workspace-index": {
+      "types": "./dist/src/workspace-index.d.ts",
+      "default": "./dist/src/workspace-index.js"
+    },
+    "./physical-data": {
+      "types": "./dist/src/physical-data.d.ts",
+      "default": "./dist/src/physical-data.js"
     }
   },
   "files": [

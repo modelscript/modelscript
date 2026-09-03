@@ -1037,7 +1037,8 @@ export declare class Tree {
   readonly rootPtr: number;
   readonly sourceCode: string;
   lineStarts: number[];
-  mem32: Uint32Array;
+  private _mem32;
+  get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
   /** Gets the root node of the syntax tree. */
   get rootNode(): SyntaxNode;

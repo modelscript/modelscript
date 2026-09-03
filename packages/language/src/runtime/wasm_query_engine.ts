@@ -265,6 +265,10 @@ export class WasmQueryEngine {
   }
 
   public getCstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
+    if (this.tree && typeof (this.tree as any).getText === "function") {
+      const text = (this.tree as any).getText(startByte, endByte, entry);
+      if (text !== null && text !== undefined) return text;
+    }
     if (entry?.resourceId && (this.index as any).documents) {
       const doc = (this.index as any).documents.get(entry.resourceId);
       if (doc && typeof doc.getText === "function") {
@@ -294,6 +298,10 @@ export class WasmQueryEngine {
       if (doc && doc.tree) {
         treeToUse = doc.tree;
       }
+    }
+    if (treeToUse && typeof (treeToUse as any).getNode === "function") {
+      const node = (treeToUse as any).getNode(startByte, endByte, entry);
+      if (node) return node;
     }
     if (treeToUse && (treeToUse as any).rootNode) {
       const root = (treeToUse as any).rootNode;

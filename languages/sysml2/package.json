@@ -26,6 +26,14 @@
     "./transformers/modelica": {
       "types": "./dist/transformers/modelica-transformer.d.ts",
       "default": "./dist/transformers/modelica-transformer.js"
+    },
+    "./diagram": {
+      "types": "./dist/src/diagram/index.d.ts",
+      "default": "./dist/src/diagram/index.js"
+    },
+    "./diagram/*": {
+      "types": "./dist/src/diagram/*.d.ts",
+      "default": "./dist/src/diagram/*.js"
     }
   },
   "files": [
@@ -42,7 +50,8 @@
     "clean": "rimraf dist src-gen *.wasm"
   },
   "dependencies": {
-    "@modelscript/language": "*"
+    "@modelscript/language": "*",
+    "vscode-languageserver": "^9.0.1"
   },
   "devDependencies": {}
 }
