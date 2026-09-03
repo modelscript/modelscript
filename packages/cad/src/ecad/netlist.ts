@@ -14,7 +14,7 @@
 
 export interface ModelicaDAENetlistInput {
   connectPairs: { a: string; b: string; aComponent: string; bComponent: string }[];
-  arenaGetVarByName?(name: string): { attributes: Map<string, any> } | null | undefined;
+  arenaGetVarByName?(name: string): { attributes: Map<string, unknown> } | null | undefined;
 }
 
 // ── Public types ──

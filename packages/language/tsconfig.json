@@ -27,7 +27,9 @@
     "baseUrl": ".",
     "paths": {
       "@modelscript/language": ["./src/index.ts"],
-      "@modelscript/language/*": ["./src/*"]
+      "@modelscript/language/*": ["./src/*"],
+      "@modelscript/cad": ["../cad/dist/index.d.ts"],
+      "@modelscript/cad/*": ["../cad/dist/*.d.ts"]
     }
   },
   "include": ["src/**/*"],

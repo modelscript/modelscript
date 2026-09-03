@@ -1,0 +1,36 @@
+{
+  "name": "@modelscript/cad",
+  "version": "0.0.18",
+  "description": "ModelScript CAD and ECAD engine — CSG primitives, OpenCascade boolean operations, STEP serialization, Gerber parser, and PCB routing",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ecad": {
+      "types": "./dist/ecad/index.d.ts",
+      "default": "./dist/ecad/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "occt-import-js": "^0.0.23",
+    "opencascade.js": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,55 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
- * @modelscript/cad — Public API re-exports.
+ * @modelscript/language/cad — Backward compatibility re-export shim.
+ * Canonical package: @modelscript/cad
  */
 
-// Types
-export type {
-  Assembly,
-  BooleanSolid,
-  BoxOptions,
-  BoxSolid,
-  CylinderOptions,
-  CylinderSolid,
-  Mat4,
-  ParamMeta,
-  ParamOptions,
-  PartEntry,
-  Solid,
-  SphereOptions,
-  SphereSolid,
-  TorusOptions,
-  TorusSolid,
-  TransformSolid,
-  Vec3,
-} from "./types.js";
-
-export { SolidKind } from "./types.js";
-
-// Primitives
-export { box, cylinder, resetNameCounter, sphere, torus } from "./primitives.js";
-
-// Transforms
-export {
-  IDENTITY,
-  mat4Multiply,
-  mirror,
-  mirrorMatrix,
-  rotate,
-  rotationMatrix,
-  scale,
-  scaleMatrix,
-  translate,
-  translationMatrix,
-} from "./transforms.js";
-
-// Booleans
-export { intersect, subtract, union } from "./booleans.js";
-
-// Assembly
-export { assembly, part } from "./assembly.js";
-
-// STEP compiler
-export { compileAssemblyToStep, compileToStep } from "./step-compiler.js";
-
-// CSG OpenCascade Worker
-export { CSGWorker, type CSGExecutionGraph, type CSGNode } from "./worker.js";
+export * from "@modelscript/cad";

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
 
-import { generateDroneChassisGeometry } from "../../cad/mesh-fallbacks.js";
+import { generateDroneChassisGeometry } from "@modelscript/cad/mesh-fallbacks";
 import { LspContext } from "../LspContext.js";
 import { cadComponentsCache, simpleHash } from "../browserServerMain.js";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
@@ -47,7 +47,7 @@ export function registerDiagramHandlers(context: LspContext) {
       // 2. Initialize ShapeFlattener
       const queryDB = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
       const { ShapeFlattener } = await import("@modelscript/modelica/shape-flattener");
-      const { compileAssemblyToStep } = await import("../../cad/index.js");
+      const { compileAssemblyToStep } = await import("@modelscript/cad");
       const flattener = new ShapeFlattener(queryDB);
 
       // 3. Flatten into Assembly
