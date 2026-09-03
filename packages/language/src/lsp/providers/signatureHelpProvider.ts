@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
 // @ts-nocheck
+import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, ParameterInformation, SignatureInformation } from "vscode-languageserver";
-import { STEP_SCHEMA } from "../utils/stepUtils.js";
 
 function isStepDocument(document: any): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);

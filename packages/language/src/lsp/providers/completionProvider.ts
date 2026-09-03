@@ -1,7 +1,7 @@
+import { keywords, typeKeywords } from "@modelscript/modelica/keywords";
 import { CompletionItem, CompletionItemKind, Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge } from "../../compiler/index.js";
-import { keywords, typeKeywords } from "../utils/keywords.js";
 
 export function registerCompletionProvider(
   connection: Connection,

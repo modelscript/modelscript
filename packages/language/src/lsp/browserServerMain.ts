@@ -12,9 +12,9 @@ import {
   TextDocuments,
 } from "vscode-languageserver";
 
+import { type SysML2Layout } from "@modelscript/sysml2/diagram";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { createDiagramDispatch } from "./diagramApi.js";
-import { type SysML2Layout } from "./sysml2-layout.js";
 
 // @ts-ignore
 // @ts-ignore
@@ -39,8 +39,8 @@ import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-inter
 // @ts-ignore
 // @ts-ignore
 // @ts-ignore
+import { clearIconCache } from "@modelscript/modelica/diagram";
 import owl2LangFallback from "@modelscript/owl2/language";
-import { clearIconCache } from "./diagramData.js";
 import { registerColorProvider } from "./providers/colorProvider.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
 import { registerDefinitionProvider } from "./providers/definitionProvider.js";
@@ -195,6 +195,7 @@ workspaceManager.stepWorkspaceIndex = new StepWorkspaceIndex();
 workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, { priority: 2 });
 
 import modelicaLangFallback from "@modelscript/modelica/language";
+import { StepWorkspaceIndex } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { UnifiedWorkspace } from "../compiler/index.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
@@ -211,7 +212,6 @@ import { DiagramService } from "./services/DiagramService.js";
 import { HierarchyService } from "./services/HierarchyService.js";
 import { ParserService } from "./services/ParserService.js";
 import { ValidationService } from "./services/ValidationService.js";
-import { StepWorkspaceIndex } from "./step-workspace-index.js";
 
 const unifiedWorkspace = new UnifiedWorkspace();
 const stepWorkspaceIndex = new StepWorkspaceIndex();

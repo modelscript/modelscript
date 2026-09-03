@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
+import { getClassIconSvg } from "@modelscript/modelica/diagram";
 import { LspContext } from "../LspContext.js";
-import { getClassIconSvg } from "../diagramData.js";
 import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchyUtils.js";
 
 export const iconCache = new Map<string, string | null>();

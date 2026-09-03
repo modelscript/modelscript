@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { STEP_SCHEMA } from "../utils/stepUtils.js";
 
 function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);

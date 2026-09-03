@@ -7,6 +7,7 @@ import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
 import { createModelicaLSPBridge } from "@modelscript/modelica/factory";
+import { parseStepReferences, STEP_SCHEMA } from "@modelscript/step";
 import { createSysML2LSPBridge } from "@modelscript/sysml2/factory";
 import { LSPBridge, PositionIndex, QueryEngine, VerificationRunner } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
@@ -14,7 +15,6 @@ import { TableauReasoner } from "../../runtime/wasm_ontology.js";
 import type { SyntaxNode } from "../../utils/tree-sitter.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
-import { parseStepReferences, STEP_SCHEMA } from "../utils/stepUtils.js";
 import { ReasonerService } from "./ReasonerService.js";
 
 let createSysML2QueryEngine: any = undefined;

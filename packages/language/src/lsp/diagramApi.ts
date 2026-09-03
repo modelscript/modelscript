@@ -5,9 +5,9 @@
 // based on the document URI. This replaces the per-method if-branching that
 // was previously scattered across 12 handlers in browserServerMain.ts.
 
-import type { TextEdit } from "vscode-languageserver";
-import { buildComponentProperties, buildDiagramData } from "./diagramData.js";
 import {
+  buildComponentProperties,
+  buildDiagramData,
   computeComponentInsert,
   computeComponentsDelete,
   computeConnectInsert,
@@ -18,7 +18,8 @@ import {
   computeParameterEdit,
   computePlacementEdits,
   deduplicateAndSort,
-} from "./diagramEdits.js";
+} from "@modelscript/modelica/diagram";
+import type { TextEdit } from "vscode-languageserver";
 import type {
   ComponentPropertyData,
   DiagramApplyEditsParams,
@@ -101,21 +102,21 @@ export class ModelicaDiagramBackend implements DiagramBackend {
 
 export interface SysML2BackendDeps {
   getDocumentText: (uri: string) => string | undefined;
-  getLayout: (uri: string) => import("./sysml2-layout.js").SysML2Layout | undefined;
-  setLayout: (uri: string, layout: import("./sysml2-layout.js").SysML2Layout) => void;
-  createEmptyLayout: () => import("./sysml2-layout.js").SysML2Layout;
+  getLayout: (uri: string) => import("@modelscript/sysml2/diagram").SysML2Layout | undefined;
+  setLayout: (uri: string, layout: import("@modelscript/sysml2/diagram").SysML2Layout) => void;
+  createEmptyLayout: () => import("@modelscript/sysml2/diagram").SysML2Layout;
   updateElementPositions: (
-    layout: import("./sysml2-layout.js").SysML2Layout,
+    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
     items: { name: string; x: number; y: number; width: number; height: number; rotation?: number }[],
-  ) => import("./sysml2-layout.js").SysML2Layout;
+  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
   updateConnectionVertices: (
-    layout: import("./sysml2-layout.js").SysML2Layout,
+    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
     updates: { id: string; vertices: { x: number; y: number }[] }[],
-  ) => import("./sysml2-layout.js").SysML2Layout;
+  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
   removeElements: (
-    layout: import("./sysml2-layout.js").SysML2Layout,
+    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
     names: string[],
-  ) => import("./sysml2-layout.js").SysML2Layout;
+  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   buildDiagramData: (params: DiagramGetDataParams) => any;
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;

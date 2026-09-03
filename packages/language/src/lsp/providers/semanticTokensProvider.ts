@@ -9,7 +9,7 @@ import {
 
 import { TextDocument } from "vscode-languageserver-textdocument";
 
-import { typeKeywords } from "../utils/keywords.js";
+import { typeKeywords } from "@modelscript/modelica/keywords";
 
 const tokenTypes = [
   "keyword",

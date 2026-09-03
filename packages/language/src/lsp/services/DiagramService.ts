@@ -1,13 +1,4 @@
-import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
-import { Connection } from "vscode-languageserver";
-import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "../diagramApi.js";
-import { buildDiagramData } from "../diagramData.js";
-import {
-  createEmptyLayout,
-  removeElements,
-  updateConnectionVertices,
-  updateElementPositions,
-} from "../sysml2-layout.js";
+import { buildDiagramData } from "@modelscript/modelica/diagram";
 import {
   computeSysML2ConnectionDelete,
   computeSysML2ConnectionInsert,
@@ -16,8 +7,15 @@ import {
   computeSysML2ElementInsert,
   computeSysML2NameEdit,
   computeSysML2ParameterEdit,
+  createEmptyLayout,
   generateUniqueName,
-} from "../sysml2DiagramEdits.js";
+  removeElements,
+  updateConnectionVertices,
+  updateElementPositions,
+} from "@modelscript/sysml2/diagram";
+import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
+import { Connection } from "vscode-languageserver";
+import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "../diagramApi.js";
 import { DocumentManager } from "./DocumentManager.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
