@@ -1,0 +1,725 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import type { Range } from "@modelscript/language/utils";
+
+/**
+ * Severity level for a diagnostic.
+ */
+export type DiagnosticSeverity = "error" | "warning" | "info";
+
+/**
+ * A structured diagnostic emitted by the compiler or linter.
+ * Replaces plain string errors with error codes, human-readable messages, and positional info.
+ */
+export interface ModelicaDiagnostic {
+  /** Numeric error code (e.g. 3001). */
+  code: number;
+  /** Short rule name for tooling (e.g. "type-mismatch"). */
+  rule: string;
+  /** Severity level. */
+  severity: DiagnosticSeverity;
+  /** Human-readable message with interpolated details. */
+  message: string;
+  /** Source range in the file, if available. */
+  range: Range | null;
+}
+
+// ---------------------------------------------------------------------------
+// Error code definition
+// ---------------------------------------------------------------------------
+
+export interface ErrorCodeDef {
+  code: number;
+  rule: string;
+  severity: DiagnosticSeverity;
+  /** Template function that produces the human-readable message. */
+  message: (...args: string[]) => string;
+}
+
+/**
+ * Central registry of all Modelica diagnostic codes.
+ *
+ * Naming: M{code} — e.g. M1001, M3001.
+ * Ranges:
+ *   1xxx  Syntax / parse
+ *   2xxx  Name resolution
+ *   3xxx  Type system
+ *   4xxx  Structural / semantic
+ *   5xxx  Equations & algorithms
+ */
+export const ModelicaErrorCode = {
+  // ── 1xxx: Syntax & Parse ──────────────────────────────────────────────
+  PARSE_ERROR: {
+    code: 1001,
+    rule: "parse-error",
+    severity: "error",
+    message: () => "Parse error.",
+  },
+  PARSE_MISSING: {
+    code: 1002,
+    rule: "parse-missing",
+    severity: "error",
+    message: (expected: string) => `Parse error: '${expected}' expected.`,
+  },
+
+  // ── 2xxx: Name Resolution ─────────────────────────────────────────────
+  DUPLICATE_ELEMENT: {
+    code: 2001,
+    rule: "duplicate-element",
+    severity: "error",
+    message: (name: string) => `An element with name ${name} is already declared in this scope.`,
+  },
+  VARIABLE_NOT_FOUND: {
+    code: 2002,
+    rule: "variable-not-found",
+    severity: "error",
+    message: (name: string, scope: string) => `Variable ${name} not found in scope ${scope}.`,
+  },
+  CLASS_NOT_FOUND: {
+    code: 2003,
+    rule: "class-not-found",
+    severity: "error",
+    message: (className: string, scope: string) =>
+      `Class ${className} not found in scope ${scope} (looking for a function or record).`,
+  },
+  MODIFIER_NOT_FOUND: {
+    code: 2004,
+    rule: "modifier-not-found",
+    severity: "error",
+    message: (modName: string, componentName: string, className: string) =>
+      `In modifier of '${componentName}', class or component '${modName}' not found in '${className}'.`,
+  },
+  IDENTIFIER_MISMATCH: {
+    code: 2005,
+    rule: "identifier-mismatch",
+    severity: "error",
+    message: () => "The identifier at start and end are different.",
+  },
+  MODIFIED_ELEMENT_NOT_FOUND: {
+    code: 2006,
+    rule: "modified-element-not-found",
+    severity: "error",
+    message: (modName: string, className: string) => `Modified element ${modName} not found in class ${className}.`,
+  },
+  MODIFIER_CLASS_NOT_FOUND: {
+    code: 2007,
+    rule: "modifier-class-not-found",
+    severity: "error",
+    message: (modText: string, modName: string, className: string) =>
+      `In modifier (${modText}), class or component ${modName} not found in <${className}>.`,
+  },
+
+  // ── 3xxx: Type System ─────────────────────────────────────────────────
+  TYPE_MISMATCH_BINDING: {
+    code: 3001,
+    rule: "type-mismatch-binding",
+    severity: "error",
+    message: (componentName: string, expectedType: string, actualExpr: string, actualType: string) =>
+      `Type mismatch in binding ${componentName} = ${actualExpr}, expected subtype of ${expectedType}, got type ${actualType}.`,
+  },
+  TYPE_MISMATCH_MODIFIER: {
+    code: 3002,
+    rule: "type-mismatch-modifier",
+    severity: "error",
+    message: (modName: string, expectedType: string, actualType: string) =>
+      `Type mismatch: '${modName}' expects type '${expectedType}' but got '${actualType}'.`,
+  },
+  NOT_PLUG_COMPATIBLE: {
+    code: 3003,
+    rule: "not-plug-compatible",
+    severity: "error",
+    message: (ref1: string, ref2: string) => `In connect(${ref1}, ${ref2}): connectors are not plug-compatible.`,
+  },
+  NOT_A_CONNECTOR: {
+    code: 3004,
+    rule: "not-a-connector",
+    severity: "error",
+    message: (ref1: string, ref2: string, which: string) =>
+      `In connect(${ref1}, ${ref2}): '${which}' is not a connector.`,
+  },
+  REDECLARE_TYPE_MISMATCH: {
+    code: 3005,
+    rule: "redeclare-type-mismatch",
+    severity: "error",
+    message: (redeclaredName: string, newType: string, constrainingType: string) =>
+      `Redeclare of '${redeclaredName}': type '${newType}' is not compatible with constraining type '${constrainingType}'.`,
+  },
+  FUNCTION_ARG_TYPE_MISMATCH: {
+    code: 3006,
+    rule: "function-arg-type-mismatch",
+    severity: "error",
+    message: (callExpr: string, argPosition: string, argTypeSignature: string, expectedTypeSignature: string) =>
+      `Type mismatch for positional argument ${argPosition} in ${callExpr}. The argument has type:\n` +
+      `  ${argTypeSignature}\n` +
+      `expected type:\n` +
+      `  ${expectedTypeSignature}`,
+  },
+  FUNCTION_RETURN_TYPE_MISMATCH: {
+    code: 3007,
+    rule: "function-return-type-mismatch",
+    severity: "error",
+    message: (funcName: string, expectedType: string, actualType: string) =>
+      `Function '${funcName}' returns type '${actualType}' but '${expectedType}' expected.`,
+  },
+  ARRAY_INDEX_TYPE_MISMATCH: {
+    code: 3009,
+    rule: "array-index-type-mismatch",
+    severity: "error",
+    message: (actualType: string) => `Array index type mismatch: expected Integer or Boolean, but got '${actualType}'.`,
+  },
+  UNIT_MISMATCH: {
+    code: 3010,
+    rule: "unit-mismatch",
+    severity: "warning",
+    message: (lhsUnit: string, rhsUnit: string) =>
+      `Unit mismatch: Left-hand side has unit '${lhsUnit}' but right-hand side has incompatible unit '${rhsUnit}'.`,
+  },
+
+  // ── 4xxx: Structural / Semantic ───────────────────────────────────────
+  EXTENDS_CYCLE: {
+    code: 4001,
+    rule: "extends-cycle",
+    severity: "error",
+    message: (className: string, baseName: string) => `Extends cycle detected: '${className}' extends '${baseName}'.`,
+  },
+  DUPLICATE_MODIFICATION: {
+    code: 4002,
+    rule: "duplicate-modification",
+    severity: "error",
+    message: (
+      elementName: string,
+      componentName: string,
+      kind: "component" | "extends" | "inherited class" = "component",
+    ) => `Duplicate modification of element ${elementName} on ${kind} ${componentName}.`,
+  },
+  ARRAY_DIMENSION_MISMATCH: {
+    code: 4003,
+    rule: "array-dimension-mismatch",
+    severity: "error",
+    message: (componentName: string, exprText: string, expectedShape: string, actualShape: string) =>
+      `Type mismatch in binding '${componentName} = ${exprText}', expected array dimensions [${expectedShape}], got [${actualShape}].`,
+  },
+  UNBALANCED_MODEL: {
+    code: 4004,
+    rule: "unbalanced-model",
+    severity: "warning",
+    message: (classKind: string, name: string, nEquations: string, nVariables: string) =>
+      `The ${classKind} '${name}' is not balanced: ${nEquations} equation(s) and ${nVariables} variable(s).`,
+  },
+  FUNCTION_PUBLIC_VARIABLE: {
+    code: 4007,
+    rule: "function-public-variable",
+    severity: "warning",
+    message: (varName: string) =>
+      `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
+  },
+  ARRAY_SUBSCRIPT_COUNT_MISMATCH: {
+    code: 4008,
+    rule: "array-subscript-count-mismatch",
+    severity: "error",
+    message: (componentName: string, actualCount: string, expectedCount: string) =>
+      `Array subscript count mismatch: '${componentName}' has ${expectedCount} dimension(s), but was indexed with ${actualCount} subscript(s).`,
+  },
+  FUNCTION_DEFAULT_ARG_CYCLE: {
+    code: 4009,
+    rule: "function-default-arg-cycle",
+    severity: "error",
+    message: (paramName: string) => `The default value of ${paramName} causes a cyclic dependency.`,
+  },
+  FUNCTION_INVALID_VAR_TYPE: {
+    code: 4010,
+    rule: "function-invalid-var-type",
+    severity: "error",
+    message: (typeName: string, varName: string) => `Invalid type ${typeName} for function component ${varName}.`,
+  },
+  FUNCTION_PROTECTED_IO: {
+    code: 4011,
+    rule: "function-protected-io",
+    severity: "error",
+    message: (varName: string) =>
+      `Invalid protected variable ${varName}, function variables that are input/output must be public.`,
+  },
+  FUNCTION_ARG_VARIABILITY: {
+    code: 4012,
+    rule: "function-arg-variability",
+    severity: "error",
+    message: (paramName: string, argExpr: string, funcName: string, requiredVariability: string) =>
+      `Function argument ${paramName}=${argExpr} in call to ${funcName} has variability continuous which is not a ${requiredVariability} expression.`,
+  },
+  RESTRICTION_VIOLATION: {
+    code: 4017,
+    rule: "restriction-violation",
+    severity: "error",
+    message: (what: string, classKind: string) => `${what} are not allowed in ${classKind}.`,
+  },
+  PARTIAL_INSTANTIATION: {
+    code: 4018,
+    rule: "partial-instantiation",
+    severity: "error",
+    message: (className: string) => `Illegal to instantiate partial class ${className}.`,
+  },
+  REDECLARE_NON_REPLACEABLE: {
+    code: 4019,
+    rule: "redeclare-non-replaceable",
+    severity: "error",
+    message: (elementName: string) =>
+      `Trying to redeclare element '${elementName}' but it is not declared as replaceable.`,
+  },
+  RANGE_STEP_TOO_SMALL: {
+    code: 4021,
+    rule: "range-step-too-small",
+    severity: "error",
+    message: (stepSize: string) => `Step size ${stepSize} in range is too small.`,
+  },
+  ENUM_RANGE_WITH_STEP: {
+    code: 4022,
+    rule: "enum-range-with-step",
+    severity: "error",
+    message: (enumType: string) => `Range of type enumeration ${enumType} may not specify a step size.`,
+  },
+  BUILTIN_TIME_INVALID: {
+    code: 4020,
+    rule: "builtin-time-invalid",
+    severity: "error",
+    message: () => `The built-in variable 'time' is only available in models and blocks, not in functions or records.`,
+  },
+  FUNCTION_INVALID_PREFIX: {
+    code: 4032,
+    rule: "function-invalid-prefix",
+    severity: "error",
+    message: (prefix: string, varName: string) => `Invalid prefix ${prefix} on formal parameter ${varName}.`,
+  },
+  MISSING_INNER: {
+    code: 0,
+    rule: "missing-inner",
+    severity: "warning",
+    message: (typeName: string, componentName: string, scopeName: string, inners: string) =>
+      `No corresponding 'inner' declaration found for component .${typeName} ${componentName} declared as 'outer'.\n` +
+      `  The existing 'inner' components are:\n` +
+      `    ${inners}\n` +
+      `  Check if you have not misspelled the 'outer' component name.\n` +
+      `  Please declare an 'inner' component with the same name in the top scope.\n` +
+      `  Continuing flattening by only considering the 'outer' component declaration.`,
+  },
+
+  // ── 5xxx: Equations & Algorithms ──────────────────────────────────────
+  EQUATION_TYPE_MISMATCH: {
+    code: 5001,
+    rule: "equation-type-mismatch",
+    severity: "error",
+    message: (lhsExpanded: string, rhsExpanded: string, lhsType: string, rhsType: string) =>
+      `Type mismatch in equation ${lhsExpanded} = ${rhsExpanded} of type ${lhsType} = ${rhsType}.`,
+  },
+  CONSTRAINEDBY_TYPE_MISMATCH: {
+    code: 5002,
+    rule: "constrainedby-type-mismatch",
+    severity: "error",
+    message: (componentName: string, defaultType: string, constrainingType: string) =>
+      `Replaceable '${componentName}': default type '${defaultType}' is not compatible with constraining type '${constrainingType}'.`,
+  },
+  EXTENDS_TYPE_MISMATCH: {
+    code: 3008,
+    rule: "extends-type-mismatch",
+    severity: "error",
+    message: (className: string, redeclaredName: string, newType: string, originalType: string) =>
+      `In extends of '${className}': redeclared '${redeclaredName}' of type '${newType}' is not compatible with original type '${originalType}'.`,
+  },
+  IF_BRANCH_TYPE_MISMATCH: {
+    code: 5003,
+    rule: "if-branch-type-mismatch",
+    severity: "error",
+    message: (varName: string, branchType: string, expectedType: string) =>
+      `If-equation branch type mismatch: '${varName}' assigned type '${branchType}' but expected '${expectedType}'.`,
+  },
+  CONNECT_FLOW_MISMATCH: {
+    code: 5004,
+    rule: "connect-flow-mismatch",
+    severity: "warning",
+    message: (ref1: string, ref2: string) =>
+      `In connect(${ref1}, ${ref2}): flow variable sets differ between connectors.`,
+  },
+  PROTECTED_MODIFICATION: {
+    code: 4005,
+    rule: "protected-modification",
+    severity: "error",
+    message: (elementName: string, modText: string) =>
+      `Protected element '${elementName}' may not be modified, got '${modText}'.`,
+  },
+  EXTERNAL_WITH_ALGORITHM: {
+    code: 4006,
+    rule: "external-with-algorithm",
+    severity: "error",
+    message: () => "Element is not allowed in function context: algorithm",
+  },
+  FUNCTION_MULTIPLE_ALGORITHM: {
+    code: 4033,
+    rule: "function-multiple-algorithm",
+    severity: "error",
+    message: (funcName: string) => `Function ${funcName} has more than one algorithm section or external declaration.`,
+  },
+  REPLACEABLE_BASE_CLASS: {
+    code: 4034,
+    rule: "replaceable-base-class",
+    severity: "error",
+    message: (className: string, extendsText: string) =>
+      `Class '${className}' in 'extends ${extendsText}' is replaceable, the base class name must be transitively non-replaceable.`,
+  },
+  CYCLIC_DIMENSION_DEPENDENCY: {
+    code: 4035,
+    rule: "cyclic-dimension-dependency",
+    severity: "error",
+    message: (dimNum: string, varName: string, exprText: string) =>
+      `Dimension ${dimNum} of ${varName}, '${exprText}', could not be evaluated due to a cyclic dependency.`,
+  },
+  NOT_A_STREAM_VARIABLE: {
+    code: 5013,
+    rule: "not-a-stream-variable",
+    severity: "error",
+    message: (operand: string, operator: string) =>
+      `Operand '${operand}' to operator '${operator}' is not a stream variable.`,
+  },
+  DIVISION_BY_ZERO: {
+    code: 5005,
+    rule: "division-by-zero",
+    severity: "error",
+    message: (lhs: string) => `Division by zero: ${lhs} / 0.`,
+  },
+  ASSIGNMENT_TYPE_MISMATCH: {
+    code: 5006,
+    rule: "assignment-type-mismatch",
+    severity: "error",
+    message: (target: string, targetType: string, source: string, sourceType: string) =>
+      `Type mismatch in assignment in ${target} := ${source} of ${targetType} := ${sourceType}`,
+  },
+  FOR_ITERATOR_NOT_1D: {
+    code: 5007,
+    rule: "for-iterator-not-1d",
+    severity: "error",
+    message: (iteratorName: string, shape: string) =>
+      `Iterator ${iteratorName}, has type ${shape}, but expected a 1D array expression.`,
+  },
+  ASSIGNMENT_TO_CONSTANT: {
+    code: 5008,
+    rule: "assignment-to-constant",
+    severity: "error",
+    message: (componentName: string, exprText?: string) =>
+      exprText
+        ? `Trying to assign to constant component in ${componentName} := ${exprText}`
+        : `Trying to assign to constant component ${componentName}`,
+  },
+  ASSIGNMENT_TO_INPUT: {
+    code: 5009,
+    rule: "assignment-to-input",
+    severity: "error",
+    message: (componentName: string) => `Trying to assign to input component '${componentName}'.`,
+  },
+  NESTED_WHEN: {
+    code: 4013,
+    rule: "nested-when-statement",
+    severity: "error",
+    message: () => "Nested when statements are not allowed.",
+  },
+  WITHIN_IN_SCRIPT: {
+    code: 4015,
+    rule: "within-in-script",
+    severity: "error",
+    message: () => "The within directive is not allowed in script mode.",
+  },
+  STATEMENT_IN_STANDARD_MODE: {
+    code: 4016,
+    rule: "statement-in-standard-mode",
+    severity: "error",
+    message: () => "Top-level statements are not allowed in standard Modelica mode.",
+  },
+  TUPLE_EXPRESSION_CONTEXT: {
+    code: 4014,
+    rule: "tuple-expression-context",
+    severity: "error",
+    message: (exprText: string) =>
+      `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${exprText ? ` Got the following expression: ${exprText}.` : ""}`,
+  },
+  NO_MATCHING_FUNCTION: {
+    code: 3010,
+    rule: "no-matching-function",
+    severity: "error",
+    message: (callExpr: string, callSig: string, candidateSig: string) =>
+      `No matching function found for ${callExpr}\nof type\n  ${callSig}\ncandidates are \n  ${candidateSig}`,
+  },
+  UNUSED_INPUT_VARIABLE: {
+    code: 0,
+    rule: "unused-input-variable",
+    severity: "warning",
+    message: (varName: string, funcName: string) => `Unused input variable ${varName} in function ${funcName}.`,
+  },
+  BINARY_OP_TYPE_MISMATCH: {
+    code: 3011,
+    rule: "binary-op-type-mismatch",
+    severity: "error",
+    message: (expr: string, type1: string, type2: string) =>
+      `Cannot resolve type of expression ${expr}. The operands have types ${type1}, ${type2} in component <NO_COMPONENT>.`,
+  },
+  OPTIMIZATION_OBJECTIVE_TYPE: {
+    code: 3012,
+    rule: "optimization-objective-type",
+    severity: "error",
+    message: (typeStr: string) => `Optimization objective must be a scalar Real, but got type '${typeStr}'.`,
+  },
+  OPTIMIZATION_CONSTRAINT_TYPE: {
+    code: 3013,
+    rule: "optimization-constraint-type",
+    severity: "error",
+    message: (typeStr: string) =>
+      `Optimization constraints must evaluate to scalar Real or Boolean expressions, but got type '${typeStr}'.`,
+  },
+
+  // ── Connect restrictions ─────────────────────────────────────────────
+  CONNECT_IN_WHEN: {
+    code: 4023,
+    rule: "connect-in-when",
+    severity: "error",
+    message: (connectExpr: string) => `connect may not be used inside when-equations (found ${connectExpr}).`,
+  },
+  CONNECT_IN_INITIAL: {
+    code: 4024,
+    rule: "connect-in-initial",
+    severity: "error",
+    message: () => "Connect equations are not allowed in initial equation sections.",
+  },
+  CONNECT_IN_NON_PARAM_IF: {
+    code: 4025,
+    rule: "connect-in-non-param-if",
+    severity: "error",
+    message: (connectExpr: string) =>
+      `connect may not be used inside if-equations with non-parametric conditions (found ${connectExpr}).`,
+  },
+
+  // ── Final override ───────────────────────────────────────────────────
+  FINAL_OVERRIDE: {
+    code: 4026,
+    rule: "final-override",
+    severity: "error",
+    message: (elementName: string, modText: string) =>
+      `Trying to override final element ${elementName} with modifier '${modText}'.`,
+  },
+
+  // ── Variability binding mismatch ─────────────────────────────────────
+  VARIABILITY_BINDING_MISMATCH: {
+    code: 4027,
+    rule: "variability-binding-mismatch",
+    severity: "error",
+    message: (componentName: string, compVariability: string, bindingExpr: string, bindingVariability: string) =>
+      `Component ${componentName} of variability ${compVariability} has binding '${bindingExpr}' of higher variability ${bindingVariability}.`,
+  },
+
+  // ── Partial type component ───────────────────────────────────────────
+  PARTIAL_TYPE_COMPONENT: {
+    code: 4028,
+    rule: "partial-type-component",
+    severity: "error",
+    message: (componentName: string, typeName: string) =>
+      `Component '${componentName}' has partial type '${typeName}'.`,
+  },
+
+  // ── Component binding restriction ────────────────────────────────────
+  COMPONENT_BINDING_RESTRICTION: {
+    code: 4029,
+    rule: "component-binding-restriction",
+    severity: "error",
+    message: (componentName: string, classKind: string) =>
+      `Component '${componentName}' may not have a binding equation due to class specialization '${classKind}'.`,
+  },
+
+  // ── Outer modifier ───────────────────────────────────────────────────
+  OUTER_MODIFIER: {
+    code: 4030,
+    rule: "outer-modifier",
+    severity: "error",
+    message: (modText: string, elementName: string) => `Modifier '${modText}' found on outer element ${elementName}.`,
+  },
+
+  // ── Array Bounds ─────────────────────────────────────────────────────
+  ARRAY_INDEX_OUT_OF_BOUNDS: {
+    code: 4031,
+    rule: "array-index-out-of-bounds",
+    severity: "error",
+    message: (index: string, dimensionIndex: string, dimensionSize: string, arrayName: string) =>
+      `Subscript '${index}' for dimension ${dimensionIndex} (size = ${dimensionSize}) of ${arrayName} is out of bounds.`,
+  },
+
+  // ── Elsewhen variable mismatch ───────────────────────────────────────
+  ELSEWHEN_VARIABLE_MISMATCH: {
+    code: 5010,
+    rule: "elsewhen-variable-mismatch",
+    severity: "error",
+    message: () => "The same variables must be solved in elsewhen clause as in the when clause.",
+  },
+  EVAL_EXTERNAL_BUILTIN: {
+    code: 5011,
+    rule: "eval-external-builtin",
+    severity: "error",
+    message: (funcName: string) => `Internal error NFCeval.evalBuiltinCall: unimplemented case for ${funcName}`,
+  },
+  PACKAGE_VARIABLE_NOT_CONSTANT: {
+    code: 4036,
+    rule: "package-variable-not-constant",
+    severity: "error",
+    message: (varName: string, packageName: string) => `Variable ${varName} in package ${packageName} is not constant.`,
+  },
+  CONNECTOR_VARIABILITY: {
+    code: 4037,
+    rule: "connector-variability",
+    severity: "error",
+    message: (variability: string, connectorName: string) =>
+      `Invalid variability ${variability} on connector '${connectorName}'.`,
+  },
+  FLOW_OUTSIDE_CONNECTOR: {
+    code: 4038,
+    rule: "flow-outside-connector",
+    severity: "warning",
+    message: () => `Prefix 'flow' used outside connector declaration.`,
+  },
+  DISCRETE_NOT_ON_LHS: {
+    code: 4039,
+    rule: "discrete-not-on-lhs",
+    severity: "error",
+    message: (varName: string) =>
+      `Following variable is discrete, but does not appear on the LHS of a when-statement: '${varName}'.`,
+  },
+  PROTECTED_ELEMENT_MODIFICATION: {
+    code: 4040,
+    rule: "protected-element-modification",
+    severity: "error",
+    message: (varName: string, modText: string) =>
+      `Protected element '${varName}' may not be modified, got '${modText}'.`,
+  },
+  CLASS_SPECIALIZATION_VIOLATION: {
+    code: 4050,
+    rule: "class-specialization-violation",
+    severity: "error",
+    message: (className: string, errorDetail: string) => `Class specialization violation: ${className} ${errorDetail}.`,
+  },
+  BUILTIN_EXTENDS_WITH_ELEMENTS: {
+    code: 4051,
+    rule: "builtin-extends-with-elements",
+    severity: "error",
+    message: (typeName: string) => `A class extending from builtin type ${typeName} may not have other elements.`,
+  },
+  NEGATIVE_DIMENSION: {
+    code: 4041,
+    rule: "negative-dimension",
+    severity: "error",
+    message: (dim: string, varName: string) => `Negative dimension index (${dim}) for component ${varName}.`,
+  },
+  CONSTANT_HAS_NO_VALUE: {
+    code: 4042,
+    rule: "constant-has-no-value",
+    severity: "error",
+    message: (qualifiedName: string) => `Constant '${qualifiedName}' has no value.`,
+  },
+  CONSTANT_VARIABILITY_VIOLATION: {
+    code: 4043,
+    rule: "constant-variability-violation",
+    severity: "error",
+    message: (componentName: string, bindingText: string, bindingVariability: string) =>
+      `Component ${componentName} of variability constant has binding '${bindingText}' of higher variability ${bindingVariability}.`,
+  },
+  NON_ARRAY_MODIFICATION: {
+    code: 4044,
+    rule: "non-array-modification",
+    severity: "error",
+    message: (modText: string, componentName: string) =>
+      `Non-array modification '${modText}' for array component '${componentName}', possibly due to missing 'each'.`,
+  },
+  BINDING_DIMENSION_MISMATCH: {
+    code: 4045,
+    rule: "binding-dimension-mismatch",
+    severity: "error",
+    message: (componentName: string, bindingText: string, expectedDims: string, actualDims: string) =>
+      `Type mismatch in binding '${componentName} = ${bindingText}', expected array dimensions [${expectedDims}], got [${actualDims}].`,
+  },
+  CONSTANT_NOT_FIXED: {
+    code: 4046,
+    rule: "constant-not-fixed",
+    severity: "error",
+    message: (componentName: string) => `Constant '${componentName}' must be fixed but has 'fixed = false'`,
+  },
+  BUILTIN_ATTRIBUTE_TYPE_MISMATCH: {
+    code: 3014,
+    rule: "builtin-attribute-type-mismatch",
+    severity: "error",
+    message: (attrName: string, bindingText: string, expectedType: string, actualType: string) =>
+      `Type mismatch in binding ${attrName} = ${bindingText}, expected subtype of ${expectedType}, got type ${actualType}.`,
+  },
+  CARDINALITY_INVALID_CONTEXT: {
+    code: 4047,
+    rule: "cardinality-invalid-context",
+    severity: "error",
+    message: () => `cardinality may only be used in the condition of an if-statement/equation or an assert.`,
+  },
+  CARDINALITY_EXPECTED_COMPONENT: {
+    code: 4048,
+    rule: "cardinality-expected-component",
+    severity: "error",
+    message: (name: string) => `Expected ${name} to be a component, but found class instead.`,
+  },
+  EMPTY_ARRAY_CONSTRUCTOR: {
+    code: 1003,
+    rule: "empty-array-constructor",
+    severity: "error",
+    message: () => "Parse error: Empty array constructors are not valid in Modelica.",
+  },
+} as const satisfies Record<string, ErrorCodeDef>;
+
+// Derive the union type of all error code keys
+export type ModelicaErrorCodeKey = keyof typeof ModelicaErrorCode;
+
+// ---------------------------------------------------------------------------
+// Helper to create diagnostics
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a ModelicaDiagnostic from an error code definition.
+ *
+ * @param def - The error code definition from `ModelicaErrorCode`.
+ * @param range - Optional source range for the diagnostic.
+ * @param args - Arguments to interpolate into the message template.
+ * @returns A fully formed ModelicaDiagnostic.
+ *
+ * @example
+ * ```ts
+ * makeDiagnostic(ModelicaErrorCode.CLASS_NOT_FOUND, typeSpecifier, "MyClass", "ParentModel")
+ * // → { code: 2003, rule: "class-not-found", severity: "error",
+ * //     message: "Class 'MyClass' not found in scope 'ParentModel'.", range: ... }
+ * ```
+ */
+export function makeDiagnostic(
+  def: ErrorCodeDef,
+  range: Range | null | undefined,
+  ...args: string[]
+): ModelicaDiagnostic {
+  return {
+    code: def.code,
+    rule: def.rule,
+    severity: def.severity,
+    message: (def.message as (...a: string[]) => string)(...args),
+    range: range ?? null,
+  };
+}
+
+/**
+ * Format a diagnostic as a string with source range and severity.
+ * E.g. "[path/to/file.mo:13:3-13:15] Warning: Invalid public variable ..."
+ * When no range is available, falls back to "[M3001] Severity: message".
+ */
+export function formatDiagnostic(diag: ModelicaDiagnostic, resource?: string | null): string {
+  const severity = diag.severity.charAt(0).toUpperCase() + diag.severity.slice(1);
+  if (diag.range) {
+    const r = diag.range;
+    // Tree-sitter positions are 0-indexed; display as 1-indexed
+    const start = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
+    const end = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
+    const prefix = resource ? `${resource}:` : "";
+    return `[${prefix}${start}-${end}] ${severity}: ${diag.message}`;
+  }
+  return `[M${diag.code}] ${severity}: ${diag.message}`;
+}

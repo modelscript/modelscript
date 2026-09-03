@@ -37,7 +37,7 @@ import {
   ModelicaUnaryOperator,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
-} from "../ast.js";
+} from "./ast.js";
 
 // ── Built-in function metadata for compile-time folding ──
 

@@ -16,7 +16,7 @@ import {
   type Shape,
   type Text,
 } from "@svgdotjs/svg.js";
-import { ModelicaClassKind } from "../../types.js";
+import { ModelicaClassKind } from "../types.js";
 import { evaluateCondition } from "./annotation-evaluator.js";
 import {
   Arrow,

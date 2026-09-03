@@ -20,7 +20,7 @@ import {
   ModelicaUnaryOperator,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
-} from "../../ast.js";
+} from "../ast.js";
 
 // ── Annotation Enum Definitions ─────────────────────────────────────────────
 

@@ -49,7 +49,6 @@ export default defineConfig([
             "languages/owl2/bindings/node/index.d.ts",
             "languages/sysml2/grammar.js",
             "languages/sysml2/bindings/node/index.d.ts",
-            "scripts/generate-ast.ts",
             "scripts/compare-trajectories.ts",
             "scripts/generate-benchmark.ts",
             "scripts/benchmark-incremental.ts",
