@@ -16,7 +16,7 @@ import {
   type VerificationResult,
 } from "@modelscript/language/compiler";
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/language/diagram/builder";
-import { sysml2Language } from "./src/language.js";
+import { sysml2Language } from "./language.js";
 
 const indexerHooks = extractIndexerHooks(sysml2Language) ?? (globalThis as any).__sysml2IndexerHooksFallback ?? [];
 export const queryHooks =

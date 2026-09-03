@@ -8,7 +8,7 @@
  * @license LGPL-3.0-or-later
  */
 
-import { emitAxioms } from "../reasoner-bridge.js";
+import { emitAxioms } from "./reasoner-bridge.js";
 
 import {
   choice,

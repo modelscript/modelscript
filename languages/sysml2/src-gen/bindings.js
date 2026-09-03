@@ -4238,7 +4238,11 @@ export class SyntaxNode {
   }
   /** Finds the smallest syntax node covering the character range [start, end]. */
   descendantForIndex(start, end = start) {
-    if (start < this.startIndex || end > this.endIndex) return null;
+    if (
+      this.parent !== null &&
+      (start < this.startIndex || end > this.endIndex)
+    )
+      return null;
     for (const kid of this.children) {
       if (start >= kid.startIndex && end <= kid.endIndex) {
         return kid.descendantForIndex(start, end);
@@ -4458,7 +4462,14 @@ export class Tree {
   rootPtr;
   sourceCode;
   lineStarts;
-  mem32;
+  _mem32 = null;
+  get mem32() {
+    const buf = this.facade.wasmMemory.buffer;
+    if (!this._mem32 || this._mem32.buffer !== buf) {
+      this._mem32 = new Uint32Array(buf);
+    }
+    return this._mem32;
+  }
   constructor(facade, rootPtr, sourceCode) {
     this.facade = facade;
     this.rootPtr = rootPtr;
@@ -4468,22 +4479,30 @@ export class Tree {
     for (let i = 0; i < sourceCode.length; i++) {
       if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * 2);
     }
-    this.mem32 = new Uint32Array(facade.wasmMemory.buffer);
   }
   /** Gets the root node of the syntax tree. */
   get rootNode() {
     if (!this.rootPtr) throw new Error("Null root pointer");
-    const typeFlags = this.mem32[this.rootPtr / 4];
+    const mem32 = this.mem32;
+    const typeFlags = mem32[this.rootPtr / 4];
     const typeId = typeFlags & 0x03ff;
-    const envHashPadding = this.mem32[(this.rootPtr + 4) / 4];
+    const envHashPadding = mem32[(this.rootPtr + 4) / 4];
     const rawPad = typeFlags >>> 22;
     const isFat = (envHashPadding >>> 23) & 1;
     const pad =
       isFat && this.facade.exports.getFatPaddingPtr
-        ? this.mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
+        ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
         : rawPad;
     const len = envHashPadding & 0x007fffff;
-    return new SyntaxNode(this, this.rootPtr, 0, null, pad, len, typeId);
+    return new SyntaxNode(
+      this,
+      this.rootPtr,
+      0,
+      null,
+      pad,
+      len > 0 ? len : this.sourceCode.length * 2,
+      typeId,
+    );
   }
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
   walk() {
@@ -4786,6 +4805,12 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
   const facade = new LspFacade(exports);
   if (syntaxNames && syntaxNames.length > 0) {
     facade.syntaxNames = syntaxNames;
+  }
+  if (facade.exports.configEnableMultiFile) {
+    facade.exports.configEnableMultiFile.value = 1;
+  }
+  if (facade.exports.lsp_setConfigEnableMultiFile) {
+    facade.exports.lsp_setConfigEnableMultiFile(true);
   }
   const parser = new TreeSitterParser();
   parser.setLanguage(facade);

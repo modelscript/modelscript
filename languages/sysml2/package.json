@@ -16,12 +16,20 @@
       "default": "./dist/src/language.js"
     },
     "./factory": {
-      "types": "./dist/factory.d.ts",
-      "default": "./dist/factory.js"
+      "types": "./dist/src/factory.d.ts",
+      "default": "./dist/src/factory.js"
     },
     "./constraint-extractor": {
-      "types": "./dist/constraint-extractor.d.ts",
-      "default": "./dist/constraint-extractor.js"
+      "types": "./dist/src/constraint-extractor.d.ts",
+      "default": "./dist/src/constraint-extractor.js"
+    },
+    "./reasoner-bridge": {
+      "types": "./dist/src/reasoner-bridge.d.ts",
+      "default": "./dist/src/reasoner-bridge.js"
+    },
+    "./diff_config": {
+      "types": "./dist/src/diff_config.d.ts",
+      "default": "./dist/src/diff_config.js"
     },
     "./transformers/modelica": {
       "types": "./dist/transformers/modelica-transformer.d.ts",
@@ -37,12 +45,9 @@
     }
   },
   "files": [
-    "queries/*",
     "src/**",
     "src-gen/**",
     "dist/**",
-    "factory.ts",
-    "constraint-extractor.ts",
     "transformers/**"
   ],
   "scripts": {
