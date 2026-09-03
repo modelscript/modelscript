@@ -7,7 +7,7 @@
  * that implement the FMI 3.0 API.
  */
 
-import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "../compiler/index.js";
+import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
 import type { Fmi3Options, Fmi3Result, Fmi3Variable } from "./fmi3.js";
 import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";
 

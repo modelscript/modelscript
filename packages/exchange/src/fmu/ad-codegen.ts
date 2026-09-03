@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-import { type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "../compiler/index.js";
+import { type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/language/compiler";
 
 import { type Fmi3Variable } from "./fmi3.js";
 

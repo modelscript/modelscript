@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
+import { CoSimSession, Orchestrator, WasmOpenFoamProvider } from "@modelscript/exchange/cosim";
+import { generateFmuWasmSource, generateMultiModelWrapper } from "@modelscript/exchange/fmu";
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { Causality, DAEBuilder } from "../../compiler/index.js";
 import { ArenaSimulator, simulateArena, simulateArenaAsync } from "../../compiler/simulator/index.js";
-import { CoSimSession, Orchestrator } from "../../cosim/index.js";
-import { WasmOpenFoamProvider } from "../../cosim/participants/cfd-provider.js";
-import { generateFmuWasmSource, generateMultiModelWrapper } from "../../fmu/index.js";
 import { LspContext } from "../LspContext.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";

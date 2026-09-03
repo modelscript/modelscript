@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unused-vars, no-useless-assignment */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -15,7 +16,7 @@
  * FMI 3.0 specification: https://fmi-standard.org/
  */
 
-import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "../compiler/index.js";
+import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "@modelscript/language/compiler";
 
 // ── Public interface ──
 
@@ -184,7 +185,6 @@ export interface Fmi3Result {
 export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: Set<string>): Fmi3Result {
   const guid = options.guid ?? generateGuid();
   const variables: Fmi3Variable[] = [];
-  let valueRef = 0;
 
   // ── Time variable (independent) ──
   // We assign time a VR equal to dae.varCount to ensure the other variables

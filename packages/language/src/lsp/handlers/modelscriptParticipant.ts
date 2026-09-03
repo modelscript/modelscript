@@ -1,6 +1,6 @@
+import type { CoSimParticipant, CosimValue, ParticipantMetadata } from "@modelscript/exchange/cosim";
 import { Causality, DAEBuilder } from "../../compiler/index.js";
 import { simulateArena } from "../../compiler/simulator/index.js";
-import type { CoSimParticipant, CosimValue, ParticipantMetadata } from "../../cosim/index.js";
 
 export class ModelScriptParticipant implements CoSimParticipant {
   id: string;

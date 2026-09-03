@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
+import { buildFmuArchive, parseFmuModelDescription } from "@modelscript/exchange/fmu";
 import { ArenaSimulator } from "../../compiler/simulator/index.js";
-import { buildFmuArchive, parseFmuModelDescription } from "../../fmu/index.js";
 import { readZipTextEntry } from "../../runtime/wasm_container.js";
 import { LspContext } from "../LspContext.js";
 

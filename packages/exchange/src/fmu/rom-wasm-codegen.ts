@@ -17,7 +17,7 @@
  * magnitude faster.
  */
 
-import type { ROMWeights, ScalingParams, TrainedROM } from "../compiler/simulator/index.js";
+import type { ROMWeights, ScalingParams, TrainedROM } from "@modelscript/language/simulator";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public Interface

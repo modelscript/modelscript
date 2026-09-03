@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unused-vars */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -27,7 +28,7 @@ import {
   pantelidesIndexReductionArena,
   performBltTransformationArena,
   simplifyArenaExpression,
-} from "../compiler/index.js";
+} from "@modelscript/language/compiler";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { groupFmi3Variables } from "./fmi.js";
 import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";

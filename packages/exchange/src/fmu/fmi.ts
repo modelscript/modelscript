@@ -11,7 +11,7 @@
  * FMI 2.0 specification: https://fmi-standard.org/
  */
 
-import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "../compiler/index.js";
+import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "@modelscript/language/compiler";
 import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──

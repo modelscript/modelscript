@@ -212,6 +212,7 @@
     "@antv/x6-plugin-selection": "^2.2.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelscript/cad": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",
     "@modelscript/step": "*",

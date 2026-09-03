@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
 import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
+import { generateRomWasmSource } from "@modelscript/exchange/fmu";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import { EqKind, performBltTransformationArena, Variability } from "../../compiler/index.js";
 import { ModelicaCalibrator, ModelicaOptimizer } from "../../compiler/optimizer/index.js";
@@ -11,7 +12,6 @@ import {
   simulateArena,
   type ArenaDoEInputRange,
 } from "../../compiler/simulator/index.js";
-import { generateRomWasmSource } from "../../fmu/index.js";
 import { LspContext } from "../LspContext.js";
 import { getRequirements } from "../requirements.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arenaUtils.js";

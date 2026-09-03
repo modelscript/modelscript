@@ -1,0 +1,63 @@
+{
+  "name": "@modelscript/exchange",
+  "version": "0.0.18",
+  "description": "ModelScript Standards & Model Exchange engine — FMI 2.0/3.0 export, SSP packaging, and MQTT co-simulation orchestrator",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./fmu": {
+      "types": "./dist/fmu/index.d.ts",
+      "default": "./dist/fmu/index.js"
+    },
+    "./fmi": {
+      "types": "./dist/fmu/index.d.ts",
+      "default": "./dist/fmu/index.js"
+    },
+    "./ssp": {
+      "types": "./dist/ssp/index.d.ts",
+      "default": "./dist/ssp/index.js"
+    },
+    "./cosim": {
+      "types": "./dist/cosim/index.d.ts",
+      "default": "./dist/cosim/index.js"
+    },
+    "./cosim/*": {
+      "types": "./dist/cosim/*.d.ts",
+      "default": "./dist/cosim/*.js"
+    },
+    "./fmu/*": {
+      "types": "./dist/fmu/*.d.ts",
+      "default": "./dist/fmu/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "@modelscript/language": "*",
+    "aedes": "^1.0.2",
+    "aedes-server-factory": "^0.2.1",
+    "fflate": "^0.8.2",
+    "mqtt": "^5.10.0",
+    "pako": "^2.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "@types/pako": "^2.0.4",
+    "@types/ws": "^8.18.0",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}
