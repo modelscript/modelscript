@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-function */
-import type { Edit, Parser, Point, Node as SyntaxNode, Tree } from "web-tree-sitter";
+import type { Edit, Parser, Point, SyntaxNode, Tree } from "@modelscript/language/utils";
 
 function createSyntheticNode(
   type: string,

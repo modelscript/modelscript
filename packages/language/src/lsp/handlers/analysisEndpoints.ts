@@ -13,6 +13,7 @@ import {
 } from "../../compiler/simulator/index.js";
 import { generateRomWasmSource } from "../../fmu/index.js";
 import { LspContext } from "../LspContext.js";
+import { getRequirements } from "../requirements.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arenaUtils.js";
 
 export function registerAnalysisEndpoints(context: LspContext) {
@@ -1451,6 +1452,160 @@ export function registerAnalysisEndpoints(context: LspContext) {
       }
     },
   );
+
+  context.connection.onRequest(
+    "modelscript/extractCosimGraph",
+    (params: { uri: string; text: string }): CosimGraphResult => {
+      try {
+        const text = params.text;
+
+        // ── Extract component declarations ──
+        const componentRegex =
+          /^\s+([A-Z][A-Za-z0-9_.]*)\s+([a-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s*(?:"[^"]*")?\s*;/gm;
+        const builtinTypes = new Set(["Real", "Integer", "Boolean", "String", "StateSelect"]);
+        const keywords = new Set([
+          "parameter",
+          "constant",
+          "discrete",
+          "input",
+          "output",
+          "flow",
+          "stream",
+          "replaceable",
+          "redeclare",
+          "inner",
+          "outer",
+          "final",
+          "extends",
+          "import",
+          "equation",
+          "algorithm",
+          "initial",
+          "end",
+          "model",
+          "class",
+          "block",
+          "connector",
+          "record",
+          "type",
+          "package",
+          "function",
+          "when",
+          "if",
+          "for",
+          "while",
+          "connect",
+          "protected",
+          "public",
+          "annotation",
+          "external",
+          "partial",
+          "encapsulated",
+          "within",
+        ]);
+
+        const participants: CosimParticipantInfo[] = [];
+        const componentNames = new Set<string>();
+
+        // Pre-filter: remove lines that start with modifier keywords
+        const lines = text.split("\n");
+        const filteredText = lines
+          .filter((line) => {
+            const trimmed = line.trimStart();
+            const firstWord = trimmed.split(/\s+/)[0] ?? "";
+            return !["parameter", "constant", "discrete", "input", "output"].includes(firstWord);
+          })
+          .join("\n");
+
+        let match: RegExpExecArray | null;
+        while ((match = componentRegex.exec(filteredText)) !== null) {
+          const className = match[1] ?? "";
+          const instanceName = match[2] ?? "";
+          const modBody = match[3] ?? "";
+
+          if (builtinTypes.has(className) || keywords.has(className.toLowerCase())) continue;
+          if (className.includes("Interface")) continue;
+
+          const fileNameMatch = modBody.match(/fileName\s*=\s*"([^"]*)"/);
+          const isFmu = fileNameMatch !== null;
+
+          participants.push({
+            id: instanceName,
+            type: isFmu ? "fmu" : "modelica",
+            className,
+            fileName: fileNameMatch?.[1],
+          });
+          componentNames.add(instanceName);
+        }
+
+        // ── Extract connect equations ──
+        const connectRegex = /connect\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*,\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)/g;
+        const couplings: CosimCouplingInfo[] = [];
+
+        while ((match = connectRegex.exec(text)) !== null) {
+          const ref1 = match[1] ?? "";
+          const ref2 = match[2] ?? "";
+
+          const dot1 = ref1.indexOf(".");
+          const dot2 = ref2.indexOf(".");
+
+          if (dot1 === -1 || dot2 === -1) continue;
+
+          const comp1 = ref1.substring(0, dot1);
+          const var1 = ref1.substring(dot1 + 1);
+          const comp2 = ref2.substring(0, dot2);
+          const var2 = ref2.substring(dot2 + 1);
+
+          if (!componentNames.has(comp1) || !componentNames.has(comp2)) continue;
+
+          couplings.push({
+            from: { participantId: comp1, variable: var1 },
+            to: { participantId: comp2, variable: var2 },
+          });
+        }
+
+        return { ok: true, participants, couplings };
+      } catch (e) {
+        console.error("[extractCosimGraph] Error:", e);
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest("modelscript/getRequirements", (params: { uri: string }) => {
+    try {
+      context.connection.console.info(`[requirements] modelscript/getRequirements called for uri=${params.uri}`);
+      const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+
+      const reqCount = getRequirements(db, undefined, []);
+      context.connection.console.info(
+        `[requirements] Found ${reqCount.length} requirements. Workspace symbols: ${db.symbols.size}`,
+      );
+
+      const rules = new Set<string>();
+      let hasReqDef = false;
+      for (const entry of db.symbols.values()) {
+        if (entry.ruleName) rules.add(entry.ruleName);
+        if (entry.ruleName === "RequirementDefinition" || entry.ruleName === "RequirementUsage") {
+          hasReqDef = true;
+          context.connection.console.info(`[requirements] FOUND Req: ${entry.name} at ${entry.resourceId}`);
+        }
+      }
+      context.connection.console.info(
+        `[requirements] Rule names present (sample): ${Array.from(rules).slice(0, 20).join(", ")}`,
+      );
+      context.connection.console.info(`[requirements] Has RequirementDefinition: ${hasReqDef}`);
+
+      const allResults = [];
+      for (const res of context.validationService.verificationResultsByUri.values()) {
+        allResults.push(...res);
+      }
+      return getRequirements(db, undefined, allResults);
+    } catch (e) {
+      console.error("[requirements] Error", e);
+      return [];
+    }
+  });
 }
 
 // @ts-nocheck

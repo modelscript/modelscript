@@ -75,6 +75,14 @@
       "types": "./dist/src/diagram/index.d.ts",
       "default": "./dist/src/diagram/index.js"
     },
+    "./diagram/*": {
+      "types": "./dist/src/diagram/*.d.ts",
+      "default": "./dist/src/diagram/*.js"
+    },
+    "./keywords": {
+      "types": "./dist/src/keywords.d.ts",
+      "default": "./dist/src/keywords.js"
+    },
     "./multibody-generator": {
       "types": "./dist/src/multibody-generator.d.ts",
       "default": "./dist/src/multibody-generator.js"
@@ -146,6 +154,7 @@
   "dependencies": {
     "@modelscript/csv": "*",
     "@modelscript/language": "^0.0.18",
-    "@svgdotjs/svg.js": "^3.2.4"
+    "@svgdotjs/svg.js": "^3.2.4",
+    "vscode-languageserver": "^9.0.1"
   }
 }

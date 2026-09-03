@@ -198,7 +198,6 @@ import modelicaLangFallback from "@modelscript/modelica/language";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { UnifiedWorkspace } from "../compiler/index.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
-import { registerAnalysisHandlers } from "./handlers/analysisHandler.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
 import { registerDiagramHandlers } from "./handlers/diagramHandler.js";
 import { registerInteropEndpoints } from "./handlers/interopEndpoints.js";
@@ -891,7 +890,6 @@ const lspContext: LspContext = {
 
 registerDiagramHandlers(lspContext);
 registerTreeHandlers(lspContext);
-registerAnalysisHandlers(lspContext);
 registerSimulationEndpoints(lspContext);
 registerAnalysisEndpoints(lspContext);
 registerInteropEndpoints(lspContext);

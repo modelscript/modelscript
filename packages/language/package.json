@@ -62,6 +62,10 @@
       "types": "./dist/diagram/index.d.ts",
       "default": "./dist/diagram/index.js"
     },
+    "./diagram/protocol": {
+      "types": "./dist/diagram/protocol.d.ts",
+      "default": "./dist/diagram/protocol.js"
+    },
     "./diagram/builder": {
       "types": "./dist/diagram/polyglot-diagram-builder.d.ts",
       "default": "./dist/diagram/polyglot-diagram-builder.js"

@@ -783,7 +783,11 @@ export class ModelicaStoredDefinitionSyntaxNode
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaStoredDefinitionSyntaxNode | null,
   ): ModelicaStoredDefinitionSyntaxNode | null {
-    const type = concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"];
+    if (concreteSyntaxNode?.type === "program" && concreteSyntaxNode.children.length > 0) {
+      concreteSyntaxNode = concreteSyntaxNode.children[0];
+    }
+    const rawType = concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"];
+    const type = rawType ? rawType.replace(/(?:^|_)([a-z0-9])/g, (_, g) => g.toUpperCase()) : rawType;
     switch (type) {
       case ModelicaStoredDefinitionSyntaxNode.type:
         return new ModelicaStoredDefinitionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
