@@ -1,0 +1,25 @@
+{
+  "name": "@modelscript/ide-client",
+  "version": "0.0.18",
+  "private": true,
+  "description": "ModelScript VS Code Web Extension client, custom editors, and webview panels",
+  "type": "module",
+  "main": "src/browserClientMain.ts",
+  "scripts": {
+    "clean": "rimraf dist",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "@modelscript/language": "*",
+    "@modelscript/modelica": "*",
+    "@modelscript/owl2": "*",
+    "@modelscript/step": "*",
+    "@modelscript/sysml2": "*",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.72.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.9.3"
+  }
+}

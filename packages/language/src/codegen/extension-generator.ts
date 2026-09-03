@@ -659,7 +659,14 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
 
   // 4. Compile with esbuild
   const currentDir = path.dirname(new URL(import.meta.url).pathname);
-  const ideDir = path.resolve(currentDir, "../ide");
+  const ideDir =
+    [
+      path.resolve(currentDir, "../../../../packages/ide/src"),
+      path.resolve(currentDir, "../../../packages/ide/src"),
+      path.resolve(currentDir, "../../../../packages/ide"),
+      path.resolve(currentDir, "../../../packages/ide"),
+      path.resolve(currentDir, "../ide"),
+    ].find((p) => fs.existsSync(p)) ?? path.resolve(currentDir, "../ide");
 
   // Build browser client
   const clientMainPath = path.join(ideDir, "browserClientMain.ts");
