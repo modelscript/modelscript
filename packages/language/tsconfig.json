@@ -30,8 +30,16 @@
       "@modelscript/language/*": ["./src/*"],
       "@modelscript/cad": ["../cad/dist/index.d.ts"],
       "@modelscript/cad/*": ["../cad/dist/*.d.ts"],
+      "@modelscript/diagram": ["../diagram/dist/index.d.ts"],
+      "@modelscript/diagram/protocol": ["../diagram/dist/protocol.d.ts"],
+      "@modelscript/diagram/builder": ["../diagram/dist/polyglot-diagram-builder.d.ts"],
+      "@modelscript/diagram/sequence-layout": ["../diagram/dist/sequence-layout.d.ts"],
+      "@modelscript/diagram/spinner": ["../diagram/dist/spinner.d.ts"],
+      "@modelscript/diagram/*": ["../diagram/dist/*.d.ts"],
       "@modelscript/exchange": ["../exchange/dist/index.d.ts"],
-      "@modelscript/exchange/*": ["../exchange/dist/*.d.ts"]
+      "@modelscript/exchange/*": ["../exchange/dist/*.d.ts"],
+      "@modelscript/sysml2": ["../../languages/sysml2/src/index.ts"],
+      "@modelscript/sysml2/*": ["../../languages/sysml2/src/*"]
     }
   },
   "include": ["src/**/*"],

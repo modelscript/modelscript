@@ -1,0 +1,55 @@
+{
+  "name": "@modelscript/diagram",
+  "version": "0.0.18",
+  "description": "ModelScript diagramming engine — AntV X6 graph renderer, polyglot visual builder, sequence layout, and diagram RPC protocol",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "default": "./dist/protocol.js"
+    },
+    "./builder": {
+      "types": "./dist/polyglot-diagram-builder.d.ts",
+      "default": "./dist/polyglot-diagram-builder.js"
+    },
+    "./sequence-layout": {
+      "types": "./dist/sequence-layout.d.ts",
+      "default": "./dist/sequence-layout.js"
+    },
+    "./spinner": {
+      "types": "./dist/spinner.d.ts",
+      "default": "./dist/spinner.js"
+    },
+    "./browser": {
+      "types": "./dist/diagram.browser.js",
+      "default": "./dist/diagram.browser.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc && node build-browser.js",
+    "clean": "rimraf dist",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "@antv/layout": "^0.3.25",
+    "@antv/x6": "^3.1.7",
+    "@antv/x6-plugin-selection": "^2.2.2",
+    "vscode-languageserver-protocol": "^3.17.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "esbuild": "^0.28.1",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}
