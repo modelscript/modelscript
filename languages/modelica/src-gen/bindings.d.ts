@@ -1134,3 +1134,1178 @@ export declare function createWasmParser(
 }>;
 
 export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+
+export enum SyntaxKind {
+  ERROR = 0,
+  Identifier = 325,
+  identifier = 325,
+  StringLiteral = 326,
+  string_literal = 326,
+  UnsignedInteger = 327,
+  unsigned_integer = 327,
+  UnsignedReal = 328,
+  unsigned_real = 328,
+  Program = 103,
+  program = 103,
+  StoredDefinition = 104,
+  stored_definition = 104,
+  WithinClause = 105,
+  within_clause = 105,
+  ClassDefinition = 106,
+  class_definition = 106,
+  ClassPrefixes = 107,
+  class_prefixes = 107,
+  ClassSpecifier = 108,
+  class_specifier = 108,
+  LongClassSpecifier = 109,
+  long_class_specifier = 109,
+  ShortClassSpecifier = 110,
+  short_class_specifier = 110,
+  DerClassSpecifier = 111,
+  der_class_specifier = 111,
+  BasePrefix = 112,
+  base_prefix = 112,
+  EnumList = 113,
+  enum_list = 113,
+  EnumerationLiteral = 114,
+  enumeration_literal = 114,
+  Composition = 115,
+  composition = 115,
+  ExternalClause = 116,
+  external_clause = 116,
+  LanguageSpecification = 117,
+  language_specification = 117,
+  ExternalFunctionCall = 118,
+  external_function_call = 118,
+  ElementList = 119,
+  element_list = 119,
+  Element = 120,
+  element = 120,
+  ImportClause = 121,
+  import_clause = 121,
+  ImportList = 122,
+  import_list = 122,
+  ExtendsClause = 123,
+  extends_clause = 123,
+  ConstrainingClause = 124,
+  constraining_clause = 124,
+  ClassOrInheritanceModification = 125,
+  class_or_inheritance_modification = 125,
+  ArgumentOrInheritanceModificationList = 126,
+  argument_or_inheritance_modification_list = 126,
+  InheritanceModification = 127,
+  inheritance_modification = 127,
+  ComponentClause = 128,
+  component_clause = 128,
+  TypePrefix = 129,
+  type_prefix = 129,
+  ComponentList = 130,
+  component_list = 130,
+  ComponentDeclaration = 131,
+  component_declaration = 131,
+  ConditionAttribute = 132,
+  condition_attribute = 132,
+  Declaration = 133,
+  declaration = 133,
+  Modification = 134,
+  modification = 134,
+  ModificationExpression = 135,
+  modification_expression = 135,
+  ClassModification = 136,
+  class_modification = 136,
+  ArgumentList = 137,
+  argument_list = 137,
+  Argument = 138,
+  argument = 138,
+  ElementModificationOrReplaceable = 139,
+  element_modification_or_replaceable = 139,
+  ElementModification = 140,
+  element_modification = 140,
+  ElementRedeclaration = 141,
+  element_redeclaration = 141,
+  ElementReplaceable = 142,
+  element_replaceable = 142,
+  ComponentClause1 = 143,
+  component_clause1 = 143,
+  ComponentDeclaration1 = 144,
+  component_declaration1 = 144,
+  ShortClassDefinition = 145,
+  short_class_definition = 145,
+  EquationSection = 146,
+  equation_section = 146,
+  AlgorithmSection = 147,
+  algorithm_section = 147,
+  SomeEquation = 148,
+  some_equation = 148,
+  EquationOrProcedure = 149,
+  equation_or_procedure = 149,
+  SimpleEquation = 150,
+  simple_equation = 150,
+  Statement = 151,
+  statement = 151,
+  StatementOrProcedure = 152,
+  statement_or_procedure = 152,
+  AssignmentStatement = 153,
+  assignment_statement = 153,
+  FunctionCall = 154,
+  function_call = 154,
+  IfEquation = 155,
+  if_equation = 155,
+  IfStatement = 156,
+  if_statement = 156,
+  ForEquation = 157,
+  for_equation = 157,
+  ForStatement = 158,
+  for_statement = 158,
+  ForIndices = 159,
+  for_indices = 159,
+  ForIndex = 160,
+  for_index = 160,
+  WhileStatement = 161,
+  while_statement = 161,
+  WhenEquation = 162,
+  when_equation = 162,
+  WhenStatement = 163,
+  when_statement = 163,
+  ConnectEquation = 164,
+  connect_equation = 164,
+  Expression = 165,
+  expression = 165,
+  Primary = 166,
+  primary = 166,
+  UnsignedNumber = 167,
+  unsigned_number = 167,
+  TypeSpecifier = 168,
+  type_specifier = 168,
+  Name = 169,
+  name = 169,
+  ComponentReference = 170,
+  component_reference = 170,
+  ResultReference = 171,
+  result_reference = 171,
+  FunctionCallArgs = 172,
+  function_call_args = 172,
+  FunctionArguments = 173,
+  function_arguments = 173,
+  FunctionArgumentsNonFirst = 174,
+  function_arguments_non_first = 174,
+  ArrayArguments = 175,
+  array_arguments = 175,
+  ArrayArgumentsNonFirst = 176,
+  array_arguments_non_first = 176,
+  NamedArguments = 177,
+  named_arguments = 177,
+  NamedArgument = 178,
+  named_argument = 178,
+  FunctionArgument = 179,
+  function_argument = 179,
+  FunctionPartialApplication = 180,
+  function_partial_application = 180,
+  OutputExpressionList = 181,
+  output_expression_list = 181,
+  ExpressionList = 182,
+  expression_list = 182,
+  ArraySubscripts = 183,
+  array_subscripts = 183,
+  Subscript = 184,
+  subscript = 184,
+  Description = 185,
+  description = 185,
+  DescriptionString = 186,
+  description_string = 186,
+  AnnotationClause = 187,
+  annotation_clause = 187,
+  START = 188,
+  _START = 188,
+  EOF = 1023,
+}
+
+export enum FieldId {
+  ClassSpecifier = 1,
+  class_specifier = 1,
+  Name = 2,
+  name = 2,
+  Description = 3,
+  description = 3,
+  Composition = 4,
+  composition = 4,
+  EndName = 5,
+  end_name = 5,
+  TypeSpecifier = 6,
+  type_specifier = 6,
+  TypePrefix = 7,
+  type_prefix = 7,
+  Declaration = 8,
+  declaration = 8,
+  Modification = 9,
+  modification = 9,
+  ClassModification = 10,
+  class_modification = 10,
+  ModificationExpression = 11,
+  modification_expression = 11,
+  Lhs = 12,
+  lhs = 12,
+  Rhs = 13,
+  rhs = 13,
+  Target = 14,
+  target = 14,
+  Value = 15,
+  value = 15,
+  Args = 16,
+  args = 16,
+  Condition = 17,
+  condition = 17,
+  Body = 18,
+  body = 18,
+  ElseCondition = 19,
+  elseCondition = 19,
+  ElseBody = 20,
+  elseBody = 20,
+  FinalBody = 21,
+  finalBody = 21,
+  Indices = 22,
+  indices = 22,
+  Variable = 23,
+  variable = 23,
+  Range = 24,
+  range = 24,
+  Left = 25,
+  left = 25,
+  Right = 26,
+  right = 26,
+  Operand = 27,
+  operand = 27,
+  Flexible = 28,
+  flexible = 28,
+  Expression = 29,
+  expression = 29,
+}
+
+/** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
+export declare function normalizeToken(token: string | null | undefined): string;
+
+/** Returns the normalized type of a CST node (stripped of quotes). */
+export declare function cstKind(node: SyntaxNode | null | undefined): string;
+export interface ProgramNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Program;
+}
+export declare function isProgram(node: SyntaxNode | null | undefined): node is ProgramNode;
+export interface StoredDefinitionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StoredDefinition;
+}
+export declare function isStoredDefinition(node: SyntaxNode | null | undefined): node is StoredDefinitionNode;
+export interface WithinClauseNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.WithinClause;
+}
+export declare function isWithinClause(node: SyntaxNode | null | undefined): node is WithinClauseNode;
+export interface ClassDefinitionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ClassDefinition;
+}
+export declare function isClassDefinition(node: SyntaxNode | null | undefined): node is ClassDefinitionNode;
+export interface ClassPrefixesNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ClassPrefixes;
+}
+export declare function isClassPrefixes(node: SyntaxNode | null | undefined): node is ClassPrefixesNode;
+export interface ClassSpecifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ClassSpecifier;
+}
+export declare function isClassSpecifier(node: SyntaxNode | null | undefined): node is ClassSpecifierNode;
+export interface LongClassSpecifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LongClassSpecifier;
+}
+export declare function isLongClassSpecifier(node: SyntaxNode | null | undefined): node is LongClassSpecifierNode;
+export interface ShortClassSpecifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ShortClassSpecifier;
+}
+export declare function isShortClassSpecifier(node: SyntaxNode | null | undefined): node is ShortClassSpecifierNode;
+export interface DerClassSpecifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DerClassSpecifier;
+}
+export declare function isDerClassSpecifier(node: SyntaxNode | null | undefined): node is DerClassSpecifierNode;
+export interface BasePrefixNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BasePrefix;
+}
+export declare function isBasePrefix(node: SyntaxNode | null | undefined): node is BasePrefixNode;
+export interface EnumListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EnumList;
+}
+export declare function isEnumList(node: SyntaxNode | null | undefined): node is EnumListNode;
+export interface EnumerationLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EnumerationLiteral;
+}
+export declare function isEnumerationLiteral(node: SyntaxNode | null | undefined): node is EnumerationLiteralNode;
+export interface CompositionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Composition;
+}
+export declare function isComposition(node: SyntaxNode | null | undefined): node is CompositionNode;
+export interface ExternalClauseNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ExternalClause;
+}
+export declare function isExternalClause(node: SyntaxNode | null | undefined): node is ExternalClauseNode;
+export interface LanguageSpecificationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LanguageSpecification;
+}
+export declare function isLanguageSpecification(node: SyntaxNode | null | undefined): node is LanguageSpecificationNode;
+export interface ExternalFunctionCallNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ExternalFunctionCall;
+}
+export declare function isExternalFunctionCall(node: SyntaxNode | null | undefined): node is ExternalFunctionCallNode;
+export interface ElementListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ElementList;
+}
+export declare function isElementList(node: SyntaxNode | null | undefined): node is ElementListNode;
+export interface ElementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Element;
+}
+export declare function isElement(node: SyntaxNode | null | undefined): node is ElementNode;
+export interface ImportClauseNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ImportClause;
+}
+export declare function isImportClause(node: SyntaxNode | null | undefined): node is ImportClauseNode;
+export interface ImportListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ImportList;
+}
+export declare function isImportList(node: SyntaxNode | null | undefined): node is ImportListNode;
+export interface ExtendsClauseNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ExtendsClause;
+}
+export declare function isExtendsClause(node: SyntaxNode | null | undefined): node is ExtendsClauseNode;
+export interface ConstrainingClauseNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ConstrainingClause;
+}
+export declare function isConstrainingClause(node: SyntaxNode | null | undefined): node is ConstrainingClauseNode;
+export interface ClassOrInheritanceModificationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ClassOrInheritanceModification;
+}
+export declare function isClassOrInheritanceModification(node: SyntaxNode | null | undefined): node is ClassOrInheritanceModificationNode;
+export interface ArgumentOrInheritanceModificationListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ArgumentOrInheritanceModificationList;
+}
+export declare function isArgumentOrInheritanceModificationList(node: SyntaxNode | null | undefined): node is ArgumentOrInheritanceModificationListNode;
+export interface InheritanceModificationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.InheritanceModification;
+}
+export declare function isInheritanceModification(node: SyntaxNode | null | undefined): node is InheritanceModificationNode;
+export interface ComponentClauseNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComponentClause;
+}
+export declare function isComponentClause(node: SyntaxNode | null | undefined): node is ComponentClauseNode;
+export interface TypePrefixNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TypePrefix;
+}
+export declare function isTypePrefix(node: SyntaxNode | null | undefined): node is TypePrefixNode;
+export interface ComponentListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComponentList;
+}
+export declare function isComponentList(node: SyntaxNode | null | undefined): node is ComponentListNode;
+export interface ComponentDeclarationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComponentDeclaration;
+}
+export declare function isComponentDeclaration(node: SyntaxNode | null | undefined): node is ComponentDeclarationNode;
+export interface ConditionAttributeNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ConditionAttribute;
+}
+export declare function isConditionAttribute(node: SyntaxNode | null | undefined): node is ConditionAttributeNode;
+export interface DeclarationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Declaration;
+}
+export declare function isDeclaration(node: SyntaxNode | null | undefined): node is DeclarationNode;
+export interface ModificationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Modification;
+}
+export declare function isModification(node: SyntaxNode | null | undefined): node is ModificationNode;
+export interface ModificationExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ModificationExpression;
+}
+export declare function isModificationExpression(node: SyntaxNode | null | undefined): node is ModificationExpressionNode;
+export interface ClassModificationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ClassModification;
+}
+export declare function isClassModification(node: SyntaxNode | null | undefined): node is ClassModificationNode;
+export interface ArgumentListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ArgumentList;
+}
+export declare function isArgumentList(node: SyntaxNode | null | undefined): node is ArgumentListNode;
+export interface ArgumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Argument;
+}
+export declare function isArgument(node: SyntaxNode | null | undefined): node is ArgumentNode;
+export interface ElementModificationOrReplaceableNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ElementModificationOrReplaceable;
+}
+export declare function isElementModificationOrReplaceable(node: SyntaxNode | null | undefined): node is ElementModificationOrReplaceableNode;
+export interface ElementModificationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ElementModification;
+}
+export declare function isElementModification(node: SyntaxNode | null | undefined): node is ElementModificationNode;
+export interface ElementRedeclarationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ElementRedeclaration;
+}
+export declare function isElementRedeclaration(node: SyntaxNode | null | undefined): node is ElementRedeclarationNode;
+export interface ElementReplaceableNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ElementReplaceable;
+}
+export declare function isElementReplaceable(node: SyntaxNode | null | undefined): node is ElementReplaceableNode;
+export interface ComponentClause1Node extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComponentClause1;
+}
+export declare function isComponentClause1(node: SyntaxNode | null | undefined): node is ComponentClause1Node;
+export interface ComponentDeclaration1Node extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComponentDeclaration1;
+}
+export declare function isComponentDeclaration1(node: SyntaxNode | null | undefined): node is ComponentDeclaration1Node;
+export interface ShortClassDefinitionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ShortClassDefinition;
+}
+export declare function isShortClassDefinition(node: SyntaxNode | null | undefined): node is ShortClassDefinitionNode;
+export interface EquationSectionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EquationSection;
+}
+export declare function isEquationSection(node: SyntaxNode | null | undefined): node is EquationSectionNode;
+export interface AlgorithmSectionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AlgorithmSection;
+}
+export declare function isAlgorithmSection(node: SyntaxNode | null | undefined): node is AlgorithmSectionNode;
+export interface SomeEquationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SomeEquation;
+}
+export declare function isSomeEquation(node: SyntaxNode | null | undefined): node is SomeEquationNode;
+export interface EquationOrProcedureNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EquationOrProcedure;
+}
+export declare function isEquationOrProcedure(node: SyntaxNode | null | undefined): node is EquationOrProcedureNode;
+export interface SimpleEquationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SimpleEquation;
+}
+export declare function isSimpleEquation(node: SyntaxNode | null | undefined): node is SimpleEquationNode;
+export interface StatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Statement;
+}
+export declare function isStatement(node: SyntaxNode | null | undefined): node is StatementNode;
+export interface StatementOrProcedureNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StatementOrProcedure;
+}
+export declare function isStatementOrProcedure(node: SyntaxNode | null | undefined): node is StatementOrProcedureNode;
+export interface AssignmentStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AssignmentStatement;
+}
+export declare function isAssignmentStatement(node: SyntaxNode | null | undefined): node is AssignmentStatementNode;
+export interface FunctionCallNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FunctionCall;
+}
+export declare function isFunctionCall(node: SyntaxNode | null | undefined): node is FunctionCallNode;
+export interface IfEquationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IfEquation;
+}
+export declare function isIfEquation(node: SyntaxNode | null | undefined): node is IfEquationNode;
+export interface IfStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IfStatement;
+}
+export declare function isIfStatement(node: SyntaxNode | null | undefined): node is IfStatementNode;
+export interface ForEquationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ForEquation;
+}
+export declare function isForEquation(node: SyntaxNode | null | undefined): node is ForEquationNode;
+export interface ForStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ForStatement;
+}
+export declare function isForStatement(node: SyntaxNode | null | undefined): node is ForStatementNode;
+export interface ForIndicesNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ForIndices;
+}
+export declare function isForIndices(node: SyntaxNode | null | undefined): node is ForIndicesNode;
+export interface ForIndexNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ForIndex;
+}
+export declare function isForIndex(node: SyntaxNode | null | undefined): node is ForIndexNode;
+export interface WhileStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.WhileStatement;
+}
+export declare function isWhileStatement(node: SyntaxNode | null | undefined): node is WhileStatementNode;
+export interface WhenEquationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.WhenEquation;
+}
+export declare function isWhenEquation(node: SyntaxNode | null | undefined): node is WhenEquationNode;
+export interface WhenStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.WhenStatement;
+}
+export declare function isWhenStatement(node: SyntaxNode | null | undefined): node is WhenStatementNode;
+export interface ConnectEquationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ConnectEquation;
+}
+export declare function isConnectEquation(node: SyntaxNode | null | undefined): node is ConnectEquationNode;
+export interface ExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Expression;
+}
+export declare function isExpression(node: SyntaxNode | null | undefined): node is ExpressionNode;
+export interface PrimaryNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Primary;
+}
+export declare function isPrimary(node: SyntaxNode | null | undefined): node is PrimaryNode;
+export interface UnsignedNumberNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UnsignedNumber;
+}
+export declare function isUnsignedNumber(node: SyntaxNode | null | undefined): node is UnsignedNumberNode;
+export interface TypeSpecifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TypeSpecifier;
+}
+export declare function isTypeSpecifier(node: SyntaxNode | null | undefined): node is TypeSpecifierNode;
+export interface NameNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Name;
+}
+export declare function isName(node: SyntaxNode | null | undefined): node is NameNode;
+export interface ComponentReferenceNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComponentReference;
+}
+export declare function isComponentReference(node: SyntaxNode | null | undefined): node is ComponentReferenceNode;
+export interface ResultReferenceNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ResultReference;
+}
+export declare function isResultReference(node: SyntaxNode | null | undefined): node is ResultReferenceNode;
+export interface FunctionCallArgsNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FunctionCallArgs;
+}
+export declare function isFunctionCallArgs(node: SyntaxNode | null | undefined): node is FunctionCallArgsNode;
+export interface FunctionArgumentsNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FunctionArguments;
+}
+export declare function isFunctionArguments(node: SyntaxNode | null | undefined): node is FunctionArgumentsNode;
+export interface FunctionArgumentsNonFirstNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FunctionArgumentsNonFirst;
+}
+export declare function isFunctionArgumentsNonFirst(node: SyntaxNode | null | undefined): node is FunctionArgumentsNonFirstNode;
+export interface ArrayArgumentsNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ArrayArguments;
+}
+export declare function isArrayArguments(node: SyntaxNode | null | undefined): node is ArrayArgumentsNode;
+export interface ArrayArgumentsNonFirstNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ArrayArgumentsNonFirst;
+}
+export declare function isArrayArgumentsNonFirst(node: SyntaxNode | null | undefined): node is ArrayArgumentsNonFirstNode;
+export interface NamedArgumentsNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NamedArguments;
+}
+export declare function isNamedArguments(node: SyntaxNode | null | undefined): node is NamedArgumentsNode;
+export interface NamedArgumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NamedArgument;
+}
+export declare function isNamedArgument(node: SyntaxNode | null | undefined): node is NamedArgumentNode;
+export interface FunctionArgumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FunctionArgument;
+}
+export declare function isFunctionArgument(node: SyntaxNode | null | undefined): node is FunctionArgumentNode;
+export interface FunctionPartialApplicationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FunctionPartialApplication;
+}
+export declare function isFunctionPartialApplication(node: SyntaxNode | null | undefined): node is FunctionPartialApplicationNode;
+export interface OutputExpressionListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.OutputExpressionList;
+}
+export declare function isOutputExpressionList(node: SyntaxNode | null | undefined): node is OutputExpressionListNode;
+export interface ExpressionListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ExpressionList;
+}
+export declare function isExpressionList(node: SyntaxNode | null | undefined): node is ExpressionListNode;
+export interface ArraySubscriptsNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ArraySubscripts;
+}
+export declare function isArraySubscripts(node: SyntaxNode | null | undefined): node is ArraySubscriptsNode;
+export interface SubscriptNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Subscript;
+}
+export declare function isSubscript(node: SyntaxNode | null | undefined): node is SubscriptNode;
+export interface DescriptionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Description;
+}
+export declare function isDescription(node: SyntaxNode | null | undefined): node is DescriptionNode;
+export interface DescriptionStringNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DescriptionString;
+}
+export declare function isDescriptionString(node: SyntaxNode | null | undefined): node is DescriptionStringNode;
+export interface AnnotationClauseNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AnnotationClause;
+}
+export declare function isAnnotationClause(node: SyntaxNode | null | undefined): node is AnnotationClauseNode;
+export interface IdentifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Identifier;
+}
+export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface StringLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StringLiteral;
+}
+export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+export interface UnsignedIntegerNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UnsignedInteger;
+}
+export declare function isUnsignedInteger(node: SyntaxNode | null | undefined): node is UnsignedIntegerNode;
+export interface UnsignedRealNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UnsignedReal;
+}
+export declare function isUnsignedReal(node: SyntaxNode | null | undefined): node is UnsignedRealNode;
+export namespace Cst {
+  export function kind(node: SyntaxNode | null | undefined): string;
+  export function normalize(token: string | null | undefined): string;
+  export const Program: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ProgramNode;
+  };
+  export const StoredDefinition: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StoredDefinitionNode;
+  };
+  export const WithinClause: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is WithinClauseNode;
+  };
+  export const ClassDefinition: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ClassDefinitionNode;
+    classSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ClassPrefixes: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ClassPrefixesNode;
+  };
+  export const ClassSpecifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ClassSpecifierNode;
+  };
+  export const LongClassSpecifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LongClassSpecifierNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    composition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    compositionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    endName(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    endNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ShortClassSpecifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ShortClassSpecifierNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DerClassSpecifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DerClassSpecifierNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const BasePrefix: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BasePrefixNode;
+  };
+  export const EnumList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EnumListNode;
+  };
+  export const EnumerationLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EnumerationLiteralNode;
+  };
+  export const Composition: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CompositionNode;
+  };
+  export const ExternalClause: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ExternalClauseNode;
+  };
+  export const LanguageSpecification: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LanguageSpecificationNode;
+  };
+  export const ExternalFunctionCall: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ExternalFunctionCallNode;
+  };
+  export const ElementList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ElementListNode;
+  };
+  export const Element: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ElementNode;
+  };
+  export const ImportClause: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ImportClauseNode;
+  };
+  export const ImportList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ImportListNode;
+  };
+  export const ExtendsClause: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ExtendsClauseNode;
+    typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ConstrainingClause: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ConstrainingClauseNode;
+  };
+  export const ClassOrInheritanceModification: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ClassOrInheritanceModificationNode;
+  };
+  export const ArgumentOrInheritanceModificationList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArgumentOrInheritanceModificationListNode;
+  };
+  export const InheritanceModification: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is InheritanceModificationNode;
+  };
+  export const ComponentClause: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComponentClauseNode;
+    typePrefix(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typePrefixList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const TypePrefix: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TypePrefixNode;
+  };
+  export const ComponentList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComponentListNode;
+  };
+  export const ComponentDeclaration: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComponentDeclarationNode;
+    declaration(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    declarationList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ConditionAttribute: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ConditionAttributeNode;
+  };
+  export const Declaration: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DeclarationNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    modification(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    modificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Modification: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ModificationNode;
+    classModification(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classModificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    modificationExpression(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    modificationExpressionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ModificationExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ModificationExpressionNode;
+  };
+  export const ClassModification: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ClassModificationNode;
+  };
+  export const ArgumentList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArgumentListNode;
+  };
+  export const Argument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArgumentNode;
+  };
+  export const ElementModificationOrReplaceable: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ElementModificationOrReplaceableNode;
+  };
+  export const ElementModification: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ElementModificationNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    modification(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    modificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ElementRedeclaration: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ElementRedeclarationNode;
+  };
+  export const ElementReplaceable: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ElementReplaceableNode;
+  };
+  export const ComponentClause1: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComponentClause1Node;
+    typePrefix(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typePrefixList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ComponentDeclaration1: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComponentDeclaration1Node;
+  };
+  export const ShortClassDefinition: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ShortClassDefinitionNode;
+  };
+  export const EquationSection: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EquationSectionNode;
+  };
+  export const AlgorithmSection: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AlgorithmSectionNode;
+  };
+  export const SomeEquation: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SomeEquationNode;
+  };
+  export const EquationOrProcedure: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EquationOrProcedureNode;
+  };
+  export const SimpleEquation: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SimpleEquationNode;
+    lhs(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    lhsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    rhs(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rhsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Statement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StatementNode;
+  };
+  export const StatementOrProcedure: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StatementOrProcedureNode;
+  };
+  export const AssignmentStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AssignmentStatementNode;
+    target(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    targetList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const FunctionCall: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FunctionCallNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const IfEquation: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IfEquationNode;
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseCondition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseConditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseBody(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseBodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    finalBody(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    finalBodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const IfStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IfStatementNode;
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseCondition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseConditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseBody(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseBodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    finalBody(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    finalBodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ForEquation: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ForEquationNode;
+    indices(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    indicesList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ForStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ForStatementNode;
+    indices(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    indicesList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ForIndices: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ForIndicesNode;
+  };
+  export const ForIndex: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ForIndexNode;
+    variable(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    variableList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const WhileStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is WhileStatementNode;
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const WhenEquation: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is WhenEquationNode;
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseCondition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseConditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseBody(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseBodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const WhenStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is WhenStatementNode;
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseCondition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseConditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elseBody(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elseBodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ConnectEquation: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ConnectEquationNode;
+    lhs(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    lhsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    rhs(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rhsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Expression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ExpressionNode;
+    left(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    leftList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    right(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rightList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    operand(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operandList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Primary: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PrimaryNode;
+  };
+  export const UnsignedNumber: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UnsignedNumberNode;
+  };
+  export const TypeSpecifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TypeSpecifierNode;
+  };
+  export const Name: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NameNode;
+  };
+  export const ComponentReference: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComponentReferenceNode;
+  };
+  export const ResultReference: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ResultReferenceNode;
+  };
+  export const FunctionCallArgs: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FunctionCallArgsNode;
+  };
+  export const FunctionArguments: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FunctionArgumentsNode;
+  };
+  export const FunctionArgumentsNonFirst: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FunctionArgumentsNonFirstNode;
+  };
+  export const ArrayArguments: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArrayArgumentsNode;
+  };
+  export const ArrayArgumentsNonFirst: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArrayArgumentsNonFirstNode;
+  };
+  export const NamedArguments: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NamedArgumentsNode;
+  };
+  export const NamedArgument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NamedArgumentNode;
+  };
+  export const FunctionArgument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FunctionArgumentNode;
+  };
+  export const FunctionPartialApplication: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FunctionPartialApplicationNode;
+  };
+  export const OutputExpressionList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is OutputExpressionListNode;
+  };
+  export const ExpressionList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ExpressionListNode;
+  };
+  export const ArraySubscripts: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArraySubscriptsNode;
+  };
+  export const Subscript: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SubscriptNode;
+    flexible(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    flexibleList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    expression(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    expressionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Description: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DescriptionNode;
+  };
+  export const DescriptionString: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DescriptionStringNode;
+  };
+  export const AnnotationClause: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AnnotationClauseNode;
+  };
+  export const Identifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const StringLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+  };
+  export const UnsignedInteger: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UnsignedIntegerNode;
+  };
+  export const UnsignedReal: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UnsignedRealNode;
+  };
+}

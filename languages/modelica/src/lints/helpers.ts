@@ -65,36 +65,11 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
   if (db.ast.textEquals(exprNode, "true") || db.ast.textEquals(exprNode, "false")) {
     return TYPE_BOOLEAN;
   }
-
-  // Check descendants for literals if wrapped in modification_expression / expression
-  for (const lit of db.ast.getDescendants(exprNode, $.string_literal)) {
-    if (lit != 0) return TYPE_STRING;
-  }
-  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_real)) {
-    if (lit != 0) return TYPE_REAL;
-  }
-  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_integer)) {
-    if (lit != 0) return TYPE_INTEGER;
-  }
-  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_number)) {
-    if (lit != 0) {
-      for (const r of db.ast.getDescendants(lit, $.unsigned_real)) {
-        if (r != 0) return TYPE_REAL;
-      }
-      return TYPE_INTEGER;
-    }
+  if (db.ast.textEquals(exprNode, "time")) {
+    return TYPE_REAL;
   }
 
-  // Find enclosing class definition for component reference resolution
-  let enclosingClass: u32 = 0;
-  for (const anc of db.ast.getAncestors(exprNode)) {
-    if (db.ast.getType(anc) == $.class_definition) {
-      enclosingClass = anc;
-      break;
-    }
-  }
-
-  // If node is an expression / primary wrapper, check for relational / logical / arithmetic operators
+  // 1. If node is an expression / primary wrapper, check for relational / logical / arithmetic operators
   if (
     nodeType == $.expression ||
     nodeType == $.primary ||
@@ -104,6 +79,10 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
     const leftChild = db.ast.getChildByFieldId(exprNode, "left");
     const rightChild = db.ast.getChildByFieldId(exprNode, "right");
     if (leftChild != 0 && rightChild != 0) {
+      const op = db.ast.getBinaryOp(leftChild, rightChild);
+      if (op >= 10 && op <= 17) {
+        return TYPE_BOOLEAN;
+      }
       for (const ch of db.ast.getDescendants(exprNode)) {
         if (
           db.ast.textEquals(ch, "==") ||
@@ -125,6 +104,82 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
       if (lType == TYPE_INTEGER && rType == TYPE_INTEGER) return TYPE_INTEGER;
       if (lType != TYPE_UNKNOWN) return lType;
       if (rType != TYPE_UNKNOWN) return rType;
+    }
+  }
+
+  // 2. Built-in functions & function calls (sample, sin, cos, pre, etc.)
+  for (const cr of db.ast.getDescendants(exprNode, $.component_reference)) {
+    if (cr != 0) {
+      const sib = db.ast.getNextSibling(cr);
+      if (sib != 0 && (db.ast.getType(sib) == $.function_call_args || db.ast.textEquals(sib, "("))) {
+        if (db.ast.textEquals(cr, "sample") || db.ast.textEquals(cr, "initial") || db.ast.textEquals(cr, "terminal")) {
+          return TYPE_BOOLEAN;
+        }
+        if (
+          db.ast.textEquals(cr, "sin") ||
+          db.ast.textEquals(cr, "cos") ||
+          db.ast.textEquals(cr, "tan") ||
+          db.ast.textEquals(cr, "asin") ||
+          db.ast.textEquals(cr, "acos") ||
+          db.ast.textEquals(cr, "atan") ||
+          db.ast.textEquals(cr, "atan2") ||
+          db.ast.textEquals(cr, "sinh") ||
+          db.ast.textEquals(cr, "cosh") ||
+          db.ast.textEquals(cr, "tanh") ||
+          db.ast.textEquals(cr, "exp") ||
+          db.ast.textEquals(cr, "log") ||
+          db.ast.textEquals(cr, "log10") ||
+          db.ast.textEquals(cr, "sqrt")
+        ) {
+          return TYPE_REAL;
+        }
+        if (
+          db.ast.textEquals(cr, "integer") ||
+          db.ast.textEquals(cr, "floor") ||
+          db.ast.textEquals(cr, "ceil") ||
+          db.ast.textEquals(cr, "div") ||
+          db.ast.textEquals(cr, "mod") ||
+          db.ast.textEquals(cr, "rem")
+        ) {
+          return TYPE_INTEGER;
+        }
+        if (db.ast.textEquals(cr, "Clock")) {
+          return TYPE_CLOCK;
+        }
+        if (db.ast.textEquals(cr, "String")) {
+          return TYPE_STRING;
+        }
+        const fnRet = resolveFunctionReturnType(db, cr, $);
+        if (fnRet != TYPE_UNKNOWN) {
+          return fnRet;
+        }
+      }
+    }
+  }
+
+  // If expression: if ... then ... else ...
+  if (db.ast.startsWith(exprNode, "if") || db.ast.textEquals(exprNode, "if")) {
+    let curr = db.ast.getFirstChild(exprNode);
+    let checkNext = false;
+    while (curr != 0) {
+      if (checkNext) {
+        const branchType = inferExprType(db, curr, $);
+        if (branchType != TYPE_UNKNOWN) return branchType;
+        checkNext = false;
+      }
+      if (db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
+        checkNext = true;
+      }
+      curr = db.ast.getNextSibling(curr);
+    }
+  }
+
+  // Find enclosing class definition for component reference resolution
+  let enclosingClass: u32 = 0;
+  for (const anc of db.ast.getAncestors(exprNode)) {
+    if (db.ast.getType(anc) == $.class_definition) {
+      enclosingClass = anc;
+      break;
     }
   }
 
@@ -167,8 +222,148 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
       return TYPE_CLOCK;
     }
   }
+  // Finally, check descendants for literals if wrapped in modification_expression / expression
+  for (const lit of db.ast.getDescendants(exprNode, $.string_literal)) {
+    if (lit != 0) return TYPE_STRING;
+  }
+  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_real)) {
+    if (lit != 0) return TYPE_REAL;
+  }
+  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_integer)) {
+    if (lit != 0) return TYPE_INTEGER;
+  }
+  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_number)) {
+    if (lit != 0) {
+      for (const r of db.ast.getDescendants(lit, $.unsigned_real)) {
+        if (r != 0) return TYPE_REAL;
+      }
+      return TYPE_INTEGER;
+    }
+  }
 
   return TYPE_UNKNOWN;
+}
+
+/**
+ * Resolves a type identifier (e.g. `Real`, `Concentration`, `Voltage`) to its primitive scalar type:
+ * TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK, or TYPE_UNKNOWN.
+ */
+export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Record<string, u16>): u16 {
+  if (typeNameId == 0) return TYPE_UNKNOWN;
+
+  if (db.ast.textEquals(typeNameId, "Real")) return TYPE_REAL;
+  if (db.ast.textEquals(typeNameId, "Integer")) return TYPE_INTEGER;
+  if (db.ast.textEquals(typeNameId, "Boolean")) return TYPE_BOOLEAN;
+  if (db.ast.textEquals(typeNameId, "String")) return TYPE_STRING;
+  if (db.ast.textEquals(typeNameId, "Clock")) return TYPE_CLOCK;
+
+  const docRoot = db.ast.getRootNode();
+  if (docRoot != 0 && $.short_class_specifier != 0) {
+    for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+      let specName = db.ast.getChildByFieldId(spec, "name");
+      if (specName == 0) {
+        for (const id of db.ast.getDescendants(spec, $.identifier)) {
+          specName = id;
+          break;
+        }
+      }
+      if (specName != 0 && db.ast.textEqualsNode(typeNameId, specName)) {
+        for (const ts of db.ast.getDescendants(spec, $.type_specifier)) {
+          for (const baseId of db.ast.getDescendants(ts, $.identifier)) {
+            const resolved = resolveBasePrimitiveType(db, baseId, $);
+            if (resolved != TYPE_UNKNOWN) return resolved;
+          }
+        }
+      }
+    }
+  }
+
+  return TYPE_UNKNOWN;
+}
+
+/**
+ * Resolves the return type of a function called by name `funcNameNode`.
+ */
+export function resolveFunctionReturnType(db: CodeGraph, funcNameNode: u32, $: Record<string, u16>): u16 {
+  const docRoot = db.ast.getRootNode();
+  if (docRoot == 0) return TYPE_UNKNOWN;
+
+  let funcName = funcNameNode;
+  if (db.ast.getType(funcNameNode) != $.identifier) {
+    for (const id of db.ast.getDescendants(funcNameNode, $.identifier)) {
+      funcName = id;
+      break;
+    }
+  }
+
+  for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+    const cName = db.ast.getChildByFieldId(spec, "name");
+    if (cName != 0 && db.ast.textEqualsNode(funcName, cName)) {
+      let funcClass: u32 = spec;
+      for (const anc of db.ast.getAncestors(spec, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          funcClass = anc;
+          break;
+        }
+      }
+      if (!isClassKind(db, funcClass, "function")) continue;
+
+      // Find output component_clause
+      for (const comp of db.ast.getDescendants(funcClass, $.component_clause)) {
+        if (isDescendantOfInnerClass(db, comp, funcClass, $)) continue;
+        if (hasTypePrefix(db, comp, "output")) {
+          for (const ts of db.ast.getDescendants(comp, $.type_specifier)) {
+            for (const id of db.ast.getDescendants(ts, $.identifier)) {
+              const baseType = resolveBasePrimitiveType(db, id, $);
+              if (baseType != TYPE_UNKNOWN) return baseType;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return TYPE_UNKNOWN;
+}
+
+/**
+ * Checks if a node inside a class/composition is declared in a protected section.
+ */
+export function isElementProtected(db: CodeGraph, node: u32, $: Record<string, u16>): boolean {
+  if (node == 0) return false;
+  let elList: u32 = 0;
+  for (const anc of db.ast.getAncestors(node, 0)) {
+    if ($.element_list != 0 && db.ast.getType(anc) == $.element_list) {
+      elList = anc;
+      break;
+    }
+  }
+  if (elList == 0) return false;
+
+  let comp: u32 = 0;
+  for (const anc of db.ast.getAncestors(elList, 0)) {
+    if ($.composition != 0 && db.ast.getType(anc) == $.composition) {
+      comp = anc;
+      break;
+    }
+  }
+  if (comp == 0) return false;
+
+  let ch = db.ast.getFirstChild(comp);
+  let isProt = false;
+  while (ch != 0) {
+    if (ch == elList) {
+      return isProt;
+    }
+    if (db.ast.textEquals(ch, "protected")) {
+      isProt = true;
+    } else if (db.ast.textEquals(ch, "public")) {
+      isProt = false;
+    }
+    ch = db.ast.getNextSibling(ch);
+  }
+
+  return false;
 }
 
 /**
@@ -192,7 +387,7 @@ export function getExpressionVariability(db: CodeGraph, exprNode: u32, $: Record
   if (exprNode == 0) return VARIABILITY_CONSTANT;
 
   // Check if expression directly references `time` -> Continuous
-  for (const ident of db.ast.getDescendants(exprNode, $.identifier)) {
+  for (const ident of db.ast.getDescendants(exprNode, 0xffff)) {
     if (db.ast.textEquals(ident, "time")) {
       return VARIABILITY_CONTINUOUS;
     }
@@ -350,6 +545,20 @@ export function resolveComponentClassDefinition(
 }
 
 /**
+ * Checks if `node` is inside an array subscript within `limitNode`.
+ */
+export function isDescendantOfSubscript(db: CodeGraph, node: u32, limitNode: u32, $: Record<string, u16>): boolean {
+  for (const anc of db.ast.getAncestors(node, 0)) {
+    if (anc == limitNode) break;
+    const ancType = db.ast.getType(anc);
+    if (($.array_subscripts != 0 && ancType == $.array_subscripts) || ($.subscript != 0 && ancType == $.subscript)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Resolves a potentially dotted component reference (e.g. `x.p1`) starting from `enclosingClass`
  * down to its leaf class definition (e.g. `Pin1`).
  */
@@ -363,9 +572,11 @@ export function resolveDottedComponentClass(
 
   let currClass = enclosingClass;
   for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
-    const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
-    if (nextClass == 0) return 0;
-    currClass = nextClass;
+    if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) {
+      const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
+      if (nextClass == 0) return 0;
+      currClass = nextClass;
+    }
   }
 
   return currClass != enclosingClass ? currClass : 0;
@@ -385,13 +596,15 @@ export function isDottedVariableDeclared(
 
   let idCount: u32 = 0;
   for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
-    if (id != 0) idCount++;
+    if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) idCount++;
   }
   if (idCount == 0) return isVariableDeclaredInClass(db, enclosingClass, compRefNode, $);
 
   if (idCount == 1) {
     for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
-      return isVariableDeclaredInClass(db, enclosingClass, id, $);
+      if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) {
+        return isVariableDeclaredInClass(db, enclosingClass, id, $);
+      }
     }
   }
 
@@ -399,14 +612,16 @@ export function isDottedVariableDeclared(
   let currClass = enclosingClass;
   let idx: u32 = 0;
   for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
-    if (idx == idCount - 1) {
-      // Leaf segment: check declaration in currClass
-      return isVariableDeclaredInClass(db, currClass, id, $);
+    if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) {
+      if (idx == idCount - 1) {
+        // Leaf segment: check declaration in currClass
+        return isVariableDeclaredInClass(db, currClass, id, $);
+      }
+      const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
+      if (nextClass == 0) return false;
+      currClass = nextClass;
+      idx++;
     }
-    const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
-    if (nextClass == 0) return false;
-    currClass = nextClass;
-    idx++;
   }
 
   return true;
@@ -595,13 +810,15 @@ export function getDottedVariableType(
 
   let idCount: u32 = 0;
   for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
-    if (id != 0) idCount++;
+    if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) idCount++;
   }
   if (idCount == 0) return db.runQuery("resolveComponentTypeInClass", enclosingClass, compRefNode) as u16;
 
   if (idCount == 1) {
     for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
-      return db.runQuery("resolveComponentTypeInClass", enclosingClass, id) as u16;
+      if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) {
+        return db.runQuery("resolveComponentTypeInClass", enclosingClass, id) as u16;
+      }
     }
   }
 
@@ -609,13 +826,15 @@ export function getDottedVariableType(
   let currClass = enclosingClass;
   let idx: u32 = 0;
   for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
-    if (idx == idCount - 1) {
-      return db.runQuery("resolveComponentTypeInClass", currClass, id) as u16;
+    if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) {
+      if (idx == idCount - 1) {
+        return db.runQuery("resolveComponentTypeInClass", currClass, id) as u16;
+      }
+      const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
+      if (nextClass == 0) return TYPE_UNKNOWN;
+      currClass = nextClass;
+      idx++;
     }
-    const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
-    if (nextClass == 0) return TYPE_UNKNOWN;
-    currClass = nextClass;
-    idx++;
   }
 
   return TYPE_UNKNOWN;
@@ -657,11 +876,8 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
           }
           if (tsNode != 0) {
             for (const id of db.ast.getDescendants(tsNode, $.identifier)) {
-              if (db.ast.textEquals(id, "Real")) return TYPE_REAL;
-              if (db.ast.textEquals(id, "Integer")) return TYPE_INTEGER;
-              if (db.ast.textEquals(id, "Boolean")) return TYPE_BOOLEAN;
-              if (db.ast.textEquals(id, "String")) return TYPE_STRING;
-              if (db.ast.textEquals(id, "Clock")) return TYPE_CLOCK;
+              const baseType = resolveBasePrimitiveType(db, id, $);
+              if (baseType != TYPE_UNKNOWN) return baseType;
 
               const span = db.ast.getTextSpan(id);
               const nameHash = (db.ast.hashSpan(span) & 0x7fff) as u16;
@@ -669,11 +885,8 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
             }
           }
           for (const id of db.ast.getDescendants(anc, $.identifier)) {
-            if (db.ast.textEquals(id, "Real")) return TYPE_REAL;
-            if (db.ast.textEquals(id, "Integer")) return TYPE_INTEGER;
-            if (db.ast.textEquals(id, "Boolean")) return TYPE_BOOLEAN;
-            if (db.ast.textEquals(id, "String")) return TYPE_STRING;
-            if (db.ast.textEquals(id, "Clock")) return TYPE_CLOCK;
+            const baseType = resolveBasePrimitiveType(db, id, $);
+            if (baseType != TYPE_UNKNOWN) return baseType;
             break;
           }
           break;

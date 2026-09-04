@@ -40,7 +40,7 @@ import { NodeFileSystem } from "./node-filesystem.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
-const { parser } = await createWasmParser(modelicaWasm);
+const { parser, facade } = await createWasmParser(modelicaWasm);
 Context.registerParser(".mo", parser as any);
 
 function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
@@ -191,6 +191,61 @@ function formatSimulationCsv(csvContent: string): string {
 
 function resolveClassName(context: Context, testCase: TestCase): string {
   const baseTestName = testCase.metadata.name.replace(/\.mo$/, "");
+  const index = context.queryEngine.index;
+
+  const getFqn = (sym: any): string => {
+    const parts: string[] = [sym.name];
+    let cur = sym;
+    while (cur.parentId != null && cur.parentId !== cur.id) {
+      const parent = index.symbols.get(cur.parentId);
+      if (!parent || parent.kind !== "Class" || !parent.name) break;
+      parts.unshift(parent.name);
+      cur = parent;
+    }
+    return parts.join(".");
+  };
+
+  // 1. Search symbols declared directly in this test file
+  const fileSymbols = Array.from(index.symbols.values()).filter(
+    (s: any) => s.resourceId === testCase.file && s.kind === "Class",
+  );
+
+  if (fileSymbols.length > 0) {
+    // 0. If expected result explicitly starts with 'class/model/block <Name>', prefer that class
+    const expMatch = testCase.expectedResult?.match(/^\s*(?:class|model|block)\s+([A-Za-z0-9_]+)/m);
+    if (expMatch) {
+      const expName = expMatch[1];
+      const match = fileSymbols.find((s: any) => s.name === expName);
+      if (match) return getFqn(match);
+    }
+
+    // Exact name match on class
+    const exact = fileSymbols.find((s: any) => s.name === testCase.metadata.name || s.name === baseTestName);
+    if (exact) {
+      return getFqn(exact);
+    }
+
+    // Last non-package, non-function model in file
+    const lastNonPkg = [...fileSymbols].reverse().find((s: any) => {
+      const meta = s.metadata as any;
+      return (
+        meta?.classKind !== ModelicaClassKind.PACKAGE &&
+        meta?.classKind !== ModelicaClassKind.FUNCTION &&
+        meta?.classKind !== ModelicaClassKind.TYPE
+      );
+    });
+    if (lastNonPkg) {
+      return getFqn(lastNonPkg);
+    }
+
+    // Last class regardless of kind in this file
+    const lastSym = fileSymbols[fileSymbols.length - 1];
+    if (lastSym) {
+      return getFqn(lastSym);
+    }
+  }
+
+  // 2. Fall back to context.classes strictly excluding predefined/built-in classes
   const userClasses = context.classes.filter(
     (c) =>
       !c.entry?.resourceId?.startsWith("modelscript-") &&
@@ -198,59 +253,30 @@ function resolveClassName(context: Context, testCase: TestCase): string {
       !c.name.startsWith("ModelScript") &&
       c.name !== "Material",
   );
-  const classes = userClasses.length > 0 ? userClasses : context.classes;
 
-  // First, check if the test name matches a class that is NOT a function/package.
-  // If there's a model/class with the exact test name, use it.
-  const exactNonFunc = classes.find(
-    (c) =>
-      (c.name === testCase.metadata.name || c.name === baseTestName) &&
-      c.classKind !== ModelicaClassKind.FUNCTION &&
-      c.classKind !== ModelicaClassKind.PACKAGE,
-  );
-  if (exactNonFunc) {
-    return exactNonFunc.name;
-  }
-
-  // Otherwise, use the last non-function, non-package class (OMC flattens the last model)
-  const lastModel = [...classes]
-    .reverse()
-    .find(
+  if (userClasses.length > 0) {
+    const exact = userClasses.find(
       (c) =>
+        (c.name === testCase.metadata.name || c.name === baseTestName) &&
         c.classKind !== ModelicaClassKind.FUNCTION &&
-        c.classKind !== ModelicaClassKind.PACKAGE &&
-        c.classKind !== ModelicaClassKind.TYPE,
+        c.classKind !== ModelicaClassKind.PACKAGE,
     );
-  if (lastModel?.name) {
-    // For packages with nested models, look inside
-    if (lastModel.classKind === ModelicaClassKind.PACKAGE) {
-      let nestedName: string | null = null;
-      const childIds = lastModel.db?.index?.childrenOf?.get(lastModel.id) || [];
-      for (const childId of childIds) {
-        const entry = lastModel.db?.symbol(childId);
-        if (
-          entry &&
-          entry.kind === "Class" &&
-          (entry.metadata as any)?.classKind !== ModelicaClassKind.PACKAGE &&
-          (entry.metadata as any)?.classKind !== ModelicaClassKind.FUNCTION &&
-          entry.name
-        ) {
-          nestedName = `${lastModel.name}.${entry.name}`;
-        }
-      }
-      return nestedName ?? lastModel.name;
-    }
-    return lastModel.name;
+    if (exact) return exact.name;
+
+    const lastModel = [...userClasses]
+      .reverse()
+      .find(
+        (c) =>
+          c.classKind !== ModelicaClassKind.FUNCTION &&
+          c.classKind !== ModelicaClassKind.PACKAGE &&
+          c.classKind !== ModelicaClassKind.TYPE,
+      );
+    if (lastModel) return lastModel.name;
+
+    return userClasses[userClasses.length - 1]?.name ?? baseTestName;
   }
 
-  // Fallback: if only functions exist, use the test name (which may be the function itself)
-  if (classes.some((c) => c.name === testCase.metadata.name || c.name === baseTestName)) {
-    return classes.find((c) => c.name === testCase.metadata.name || c.name === baseTestName)?.name ?? baseTestName;
-  }
-
-  // Last resort: use the last class regardless of kind
-  const lastClass = classes[classes.length - 1];
-  return lastClass?.name ?? baseTestName;
+  return baseTestName;
 }
 
 function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: boolean, omcMode = false): TestResult {
@@ -568,23 +594,29 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     console.error(`[Worker] Total lints: ${lints.length}`, JSON.stringify(lints, null, 2));
     console.error(`[Worker] Linter took ${Date.now() - t_lint_start}ms`);
 
+    const tree = context.getTree(testCase.file);
+    const cstDiags: any[] = tree && facade ? (facade as any).getDiagnostics(tree.rootNode.id) : [];
+
     let flattenedResult: string | null = null;
     if (arena) {
       // Check for flattener-level error diagnostics and lint errors
-      const hasLintErrors = lints.some((d: Record<string, unknown>) => {
-        if (d.severity !== "error") return false;
-        const lintName = (d.lintName as string) ?? (d.rule as string) ?? "";
-        if (lintName === "unbalanced-model" || lintName === "unbalancedModel") return false;
-        if (d.symbolId != null) {
-          const entry = context.queryEngine.index?.symbols?.get(d.symbolId as number);
-          if (entry && typeof entry.resourceId === "string") {
-            if (entry.resourceId === "modelscript-cas.mo" || entry.resourceId.startsWith("modelscript-")) {
-              return false;
+      const hasCstErrors = cstDiags.some((d: any) => d.severity === 1);
+      const hasLintErrors =
+        hasCstErrors ||
+        lints.some((d: Record<string, unknown>) => {
+          if (d.severity !== "error") return false;
+          const lintName = (d.lintName as string) ?? (d.rule as string) ?? "";
+          if (lintName === "unbalanced-model" || lintName === "unbalancedModel") return false;
+          if (d.symbolId != null) {
+            const entry = context.queryEngine.index?.symbols?.get(d.symbolId as number);
+            if (entry && typeof entry.resourceId === "string") {
+              if (entry.resourceId === "modelscript-cas.mo" || entry.resourceId.startsWith("modelscript-")) {
+                return false;
+              }
             }
           }
-        }
-        return true;
-      });
+          return true;
+        });
       const hasArenaErrors = arena.diagnostics.some((d) => d.severity === "error");
       if (!hasArenaErrors && !hasLintErrors) {
         const out = new StringWriter();
@@ -678,6 +710,24 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
         message: d.message,
         resource: null,
         range,
+      });
+    }
+
+    // CST-level facade diagnostics
+    for (const cd of cstDiags) {
+      if (cd.severity === 2) continue; // skip warnings
+      const sevStr = cd.severity === 1 ? "error" : cd.severity === 2 ? "warning" : "info";
+      diagnostics.push({
+        type: sevStr,
+        code: cd.code,
+        message: cd.message,
+        resource: testCase.file,
+        range: cd.range
+          ? {
+              startPosition: { row: cd.range.start.line, column: cd.range.start.character },
+              endPosition: { row: cd.range.end.line, column: cd.range.end.character },
+            }
+          : null,
       });
     }
 

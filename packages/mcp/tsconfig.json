@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext"],
+    "types": ["node"],
+
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+
+    "strict": false,
+    "verbatimModuleSyntax": false,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/dsl": ["../dsl/dist/index.d.ts"],
+      "@modelscript/dsl/*": ["../dsl/dist/*"],
+      "@modelscript/runtime": ["../runtime/dist/index.d.ts"],
+      "@modelscript/runtime/*.js": ["../runtime/dist/*.d.ts"],
+      "@modelscript/runtime/*": ["../runtime/dist/*.d.ts"],
+      "@modelscript/simulate": ["../simulate/dist/index.d.ts"],
+      "@modelscript/simulate/*": ["../simulate/dist/*"],
+      "@modelscript/exchange": ["../exchange/dist/index.d.ts"],
+      "@modelscript/exchange/*": ["../exchange/dist/*"],
+      "@modelscript/modelica": ["../../languages/modelica/dist/index.d.ts"],
+      "@modelscript/modelica/*": ["../../languages/modelica/dist/*"],
+      "@modelscript/sysml2": ["../../languages/sysml2/src/index.ts"],
+      "@modelscript/sysml2/*": ["../../languages/sysml2/src/*"]
+    }
+  },
+  "include": ["src/**/*"]
+}

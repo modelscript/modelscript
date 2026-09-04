@@ -1,5 +1,11 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
-import { getExpressionVariability, hasTypePrefix, isClassKind, VARIABILITY_CONTINUOUS } from "./helpers.js";
+import {
+  getExpressionVariability,
+  hasTypePrefix,
+  isClassKind,
+  isElementProtected,
+  VARIABILITY_CONTINUOUS,
+} from "./helpers.js";
 
 export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   /**
@@ -89,10 +95,12 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
           if (isClassKind(db, cls, "function")) {
-            const isIO = hasTypePrefix(db, node, "input") || hasTypePrefix(db, node, "output");
-            if (!isIO) {
-              for (const decl of db.ast.getDescendants(node, $.component_declaration)) {
-                db.diagnostic(decl);
+            if (!isElementProtected(db, node, $)) {
+              const isIO = hasTypePrefix(db, node, "input") || hasTypePrefix(db, node, "output");
+              if (!isIO) {
+                for (const decl of db.ast.getDescendants(node, $.component_declaration)) {
+                  db.diagnostic(decl);
+                }
               }
             }
           }
@@ -115,9 +123,11 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
           if (isClassKind(db, cls, "function")) {
-            for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
-              if (db.ast.textEquals(tp, "input") || db.ast.textEquals(tp, "output")) {
-                db.diagnostic(tp);
+            if (isElementProtected(db, node, $)) {
+              for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
+                if (db.ast.textEquals(tp, "input") || db.ast.textEquals(tp, "output")) {
+                  db.diagnostic(tp);
+                }
               }
             }
           }
@@ -134,7 +144,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["when_statement", "when_equation"],
     severity: "error",
     code: 4013,
-    message: () => `Nested when statements are not allowed in Modelica.`,
+    message: () => `Nested when statements are not allowed.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc != node && (db.ast.getType(anc) == $.when_statement || db.ast.getType(anc) == $.when_equation)) {
@@ -272,7 +282,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["connect_equation"],
     severity: "error",
     code: 4023,
-    message: (target) => `connect equation '${target.text}' may not be used inside when-equations.`,
+    message: (target) => `connect may not be used inside when-equations (found ${target.text}).`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.when_equation || db.ast.getType(anc) == $.when_statement) {
@@ -466,7 +476,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4025,
     message: (target) =>
-      `connect equation '${target.text}' may not be used inside if-equations with non-parametric conditions.`,
+      `connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.if_equation) {

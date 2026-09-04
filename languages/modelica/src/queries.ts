@@ -310,11 +310,15 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
 
   const walk = (n: any) => {
     if (!n) return;
-    if (n.type === "ElementModification") {
-      const nameNode = n.childForFieldName("name");
-      const modNode = n.childForFieldName("modification");
-      const finalNode = n.children.find((c: any) => c.type === "final");
-      const eachNode = n.children.find((c: any) => c.type === "each");
+    if (n.type === "ElementModification" || n.type === "element_modification") {
+      const nameNode =
+        n.childForFieldName("name") ??
+        n.children?.find((c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier");
+      const modNode =
+        n.childForFieldName("modification") ??
+        n.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+      const finalNode = n.children?.find((c: any) => c.type === "final");
+      const eachNode = n.children?.find((c: any) => c.type === "each");
 
       const name = nameNode ? nameNode.text : "";
       const nameRange = nameNode ? ([nameNode.startIndex, nameNode.endIndex] as const) : undefined;
@@ -350,20 +354,30 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         evaluationScopeId: scopeId,
       });
       return;
-    } else if (n.type === "ElementRedeclaration" || n.type === "ElementReplaceable") {
+    } else if (
+      n.type === "ElementRedeclaration" ||
+      n.type === "element_redeclaration" ||
+      n.type === "ElementReplaceable" ||
+      n.type === "element_replaceable"
+    ) {
       const extractSubscripts = (arraySubNode: any): any[] | undefined => {
         if (!arraySubNode) return undefined;
         const subs: any[] = [];
         for (const child of arraySubNode.children) {
-          if (child.type !== "Subscript") continue;
-          const flexChild = child.childForFieldName("flexible");
-          if (flexChild) {
+          if (child.type !== "Subscript" && child.type !== "subscript") continue;
+          const flexChild =
+            child.childForFieldName("flexible") ??
+            child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
+          if (flexChild && flexChild.text?.trim() === ":") {
             subs.push({ kind: "flexible" });
             continue;
           }
-          const exprChild = child.childForFieldName("expression");
+          const exprChild =
+            child.childForFieldName("expression") ??
+            child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
+            (child.childCount > 0 ? child.child(0) : null);
           if (exprChild) {
-            if (exprChild.type === "UNSIGNED_INTEGER") {
+            if (exprChild.type === "UNSIGNED_INTEGER" || exprChild.type === "unsigned_integer") {
               subs.push({ kind: "literal", value: parseInt(exprChild.text, 10) });
             } else {
               subs.push({
@@ -885,54 +899,63 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
   const type = node.type;
 
   // Integer literal
-  if (type === "UNSIGNED_INTEGER") {
+  if (type === "UNSIGNED_INTEGER" || type === "unsigned_integer") {
     return parseInt(node.text, 10);
   }
 
   // Parenthesized expression — unwrap
-  if (type === "ParenthesizedExpression") {
-    const inner = node.childForFieldName("expression");
+  if (type === "ParenthesizedExpression" || (type === "primary" && node.child(0)?.text === "(")) {
+    const inner = node.childForFieldName("expression") ?? node.children?.find((c: any) => c.type === "expression");
     return evaluateDimCSTNode(db, self, inner);
   }
 
+  // Primary or Expression wrapper with single child
+  if ((type === "primary" || type === "expression") && node.childCount === 1) {
+    return evaluateDimCSTNode(db, self, node.child(0));
+  }
+
   // Binary expression (a + b, a * b, a - b)
-  if (type === "BinaryExpression") {
-    const op1 = node.childForFieldName("operand1");
-    const op = node.childForFieldName("operator");
-    const op2 = node.childForFieldName("operand2");
-    const left = evaluateDimCSTNode(db, self, op1);
-    const right = evaluateDimCSTNode(db, self, op2);
-    if (left === null || right === null) return null;
-    const opText = op?.text;
-    if (opText === "+") return left + right;
-    if (opText === "-") return left - right;
-    if (opText === "*") return left * right;
-    if (opText === "/") return right !== 0 ? Math.floor(left / right) : null;
-    if (opText === "^") return Math.pow(left, right);
-    return null;
+  if (
+    type === "BinaryExpression" ||
+    (node.childCount === 3 && (node.type === "expression" || node.type === "BinaryExpression"))
+  ) {
+    const rawOp = node.child(1)?.text?.trim() ?? "";
+    const opText = rawOp.replace(/^"|"$/g, "");
+    if (opText === "+" || opText === "-" || opText === "*" || opText === "/" || opText === "^") {
+      const left = evaluateDimCSTNode(db, self, node.child(0));
+      const right = evaluateDimCSTNode(db, self, node.child(2));
+      if (left === null || right === null) return null;
+      if (opText === "+") return left + right;
+      if (opText === "-") return left - right;
+      if (opText === "*") return left * right;
+      if (opText === "/") return right !== 0 ? Math.floor(left / right) : null;
+      if (opText === "^") return Math.pow(left, right);
+      return null;
+    }
   }
 
   // Unary expression (-a, +a)
-  if (type === "UnaryExpression") {
-    const op = node.childForFieldName("operator");
-    const operand = node.childForFieldName("operand");
-    const val = evaluateDimCSTNode(db, self, operand);
+  if (type === "UnaryExpression" || (node.childCount === 2 && node.type === "expression")) {
+    const rawOp = node.child(0)?.text?.trim() ?? "";
+    const op = rawOp.replace(/^"|"$/g, "");
+    const val = evaluateDimCSTNode(db, self, node.child(1));
     if (val === null) return null;
-    return op?.text === "-" ? -val : val;
+    return op === "-" ? -val : val;
   }
 
   // Function call — handle size(), integer(), ndims()
-  if (type === "FunctionCall") {
-    const funcRef = node.childForFieldName("functionReference");
-    const funcName = funcRef?.text;
+  if (type === "FunctionCall" || (type === "primary" && node.child(1)?.type === "function_call_args")) {
+    const funcRef = node.childForFieldName("functionReference") ?? node.child(0);
+    const funcName = funcRef?.text?.trim();
 
     if (funcName === "size") {
       return evaluateDimSizeCall(db, self, node);
     }
     if (funcName === "integer") {
-      // integer(expr) — evaluate the inner expression
-      const args = node.childForFieldName("functionCallArguments");
-      const firstArg = args?.namedChildren?.find((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",");
+      const args = node.childForFieldName("functionCallArguments") ?? node.child(1);
+      const firstArg =
+        args?.namedChildren?.find((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ??
+        args?.children?.find((c: any) => c.type === "expression");
       return evaluateDimCSTNode(db, self, firstArg);
     }
     if (funcName === "ndims") {
@@ -941,21 +964,25 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
     return null;
   }
 
-  // Component reference — resolve to a parameter/constant value
-  if (type === "ComponentReference" || type === "ComponentReferencePart") {
-    const refText = node.text;
+  // Component reference / Name / Identifier
+  if (
+    type === "ComponentReference" ||
+    type === "ComponentReferencePart" ||
+    type === "component_reference" ||
+    type === "Name" ||
+    type === "IDENT" ||
+    type === "name" ||
+    type === "identifier" ||
+    /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(node.text?.trim() ?? "")
+  ) {
+    const refText = node.text?.trim();
     if (!refText) return null;
     return evaluateDimNameRef(db, self, refText);
   }
 
-  // Name — sometimes dimension expressions are just names
-  if (type === "Name" || type === "IDENT") {
-    return evaluateDimNameRef(db, self, node.text);
-  }
-
   // If the node is a simple text that looks like an integer
   if (node.text) {
-    const parsed = parseInt(node.text, 10);
+    const parsed = parseInt(node.text.trim(), 10);
     if (!isNaN(parsed) && String(parsed) === node.text.trim()) return parsed;
   }
 
@@ -1151,7 +1178,7 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
   // Must be a parameter or constant with an integer binding
   if (resolved.kind !== "Component") return null;
   const meta = resolved.metadata as Record<string, unknown>;
-  const variability = meta?.variability;
+  const variability = (meta?.variability as string) ?? db.query<string | null>("variability", resolved.id);
   if (variability !== "parameter" && variability !== "constant") return null;
 
   // Try to read the binding value from the modification
@@ -2006,11 +2033,15 @@ export const componentDeclarationQueries: Record<string, any> = {
     const declNode =
       current?.type === "Declaration" || current?.type === "declaration"
         ? current
-        : current?.childForFieldName("declaration");
-    const modNode = declNode?.childForFieldName("modification");
+        : (current?.childForFieldName("declaration") ??
+          current?.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration"));
+    const modNode =
+      declNode?.childForFieldName("modification") ??
+      declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
   },
+
   /**
    * Check if this component's type is a connector.
    */
@@ -2299,12 +2330,17 @@ export const componentDeclarationQueries: Record<string, any> = {
       > = [];
       for (const child of arraySubNode.children) {
         if (child.type !== "Subscript" && child.type !== "subscript") continue;
-        const flexChild = child.childForFieldName("flexible");
-        if (flexChild) {
+        const flexChild =
+          child.childForFieldName("flexible") ??
+          child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
+        if (flexChild && flexChild.text?.trim() === ":") {
           subs.push({ kind: "flexible" });
           continue;
         }
-        const exprChild = child.childForFieldName("expression");
+        const exprChild =
+          child.childForFieldName("expression") ??
+          child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
+          (child.childCount > 0 ? child.child(0) : null);
         if (exprChild) {
           const num = parseInt(exprChild.text, 10);
           if (!isNaN(num) && String(num) === exprChild.text.trim()) {
@@ -2319,6 +2355,7 @@ export const componentDeclarationQueries: Record<string, any> = {
           continue;
         }
       }
+
       return subs;
     };
 

@@ -1,0 +1,418 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Unified Diagram API dispatch layer.
+// Routes diagram requests to language-specific backends (Modelica / SysML2)
+// based on the document URI. This replaces the per-method if-branching that
+// was previously scattered across 12 handlers in browserServerMain.ts.
+
+import {
+  buildComponentProperties,
+  buildDiagramData,
+  computeComponentInsert,
+  computeComponentsDelete,
+  computeConnectInsert,
+  computeConnectRemove,
+  computeDescriptionEdit,
+  computeEdgePointEdits,
+  computeNameEdit,
+  computeParameterEdit,
+  computePlacementEdits,
+  deduplicateAndSort,
+} from "@modelscript/modelica/diagram";
+import type { TextEdit } from "vscode-languageserver";
+import type {
+  ComponentPropertyData,
+  DiagramApplyEditsParams,
+  DiagramApplyEditsResult,
+  DiagramData,
+  DiagramGetComponentPropertiesParams,
+  DiagramGetDataParams,
+} from "./diagramProtocol.js";
+
+// ── Backend Interface ──
+
+/**
+ * Language-specific diagram backend. Each language (Modelica, SysML2)
+ * implements this interface to handle diagram data generation and editing.
+ */
+export interface DiagramBackend {
+  /** Build diagram data for a class/document */
+  getData(params: DiagramGetDataParams): Promise<DiagramData | null> | DiagramData | null;
+
+  /** Get component properties on-demand */
+  getComponentProperties(
+    params: DiagramGetComponentPropertiesParams,
+  ): Promise<ComponentPropertyData | null> | ComponentPropertyData | null;
+
+  /** Apply a batch of edit actions, returning a unified result */
+  applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> | DiagramApplyEditsResult;
+}
+
+// ── Modelica Backend ──
+
+export interface ModelicaBackendDeps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getDocumentInstances: (uri: string) => any[] | undefined;
+  getDocumentText: (uri: string) => string | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolveClassInstance: (uri: string, className?: string) => any | null;
+  flushValidation: (uri: string) => Promise<void>;
+}
+
+export class ModelicaDiagramBackend implements DiagramBackend {
+  constructor(private readonly deps: ModelicaBackendDeps) {}
+
+  async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+    const classInstance = this.deps.resolveClassInstance(params.uri, params.className);
+    if (!classInstance) return null;
+
+    try {
+      return await buildDiagramData(classInstance);
+    } catch (e: unknown) {
+      console.error(`[diagram] Error building diagram data: ${e}`);
+      return null;
+    }
+  }
+
+  getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
+    const classInstance = this.deps.resolveClassInstance(params.uri, params.className);
+    if (!classInstance) return null;
+
+    try {
+      return buildComponentProperties(classInstance, params.componentName);
+    } catch (e: unknown) {
+      console.error(`[diagram] Error building component properties: ${e}`);
+      return null;
+    }
+  }
+
+  async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+    await this.deps.flushValidation(params.uri);
+    const instances = this.deps.getDocumentInstances(params.uri);
+    const docText = this.deps.getDocumentText(params.uri);
+    if (!instances?.[0] || !docText) {
+      return { seq: params.seq, edits: [], renderHint: "none" };
+    }
+
+    return processDiagramEditBatch(params, instances[0], docText);
+  }
+}
+
+// ── SysML2 Backend ──
+
+export interface SysML2BackendDeps {
+  getDocumentText: (uri: string) => string | undefined;
+  getLayout: (uri: string) => import("@modelscript/sysml2/diagram").SysML2Layout | undefined;
+  setLayout: (uri: string, layout: import("@modelscript/sysml2/diagram").SysML2Layout) => void;
+  createEmptyLayout: () => import("@modelscript/sysml2/diagram").SysML2Layout;
+  updateElementPositions: (
+    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
+    items: { name: string; x: number; y: number; width: number; height: number; rotation?: number }[],
+  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
+  updateConnectionVertices: (
+    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
+    updates: { id: string; vertices: { x: number; y: number }[] }[],
+  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
+  removeElements: (
+    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
+    names: string[],
+  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  buildDiagramData: (params: DiagramGetDataParams) => any;
+  getSysML2Parser: () => { parse: (text: string) => unknown } | null;
+  computeConnectionInsert: (text: string, source: string, target: string) => TextEdit[];
+  computeConnectionDelete: (text: string, source: string, target: string) => TextEdit[];
+  computeElementInsert: (text: string, elementType: string, name: string) => TextEdit[];
+  computeElementDelete: (text: string, names: string[]) => TextEdit[];
+  generateUniqueName: (text: string, baseName: string) => string;
+  computeNameEdit: (tree: unknown, text: string, oldName: string, newName: string) => TextEdit[];
+  computeDescriptionEdit: (tree: unknown, text: string, name: string, desc: string) => TextEdit[];
+  computeParameterEdit: (tree: unknown, text: string, name: string, param: string, value: string) => TextEdit[];
+  /** Query symbol data from the unified index for the component properties panel. */
+  getSymbolData?: (
+    uri: string,
+    componentName: string,
+  ) => {
+    ruleName: string;
+    name: string;
+    description?: string;
+    children?: { name: string; ruleName: string; value?: string; description?: string; direction?: string }[];
+  } | null;
+}
+
+export class SysML2DiagramBackend implements DiagramBackend {
+  constructor(private readonly deps: SysML2BackendDeps) {}
+
+  getData(params: DiagramGetDataParams): DiagramData | null {
+    return this.deps.buildDiagramData(params);
+  }
+
+  getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
+    if (!this.deps.getSymbolData) return null;
+    const data = this.deps.getSymbolData(params.uri, params.componentName);
+    if (!data) return null;
+
+    // Build parameters from child attribute/usage entries
+    const parameters: ComponentPropertyData["parameters"] = [];
+    if (data.children) {
+      for (const child of data.children) {
+        // Only show attribute-like children as parameters
+        if (
+          child.ruleName.includes("Attribute") ||
+          child.ruleName.includes("Usage") ||
+          child.ruleName.includes("Port")
+        ) {
+          parameters.push({
+            name: child.name,
+            value: child.value ?? "",
+            description: child.description,
+          });
+        }
+      }
+    }
+
+    return {
+      className: data.ruleName.replace(/(Definition|Usage)$/, ""),
+      name: data.name,
+      description: data.description ?? "",
+      parameters,
+    };
+  }
+
+  applyEdits(params: DiagramApplyEditsParams): DiagramApplyEditsResult {
+    const docText = this.deps.getDocumentText(params.uri);
+    if (!docText) return { seq: params.seq, edits: [], renderHint: "none" };
+
+    const allEdits: TextEdit[] = [];
+    let needsRender: "none" | "immediate" | "debounced" = "none";
+    let layout = this.deps.getLayout(params.uri) ?? this.deps.createEmptyLayout();
+
+    try {
+      for (const action of params.actions) {
+        switch (action.type) {
+          case "move":
+            layout = this.deps.updateElementPositions(layout, action.items);
+            if (action.items.some((i) => i.edges)) {
+              const edgeUpdates: { id: string; vertices: { x: number; y: number }[] }[] = [];
+              for (const i of action.items) {
+                if (i.edges) {
+                  for (const e of i.edges) edgeUpdates.push({ id: `${e.source}→${e.target}`, vertices: e.points });
+                }
+              }
+              if (edgeUpdates.length > 0) layout = this.deps.updateConnectionVertices(layout, edgeUpdates);
+            }
+            break;
+          case "resize":
+          case "rotate":
+            layout = this.deps.updateElementPositions(layout, [action.item]);
+            break;
+          case "connect":
+            allEdits.push(...this.deps.computeConnectionInsert(docText, action.source, action.target));
+            if (action.points && action.points.length > 0) {
+              layout = this.deps.updateConnectionVertices(layout, [
+                { id: `${action.source}→${action.target}`, vertices: action.points },
+              ]);
+            }
+            needsRender = "immediate";
+            break;
+          case "disconnect":
+            allEdits.push(...this.deps.computeConnectionDelete(docText, action.source, action.target));
+            needsRender = "immediate";
+            break;
+          case "moveEdge":
+            layout = this.deps.updateConnectionVertices(
+              layout,
+              action.edges.map((e) => ({ id: `${e.source}→${e.target}`, vertices: e.points })),
+            );
+            break;
+          case "deleteComponents":
+            allEdits.push(...this.deps.computeElementDelete(docText, action.names));
+            layout = this.deps.removeElements(layout, action.names);
+            needsRender = "immediate";
+            break;
+          case "updateName": {
+            const parser = this.deps.getSysML2Parser();
+            if (parser) {
+              const tree = parser.parse(docText);
+              allEdits.push(...this.deps.computeNameEdit(tree, docText, action.oldName, action.newName));
+            }
+            needsRender = "debounced";
+            break;
+          }
+          case "updateDescription": {
+            const parser = this.deps.getSysML2Parser();
+            if (parser) {
+              const tree = parser.parse(docText);
+              allEdits.push(...this.deps.computeDescriptionEdit(tree, docText, action.name, action.description));
+            }
+            needsRender = "debounced";
+            break;
+          }
+          case "updateParameter": {
+            const parser = this.deps.getSysML2Parser();
+            if (parser) {
+              const tree = parser.parse(docText);
+              allEdits.push(
+                ...this.deps.computeParameterEdit(tree, docText, action.name, action.parameter, action.value),
+              );
+            }
+            needsRender = "debounced";
+            break;
+          }
+          case "addComponent": {
+            const elementType = action.className;
+            const baseParts = elementType.replace("Definition", "").replace("Usage", "");
+            const baseName = baseParts.charAt(0).toLowerCase() + baseParts.slice(1);
+            const uniqueName = this.deps.generateUniqueName(docText, baseName);
+            allEdits.push(...this.deps.computeElementInsert(docText, elementType, uniqueName));
+            // Store position in layout
+            layout = this.deps.updateElementPositions(layout, [
+              {
+                name: uniqueName,
+                x: Math.round(action.x),
+                y: Math.round(action.y),
+                width: 180,
+                height: 60,
+              },
+            ]);
+            needsRender = "immediate";
+            break;
+          }
+        }
+      }
+      this.deps.setLayout(params.uri, layout);
+    } catch (e) {
+      console.error("[sysml2-diagram] diagramEdit error:", e);
+    }
+
+    return {
+      seq: params.seq,
+      edits: deduplicateAndSort(allEdits),
+      renderHint: needsRender,
+    };
+  }
+}
+
+// ── Dispatch Factory ──
+
+export interface DiagramDispatchDeps {
+  modelica: DiagramBackend;
+  sysml2: DiagramBackend;
+  customBackends?: Map<string | RegExp, DiagramBackend>;
+}
+
+/**
+ * Creates a dispatch object that routes diagram requests to the
+ * appropriate language backend based on the document URI.
+ */
+export function createDiagramDispatch(backends: DiagramDispatchDeps) {
+  const custom = backends.customBackends ?? new Map<string | RegExp, DiagramBackend>();
+
+  function getBackend(uri: string): DiagramBackend {
+    for (const [matcher, backend] of custom.entries()) {
+      if (typeof matcher === "string" && uri.endsWith(matcher)) return backend;
+      if (matcher instanceof RegExp && matcher.test(uri)) return backend;
+    }
+    return uri.endsWith(".sysml") ? backends.sysml2 : backends.modelica;
+  }
+
+  return {
+    getBackend,
+    registerBackend(matcher: string | RegExp, backend: DiagramBackend) {
+      custom.set(matcher, backend);
+    },
+
+    async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+      return await getBackend(params.uri).getData(params);
+    },
+
+    async getComponentProperties(params: DiagramGetComponentPropertiesParams): Promise<ComponentPropertyData | null> {
+      return await getBackend(params.uri).getComponentProperties(params);
+    },
+
+    async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+      return await getBackend(params.uri).applyEdits(params);
+    },
+  };
+}
+
+// ── Modelica Batch Processor (preserved for backward compat) ──
+
+export function processDiagramEditBatch(
+  request: DiagramApplyEditsParams,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  classInstance: any,
+  docText: string,
+): DiagramApplyEditsResult {
+  const allEdits: TextEdit[] = [];
+  let needsRender: "none" | "immediate" | "debounced" = "none";
+
+  for (const action of request.actions) {
+    switch (action.type) {
+      case "move":
+        allEdits.push(...computePlacementEdits(docText, classInstance, action.items));
+        if (needsRender === "none") needsRender = "none"; // spatial
+        break;
+      case "resize":
+      case "rotate":
+        allEdits.push(...computePlacementEdits(docText, classInstance, [action.item]));
+        if (needsRender === "none") needsRender = "none"; // spatial
+        break;
+      case "moveEdge":
+        {
+          const lines = docText.split("\n");
+          allEdits.push(...computeEdgePointEdits(lines, classInstance, action.edges));
+        }
+        if (needsRender === "none") needsRender = "none"; // spatial
+        break;
+      case "connect":
+        allEdits.push(...computeConnectInsert(docText, classInstance, action.source, action.target, action.points));
+        needsRender = "immediate";
+        break;
+      case "disconnect":
+        allEdits.push(...computeConnectRemove(docText, classInstance, action.source, action.target));
+        needsRender = "immediate";
+        break;
+      case "addComponent": {
+        const baseName = action.className.split(".").pop() || "comp";
+        let uniqueName = baseName + "1";
+        let counter = 1;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existingNames = new Set(Array.from(classInstance.components).map((c: any) => c.name));
+        while (existingNames.has(uniqueName)) {
+          counter++;
+          uniqueName = baseName + counter;
+        }
+        allEdits.push(
+          ...computeComponentInsert(classInstance, action.className, uniqueName, action.x, action.y, docText),
+        );
+        needsRender = "immediate";
+        break;
+      }
+      case "deleteComponents":
+        allEdits.push(...computeComponentsDelete(docText, classInstance, action.names));
+        needsRender = "immediate";
+        break;
+      case "updateName":
+        allEdits.push(...computeNameEdit(classInstance, action.oldName, action.newName));
+        needsRender = "debounced";
+        break;
+      case "updateDescription":
+        allEdits.push(...computeDescriptionEdit(docText, classInstance, action.name, action.description));
+        needsRender = "debounced";
+        break;
+      case "updateParameter":
+        allEdits.push(...computeParameterEdit(classInstance, action.name, action.parameter, action.value));
+        // Parameter edits are treated as optimistic — the webview patches the
+        // diagram text in-place without a full re-render.
+        if (needsRender === "none") needsRender = "none";
+        break;
+    }
+  }
+
+  return {
+    seq: request.seq,
+    edits: deduplicateAndSort(allEdits),
+    renderHint: needsRender,
+  };
+}

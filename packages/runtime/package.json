@@ -1,0 +1,77 @@
+{
+  "name": "@modelscript/runtime",
+  "version": "0.0.18",
+  "description": "High-performance WebAssembly data-oriented DAE arena, memoized Salsa queries, and structural solvers for ModelScript",
+  "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./dae": {
+      "types": "./dist/wasm_dae.d.ts",
+      "default": "./dist/wasm_dae.js"
+    },
+    "./dae-printer": {
+      "types": "./dist/wasm_dae_printer.d.ts",
+      "default": "./dist/wasm_dae_printer.js"
+    },
+    "./workspace": {
+      "types": "./dist/wasm_workspace.d.ts",
+      "default": "./dist/wasm_workspace.js"
+    },
+    "./query-engine": {
+      "types": "./dist/wasm_query_engine.d.ts",
+      "default": "./dist/wasm_query_engine.js"
+    },
+    "./solvers": {
+      "types": "./dist/solvers_bridge.d.ts",
+      "default": "./dist/solvers_bridge.js"
+    },
+    "./evaluator": {
+      "types": "./dist/wasm_evaluator.d.ts",
+      "default": "./dist/wasm_evaluator.js"
+    },
+    "./init": {
+      "types": "./dist/wasm_init.d.ts",
+      "default": "./dist/wasm_init.js"
+    },
+    "./tape": {
+      "types": "./dist/wasm_tape.d.ts",
+      "default": "./dist/wasm_tape.js"
+    },
+    "./verifier": {
+      "types": "./dist/wasm_verifier.d.ts",
+      "default": "./dist/wasm_verifier.js"
+    },
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "asbuild": "npm run asbuild:debug && npm run asbuild:release",
+    "asbuild:debug": "asc assembly/index.ts --target debug",
+    "asbuild:release": "asc assembly/index.ts --target release",
+    "build": "npm run clean && npm run asbuild && tsc",
+    "clean": "rimraf dist build",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "assemblyscript": "^0.27.36",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

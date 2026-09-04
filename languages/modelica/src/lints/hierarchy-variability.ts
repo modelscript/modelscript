@@ -5,6 +5,12 @@ import {
   isDottedVariableDeclared,
   isTopLevelClassName,
   isVariableDeclaredInClass,
+  resolveBasePrimitiveType,
+  resolveComponentClassDefinition,
+  TYPE_BOOLEAN,
+  TYPE_INTEGER,
+  TYPE_REAL,
+  TYPE_STRING,
   VARIABILITY_CONTINUOUS,
 } from "./helpers.js";
 
@@ -39,17 +45,55 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(rootId, "spatialDistribution") ||
         db.ast.textEquals(rootId, "homotopy") ||
         db.ast.textEquals(rootId, "semiLinear") ||
+        db.ast.textEquals(rootId, "delay") ||
+        db.ast.textEquals(rootId, "cardinality") ||
+        db.ast.textEquals(rootId, "smooth") ||
         db.ast.textEquals(rootId, "sin") ||
         db.ast.textEquals(rootId, "cos") ||
         db.ast.textEquals(rootId, "tan") ||
         db.ast.textEquals(rootId, "asin") ||
         db.ast.textEquals(rootId, "acos") ||
         db.ast.textEquals(rootId, "atan") ||
+        db.ast.textEquals(rootId, "atan2") ||
         db.ast.textEquals(rootId, "sinh") ||
         db.ast.textEquals(rootId, "cosh") ||
         db.ast.textEquals(rootId, "tanh") ||
         db.ast.textEquals(rootId, "exp") ||
-        db.ast.textEquals(rootId, "log")
+        db.ast.textEquals(rootId, "log") ||
+        db.ast.textEquals(rootId, "log10") ||
+        db.ast.textEquals(rootId, "sqrt") ||
+        db.ast.textEquals(rootId, "abs") ||
+        db.ast.textEquals(rootId, "sign") ||
+        db.ast.textEquals(rootId, "floor") ||
+        db.ast.textEquals(rootId, "ceil") ||
+        db.ast.textEquals(rootId, "integer") ||
+        db.ast.textEquals(rootId, "div") ||
+        db.ast.textEquals(rootId, "mod") ||
+        db.ast.textEquals(rootId, "rem") ||
+        db.ast.textEquals(rootId, "sum") ||
+        db.ast.textEquals(rootId, "product") ||
+        db.ast.textEquals(rootId, "min") ||
+        db.ast.textEquals(rootId, "max") ||
+        db.ast.textEquals(rootId, "size") ||
+        db.ast.textEquals(rootId, "ndims") ||
+        db.ast.textEquals(rootId, "cat") ||
+        db.ast.textEquals(rootId, "linspace") ||
+        db.ast.textEquals(rootId, "cross") ||
+        db.ast.textEquals(rootId, "skew") ||
+        db.ast.textEquals(rootId, "outerProduct") ||
+        db.ast.textEquals(rootId, "symmetric") ||
+        db.ast.textEquals(rootId, "subMatrix") ||
+        db.ast.textEquals(rootId, "vector") ||
+        db.ast.textEquals(rootId, "matrix") ||
+        db.ast.textEquals(rootId, "scalar") ||
+        db.ast.textEquals(rootId, "pre") ||
+        db.ast.textEquals(rootId, "change") ||
+        db.ast.textEquals(rootId, "edge") ||
+        db.ast.textEquals(rootId, "fill") ||
+        db.ast.textEquals(rootId, "zeros") ||
+        db.ast.textEquals(rootId, "ones") ||
+        db.ast.textEquals(rootId, "identity") ||
+        db.ast.textEquals(rootId, "diagonal")
       ) {
         return;
       }
@@ -62,6 +106,27 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         }
       }
       if (enclosingClass == 0) return;
+
+      // Check if rootId is defined as an iterator variable in an enclosing for-loop or comprehension
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == enclosingClass) break;
+        const ancType = db.ast.getType(anc);
+        if (
+          ($.for_equation != 0 && ancType == $.for_equation) ||
+          ($.for_statement != 0 && ancType == $.for_statement) ||
+          ($.function_arguments != 0 && ancType == $.function_arguments) ||
+          ($.array_arguments != 0 && ancType == $.array_arguments)
+        ) {
+          if ($.for_index != 0) {
+            for (const fi of db.ast.getDescendants(anc, $.for_index)) {
+              for (const id of db.ast.getDescendants(fi, $.identifier)) {
+                if (db.ast.textEqualsNode(id, rootId)) return;
+                break;
+              }
+            }
+          }
+        }
+      }
 
       let currClass = enclosingClass;
       while (currClass != 0) {
@@ -196,6 +261,16 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const seenMods = db.set.create();
       for (const mod of db.ast.getDescendants(node, $.element_modification)) {
+        let isNested = false;
+        for (const anc of db.ast.getAncestors(mod, 0)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.class_modification) {
+            isNested = true;
+            break;
+          }
+        }
+        if (isNested) continue;
+
         let idNode: u32 = 0;
         for (const name of db.ast.getDescendants(mod, $.name)) {
           idNode = name;
@@ -203,6 +278,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         }
         const targetNode = idNode != 0 ? idNode : mod;
         const span = db.ast.getTextSpan(targetNode);
+        if (!span) continue;
         const hash = db.hash.span64(span);
         if (db.set.has(seenMods, hash)) {
           db.diagnostic(targetNode);
@@ -485,8 +561,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         break;
       }
 
-      // Check primitive types
-      if (db.ast.textEquals(baseTypeId, "Real")) {
+      // Check primitive or derived primitive types
+      const primType = resolveBasePrimitiveType(db, baseTypeId, $);
+      if (primType == TYPE_REAL) {
         if (
           !db.ast.textEquals(nameNode, "start") &&
           !db.ast.textEquals(nameNode, "fixed") &&
@@ -504,7 +581,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
-      if (db.ast.textEquals(baseTypeId, "Integer")) {
+      if (primType == TYPE_INTEGER) {
         if (
           !db.ast.textEquals(nameNode, "start") &&
           !db.ast.textEquals(nameNode, "fixed") &&
@@ -517,7 +594,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
-      if (db.ast.textEquals(baseTypeId, "Boolean")) {
+      if (primType == TYPE_BOOLEAN) {
         if (
           !db.ast.textEquals(nameNode, "start") &&
           !db.ast.textEquals(nameNode, "fixed") &&
@@ -528,7 +605,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
-      if (db.ast.textEquals(baseTypeId, "String")) {
+      if (primType == TYPE_STRING) {
         if (!db.ast.textEquals(nameNode, "start") && !db.ast.textEquals(nameNode, "quantity")) {
           db.diagnostic(nameNode, baseTypeId);
         }
@@ -538,6 +615,48 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       // Check user-defined classes in document root
       const docRoot = db.ast.getRootNode();
       if (docRoot == 0) return;
+
+      // Check if this element_modification is nested inside an outer element_modification
+      let outerMod: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == parentDecl) break;
+        if (anc != node && db.ast.getType(anc) == $.element_modification) {
+          outerMod = anc;
+          break;
+        }
+      }
+
+      if (outerMod != 0) {
+        let outerName: u32 = 0;
+        for (const n of db.ast.getDescendants(outerMod, $.name)) {
+          outerName = n;
+          break;
+        }
+        if (outerName != 0) {
+          let targetClass: u32 = 0;
+          for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+            const cName = db.ast.getChildByFieldId(spec, "name");
+            if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
+              for (const anc of db.ast.getAncestors(spec, 0)) {
+                if (db.ast.getType(anc) == $.class_definition) {
+                  targetClass = anc;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+          if (targetClass != 0) {
+            const resolvedClass = resolveComponentClassDefinition(db, targetClass, outerName, $);
+            if (resolvedClass != 0) {
+              if (!isVariableDeclaredInClass(db, resolvedClass, nameNode, $)) {
+                db.diagnostic(nameNode, outerName);
+              }
+              return;
+            }
+          }
+        }
+      }
 
       for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
         const cName = db.ast.getChildByFieldId(spec, "name");

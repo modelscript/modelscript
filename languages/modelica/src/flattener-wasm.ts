@@ -620,7 +620,7 @@ export class ModelicaFlattener {
         let rhsNode = lhsNode != 0 ? getNodeNextSibling(lhsNode) : 0;
         let lhsExpr = this.exprVisitor.visit(lhsNode);
         let rhsExpr = this.exprVisitor.visit(rhsNode);
-        this.dae.addEquation(EqKind.Simple, lhsExpr, rhsExpr, FLAG_EQ_INITIAL);
+        this.dae.addEquation(EqKind.InitialSimple, lhsExpr, rhsExpr, FLAG_EQ_INITIAL);
       }
       eqNode = getNodeNextSibling(eqNode);
     }

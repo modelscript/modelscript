@@ -6,6 +6,7 @@ import {
   inferExprType,
   inferExprUnit,
   isTypeCompatible,
+  resolveBasePrimitiveType,
   TYPE_BOOLEAN,
   TYPE_CLOCK,
   TYPE_INTEGER,
@@ -41,10 +42,42 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       }
       if (expectedType == TYPE_UNKNOWN) return;
 
+      // Find the declaration node under component_declaration
+      let declNode: u32 = 0;
+      for (const d of db.ast.getDescendants(node, $.declaration)) {
+        declNode = d;
+        break;
+      }
+      if (declNode == 0) return;
+
+      // Find modification inside declaration
+      let modNode: u32 = 0;
+      for (const m of db.ast.getDescendants(declNode, $.modification)) {
+        modNode = m;
+        break;
+      }
+      // If there is no modification on this declaration, there is no binding equation to check
+      if (modNode == 0) return;
+
       if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER || expectedType == TYPE_BOOLEAN) {
-        let foundStr = false;
         if ($.string_literal != 0) {
-          for (const str of db.ast.getDescendants(node, $.string_literal)) {
+          for (const str of db.ast.getDescendants(modNode, $.string_literal)) {
+            let isDesc = false;
+            for (const anc of db.ast.getAncestors(str)) {
+              if (anc == node) break;
+              const t = db.ast.getType(anc);
+              if (
+                ($.description != 0 && t == $.description) ||
+                ($.description_string != 0 && t == $.description_string) ||
+                ($.comment != 0 && t == $.comment) ||
+                ($.string_comment != 0 && t == $.string_comment)
+              ) {
+                isDesc = true;
+                break;
+              }
+            }
+            if (isDesc) continue;
+
             let isAttrMod = false;
             for (const anc of db.ast.getAncestors(str)) {
               if (anc == node) break;
@@ -64,44 +97,54 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             }
             if (!isAttrMod) {
               db.diagnostic(str);
-              foundStr = true;
-              break;
-            }
-          }
-        }
-        if (!foundStr) {
-          for (const d of db.ast.getDescendants(node)) {
-            if (db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'))) {
-              let isAttrMod = false;
-              for (const anc of db.ast.getAncestors(d)) {
-                if (anc == node) break;
-                if (db.ast.getType(anc) == $.element_modification) {
-                  for (const id of db.ast.getDescendants(anc, $.identifier)) {
-                    if (
-                      db.ast.textEquals(id, "unit") ||
-                      db.ast.textEquals(id, "displayUnit") ||
-                      db.ast.textEquals(id, "quantity")
-                    ) {
-                      isAttrMod = true;
-                      break;
-                    }
-                  }
-                  break;
-                }
-              }
-              if (!isAttrMod) {
-                db.diagnostic(d);
-                break;
-              }
+              return;
             }
           }
         }
       } else if (expectedType == TYPE_STRING) {
-        for (const num of db.ast.getDescendants(node, $.unsigned_real)) {
-          db.diagnostic(num);
+        if ($.unsigned_real != 0) {
+          for (const num of db.ast.getDescendants(modNode, $.unsigned_real)) {
+            let isDesc = false;
+            for (const anc of db.ast.getAncestors(num)) {
+              if (anc == node) break;
+              const t = db.ast.getType(anc);
+              if (
+                ($.description != 0 && t == $.description) ||
+                ($.description_string != 0 && t == $.description_string) ||
+                ($.comment != 0 && t == $.comment) ||
+                ($.string_comment != 0 && t == $.string_comment)
+              ) {
+                isDesc = true;
+                break;
+              }
+            }
+            if (!isDesc) {
+              db.diagnostic(num);
+              return;
+            }
+          }
         }
-        for (const num of db.ast.getDescendants(node, $.unsigned_integer)) {
-          db.diagnostic(num);
+        if ($.unsigned_integer != 0) {
+          for (const num of db.ast.getDescendants(modNode, $.unsigned_integer)) {
+            let isDesc = false;
+            for (const anc of db.ast.getAncestors(num)) {
+              if (anc == node) break;
+              const t = db.ast.getType(anc);
+              if (
+                ($.description != 0 && t == $.description) ||
+                ($.description_string != 0 && t == $.description_string) ||
+                ($.comment != 0 && t == $.comment) ||
+                ($.string_comment != 0 && t == $.string_comment)
+              ) {
+                isDesc = true;
+                break;
+              }
+            }
+            if (!isDesc) {
+              db.diagnostic(num);
+              return;
+            }
+          }
         }
       }
     },
@@ -113,7 +156,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   typeMismatchModification: {
     nodes: ["element_modification"],
     severity: "error",
-    code: 3001,
+    code: 3002,
     message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let nameNode: u32 = 0;
@@ -154,8 +197,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
 
       let expectedType: u16 = TYPE_UNKNOWN;
 
-      // 1. Primitive types
-      if (db.ast.textEquals(baseTypeId, "Real")) {
+      // 1. Primitive or derived primitive types
+      const basePrim = resolveBasePrimitiveType(db, baseTypeId, $);
+      if (basePrim == TYPE_REAL) {
         if (
           db.ast.textEquals(nameNode, "start") ||
           db.ast.textEquals(nameNode, "min") ||
@@ -172,7 +216,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         ) {
           expectedType = TYPE_STRING;
         }
-      } else if (db.ast.textEquals(baseTypeId, "Integer")) {
+      } else if (basePrim == TYPE_INTEGER) {
         if (
           db.ast.textEquals(nameNode, "start") ||
           db.ast.textEquals(nameNode, "min") ||
@@ -184,13 +228,13 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         } else if (db.ast.textEquals(nameNode, "quantity")) {
           expectedType = TYPE_STRING;
         }
-      } else if (db.ast.textEquals(baseTypeId, "Boolean")) {
+      } else if (basePrim == TYPE_BOOLEAN) {
         if (db.ast.textEquals(nameNode, "start") || db.ast.textEquals(nameNode, "fixed")) {
           expectedType = TYPE_BOOLEAN;
         } else if (db.ast.textEquals(nameNode, "quantity")) {
           expectedType = TYPE_STRING;
         }
-      } else if (db.ast.textEquals(baseTypeId, "String")) {
+      } else if (basePrim == TYPE_STRING) {
         if (db.ast.textEquals(nameNode, "start") || db.ast.textEquals(nameNode, "quantity")) {
           expectedType = TYPE_STRING;
         }
@@ -351,7 +395,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   arrayElementTypeMismatch: {
     nodes: ["component_declaration", "component_declaration1"],
     severity: "error",
-    code: 3001,
+    code: 3015,
     message: (target) => `Array element type mismatch in '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let arrayArgs: u32 = 0;
@@ -436,10 +480,14 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5005,
     message: (target) => `Division by literal zero in '${target.text}'.`,
     query: (db: CodeGraph, node: u32) => {
+      const leftChild = db.ast.getChildByFieldId(node, "left");
       const rightChild = db.ast.getChildByFieldId(node, "right");
-      if (rightChild != 0) {
-        if (db.ast.textEquals(rightChild, "0") || db.ast.textEquals(rightChild, "0.0")) {
-          db.diagnostic(rightChild);
+      if (leftChild != 0 && rightChild != 0) {
+        const op = db.ast.getBinaryOp(leftChild, rightChild);
+        if (op === 3 || op === 8) {
+          if (db.ast.textEquals(rightChild, "0") || db.ast.textEquals(rightChild, "0.0")) {
+            db.diagnostic(rightChild);
+          }
         }
       }
     },

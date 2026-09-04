@@ -1,0 +1,52 @@
+{
+  "name": "@modelscript/mcp",
+  "version": "0.0.18",
+  "description": "Model Context Protocol (MCP) server, tools, and resources for ModelScript",
+  "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./main": {
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    },
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "modelscript-mcp": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelscript/dsl": "*",
+    "@modelscript/exchange": "*",
+    "@modelscript/modelica": "*",
+    "@modelscript/runtime": "*",
+    "@modelscript/simulate": "*",
+    "@modelscript/sysml2": "*",
+    "tree-sitter": "^0.21.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

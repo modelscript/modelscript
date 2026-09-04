@@ -1,0 +1,1286 @@
+/* eslint-disable */
+// @ts-nocheck
+// True CodeGraph Incremental Database and LSP Bridge
+// Pure Arena Implementation (Zero-GC, Integer-based)
+import { 
+  getNodeType, getNodeFirstChild, getNodeNextSibling, getNodeByteLength, getNodePadding,
+  ast_createNode, ast_appendChild, ast_insertSibling, 
+  ast_setLiteralString, ast_setLiteralFloat, ast_setLiteralInt,
+  ast_getTextSpan, ast_hashSpan, ast_hashByte,
+  cloneNode, replaceNode, setFirstChild, setNextSibling,
+  ast_createTensor, ast_setTensorShape, ast_getTensorShape,
+  ast_setTensorFloat, ast_getTensorFloat,
+  ast_setTensorFloat32, ast_getTensorFloat32,
+  ast_setTensorFloat16Raw, ast_getTensorFloat16Raw,
+  ast_setTensorInt, ast_getTensorInt,
+  ast_setTensorUint32, ast_getTensorUint32,
+  ast_setTensorInt64, ast_getTensorInt64,
+  ast_setTensorUint64, ast_getTensorUint64,
+  ast_setTensorInt16, ast_getTensorInt16,
+  ast_setTensorUint16, ast_getTensorUint16,
+  ast_setTensorInt8, ast_getTensorInt8,
+  ast_removeNode, ast_getChildCount, nodeList,
+  ast_setTensorBool, ast_getTensorBool,
+  ast_bindChildNode, ast_resolveChildNode,
+  ast_bindChildHash, ast_resolveChildByHash,
+  ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag,
+  getInputBuffer
+} from "./arena";
+import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array } from "./array";
+import { globalAstRoot, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic } from "./lsp";
+import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren, debugLog } from "./engine";
+import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
+import { FieldId, SyntaxType, NodeFlag, Property } from "./parser";
+import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
+import { DaeBuilder, dae_createBuilder, ExprKind, EqKind } from "./dae";
+import { BltEngine, blt_createEngine } from "./blt";
+import { GenericScopeStack } from "./scope_stack";
+import { ArenaStringPool } from "./string_pool";
+import { atomicChunkAlloc } from "./arena";
+
+@external("host", "runHostQuery")
+export declare function host_runHostQuery(queryId: u32, arg1: u32, arg2: u32, arg3: u32): u32;
+
+export let currentLintNode: u32 = 0;
+export let currentLintNodeStart: u32 = 0;
+
+@unmanaged
+export class QueryNode {
+  queryType: u32;             // +0
+  arg1: u32;                  // +4
+  arg2: u32;                  // +8
+  arg3: u32;                  // +12
+  arg4: u32;                  // +16
+  revision: u32;              // +20
+  value: u32;                 // +24
+  firstDependencyEdge: u32;   // +28
+  firstSubscriberEdge: u32;   // +32
+  nextHashBucketPtr: u32;     // +36
+  valueMerkleLow: u32;        // +40 (Blueprint 1 + 4)
+  valueMerkleHigh: u32;       // +44
+  verifiedRevision: u32;      // +48
+}
+
+@unmanaged
+export class EdgeNode {
+  targetPtr: u32;             // +0
+  nextEdgePtr: u32;           // +4
+}
+
+@unmanaged
+export class FqnSymbol {
+  hash: u32;                  // +0
+  nodeId: u32;                // +4
+  next: u32;                  // +8
+}
+
+@unmanaged
+export class DiagnosticNode {
+  startByte: u32;             // +0
+  endByte: u32;               // +4
+  argPtr: u32;                // +8
+  nextDiagPtr: u32;           // +12
+}
+
+export let queryArenaOffset: u32 = 0;
+export let queryArenaEnd: u32 = 0;
+export let queryHashTableOffset: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let fqnHashTableOffset: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let dirtyFilesBitsetOffset: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+const HASH_TABLE_CAPACITY = 4096;
+const FQN_HASH_TABLE_CAPACITY = 4096;
+
+export let graphArenaStart: u32 = 0;
+export let graphArenaOffset: u32 = 0;
+const GRAPH_ARENA_CAPACITY = 16 * 1024 * 1024; // 16MB
+
+/**
+ * Allocates a block of memory from the 16MB CodeGraph linear arena.
+ * Ensures 4-byte pointer alignment.
+ * @param size Allocation size in bytes.
+ */
+function allocGraph(size: u32): u32 {
+  if (graphArenaStart == 0) {
+    graphArenaStart = heap.alloc(GRAPH_ARENA_CAPACITY) as u32;
+    graphArenaOffset = graphArenaStart;
+  }
+  let rem = graphArenaOffset % 4;
+  if (rem != 0) graphArenaOffset += (4 - rem);
+  if (graphArenaOffset + size > graphArenaStart + GRAPH_ARENA_CAPACITY) {
+    return heap.alloc(size) as u32; // Fallback
+  }
+  let ptr = graphArenaOffset;
+  graphArenaOffset += size;
+  return ptr;
+}
+
+export let diagArenaStart: u32 = 0;
+export let diagArenaOffset: u32 = 0;
+export let firstDiagnostic: u32 = 0;
+export let lastDiagnostic: u32 = 0;
+const DIAG_ARENA_CAPACITY = 65536; // 64KB (allows ~4096 simultaneous diagnostics)
+
+/**
+ * Initializes the zero-GC memory arenas for the incremental query engine.
+ * Allocates hash tables for query keys, FQN symbols, and the dirty file bitset.
+ */
+export function initQueryArena(): void {
+  // Allocate hash table
+  queryHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(HASH_TABLE_CAPACITY * 4));
+  
+  // Allocate FQN hash table
+  fqnHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(FQN_HASH_TABLE_CAPACITY * 4));
+  
+  // Allocate 128-byte dirty files bitset (for up to 1024 file IDs)
+  dirtyFilesBitsetOffset = changetype<UnmanagedUint32Array>(heap.alloc(128));
+  
+  resetQueryArena();
+}
+
+/**
+ * Resets the query engine state by zeroing out the hash tables and dirty file bitsets.
+ * Existing query nodes remain in linear memory but become unreachable until re-evaluated.
+ */
+export function resetQueryArena(): void {
+  if (changetype<usize>(queryHashTableOffset) != 0) {
+      memory.fill(changetype<usize>(queryHashTableOffset), 0, HASH_TABLE_CAPACITY * 4);
+  }
+  if (changetype<usize>(fqnHashTableOffset) != 0) {
+      memory.fill(changetype<usize>(fqnHashTableOffset), 0, FQN_HASH_TABLE_CAPACITY * 4);
+  }
+  if (changetype<usize>(dirtyFilesBitsetOffset) != 0) {
+      memory.fill(changetype<usize>(dirtyFilesBitsetOffset), 0, 128);
+  }
+  if (graphArenaStart != 0) {
+      graphArenaOffset = graphArenaStart;
+  }
+  if (t_modelProperties != 0) {
+      changetype<UnmanagedMap64To64>(t_modelProperties).init();
+  }
+  if (changetype<usize>(t_negativeDeps) != 0) {
+      t_negativeDeps.init();
+  }
+  scopedImportHead = 0;
+}
+
+/**
+ * Clears the diagnostic linked list and resets the bump allocator.
+ * Must be called before each incremental parse to prevent memory leaks from old squiggles.
+ */
+export function clearDiagnostics(): void {
+  firstDiagnostic = 0;
+  lastDiagnostic = 0;
+  if (diagArenaStart != 0) {
+    diagArenaOffset = diagArenaStart;
+  }
+}
+
+/**
+ * Clears the 1024-bit dirty file bitset.
+ * Called at the start of a new parse phase before any queries mark themselves as dirty.
+ */
+export function clearDirtyFilesBitset(): void {
+  if (changetype<usize>(dirtyFilesBitsetOffset) == 0) return;
+  for (let i = 0; i < 32; i++) {
+    dirtyFilesBitsetOffset[i] = 0;
+  }
+}
+
+/**
+ * Allocates a new 16-byte diagnostic node from the dedicated 64KB bump arena.
+ * Diagnostics form a linked list and are strictly ephemeral per-parse.
+ * @param startByte Absolute start byte offset.
+ * @param endByte Absolute end byte offset.
+ * @param argPtr Pointer to supplemental argument string/data.
+ * @param nextPtr Pointer to the next diagnostic in the chain.
+ * @returns The pointer to the new diagnostic node.
+ */
+export function allocDiagnostic(startByte: u32, endByte: u32, argPtr: u32, nextPtr: u32): u32 {
+  if (diagArenaStart == 0) {
+    diagArenaStart = heap.alloc(DIAG_ARENA_CAPACITY) as u32;
+    diagArenaOffset = diagArenaStart;
+  }
+  // Drop diagnostic if we overflow the 64KB limit
+  if (diagArenaOffset + 16 > diagArenaStart + DIAG_ARENA_CAPACITY) {
+    return 0; 
+  }
+  
+  let ptr = diagArenaOffset;
+  diagArenaOffset += 16;
+  
+  let node = changetype<DiagnosticNode>(ptr);
+  node.startByte = startByte;
+  node.endByte = endByte;
+  node.argPtr = argPtr;
+  node.nextDiagPtr = nextPtr;
+  
+  // Link globally
+  if (firstDiagnostic == 0) {
+    firstDiagnostic = ptr;
+  } else {
+    changetype<DiagnosticNode>(lastDiagnostic).nextDiagPtr = ptr;
+  }
+  lastDiagnostic = ptr;
+  
+  return ptr;
+}
+
+/**
+ * Allocates an 8-byte edge node to link query dependencies.
+ * @param targetPtr Pointer to the target query node.
+ * @param nextPtr Pointer to the next edge in the linked list.
+ */
+export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
+  let ptr = allocGraph(8);
+  let edge = changetype<EdgeNode>(ptr);
+  edge.targetPtr = targetPtr;
+  edge.nextEdgePtr = nextPtr;
+  return ptr;
+}
+
+/**
+ * Exports a Fully Qualified Name (FQN) to the global symbol table.
+ * Uses linear open-addressing hash chains to store symbols incrementally.
+ * @param fqnHash The 32-bit FNV-1a hash of the FQN.
+ * @param nodeId The target node pointer in the AST.
+ */
+export function exportSymbol(fqnHash: u32, nodeId: u32): void {
+  let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
+  let ptr = allocGraph(12);
+  let sym = changetype<FqnSymbol>(ptr);
+  sym.hash = fqnHash;
+  sym.nodeId = nodeId;
+  sym.next = fqnHashTableOffset[idx];
+  fqnHashTableOffset[idx] = ptr;
+}
+
+/**
+ * Resolves an FQN hash back to its AST node pointer.
+ * @param fqnHash The hash to look up.
+ * @returns The target node pointer, or 0 if unresolved.
+ */
+export function resolveFqnSymbol(fqnHash: u32): u32 {
+  let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
+  let ptr = fqnHashTableOffset[idx];
+  while (ptr != 0) {
+     let sym = changetype<FqnSymbol>(ptr);
+     if (sym.hash == fqnHash) return sym.nodeId;
+     ptr = sym.next;
+  }
+  return 0;
+}
+
+@unmanaged
+export class ScopedImport {
+  scopeId: u32;
+  moduleHash: u32;
+  next: u32;
+  visibility: u8;
+}
+
+export let scopedImportHead: u32 = 0;
+
+/**
+ * Registers a scoped module import during query evaluation.
+ * @param scopeId The node pointer of the enclosing scope.
+ * @param moduleHash The hash of the target module being imported.
+ * @param visibility Optional visibility modifier (0 = public, 1 = private).
+ */
+export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: u8 = 0): void {
+  let ptr = allocGraph(16);
+  let imp = changetype<ScopedImport>(ptr);
+  imp.scopeId = scopeId;
+  imp.moduleHash = moduleHash;
+  imp.next = scopedImportHead;
+  imp.visibility = visibility;
+  scopedImportHead = ptr;
+}
+
+/**
+ * Combines a query type and three arbitrary 32-bit arguments into a single 32-bit hash.
+ * Utilizes the FNV-1a algorithm for rapid, collision-resistant distribution.
+ */
+function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32 = 0): u32 {
+   let h: u32 = 0x811c9dc5;
+   h ^= queryType;
+   h = (h * 0x01000193) >>> 0;
+   h ^= arg1;
+   h = (h * 0x01000193) >>> 0;
+   h ^= arg2;
+   h = (h * 0x01000193) >>> 0;
+   h ^= arg3;
+   h = (h * 0x01000193) >>> 0;
+   h ^= arg4;
+   h = (h * 0x01000193) >>> 0;
+   return h & (HASH_TABLE_CAPACITY - 1);
+}
+
+/**
+ * Looks up an existing query node in the incremental database.
+ * If found, it indicates that the query has been evaluated previously.
+ * @returns The query node pointer, or 0 if not found.
+ */
+export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32 = 0): u32 {
+   let idx = combineQueryKey(queryType, arg1, arg2, arg3, arg4);
+   let ptr = queryHashTableOffset[idx];
+   while (ptr != 0) {
+      let node = changetype<QueryNode>(ptr);
+      if (node.queryType == queryType && 
+          node.arg1 == arg1 && 
+          node.arg2 == arg2 && 
+          node.arg3 == arg3 &&
+          node.arg4 == arg4) return ptr;
+      ptr = node.nextHashBucketPtr;
+   }
+   return 0;
+}
+
+/**
+ * Allocates a new 56-byte query node from linear memory and inserts it into the
+ * open-addressing hash table. This node tracks execution state, cached value,
+ * 64-bit Merkle result hashes, and dependency edges for Salsa 3.0.
+ */
+export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
+  let ptr = allocGraph(56);
+  let node = changetype<QueryNode>(ptr);
+  node.queryType = queryType;
+  node.arg1 = arg1;
+  node.arg2 = arg2;
+  node.arg3 = arg3;
+  node.arg4 = arg4;
+  node.revision = 0;
+  node.value = 0;
+  node.firstDependencyEdge = 0;
+  node.firstSubscriberEdge = 0;
+  node.valueMerkleLow = 0;
+  node.valueMerkleHigh = 0;
+  node.verifiedRevision = 0;
+  
+  let idx = combineQueryKey(queryType, arg1, arg2, arg3, arg4);
+  node.nextHashBucketPtr = queryHashTableOffset[idx];
+  queryHashTableOffset[idx] = ptr;
+  
+  return ptr;
+}
+
+export let globalRevision: u32 = 1;
+
+export let t_negativeDeps: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+
+export function ensureNegativeDeps(): void {
+  if (changetype<usize>(t_negativeDeps) == 0) {
+    t_negativeDeps = changetype<UnmanagedMap64>(createMap64());
+  }
+}
+
+/**
+ * Registers a negative dependency: records that a query failed because `nameHash` was missing.
+ * @param queryPtr The query node pointer that depended on nameHash.
+ * @param nameHash The missing symbol's name hash.
+ */
+export function salsa_registerNegativeDependency(queryPtr: u32, nameHash: u32): void {
+  if (queryPtr == 0 || nameHash == 0) return;
+  ensureNegativeDeps();
+  let headEdge = t_negativeDeps.get(nameHash as u64) as u32;
+  let newEdge = allocEdge(queryPtr, headEdge);
+  t_negativeDeps.set(nameHash as u64, newEdge);
+}
+
+/**
+ * Automatically invalidates all queries waiting for `nameHash` when that symbol is registered.
+ * @param nameHash The newly introduced symbol name hash.
+ * @returns Total queries invalidated.
+ */
+export function salsa_invalidateNegativeDependencies(nameHash: u32): u32 {
+  if (nameHash == 0 || changetype<usize>(t_negativeDeps) == 0) return 0;
+  let headEdge = t_negativeDeps.get(nameHash as u64) as u32;
+  if (headEdge == 0) return 0;
+
+  let count: u32 = 0;
+  let curr = headEdge;
+  while (curr != 0) {
+    let edge = changetype<EdgeNode>(curr);
+    if (edge.targetPtr != 0) {
+      invalidateNode(edge.targetPtr);
+      count++;
+    }
+    curr = edge.nextEdgePtr;
+  }
+  // Clear the negative dependency bucket
+  t_negativeDeps.set(nameHash as u64, 0);
+  return count;
+}
+
+/**
+ * Merkle-Based O(1) Value Backdating (Blueprint 4).
+ * Checks if the newly computed query result matches the previous 64-bit Merkle hash.
+ * If matched, backdates the query revision without triggering downstream subscriber invalidation!
+ * @param nodePtr The query node pointer.
+ * @param newMerkleLow Lower 32-bits of result Merkle hash.
+ * @param newMerkleHigh Upper 32-bits of result Merkle hash.
+ * @returns True if value was identical (backdated), False if value changed.
+ */
+export function salsa_backdateQuery(nodePtr: u32, newMerkleLow: u32, newMerkleHigh: u32): boolean {
+  if (nodePtr == 0) return false;
+  let node = changetype<QueryNode>(nodePtr);
+
+  if ((newMerkleLow != 0 || newMerkleHigh != 0) &&
+      node.valueMerkleLow == newMerkleLow &&
+      node.valueMerkleHigh == newMerkleHigh) {
+    // Merkle match: value is semantically unchanged!
+    node.revision = globalRevision;
+    node.verifiedRevision = globalRevision;
+    return true; // Successfully backdated!
+  }
+
+  // Value changed: update Merkle hash
+  node.valueMerkleLow = newMerkleLow;
+  node.valueMerkleHigh = newMerkleHigh;
+  node.revision = globalRevision;
+  node.verifiedRevision = globalRevision;
+  return false;
+}
+
+/**
+ * Invalidates a query node by resetting its revision to 0 (dirty state).
+ * This will recursively cascade to all subscriber edges, dirtying any queries
+ * that depended on this value. If it's a PARSE query, it sets the dirty bitset.
+ * @param nodePtr The query node pointer to invalidate.
+ */
+export function invalidateNode(nodePtr: u32): void {
+  if (nodePtr == 0) return;
+  
+  let node = changetype<QueryNode>(nodePtr);
+  if (node.revision == 0) return; // 0 means already dirty/invalidated
+  
+  node.revision = 0; // Mark as dirty
+  
+  // A PARSE query (queryType == 0) affects the dirty file bitset
+  if (node.queryType == 0 && changetype<usize>(dirtyFilesBitsetOffset) != 0) {
+      let fileId = node.arg1;
+      if (fileId < 1024) {
+          let wordIdx = fileId >> 5;
+          let bitIdx = fileId & 31;
+          let current = dirtyFilesBitsetOffset[wordIdx];
+          dirtyFilesBitsetOffset[wordIdx] = current | (1 << bitIdx);
+      }
+  }
+
+  let edgePtr = node.firstSubscriberEdge;
+  while (edgePtr != 0) {
+     let edge = changetype<EdgeNode>(edgePtr);
+     invalidateNode(edge.targetPtr);
+     edgePtr = edge.nextEdgePtr;
+  }
+}
+
+/**
+ * Increments the global database revision counter.
+ */
+export function incrementGlobalRevision(): void {
+  globalRevision++;
+}
+
+// 1024 stack depth max
+export let activeQueryStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let activeQueryDepth: i32 = 0;
+
+/**
+ * Ensures a directed dependency edge is established from parent to target.
+ * Walks the edge list to prevent duplicate edge allocations.
+ * @param parentPtr Parent query node pointer.
+ * @param targetPtr Target dependency query node pointer.
+ */
+export function addDependencyEdgeIfMissing(parentPtr: u32, targetPtr: u32): void {
+    let parent = changetype<QueryNode>(parentPtr);
+    let curr = parent.firstDependencyEdge;
+    while (curr != 0) {
+        let edge = changetype<EdgeNode>(curr);
+        if (edge.targetPtr == targetPtr) return;
+        curr = edge.nextEdgePtr;
+    }
+    parent.firstDependencyEdge = allocEdge(targetPtr, parent.firstDependencyEdge);
+}
+
+/**
+ * Ensures a subscriber edge is established from child to parent.
+ * Walks the edge list to prevent duplicate edge allocations.
+ * @param childPtr Child query node pointer.
+ * @param parentPtr Subscriber parent query node pointer.
+ */
+export function addSubscriberEdgeIfMissing(childPtr: u32, parentPtr: u32): void {
+    let child = changetype<QueryNode>(childPtr);
+    let curr = child.firstSubscriberEdge;
+    while (curr != 0) {
+        let edge = changetype<EdgeNode>(curr);
+        if (edge.targetPtr == parentPtr) return;
+        curr = edge.nextEdgePtr;
+    }
+    child.firstSubscriberEdge = allocEdge(parentPtr, child.firstSubscriberEdge);
+}
+
+/**
+ * The core execution engine for incremental graph queries.
+ * Checks if a query is already cached and valid for the current global revision.
+ * If not, it executes the query via the generated `__GRAPH_SWITCH_CODE__` logic,
+ * establishes dependency edges automatically via the `activeQueryStack`, and caches the result.
+ */
+export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0, arg4: u32 = 0): u32 {
+   if (activeQueryDepth >= 256) return 0; // Stack depth guard to prevent WASM stack overflow
+
+   let nodePtr = getQueryNode2(queryType, arg1, arg2, arg3, arg4);
+   if (nodePtr == 0) {
+      nodePtr = allocQueryNode2(queryType, arg1, arg2, arg3, arg4);
+   } else {
+      let rev = changetype<QueryNode>(nodePtr).revision;
+      if (rev > 0 && rev == globalRevision) return changetype<QueryNode>(nodePtr).value;
+   }
+   
+   if (activeQueryDepth > 0) {
+      let parentPtr = activeQueryStack[activeQueryDepth - 1];
+      if (parentPtr != 0) {
+        addDependencyEdgeIfMissing(parentPtr, nodePtr);
+        addSubscriberEdgeIfMissing(nodePtr, parentPtr);
+      }
+   }
+   
+   // Push nodePtr directly onto stack
+   activeQueryStack[activeQueryDepth++] = nodePtr;
+   let result: u32 = 0;
+   
+   if (queryType == 0) { // PARSE
+      // For parse, arg1 is fileId. 
+      // result = parse();
+   }
+   __GRAPH_SWITCH_CODE__
+   
+   activeQueryDepth--;
+   let qnode = changetype<QueryNode>(nodePtr);
+   qnode.value = result;
+   qnode.revision = globalRevision;
+   
+   return result;
+}
+
+// User-provided custom semantic queries:
+__CUSTOM_QUERIES__
+__OUTLINE_QUERY_WRAPPER__
+
+/**
+ * Low-level WASM bridge API for n-dimensional tensor creation and manipulation.
+ */
+export class TensorAPI {
+  @inline create(type: u32, rank: u32, elementCount: u32): u32 { return ast_createTensor(type, rank, elementCount); }
+  @inline setShape(handle: u32, dimIndex: u32, size: u32): void { ast_setTensorShape(handle, dimIndex, size); }
+  @inline getShape(handle: u32, dimIndex: u32): u32 { return ast_getTensorShape(handle, dimIndex); }
+
+  @inline setFloat(handle: u32, flatIndex: u32, val: f64): void { ast_setTensorFloat(handle, flatIndex, val); }
+  @inline getFloat(handle: u32, flatIndex: u32): f64 { return ast_getTensorFloat(handle, flatIndex); }
+  @inline setFloat32(handle: u32, flatIndex: u32, val: f32): void { ast_setTensorFloat32(handle, flatIndex, val); }
+  @inline getFloat32(handle: u32, flatIndex: u32): f32 { return ast_getTensorFloat32(handle, flatIndex); }
+  @inline setFloat16Raw(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorFloat16Raw(handle, flatIndex, val); }
+  @inline getFloat16Raw(handle: u32, flatIndex: u32): u16 { return ast_getTensorFloat16Raw(handle, flatIndex); }
+  
+  @inline setInt(handle: u32, flatIndex: u32, val: i32): void { ast_setTensorInt(handle, flatIndex, val); }
+  @inline getInt(handle: u32, flatIndex: u32): i32 { return ast_getTensorInt(handle, flatIndex); }
+  @inline setUint32(handle: u32, flatIndex: u32, val: u32): void { ast_setTensorUint32(handle, flatIndex, val); }
+  @inline getUint32(handle: u32, flatIndex: u32): u32 { return ast_getTensorUint32(handle, flatIndex); }
+  @inline setInt64(handle: u32, flatIndex: u32, val: i64): void { ast_setTensorInt64(handle, flatIndex, val); }
+  @inline getInt64(handle: u32, flatIndex: u32): i64 { return ast_getTensorInt64(handle, flatIndex); }
+  @inline setUint64(handle: u32, flatIndex: u32, val: u64): void { ast_setTensorUint64(handle, flatIndex, val); }
+  @inline getUint64(handle: u32, flatIndex: u32): u64 { return ast_getTensorUint64(handle, flatIndex); }
+  @inline setInt16(handle: u32, flatIndex: u32, val: i16): void { ast_setTensorInt16(handle, flatIndex, val); }
+  @inline getInt16(handle: u32, flatIndex: u32): i16 { return ast_getTensorInt16(handle, flatIndex); }
+  @inline setUint16(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorUint16(handle, flatIndex, val); }
+  @inline getUint16(handle: u32, flatIndex: u32): u16 { return ast_getTensorUint16(handle, flatIndex); }
+  @inline setInt8(handle: u32, flatIndex: u32, val: i8): void { ast_setTensorInt8(handle, flatIndex, val); }
+  @inline getInt8(handle: u32, flatIndex: u32): i8 { return ast_getTensorInt8(handle, flatIndex); }
+  @inline setUint8(handle: u32, flatIndex: u32, val: u8): void { ast_setTensorUint8(handle, flatIndex, val); }
+  @inline getUint8(handle: u32, flatIndex: u32): u8 { return ast_getTensorUint8(handle, flatIndex); }
+  
+  @inline setBool(handle: u32, flatIndex: u32, val: boolean): void { ast_setTensorBool(handle, flatIndex, val); }
+  @inline getBool(handle: u32, flatIndex: u32): boolean { return ast_getTensorBool(handle, flatIndex); }
+}
+
+let t_modelProperties: usize = 0;
+
+/**
+ * Model API for AST node creation, property attachment, and tree manipulation.
+ */
+export class ModelAPI {
+  @inline create(type: u16): u32 { return ast_createNode(type); }
+  @inline clone(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
+  @inline compute(nodeId: u32, attrName: u32): u32 { return runQuery(attrName, nodeId); }
+
+  @inline getProperty<T>(nodeId: u32, propId: u32): T {
+    if (t_modelProperties == 0) return 0 as T;
+    let key: u64 = (nodeId as u64) | ((propId as u64) << 32);
+    let map = changetype<UnmanagedMap64To64>(t_modelProperties);
+    let val = map.get(key);
+    if (isFloat<T>()) {
+      if (sizeof<T>() == 8) return reinterpret<f64>(val) as T;
+      return reinterpret<f32>(val as u32) as T;
+    }
+    return val as T;
+  }
+  @inline setProperty<T>(nodeId: u32, propId: u32, value: T): void {
+    if (t_modelProperties == 0) {
+      t_modelProperties = changetype<usize>(createMap64To64());
+    }
+    let map = changetype<UnmanagedMap64To64>(t_modelProperties);
+    let key: u64 = (nodeId as u64) | ((propId as u64) << 32);
+    if (isFloat<T>()) {
+      if (sizeof<T>() == 8) {
+        map.set(key, reinterpret<u64>(value as f64));
+      } else {
+        map.set(key, reinterpret<u32>(value as f32) as u64);
+      }
+    } else {
+      map.set(key, value as u64);
+    }
+  }
+  
+  @inline bind(parentId: u32, nameNodeId: u32, childId: u32): void { ast_bindChildNode(parentId, nameNodeId, childId); }
+  @inline resolve(parentId: u32, nameNodeId: u32): u32 { return ast_resolveChildNode(parentId, nameNodeId); }
+  @inline bindHash(parentId: u32, hash: u32, childId: u32): void { ast_bindChildHash(parentId, hash, childId); }
+  @inline resolveHash(parentId: u32, hash: u32): u32 { return ast_resolveChildByHash(parentId, hash); }
+
+  @inline setFlag(nodeId: u32, flag: u32): void { ast_setNodeFlag(nodeId, flag); }
+  @inline clearFlag(nodeId: u32, flag: u32): void { ast_clearNodeFlag(nodeId, flag); }
+  @inline hasFlag(nodeId: u32, flag: u32): boolean { return ast_hasNodeFlag(nodeId, flag); }
+
+  @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
+  @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
+  @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
+  @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
+
+  @inline appendChild(parentId: u32, childId: u32): void { ast_appendChild(parentId, childId); }
+  @inline insertSibling(targetId: u32, siblingId: u32): void { ast_insertSibling(targetId, siblingId); }
+  @inline setFirstChild(parentId: u32, childId: u32): void { setFirstChild(parentId, childId); }
+  @inline setNextSibling(nodeId: u32, siblingId: u32): void { setNextSibling(nodeId, siblingId); }
+  @inline replaceChild(parentId: u32, oldChildId: u32, newChildId: u32): void { replaceNode(parentId, oldChildId, newChildId); }
+  @inline removeChild(parentId: u32, childId: u32): void { ast_removeNode(parentId, childId); }
+  @inline getSemanticChildren(nodeId: u32): SemanticCursor { return getSemanticChildren(nodeId); }
+}
+
+/**
+ * Hashing utility class for string spans and single byte hashing.
+ */
+export class HashAPI {
+  @inline init(): u32 { return 2166136261; }
+  @inline span(currentHash: u32, span: u64): u32 { return ast_hashSpan(span, currentHash); }
+  @inline byte(currentHash: u32, byte: u8): u32 { return ast_hashByte(byte, currentHash); }
+  @inline span64(span: u64): u64 {
+      if (span == 0) return 0;
+      let h1 = ast_hashSpan(span, 2166136261) as u64;
+      let h2 = ast_hashSpan(span, 5381) as u64;
+      return (h1 << 32) | h2;
+  }
+}
+
+/**
+ * AST navigation and node span query API.
+ */
+export class AstAPI {
+  @inline startsWith(nodeId: u32, prefix: string): boolean {
+      if (nodeId == 0 || prefix.length == 0) return false;
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
+      if (offset < 0) return false;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
+      let buffer = getInputBuffer();
+      while (true) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
+      for (let i = 0; i < prefix.length; i++) {
+          let code = prefix.charCodeAt(i);
+          if (step == 2) {
+              if (load<u16>(buffer + actualOffset + (i << 1)) != (code as u16)) return false;
+          } else {
+              if (load<u8>(buffer + actualOffset + i) != (code as u8)) return false;
+          }
+      }
+      return true;
+  }
+
+  @inline textEquals(nodeId: u32, text: string): boolean {
+      if (nodeId == 0) return false;
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
+      if (offset < 0) return false;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
+      let buffer = getInputBuffer();
+      while (true) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
+      for (let i = 0; i < text.length; i++) {
+          let code = text.charCodeAt(i);
+          if (step == 2) {
+              if (load<u16>(buffer + actualOffset + (i << 1)) != (code as u16)) return false;
+          } else {
+              if (load<u8>(buffer + actualOffset + i) != (code as u8)) return false;
+          }
+      }
+      let nextOffset = actualOffset + text.length * step;
+      let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+      if (nextCh != 0 && nextCh != 32 && nextCh != 9 && nextCh != 10 && nextCh != 13 && nextCh != 59 && nextCh != 40 && nextCh != 41 && nextCh != 44) {
+          if ((nextCh >= 65 && nextCh <= 90) || (nextCh >= 97 && nextCh <= 122) || (nextCh >= 48 && nextCh <= 57) || nextCh == 95 || nextCh == 46) {
+              return false;
+          }
+      }
+      return true;
+  }
+
+  @inline textEqualsNode(nodeA: u32, nodeB: u32): boolean {
+      if (nodeA == nodeB) return true;
+      let lenA = getNodeByteLength(nodeA);
+      let lenB = getNodeByteLength(nodeB);
+      if (lenA != lenB) return false;
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offsetA = lsp_findNodeOffset(root, nodeA, rootStart);
+      let offsetB = lsp_findNodeOffset(root, nodeB, rootStart);
+      if (offsetA < 0 || offsetB < 0) return false;
+      let buffer = getInputBuffer();
+      for (let i: u32 = 0; i < lenA; i++) {
+          if (load<u8>(buffer + offsetA + i) != load<u8>(buffer + offsetB + i)) {
+              return false;
+          }
+      }
+      return true;
+  }
+
+  @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 { return getChildByFieldId(nodeId, fieldId); }
+  @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor { return getChildrenByFieldId(nodeId, fieldId); }
+  @inline getAncestors(nodeId: u32, filterType: u16 = 0xFFFF): AncestorCursor { return getAncestors(nodeId, filterType, globalAstRoot); }
+  @inline getDescendants(nodeId: u32, filterType: u16 = 0xFFFF): DescendantCursor { return getDescendants(nodeId, filterType); }
+  @inline getPathTokens(nodeId: u32): DescendantCursor { return getPathTokens(nodeId); }
+
+  @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
+  @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
+
+  @inline parseInteger(nodeId: u32): i32 {
+      if (nodeId == 0) return 0;
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
+      if (offset < 0) return 0;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
+      let buffer = getInputBuffer();
+      let len = getNodeByteLength(nodeId);
+      let endOffset = offset + len;
+
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch >= 48 && ch <= 57) {
+              break;
+          }
+          actualOffset += step;
+      }
+      if (actualOffset >= endOffset) return 0;
+
+      let result: i32 = 0;
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch >= 48 && ch <= 57) {
+              result = result * 10 + (ch - 48);
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
+      return result;
+  }
+
+  @inline parseReal(nodeId: u32): f64 {
+      if (nodeId == 0) return 0.0;
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
+      if (offset < 0) return 0.0;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
+      let buffer = getInputBuffer();
+      let len = getNodeByteLength(nodeId);
+      let endOffset = offset + len;
+
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if ((ch >= 48 && ch <= 57) || ch == 46 /* '.' */) {
+              break;
+          }
+          actualOffset += step;
+      }
+      if (actualOffset >= endOffset) return 0.0;
+
+      let whole: f64 = 0.0;
+      let frac: f64 = 0.0;
+      let fracDiv: f64 = 1.0;
+      let isFrac = false;
+
+      while (actualOffset < endOffset) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch >= 48 && ch <= 57) {
+              if (!isFrac) {
+                  whole = whole * 10.0 + f64(ch - 48);
+              } else {
+                  fracDiv = fracDiv * 10.0;
+                  frac = frac + f64(ch - 48) / fracDiv;
+              }
+              actualOffset += step;
+          } else if (ch == 46 /* '.' */ && !isFrac) {
+              isFrac = true;
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
+      return whole + frac;
+  }
+
+  @inline getBinaryOp(leftNode: u32, rightNode: u32): u16 {
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let leftOffset = lsp_findNodeOffset(root, leftNode, rootStart);
+      let leftLen = getNodeByteLength(leftNode);
+      let rightOffset = lsp_findNodeOffset(root, rightNode, rootStart);
+      if (leftOffset < 0 || rightOffset < 0) return 0;
+
+      let step = getEncodingStep();
+      let scanOffset = leftOffset + leftLen;
+      let buffer = getInputBuffer();
+
+      while (scanOffset < rightOffset) {
+          let ch = step == 2 ? load<u16>(buffer + scanOffset) : load<u8>(buffer + scanOffset);
+          if (ch == 46 /* '.' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 43 /* '+' */) return 5; // BinOp.ElemAdd
+                  if (nextCh == 45 /* '-' */) return 6; // BinOp.ElemSub
+                  if (nextCh == 42 /* '*' */) return 7; // BinOp.ElemMul
+                  if (nextCh == 47 /* '/' */) return 8; // BinOp.ElemDiv
+                  if (nextCh == 94 /* '^' */) return 9; // BinOp.ElemPow
+              }
+          }
+          if (ch == 43 /* '+' */) return 0; // BinOp.Add
+          if (ch == 45 /* '-' */) return 1; // BinOp.Sub
+          if (ch == 42 /* '*' */) return 2; // BinOp.Mul
+          if (ch == 47 /* '/' */) return 3; // BinOp.Div
+          if (ch == 94 /* '^' */) return 4; // BinOp.Pow
+          if (ch == 60 /* '<' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 61 /* '=' */) return 16; // <=
+                  if (nextCh == 62 /* '>' */) return 13; // <>
+              }
+              return 14; // <
+          }
+          if (ch == 62 /* '>' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 61 /* '=' */) return 17; // >=
+              }
+              return 15; // >
+          }
+          if (ch == 61 /* '=' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 61 /* '=' */) return 12; // ==
+              }
+          }
+          if (ch == 97 /* 'a' */) return 10; // and
+          if (ch == 111 /* 'o' */) return 11; // or
+          scanOffset += step;
+      }
+      return 0;
+  }
+  @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
+  @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
+  @inline getByteLength(nodeId: u32): u32 { return getNodeByteLength(nodeId); }
+
+  @inline getRootNode(): u32 { return globalAstRoot; }
+  @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { 
+    if (absoluteStart == 0xFFFFFFFF) {
+        let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+        let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+        let offset = lsp_findNodeOffset(root, nodeId, rootStart);
+        if (offset >= 0) absoluteStart = offset as u32;
+    }
+    return ast_getTextSpan(nodeId, absoluteStart); 
+  }
+  @inline hashSpan(span: u64): u32 { return ast_hashSpan(span); }
+}
+
+/**
+ * Set operations API.
+ */
+export class SetAPI {
+  @inline create(): u32 { return createSet64(); }
+  @inline add(setId: u32, hash: u64): void { changetype<UnmanagedSet64>(setId).add(hash); }
+  @inline has(setId: u32, hash: u64): boolean { return changetype<UnmanagedSet64>(setId).has(hash); }
+  @inline release(setId: u32): void { changetype<UnmanagedSet64>(setId).release(); }
+}
+
+/**
+ * Map operations API.
+ */
+export class MapAPI {
+  @inline create(): u32 { return createMap64(); }
+  @inline set(mapId: u32, hash: u64, valueId: u32): void { changetype<UnmanagedMap64>(mapId).set(hash, valueId); }
+  @inline get(mapId: u32, hash: u64): u32 { return changetype<UnmanagedMap64>(mapId).get(hash); }
+  @inline release(mapId: u32): void { changetype<UnmanagedMap64>(mapId).release(); }
+}
+
+class ScopeAPI {
+  stack: GenericScopeStack;
+  pool: ArenaStringPool;
+
+  constructor() {
+    let poolPtr = atomicChunkAlloc(sizeof<ArenaStringPool>());
+    let stackPtr = atomicChunkAlloc(sizeof<GenericScopeStack>());
+    this.pool = changetype<ArenaStringPool>(poolPtr);
+    this.stack = changetype<GenericScopeStack>(stackPtr);
+    this.pool.init();
+    this.stack.init(this.pool);
+  }
+
+  @inline push(prefixId: u32, scopeNode: u32 = 0): u32 {
+    return this.stack.pushFrame(scopeNode, prefixId);
+  }
+
+  @inline pop(): void {
+    this.stack.popFrame();
+  }
+
+  @inline currentFqn(): u32 {
+    return this.stack.currentFqnStringId();
+  }
+
+  @inline currentPrefix(): u32 {
+    return this.stack.currentPrefixStringId();
+  }
+
+  @inline reset(): void {
+    this.stack.reset();
+  }
+
+  @inline resolve(localId: u32): u32 {
+    return this.stack.resolveLocal(localId);
+  }
+
+  @inline internNode(nodeId: u32): u32 {
+    if (nodeId == 0) return 0;
+    let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+    if (offset < 0) return 0;
+    let len: u32 = getNodeByteLength(nodeId);
+    let step: u32 = getEncodingStep();
+    let pad: u32 = lsp_getNodeLeadingPad(nodeId);
+    let actualOffset: u32 = (offset as u32) + pad * step;
+    let buffer: usize = getInputBuffer();
+
+    while (true) {
+      let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+      if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+        actualOffset += step;
+        if (len >= step) len -= step;
+      } else {
+        break;
+      }
+    }
+
+    let charLen: u32 = len / step;
+    if (charLen == 0) return 0;
+    let srcPtr = buffer + actualOffset;
+    return this.pool.intern(srcPtr, charLen);
+  }
+
+  @inline concatPrefix(prefixId: u32, suffixId: u32): u32 {
+    return this.pool.concatIds(prefixId, suffixId);
+  }
+
+  @inline equals(id1: u32, id2: u32): boolean {
+    return this.pool.equals(id1, id2);
+  }
+
+  @inline hasPrefix(id: u32, prefixId: u32): boolean {
+    return this.pool.hasPrefix(id, prefixId);
+  }
+
+  @inline getSuffixAfterPrefix(id: u32, prefixId: u32): u32 {
+    return this.pool.getSuffixAfterPrefix(id, prefixId);
+  }
+}
+
+
+class EnvAPI {
+  @inline create(parentPtr: u32 = 0): u32 {
+    return parentPtr;
+  }
+
+  @inline bind(envId: u32, keyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+  }
+
+  @inline lookup(envId: u32, keyHash: u32): u32 {
+    return 0xffffffff;
+  }
+}
+
+class ConnectorAPI {
+  dae: DaeBuilder;
+
+  constructor(dae: DaeBuilder) {
+    this.dae = dae;
+  }
+
+  @inline add(p1VarId: u32, p2VarId: u32, isFlow: boolean = false, isBoundary: boolean = false): u32 {
+    let e1 = this.dae.addExpression(ExprKind.Name, p1VarId);
+    let e2 = this.dae.addExpression(ExprKind.Name, p2VarId);
+    return this.dae.addEquation(EqKind.Connect, e1, e2);
+  }
+
+  @inline finalize(): u32 {
+    return 0;
+  }
+}
+
+class SsaAPI {
+  dae: DaeBuilder;
+
+  constructor(dae: DaeBuilder) {
+    this.dae = dae;
+  }
+
+  @inline lowerToDAE(blockNodeId: u32, stmtCount: u32 = 1): u32 {
+    return stmtCount;
+  }
+}
+
+// --- Typed DB Wrapper for TypeScript IDE Completion ---
+class CodeGraph {
+    tensor: TensorAPI;
+    hash: HashAPI;
+    ast: AstAPI;
+    model: ModelAPI;
+    set: SetAPI;
+    map: MapAPI;
+    dae: DaeBuilder;
+    blt: BltEngine;
+    scope: ScopeAPI;
+    env: EnvAPI;
+    connectors: ConnectorAPI;
+    ssa: SsaAPI;
+
+    constructor() {
+      let daeBuilder = changetype<DaeBuilder>(dae_createBuilder());
+      this.dae = daeBuilder;
+      this.blt = changetype<BltEngine>(blt_createEngine(changetype<u32>(daeBuilder)));
+      this.tensor = new TensorAPI();
+      this.hash = new HashAPI();
+      this.ast = new AstAPI();
+      this.model = new ModelAPI();
+      this.set = new SetAPI();
+      this.map = new MapAPI();
+      this.scope = new ScopeAPI();
+      this.env = new EnvAPI();
+      this.connectors = new ConnectorAPI(daeBuilder);
+      this.ssa = new SsaAPI(daeBuilder);
+    }
+
+    @inline runQuery(queryType: u32, queryArg: u32): u32 {
+        return runQuery(queryType, queryArg);
+    }
+    
+    @inline runHostQuery(queryId: u32, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): u32 {
+        return host_runHostQuery(queryId, arg1, arg2, arg3);
+    }
+    @inline diagnostic(targetNode: u32, contextNode: u32 = targetNode): void { /* Handled by TS Macro */ }
+}
+export const graph = new CodeGraph();
+
+export function graph_getStringLength(id: u32): u32 {
+  return graph.scope.pool.getLength(id);
+}
+
+export function graph_copyString(id: u32, targetBuf: usize): u32 {
+  return graph.scope.pool.copyOut(id, targetBuf);
+}
+
+export function graph_internString(srcPtr: usize, len: u32): u32 {
+  return graph.scope.pool.intern(srcPtr, len);
+}
+
+export function graph_getDaeBuilder(): u32 {
+  return changetype<u32>(graph.dae);
+}
+
+export function graph_getBltEngine(): u32 {
+  return changetype<u32>(graph.blt);
+}
+
+/**
+ * Utility to bit-pack an outline flag directly into an aligned node pointer.
+ * Since node pointers are 16-byte aligned, the lowest 4 bits are mathematically guaranteed to be 0,
+ * making them perfect for stuffing tiny boolean flags.
+ */
+export function packOutline(nameNode: u32, children: boolean): u32 {
+    if (nameNode == 0) return 0;
+    // nameNode is a 16-byte aligned arena pointer, so lowest 4 bits are always 0.
+    // We pack 'children' flag into the lowest bit (bit 0).
+    return nameNode | (children ? 1 : 0);
+}
+
+@unmanaged
+export class ArenaTopologyGraph {
+  nodeCount: u32;
+  edgeCount: u32;
+  edgesSrc: ChunkedUint32Array;
+  edgesDst: ChunkedUint32Array;
+  edgeFlags: ChunkedUint32Array;
+
+  init(): void {
+    this.nodeCount = 0;
+    this.edgeCount = 0;
+    this.edgesSrc = createChunkedUint32Array(1024);
+    this.edgesDst = createChunkedUint32Array(1024);
+    this.edgeFlags = createChunkedUint32Array(1024);
+  }
+
+  addEdge(src: u32, dst: u32, flags: u32 = 0): void {
+    let idx = this.edgeCount++;
+    this.edgesSrc.set(idx, src);
+    this.edgesDst.set(idx, dst);
+    this.edgeFlags.set(idx, flags);
+    if (src >= this.nodeCount) this.nodeCount = src + 1;
+    if (dst >= this.nodeCount) this.nodeCount = dst + 1;
+  }
+
+  setEdgeFlag(edgeIdx: u32, flag: u32): void {
+    let curr = this.edgeFlags.get(edgeIdx);
+    this.edgeFlags.set(edgeIdx, curr | flag);
+  }
+
+  hasEdgeFlag(edgeIdx: u32, flag: u32): boolean {
+    return (this.edgeFlags.get(edgeIdx) & flag) != 0;
+  }
+
+  getConnectedComponents(componentMap: ChunkedInt32Array): u32 {
+    let n = this.nodeCount;
+    for (let i: u32 = 0; i < n; i++) {
+      componentMap.set(i, -1);
+    }
+    let clusterCount: u32 = 0;
+
+    for (let i: u32 = 0; i < n; i++) {
+      if (componentMap.get(i) != -1) continue;
+      let clusterId = clusterCount++;
+      componentMap.set(i, clusterId);
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (let e: u32 = 0; e < this.edgeCount; e++) {
+          let u = this.edgesSrc.get(e);
+          let v = this.edgesDst.get(e);
+          if (componentMap.get(u) == clusterId && componentMap.get(v) == -1) {
+            componentMap.set(v, clusterId);
+            changed = true;
+          } else if (componentMap.get(v) == clusterId && componentMap.get(u) == -1) {
+            componentMap.set(u, clusterId);
+            changed = true;
+          }
+        }
+      }
+    }
+    return clusterCount;
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Exported Salsa 3.0 Bridge API
+// ----------------------------------------------------------------------------
+
+export function query_getNode(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
+  return getQueryNode2(queryType, arg1, arg2, arg3, arg4);
+}
+
+export function query_allocNode(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
+  return allocQueryNode2(queryType, arg1, arg2, arg3, arg4);
+}
+
+export function query_invalidate(queryNodePtr: u32): void {
+  invalidateNode(queryNodePtr);
+}
+
+export function query_getValue(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).value;
+}
+
+export function query_setValue(queryNodePtr: u32, val: u32): void {
+  if (queryNodePtr == 0) return;
+  changetype<QueryNode>(queryNodePtr).value = val;
+}
+
+export function query_getRevision(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).revision;
+}
+
+export function query_setRevision(queryNodePtr: u32, rev: u32): void {
+  if (queryNodePtr == 0) return;
+  changetype<QueryNode>(queryNodePtr).revision = rev;
+}
+
+export function query_getMerkleLow(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).valueMerkleLow;
+}
+
+export function query_getMerkleHigh(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).valueMerkleHigh;
+}
+
+export function query_setMerkle(queryNodePtr: u32, low: u32, high: u32): void {
+  if (queryNodePtr == 0) return;
+  let q = changetype<QueryNode>(queryNodePtr);
+  q.valueMerkleLow = low;
+  q.valueMerkleHigh = high;
+}
+
+export function query_addDependency(parentPtr: u32, targetPtr: u32): void {
+  if (parentPtr == 0 || targetPtr == 0) return;
+  addDependencyEdgeIfMissing(parentPtr, targetPtr);
+  addSubscriberEdgeIfMissing(targetPtr, parentPtr);
+}
+
+export function query_getGlobalRevision(): u32 {
+  return globalRevision;
+}
+
+export function query_incrementRevision(): void {
+  incrementGlobalRevision();
+}

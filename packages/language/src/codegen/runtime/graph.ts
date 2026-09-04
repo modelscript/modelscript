@@ -41,6 +41,9 @@ import { atomicChunkAlloc } from "./arena";
 @external("host", "runHostQuery")
 export declare function host_runHostQuery(queryId: u32, arg1: u32, arg2: u32, arg3: u32): u32;
 
+export let currentLintNode: u32 = 0;
+export let currentLintNodeStart: u32 = 0;
+
 @unmanaged
 export class QueryNode {
   queryType: u32;             // +0
@@ -668,17 +671,9 @@ export class HashAPI {
   @inline span(currentHash: u32, span: u64): u32 { return ast_hashSpan(span, currentHash); }
   @inline byte(currentHash: u32, byte: u8): u32 { return ast_hashByte(byte, currentHash); }
   @inline span64(span: u64): u64 {
-      let len = (span & 0xFFFFFFFF) as u32;
-      let offset = (span >> 32) as u32;
-      let buffer = getInputBuffer();
-      // Simple cyrb53-like 64-bit hash
-      let h1: u64 = 0xdeadbeef ^ (len as u64);
-      let h2: u64 = 0x41c6ce57 ^ (len as u64);
-      for (let i: u32 = 0; i < len; i++) {
-          let c = load<u8>(buffer + offset + i) as u64;
-          h1 = Math.imul((h1 ^ c) as i32, 2654435761) as u64;
-          h2 = Math.imul((h2 ^ c) as i32, 1597334677) as u64;
-      }
+      if (span == 0) return 0;
+      let h1 = ast_hashSpan(span, 2166136261) as u64;
+      let h2 = ast_hashSpan(span, 5381) as u64;
       return (h1 << 32) | h2;
   }
 }
@@ -689,7 +684,9 @@ export class HashAPI {
 export class AstAPI {
   @inline startsWith(nodeId: u32, prefix: string): boolean {
       if (nodeId == 0 || prefix.length == 0) return false;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
       if (offset < 0) return false;
       let step = getEncodingStep();
       let pad = lsp_getNodeLeadingPad(nodeId);
@@ -716,7 +713,9 @@ export class AstAPI {
 
   @inline textEquals(nodeId: u32, text: string): boolean {
       if (nodeId == 0) return false;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
       if (offset < 0) return false;
       let step = getEncodingStep();
       let pad = lsp_getNodeLeadingPad(nodeId);
@@ -741,7 +740,7 @@ export class AstAPI {
       let nextOffset = actualOffset + text.length * step;
       let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
       if (nextCh != 0 && nextCh != 32 && nextCh != 9 && nextCh != 10 && nextCh != 13 && nextCh != 59 && nextCh != 40 && nextCh != 41 && nextCh != 44) {
-          if ((nextCh >= 65 && nextCh <= 90) || (nextCh >= 97 && nextCh <= 122) || (nextCh >= 48 && nextCh <= 57) || nextCh == 95) {
+          if ((nextCh >= 65 && nextCh <= 90) || (nextCh >= 97 && nextCh <= 122) || (nextCh >= 48 && nextCh <= 57) || nextCh == 95 || nextCh == 46) {
               return false;
           }
       }
@@ -753,8 +752,10 @@ export class AstAPI {
       let lenA = getNodeByteLength(nodeA);
       let lenB = getNodeByteLength(nodeB);
       if (lenA != lenB) return false;
-      let offsetA = lsp_findNodeOffset(globalAstRoot, nodeA);
-      let offsetB = lsp_findNodeOffset(globalAstRoot, nodeB);
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offsetA = lsp_findNodeOffset(root, nodeA, rootStart);
+      let offsetB = lsp_findNodeOffset(root, nodeB, rootStart);
       if (offsetA < 0 || offsetB < 0) return false;
       let buffer = getInputBuffer();
       for (let i: u32 = 0; i < lenA; i++) {
@@ -776,7 +777,9 @@ export class AstAPI {
 
   @inline parseInteger(nodeId: u32): i32 {
       if (nodeId == 0) return 0;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
       if (offset < 0) return 0;
       let step = getEncodingStep();
       let pad = lsp_getNodeLeadingPad(nodeId);
@@ -809,7 +812,9 @@ export class AstAPI {
 
   @inline parseReal(nodeId: u32): f64 {
       if (nodeId == 0) return 0.0;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
       if (offset < 0) return 0.0;
       let step = getEncodingStep();
       let pad = lsp_getNodeLeadingPad(nodeId);
@@ -830,20 +835,20 @@ export class AstAPI {
       let whole: f64 = 0.0;
       let frac: f64 = 0.0;
       let fracDiv: f64 = 1.0;
-      let isFrac = false;
+      let inFrac = false;
 
       while (actualOffset < endOffset) {
           let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
           if (ch >= 48 && ch <= 57) {
-              if (!isFrac) {
-                  whole = whole * 10.0 + f64(ch - 48);
+              if (!inFrac) {
+                  whole = whole * 10.0 + (ch - 48 as f64);
               } else {
-                  fracDiv = fracDiv * 10.0;
-                  frac = frac + f64(ch - 48) / fracDiv;
+                  fracDiv *= 10.0;
+                  frac += (ch - 48 as f64) / fracDiv;
               }
               actualOffset += step;
-          } else if (ch == 46 /* '.' */ && !isFrac) {
-              isFrac = true;
+          } else if (ch == 46 /* '.' */) {
+              inFrac = true;
               actualOffset += step;
           } else {
               break;
@@ -853,9 +858,11 @@ export class AstAPI {
   }
 
   @inline getBinaryOp(leftNode: u32, rightNode: u32): u16 {
-      let leftOffset = lsp_findNodeOffset(globalAstRoot, leftNode);
+      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+      let leftOffset = lsp_findNodeOffset(root, leftNode, rootStart);
       let leftLen = getNodeByteLength(leftNode);
-      let rightOffset = lsp_findNodeOffset(globalAstRoot, rightNode);
+      let rightOffset = lsp_findNodeOffset(root, rightNode, rootStart);
       if (leftOffset < 0 || rightOffset < 0) return 0;
 
       let step = getEncodingStep();
@@ -864,6 +871,17 @@ export class AstAPI {
 
       while (scanOffset < rightOffset) {
           let ch = step == 2 ? load<u16>(buffer + scanOffset) : load<u8>(buffer + scanOffset);
+          if (ch == 46 /* '.' */) {
+              let nextOffset = scanOffset + step;
+              if (nextOffset < rightOffset) {
+                  let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+                  if (nextCh == 43 /* '+' */) return 5; // BinOp.ElemAdd
+                  if (nextCh == 45 /* '-' */) return 6; // BinOp.ElemSub
+                  if (nextCh == 42 /* '*' */) return 7; // BinOp.ElemMul
+                  if (nextCh == 47 /* '/' */) return 8; // BinOp.ElemDiv
+                  if (nextCh == 94 /* '^' */) return 9; // BinOp.ElemPow
+              }
+          }
           if (ch == 43 /* '+' */) return 0; // BinOp.Add
           if (ch == 45 /* '-' */) return 1; // BinOp.Sub
           if (ch == 42 /* '*' */) return 2; // BinOp.Mul
@@ -906,7 +924,9 @@ export class AstAPI {
   @inline getRootNode(): u32 { return globalAstRoot; }
   @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { 
     if (absoluteStart == 0xFFFFFFFF) {
-        let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+        let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
+        let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
+        let offset = lsp_findNodeOffset(root, nodeId, rootStart);
         if (offset >= 0) absoluteStart = offset as u32;
     }
     return ast_getTextSpan(nodeId, absoluteStart); 

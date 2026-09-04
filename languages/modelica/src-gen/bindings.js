@@ -253,22 +253,22 @@ export class NativeRuntime {
   }
 }
 export const SYNTAX_NAMES =
-  typeof ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"flow\"","\"stream\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/\"[^\"]*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_(within_clause | ())","_(\"final\" | ())","_((\"final\" | ()) class_definition \";\")*","_(name | ())","_(\"encapsulated\" | ())","_(\"partial\" | ())","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | ((\"expandable\" | ()) \"connector\") | (((\"pure\" | \"impure\") | ()) \"function\") | (\"operator\" ((\"record\" | \"function\") | ())) | \"record\")","_(\"expandable\" | ())","_(\"pure\" | \"impure\")","_((\"pure\" | \"impure\") | ())","_(\"record\" | \"function\")","_((\"record\" | \"function\") | ())","_(long_class_specifier | short_class_specifier | der_class_specifier)","_(identifier | ())","_((identifier description_string composition \"end\" (identifier | ())) | (\"extends\" identifier (class_modification | ()) description_string composition \"end\" (identifier | ())))","_(class_modification | ())","_(array_subscripts | ())","_((identifier \"=\" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier \"=\" \"enumeration\" \"(\" ((enum_list | ()) | \":\") \")\" description))","_(enum_list | ())","_((enum_list | ()) | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\")","_((\"input\" | \"output\") | ())","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_((external_clause \";\") | ())","_((annotation_clause \";\") | ())","_(language_specification | ())","_(external_function_call | ())","_(annotation_clause | ())","_((component_reference \"=\") | ())","_(expression_list | ())","_(element \";\")*","_(import_clause | extends_clause | ((\"redeclare\" | ()) (\"final\" | ()) (\"inner\" | ()) (\"outer\" | ()) (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))))","_(\"redeclare\" | ())","_(\"inner\" | ())","_(\"outer\" | ())","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))","_(class_definition | component_clause)","_((constraining_clause description) | ())","_((identifier \"=\" name) | (name ((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())","_(class_or_inheritance_modification | ())","_(argument_or_inheritance_modification_list | ())","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_((\"discrete\" | \"parameter\" | \"constant\") | ())","_(((\"flow\" | \"stream\") ((\"discrete\" | \"parameter\" | \"constant\") | ()) ((\"input\" | \"output\") | ())) | ((\"discrete\" | \"parameter\" | \"constant\") ((\"input\" | \"output\") | ())) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_(condition_attribute | ())","_(modification | ())","_((\"=\" modification_expression) | ())","_((class_modification ((\"=\" modification_expression) | ())) | (\"=\" modification_expression))","_(expression | \"break\")","_(argument_list | ())","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_(\"each\" | ())","_(element_modification | element_replaceable)","_(short_class_definition | component_clause1 | element_replaceable)","_(short_class_definition | component_clause1)","_(constraining_clause | ())","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_(\"initial\" | ())","_(some_equation \";\")*","_(statement \";\")*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_((\"else\" (some_equation \";\")*) | ())","_(\"elseif\" expression \"then\" (statement \";\")*)*","_((\"else\" (statement \";\")*) | ())","_(\",\" for_index)*","_((\"in\" expression) | ())","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | ((expression \":\" expression \":\" expression) | (expression \":\" expression)) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_((expression \":\" expression \":\" expression) | (expression \":\" expression))","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" (function_arguments | ()) \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" ((array_subscripts | (\".\" identifier)) | ())) | (\"[\" expression_list (\";\" expression_list)* \"]\") | (\"{\" array_arguments \"}\"))","_(function_arguments | ())","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_((array_subscripts | (\".\" identifier)) | ())","_(\";\" expression_list)*","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(\".\" identifier)*","_(\".\" identifier (array_subscripts | ()))*","_((identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*) | (\".\" identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") ((\",\" unsigned_integer) | ()) \")\"))","_(component_reference | \"time\")","_((\",\" unsigned_integer) | ())","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(expression_list | (expression \"for\" for_indices) | (function_partial_application ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" function_arguments_non_first) | ())","_((function_argument ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_(((\",\" array_arguments_non_first) | (\"for\" for_indices)) | ())","_((\",\" array_arguments_non_first) | ())","_((\",\" named_arguments) | ())","_(function_partial_application | expression)","_(named_arguments | ())","_(() | ((expression | ()) \",\" (expression | ()) (\",\" (expression | ()))*))","_(expression | ())","_(\",\" (expression | ()))*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","_((string_literal (\"+\" string_literal)*) | ())","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
-    ? ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"flow\"","\"stream\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/\"[^\"]*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_(within_clause | ())","_(\"final\" | ())","_((\"final\" | ()) class_definition \";\")*","_(name | ())","_(\"encapsulated\" | ())","_(\"partial\" | ())","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | ((\"expandable\" | ()) \"connector\") | (((\"pure\" | \"impure\") | ()) \"function\") | (\"operator\" ((\"record\" | \"function\") | ())) | \"record\")","_(\"expandable\" | ())","_(\"pure\" | \"impure\")","_((\"pure\" | \"impure\") | ())","_(\"record\" | \"function\")","_((\"record\" | \"function\") | ())","_(long_class_specifier | short_class_specifier | der_class_specifier)","_(identifier | ())","_((identifier description_string composition \"end\" (identifier | ())) | (\"extends\" identifier (class_modification | ()) description_string composition \"end\" (identifier | ())))","_(class_modification | ())","_(array_subscripts | ())","_((identifier \"=\" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier \"=\" \"enumeration\" \"(\" ((enum_list | ()) | \":\") \")\" description))","_(enum_list | ())","_((enum_list | ()) | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\")","_((\"input\" | \"output\") | ())","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_((external_clause \";\") | ())","_((annotation_clause \";\") | ())","_(language_specification | ())","_(external_function_call | ())","_(annotation_clause | ())","_((component_reference \"=\") | ())","_(expression_list | ())","_(element \";\")*","_(import_clause | extends_clause | ((\"redeclare\" | ()) (\"final\" | ()) (\"inner\" | ()) (\"outer\" | ()) (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))))","_(\"redeclare\" | ())","_(\"inner\" | ())","_(\"outer\" | ())","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))","_(class_definition | component_clause)","_((constraining_clause description) | ())","_((identifier \"=\" name) | (name ((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())","_(class_or_inheritance_modification | ())","_(argument_or_inheritance_modification_list | ())","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_((\"discrete\" | \"parameter\" | \"constant\") | ())","_(((\"flow\" | \"stream\") ((\"discrete\" | \"parameter\" | \"constant\") | ()) ((\"input\" | \"output\") | ())) | ((\"discrete\" | \"parameter\" | \"constant\") ((\"input\" | \"output\") | ())) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_(condition_attribute | ())","_(modification | ())","_((\"=\" modification_expression) | ())","_((class_modification ((\"=\" modification_expression) | ())) | (\"=\" modification_expression))","_(expression | \"break\")","_(argument_list | ())","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_(\"each\" | ())","_(element_modification | element_replaceable)","_(short_class_definition | component_clause1 | element_replaceable)","_(short_class_definition | component_clause1)","_(constraining_clause | ())","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_(\"initial\" | ())","_(some_equation \";\")*","_(statement \";\")*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_((\"else\" (some_equation \";\")*) | ())","_(\"elseif\" expression \"then\" (statement \";\")*)*","_((\"else\" (statement \";\")*) | ())","_(\",\" for_index)*","_((\"in\" expression) | ())","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | ((expression \":\" expression \":\" expression) | (expression \":\" expression)) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_((expression \":\" expression \":\" expression) | (expression \":\" expression))","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" (function_arguments | ()) \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" ((array_subscripts | (\".\" identifier)) | ())) | (\"[\" expression_list (\";\" expression_list)* \"]\") | (\"{\" array_arguments \"}\"))","_(function_arguments | ())","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_((array_subscripts | (\".\" identifier)) | ())","_(\";\" expression_list)*","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(\".\" identifier)*","_(\".\" identifier (array_subscripts | ()))*","_((identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*) | (\".\" identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") ((\",\" unsigned_integer) | ()) \")\"))","_(component_reference | \"time\")","_((\",\" unsigned_integer) | ())","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(expression_list | (expression \"for\" for_indices) | (function_partial_application ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" function_arguments_non_first) | ())","_((function_argument ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_(((\",\" array_arguments_non_first) | (\"for\" for_indices)) | ())","_((\",\" array_arguments_non_first) | ())","_((\",\" named_arguments) | ())","_(function_partial_application | expression)","_(named_arguments | ())","_(() | ((expression | ()) \",\" (expression | ()) (\",\" (expression | ()))*))","_(expression | ())","_(\",\" (expression | ()))*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","_((string_literal (\"+\" string_literal)*) | ())","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
+  typeof ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"flow\"","\"stream\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/\"[^\"]*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_(within_clause | ())","_(\"final\" | ())","_((\"final\" | ()) class_definition \";\")*","_(name | ())","_(\"encapsulated\" | ())","_(\"partial\" | ())","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | ((\"expandable\" | ()) \"connector\") | (((\"pure\" | \"impure\") | ()) \"function\") | (\"operator\" ((\"record\" | \"function\") | ())) | \"record\")","_(\"expandable\" | ())","_(\"pure\" | \"impure\")","_((\"pure\" | \"impure\") | ())","_(\"record\" | \"function\")","_((\"record\" | \"function\") | ())","_(long_class_specifier | short_class_specifier | der_class_specifier)","_(identifier | ())","_((identifier description_string composition \"end\" (identifier | ())) | (\"extends\" identifier (class_modification | ()) description_string composition \"end\" (identifier | ())))","_(class_modification | ())","_(array_subscripts | ())","_((identifier \"=\" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier \"=\" \"enumeration\" \"(\" ((enum_list | ()) | \":\") \")\" description))","_(enum_list | ())","_((enum_list | ()) | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\")","_((\"input\" | \"output\") | ())","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_((external_clause \";\") | ())","_((annotation_clause \";\") | ())","_(language_specification | ())","_(external_function_call | ())","_(annotation_clause | ())","_((component_reference \"=\") | ())","_(expression_list | ())","_(element \";\")*","_(import_clause | extends_clause | ((\"redeclare\" | ()) (\"final\" | ()) (\"inner\" | ()) (\"outer\" | ()) (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))))","_(\"redeclare\" | ())","_(\"inner\" | ())","_(\"outer\" | ())","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))","_(class_definition | component_clause)","_((constraining_clause description) | ())","_((identifier \"=\" name) | (name ((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())","_(class_or_inheritance_modification | ())","_(argument_or_inheritance_modification_list | ())","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_((\"discrete\" | \"parameter\" | \"constant\") | ())","_(((\"flow\" | \"stream\") ((\"discrete\" | \"parameter\" | \"constant\") | ()) ((\"input\" | \"output\") | ())) | ((\"discrete\" | \"parameter\" | \"constant\") ((\"input\" | \"output\") | ())) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_(condition_attribute | ())","_(modification | ())","_((\"=\" modification_expression) | ())","_((class_modification ((\"=\" modification_expression) | ())) | (\"=\" modification_expression))","_(expression | \"break\")","_(argument_list | ())","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_(\"each\" | ())","_(element_modification | element_replaceable)","_(short_class_definition | component_clause1 | element_replaceable)","_(short_class_definition | component_clause1)","_(constraining_clause | ())","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_(\"initial\" | ())","_(some_equation \";\")*","_(statement \";\")*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_((\"else\" (some_equation \";\")*) | ())","_(\"elseif\" expression \"then\" (statement \";\")*)*","_((\"else\" (statement \";\")*) | ())","_(\",\" for_index)*","_((\"in\" expression) | ())","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | (expression \":\" expression) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_(expression \":\" expression)","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" (function_arguments | ()) \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" ((array_subscripts | (\".\" identifier)) | ())) | (\"[\" expression_list (\";\" expression_list)* \"]\") | (\"{\" array_arguments \"}\"))","_(function_arguments | ())","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_((array_subscripts | (\".\" identifier)) | ())","_(\";\" expression_list)*","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(\".\" identifier)*","_(\".\" identifier (array_subscripts | ()))*","_((identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*) | (\".\" identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") ((\",\" unsigned_integer) | ()) \")\"))","_(component_reference | \"time\")","_((\",\" unsigned_integer) | ())","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(expression_list | (expression \"for\" for_indices) | (function_partial_application ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" function_arguments_non_first) | ())","_((function_argument ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_(((\",\" array_arguments_non_first) | (\"for\" for_indices)) | ())","_((\",\" array_arguments_non_first) | ())","_((\",\" named_arguments) | ())","_(function_partial_application | expression)","_(named_arguments | ())","_(() | ((expression | ()) \",\" (expression | ()) (\",\" (expression | ()))*))","_(expression | ())","_(\",\" (expression | ()))*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","_((string_literal (\"+\" string_literal)*) | ())","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"flow\"","\"stream\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/\"[^\"]*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_(within_clause | ())","_(\"final\" | ())","_((\"final\" | ()) class_definition \";\")*","_(name | ())","_(\"encapsulated\" | ())","_(\"partial\" | ())","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | ((\"expandable\" | ()) \"connector\") | (((\"pure\" | \"impure\") | ()) \"function\") | (\"operator\" ((\"record\" | \"function\") | ())) | \"record\")","_(\"expandable\" | ())","_(\"pure\" | \"impure\")","_((\"pure\" | \"impure\") | ())","_(\"record\" | \"function\")","_((\"record\" | \"function\") | ())","_(long_class_specifier | short_class_specifier | der_class_specifier)","_(identifier | ())","_((identifier description_string composition \"end\" (identifier | ())) | (\"extends\" identifier (class_modification | ()) description_string composition \"end\" (identifier | ())))","_(class_modification | ())","_(array_subscripts | ())","_((identifier \"=\" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier \"=\" \"enumeration\" \"(\" ((enum_list | ()) | \":\") \")\" description))","_(enum_list | ())","_((enum_list | ()) | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\")","_((\"input\" | \"output\") | ())","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_((external_clause \";\") | ())","_((annotation_clause \";\") | ())","_(language_specification | ())","_(external_function_call | ())","_(annotation_clause | ())","_((component_reference \"=\") | ())","_(expression_list | ())","_(element \";\")*","_(import_clause | extends_clause | ((\"redeclare\" | ()) (\"final\" | ()) (\"inner\" | ()) (\"outer\" | ()) (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))))","_(\"redeclare\" | ())","_(\"inner\" | ())","_(\"outer\" | ())","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))","_(class_definition | component_clause)","_((constraining_clause description) | ())","_((identifier \"=\" name) | (name ((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())","_(class_or_inheritance_modification | ())","_(argument_or_inheritance_modification_list | ())","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_((\"discrete\" | \"parameter\" | \"constant\") | ())","_(((\"flow\" | \"stream\") ((\"discrete\" | \"parameter\" | \"constant\") | ()) ((\"input\" | \"output\") | ())) | ((\"discrete\" | \"parameter\" | \"constant\") ((\"input\" | \"output\") | ())) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_(condition_attribute | ())","_(modification | ())","_((\"=\" modification_expression) | ())","_((class_modification ((\"=\" modification_expression) | ())) | (\"=\" modification_expression))","_(expression | \"break\")","_(argument_list | ())","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_(\"each\" | ())","_(element_modification | element_replaceable)","_(short_class_definition | component_clause1 | element_replaceable)","_(short_class_definition | component_clause1)","_(constraining_clause | ())","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_(\"initial\" | ())","_(some_equation \";\")*","_(statement \";\")*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_((\"else\" (some_equation \";\")*) | ())","_(\"elseif\" expression \"then\" (statement \";\")*)*","_((\"else\" (statement \";\")*) | ())","_(\",\" for_index)*","_((\"in\" expression) | ())","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | (expression \":\" expression) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_(expression \":\" expression)","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" (function_arguments | ()) \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" ((array_subscripts | (\".\" identifier)) | ())) | (\"[\" expression_list (\";\" expression_list)* \"]\") | (\"{\" array_arguments \"}\"))","_(function_arguments | ())","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_((array_subscripts | (\".\" identifier)) | ())","_(\";\" expression_list)*","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(\".\" identifier)*","_(\".\" identifier (array_subscripts | ()))*","_((identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*) | (\".\" identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") ((\",\" unsigned_integer) | ()) \")\"))","_(component_reference | \"time\")","_((\",\" unsigned_integer) | ())","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(expression_list | (expression \"for\" for_indices) | (function_partial_application ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" function_arguments_non_first) | ())","_((function_argument ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_(((\",\" array_arguments_non_first) | (\"for\" for_indices)) | ())","_((\",\" array_arguments_non_first) | ())","_((\",\" named_arguments) | ())","_(function_partial_application | expression)","_(named_arguments | ())","_(() | ((expression | ()) \",\" (expression | ()) (\",\" (expression | ()))*))","_(expression | ())","_(\",\" (expression | ()))*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","_((string_literal (\"+\" string_literal)*) | ())","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
-  typeof {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed in Modelica.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect equation '${target.text}' may not be used inside when-equations.`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect equation '${target.text}' may not be used inside if-equations with non-parametric conditions.`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3001": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`} !== "undefined"
-    ? {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed in Modelica.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect equation '${target.text}' may not be used inside when-equations.`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect equation '${target.text}' may not be used inside if-equations with non-parametric conditions.`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3001": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`}
+  typeof {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`} !== "undefined"
+    ? {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`}
     : {};
 export const LINT_SEVERITIES =
-  typeof {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3001": 1,"3009": 1,"4003": 1,"3001": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1} !== "undefined"
-    ? {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3001": 1,"3009": 1,"4003": 1,"3001": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1}
+  typeof {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1} !== "undefined"
+    ? {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1}
     : {};
 export const LINT_CODES =
-  typeof {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3001": 3001,"3009": 3009,"4003": 4003,"3001": 3001,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} !== "undefined" ? {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3001": 3001,"3009": 3009,"4003": 4003,"3001": 3001,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} : {};
+  typeof {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} !== "undefined" ? {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
-  typeof {"class_specifier":1,"name":2,"end_name":3,"type_specifier":4,"type_prefix":5,"declaration":6,"lhs":7,"rhs":8,"target":9,"value":10,"args":11,"left":12,"right":13,"operand":14} !== "undefined" ? {"class_specifier":1,"name":2,"end_name":3,"type_specifier":4,"type_prefix":5,"declaration":6,"lhs":7,"rhs":8,"target":9,"value":10,"args":11,"left":12,"right":13,"operand":14} : {};
+  typeof {"class_specifier":1,"name":2,"description":3,"composition":4,"end_name":5,"type_specifier":6,"type_prefix":7,"declaration":8,"modification":9,"class_modification":10,"modification_expression":11,"lhs":12,"rhs":13,"target":14,"value":15,"args":16,"condition":17,"body":18,"elseCondition":19,"elseBody":20,"finalBody":21,"indices":22,"variable":23,"range":24,"left":25,"right":26,"operand":27,"flexible":28,"expression":29} !== "undefined" ? {"class_specifier":1,"name":2,"description":3,"composition":4,"end_name":5,"type_specifier":6,"type_prefix":7,"declaration":8,"modification":9,"class_modification":10,"modification_expression":11,"lhs":12,"rhs":13,"target":14,"value":15,"args":16,"condition":17,"body":18,"elseCondition":19,"elseBody":20,"finalBody":21,"indices":22,"variable":23,"range":24,"left":25,"right":26,"operand":27,"flexible":28,"expression":29} : {};
 export function createWasmImports(grammar, facade) {
   const hostQueries = grammar.hostQueries || {};
   const queryKeys = Object.keys(hostQueries);
@@ -4818,3 +4818,1332 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
 }
 
 export const semanticLegend = { tokenTypes: ["class","enumMember","property","function","string","number"], tokenModifiers: ["declaration"] };
+
+export const SyntaxKind = {
+  ERROR: 0,
+  Identifier: 325,
+  identifier: 325,
+  StringLiteral: 326,
+  string_literal: 326,
+  UnsignedInteger: 327,
+  unsigned_integer: 327,
+  UnsignedReal: 328,
+  unsigned_real: 328,
+  Program: 103,
+  program: 103,
+  StoredDefinition: 104,
+  stored_definition: 104,
+  WithinClause: 105,
+  within_clause: 105,
+  ClassDefinition: 106,
+  class_definition: 106,
+  ClassPrefixes: 107,
+  class_prefixes: 107,
+  ClassSpecifier: 108,
+  class_specifier: 108,
+  LongClassSpecifier: 109,
+  long_class_specifier: 109,
+  ShortClassSpecifier: 110,
+  short_class_specifier: 110,
+  DerClassSpecifier: 111,
+  der_class_specifier: 111,
+  BasePrefix: 112,
+  base_prefix: 112,
+  EnumList: 113,
+  enum_list: 113,
+  EnumerationLiteral: 114,
+  enumeration_literal: 114,
+  Composition: 115,
+  composition: 115,
+  ExternalClause: 116,
+  external_clause: 116,
+  LanguageSpecification: 117,
+  language_specification: 117,
+  ExternalFunctionCall: 118,
+  external_function_call: 118,
+  ElementList: 119,
+  element_list: 119,
+  Element: 120,
+  element: 120,
+  ImportClause: 121,
+  import_clause: 121,
+  ImportList: 122,
+  import_list: 122,
+  ExtendsClause: 123,
+  extends_clause: 123,
+  ConstrainingClause: 124,
+  constraining_clause: 124,
+  ClassOrInheritanceModification: 125,
+  class_or_inheritance_modification: 125,
+  ArgumentOrInheritanceModificationList: 126,
+  argument_or_inheritance_modification_list: 126,
+  InheritanceModification: 127,
+  inheritance_modification: 127,
+  ComponentClause: 128,
+  component_clause: 128,
+  TypePrefix: 129,
+  type_prefix: 129,
+  ComponentList: 130,
+  component_list: 130,
+  ComponentDeclaration: 131,
+  component_declaration: 131,
+  ConditionAttribute: 132,
+  condition_attribute: 132,
+  Declaration: 133,
+  declaration: 133,
+  Modification: 134,
+  modification: 134,
+  ModificationExpression: 135,
+  modification_expression: 135,
+  ClassModification: 136,
+  class_modification: 136,
+  ArgumentList: 137,
+  argument_list: 137,
+  Argument: 138,
+  argument: 138,
+  ElementModificationOrReplaceable: 139,
+  element_modification_or_replaceable: 139,
+  ElementModification: 140,
+  element_modification: 140,
+  ElementRedeclaration: 141,
+  element_redeclaration: 141,
+  ElementReplaceable: 142,
+  element_replaceable: 142,
+  ComponentClause1: 143,
+  component_clause1: 143,
+  ComponentDeclaration1: 144,
+  component_declaration1: 144,
+  ShortClassDefinition: 145,
+  short_class_definition: 145,
+  EquationSection: 146,
+  equation_section: 146,
+  AlgorithmSection: 147,
+  algorithm_section: 147,
+  SomeEquation: 148,
+  some_equation: 148,
+  EquationOrProcedure: 149,
+  equation_or_procedure: 149,
+  SimpleEquation: 150,
+  simple_equation: 150,
+  Statement: 151,
+  statement: 151,
+  StatementOrProcedure: 152,
+  statement_or_procedure: 152,
+  AssignmentStatement: 153,
+  assignment_statement: 153,
+  FunctionCall: 154,
+  function_call: 154,
+  IfEquation: 155,
+  if_equation: 155,
+  IfStatement: 156,
+  if_statement: 156,
+  ForEquation: 157,
+  for_equation: 157,
+  ForStatement: 158,
+  for_statement: 158,
+  ForIndices: 159,
+  for_indices: 159,
+  ForIndex: 160,
+  for_index: 160,
+  WhileStatement: 161,
+  while_statement: 161,
+  WhenEquation: 162,
+  when_equation: 162,
+  WhenStatement: 163,
+  when_statement: 163,
+  ConnectEquation: 164,
+  connect_equation: 164,
+  Expression: 165,
+  expression: 165,
+  Primary: 166,
+  primary: 166,
+  UnsignedNumber: 167,
+  unsigned_number: 167,
+  TypeSpecifier: 168,
+  type_specifier: 168,
+  Name: 169,
+  name: 169,
+  ComponentReference: 170,
+  component_reference: 170,
+  ResultReference: 171,
+  result_reference: 171,
+  FunctionCallArgs: 172,
+  function_call_args: 172,
+  FunctionArguments: 173,
+  function_arguments: 173,
+  FunctionArgumentsNonFirst: 174,
+  function_arguments_non_first: 174,
+  ArrayArguments: 175,
+  array_arguments: 175,
+  ArrayArgumentsNonFirst: 176,
+  array_arguments_non_first: 176,
+  NamedArguments: 177,
+  named_arguments: 177,
+  NamedArgument: 178,
+  named_argument: 178,
+  FunctionArgument: 179,
+  function_argument: 179,
+  FunctionPartialApplication: 180,
+  function_partial_application: 180,
+  OutputExpressionList: 181,
+  output_expression_list: 181,
+  ExpressionList: 182,
+  expression_list: 182,
+  ArraySubscripts: 183,
+  array_subscripts: 183,
+  Subscript: 184,
+  subscript: 184,
+  Description: 185,
+  description: 185,
+  DescriptionString: 186,
+  description_string: 186,
+  AnnotationClause: 187,
+  annotation_clause: 187,
+  START: 188,
+  _START: 188,
+  EOF: 1023,
+};
+
+export const FieldId = {
+  ClassSpecifier: 1,
+  class_specifier: 1,
+  Name: 2,
+  name: 2,
+  Description: 3,
+  description: 3,
+  Composition: 4,
+  composition: 4,
+  EndName: 5,
+  end_name: 5,
+  TypeSpecifier: 6,
+  type_specifier: 6,
+  TypePrefix: 7,
+  type_prefix: 7,
+  Declaration: 8,
+  declaration: 8,
+  Modification: 9,
+  modification: 9,
+  ClassModification: 10,
+  class_modification: 10,
+  ModificationExpression: 11,
+  modification_expression: 11,
+  Lhs: 12,
+  lhs: 12,
+  Rhs: 13,
+  rhs: 13,
+  Target: 14,
+  target: 14,
+  Value: 15,
+  value: 15,
+  Args: 16,
+  args: 16,
+  Condition: 17,
+  condition: 17,
+  Body: 18,
+  body: 18,
+  ElseCondition: 19,
+  elseCondition: 19,
+  ElseBody: 20,
+  elseBody: 20,
+  FinalBody: 21,
+  finalBody: 21,
+  Indices: 22,
+  indices: 22,
+  Variable: 23,
+  variable: 23,
+  Range: 24,
+  range: 24,
+  Left: 25,
+  left: 25,
+  Right: 26,
+  right: 26,
+  Operand: 27,
+  operand: 27,
+  Flexible: 28,
+  flexible: 28,
+  Expression: 29,
+  expression: 29,
+};
+
+/** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
+export function normalizeToken(token) {
+  if (!token) return "";
+  return token.charCodeAt(0) === 34 && token.charCodeAt(token.length - 1) === 34
+    ? token.slice(1, -1)
+    : token;
+}
+
+/** Returns the normalized type of a CST node (stripped of quotes). */
+export function cstKind(node) {
+  return node ? normalizeToken(node.type) : "";
+}
+export function isProgram(node) {
+  return node != null && node.typeId === 103;
+}
+export function isStoredDefinition(node) {
+  return node != null && node.typeId === 104;
+}
+export function isWithinClause(node) {
+  return node != null && node.typeId === 105;
+}
+export function isClassDefinition(node) {
+  return node != null && node.typeId === 106;
+}
+export function isClassPrefixes(node) {
+  return node != null && node.typeId === 107;
+}
+export function isClassSpecifier(node) {
+  return node != null && node.typeId === 108;
+}
+export function isLongClassSpecifier(node) {
+  return node != null && node.typeId === 109;
+}
+export function isShortClassSpecifier(node) {
+  return node != null && node.typeId === 110;
+}
+export function isDerClassSpecifier(node) {
+  return node != null && node.typeId === 111;
+}
+export function isBasePrefix(node) {
+  return node != null && node.typeId === 112;
+}
+export function isEnumList(node) {
+  return node != null && node.typeId === 113;
+}
+export function isEnumerationLiteral(node) {
+  return node != null && node.typeId === 114;
+}
+export function isComposition(node) {
+  return node != null && node.typeId === 115;
+}
+export function isExternalClause(node) {
+  return node != null && node.typeId === 116;
+}
+export function isLanguageSpecification(node) {
+  return node != null && node.typeId === 117;
+}
+export function isExternalFunctionCall(node) {
+  return node != null && node.typeId === 118;
+}
+export function isElementList(node) {
+  return node != null && node.typeId === 119;
+}
+export function isElement(node) {
+  return node != null && node.typeId === 120;
+}
+export function isImportClause(node) {
+  return node != null && node.typeId === 121;
+}
+export function isImportList(node) {
+  return node != null && node.typeId === 122;
+}
+export function isExtendsClause(node) {
+  return node != null && node.typeId === 123;
+}
+export function isConstrainingClause(node) {
+  return node != null && node.typeId === 124;
+}
+export function isClassOrInheritanceModification(node) {
+  return node != null && node.typeId === 125;
+}
+export function isArgumentOrInheritanceModificationList(node) {
+  return node != null && node.typeId === 126;
+}
+export function isInheritanceModification(node) {
+  return node != null && node.typeId === 127;
+}
+export function isComponentClause(node) {
+  return node != null && node.typeId === 128;
+}
+export function isTypePrefix(node) {
+  return node != null && node.typeId === 129;
+}
+export function isComponentList(node) {
+  return node != null && node.typeId === 130;
+}
+export function isComponentDeclaration(node) {
+  return node != null && node.typeId === 131;
+}
+export function isConditionAttribute(node) {
+  return node != null && node.typeId === 132;
+}
+export function isDeclaration(node) {
+  return node != null && node.typeId === 133;
+}
+export function isModification(node) {
+  return node != null && node.typeId === 134;
+}
+export function isModificationExpression(node) {
+  return node != null && node.typeId === 135;
+}
+export function isClassModification(node) {
+  return node != null && node.typeId === 136;
+}
+export function isArgumentList(node) {
+  return node != null && node.typeId === 137;
+}
+export function isArgument(node) {
+  return node != null && node.typeId === 138;
+}
+export function isElementModificationOrReplaceable(node) {
+  return node != null && node.typeId === 139;
+}
+export function isElementModification(node) {
+  return node != null && node.typeId === 140;
+}
+export function isElementRedeclaration(node) {
+  return node != null && node.typeId === 141;
+}
+export function isElementReplaceable(node) {
+  return node != null && node.typeId === 142;
+}
+export function isComponentClause1(node) {
+  return node != null && node.typeId === 143;
+}
+export function isComponentDeclaration1(node) {
+  return node != null && node.typeId === 144;
+}
+export function isShortClassDefinition(node) {
+  return node != null && node.typeId === 145;
+}
+export function isEquationSection(node) {
+  return node != null && node.typeId === 146;
+}
+export function isAlgorithmSection(node) {
+  return node != null && node.typeId === 147;
+}
+export function isSomeEquation(node) {
+  return node != null && node.typeId === 148;
+}
+export function isEquationOrProcedure(node) {
+  return node != null && node.typeId === 149;
+}
+export function isSimpleEquation(node) {
+  return node != null && node.typeId === 150;
+}
+export function isStatement(node) {
+  return node != null && node.typeId === 151;
+}
+export function isStatementOrProcedure(node) {
+  return node != null && node.typeId === 152;
+}
+export function isAssignmentStatement(node) {
+  return node != null && node.typeId === 153;
+}
+export function isFunctionCall(node) {
+  return node != null && node.typeId === 154;
+}
+export function isIfEquation(node) {
+  return node != null && node.typeId === 155;
+}
+export function isIfStatement(node) {
+  return node != null && node.typeId === 156;
+}
+export function isForEquation(node) {
+  return node != null && node.typeId === 157;
+}
+export function isForStatement(node) {
+  return node != null && node.typeId === 158;
+}
+export function isForIndices(node) {
+  return node != null && node.typeId === 159;
+}
+export function isForIndex(node) {
+  return node != null && node.typeId === 160;
+}
+export function isWhileStatement(node) {
+  return node != null && node.typeId === 161;
+}
+export function isWhenEquation(node) {
+  return node != null && node.typeId === 162;
+}
+export function isWhenStatement(node) {
+  return node != null && node.typeId === 163;
+}
+export function isConnectEquation(node) {
+  return node != null && node.typeId === 164;
+}
+export function isExpression(node) {
+  return node != null && node.typeId === 165;
+}
+export function isPrimary(node) {
+  return node != null && node.typeId === 166;
+}
+export function isUnsignedNumber(node) {
+  return node != null && node.typeId === 167;
+}
+export function isTypeSpecifier(node) {
+  return node != null && node.typeId === 168;
+}
+export function isName(node) {
+  return node != null && node.typeId === 169;
+}
+export function isComponentReference(node) {
+  return node != null && node.typeId === 170;
+}
+export function isResultReference(node) {
+  return node != null && node.typeId === 171;
+}
+export function isFunctionCallArgs(node) {
+  return node != null && node.typeId === 172;
+}
+export function isFunctionArguments(node) {
+  return node != null && node.typeId === 173;
+}
+export function isFunctionArgumentsNonFirst(node) {
+  return node != null && node.typeId === 174;
+}
+export function isArrayArguments(node) {
+  return node != null && node.typeId === 175;
+}
+export function isArrayArgumentsNonFirst(node) {
+  return node != null && node.typeId === 176;
+}
+export function isNamedArguments(node) {
+  return node != null && node.typeId === 177;
+}
+export function isNamedArgument(node) {
+  return node != null && node.typeId === 178;
+}
+export function isFunctionArgument(node) {
+  return node != null && node.typeId === 179;
+}
+export function isFunctionPartialApplication(node) {
+  return node != null && node.typeId === 180;
+}
+export function isOutputExpressionList(node) {
+  return node != null && node.typeId === 181;
+}
+export function isExpressionList(node) {
+  return node != null && node.typeId === 182;
+}
+export function isArraySubscripts(node) {
+  return node != null && node.typeId === 183;
+}
+export function isSubscript(node) {
+  return node != null && node.typeId === 184;
+}
+export function isDescription(node) {
+  return node != null && node.typeId === 185;
+}
+export function isDescriptionString(node) {
+  return node != null && node.typeId === 186;
+}
+export function isAnnotationClause(node) {
+  return node != null && node.typeId === 187;
+}
+export function isIdentifier(node) {
+  return node != null && node.typeId === 325;
+}
+export function isStringLiteral(node) {
+  return node != null && node.typeId === 326;
+}
+export function isUnsignedInteger(node) {
+  return node != null && node.typeId === 327;
+}
+export function isUnsignedReal(node) {
+  return node != null && node.typeId === 328;
+}
+export const Cst = {
+  kind: cstKind,
+  normalize: normalizeToken,
+  Program: {
+    typeId: 103,
+    type: "program",
+    is(node) { return node != null && node.typeId === 103; },
+  },
+  StoredDefinition: {
+    typeId: 104,
+    type: "stored_definition",
+    is(node) { return node != null && node.typeId === 104; },
+  },
+  WithinClause: {
+    typeId: 105,
+    type: "within_clause",
+    is(node) { return node != null && node.typeId === 105; },
+  },
+  ClassDefinition: {
+    typeId: 106,
+    type: "class_definition",
+    is(node) { return node != null && node.typeId === 106; },
+    classSpecifier(node) {
+      return node ? (node.childForFieldId(1) || node.childForFieldName("class_specifier")) : null;
+    },
+    classSpecifierList(node) {
+      return node ? node.childrenForFieldName("class_specifier") : [];
+    },
+  },
+  ClassPrefixes: {
+    typeId: 107,
+    type: "class_prefixes",
+    is(node) { return node != null && node.typeId === 107; },
+  },
+  ClassSpecifier: {
+    typeId: 108,
+    type: "class_specifier",
+    is(node) { return node != null && node.typeId === 108; },
+  },
+  LongClassSpecifier: {
+    typeId: 109,
+    type: "long_class_specifier",
+    is(node) { return node != null && node.typeId === 109; },
+    name(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+    },
+    nameList(node) {
+      return node ? node.childrenForFieldName("name") : [];
+    },
+    description(node) {
+      return node ? (node.childForFieldId(3) || node.childForFieldName("description")) : null;
+    },
+    descriptionList(node) {
+      return node ? node.childrenForFieldName("description") : [];
+    },
+    composition(node) {
+      return node ? (node.childForFieldId(4) || node.childForFieldName("composition")) : null;
+    },
+    compositionList(node) {
+      return node ? node.childrenForFieldName("composition") : [];
+    },
+    endName(node) {
+      return node ? (node.childForFieldId(5) || node.childForFieldName("end_name")) : null;
+    },
+    endNameList(node) {
+      return node ? node.childrenForFieldName("end_name") : [];
+    },
+  },
+  ShortClassSpecifier: {
+    typeId: 110,
+    type: "short_class_specifier",
+    is(node) { return node != null && node.typeId === 110; },
+    name(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+    },
+    nameList(node) {
+      return node ? node.childrenForFieldName("name") : [];
+    },
+  },
+  DerClassSpecifier: {
+    typeId: 111,
+    type: "der_class_specifier",
+    is(node) { return node != null && node.typeId === 111; },
+    name(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+    },
+    nameList(node) {
+      return node ? node.childrenForFieldName("name") : [];
+    },
+  },
+  BasePrefix: {
+    typeId: 112,
+    type: "base_prefix",
+    is(node) { return node != null && node.typeId === 112; },
+  },
+  EnumList: {
+    typeId: 113,
+    type: "enum_list",
+    is(node) { return node != null && node.typeId === 113; },
+  },
+  EnumerationLiteral: {
+    typeId: 114,
+    type: "enumeration_literal",
+    is(node) { return node != null && node.typeId === 114; },
+  },
+  Composition: {
+    typeId: 115,
+    type: "composition",
+    is(node) { return node != null && node.typeId === 115; },
+  },
+  ExternalClause: {
+    typeId: 116,
+    type: "external_clause",
+    is(node) { return node != null && node.typeId === 116; },
+  },
+  LanguageSpecification: {
+    typeId: 117,
+    type: "language_specification",
+    is(node) { return node != null && node.typeId === 117; },
+  },
+  ExternalFunctionCall: {
+    typeId: 118,
+    type: "external_function_call",
+    is(node) { return node != null && node.typeId === 118; },
+  },
+  ElementList: {
+    typeId: 119,
+    type: "element_list",
+    is(node) { return node != null && node.typeId === 119; },
+  },
+  Element: {
+    typeId: 120,
+    type: "element",
+    is(node) { return node != null && node.typeId === 120; },
+  },
+  ImportClause: {
+    typeId: 121,
+    type: "import_clause",
+    is(node) { return node != null && node.typeId === 121; },
+  },
+  ImportList: {
+    typeId: 122,
+    type: "import_list",
+    is(node) { return node != null && node.typeId === 122; },
+  },
+  ExtendsClause: {
+    typeId: 123,
+    type: "extends_clause",
+    is(node) { return node != null && node.typeId === 123; },
+    typeSpecifier(node) {
+      return node ? (node.childForFieldId(6) || node.childForFieldName("type_specifier")) : null;
+    },
+    typeSpecifierList(node) {
+      return node ? node.childrenForFieldName("type_specifier") : [];
+    },
+  },
+  ConstrainingClause: {
+    typeId: 124,
+    type: "constraining_clause",
+    is(node) { return node != null && node.typeId === 124; },
+  },
+  ClassOrInheritanceModification: {
+    typeId: 125,
+    type: "class_or_inheritance_modification",
+    is(node) { return node != null && node.typeId === 125; },
+  },
+  ArgumentOrInheritanceModificationList: {
+    typeId: 126,
+    type: "argument_or_inheritance_modification_list",
+    is(node) { return node != null && node.typeId === 126; },
+  },
+  InheritanceModification: {
+    typeId: 127,
+    type: "inheritance_modification",
+    is(node) { return node != null && node.typeId === 127; },
+  },
+  ComponentClause: {
+    typeId: 128,
+    type: "component_clause",
+    is(node) { return node != null && node.typeId === 128; },
+    typePrefix(node) {
+      return node ? (node.childForFieldId(7) || node.childForFieldName("type_prefix")) : null;
+    },
+    typePrefixList(node) {
+      return node ? node.childrenForFieldName("type_prefix") : [];
+    },
+    typeSpecifier(node) {
+      return node ? (node.childForFieldId(6) || node.childForFieldName("type_specifier")) : null;
+    },
+    typeSpecifierList(node) {
+      return node ? node.childrenForFieldName("type_specifier") : [];
+    },
+  },
+  TypePrefix: {
+    typeId: 129,
+    type: "type_prefix",
+    is(node) { return node != null && node.typeId === 129; },
+  },
+  ComponentList: {
+    typeId: 130,
+    type: "component_list",
+    is(node) { return node != null && node.typeId === 130; },
+  },
+  ComponentDeclaration: {
+    typeId: 131,
+    type: "component_declaration",
+    is(node) { return node != null && node.typeId === 131; },
+    declaration(node) {
+      return node ? (node.childForFieldId(8) || node.childForFieldName("declaration")) : null;
+    },
+    declarationList(node) {
+      return node ? node.childrenForFieldName("declaration") : [];
+    },
+    description(node) {
+      return node ? (node.childForFieldId(3) || node.childForFieldName("description")) : null;
+    },
+    descriptionList(node) {
+      return node ? node.childrenForFieldName("description") : [];
+    },
+  },
+  ConditionAttribute: {
+    typeId: 132,
+    type: "condition_attribute",
+    is(node) { return node != null && node.typeId === 132; },
+  },
+  Declaration: {
+    typeId: 133,
+    type: "declaration",
+    is(node) { return node != null && node.typeId === 133; },
+    name(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+    },
+    nameList(node) {
+      return node ? node.childrenForFieldName("name") : [];
+    },
+    modification(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("modification")) : null;
+    },
+    modificationList(node) {
+      return node ? node.childrenForFieldName("modification") : [];
+    },
+  },
+  Modification: {
+    typeId: 134,
+    type: "modification",
+    is(node) { return node != null && node.typeId === 134; },
+    classModification(node) {
+      return node ? (node.childForFieldId(10) || node.childForFieldName("class_modification")) : null;
+    },
+    classModificationList(node) {
+      return node ? node.childrenForFieldName("class_modification") : [];
+    },
+    modificationExpression(node) {
+      return node ? (node.childForFieldId(11) || node.childForFieldName("modification_expression")) : null;
+    },
+    modificationExpressionList(node) {
+      return node ? node.childrenForFieldName("modification_expression") : [];
+    },
+  },
+  ModificationExpression: {
+    typeId: 135,
+    type: "modification_expression",
+    is(node) { return node != null && node.typeId === 135; },
+  },
+  ClassModification: {
+    typeId: 136,
+    type: "class_modification",
+    is(node) { return node != null && node.typeId === 136; },
+  },
+  ArgumentList: {
+    typeId: 137,
+    type: "argument_list",
+    is(node) { return node != null && node.typeId === 137; },
+  },
+  Argument: {
+    typeId: 138,
+    type: "argument",
+    is(node) { return node != null && node.typeId === 138; },
+  },
+  ElementModificationOrReplaceable: {
+    typeId: 139,
+    type: "element_modification_or_replaceable",
+    is(node) { return node != null && node.typeId === 139; },
+  },
+  ElementModification: {
+    typeId: 140,
+    type: "element_modification",
+    is(node) { return node != null && node.typeId === 140; },
+    name(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+    },
+    nameList(node) {
+      return node ? node.childrenForFieldName("name") : [];
+    },
+    modification(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("modification")) : null;
+    },
+    modificationList(node) {
+      return node ? node.childrenForFieldName("modification") : [];
+    },
+  },
+  ElementRedeclaration: {
+    typeId: 141,
+    type: "element_redeclaration",
+    is(node) { return node != null && node.typeId === 141; },
+  },
+  ElementReplaceable: {
+    typeId: 142,
+    type: "element_replaceable",
+    is(node) { return node != null && node.typeId === 142; },
+  },
+  ComponentClause1: {
+    typeId: 143,
+    type: "component_clause1",
+    is(node) { return node != null && node.typeId === 143; },
+    typePrefix(node) {
+      return node ? (node.childForFieldId(7) || node.childForFieldName("type_prefix")) : null;
+    },
+    typePrefixList(node) {
+      return node ? node.childrenForFieldName("type_prefix") : [];
+    },
+    typeSpecifier(node) {
+      return node ? (node.childForFieldId(6) || node.childForFieldName("type_specifier")) : null;
+    },
+    typeSpecifierList(node) {
+      return node ? node.childrenForFieldName("type_specifier") : [];
+    },
+  },
+  ComponentDeclaration1: {
+    typeId: 144,
+    type: "component_declaration1",
+    is(node) { return node != null && node.typeId === 144; },
+  },
+  ShortClassDefinition: {
+    typeId: 145,
+    type: "short_class_definition",
+    is(node) { return node != null && node.typeId === 145; },
+  },
+  EquationSection: {
+    typeId: 146,
+    type: "equation_section",
+    is(node) { return node != null && node.typeId === 146; },
+  },
+  AlgorithmSection: {
+    typeId: 147,
+    type: "algorithm_section",
+    is(node) { return node != null && node.typeId === 147; },
+  },
+  SomeEquation: {
+    typeId: 148,
+    type: "some_equation",
+    is(node) { return node != null && node.typeId === 148; },
+  },
+  EquationOrProcedure: {
+    typeId: 149,
+    type: "equation_or_procedure",
+    is(node) { return node != null && node.typeId === 149; },
+  },
+  SimpleEquation: {
+    typeId: 150,
+    type: "simple_equation",
+    is(node) { return node != null && node.typeId === 150; },
+    lhs(node) {
+      return node ? (node.childForFieldId(12) || node.childForFieldName("lhs")) : null;
+    },
+    lhsList(node) {
+      return node ? node.childrenForFieldName("lhs") : [];
+    },
+    rhs(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("rhs")) : null;
+    },
+    rhsList(node) {
+      return node ? node.childrenForFieldName("rhs") : [];
+    },
+  },
+  Statement: {
+    typeId: 151,
+    type: "statement",
+    is(node) { return node != null && node.typeId === 151; },
+  },
+  StatementOrProcedure: {
+    typeId: 152,
+    type: "statement_or_procedure",
+    is(node) { return node != null && node.typeId === 152; },
+  },
+  AssignmentStatement: {
+    typeId: 153,
+    type: "assignment_statement",
+    is(node) { return node != null && node.typeId === 153; },
+    target(node) {
+      return node ? (node.childForFieldId(14) || node.childForFieldName("target")) : null;
+    },
+    targetList(node) {
+      return node ? node.childrenForFieldName("target") : [];
+    },
+    value(node) {
+      return node ? (node.childForFieldId(15) || node.childForFieldName("value")) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldName("value") : [];
+    },
+  },
+  FunctionCall: {
+    typeId: 154,
+    type: "function_call",
+    is(node) { return node != null && node.typeId === 154; },
+    name(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+    },
+    nameList(node) {
+      return node ? node.childrenForFieldName("name") : [];
+    },
+    args(node) {
+      return node ? (node.childForFieldId(16) || node.childForFieldName("args")) : null;
+    },
+    argsList(node) {
+      return node ? node.childrenForFieldName("args") : [];
+    },
+  },
+  IfEquation: {
+    typeId: 155,
+    type: "if_equation",
+    is(node) { return node != null && node.typeId === 155; },
+    condition(node) {
+      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+    },
+    conditionList(node) {
+      return node ? node.childrenForFieldName("condition") : [];
+    },
+    body(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+    },
+    bodyList(node) {
+      return node ? node.childrenForFieldName("body") : [];
+    },
+    elseCondition(node) {
+      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+    },
+    elseConditionList(node) {
+      return node ? node.childrenForFieldName("elseCondition") : [];
+    },
+    elseBody(node) {
+      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+    },
+    elseBodyList(node) {
+      return node ? node.childrenForFieldName("elseBody") : [];
+    },
+    finalBody(node) {
+      return node ? (node.childForFieldId(21) || node.childForFieldName("finalBody")) : null;
+    },
+    finalBodyList(node) {
+      return node ? node.childrenForFieldName("finalBody") : [];
+    },
+  },
+  IfStatement: {
+    typeId: 156,
+    type: "if_statement",
+    is(node) { return node != null && node.typeId === 156; },
+    condition(node) {
+      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+    },
+    conditionList(node) {
+      return node ? node.childrenForFieldName("condition") : [];
+    },
+    body(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+    },
+    bodyList(node) {
+      return node ? node.childrenForFieldName("body") : [];
+    },
+    elseCondition(node) {
+      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+    },
+    elseConditionList(node) {
+      return node ? node.childrenForFieldName("elseCondition") : [];
+    },
+    elseBody(node) {
+      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+    },
+    elseBodyList(node) {
+      return node ? node.childrenForFieldName("elseBody") : [];
+    },
+    finalBody(node) {
+      return node ? (node.childForFieldId(21) || node.childForFieldName("finalBody")) : null;
+    },
+    finalBodyList(node) {
+      return node ? node.childrenForFieldName("finalBody") : [];
+    },
+  },
+  ForEquation: {
+    typeId: 157,
+    type: "for_equation",
+    is(node) { return node != null && node.typeId === 157; },
+    indices(node) {
+      return node ? (node.childForFieldId(22) || node.childForFieldName("indices")) : null;
+    },
+    indicesList(node) {
+      return node ? node.childrenForFieldName("indices") : [];
+    },
+    body(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+    },
+    bodyList(node) {
+      return node ? node.childrenForFieldName("body") : [];
+    },
+  },
+  ForStatement: {
+    typeId: 158,
+    type: "for_statement",
+    is(node) { return node != null && node.typeId === 158; },
+    indices(node) {
+      return node ? (node.childForFieldId(22) || node.childForFieldName("indices")) : null;
+    },
+    indicesList(node) {
+      return node ? node.childrenForFieldName("indices") : [];
+    },
+    body(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+    },
+    bodyList(node) {
+      return node ? node.childrenForFieldName("body") : [];
+    },
+  },
+  ForIndices: {
+    typeId: 159,
+    type: "for_indices",
+    is(node) { return node != null && node.typeId === 159; },
+  },
+  ForIndex: {
+    typeId: 160,
+    type: "for_index",
+    is(node) { return node != null && node.typeId === 160; },
+    variable(node) {
+      return node ? (node.childForFieldId(23) || node.childForFieldName("variable")) : null;
+    },
+    variableList(node) {
+      return node ? node.childrenForFieldName("variable") : [];
+    },
+    range(node) {
+      return node ? (node.childForFieldId(24) || node.childForFieldName("range")) : null;
+    },
+    rangeList(node) {
+      return node ? node.childrenForFieldName("range") : [];
+    },
+  },
+  WhileStatement: {
+    typeId: 161,
+    type: "while_statement",
+    is(node) { return node != null && node.typeId === 161; },
+    condition(node) {
+      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+    },
+    conditionList(node) {
+      return node ? node.childrenForFieldName("condition") : [];
+    },
+    body(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+    },
+    bodyList(node) {
+      return node ? node.childrenForFieldName("body") : [];
+    },
+  },
+  WhenEquation: {
+    typeId: 162,
+    type: "when_equation",
+    is(node) { return node != null && node.typeId === 162; },
+    condition(node) {
+      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+    },
+    conditionList(node) {
+      return node ? node.childrenForFieldName("condition") : [];
+    },
+    body(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+    },
+    bodyList(node) {
+      return node ? node.childrenForFieldName("body") : [];
+    },
+    elseCondition(node) {
+      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+    },
+    elseConditionList(node) {
+      return node ? node.childrenForFieldName("elseCondition") : [];
+    },
+    elseBody(node) {
+      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+    },
+    elseBodyList(node) {
+      return node ? node.childrenForFieldName("elseBody") : [];
+    },
+  },
+  WhenStatement: {
+    typeId: 163,
+    type: "when_statement",
+    is(node) { return node != null && node.typeId === 163; },
+    condition(node) {
+      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+    },
+    conditionList(node) {
+      return node ? node.childrenForFieldName("condition") : [];
+    },
+    body(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+    },
+    bodyList(node) {
+      return node ? node.childrenForFieldName("body") : [];
+    },
+    elseCondition(node) {
+      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+    },
+    elseConditionList(node) {
+      return node ? node.childrenForFieldName("elseCondition") : [];
+    },
+    elseBody(node) {
+      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+    },
+    elseBodyList(node) {
+      return node ? node.childrenForFieldName("elseBody") : [];
+    },
+  },
+  ConnectEquation: {
+    typeId: 164,
+    type: "connect_equation",
+    is(node) { return node != null && node.typeId === 164; },
+    lhs(node) {
+      return node ? (node.childForFieldId(12) || node.childForFieldName("lhs")) : null;
+    },
+    lhsList(node) {
+      return node ? node.childrenForFieldName("lhs") : [];
+    },
+    rhs(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("rhs")) : null;
+    },
+    rhsList(node) {
+      return node ? node.childrenForFieldName("rhs") : [];
+    },
+  },
+  Expression: {
+    typeId: 165,
+    type: "expression",
+    is(node) { return node != null && node.typeId === 165; },
+    left(node) {
+      return node ? (node.childForFieldId(25) || node.childForFieldName("left")) : null;
+    },
+    leftList(node) {
+      return node ? node.childrenForFieldName("left") : [];
+    },
+    right(node) {
+      return node ? (node.childForFieldId(26) || node.childForFieldName("right")) : null;
+    },
+    rightList(node) {
+      return node ? node.childrenForFieldName("right") : [];
+    },
+    operand(node) {
+      return node ? (node.childForFieldId(27) || node.childForFieldName("operand")) : null;
+    },
+    operandList(node) {
+      return node ? node.childrenForFieldName("operand") : [];
+    },
+  },
+  Primary: {
+    typeId: 166,
+    type: "primary",
+    is(node) { return node != null && node.typeId === 166; },
+  },
+  UnsignedNumber: {
+    typeId: 167,
+    type: "unsigned_number",
+    is(node) { return node != null && node.typeId === 167; },
+  },
+  TypeSpecifier: {
+    typeId: 168,
+    type: "type_specifier",
+    is(node) { return node != null && node.typeId === 168; },
+  },
+  Name: {
+    typeId: 169,
+    type: "name",
+    is(node) { return node != null && node.typeId === 169; },
+  },
+  ComponentReference: {
+    typeId: 170,
+    type: "component_reference",
+    is(node) { return node != null && node.typeId === 170; },
+  },
+  ResultReference: {
+    typeId: 171,
+    type: "result_reference",
+    is(node) { return node != null && node.typeId === 171; },
+  },
+  FunctionCallArgs: {
+    typeId: 172,
+    type: "function_call_args",
+    is(node) { return node != null && node.typeId === 172; },
+  },
+  FunctionArguments: {
+    typeId: 173,
+    type: "function_arguments",
+    is(node) { return node != null && node.typeId === 173; },
+  },
+  FunctionArgumentsNonFirst: {
+    typeId: 174,
+    type: "function_arguments_non_first",
+    is(node) { return node != null && node.typeId === 174; },
+  },
+  ArrayArguments: {
+    typeId: 175,
+    type: "array_arguments",
+    is(node) { return node != null && node.typeId === 175; },
+  },
+  ArrayArgumentsNonFirst: {
+    typeId: 176,
+    type: "array_arguments_non_first",
+    is(node) { return node != null && node.typeId === 176; },
+  },
+  NamedArguments: {
+    typeId: 177,
+    type: "named_arguments",
+    is(node) { return node != null && node.typeId === 177; },
+  },
+  NamedArgument: {
+    typeId: 178,
+    type: "named_argument",
+    is(node) { return node != null && node.typeId === 178; },
+  },
+  FunctionArgument: {
+    typeId: 179,
+    type: "function_argument",
+    is(node) { return node != null && node.typeId === 179; },
+  },
+  FunctionPartialApplication: {
+    typeId: 180,
+    type: "function_partial_application",
+    is(node) { return node != null && node.typeId === 180; },
+  },
+  OutputExpressionList: {
+    typeId: 181,
+    type: "output_expression_list",
+    is(node) { return node != null && node.typeId === 181; },
+  },
+  ExpressionList: {
+    typeId: 182,
+    type: "expression_list",
+    is(node) { return node != null && node.typeId === 182; },
+  },
+  ArraySubscripts: {
+    typeId: 183,
+    type: "array_subscripts",
+    is(node) { return node != null && node.typeId === 183; },
+  },
+  Subscript: {
+    typeId: 184,
+    type: "subscript",
+    is(node) { return node != null && node.typeId === 184; },
+    flexible(node) {
+      return node ? (node.childForFieldId(28) || node.childForFieldName("flexible")) : null;
+    },
+    flexibleList(node) {
+      return node ? node.childrenForFieldName("flexible") : [];
+    },
+    expression(node) {
+      return node ? (node.childForFieldId(29) || node.childForFieldName("expression")) : null;
+    },
+    expressionList(node) {
+      return node ? node.childrenForFieldName("expression") : [];
+    },
+  },
+  Description: {
+    typeId: 185,
+    type: "description",
+    is(node) { return node != null && node.typeId === 185; },
+  },
+  DescriptionString: {
+    typeId: 186,
+    type: "description_string",
+    is(node) { return node != null && node.typeId === 186; },
+  },
+  AnnotationClause: {
+    typeId: 187,
+    type: "annotation_clause",
+    is(node) { return node != null && node.typeId === 187; },
+  },
+  Identifier: {
+    typeId: 325,
+    type: "identifier",
+    is(node) { return node != null && node.typeId === 325; },
+  },
+  StringLiteral: {
+    typeId: 326,
+    type: "string_literal",
+    is(node) { return node != null && node.typeId === 326; },
+  },
+  UnsignedInteger: {
+    typeId: 327,
+    type: "unsigned_integer",
+    is(node) { return node != null && node.typeId === 327; },
+  },
+  UnsignedReal: {
+    typeId: 328,
+    type: "unsigned_real",
+    is(node) { return node != null && node.typeId === 328; },
+  },
+};

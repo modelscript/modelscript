@@ -13,6 +13,7 @@ export * from "./codegen/transpiler.js";
 export * as compiler from "./compiler/index.js";
 export * from "./diagram/polyglot-diagram-builder.js";
 export * from "./dsl/index.js";
+export type { SymbolEntry, SymbolId } from "./dsl/index.js";
 export * as ecad from "./ecad/index.js";
 export * from "./runtime/config_client.js";
 export * as runtime from "./runtime/index.js";

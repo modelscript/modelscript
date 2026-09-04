@@ -1,0 +1,2161 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+import {
+  BinOp,
+  DAEBuilder,
+  EqKind,
+  ExprKind,
+  Variability,
+  evaluateArenaExpression,
+  isolateSymbolicallyArena,
+  pantelidesIndexReductionArena,
+  performBltTransformationArena,
+  tryOptimizeLoopWithGroebner,
+  type ArenaStateMachine,
+} from "@modelscript/runtime";
+import { bdf } from "@modelscript/runtime/wasm_bdf.js";
+import { dopri5 } from "@modelscript/runtime/wasm_dopri5.js";
+import { Dual, evaluateArenaDualExpression, evaluateArenaRuntime } from "@modelscript/runtime/wasm_evaluator.js";
+import { type FmuSubsystem, type FmuSubsystemRegistry } from "@modelscript/runtime/wasm_fmu_subsystem.js";
+import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { solveInitialEquationsArena } from "@modelscript/runtime/wasm_init.js";
+import { executeArenaStatements, executeArenaStatementsAsync } from "@modelscript/runtime/wasm_statement_executor.js";
+import { buildAdJacobian } from "@modelscript/runtime/wasm_tape.js";
+import {
+  type ArenaAssertion,
+  type ArenaEventIndicator,
+  type ArenaStateMachineRuntime,
+  type ArenaWhenAction,
+  type ArenaWhenClause,
+  type SimulationDebugger,
+} from "./simulation.js";
+
+/** Maximum Newton iterations for algebraic loop solving. */
+const NEWTON_MAX_ITER = 20;
+/** Newton convergence tolerance. */
+const NEWTON_TOL = 1e-10;
+/** Square root of machine epsilon for finite-difference perturbation. */
+const SQRT_EPS = 1.4901161193847656e-8;
+
+export class ArenaSimulator {
+  public parameters = new Map<string, number>();
+  public debuggerHook?: SimulationDebugger;
+
+  // Sets of VarIdx for fast arena-native processing
+  public parameterVars = new Set<number>();
+  public stateVars = new Set<number>();
+  public derivativeVars = new Set<number>();
+
+  public sortedEquations: number[] = [];
+  public blocks: { eqIdxs: number[]; vars: number[] }[] = [];
+  public dummyDerivatives = new Set<number>();
+  public executionBlocks: import("@modelscript/runtime").ArenaExecutionBlock[] = [];
+
+  /** Extracted when-clauses for event handling. */
+  public whenClauses: ArenaWhenClause[] = [];
+
+  /** Extracted assertion equations for runtime checking. */
+  public assertions: ArenaAssertion[] = [];
+
+  /** Event indicator functions for zero-crossing detection. */
+  public eventIndicators: ArenaEventIndicator[] = [];
+
+  /** Extracted derivative equations: der(x) = expr. */
+  // derivativeEquations removed
+
+  /** State machine runtimes. */
+  public stateMachineRuntimes: ArenaStateMachineRuntime[] = [];
+
+  /**
+   * Optional registry of FMU co-simulation subsystems.
+   * When set, the simulator delegates input/step/output for matched variable
+   * prefixes to the corresponding FmuSubsystem during each integration step.
+   */
+  public fmuRegistry?: FmuSubsystemRegistry;
+
+  /** Warm-start cache for algebraic loop variables (varNameId → value). */
+  private algWarmStart = new Map<number, number>();
+
+  /** Cached FMU prefix → subsystem mapping (built once in prepare). */
+  private fmuMappings: { prefix: string; subsystem: FmuSubsystem; inputIds: number[]; outputIds: number[] }[] = [];
+
+  public preValuesByStringId!: Float64Array;
+
+  constructor(public arena: DAEBuilder) {}
+
+  prepare() {
+    this.preValuesByStringId = new Float64Array(this.arena.interner.size);
+    this.resolveParameters();
+    this.eliminateAliases();
+    this.identifyDerivatives();
+
+    // Arena-Native Pantelides Index Reduction
+    const pantelidesRes = pantelidesIndexReductionArena(
+      this.arena,
+      this.stateVars,
+      this.derivativeVars,
+      this.parameterVars,
+    );
+    this.dummyDerivatives = pantelidesRes.dummyDerivatives;
+
+    // Arena-Native BLT / Bipartite Matching
+    const bltRes = performBltTransformationArena(this.arena, this.stateVars, this.dummyDerivatives);
+    this.sortedEquations = bltRes.sortedEquations;
+    this.blocks = bltRes.blocks;
+
+    this.buildExecutionBlocks();
+    this.extractWhenClauses();
+    this.extractAssertions();
+    this.extractEventIndicators();
+    this.extractStateMachines();
+    this.prepareFmuMappings();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FMU Co-Simulation Bridge
+  //
+  // When fmuRegistry is set, identified FMU-prefixed variables are delegated
+  // to external FmuSubsystem participants during each integration step.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Build the prefix→subsystem mappings from the FMU registry. */
+  private prepareFmuMappings(): void {
+    this.fmuMappings = [];
+    if (!this.fmuRegistry) return;
+
+    for (const [prefix, subsystem] of this.fmuRegistry.entries()) {
+      const inputIds = subsystem.inputNames.map((n) => this.arena.interner.intern(`${prefix}.${n}`));
+      const outputIds = subsystem.outputNames.map((n) => this.arena.interner.intern(`${prefix}.${n}`));
+      this.fmuMappings.push({ prefix, subsystem, inputIds, outputIds });
+    }
+  }
+
+  /**
+   * Drive all registered FMU subsystems for one communication step.
+   *
+   * 1. Read current input values from the arena buffer → set on FMU
+   * 2. Advance the FMU by stepSize
+   * 3. Read FMU output values → write back into the arena buffer
+   */
+  private stepFmuSubsystems(valuesByStringId: Float64Array, currentTime: number, stepSize: number): void {
+    for (const mapping of this.fmuMappings) {
+      // Gather inputs from the arena buffer
+      const inputs = new Map<string, number>();
+      for (let i = 0; i < mapping.subsystem.inputNames.length; i++) {
+        const nameId = mapping.inputIds[i];
+        if (nameId !== undefined) {
+          inputs.set(mapping.subsystem.inputNames[i] ?? "", valuesByStringId[nameId] ?? 0);
+        }
+      }
+
+      // Feed inputs, step, and collect outputs
+      mapping.subsystem.setInputs(inputs);
+      mapping.subsystem.doStep(currentTime, stepSize);
+      const outputs = mapping.subsystem.getOutputs();
+
+      // Write outputs back into the arena buffer
+      for (let i = 0; i < mapping.subsystem.outputNames.length; i++) {
+        const nameId = mapping.outputIds[i];
+        const outName = mapping.subsystem.outputNames[i] ?? "";
+        if (nameId !== undefined) {
+          valuesByStringId[nameId] = outputs.get(outName) ?? 0;
+        }
+      }
+    }
+  }
+
+  /**
+   * Initialize all registered FMU subsystems. Should be called once before
+   * the integration loop begins (after prepare() and before simulate()).
+   */
+  public initializeFmuSubsystems(startTime: number, stopTime: number, stepSize: number): void {
+    this.fmuRegistry?.initializeAll(startTime, stopTime, stepSize);
+  }
+
+  /** Terminate all registered FMU subsystems (cleanup). */
+  public terminateFmuSubsystems(): void {
+    this.fmuRegistry?.terminateAll();
+  }
+
+  private buildExecutionBlocks() {
+    for (const block of this.blocks) {
+      // Skip blocks with no equations — these are unmatched state variables
+      // managed by the ODE integrator, not algebraic unknowns.
+      if (block.eqIdxs.length === 0) continue;
+
+      if (block.eqIdxs.length === 1 && block.vars.length === 1) {
+        const eqIdx = block.eqIdxs[0] ?? -1;
+        const varIdx = block.vars[0] ?? -1;
+
+        if (eqIdx === -1 || varIdx === -1) continue;
+
+        const isolatedExprId = isolateSymbolicallyArena(this.arena, eqIdx, varIdx);
+        if (isolatedExprId !== -1) {
+          this.executionBlocks.push({ type: "single", varIdx, exprId: isolatedExprId });
+        } else {
+          // Could not isolate, leave as implicit 1x1 system
+          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
+        }
+      } else {
+        const optimized = tryOptimizeLoopWithGroebner(this.arena, block.eqIdxs, block.vars);
+        if (optimized) {
+          this.executionBlocks.push(...optimized);
+        } else {
+          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
+        }
+      }
+    }
+
+    // Identify unused sorted equations (if any)
+    const assignedEqs = new Set<number>();
+    for (const block of this.blocks) {
+      for (const eqIdx of block.eqIdxs) assignedEqs.add(eqIdx);
+    }
+
+    for (const eqIdx of this.sortedEquations) {
+      if (!assignedEqs.has(eqIdx)) {
+        // Equation without an assigned variable (e.g. constraints)
+        this.executionBlocks.push({ type: "system", eqIdxs: [eqIdx], vars: [] });
+      }
+    }
+  }
+
+  private resolveParameters() {
+    for (let i = 0; i < this.arena.varCount; i++) {
+      if (this.arena.isVarRemoved(i)) continue;
+      if (this.arena.getVarVariability(i) !== Variability.Parameter) continue;
+
+      this.parameterVars.add(i);
+
+      const exprId = this.arena.getVarExpression(i) as number | undefined;
+      const name = this.arena.getVarName(i);
+      if (typeof exprId === "number" && exprId !== -1) {
+        const val = evaluateArenaExpression(this.arena, exprId, this.parameters);
+        if (val !== null && typeof val === "number") {
+          this.parameters.set(name, val);
+        }
+      }
+    }
+  }
+
+  private eliminateAliases() {
+    // Alias elimination was moved to the flattener via eliminateArenaAliases()
+    // in O(N) time. The simulator no longer needs to do it!
+  }
+
+  private identifyDerivatives() {
+    for (let i = 0; i < this.arena.exprCount; i++) {
+      if (this.arena.getExprKind(i) === ExprKind.Der) {
+        const argId = this.arena.getExprData1(i);
+        if (this.arena.getExprKind(argId) === ExprKind.Name) {
+          const nameId = this.arena.getExprData1(argId);
+          // O(1): resolve StringId → name → VarIdx via name index
+          const name = this.arena.interner.resolve(nameId);
+          if (!name) continue;
+          const varIdx = this.arena.getVarIdxByName(name);
+          if (varIdx !== -1) {
+            this.stateVars.add(varIdx);
+            // O(1): look up derivative variable, or create it if it doesn't exist
+            const derName = `der(${name})`;
+            let derVarIdx = this.arena.getVarIdxByName(derName);
+            if (derVarIdx === -1) {
+              const baseVarType = this.arena.getVarType(varIdx);
+              const baseVarVariability = this.arena.getVarVariability(varIdx);
+              // The derivative variable inherits continuous variability and base causality/type.
+              derVarIdx = this.arena.addVariable(
+                derName,
+                baseVarType,
+                baseVarVariability,
+                this.arena.getVarCausality(varIdx),
+                0.0,
+              );
+            }
+            this.derivativeVars.add(derVarIdx);
+          }
+        }
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Derivative Equation Extraction
+  //
+  // Equations of the form `der(x) = rhs` are NOT handled by the BLT
+  // (the BLT intentionally excludes der() dependencies). Instead, they
+  // are explicitly evaluated each RHS call to populate der(x) in the
+  // environment so the ODE integrator can read dy/dt.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // extractDerivativeEquations removed
+
+  private evaluateDerivativeEquations(valuesByStringId: Float64Array): void {
+    // Handled by BLT
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // When-Clause Extraction
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractWhenClauses() {
+    this.whenClauses = [];
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      if (this.arena.getEqKind(eqIdx) !== EqKind.When) continue;
+
+      // Read compound metadata from the side-table
+      const meta = this.arena.getWhenEquationMeta(eqIdx);
+      if (!meta) continue;
+
+      // Main when-clause
+      const actions = this.extractWhenActionsFromMeta(meta.bodyEquations);
+      if (actions.length > 0) {
+        this.whenClauses.push({ conditionExprId: meta.conditionExprId, actions, wasActive: false });
+      }
+
+      // Else-when clauses
+      for (const ew of meta.elseWhenClauses) {
+        const ewActions = this.extractWhenActionsFromMeta(ew.bodyEquations);
+        if (ewActions.length > 0) {
+          this.whenClauses.push({ conditionExprId: ew.conditionExprId, actions: ewActions, wasActive: false });
+        }
+      }
+    }
+  }
+
+  private extractWhenActionsFromMeta(
+    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+  ): ArenaWhenAction[] {
+    const actions: ArenaWhenAction[] = [];
+    for (const body of bodyEquations) {
+      if (body.kind === EqKind.FunctionCall) {
+        // Function call — check for reinit(var, expr)
+        const callExprId = body.lhsExprId;
+        if (this.arena.getExprKind(callExprId) === ExprKind.Call) {
+          const funcNameId = this.arena.getExprData1(callExprId);
+          const funcName = this.arena.interner.resolve(funcNameId);
+          if (funcName === "reinit") {
+            const argCount = this.arena.getExprRight(callExprId);
+            if (argCount >= 2) {
+              const firstArgId = this.arena.getExprLeft(callExprId);
+              // Second arg stored in the Tuple at callExprId+1
+              const secondArgId = this.arena.getExprLeft(callExprId + 1);
+              if (this.arena.getExprKind(firstArgId) === ExprKind.Name) {
+                const targetNameId = this.arena.getExprData1(firstArgId);
+                actions.push({ type: "reinit", targetNameId, exprId: secondArgId });
+              }
+            }
+          }
+        }
+      } else if (body.kind === EqKind.Simple) {
+        // Regular assignment: lhs = rhs
+        const lhs = body.lhsExprId;
+        const rhs = body.rhsExprId;
+        // Check if RHS is a reinit() call
+        if (this.arena.getExprKind(rhs) === ExprKind.Call) {
+          const funcNameId = this.arena.getExprData1(rhs);
+          const funcName = this.arena.interner.resolve(funcNameId);
+          if (funcName === "reinit" && this.arena.getExprKind(lhs) === ExprKind.Name) {
+            const targetNameId = this.arena.getExprData1(lhs);
+            // reinit stored as simple eq: lhs=target, rhs=reinit(target, newValue)
+            // The actual new value is the second argument of the call
+            const argCount = this.arena.getExprRight(rhs);
+            if (argCount >= 2) {
+              const valueExprId = this.arena.getExprLeft(rhs + 1); // second arg in Tuple at rhs+1
+              actions.push({ type: "reinit", targetNameId, exprId: valueExprId });
+            }
+            continue;
+          }
+        }
+        if (this.arena.getExprKind(lhs) === ExprKind.Name) {
+          const targetNameId = this.arena.getExprData1(lhs);
+          actions.push({ type: "assign", targetNameId, exprId: rhs });
+        }
+      }
+    }
+    return actions;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Assertion Extraction
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractAssertions() {
+    this.assertions = [];
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      if (this.arena.getEqKind(eqIdx) !== EqKind.FunctionCall) continue;
+
+      // FunctionCall equations store the call ExprId in lhs
+      const callExprId = this.arena.getEqLhs(eqIdx);
+      if (this.arena.getExprKind(callExprId) !== ExprKind.Call) continue;
+
+      const funcNameId = this.arena.getExprData1(callExprId);
+      const funcName = this.arena.interner.resolve(funcNameId);
+      if (funcName !== "assert") continue;
+
+      // assert(condition, message): first arg = condition, second = message
+      const firstArg = callExprId + 1; // condition ExprId
+      const secondArg = callExprId + 2; // message ExprId (may not exist)
+      const argCount = this.arena.getExprRight(callExprId);
+
+      this.assertions.push({
+        conditionExprId: firstArg,
+        messageExprId: argCount >= 2 ? secondArg : -1,
+      });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Event Indicator Extraction
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractEventIndicators() {
+    this.eventIndicators = [];
+    // Derive event indicators from when-clause conditions.
+    // For adaptive solvers (Dopri5/BDF), event indicators must be CONTINUOUS functions
+    // that smoothly cross zero — not boolean conditions that jump between 0 and 1.
+    //
+    // Relational conditions are decomposed:
+    //   h < 0   → indicator = lhs - rhs = h - 0 = h  (sign change at h=0, direction = -1)
+    //   a >= b  → indicator = lhs - rhs = a - b       (sign change at a=b, direction = +1)
+    //   etc.
+    //
+    // We always derive indicators from when-clause conditions rather than from the
+    // DAE's eventIndicatorExprIds, because when-clause conditions carry the relational
+    // operator which determines the crossing direction (-1 for Lt/Lte, +1 for Gt/Gte).
+    // The DAE's explicit indicators are generated for ALL relational expressions
+    // (including those outside when-clauses) and lack direction information.
+    for (const clause of this.whenClauses) {
+      const { exprId: indicatorExprId, direction } = this.buildContinuousEventIndicator(clause.conditionExprId);
+      this.eventIndicators.push({ exprId: indicatorExprId, prevValue: 0, direction });
+    }
+  }
+
+  /**
+   * Convert a boolean condition expression into a continuous zero-crossing indicator.
+   *
+   * For relational expressions (Binary with Lt/Gt/Lte/Gte/Eq/Neq):
+   *   g(t,y) = lhs - rhs
+   * The sign change of g() corresponds to the exact event instant.
+   *
+   * The crossing direction determines which sign transition triggers the event:
+   *   Lt/Lte (e.g., h <= 0): g = h - 0; event fires on positive→negative crossing (dir = -1)
+   *   Gt/Gte (e.g., h >= 0): g = h - 0; event fires on negative→positive crossing (dir = +1)
+   *   Eq/Neq: both directions (dir = 0)
+   *
+   * For non-relational conditions (already continuous or complex), fall back
+   * to using the expression directly (may produce 0/1 jumps, but better than nothing).
+   */
+  private buildContinuousEventIndicator(condExprId: number): { exprId: number; direction: -1 | 0 | 1 } {
+    const kind = this.arena.getExprKind(condExprId);
+    if (kind === ExprKind.Binary) {
+      const op = this.arena.getExprData1(condExprId) as BinOp;
+      // Relational operators: convert to continuous lhs - rhs
+      if (
+        op === BinOp.Lt ||
+        op === BinOp.Lte ||
+        op === BinOp.Gt ||
+        op === BinOp.Gte ||
+        op === BinOp.Eq ||
+        op === BinOp.Neq
+      ) {
+        const lhsId = this.arena.getExprLeft(condExprId);
+        const rhsId = this.arena.getExprRight(condExprId);
+        // Create a synthetic expression: lhs - rhs
+        const exprId = this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
+        // Determine crossing direction:
+        //   Lt/Lte: condition becomes true when lhs < rhs, i.e., g = lhs - rhs crosses from + to - → dir = -1
+        //   Gt/Gte: condition becomes true when lhs > rhs, i.e., g = lhs - rhs crosses from - to + → dir = +1
+        //   Eq/Neq: any crossing → dir = 0
+        let direction: -1 | 0 | 1 = 0;
+        if (op === BinOp.Lt || op === BinOp.Lte) {
+          direction = -1;
+        } else if (op === BinOp.Gt || op === BinOp.Gte) {
+          direction = 1;
+        }
+        return { exprId, direction };
+      }
+    }
+    // Fall back to the raw condition expression
+    return { exprId: condExprId, direction: 0 };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // State Machine Extraction
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractStateMachines() {
+    this.stateMachineRuntimes = [];
+    for (const sm of this.arena.stateMachines) {
+      this.stateMachineRuntimes.push(this.buildStateMachineRuntime(sm));
+    }
+  }
+
+  /** Recursively build a runtime for a state machine and any nested sub-state machines. */
+  private buildStateMachineRuntime(sm: ArenaStateMachine): ArenaStateMachineRuntime {
+    const stateOrdinals = new Map<string, number>();
+    for (let i = 0; i < sm.states.length; i++) {
+      const state = sm.states[i];
+      if (state) stateOrdinals.set(state.name, i);
+    }
+
+    // Recursively build children for each state that has sub-state machines
+    const children: ArenaStateMachineRuntime[] = [];
+    for (const state of sm.states) {
+      if (state.stateMachines) {
+        for (const childSm of state.stateMachines) {
+          children.push(this.buildStateMachineRuntime(childSm));
+        }
+      }
+    }
+
+    return {
+      def: sm,
+      activeState: sm.initialState,
+      previousState: sm.initialState,
+      ticksInState: 0,
+      timeInState: 0,
+      deferredConditions: new Array(sm.transitions.length).fill(false),
+      stateOrdinals,
+      children,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // State Machine Execution (Modelica 3.3 §17)
+  //
+  // Transition semantics:
+  //   immediate=true  → fires at the CURRENT event instant when condition becomes true
+  //   immediate=false → fires at the NEXT event instant after condition was true (deferred)
+  //
+  // synchronize=true → transition only fires when ALL sub-state machines
+  //                    of the source state have reached a final state
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private executeStateMachines(valuesByStringId: Float64Array): void {
+    for (const rt of this.stateMachineRuntimes) {
+      this.executeSingleStateMachine(rt, valuesByStringId);
+    }
+  }
+
+  /** Get the simulation step size from the time variable delta (or a default). */
+  private getStepSize(valuesByStringId: Float64Array): number {
+    const timeId = this.arena.interner.intern("time");
+    const t = valuesByStringId[timeId] ?? 0;
+    // Use a stored previous time to compute dt; fallback to 0.001
+    const prevTimeId = this.arena.interner.intern("$__prevTime");
+    const prevT = valuesByStringId[prevTimeId] ?? t;
+    const dt = t - prevT;
+    valuesByStringId[prevTimeId] = t;
+    return dt > 0 ? dt : 0;
+  }
+
+  private executeSingleStateMachine(rt: ArenaStateMachineRuntime, valuesByStringId: Float64Array): void {
+    const dt = this.getStepSize(valuesByStringId);
+
+    // ── Phase 1: Evaluate transitions from the current active state (priority-ordered) ──
+    let transitioned = false;
+    for (let ti = 0; ti < rt.def.transitions.length; ti++) {
+      const tr = rt.def.transitions[ti];
+      if (!tr) continue;
+      if (tr.fromState !== rt.activeState) continue;
+
+      const condVal = evaluateArenaRuntime(this.arena, tr.conditionExprId, valuesByStringId, this.preValuesByStringId);
+      const condTrue = condVal !== 0;
+
+      // Synchronize guard: if synchronize=true, only fire when all child state
+      // machines in the current state have reached a final state (no outgoing transitions)
+      if (condTrue && tr.synchronize && rt.children.length > 0) {
+        const allFinal = rt.children.every((child) => {
+          // A child SM is in a "final" state when no transitions can fire from its active state
+          return !child.def.transitions.some((ct) => ct.fromState === child.activeState);
+        });
+        if (!allFinal) continue; // Not ready — skip this transition
+      }
+
+      let shouldFire: boolean;
+      if (tr.immediate) {
+        // Immediate: fires at the current event instant
+        shouldFire = condTrue;
+      } else {
+        // Deferred: fires only if the condition was true at the *previous* event instant
+        shouldFire = rt.deferredConditions[ti] ?? false;
+      }
+
+      // Update deferred condition tracking for next iteration
+      rt.deferredConditions[ti] = condTrue;
+
+      if (shouldFire) {
+        // Transition fires
+        rt.previousState = rt.activeState;
+        rt.activeState = tr.toState;
+        rt.ticksInState = 0;
+        rt.timeInState = 0;
+
+        // Apply reset: initialize variables of the destination state
+        if (tr.reset) {
+          const destState = rt.def.states.find((s) => s.name === tr.toState);
+          if (destState) {
+            for (const v of destState.variables) {
+              valuesByStringId[v.nameId] = v.startValue;
+            }
+            // Also reset child state machines within the destination state
+            if (destState.stateMachines) {
+              for (const childSm of destState.stateMachines) {
+                const childRt = rt.children.find((c) => c.def.name === childSm.name);
+                if (childRt) {
+                  childRt.activeState = childSm.initialState;
+                  childRt.previousState = childSm.initialState;
+                  childRt.ticksInState = 0;
+                  childRt.timeInState = 0;
+                  childRt.deferredConditions.fill(false);
+                }
+              }
+            }
+          }
+        }
+
+        transitioned = true;
+        break; // Only one transition per tick (highest priority wins)
+      }
+    }
+
+    if (!transitioned) {
+      rt.ticksInState++;
+      rt.timeInState += dt;
+    }
+
+    // ── Phase 2: Activate equations for the current state ──
+    const activeStateDef = rt.def.states.find((s) => s.name === rt.activeState);
+    if (activeStateDef) {
+      for (const eq of activeStateDef.equations) {
+        const val = evaluateArenaRuntime(this.arena, eq.exprId, valuesByStringId, this.preValuesByStringId);
+        if (eq.isDerivative) {
+          // For derivative equations: write to der(varName)
+          const varName = this.arena.interner.resolve(eq.targetNameId);
+          const derNameId = this.arena.interner.intern(`der(${varName})`);
+          valuesByStringId[derNameId] = isFinite(val) ? val : 0;
+        } else {
+          valuesByStringId[eq.targetNameId] = isFinite(val) ? val : 0;
+        }
+      }
+    }
+
+    // ── Phase 3: Recursively execute child state machines of the active state ──
+    if (activeStateDef?.stateMachines) {
+      for (const childSm of activeStateDef.stateMachines) {
+        const childRt = rt.children.find((c) => c.def.name === childSm.name);
+        if (childRt) {
+          this.executeSingleStateMachine(childRt, valuesByStringId);
+        }
+      }
+    }
+
+    // ── Phase 4: Expose state machine intrinsics ──
+    // activeState(sm) → ordinal of current active state (0-indexed)
+    const activeStateIntrinsicId = this.arena.interner.intern(`$activeState(${rt.def.name})`);
+    valuesByStringId[activeStateIntrinsicId] = rt.stateOrdinals.get(rt.activeState) ?? 0;
+
+    // ticksInState(sm) → integer tick count
+    const ticksIntrinsicId = this.arena.interner.intern(`$ticksInState(${rt.def.name})`);
+    valuesByStringId[ticksIntrinsicId] = rt.ticksInState;
+
+    // timeInState(sm) → real-valued time spent in current state
+    const timeInStateId = this.arena.interner.intern(`$timeInState(${rt.def.name})`);
+    valuesByStringId[timeInStateId] = rt.timeInState;
+
+    // previousState(sm) → ordinal of previously active state
+    const prevStateId = this.arena.interner.intern(`$previousState(${rt.def.name})`);
+    valuesByStringId[prevStateId] = rt.stateOrdinals.get(rt.previousState) ?? 0;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Assertion Checking
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private checkAssertions(valuesByStringId: Float64Array, t: number): void {
+    for (const assertion of this.assertions) {
+      const condVal = evaluateArenaRuntime(this.arena, assertion.conditionExprId, valuesByStringId);
+      if (condVal === 0) {
+        let msg = `Assertion failed at t=${t}`;
+        if (assertion.messageExprId !== -1) {
+          const msgVal = evaluateArenaRuntime(this.arena, assertion.messageExprId, valuesByStringId);
+          msg = `Assertion failed at t=${t}: ${msgVal}`;
+        }
+        throw new Error(msg);
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Newton-Raphson Solver for Algebraic Loops
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private solveNewtonBlock(
+    block: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>,
+    valuesByStringId: Float64Array,
+  ): void {
+    const m = block.vars.length;
+    if (m === 0) return;
+
+    const x = new Float64Array(m);
+    const R = new Float64Array(m);
+    const negR = new Float64Array(m);
+
+    // Collect variable name StringIds
+    const varNameIds = new Array<number>(m);
+    for (let i = 0; i < m; i++) {
+      const varIdx = block.vars[i] as number;
+      varNameIds[i] = this.arena.getVarNameId(varIdx);
+      // Initialize from warm-start cache or current environment
+      x[i] = this.algWarmStart.get(varNameIds[i] as number) ?? valuesByStringId[varNameIds[i] as number] ?? 0;
+    }
+
+    // Pre-allocate Jacobian rows
+    const J: Float64Array[] = new Array(m);
+    for (let i = 0; i < m; i++) J[i] = new Float64Array(m);
+
+    let converged = false;
+
+    for (let iter = 0; iter < NEWTON_MAX_ITER; iter++) {
+      // Set current values into the environment
+      for (let i = 0; i < m; i++) valuesByStringId[varNameIds[i] as number] = x[i] as number;
+
+      // Evaluate residuals: R_i = x_i - expr_i (where expr_i is the RHS of eq_i isolated for var_i)
+      let maxR = 0;
+      for (let i = 0; i < m; i++) {
+        const eqIdx = block.eqIdxs[i] as number;
+        const rhsId = this.arena.getEqRhs(eqIdx);
+        const exprVal = evaluateArenaRuntime(this.arena, rhsId, valuesByStringId);
+        const val = isFinite(exprVal) ? exprVal : 0;
+        R[i] = (x[i] as number) - val;
+        maxR = Math.max(maxR, Math.abs(R[i] as number));
+      }
+
+      if (maxR < NEWTON_TOL) {
+        converged = true;
+        break;
+      }
+
+      // Compute Jacobian via forward-mode AD (dual numbers)
+      const dualVars: Dual[] = [];
+      // Fill dualVars from current environment
+      for (let sid = 0; sid < valuesByStringId.length; sid++) {
+        dualVars[sid] = Dual.constant(valuesByStringId[sid] ?? 0);
+      }
+
+      for (let j = 0; j < m; j++) {
+        const nid = varNameIds[j] as number;
+        // Seed variable j: (x_j, 1)
+        dualVars[nid] = new Dual(x[j] as number, 1.0);
+
+        for (let i = 0; i < m; i++) {
+          const eqIdx = block.eqIdxs[i] as number;
+          const rhsId = this.arena.getEqRhs(eqIdx);
+          const dualResult = evaluateArenaDualExpression(this.arena, rhsId, dualVars);
+          const Ji = J[i] as Float64Array;
+          if (dualResult) {
+            // J[i][j] = δ_{ij} - d(expr_i)/dx_j
+            Ji[j] = (i === j ? 1 : 0) - dualResult.dot;
+          } else {
+            // AD failed — fall back to finite differences
+            const xj = x[j] as number;
+            const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+            valuesByStringId[nid] = xj + eps;
+            const perturbedVal = evaluateArenaRuntime(this.arena, this.arena.getEqRhs(eqIdx), valuesByStringId);
+            const R_perturbed = (i === j ? xj + eps : (x[i] as number)) - (isFinite(perturbedVal) ? perturbedVal : 0);
+            Ji[j] = (R_perturbed - (R[i] as number)) / eps;
+            valuesByStringId[nid] = xj;
+          }
+        }
+
+        // Reset seed
+        dualVars[nid] = Dual.constant(x[j] as number);
+      }
+
+      // Solve J · Δx = -R via LU factorization
+      try {
+        const fact = luFactor(J, m);
+        for (let i = 0; i < m; i++) negR[i] = -(R[i] as number);
+        luSolve(fact, negR);
+        for (let i = 0; i < m; i++) {
+          const nx = (x[i] as number) + (negR[i] as number);
+          x[i] = nx;
+          valuesByStringId[varNameIds[i] as number] = nx;
+        }
+      } catch {
+        // Singular Jacobian — skip this block
+        return;
+      }
+    }
+
+    if (!converged) {
+      // Write best guess back anyway
+    }
+
+    // Write converged values and update warm-start cache
+    for (let i = 0; i < m; i++) {
+      const nid = varNameIds[i] as number;
+      valuesByStringId[nid] = x[i] as number;
+      this.algWarmStart.set(nid, x[i] as number);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Block Evaluation (shared between integrators)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private evaluateBlocks(valuesByStringId: Float64Array): void {
+    for (const block of this.executionBlocks) {
+      if (block.type === "single") {
+        const val = evaluateArenaRuntime(this.arena, block.exprId, valuesByStringId);
+        const varNameId = this.arena.getVarNameId(block.varIdx);
+        valuesByStringId[varNameId] = val;
+      } else if (block.type === "system") {
+        this.solveNewtonBlock(block, valuesByStringId);
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // When-Clause Event Handling
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private processWhenClauses(valuesByStringId: Float64Array): void {
+    for (const clause of this.whenClauses) {
+      const condVal = evaluateArenaRuntime(
+        this.arena,
+        clause.conditionExprId,
+        valuesByStringId,
+        this.preValuesByStringId,
+      );
+      const isActive = condVal !== 0;
+
+      // Rising edge detection
+      if (isActive && !clause.wasActive) {
+        for (const action of clause.actions) {
+          const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId, this.preValuesByStringId);
+          valuesByStringId[action.targetNameId] = val;
+        }
+      }
+
+      clause.wasActive = isActive;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RHS Bridge: builds a (t, y) => dy/dt callback for Dopri5/BDF
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private buildRhsFunction(
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    timeId: number,
+  ): (t: number, y: number[]) => number[] {
+    const n = stateStringIds.length;
+    return (t: number, y: number[]): number[] => {
+      // Write state into the environment
+      valuesByStringId[timeId] = t;
+      for (let i = 0; i < n; i++) {
+        valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
+      }
+      // Evaluate all blocks and derivative equations.
+      // NOTE: When-clauses and state machines are NOT evaluated here because
+      // they have memory (wasActive, activeState) that would be corrupted by
+      // the intermediate trial-point evaluations of adaptive RK stages.
+      // They are processed exclusively in the event callback.
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
+      this.checkAssertions(valuesByStringId, t);
+
+      // Read derivatives
+      const dydt = new Array<number>(n);
+      for (let i = 0; i < n; i++) {
+        dydt[i] = valuesByStringId[derivStringIds[i] ?? -1] ?? 0;
+      }
+      return dydt;
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Event Functions Bridge: builds g_i(t, y) functions for zero-crossing
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private buildEventFunctions(
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    timeId: number,
+  ): ((t: number, y: number[]) => number)[] {
+    if (this.eventIndicators.length === 0) return [];
+    const n = stateStringIds.length;
+
+    return this.eventIndicators.map((ei) => {
+      return (t: number, y: number[]): number => {
+        valuesByStringId[timeId] = t;
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
+        }
+        return evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+      };
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Event Callback: handles zero-crossing events (reinit, discrete updates)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private buildEventCallback(
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    timeId: number,
+  ): (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[] {
+    const n = stateStringIds.length;
+    return (t: number, y: number[], eventIdx: number): number[] => {
+      // Write state at event time
+      valuesByStringId[timeId] = t;
+      for (let i = 0; i < n; i++) {
+        valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
+      }
+      // Evaluate blocks and derivative equations at the event state
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+      this.executeStateMachines(valuesByStringId);
+
+      // Project state onto the zero-crossing surface BEFORE evaluating when-clauses.
+      // The bisection locates events to ~1e-12 precision, but the residual non-zero
+      // value can cause strict inequalities (e.g. h < 0) to evaluate to false.
+      //
+      // We nudge the projected value slightly PAST the surface in the crossing
+      // direction so that both strict (h < 0) and non-strict (h <= 0) conditions
+      // evaluate to true at the event instant. The nudge magnitude (1e-10) is
+      // large enough to flip the boolean but small enough to be physically
+      // negligible (well within solver tolerance).
+      if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
+        const ei = this.eventIndicators[eventIdx];
+        if (ei) {
+          const eiKind = this.arena.getExprKind(ei.exprId);
+
+          let targetStateNameId = -1;
+          let rhsVal = 0;
+
+          if (eiKind === ExprKind.Name) {
+            targetStateNameId = this.arena.getExprData1(ei.exprId);
+            rhsVal = 0; // It was simplified from `x - 0`
+          } else if (eiKind === ExprKind.Binary) {
+            const op = this.arena.getExprData1(ei.exprId) as BinOp;
+            if (op === BinOp.Sub) {
+              const lhsId = this.arena.getExprLeft(ei.exprId);
+              if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
+                targetStateNameId = this.arena.getExprData1(lhsId);
+                rhsVal = evaluateArenaRuntime(this.arena, this.arena.getExprRight(ei.exprId), valuesByStringId);
+              }
+            }
+          }
+
+          if (targetStateNameId !== -1) {
+            for (let i = 0; i < n; i++) {
+              if (stateStringIds[i] === targetStateNameId) {
+                // Nudge past the surface
+                let nudge = 0;
+                if (ei.direction === -1) {
+                  nudge = -1e-10;
+                } else if (ei.direction === 1) {
+                  nudge = 1e-10;
+                } else {
+                  const gCurrent = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+                  nudge = gCurrent >= 0 ? -1e-10 : 1e-10;
+                }
+                valuesByStringId[targetStateNameId] = rhsVal + nudge;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Reset wasActive flags before processing when-clauses.
+      //
+      // In the adaptive solver (dopri5/BDF) path, when-clause conditions are NOT
+      // evaluated during intermediate RHS calls (to avoid corrupting memory state
+      // during trial RK stages). This means wasActive can become stale — it may
+      // still be `true` from a previous event even though the condition was `false`
+      // throughout the intervening integration.
+      //
+      // Since this callback is only invoked when a zero-crossing event was detected
+      // (meaning a condition boundary was just crossed), we reset wasActive to false
+      // for all clauses. This ensures correct rising-edge detection: if the condition
+      // is now true at the event time, it will be recognized as a rising edge.
+      //
+      // For clauses whose condition is NOT related to the triggered zero-crossing,
+      // resetting wasActive is safe — if their condition is currently active, it
+      // represents a genuine rising edge that was missed during integration (and
+      // should be processed). If inactive, no action will be taken anyway.
+      for (const clause of this.whenClauses) {
+        clause.wasActive = false;
+      }
+
+      // Process all when-clauses. We evaluate their boolean conditions at the precise
+      // event state to detect rising edges.
+      for (const clause of this.whenClauses) {
+        const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
+        const isActive = condVal !== 0;
+
+        if (isActive && !clause.wasActive) {
+          for (const action of clause.actions) {
+            const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId);
+            valuesByStringId[action.targetNameId] = val;
+          }
+        }
+
+        // Re-evaluate the condition after actions (e.g. reinit) to properly set the edge-detection
+        // state for the next step, preventing immediate spurious re-triggering.
+        const postCondVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
+        clause.wasActive = postCondVal !== 0;
+      }
+
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
+
+      // Read back possibly-modified state
+      const yAfter = new Array<number>(n);
+      for (let i = 0; i < n; i++) {
+        yAfter[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
+      }
+
+      // Project state onto the zero-crossing surface to prevent chattering.
+      // The bisection locates events to ~1e-12 precision, but the residual
+      // non-zero g value can trigger immediate re-detection. By projecting
+      // the state variable(s) involved in the event indicator to g=0, the
+      // solver restarts cleanly on the correct side.
+      if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
+        const ei = this.eventIndicators[eventIdx];
+        if (ei) {
+          // If the event indicator is a synthetic Sub expression (lhs - rhs),
+          // find which state variable is the LHS and project it.
+          const eiKind = this.arena.getExprKind(ei.exprId);
+          if (eiKind === ExprKind.Binary) {
+            const op = this.arena.getExprData1(ei.exprId) as BinOp;
+            if (op === BinOp.Sub) {
+              const lhsId = this.arena.getExprLeft(ei.exprId);
+              // Check if LHS is a state variable reference
+              if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
+                const nameId = this.arena.getExprData1(lhsId);
+                for (let i = 0; i < n; i++) {
+                  if (stateStringIds[i] === nameId) {
+                    // Project: set state[i] so that lhs - rhs = 0 → state = rhs
+                    const rhsVal = evaluateArenaRuntime(
+                      this.arena,
+                      this.arena.getExprRight(ei.exprId),
+                      valuesByStringId,
+                    );
+                    yAfter[i] = rhsVal;
+                    valuesByStringId[nameId] = rhsVal;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return yAfter;
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Simulation (multi-solver: Euler, RK4, Dopri5, BDF)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  simulate(
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    options?: {
+      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+      atol?: number;
+      rtol?: number;
+      outputStringIds?: number[];
+    },
+  ) {
+    const solver = options?.solver ?? "rk4";
+    const timeId = this.arena.interner.intern("time");
+    const n = stateStringIds.length;
+    const startTime = valuesByStringId[timeId] ?? 0;
+
+    this.preValuesByStringId = new Float64Array(valuesByStringId.length);
+    this.preValuesByStringId.set(valuesByStringId);
+
+    // Execute initial algorithm sections
+    for (const sec of this.arena.initialAlgorithmSections) {
+      executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+    }
+
+    // Initialize when-clause wasActive flags
+    valuesByStringId[timeId] = startTime;
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+    for (const clause of this.whenClauses) {
+      const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
+      clause.wasActive = condVal !== 0;
+    }
+    // Initialize event indicator previous values
+    for (const ei of this.eventIndicators) {
+      ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+    }
+
+    // ── Adaptive solvers (Dopri5, BDF) ──
+    if (solver === "dopri5" || solver === "bdf" || solver === "auto") {
+      return this.simulateAdaptive(
+        solver,
+        steps,
+        step,
+        valuesByStringId,
+        stateStringIds,
+        derivStringIds,
+        timeId,
+        options,
+      );
+    }
+    if (solver === "cvode") {
+      throw new Error("CVODE solver requires simulateAsync instead of simulate");
+    }
+
+    // ── Fixed-step solvers (RK4, Euler) ──
+    const t_out: number[] = [];
+    const y_out: Float64Array[] = [];
+    let currentTime = startTime;
+
+    for (let s = 0; s <= steps; s++) {
+      valuesByStringId[timeId] = currentTime;
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+      this.preValuesByStringId.set(valuesByStringId);
+      this.executeStateMachines(valuesByStringId);
+      this.processWhenClauses(valuesByStringId);
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
+      this.checkAssertions(valuesByStringId, currentTime);
+
+      // Run regular algorithm sections
+      for (const sec of this.arena.algorithmSections) {
+        executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+      }
+
+      // Record output
+      const outIds = options?.outputStringIds ?? stateStringIds;
+      const currentState = new Float64Array(outIds.length);
+      for (let i = 0; i < outIds.length; i++) {
+        currentState[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
+      }
+      t_out.push(currentTime);
+      y_out.push(currentState);
+
+      // Integrate state variables
+      if (solver === "rk4") {
+        this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+      } else {
+        // Forward Euler
+        for (let i = 0; i < n; i++) {
+          const stateId = stateStringIds[i] ?? -1;
+          const derivId = derivStringIds[i] ?? -1;
+          if (derivId !== -1 && stateId !== -1) {
+            valuesByStringId[stateId] = (valuesByStringId[stateId] ?? 0) + step * (valuesByStringId[derivId] ?? 0);
+          }
+        }
+      }
+
+      currentTime += step;
+    }
+
+    return { t: t_out, y: y_out };
+  }
+
+  /**
+   * Run simulation using an adaptive solver (Dopri5 or BDF).
+   * Bridges the arena evaluation into the standalone solver modules.
+   */
+  private simulateAdaptive(
+    solver: "dopri5" | "bdf" | "auto",
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    timeId: number,
+    options?: { atol?: number; rtol?: number; outputStringIds?: number[] },
+  ) {
+    const n = stateStringIds.length;
+    const startTime = valuesByStringId[timeId] ?? 0;
+    const stopTime = startTime + steps * step;
+    const atol = options?.atol ?? 1e-6;
+    const rtol = options?.rtol ?? 1e-6;
+
+    // Build output times
+    const outputTimes: number[] = [];
+    for (let i = 0; i <= steps; i++) {
+      outputTimes.push(startTime + i * step);
+    }
+
+    // Extract initial state
+    const y0: number[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      y0[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
+    }
+
+    // Build RHS function
+    const rhsFn = this.buildRhsFunction(valuesByStringId, stateStringIds, derivStringIds, timeId);
+
+    // Build event functions, callback, and crossing directions
+    const eventFns = this.buildEventFunctions(valuesByStringId, stateStringIds, timeId);
+    const eventCb = eventFns.length > 0 ? this.buildEventCallback(valuesByStringId, stateStringIds, timeId) : undefined;
+    const eventDirs = this.eventIndicators.map((ei) => ei.direction);
+
+    let rawResult: { times: number[]; states: number[][] };
+
+    if (solver === "bdf") {
+      // Build analytical Jacobian via reverse-mode AD (if available).
+      // This avoids O(n) finite-difference RHS evaluations per Jacobian update.
+      const adJacobian = buildAdJacobian(this.arena);
+      rawResult = bdf(
+        rhsFn,
+        startTime,
+        y0,
+        stopTime,
+        outputTimes,
+        { atol, rtol, ...(adJacobian ? { jacobian: adJacobian } : {}) },
+        eventFns.length > 0 ? eventFns : undefined,
+        eventCb,
+      );
+    } else {
+      // dopri5 or auto
+      rawResult = dopri5(
+        rhsFn,
+        startTime,
+        y0,
+        stopTime,
+        outputTimes,
+        { atol, rtol },
+        eventFns.length > 0 ? eventFns : undefined,
+        eventCb,
+        eventDirs,
+      );
+    }
+
+    // Convert to Float64Array output format
+    const outIds = options?.outputStringIds ?? stateStringIds;
+    const t_out = rawResult.times;
+    const y_out: Float64Array[] = rawResult.states.map((row) => {
+      // First, load the states into the environment
+      for (let i = 0; i < n; i++) {
+        valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
+      }
+      // Re-evaluate algebraic variables for the recorded state
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+
+      const fa = new Float64Array(outIds.length);
+      for (let i = 0; i < outIds.length; i++) {
+        fa[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
+      }
+      return fa;
+    });
+
+    return { t: t_out, y: y_out };
+  }
+
+  /**
+   * Classical 4th-order Runge-Kutta step.
+   * Updates state variables in valuesByStringId in-place.
+   */
+  private rk4Step(
+    h: number,
+    vals: Float64Array,
+    stateIds: number[],
+    derivIds: number[],
+    timeId: number,
+    t: number,
+  ): void {
+    const n = stateIds.length;
+
+    // Save initial states
+    const y0 = new Float64Array(n);
+    for (let i = 0; i < n; i++) y0[i] = vals[stateIds[i] ?? -1] ?? 0;
+
+    // k1 = f(t, y0) — already evaluated by evaluateBlocks + evaluateDerivativeEquations
+    const k1 = new Float64Array(n);
+    for (let i = 0; i < n; i++) k1[i] = vals[derivIds[i] ?? -1] ?? 0;
+
+    // k2 = f(t + h/2, y0 + h/2 * k1)
+    for (let i = 0; i < n; i++) {
+      vals[stateIds[i] ?? -1] = (y0[i] as number) + 0.5 * h * (k1[i] as number);
+    }
+    vals[timeId] = t + 0.5 * h;
+    this.evaluateBlocks(vals);
+    this.evaluateDerivativeEquations(vals);
+    const k2 = new Float64Array(n);
+    for (let i = 0; i < n; i++) k2[i] = vals[derivIds[i] ?? -1] ?? 0;
+
+    // k3 = f(t + h/2, y0 + h/2 * k2)
+    for (let i = 0; i < n; i++) {
+      vals[stateIds[i] ?? -1] = (y0[i] as number) + 0.5 * h * (k2[i] as number);
+    }
+    this.evaluateBlocks(vals);
+    this.evaluateDerivativeEquations(vals);
+    const k3 = new Float64Array(n);
+    for (let i = 0; i < n; i++) k3[i] = vals[derivIds[i] ?? -1] ?? 0;
+
+    // k4 = f(t + h, y0 + h * k3)
+    for (let i = 0; i < n; i++) {
+      vals[stateIds[i] ?? -1] = (y0[i] as number) + h * (k3[i] as number);
+    }
+    vals[timeId] = t + h;
+    this.evaluateBlocks(vals);
+    this.evaluateDerivativeEquations(vals);
+    const k4 = new Float64Array(n);
+    for (let i = 0; i < n; i++) k4[i] = vals[derivIds[i] ?? -1] ?? 0;
+
+    // y_new = y0 + (h/6) * (k1 + 2*k2 + 2*k3 + k4)
+    for (let i = 0; i < n; i++) {
+      vals[stateIds[i] ?? -1] =
+        (y0[i] as number) +
+        (h / 6.0) * ((k1[i] as number) + 2 * (k2[i] as number) + 2 * (k3[i] as number) + (k4[i] as number));
+    }
+  }
+
+  private async simulateCvodeWasm(
+    wasmMod: any,
+    CvodeSolverClass: any,
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    timeId: number,
+    options?: {
+      signal?: AbortSignal;
+      atol?: number;
+      rtol?: number;
+      outputStringIds?: number[];
+    },
+  ): Promise<{ t: number[]; y: number[][] }> {
+    this.preValuesByStringId = new Float64Array(valuesByStringId.length);
+    this.preValuesByStringId.set(valuesByStringId);
+    const t = valuesByStringId[timeId] ?? 0;
+    const n = stateStringIds.length;
+    const outIds = options?.outputStringIds ?? stateStringIds;
+    const outN = outIds.length;
+
+    if (n === 0) {
+      const resultT = new Float64Array(steps + 1);
+      const resultY: Float64Array[] = new Array(steps + 1);
+      let currentT = t;
+      resultT[0] = currentT;
+      resultY[0] = new Float64Array(outN);
+      for (let i = 0; i < outN; i++) resultY[0][i] = valuesByStringId[outIds[i] as number] ?? 0;
+
+      for (let s = 1; s <= steps; s++) {
+        currentT += step;
+        valuesByStringId[timeId] = currentT;
+        this.evaluateBlocks(valuesByStringId);
+        this.preValuesByStringId.set(valuesByStringId);
+        this.processWhenClauses(valuesByStringId);
+        resultT[s] = currentT;
+        resultY[s] = new Float64Array(outN);
+        for (let i = 0; i < outN; i++) resultY[s][i] = valuesByStringId[outIds[i] as number] ?? 0;
+      }
+      return { t: Array.from(resultT), y: resultY.map((arr) => Array.from(arr)) };
+    }
+
+    const y0 = new Array(n);
+    for (let i = 0; i < n; i++) y0[i] = valuesByStringId[stateStringIds[i] as number] ?? 0;
+
+    const rhsFn = (t_eval: number, y: Float64Array, ydot: Float64Array) => {
+      valuesByStringId[timeId] = t_eval;
+      for (let i = 0; i < n; i++) valuesByStringId[stateStringIds[i] as number] = y[i] ?? 0;
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+      for (let i = 0; i < n; i++) ydot[i] = valuesByStringId[derivStringIds[i] as number] ?? 0;
+      return 0;
+    };
+
+    const nEvents = this.eventIndicators.length;
+    let eventFn: any;
+    if (nEvents > 0) {
+      eventFn = (t_eval: number, y: Float64Array, gout: Float64Array) => {
+        valuesByStringId[timeId] = t_eval;
+        for (let i = 0; i < n; i++) valuesByStringId[stateStringIds[i] as number] = y[i] ?? 0;
+        this.evaluateBlocks(valuesByStringId);
+        this.evaluateDerivativeEquations(valuesByStringId);
+        for (let i = 0; i < nEvents; i++) {
+          const ei = this.eventIndicators[i] as any;
+          let val = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+          if (ei.direction === 0) {
+            val = val ? 1 : -1;
+          }
+          gout[i] = val;
+        }
+        return 0;
+      };
+    }
+
+    const solver = new CvodeSolverClass(wasmMod, n, t, y0, rhsFn, nEvents, eventFn, {
+      atol: options?.atol,
+      rtol: options?.rtol,
+    });
+
+    let resultT = new Float64Array(steps + 1);
+    let resultY: Float64Array[] = new Array(steps + 1);
+
+    resultT[0] = t;
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+    const y0_out = new Float64Array(outN);
+    for (let i = 0; i < outN; i++) {
+      y0_out[i] = valuesByStringId[outIds[i] as number] ?? 0;
+    }
+    resultY[0] = y0_out;
+
+    let outIdx = 1;
+    let currentT = t;
+    for (let stepIdx = 1; stepIdx <= steps; stepIdx++) {
+      const targetT = t + stepIdx * step;
+      let reachedTarget = false;
+
+      let stepCount = 0;
+      while (!reachedTarget) {
+        if (options?.signal?.aborted) {
+          solver.dispose();
+          throw new Error("Simulation aborted");
+        }
+
+        const stepResult = solver.step(targetT);
+        const flag = stepResult.flag;
+        currentT = stepResult.t;
+
+        stepCount++;
+        if (stepCount > 1000) {
+          throw new Error(`Infinite loop detected at targetT=${targetT}, currentT=${currentT}, flag=${flag}`);
+        }
+
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] as number] = stepResult.y[i] ?? 0;
+        }
+        valuesByStringId[timeId] = currentT;
+
+        if (flag === 2) {
+          // CV_ROOT_RETURN
+          this.preValuesByStringId.set(valuesByStringId);
+          for (let i = 0; i < nEvents; i++) {
+            const ei = this.eventIndicators[i] as any;
+            const val = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+            ei.prevValue = val;
+          }
+          this.processWhenClauses(valuesByStringId);
+          this.executeStateMachines(valuesByStringId);
+          this.evaluateBlocks(valuesByStringId);
+          this.evaluateDerivativeEquations(valuesByStringId);
+
+          const y_new = new Array(n);
+          for (let i = 0; i < n; i++) y_new[i] = valuesByStringId[stateStringIds[i] as number] ?? 0;
+          solver.reinit(currentT, y_new);
+        }
+
+        if (flag < 0) {
+          solver.dispose();
+          throw new Error(`CVODE solver failed with flag ${flag} at t=${currentT}`);
+        }
+
+        if (currentT >= targetT - 1e-12) {
+          reachedTarget = true;
+        }
+      }
+
+      if (outIdx >= resultT.length) {
+        const newSize = resultT.length * 2;
+        const newT = new Float64Array(newSize);
+        newT.set(resultT);
+        resultT = newT;
+
+        const newY = new Array(newSize);
+        for (let i = 0; i < resultY.length; i++) newY[i] = resultY[i];
+        resultY = newY;
+      }
+
+      resultT[outIdx] = currentT;
+
+      // We must re-evaluate algebraic variables for the recorded state because
+      // the solver may have last evaluated the RHS at an intermediate or extrapolated time!
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+
+      const step_y = new Float64Array(outN);
+      for (let i = 0; i < outN; i++) {
+        step_y[i] = valuesByStringId[outIds[i] as number] ?? 0;
+      }
+      resultY[outIdx] = step_y;
+      outIdx++;
+    }
+
+    solver.dispose();
+
+    return {
+      t: Array.from(resultT.subarray(0, outIdx)),
+      y: resultY.slice(0, outIdx).map((arr) => Array.from(arr)),
+    };
+  }
+
+  async simulateAsync(
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    options?: {
+      signal?: AbortSignal;
+      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+      atol?: number;
+      rtol?: number;
+      outputStringIds?: number[];
+    },
+  ) {
+    const solver = options?.solver ?? "rk4";
+    const timeId = this.arena.interner.intern("time");
+    const n = stateStringIds.length;
+    const startTime = valuesByStringId[timeId] ?? 0;
+
+    // Execute initial algorithm sections
+    for (const sec of this.arena.initialAlgorithmSections) {
+      if (this.debuggerHook) {
+        await executeArenaStatementsAsync(
+          this.arena,
+          sec.start,
+          sec.count,
+          valuesByStringId,
+          undefined,
+          this.debuggerHook,
+        );
+      } else {
+        executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+      }
+    }
+
+    // Initialize when-clause wasActive flags
+    valuesByStringId[timeId] = startTime;
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+    for (const clause of this.whenClauses) {
+      const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
+      clause.wasActive = condVal !== 0;
+    }
+    for (const ei of this.eventIndicators) {
+      ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+    }
+
+    if (solver === "cvode") {
+      if (options?.signal?.aborted) throw new Error("Simulation aborted");
+      const { loadSundialsWasm, CvodeSolver } = await import("../solvers/sundials-wasm.js");
+      const wasmMod = await loadSundialsWasm();
+      return this.simulateCvodeWasm(
+        wasmMod,
+        CvodeSolver,
+        steps,
+        step,
+        valuesByStringId,
+        stateStringIds,
+        derivStringIds,
+        timeId,
+        options,
+      );
+    }
+
+    // Adaptive solvers run synchronously (they're CPU-bound; yielding inside would break solver state)
+    if (solver === "dopri5" || solver === "bdf" || solver === "auto") {
+      if (options?.signal?.aborted) throw new Error("Simulation aborted");
+      return this.simulateAdaptive(
+        solver,
+        steps,
+        step,
+        valuesByStringId,
+        stateStringIds,
+        derivStringIds,
+        timeId,
+        options,
+      );
+    }
+
+    // Fixed-step with async yielding
+    const t_out: number[] = [];
+    const y_out: Float64Array[] = [];
+    let currentTime = startTime;
+
+    for (let s = 0; s <= steps; s++) {
+      if (options?.signal?.aborted) {
+        throw new Error("Simulation aborted");
+      }
+
+      // Yield to the event loop every 100 steps
+      if (s % 100 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      valuesByStringId[timeId] = currentTime;
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+      this.executeStateMachines(valuesByStringId);
+      this.processWhenClauses(valuesByStringId);
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
+      this.checkAssertions(valuesByStringId, currentTime);
+
+      // Run regular algorithm sections
+      for (const sec of this.arena.algorithmSections) {
+        if (this.debuggerHook) {
+          await executeArenaStatementsAsync(
+            this.arena,
+            sec.start,
+            sec.count,
+            valuesByStringId,
+            undefined,
+            this.debuggerHook,
+          );
+        } else {
+          executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+        }
+      }
+
+      // Record output
+      const outIds = options?.outputStringIds ?? stateStringIds;
+      const currentState = new Float64Array(outIds.length);
+      for (let i = 0; i < outIds.length; i++) {
+        currentState[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
+      }
+      t_out.push(currentTime);
+      y_out.push(currentState);
+
+      // Integrate state variables
+      if (solver === "rk4") {
+        this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+      } else {
+        for (let i = 0; i < n; i++) {
+          const stateId = stateStringIds[i] ?? -1;
+          const derivId = derivStringIds[i] ?? -1;
+          if (derivId !== -1 && stateId !== -1) {
+            valuesByStringId[stateId] = (valuesByStringId[stateId] ?? 0) + step * (valuesByStringId[derivId] ?? 0);
+          }
+        }
+      }
+
+      currentTime += step;
+    }
+
+    return { t: t_out, y: y_out };
+  }
+
+  /**
+   * Evaluate the RHS (derivatives) of the ODE system at a given point.
+   *
+   * @param time          Current time
+   * @param stateValues   Current state variable values
+   * @param controlValues Current control variable values (overrides parameters)
+   * @returns Map from state name to derivative value (dx/dt)
+   */
+  public evaluateRHS(
+    time: number,
+    stateValues: Map<string, number>,
+    controlValues?: Map<string, number>,
+  ): Map<string, number> {
+    const envSize = Math.max(this.arena.interner.size + 256, 4096);
+    const valuesByStringId = new Float64Array(envSize);
+
+    // Load parameters
+    for (const [name, val] of this.parameters) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+
+    // Load states
+    for (const [name, val] of stateValues) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+
+    // Load controls
+    if (controlValues) {
+      for (const [name, val] of controlValues) {
+        valuesByStringId[this.arena.interner.intern(name)] = val;
+      }
+    }
+
+    const timeId = this.arena.interner.intern("time");
+    valuesByStringId[timeId] = time;
+
+    // Evaluate blocks and derivatives
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+
+    const f = new Map<string, number>();
+    for (const varIdx of this.stateVars) {
+      const name = this.arena.getVarName(varIdx);
+      const derId = this.arena.interner.intern(`der(${name})`);
+      f.set(name, valuesByStringId[derId] ?? 0);
+    }
+    return f;
+  }
+
+  /**
+   * Evaluate the RHS and its Jacobian w.r.t a set of seed variables using forward-mode AD.
+   *
+   * @param time          Current time
+   * @param stateValues   Current state variable values
+   * @param controlValues Current control variable values
+   * @param seedVars      Variables to compute derivatives with respect to
+   * @returns { f: Map<stateName, dx/dt>, J: Map<stateName, Map<seedVar, ∂f/∂seedVar>> }
+   */
+  public evaluateRHSWithJacobian(
+    time: number,
+    stateValues: Map<string, number>,
+    controlValues?: Map<string, number>,
+    seedVars?: string[],
+  ): { f: Map<string, number>; J: Map<string, Map<string, number>> } {
+    const allSeedVars = seedVars ?? [
+      ...Array.from(stateValues.keys()),
+      ...(controlValues ? Array.from(controlValues.keys()) : []),
+    ];
+
+    // Compute base values using evaluateRHS
+    const envSize = Math.max(this.arena.interner.size + 256, 4096);
+    const valuesByStringId = new Float64Array(envSize);
+
+    for (const [name, val] of this.parameters) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+    for (const [name, val] of stateValues) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+    if (controlValues) {
+      for (const [name, val] of controlValues) {
+        valuesByStringId[this.arena.interner.intern(name)] = val;
+      }
+    }
+    const timeId = this.arena.interner.intern("time");
+    valuesByStringId[timeId] = time;
+
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+
+    const f = new Map<string, number>();
+    for (const varIdx of this.stateVars) {
+      const name = this.arena.getVarName(varIdx);
+      const derId = this.arena.interner.intern(`der(${name})`);
+      f.set(name, valuesByStringId[derId] ?? 0);
+    }
+
+    const J = new Map<string, Map<string, number>>();
+    for (const varIdx of this.stateVars) {
+      J.set(this.arena.getVarName(varIdx), new Map());
+    }
+
+    // Propagate dual numbers for each seed variable
+    for (const seedVar of allSeedVars) {
+      const dualEnv = new Array<Dual>(envSize);
+
+      // Load all variables into the dual env from our base evaluation
+      for (let sid = 0; sid < envSize; sid++) {
+        const val = valuesByStringId[sid] ?? 0;
+        dualEnv[sid] = Dual.constant(val);
+      }
+
+      // Perturb the seed variable with dot = 1.0
+      const seedNameId = this.arena.interner.intern(seedVar);
+      if (seedNameId < envSize) {
+        const val = valuesByStringId[seedNameId] ?? 0;
+        dualEnv[seedNameId] = new Dual(val, 1.0);
+      }
+
+      // Propagate dual numbers through blocks in execution order
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const val = evaluateArenaDualExpression(this.arena, block.exprId, dualEnv);
+          if (val !== null) {
+            const varNameId = this.arena.getVarNameId(block.varIdx);
+            dualEnv[varNameId] = val;
+          }
+        } else if (block.type === "system") {
+          // Iterate system block equations to propagate derivatives
+          for (let iter = 0; iter < 5; iter++) {
+            for (let i = 0; i < block.vars.length; i++) {
+              const varIdx = block.vars[i]!;
+              const eqIdx = block.eqIdxs[i]!;
+              const rhsId = this.arena.getEqRhs(eqIdx);
+              const val = evaluateArenaDualExpression(this.arena, rhsId, dualEnv);
+              if (val !== null) {
+                const varNameId = this.arena.getVarNameId(varIdx);
+                dualEnv[varNameId] = val;
+              }
+            }
+          }
+        }
+      }
+
+      // Derivative equations are now part of execution blocks, so they are already propagated above.
+
+      // Read sensitivities for each state
+      for (const varIdx of this.stateVars) {
+        const name = this.arena.getVarName(varIdx);
+        const derId = this.arena.interner.intern(`der(${name})`);
+        const dualDerVal = dualEnv[derId];
+        const sensitivity = dualDerVal ? dualDerVal.dot : 0;
+        J.get(name)!.set(seedVar, sensitivity);
+      }
+    }
+
+    return { f, J };
+  }
+}
+
+/** Result of an arena-path simulation. */
+export interface ArenaSimulationResult {
+  /** Time points. */
+  t: number[];
+  /** State variable values at each time point (row-major: y[timeIdx][varIdx]). */
+  y: number[][];
+  /** Names of state variables (column headers for y). */
+  states: string[];
+}
+
+/** Options for `simulateArena()`. */
+export interface ArenaSimulateOptions {
+  startTime?: number;
+  stopTime?: number;
+  /** Output interval (step size). */
+  step?: number;
+  /** Number of output intervals (used if `step` is not given). */
+  numberOfIntervals?: number;
+  /** ODE solver selection. */
+  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "webgpu" | "cvode";
+  /** Absolute tolerance for adaptive solvers (default: 1e-6). */
+  atol?: number;
+  /** Relative tolerance for adaptive solvers (default: 1e-6). */
+  rtol?: number;
+  /** Custom output string IDs for subsetting result traces. */
+  outputStringIds?: number[];
+  /** Parameter overrides (name → value). */
+  parameterOverrides?: Map<string, number>;
+  /** Abort signal for cooperative cancellation. */
+  signal?: AbortSignal;
+  /** Optional FMU co-simulation subsystem registry for hybrid simulation. */
+  fmuRegistry?: FmuSubsystemRegistry;
+  /** Optional debugger hook for step-by-step statement execution. */
+  debuggerHook?: SimulationDebugger;
+}
+
+/**
+ * Run a complete simulation using the arena-only pipeline.
+ *
+ * Steps:
+ *   1. Build the ArenaSimulator and run `prepare()` (Pantelides, BLT, isolation)
+ *   2. Initialize the Float64Array environment with parameters and start values
+ *   3. Run the arena init solver (Newton-Raphson + homotopy)
+ *   4. Execute the simulation (RK4 or Euler)
+ *   5. Transform output into the standard `{ t, y, states }` format
+ */
+export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions): ArenaSimulationResult {
+  // ── Step 1: Prepare the simulator ──
+  const sim = new ArenaSimulator(arena);
+  if (options?.fmuRegistry) {
+    sim.fmuRegistry = options.fmuRegistry;
+  }
+  if (options?.debuggerHook) {
+    sim.debuggerHook = options.debuggerHook;
+  }
+  sim.prepare();
+
+  // ── Step 2: Resolve experiment annotation defaults ──
+  const exp = arena.experiment;
+  const startTime = options?.startTime ?? exp.startTime ?? 0;
+  const stopTime = options?.stopTime ?? exp.stopTime ?? 10;
+  const step =
+    options?.step ??
+    (options?.numberOfIntervals
+      ? (stopTime - startTime) / options.numberOfIntervals
+      : (exp.interval ?? (stopTime - startTime) / 500));
+
+  // ── Step 3: Build the environment (Float64Array indexed by StringId) ──
+  const envSize = Math.max(arena.interner.size + 256, 4096);
+  const valuesByStringId = new Float64Array(envSize);
+
+  // Set time
+  const timeId = arena.interner.intern("time");
+  valuesByStringId[timeId] = startTime;
+
+  // Set parameters from the simulator's resolved parameters
+  for (const [name, val] of sim.parameters) {
+    const nameId = arena.interner.intern(name);
+    valuesByStringId[nameId] = val;
+  }
+
+  // Apply parameter overrides
+  if (options?.parameterOverrides) {
+    for (const [name, val] of options.parameterOverrides) {
+      const nameId = arena.interner.intern(name);
+      valuesByStringId[nameId] = val;
+      sim.parameters.set(name, val);
+    }
+  }
+
+  // Set start values for all non-parameter variables
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Parameter || v === Variability.Constant) continue;
+
+    const nameId = arena.getVarNameId(i);
+    const startVal = arena.getVarStartValue(i);
+    if (startVal !== 0 || valuesByStringId[nameId] === 0) {
+      valuesByStringId[nameId] = startVal;
+    }
+
+    // Evaluate start expression if present
+    const exprId = arena.getVarExpression(i) as number | undefined;
+    if (typeof exprId === "number" && exprId !== -1) {
+      const val = evaluateArenaExpression(arena, exprId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+  }
+
+  // ── Step 4: Solve initial equations ──
+  const initResult = solveInitialEquationsArena(arena, valuesByStringId);
+  // Copy initial solution back
+  valuesByStringId.set(initResult.valuesByStringId);
+
+  // ── Step 5: Identify state/derivative StringIds ──
+  const stateNameIds: number[] = [];
+  const derivNameIds: number[] = [];
+  const stateNames: string[] = [];
+
+  for (const varIdx of sim.stateVars) {
+    const name = arena.getVarName(varIdx);
+    const nameId = arena.getVarNameId(varIdx);
+    const derName = `der(${name})`;
+    const derNameId = arena.interner.intern(derName);
+
+    stateNameIds.push(nameId);
+    derivNameIds.push(derNameId);
+    stateNames.push(name);
+  }
+
+  // ── Step 6: Run simulation ──
+  const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
+
+  // ── Step 5.5: Initialize FMU subsystems (if any) ──
+  sim.initializeFmuSubsystems(startTime, stopTime, step);
+
+  const rawResult = sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
+    solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
+    ...(options?.atol !== undefined && { atol: options.atol }),
+    ...(options?.rtol !== undefined && { rtol: options.rtol }),
+    ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
+  });
+
+  // ── Step 7.5: Terminate FMU subsystems ──
+  sim.terminateFmuSubsystems();
+
+  // ── Step 7: Transform to row-major output ──
+  const t = rawResult.t;
+  const y: number[][] = rawResult.y.map((row) => Array.from(row));
+
+  let outNames = stateNames;
+  if (options?.outputStringIds) {
+    outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  }
+
+  return { t, y, states: outNames };
+}
+
+/**
+ * Async variant of `simulateArena()` with cooperative yielding and abort support.
+ */
+export async function simulateArenaAsync(
+  arena: DAEBuilder,
+  options?: ArenaSimulateOptions,
+): Promise<ArenaSimulationResult> {
+  const sim = new ArenaSimulator(arena);
+  if (options?.fmuRegistry) {
+    sim.fmuRegistry = options.fmuRegistry;
+  }
+  if (options?.debuggerHook) {
+    sim.debuggerHook = options.debuggerHook;
+  }
+  sim.prepare();
+
+  const exp = arena.experiment;
+  const startTime = options?.startTime ?? exp.startTime ?? 0;
+  const stopTime = options?.stopTime ?? exp.stopTime ?? 10;
+  const step =
+    options?.step ??
+    (options?.numberOfIntervals
+      ? (stopTime - startTime) / options.numberOfIntervals
+      : (exp.interval ?? (stopTime - startTime) / 500));
+
+  const envSize = Math.max(arena.interner.size + 256, 4096);
+  const valuesByStringId = new Float64Array(envSize);
+
+  const timeId = arena.interner.intern("time");
+  valuesByStringId[timeId] = startTime;
+
+  for (const [name, val] of sim.parameters) {
+    const nameId = arena.interner.intern(name);
+    valuesByStringId[nameId] = val;
+  }
+
+  if (options?.parameterOverrides) {
+    for (const [name, val] of options.parameterOverrides) {
+      const nameId = arena.interner.intern(name);
+      valuesByStringId[nameId] = val;
+      sim.parameters.set(name, val);
+    }
+  }
+
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Parameter || v === Variability.Constant) continue;
+
+    const nameId = arena.getVarNameId(i);
+    const startVal = arena.getVarStartValue(i);
+    if (startVal !== 0 || valuesByStringId[nameId] === 0) {
+      valuesByStringId[nameId] = startVal;
+    }
+
+    const exprId = arena.getVarExpression(i) as number | undefined;
+    if (typeof exprId === "number" && exprId !== -1) {
+      const val = evaluateArenaExpression(arena, exprId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+  }
+
+  const initResult = solveInitialEquationsArena(arena, valuesByStringId);
+  valuesByStringId.set(initResult.valuesByStringId);
+
+  const stateNameIds: number[] = [];
+  const derivNameIds: number[] = [];
+  const stateNames: string[] = [];
+
+  for (const varIdx of sim.stateVars) {
+    const name = arena.getVarName(varIdx);
+    const nameId = arena.getVarNameId(varIdx);
+    const derName = `der(${name})`;
+    const derNameId = arena.interner.intern(derName);
+
+    stateNameIds.push(nameId);
+    derivNameIds.push(derNameId);
+    stateNames.push(name);
+  }
+
+  const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
+
+  sim.initializeFmuSubsystems(startTime, stopTime, step);
+
+  if (options?.solver === "webgpu") {
+    // ── Phase 5: WebGPU Execution with Fallback ──
+    const { serializeArenaForGPU } = await import("./gpu-buffers.js");
+    const { WebGPUSimulationRunner } = await import("./webgpu-simulation-runner.js");
+
+    // Create the BLT result shape expected by serializeArenaForGPU
+    const bltResult = {
+      blocks: sim.blocks,
+      sortedEquations: sim.sortedEquations,
+    };
+
+    const buffers = serializeArenaForGPU(arena, bltResult, sim.stateVars);
+
+    // Copy the initialized values into the GPU state buffer
+    for (let i = 0; i < arena.varCount; i++) {
+      const nameId = arena.getVarNameId(i);
+      buffers.stateBuffer[i] = valuesByStringId[nameId] ?? 0;
+    }
+
+    const runner = new WebGPUSimulationRunner(arena, buffers);
+    const initialized = await runner.initialize();
+
+    if (initialized) {
+      console.log("WebGPU simulation backend initialized successfully.");
+      // If tolerances are provided, use the adaptive DOPRI5 orchestrator
+      const isAdaptive = options?.atol !== undefined || options?.rtol !== undefined;
+
+      let t: number[];
+      let y: number[][];
+
+      if (isAdaptive) {
+        const outputTimes: number[] = [];
+        for (let s = 0; s <= steps; s++) {
+          outputTimes.push(startTime + s * step);
+        }
+
+        const stateVarsArr = Array.from(sim.stateVars);
+        const y0 = new Float32Array(stateVarsArr.length);
+        for (let i = 0; i < stateVarsArr.length; i++) {
+          const varIdx = stateVarsArr[i] ?? -1;
+          y0[i] = varIdx !== -1 ? (buffers.stateBuffer[varIdx] ?? 0) : 0;
+        }
+
+        const result = await runner.runSimulationAdaptive(startTime, y0, stopTime, outputTimes, {
+          atol: options?.atol,
+          rtol: options?.rtol,
+        });
+
+        t = result.t;
+        y = new Array(result.t.length);
+        for (let s = 0; s < result.t.length; s++) {
+          const row = new Array(stateNames.length);
+          for (let j = 0; j < stateNames.length; j++) {
+            row[j] = result.y[s]?.[j] ?? 0;
+          }
+          y[s] = row;
+        }
+      } else {
+        const gpuResultBuffer = await runner.runSimulation(steps, step, startTime);
+        t = new Array(steps + 1);
+        y = new Array(steps + 1);
+
+        for (let s = 0; s <= steps; s++) {
+          t[s] = startTime + s * step;
+          const row = new Array(stateNames.length);
+          for (let j = 0; j < stateNames.length; j++) {
+            const varIdx = Array.from(sim.stateVars)[j] ?? -1;
+            row[j] = varIdx !== -1 ? (gpuResultBuffer[s * arena.varCount + varIdx] ?? 0) : 0;
+          }
+          y[s] = row;
+        }
+      }
+
+      sim.terminateFmuSubsystems();
+      return { t, y, states: stateNames };
+    } else {
+      console.warn("WebGPU initialization failed. Falling back to CPU simulation.");
+    }
+  }
+
+  const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
+    solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
+    ...(options?.signal !== undefined && { signal: options.signal }),
+    ...(options?.atol !== undefined && { atol: options.atol }),
+    ...(options?.rtol !== undefined && { rtol: options.rtol }),
+    ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
+  });
+
+  sim.terminateFmuSubsystems();
+
+  const t = rawResult.t;
+  const y: number[][] = rawResult.y.map((row) => Array.from(row as ArrayLike<number>));
+
+  let outNames = stateNames;
+  if (options?.outputStringIds) {
+    outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  }
+
+  return { t, y, states: outNames };
+}

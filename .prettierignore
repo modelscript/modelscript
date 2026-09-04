@@ -8,3 +8,8 @@ src-gen/**
 packages/ide/vscode-web/
 packages/ide/models/
 packages/language/src/codegen/runtime/**
+packages/dsl/src/codegen/runtime/**
+packages/runtime/src/wasm/**
+packages/runtime/assembly/**
+packages/simulate/src/wasm/**
+**/assembly/**

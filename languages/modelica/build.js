@@ -25,11 +25,16 @@ for (const file of result.assemblyScriptFiles) {
   fs.writeFileSync(path.join(asGenDir, file.filename), file.content);
 }
 
-// 2. Write TypeScript/JavaScript bindings to src-gen/
+// 2. Write TypeScript/JavaScript bindings to src-gen/ and dist/src-gen/
 const srcGenDir = path.join(__dirname, "src-gen");
 fs.mkdirSync(srcGenDir, { recursive: true });
 fs.writeFileSync(path.join(srcGenDir, "bindings.js"), result.javascriptWrapper.js);
 fs.writeFileSync(path.join(srcGenDir, "bindings.d.ts"), result.javascriptWrapper.dts);
+
+const distSrcGenDir = path.join(__dirname, "dist", "src-gen");
+fs.mkdirSync(distSrcGenDir, { recursive: true });
+fs.writeFileSync(path.join(distSrcGenDir, "bindings.js"), result.javascriptWrapper.js);
+fs.writeFileSync(path.join(distSrcGenDir, "bindings.d.ts"), result.javascriptWrapper.dts);
 
 // 3. Compile AssemblyScript to WASM
 const outDir = path.join(__dirname, "dist");
@@ -54,7 +59,7 @@ console.log("[modelica] WebAssembly parser built successfully -> " + outWasm);
 fs.copyFileSync(outWasm, path.join(__dirname, "tree-sitter-modelica.wasm"));
 
 // Cleanup as-gen after WASM compilation
-fs.rmSync(asGenDir, { recursive: true, force: true });
+// fs.rmSync(asGenDir, { recursive: true, force: true });
 `;
 
 fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");

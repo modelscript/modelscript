@@ -1,0 +1,62 @@
+{
+  "name": "@modelscript/simulate",
+  "version": "0.0.18",
+  "description": "Continuous & discrete ODE/DAE simulation, SUNDIALS/CVODE integrators, WebGPU acceleration, and numerical optimization engines for ModelScript",
+  "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./solvers": {
+      "types": "./dist/solvers/index.d.ts",
+      "default": "./dist/solvers/index.js"
+    },
+    "./optimizer": {
+      "types": "./dist/optimizer/index.d.ts",
+      "default": "./dist/optimizer/index.js"
+    },
+    "./webgpu": {
+      "types": "./dist/core/webgpu-simulation-runner.d.ts",
+      "default": "./dist/core/webgpu-simulation-runner.js"
+    },
+    "./uq": {
+      "types": "./dist/uq/index.d.ts",
+      "default": "./dist/uq/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "default": "./dist/utils/index.js"
+    },
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "npm run clean && tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "name": "@modelscript/dsl",
+  "version": "0.0.18",
+  "description": "ModelScript DSL syntax combinators, GLR parser generator, and term-rewriting engines",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./dsl": {
+      "types": "./dist/dsl/index.d.ts",
+      "default": "./dist/dsl/index.js"
+    },
+    "./dsl/*.js": {
+      "types": "./dist/dsl/*.d.ts",
+      "default": "./dist/dsl/*.js"
+    },
+    "./dsl/*": {
+      "types": "./dist/dsl/*.d.ts",
+      "default": "./dist/dsl/*.js"
+    },
+    "./codegen": {
+      "types": "./dist/codegen/index.d.ts",
+      "default": "./dist/codegen/index.js"
+    },
+    "./codegen/*.js": {
+      "types": "./dist/codegen/*.d.ts",
+      "default": "./dist/codegen/*.js"
+    },
+    "./codegen/*": {
+      "types": "./dist/codegen/*.d.ts",
+      "default": "./dist/codegen/*.js"
+    },
+    "./bindings": {
+      "types": "./dist/bindings/javascript/index.d.ts",
+      "default": "./dist/bindings/javascript/index.js"
+    },
+    "./bindings/*.js": {
+      "types": "./dist/bindings/javascript/*.d.ts",
+      "default": "./dist/bindings/javascript/*.js"
+    },
+    "./bindings/*": {
+      "types": "./dist/bindings/javascript/*.d.ts",
+      "default": "./dist/bindings/javascript/*.js"
+    },
+    "./tgg": {
+      "types": "./dist/codegen/compile_tgg.d.ts",
+      "default": "./dist/codegen/compile_tgg.js"
+    },
+    "./egraph": {
+      "types": "./dist/codegen/egraph.d.ts",
+      "default": "./dist/codegen/egraph.js"
+    },
+    "./parser": {
+      "types": "./dist/codegen/parser.d.ts",
+      "default": "./dist/codegen/parser.js"
+    },
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "npm run build:templates && tsc",
+    "build:templates": "node scripts/bundle-templates.js",
+    "clean": "rimraf dist src/src-gen build",
+    "lint": "eslint src --no-warn-ignored"
+  },
+  "dependencies": {
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "prettier": "^3.6.2",
+    "rimraf": "^6.1.0"
+  }
+}

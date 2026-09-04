@@ -108,8 +108,8 @@ esbuild
     // Also build the LSP browser server bundle
     return esbuild.build({
       entryPoints: [
-        path.join(pkgDir, "src/lsp/browserServerMain.ts"),
-        path.join(pkgDir, "src/lsp/workers/indexer.worker.ts"),
+        path.resolve(pkgDir, "../lsp/src/browserServerMain.ts"),
+        path.resolve(pkgDir, "../lsp/src/workers/indexer.worker.ts"),
       ],
       outdir: path.join(pkgDir, "dist/lsp"),
       bundle: true,

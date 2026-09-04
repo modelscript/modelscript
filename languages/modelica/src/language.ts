@@ -401,8 +401,8 @@ export const modelicaLanguage = language({
       choice(
         seq(
           semanticToken("class", field("name", $.identifier), ["declaration"]),
-          $.description_string,
-          $.composition,
+          field("description", $.description_string),
+          field("composition", $.composition),
           "end",
           optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
         ),
@@ -410,8 +410,8 @@ export const modelicaLanguage = language({
           "extends",
           semanticToken("class", field("name", $.identifier), ["declaration"]),
           optional($.class_modification),
-          $.description_string,
-          $.composition,
+          field("description", $.description_string),
+          field("composition", $.composition),
           "end",
           optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
         ),
@@ -569,22 +569,25 @@ export const modelicaLanguage = language({
     component_list: ($) => seq($.component_declaration, repeat(seq(",", $.component_declaration))),
 
     component_declaration: ($) =>
-      seq(field("declaration", $.declaration), optional($.condition_attribute), $.description),
+      seq(field("declaration", $.declaration), optional($.condition_attribute), field("description", $.description)),
 
     condition_attribute: ($) => seq("if", $.expression),
 
     declaration: ($) =>
       seq(
         semanticToken("property", field("name", $.identifier)),
-        optional($.array_subscripts),
-        optional($.modification),
+        optional(field("array_subscripts", $.array_subscripts)),
+        optional(field("modification", $.modification)),
       ),
 
     // A.2.5 Modification
     modification: ($) =>
       choice(
-        seq($.class_modification, optional(seq("=", $.modification_expression))),
-        seq("=", $.modification_expression),
+        seq(
+          field("class_modification", $.class_modification),
+          optional(seq("=", field("modification_expression", $.modification_expression))),
+        ),
+        seq("=", field("modification_expression", $.modification_expression)),
       ),
 
     modification_expression: ($) => choice($.expression, "break"),
@@ -598,7 +601,8 @@ export const modelicaLanguage = language({
     element_modification_or_replaceable: ($) =>
       seq(optional("each"), optional("final"), choice($.element_modification, $.element_replaceable)),
 
-    element_modification: ($) => seq($.name, optional($.modification), $.description_string),
+    element_modification: ($) =>
+      seq(field("name", $.name), optional(field("modification", $.modification)), $.description_string),
 
     element_redeclaration: ($) =>
       seq(
@@ -666,52 +670,78 @@ export const modelicaLanguage = language({
     if_equation: ($) =>
       seq(
         "if",
-        $.expression,
+        field("condition", $.expression),
         "then",
-        repeat(seq($.some_equation, ";")),
-        repeat(seq("elseif", $.expression, "then", repeat(seq($.some_equation, ";")))),
-        optional(seq("else", repeat(seq($.some_equation, ";")))),
+        field("body", repeat(seq($.some_equation, ";"))),
+        repeat(
+          seq(
+            "elseif",
+            field("elseCondition", $.expression),
+            "then",
+            field("elseBody", repeat(seq($.some_equation, ";"))),
+          ),
+        ),
+        optional(seq("else", field("finalBody", repeat(seq($.some_equation, ";"))))),
         "end if",
       ),
 
     if_statement: ($) =>
       seq(
         "if",
-        $.expression,
+        field("condition", $.expression),
         "then",
-        repeat(seq($.statement, ";")),
-        repeat(seq("elseif", $.expression, "then", repeat(seq($.statement, ";")))),
-        optional(seq("else", repeat(seq($.statement, ";")))),
+        field("body", repeat(seq($.statement, ";"))),
+        repeat(
+          seq("elseif", field("elseCondition", $.expression), "then", field("elseBody", repeat(seq($.statement, ";")))),
+        ),
+        optional(seq("else", field("finalBody", repeat(seq($.statement, ";"))))),
         "end if",
       ),
 
-    for_equation: ($) => seq("for", $.for_indices, "loop", repeat(seq($.some_equation, ";")), "end for"),
+    for_equation: ($) =>
+      seq("for", field("indices", $.for_indices), "loop", field("body", repeat(seq($.some_equation, ";"))), "end for"),
 
-    for_statement: ($) => seq("for", $.for_indices, "loop", repeat(seq($.statement, ";")), "end for"),
+    for_statement: ($) =>
+      seq("for", field("indices", $.for_indices), "loop", field("body", repeat(seq($.statement, ";"))), "end for"),
 
     for_indices: ($) => seq($.for_index, repeat(seq(",", $.for_index))),
 
-    for_index: ($) => seq($.identifier, optional(seq("in", $.expression))),
+    for_index: ($) => seq(field("variable", $.identifier), optional(seq("in", field("range", $.expression)))),
 
-    while_statement: ($) => seq("while", $.expression, "loop", repeat(seq($.statement, ";")), "end while"),
+    while_statement: ($) =>
+      seq("while", field("condition", $.expression), "loop", field("body", repeat(seq($.statement, ";"))), "end while"),
 
     when_equation: ($) =>
       seq(
         "when",
-        $.expression,
+        field("condition", $.expression),
         "then",
-        repeat(seq($.some_equation, ";")),
-        repeat(seq("elsewhen", $.expression, "then", repeat(seq($.some_equation, ";")))),
+        field("body", repeat(seq($.some_equation, ";"))),
+        repeat(
+          seq(
+            "elsewhen",
+            field("elseCondition", $.expression),
+            "then",
+            field("elseBody", repeat(seq($.some_equation, ";"))),
+          ),
+        ),
         "end when",
       ),
 
     when_statement: ($) =>
       seq(
         "when",
-        $.expression,
+        field("condition", $.expression),
         "then",
-        repeat(seq($.statement, ";")),
-        repeat(seq("elsewhen", $.expression, "then", repeat(seq($.statement, ";")))),
+        field("body", repeat(seq($.statement, ";"))),
+        repeat(
+          seq(
+            "elsewhen",
+            field("elseCondition", $.expression),
+            "then",
+            field("elseBody", repeat(seq($.statement, ";"))),
+          ),
+        ),
         "end when",
       ),
 
@@ -738,10 +768,7 @@ export const modelicaLanguage = language({
         ),
 
         // range (:)
-        prec.left(
-          PRECEDENCE.range,
-          choice(seq($.expression, ":", $.expression, ":", $.expression), seq($.expression, ":", $.expression)),
-        ),
+        prec.left(PRECEDENCE.range, seq($.expression, ":", $.expression)),
 
         // logical or
         prec.left(PRECEDENCE.or, seq(field("left", $.expression), "or", field("right", $.expression))),
@@ -867,7 +894,7 @@ export const modelicaLanguage = language({
 
     array_subscripts: ($) => seq("[", $.subscript, repeat(seq(",", $.subscript)), "]"),
 
-    subscript: ($) => choice(":", $.expression),
+    subscript: ($) => choice(field("flexible", ":"), field("expression", $.expression)),
 
     description: ($) => seq($.description_string, optional($.annotation_clause)),
 

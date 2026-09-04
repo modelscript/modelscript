@@ -1,2 +1,3 @@
-// Re-export canonical diagram protocol types from @modelscript/language/diagram
-export * from "../diagram/protocol.js";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable */
+export * from "@modelscript/lsp/diagramProtocol.js";

@@ -30,6 +30,9 @@ end ConnectInNonParamIf;
 // # Please check the error message and the flags.
 //
 // [OpenModelica/flattening/modelica/equations/ConnectInNonParamIf.mo:18:5-18:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c1, c2)).
+// [OpenModelica/flattening/modelica/equations/ConnectInNonParamIf.mo:19:5-19:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c1, c3)).
+// [OpenModelica/flattening/modelica/equations/ConnectInNonParamIf.mo:21:5-21:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c1, c2)).
+// [OpenModelica/flattening/modelica/equations/ConnectInNonParamIf.mo:22:5-22:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c2, c3)).
 // Error: Error occurred while flattening model ConnectInNonParamIf
 //
 // Execution failed!
