@@ -681,11 +681,10 @@ export class HashAPI {
 export class AstAPI {
   @inline startsWith(nodeId: u32, prefix: string): boolean {
       if (nodeId == 0 || prefix.length == 0) return false;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return false;
       let step = getEncodingStep();
-      let pad = lsp_getNodeLeadingPad(nodeId);
-      let actualOffset = offset + pad * step;
+      let actualOffset = offset as u32;
       let buffer = getInputBuffer();
       while (true) {
           let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
@@ -708,11 +707,10 @@ export class AstAPI {
 
   @inline textEquals(nodeId: u32, text: string): boolean {
       if (nodeId == 0) return false;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return false;
       let step = getEncodingStep();
-      let pad = lsp_getNodeLeadingPad(nodeId);
-      let actualOffset = offset + pad * step;
+      let actualOffset = offset as u32;
       let buffer = getInputBuffer();
       while (true) {
           let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
@@ -745,8 +743,8 @@ export class AstAPI {
       let lenA = getNodeByteLength(nodeA);
       let lenB = getNodeByteLength(nodeB);
       if (lenA != lenB) return false;
-      let offsetA = lsp_findNodeOffset(globalAstRoot, nodeA);
-      let offsetB = lsp_findNodeOffset(globalAstRoot, nodeB);
+      let offsetA = lsp_findNodeOffset(globalAstRoot, nodeA, 0);
+      let offsetB = lsp_findNodeOffset(globalAstRoot, nodeB, 0);
       if (offsetA < 0 || offsetB < 0) return false;
       let buffer = getInputBuffer();
       for (let i: u32 = 0; i < lenA; i++) {
@@ -768,14 +766,14 @@ export class AstAPI {
 
   @inline parseInteger(nodeId: u32): i32 {
       if (nodeId == 0) return 0;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return 0;
       let step = getEncodingStep();
-      let pad = lsp_getNodeLeadingPad(nodeId);
-      let actualOffset = offset + pad * step;
+      let offsetU: u32 = offset as u32;
+      let actualOffset: u32 = offsetU;
       let buffer = getInputBuffer();
       let len = getNodeByteLength(nodeId);
-      let endOffset = offset + len;
+      let endOffset: u32 = offsetU + len;
 
       while (actualOffset < endOffset) {
           let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
@@ -801,14 +799,14 @@ export class AstAPI {
 
   @inline parseReal(nodeId: u32): f64 {
       if (nodeId == 0) return 0.0;
-      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return 0.0;
       let step = getEncodingStep();
-      let pad = lsp_getNodeLeadingPad(nodeId);
-      let actualOffset = offset + pad * step;
+      let offsetU: u32 = offset as u32;
+      let actualOffset: u32 = offsetU;
       let buffer = getInputBuffer();
       let len = getNodeByteLength(nodeId);
-      let endOffset = offset + len;
+      let endOffset: u32 = offsetU + len;
 
       while (actualOffset < endOffset) {
           let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
@@ -845,9 +843,9 @@ export class AstAPI {
   }
 
   @inline getBinaryOp(leftNode: u32, rightNode: u32): u16 {
-      let leftOffset = lsp_findNodeOffset(globalAstRoot, leftNode);
+      let leftOffset = lsp_findNodeOffset(globalAstRoot, leftNode, 0);
       let leftLen = getNodeByteLength(leftNode);
-      let rightOffset = lsp_findNodeOffset(globalAstRoot, rightNode);
+      let rightOffset = lsp_findNodeOffset(globalAstRoot, rightNode, 0);
       if (leftOffset < 0 || rightOffset < 0) return 0;
 
       let step = getEncodingStep();
@@ -909,7 +907,7 @@ export class AstAPI {
   @inline getRootNode(): u32 { return globalAstRoot; }
   @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { 
     if (absoluteStart == 0xFFFFFFFF) {
-        let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+        let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
         if (offset >= 0) absoluteStart = offset as u32;
     }
     return ast_getTextSpan(nodeId, absoluteStart); 
@@ -976,12 +974,11 @@ class ScopeAPI {
 
   @inline internNode(nodeId: u32): u32 {
     if (nodeId == 0) return 0;
-    let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+    let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
     if (offset < 0) return 0;
     let len: u32 = getNodeByteLength(nodeId);
     let step: u32 = getEncodingStep();
-    let pad: u32 = lsp_getNodeLeadingPad(nodeId);
-    let actualOffset: u32 = (offset as u32) + pad * step;
+    let actualOffset: u32 = offset as u32;
     let buffer: usize = getInputBuffer();
 
     while (true) {

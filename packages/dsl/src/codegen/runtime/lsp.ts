@@ -1069,7 +1069,7 @@ export function lsp_getNodeLeadingPad(node: u32): u32 {
   return getNodePadding(node);
 }
 
-export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u32 = 0): i32 {
+export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u32): i32 {
    if (rootNode == 0 || targetNode == 0) return -1;
    ensureFindTraverseStack(1);
    let rootStart = (rootOffset == 0) ? getNodeLeadingPad(rootNode) : rootOffset;
@@ -1169,7 +1169,7 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
             let root = load<u64>(valsPtr + (i * 8)) as u32;
              if (root != 0) {
                 globalAstRoot = root;
-                let offset = lsp_findNodeOffset(root, defNode);
+                let offset = lsp_findNodeOffset(root, defNode, 0);
                 if (offset >= 0) {
                    targetFileId = key as u32;
                    startOffset = offset;
@@ -1181,7 +1181,7 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    }
 
    if (startOffset < 0) {
-      startOffset = lsp_findNodeOffset(rootNode, defNode);
+      startOffset = lsp_findNodeOffset(rootNode, defNode, 0);
       targetFileId = 0;
    }
 
@@ -1674,7 +1674,7 @@ export function lsp_getCompletionContext(rootNode: u32, cursorOffset: u32): u32 
 
   if (targetNode == 0) return 0;
 
-  let targetStart = lsp_findNodeOffset(rootNode, targetNode);
+  let targetStart = lsp_findNodeOffset(rootNode, targetNode, 0);
   if (targetStart < 0) return 0;
   let targetEnd = (targetStart as u32) + getNodeByteLength(targetNode);
 

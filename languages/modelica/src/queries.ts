@@ -1259,14 +1259,34 @@ export const classDefinitionQueries: Record<string, any> = {
    * Get the effective modification for this class (specifically for ShortClassSpecifier).
    */
   effectiveModification: (db: QueryDB, self: SymbolEntry) => {
-    // console.error("Executing effectiveModification on ClassDefinition for " + self.name);
-    const cst = db.cstNode(self.id) as import("@modelscript/language/compiler").CSTNode | null;
+    const cst = db.cstNode(self.id) as any;
     if (!cst) return null;
-    const classSpec = cst.childForFieldName("classSpecifier");
-    if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
-    const modNode = classSpec.childForFieldName("classModification");
+    const classSpec = cst.childForFieldName("class_specifier") ?? cst.childForFieldName("classSpecifier");
+    if (!classSpec || (classSpec.type !== "short_class_specifier" && classSpec.type !== "ShortClassSpecifier"))
+      return null;
+    const modNode =
+      classSpec.childForFieldName("class_modification") ?? classSpec.childForFieldName("classModification");
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as import("./modifications.js").ModelicaModArgs;
+  },
+  resolvedBaseClass: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    if (!cst) return null;
+    const classSpec = cst.childForFieldName("class_specifier") ?? cst.childForFieldName("classSpecifier");
+    if (!classSpec || (classSpec.type !== "short_class_specifier" && classSpec.type !== "ShortClassSpecifier"))
+      return null;
+    const typeSpec = classSpec.childForFieldName("type_specifier") ?? classSpec.childForFieldName("typeSpecifier");
+    const typeName = typeSpec?.text;
+    if (!typeName) return null;
+    if (self.parentId !== null) {
+      const parentResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
+      if (parentResolver) {
+        const resolved = parentResolver(typeName);
+        if (resolved && resolved.id !== self.id) return resolved;
+      }
+    }
+    const matches = db.byName(typeName);
+    return matches?.find((e) => (e.metadata as any)?.isPredefined || e.kind === "Class") ?? matches?.[0] ?? null;
   },
   /** Only nested class definitions. */
   nestedClasses: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id).filter((c) => c.kind === "Class"),
@@ -1939,7 +1959,6 @@ export const extendsClauseQueries: Record<string, any> = {
   extendsModificationParsed: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
     const modNode = cst?.childForFieldName("classOrInheritanceModification");
-    console.log("extendsModificationParsed for", self.id, "cst type:", cst?.type, "modNode:", !!modNode);
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
   },

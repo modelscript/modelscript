@@ -104,8 +104,76 @@ export class Context {
     this.#queryEngine = engine;
   }
 
+  setSymbolIndex(index: any): void {
+    injectPredefinedTypes(index);
+    const contextTree = {
+      getText: (startByte: number, endByte: number, entry?: any) => {
+        if (!entry || !entry.resourceId) return null;
+        let tree = this.#trees.get(entry.resourceId);
+        if (!tree) {
+          try {
+            const text = this.#fs.read(entry.resourceId);
+            tree = this.parse(".mo", text);
+            this.#trees.set(entry.resourceId, tree);
+          } catch {
+            return null;
+          }
+        }
+        const offset = tree.rootNode.startIndex;
+        return tree.rootNode.text.substring(startByte - offset, endByte - offset);
+      },
+      getNode: (startByte: number, endByte: number, entry?: any) => {
+        if (!entry || !entry.resourceId) return null;
+        let tree = this.#trees.get(entry.resourceId);
+        if (!tree) {
+          try {
+            const text = this.#fs.read(entry.resourceId);
+            tree = this.parse(".mo", text);
+            this.#trees.set(entry.resourceId, tree);
+          } catch {
+            return null;
+          }
+        }
+        return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+      },
+    };
+    (this.#workspaceIndex as any).unifiedIndex = index;
+    this.#queryEngine = createModelicaQueryEngine(index, contextTree);
+
+    // Hydrate root classes
+    const db = this.#queryEngine.toQueryDB();
+    for (const id of index.symbols.keys()) {
+      const entry = index.symbols.get(id);
+      if (entry && (entry.parentId === null || entry.parentId === id) && entry.kind === "Class") {
+        if (!this.#classes.some((c) => c.id === id)) {
+          this.#classes.push({
+            id,
+            db,
+            entry,
+            name: entry.name ?? "",
+            kind: entry.kind ?? "Class",
+            classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+            compositeName: entry.name ?? "",
+            description: (entry.metadata as any)?.description ?? null,
+            isClassInstance: true,
+          });
+        }
+      }
+    }
+  }
+
   getTree(uri: string): Tree | undefined {
-    return this.#trees.get(uri);
+    let tree = this.#trees.get(uri);
+    if (!tree) {
+      try {
+        const text = this.#fs.read(uri);
+        tree = this.parse(".mo", text);
+        this.#trees.set(uri, tree);
+      } catch {
+        // ignore
+      }
+    }
+    return tree;
   }
 
   getTreeText(resourceId: string | undefined, startByte: number, endByte: number): string | null {
@@ -134,19 +202,36 @@ export class Context {
   constructor(fs: FileSystem, cacheStore?: any, maxMemos?: number) {
     const workspaceIndex = createModelicaWorkspaceIndex();
 
-    // Provide a CSTTree that looks up trees by resourceId cached in Context
+    // Provide a CSTTree that looks up trees by resourceId cached in Context,
+    // with on-demand parsing fallback if the tree has not been loaded yet.
     const contextTree = {
       getText: (startByte: number, endByte: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
-        const tree = this.#trees.get(entry.resourceId);
-        if (!tree) return null;
+        let tree = this.#trees.get(entry.resourceId);
+        if (!tree) {
+          try {
+            const text = this.#fs.read(entry.resourceId);
+            tree = this.parse(".mo", text);
+            this.#trees.set(entry.resourceId, tree);
+          } catch {
+            return null;
+          }
+        }
         const offset = tree.rootNode.startIndex;
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
-        const tree = this.#trees.get(entry.resourceId);
-        if (!tree) return null;
+        let tree = this.#trees.get(entry.resourceId);
+        if (!tree) {
+          try {
+            const text = this.#fs.read(entry.resourceId);
+            tree = this.parse(".mo", text);
+            this.#trees.set(entry.resourceId, tree);
+          } catch {
+            return null;
+          }
+        }
         return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
       },
     };
@@ -296,13 +381,12 @@ export class Context {
             parentFQN = undefined;
           }
 
-          // Register for lazy loading
+          // Register for lazy loading (tree is parsed for indexing, on-demand parsing handles flattening)
           this.#workspaceIndex.register(
             dir,
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".mo", text);
-              this.#trees.set(dir, tree);
               return tree.rootNode as any;
             },
             parentFQN,
@@ -620,9 +704,7 @@ export class Context {
     this.#trees.set(uri, tree);
 
     this.#workspaceIndex.register(uri, () => tree.rootNode as any);
-    const t0 = Date.now();
     const unified = this.#workspaceIndex.toUnified();
-    console.error(`[Context] toUnified took ${Date.now() - t0}ms for uri ${uri}`);
     injectPredefinedTypes(unified);
     this.#queryEngine.updateIndex(unified);
 

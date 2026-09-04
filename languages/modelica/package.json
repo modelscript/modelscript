@@ -149,7 +149,8 @@
   "scripts": {
     "build": "npm run clean && node build.js && tsc",
     "clean": "rimraf dist build src-gen *.wasm",
-    "test": "npx tsx tests/testsuite-runner.ts"
+    "test": "npx tsx tests/testsuite-runner.ts",
+    "test:msl": "npx tsx tests/msl-comparison-runner.ts"
   },
   "dependencies": {
     "@modelscript/csv": "*",

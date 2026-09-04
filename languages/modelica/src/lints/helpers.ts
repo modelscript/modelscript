@@ -296,27 +296,33 @@ export function resolveFunctionReturnType(db: CodeGraph, funcNameNode: u32, $: R
     }
   }
 
-  for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
-    const cName = db.ast.getChildByFieldId(spec, "name");
-    if (cName != 0 && db.ast.textEqualsNode(funcName, cName)) {
-      let funcClass: u32 = spec;
-      for (const anc of db.ast.getAncestors(spec, 0)) {
-        if (db.ast.getType(anc) == $.class_definition) {
-          funcClass = anc;
+  for (const funcClass of db.ast.getDescendants(docRoot, $.class_definition)) {
+    if (!isClassKind(db, funcClass, "function")) continue;
+
+    let matched = false;
+    for (const spec of db.ast.getDescendants(funcClass, $.long_class_specifier)) {
+      let cName = db.ast.getChildByFieldId(spec, "name");
+      if (cName == 0) {
+        for (const id of db.ast.getDescendants(spec, $.identifier)) {
+          cName = id;
           break;
         }
       }
-      if (!isClassKind(db, funcClass, "function")) continue;
+      if (cName != 0 && db.ast.textEqualsNode(funcName, cName)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) continue;
 
-      // Find output component_clause
-      for (const comp of db.ast.getDescendants(funcClass, $.component_clause)) {
-        if (isDescendantOfInnerClass(db, comp, funcClass, $)) continue;
-        if (hasTypePrefix(db, comp, "output")) {
-          for (const ts of db.ast.getDescendants(comp, $.type_specifier)) {
-            for (const id of db.ast.getDescendants(ts, $.identifier)) {
-              const baseType = resolveBasePrimitiveType(db, id, $);
-              if (baseType != TYPE_UNKNOWN) return baseType;
-            }
+    // Find output component_clause
+    for (const comp of db.ast.getDescendants(funcClass, $.component_clause)) {
+      if (isDescendantOfInnerClass(db, comp, funcClass, $)) continue;
+      if (hasTypePrefix(db, comp, "output", $)) {
+        for (const ts of db.ast.getDescendants(comp, $.type_specifier)) {
+          for (const id of db.ast.getDescendants(ts, $.identifier)) {
+            const baseType = resolveBasePrimitiveType(db, id, $);
+            if (baseType != TYPE_UNKNOWN) return baseType;
           }
         }
       }
@@ -429,12 +435,21 @@ export function isClassKind(db: CodeGraph, clsNode: u32, kind: string): boolean 
 /**
  * Fast check for whether a component_clause has a specific type prefix (e.g. "constant", "input", "output", "flow", "stream").
  */
-export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string): boolean {
+export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string, $: Record<string, u16>): boolean {
   if (compClauseNode == 0) return false;
+  for (const pfx of db.ast.getDescendants(compClauseNode, $.type_prefix)) {
+    if (db.ast.textEquals(pfx, prefix) || db.ast.startsWith(pfx, prefix)) return true;
+    for (const d of db.ast.getDescendants(pfx)) {
+      if (db.ast.textEquals(d, prefix)) return true;
+    }
+  }
   let pfx = db.ast.getChildByFieldId(compClauseNode, "type_prefix");
   if (pfx == 0) pfx = db.ast.getChildByFieldId(compClauseNode, "typePrefix");
   if (pfx != 0) {
     if (db.ast.startsWith(pfx, prefix) || db.ast.textEquals(pfx, prefix)) return true;
+    for (const d of db.ast.getDescendants(pfx)) {
+      if (db.ast.textEquals(d, prefix)) return true;
+    }
     let ch = db.ast.getFirstChild(pfx);
     while (ch != 0) {
       if (db.ast.startsWith(ch, prefix) || db.ast.textEquals(ch, prefix)) return true;
@@ -643,7 +658,7 @@ export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u3
   let lhsNonFlows: u32 = 0;
   for (const comp of db.ast.getDescendants(lhsClass, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, lhsClass, $)) continue;
-    if (!hasTypePrefix(db, comp, "flow")) {
+    if (!hasTypePrefix(db, comp, "flow", $)) {
       for (const decl of db.ast.getDescendants(comp, $.declaration)) {
         if (decl != 0) lhsNonFlows++;
       }
@@ -652,7 +667,7 @@ export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u3
   let rhsNonFlows: u32 = 0;
   for (const comp of db.ast.getDescendants(rhsClass, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, rhsClass, $)) continue;
-    if (!hasTypePrefix(db, comp, "flow")) {
+    if (!hasTypePrefix(db, comp, "flow", $)) {
       for (const decl of db.ast.getDescendants(comp, $.declaration)) {
         if (decl != 0) rhsNonFlows++;
       }
@@ -671,7 +686,7 @@ export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: Record
   let count: u32 = 0;
   for (const comp of db.ast.getDescendants(classDefNode, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, classDefNode, $)) continue;
-    if (hasTypePrefix(db, comp, "flow")) {
+    if (hasTypePrefix(db, comp, "flow", $)) {
       for (const decl of db.ast.getDescendants(comp, $.declaration)) {
         if (decl != 0) count++;
       }

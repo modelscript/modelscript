@@ -14,6 +14,9 @@ coverage/
 ctrf/
 scratch_build*/
 scratch_*
+scripts/msl/
+.cache/
+msl_report*.html
 
 # Compiled / binary artifacts
 *.wasm

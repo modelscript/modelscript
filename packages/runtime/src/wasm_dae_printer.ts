@@ -706,7 +706,16 @@ export class ArenaDAEPrinter {
     }
 
     const customType = a.getVarCustomType(idx);
-    if (type === VarType.Real) this.out.write(customType ?? "Real");
+    if (
+      customType &&
+      type !== VarType.Integer &&
+      type !== VarType.Boolean &&
+      type !== VarType.String &&
+      type !== VarType.Enumeration &&
+      type !== VarType.Clock
+    ) {
+      this.out.write(customType);
+    } else if (type === VarType.Real) this.out.write(customType ?? "Real");
     else if (type === VarType.Integer) this.out.write("Integer");
     else if (type === VarType.Boolean) this.out.write("Boolean");
     else if (type === VarType.String) this.out.write("String");
@@ -1114,9 +1123,8 @@ export class ArenaDAEPrinter {
 
   printDAE(dae: DAEBuilder): void {
     // Emit function definitions
-    const sortedFns = Array.from(dae.functions.values()).sort((a, b) =>
-      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-    );
+    const uniqueFns = Array.from(new Set(dae.functions.values()));
+    const sortedFns = uniqueFns.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const fn of sortedFns) {
       this.printFunction(fn);
       this.out.write("\n\n");

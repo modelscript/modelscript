@@ -438,6 +438,17 @@ export class WasmWorkspaceIndex {
         this.unifiedIndex.childrenOf.set(parentId ?? 0, childList);
       }
 
+      if (
+        node.type === "expression" ||
+        node.type === "array_arguments" ||
+        node.type === "expression_list" ||
+        node.type === "algorithm_section" ||
+        node.type === "comment" ||
+        node.type === "annotation"
+      ) {
+        return;
+      }
+
       for (const child of node.children || []) {
         walk(child, currentId);
       }

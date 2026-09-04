@@ -65,7 +65,7 @@ const DATAFLOW_MAX_ITERATIONS: u32 = 1000;
 
 export function dataflowError(nodeId: u32, code: u32): void {
     if (nodeId == 0 || (getNodeFlags(nodeId) & FLAG_IS_SYNTHETIC) != 0) return;
-    let absStart = lsp_findNodeOffset(globalAstRoot, nodeId);
+    let absStart = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
     let startByte: u32 = absStart >= 0 ? (absStart as u32) : getNodePadding(nodeId);
     let endByte = startByte + getNodeByteLength(nodeId);
     allocDiagnostic(startByte, endByte, code, 0);

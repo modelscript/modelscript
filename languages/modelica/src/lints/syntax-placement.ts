@@ -96,7 +96,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         if (db.ast.getType(cls) == $.class_definition) {
           if (isClassKind(db, cls, "function")) {
             if (!isElementProtected(db, node, $)) {
-              const isIO = hasTypePrefix(db, node, "input") || hasTypePrefix(db, node, "output");
+              const isIO = hasTypePrefix(db, node, "input", $) || hasTypePrefix(db, node, "output", $);
               if (!isIO) {
                 for (const decl of db.ast.getDescendants(node, $.component_declaration)) {
                   db.diagnostic(decl);
@@ -387,7 +387,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
           if (isClassKind(db, cls, "package")) {
-            const isConst = hasTypePrefix(db, node, "constant");
+            const isConst = hasTypePrefix(db, node, "constant", $);
             if (!isConst) {
               db.diagnostic(node);
             }
@@ -431,7 +431,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const comp of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(comp) == $.component_clause) {
-          if (hasTypePrefix(db, comp, "constant")) {
+          if (hasTypePrefix(db, comp, "constant", $)) {
             let hasMod = false;
             for (const mod of db.ast.getDescendants(node, $.modification)) {
               if (mod != 0) hasMod = true;
