@@ -65,6 +65,12 @@ function castToRealExpr(exprId: number, dae: DAEBuilder): number {
     const right = castToRealExpr(dae.getExprRight(exprId), dae);
     return dae.addBinaryExpr(op, left, right);
   }
+  if (kind === ExprKind.IfElse) {
+    const cond = dae.getExprData1(exprId);
+    const thenExpr = castToRealExpr(dae.getExprLeft(exprId), dae);
+    const elseExpr = castToRealExpr(dae.getExprRight(exprId), dae);
+    return dae.addExpression(ExprKind.IfElse, cond, thenExpr, elseExpr);
+  }
   if (kind === ExprKind.ArrayCtor) {
     const count = dae.getExprData1(exprId);
     const elemIds: number[] = [];
@@ -124,6 +130,11 @@ function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
     if (op === BinOp.Add || op === BinOp.Sub || op === BinOp.Mul || op === BinOp.Div || op === BinOp.Pow) {
       return isRealExpr(dae.getExprLeft(exprId), dae) || isRealExpr(dae.getExprRight(exprId), dae);
     }
+  }
+  if (kind === ExprKind.IfElse) {
+    const thenExpr = dae.getExprLeft(exprId);
+    const elseExpr = dae.getExprRight(exprId);
+    return isRealExpr(thenExpr, dae) || isRealExpr(elseExpr, dae);
   }
   if (kind === ExprKind.Call) {
     const fnName = dae.interner.resolve(dae.getExprData1(exprId));
@@ -797,7 +808,8 @@ function lowerCSTExpression(
 
     let fnDae = dae.getFunction(fnName);
     if (!fnDae && flattener && db) {
-      const parts = fnName.split(".");
+      const cleanFnName = fnName.replace(/^\.+/, "");
+      const parts = cleanFnName.split(".");
       const fnBase = parts[parts.length - 1];
       const matchingFnSym = db.byName(fnBase).find((e: any) => {
         if (e.kind !== "Class") return false;
@@ -808,7 +820,8 @@ function lowerCSTExpression(
         return parts.length === 1;
       });
       if (matchingFnSym && flattener.isFunctionSym(matchingFnSym)) {
-        const fn = flattener.flattenFunction(matchingFnSym.id, fnName, undefined, dae);
+        const fn = flattener.flattenFunction(matchingFnSym.id, cleanFnName, undefined, dae);
+        dae.addFunction(cleanFnName, fn);
         dae.addFunction(fnName, fn);
         fnDae = fn;
       }
@@ -1001,8 +1014,8 @@ function lowerCSTExpression(
   // If-Else expression: if cond then e1 else e2
   if (firstChildToken === "if" && node.childCount >= 6) {
     const condId = lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
-    const thenId = lowerCSTExpression(node.child(3), dae, prefix, substitutions, imports, db, flattener);
-    const elseId = lowerCSTExpression(
+    let thenId = lowerCSTExpression(node.child(3), dae, prefix, substitutions, imports, db, flattener);
+    let elseId = lowerCSTExpression(
       node.child(node.childCount - 1),
       dae,
       prefix,
@@ -1011,6 +1024,11 @@ function lowerCSTExpression(
       db,
       flattener,
     );
+    if (isRealExpr(thenId, dae) && !isRealExpr(elseId, dae)) {
+      elseId = castToRealExpr(elseId, dae);
+    } else if (!isRealExpr(thenId, dae) && isRealExpr(elseId, dae)) {
+      thenId = castToRealExpr(thenId, dae);
+    }
     return dae.addExpression(ExprKind.IfElse, condId, thenId, elseId);
   }
 
@@ -1203,7 +1221,17 @@ function lowerCSTExpression(
           }
         }
         let candidate = resolveScopedName(joined, prefix, dae, (dae as any).innerOuterComponents);
-        if (dae.getVarIdxByName(candidate) >= 0) {
+        const vIdx = dae.getVarIdxByName(candidate);
+        if (vIdx >= 0) {
+          if (dae.getVarVariability(vIdx) === Variability.Constant) {
+            const exprId = dae.getVarExpression(vIdx);
+            if (exprId >= 0) {
+              const k = dae.getExprKind(exprId);
+              if (k === ExprKind.RealLiteral) return dae.addRealLiteral(dae.getExprRealValue(exprId));
+              if (k === ExprKind.IntLiteral) return dae.addIntLiteral(dae.getExprData1(exprId));
+              if (k === ExprKind.BoolLiteral) return dae.addBoolLiteral(dae.getExprData1(exprId) !== 0);
+            }
+          }
           return dae.addExpression(ExprKind.Name, dae.interner.intern(candidate));
         }
         rawName = candidate;
@@ -1744,7 +1772,15 @@ export class ModelicaFlattener {
     const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
     if (elements) {
       const rootExtendsMods = this.collectExtendsMods(rootClassId);
-      this.instantiateElements(elements, "", dae, rootExtendsMods.length > 0 ? { args: rootExtendsMods } : undefined);
+      const rootProtectedNames = this.collectProtectedNames(rootClassId);
+      this.instantiateElements(
+        elements,
+        "",
+        dae,
+        rootExtendsMods.length > 0 || rootProtectedNames.size > 0
+          ? { args: rootExtendsMods, protectedNames: rootProtectedNames }
+          : undefined,
+      );
     }
 
     // 2. Layer 2: Direct CST Equation extraction
@@ -2129,7 +2165,8 @@ export class ModelicaFlattener {
   }
 
   private flattenFunction(fnSymId: SymbolId, fnName: string, modifiers?: any[], parentDae?: DAEBuilder): DAEBuilder {
-    const fn = new DAEBuilder(parentDae ? parentDae.interner : undefined, fnName, "");
+    const cleanFnName = fnName.replace(/^\.+/, "");
+    const fn = new DAEBuilder(parentDae ? parentDae.interner : undefined, cleanFnName, "");
     fn.classKind = "function";
 
     const prevImports = this.currentImports;
@@ -2400,6 +2437,7 @@ export class ModelicaFlattener {
 
       const elemCst = this.db.cstNode(elemId) as any;
       const isElemProtected =
+        Boolean(compInst?.isProtected) ||
         this.isCstNodeProtected(elemCst) ||
         Boolean(parentMods?.isProtected) ||
         Boolean(parentMods?.protectedNames?.has(compInst.name));
@@ -2517,24 +2555,7 @@ export class ModelicaFlattener {
           }
         }
         const classExtendsMods = this.collectExtendsMods(classTargetId!);
-        const protectedNames = new Set<string>();
-        for (const ch of this.db.childrenOf(classTargetId!)) {
-          if (ch.kind === "Extends") {
-            const isExtProt = this.isCstNodeProtected(this.db.cstNode(ch.id));
-            if (isExtProt) {
-              const baseSym =
-                this.db.query<SymbolEntry | null>("resolvedBaseClass", ch.id) ??
-                this.db.byName(ch.name).find((e) => e.kind === "Class");
-              if (baseSym) {
-                const baseElems = this.db.query<SymbolId[]>("instantiate", baseSym.id) || [];
-                for (const beid of baseElems) {
-                  const bentry = this.db.symbol(beid);
-                  if (bentry?.name) protectedNames.add(bentry.name);
-                }
-              }
-            }
-          }
-        }
+        const protectedNames = this.collectProtectedNames(classTargetId!);
         if (parentMods?.protectedNames) {
           for (const pn of parentMods.protectedNames) protectedNames.add(pn);
         }
@@ -3322,6 +3343,34 @@ export class ModelicaFlattener {
     return evaluateCSTNumber(node, subs, scopeId, this.db, dae);
   }
 
+  private collectProtectedNames(classId: SymbolId, visited: Set<SymbolId> = new Set<SymbolId>()): Set<string> {
+    const protectedNames = new Set<string>();
+    if (visited.has(classId)) return protectedNames;
+    visited.add(classId);
+
+    for (const ch of this.db.childrenOf(classId)) {
+      if (ch.kind === "Extends") {
+        const isExtProt = this.isCstNodeProtected(this.db.cstNode(ch.id));
+        const baseSym =
+          this.db.query<SymbolEntry | null>("resolvedBaseClass", ch.id) ??
+          this.db.byName(ch.name).find((e) => e.kind === "Class");
+        if (baseSym) {
+          if (isExtProt) {
+            const baseElems = this.db.query<SymbolId[]>("instantiate", baseSym.id) || [];
+            for (const beid of baseElems) {
+              const bentry = this.db.symbol(beid);
+              if (bentry?.name) protectedNames.add(bentry.name);
+            }
+          } else {
+            const baseProtected = this.collectProtectedNames(baseSym.id, visited);
+            for (const pn of baseProtected) protectedNames.add(pn);
+          }
+        }
+      }
+    }
+    return protectedNames;
+  }
+
   private collectExtendsMods(classId: SymbolId, visited: Set<SymbolId> = new Set<SymbolId>()): any[] {
     if (visited.has(classId)) return [];
     visited.add(classId);
@@ -3346,6 +3395,7 @@ export class ModelicaFlattener {
       }
     }
 
+    const seenInheritedNames = new Set<string>();
     for (const child of this.db.childrenOf(classId)) {
       if (child.kind === "Extends") {
         const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
@@ -3353,12 +3403,20 @@ export class ModelicaFlattener {
         for (const target of baseTargets) {
           if (target.kind === "Class") {
             const inheritedMods = this.collectExtendsMods(target.id, visited);
-            result.push(...inheritedMods);
+            for (const mod of inheritedMods) {
+              if (mod.name && !seenInheritedNames.has(mod.name)) {
+                seenInheritedNames.add(mod.name);
+                result.push(mod);
+              }
+            }
           }
         }
         const extMod = this.db.query<any>("extendsModificationParsed", child.id);
         if (extMod?.args) {
-          result.push(...extMod.args);
+          for (const arg of extMod.args) {
+            if (arg.name) seenInheritedNames.add(arg.name);
+            result.push(arg);
+          }
         }
       }
     }

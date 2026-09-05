@@ -1933,11 +1933,29 @@ export const classDefinitionQueries: Record<string, any> = {
         }
       }
 
-      // Reorder children so that extends clauses whose base class provides symbols
-      // referenced by earlier components are placed before those components.
+      // In Modelica §5.6.1, elements inherited from extends clauses are added before
+      // elements declared directly in the class, unless an extends clause is explicitly
+      // interleaved with components (i.e. followed by further component declarations).
+      // Trailing extends clauses (no components declared after them) are moved before all components.
+      let lastCompIdx = -1;
+      for (let i = children.length - 1; i >= 0; i--) {
+        if (children[i].kind === "Component") {
+          lastCompIdx = i;
+          break;
+        }
+      }
+
       const orderedChildren: SymbolEntry[] = [];
-      for (const child of children) {
+      const trailingExtends: SymbolEntry[] = [];
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
         if (child.kind === "Extends") {
+          if (i > lastCompIdx) {
+            // Trailing extends clause: move before components
+            trailingExtends.push(child);
+            continue;
+          }
+          // Interleaved extends clause: check if referenced by earlier components
           const resolveName = db.query<(n: string) => SymbolEntry | null>("resolveName", self.id);
           const baseClass =
             (resolveName ? resolveName(child.name) : null) ??
@@ -1969,6 +1987,14 @@ export const classDefinitionQueries: Record<string, any> = {
           }
         }
         orderedChildren.push(child);
+      }
+      if (trailingExtends.length > 0) {
+        const firstCompIdx = orderedChildren.findIndex((c) => c.kind === "Component");
+        if (firstCompIdx >= 0) {
+          orderedChildren.splice(firstCompIdx, 0, ...trailingExtends);
+        } else {
+          orderedChildren.push(...trailingExtends);
+        }
       }
 
       const elements: SymbolId[] = [];

@@ -83,20 +83,21 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
       if (op >= 10 && op <= 17) {
         return TYPE_BOOLEAN;
       }
-      for (const ch of db.ast.getDescendants(exprNode)) {
+      let opSibling = db.ast.getNextSibling(leftChild);
+      while (opSibling != 0 && opSibling != rightChild) {
         if (
-          db.ast.textEquals(ch, "==") ||
-          db.ast.textEquals(ch, "<>") ||
-          db.ast.textEquals(ch, "<") ||
-          db.ast.textEquals(ch, "<=") ||
-          db.ast.textEquals(ch, ">") ||
-          db.ast.textEquals(ch, ">=") ||
-          db.ast.textEquals(ch, "and") ||
-          db.ast.textEquals(ch, "or") ||
-          db.ast.textEquals(ch, "not")
+          db.ast.textEquals(opSibling, "==") ||
+          db.ast.textEquals(opSibling, "<>") ||
+          db.ast.textEquals(opSibling, "<") ||
+          db.ast.textEquals(opSibling, "<=") ||
+          db.ast.textEquals(opSibling, ">") ||
+          db.ast.textEquals(opSibling, ">=") ||
+          db.ast.textEquals(opSibling, "and") ||
+          db.ast.textEquals(opSibling, "or")
         ) {
           return TYPE_BOOLEAN;
         }
+        opSibling = db.ast.getNextSibling(opSibling);
       }
       const lType = inferExprType(db, leftChild, $);
       const rType = inferExprType(db, rightChild, $);
@@ -161,10 +162,14 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
   if (db.ast.startsWith(exprNode, "if") || db.ast.textEquals(exprNode, "if")) {
     let curr = db.ast.getFirstChild(exprNode);
     let checkNext = false;
+    let resultType = TYPE_UNKNOWN;
     while (curr != 0) {
       if (checkNext) {
         const branchType = inferExprType(db, curr, $);
-        if (branchType != TYPE_UNKNOWN) return branchType;
+        if (branchType == TYPE_REAL) return TYPE_REAL;
+        if (branchType != TYPE_UNKNOWN && resultType == TYPE_UNKNOWN) {
+          resultType = branchType;
+        }
         checkNext = false;
       }
       if (db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
@@ -172,6 +177,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
       }
       curr = db.ast.getNextSibling(curr);
     }
+    if (resultType != TYPE_UNKNOWN) return resultType;
   }
 
   // Find enclosing class definition for component reference resolution
@@ -602,6 +608,7 @@ export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNod
     let baseNameId: u32 = typeSpec;
     for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
       baseNameId = id;
+      break;
     }
 
     for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {

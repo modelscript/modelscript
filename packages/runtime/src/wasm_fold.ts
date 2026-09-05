@@ -365,6 +365,123 @@ export function simplifyArenaIfElse(
 }
 
 /**
+ * Recursively substitute known constant variables in an expression with their literal values.
+ */
+export function substituteArenaConstants(
+  arena: DAEBuilder,
+  exprId: number,
+  constMap: Map<string, number>,
+  nameToIdx?: Map<string, number>,
+): number {
+  if (exprId < 0 || exprId >= arena.exprCount || constMap.size === 0) return exprId;
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.Name: {
+      const nameId = arena.getExprData1(exprId);
+      const varName = arena.interner.resolve(nameId);
+      if (constMap.has(varName)) {
+        const val = constMap.get(varName)!;
+        const varIdx = nameToIdx?.get(varName);
+        const varType = varIdx !== undefined ? arena.getVarType(varIdx) : VarType.Real;
+        if (varType === VarType.Integer) {
+          return arena.addIntLiteral(Math.trunc(val));
+        } else if (varType === VarType.Boolean) {
+          return arena.addBoolLiteral(Boolean(val));
+        } else {
+          return arena.addRealLiteral(val);
+        }
+      }
+      return exprId;
+    }
+    case ExprKind.Binary: {
+      const op = arena.getExprData1(exprId);
+      const left = substituteArenaConstants(arena, arena.getExprLeft(exprId), constMap, nameToIdx);
+      const right = substituteArenaConstants(arena, arena.getExprRight(exprId), constMap, nameToIdx);
+      if (left !== arena.getExprLeft(exprId) || right !== arena.getExprRight(exprId)) {
+        return arena.addBinaryExpr(op, left, right);
+      }
+      return exprId;
+    }
+    case ExprKind.Unary: {
+      const op = arena.getExprData1(exprId);
+      const left = substituteArenaConstants(arena, arena.getExprLeft(exprId), constMap, nameToIdx);
+      if (left !== arena.getExprLeft(exprId)) {
+        return arena.addUnaryExpr(op, left);
+      }
+      return exprId;
+    }
+    case ExprKind.Negate: {
+      const left = substituteArenaConstants(arena, arena.getExprLeft(exprId), constMap, nameToIdx);
+      if (left !== arena.getExprLeft(exprId)) {
+        return arena.addExpression(ExprKind.Negate, 0, left);
+      }
+      return exprId;
+    }
+    case ExprKind.Der: {
+      const data1 = substituteArenaConstants(arena, arena.getExprData1(exprId), constMap, nameToIdx);
+      if (data1 !== arena.getExprData1(exprId)) {
+        return arena.addDerExpr(data1);
+      }
+      return exprId;
+    }
+    case ExprKind.Pre: {
+      const data1 = substituteArenaConstants(arena, arena.getExprData1(exprId), constMap, nameToIdx);
+      if (data1 !== arena.getExprData1(exprId)) {
+        return arena.addPreExpr(data1);
+      }
+      return exprId;
+    }
+    case ExprKind.IfElse: {
+      const cond = substituteArenaConstants(arena, arena.getExprData1(exprId), constMap, nameToIdx);
+      const left = substituteArenaConstants(arena, arena.getExprLeft(exprId), constMap, nameToIdx);
+      const right = substituteArenaConstants(arena, arena.getExprRight(exprId), constMap, nameToIdx);
+      if (
+        cond !== arena.getExprData1(exprId) ||
+        left !== arena.getExprLeft(exprId) ||
+        right !== arena.getExprRight(exprId)
+      ) {
+        return arena.addIfElseExpr(cond, left, right);
+      }
+      return exprId;
+    }
+    case ExprKind.Call: {
+      const funcNameId = arena.getExprData1(exprId);
+      const argCount = arena.getExprRight(exprId);
+      let anyChanged = false;
+      const args: number[] = [];
+      for (let i = 0; i < argCount; i++) {
+        const argExprId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
+        const newArg = substituteArenaConstants(arena, argExprId, constMap, nameToIdx);
+        args.push(newArg);
+        if (newArg !== argExprId) anyChanged = true;
+      }
+      if (anyChanged) {
+        const fnName = arena.interner.resolve(funcNameId) || "";
+        return arena.addCallExpr(fnName, args);
+      }
+      return exprId;
+    }
+    case ExprKind.ArrayCtor: {
+      const count = arena.getExprData1(exprId);
+      let anyChanged = false;
+      const elements: number[] = [];
+      for (let i = 0; i < count; i++) {
+        const elemId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
+        const newElem = substituteArenaConstants(arena, elemId, constMap, nameToIdx);
+        elements.push(newElem);
+        if (newElem !== elemId) anyChanged = true;
+      }
+      if (anyChanged) {
+        return arena.addArrayCtorExpr(elements);
+      }
+      return exprId;
+    }
+    default:
+      return exprId;
+  }
+}
+
+/**
  * In-place constant fold for a single equation in the arena.
  */
 export function foldSingleArenaEquation(
@@ -422,9 +539,22 @@ export function foldSingleArenaEquation(
       }
 
       const simplifiedRhs = simplifyArenaIfElse(arena, rhsExpr, paramMap, nameToIdx);
-      if (simplifiedRhs !== rhsExpr) arena.setEqRhs(eq, simplifiedRhs);
+      if (simplifiedRhs !== rhsExpr) {
+        arena.setEqRhs(eq, simplifiedRhs);
+        rhsExpr = simplifiedRhs;
+      }
+      const constMap = new Map<string, number>();
+      for (let i = 0; i < arena.varCount; i++) {
+        if (!arena.isVarRemoved(i) && arena.getVarVariability(i) === Variability.Constant) {
+          constMap.set(arena.getVarName(i), arena.getVarStartValue(i));
+        }
+      }
+      const constSubRhs = substituteArenaConstants(arena, rhsExpr, constMap, nameToIdx);
+      if (constSubRhs !== rhsExpr) arena.setEqRhs(eq, constSubRhs);
       const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, paramMap, nameToIdx);
       if (simplifiedLhs !== lhsExpr) arena.setEqLhs(eq, simplifiedLhs);
+      const constSubLhs = substituteArenaConstants(arena, lhsExpr, constMap, nameToIdx);
+      if (constSubLhs !== lhsExpr) arena.setEqLhs(eq, constSubLhs);
       return true;
     }
   }
@@ -671,10 +801,22 @@ export function foldArenaConstants(
           if (simplifiedRhs !== rhsExpr) {
             arena.setEqRhs(eq, simplifiedRhs);
             changed = true;
+            rhsExpr = simplifiedRhs;
+          }
+          const constSubRhs = substituteArenaConstants(arena, rhsExpr, constMap, nameToIdx);
+          if (constSubRhs !== rhsExpr) {
+            arena.setEqRhs(eq, constSubRhs);
+            changed = true;
           }
           const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, paramMap, nameToIdx);
           if (simplifiedLhs !== lhsExpr) {
             arena.setEqLhs(eq, simplifiedLhs);
+            changed = true;
+            lhsExpr = simplifiedLhs;
+          }
+          const constSubLhs = substituteArenaConstants(arena, lhsExpr, constMap, nameToIdx);
+          if (constSubLhs !== lhsExpr) {
+            arena.setEqLhs(eq, constSubLhs);
             changed = true;
           }
         }

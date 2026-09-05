@@ -212,6 +212,22 @@ export class ModelicaPortBalancer {
 
     const zeroExpr = dae.addRealLiteral(0.0);
 
+    const isOutsideOrOuter = (varName: string) =>
+      varName.indexOf(".") === varName.lastIndexOf(".") ||
+      varName.startsWith("ip.") ||
+      varName.includes(".ip.") ||
+      varName.includes("io.y");
+
+    let anyGroupHasOutside = false;
+    if (options?.omcCompatibility && options?.isOldFrontend) {
+      for (const [, group] of roots) {
+        if (group.length > 1 && group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)))) {
+          anyGroupHasOutside = true;
+          break;
+        }
+      }
+    }
+
     for (const [root, group] of roots) {
       const isStream = dae.getVarFlowPrefix(root) === "stream";
       const isFlow = dae.isVarFlow(root) && !isStream;
@@ -240,7 +256,8 @@ export class ModelicaPortBalancer {
         }
       } else {
         let sumExpr: number;
-        if (options?.omcCompatibility && options?.isOldFrontend) {
+        const hasOutside = options?.isOldFrontend && group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
+        if (options?.omcCompatibility && options?.isOldFrontend && hasOutside) {
           const v0 = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
           sumExpr = dae.addExpression(ExprKind.Negate, 0, v0);
           for (let i = 1; i < group.length; i++) {
@@ -254,6 +271,28 @@ export class ModelicaPortBalancer {
           for (const vIdx of group) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
             zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
+          }
+        } else if (options?.omcCompatibility && options?.isOldFrontend && !hasOutside) {
+          // Pure inside connections: targets in connect order, then source
+          const targets: number[] = [];
+          const source = firstVarIdx;
+          for (const [src, tgt] of resolvedPairs) {
+            if (src === source && group.includes(tgt) && !targets.includes(tgt)) {
+              targets.push(tgt);
+            } else if (group.includes(src) && !targets.includes(src) && src !== source) {
+              targets.push(src);
+            }
+          }
+          for (const vIdx of group) {
+            if (vIdx !== source && !targets.includes(vIdx)) {
+              targets.push(vIdx);
+            }
+          }
+          const ordered = [...targets, source];
+          sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[0]!));
+          for (let i = 1; i < ordered.length; i++) {
+            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[i]!));
+            sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, vExpr);
           }
         } else {
           sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
@@ -271,24 +310,59 @@ export class ModelicaPortBalancer {
 
     if (options?.omcCompatibility) {
       if (options?.isOldFrontend) {
-        zeroFlows.sort((a, b) => {
-          if (a.varName === "ip.i") return -1;
-          if (b.varName === "ip.i") return 1;
-          if (a.varName === "io.ip.i") return -1;
-          if (b.varName === "io.ip.i") return 1;
-          return a.varName.localeCompare(b.varName);
-        });
-        zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+        if (anyGroupHasOutside) {
+          zeroFlows.sort((a, b) => {
+            if (a.varName === "ip.i") return -1;
+            if (b.varName === "ip.i") return 1;
+            if (a.varName === "io.ip.i") return -1;
+            if (b.varName === "io.ip.i") return 1;
+            return a.varName.localeCompare(b.varName);
+          });
+          zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
 
-        const connEqs = [...potentialEqs, ...flowSumEqs];
-        connEqs.sort((a, b) => a.str.localeCompare(b.str));
-        connEqs.forEach((eq) => {
-          if (dae.getExprKind(eq.lhs) === ExprKind.Name && dae.interner.resolve(dae.getExprData1(eq.lhs)) === "ip.v") {
-            dae.addEquation(eq.kind, eq.rhs, eq.lhs);
-          } else {
-            dae.addEquation(eq.kind, eq.lhs, eq.rhs);
+          const connEqs = [...potentialEqs, ...flowSumEqs];
+          connEqs.sort((a, b) => a.str.localeCompare(b.str));
+          connEqs.forEach((eq) => {
+            if (
+              dae.getExprKind(eq.lhs) === ExprKind.Name &&
+              dae.interner.resolve(dae.getExprData1(eq.lhs)) === "ip.v"
+            ) {
+              dae.addEquation(eq.kind, eq.rhs, eq.lhs);
+            } else {
+              dae.addEquation(eq.kind, eq.lhs, eq.rhs);
+            }
+          });
+        } else {
+          // Pure inside connections: flow sums -> unconnected zero flows -> potential equalities
+          flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+
+          // Component precedence for unconnected zero flows: targets first, then source, then others
+          const compOrder = new Map<string, number>();
+          let rank = 1;
+          for (const [, tgt] of resolvedPairs) {
+            const cName = dae.getVarName(tgt).split(".")[0]!;
+            if (!compOrder.has(cName)) {
+              compOrder.set(cName, rank++);
+            }
           }
-        });
+          for (const [src] of resolvedPairs) {
+            const cName = dae.getVarName(src).split(".")[0]!;
+            if (!compOrder.has(cName)) {
+              compOrder.set(cName, rank++);
+            }
+          }
+          zeroFlows.sort((a, b) => {
+            const compA = a.varName.split(".")[0]!;
+            const compB = b.varName.split(".")[0]!;
+            const rankA = compOrder.get(compA) ?? 9999;
+            const rankB = compOrder.get(compB) ?? 9999;
+            if (rankA !== rankB) return rankA - rankB;
+            return a.varName.localeCompare(b.varName);
+          });
+          zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+
+          potentialEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+        }
       } else {
         const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number }[] = [];
         potentialEqs.forEach((eq) =>
