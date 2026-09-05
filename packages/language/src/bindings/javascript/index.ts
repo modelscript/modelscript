@@ -84,6 +84,7 @@ export function generateJavaScriptWrapper(
       let sevNum = 1; // error
       if (sev === "warning") sevNum = 2;
       else if (sev === "info") sevNum = 3;
+      else if (sev === "notification") sevNum = 4;
       lintSeveritiesStr += `"${lintId}": ${sevNum}`;
 
       const customCode = (lint as any).code;

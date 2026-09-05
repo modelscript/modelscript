@@ -377,7 +377,11 @@ export const modelicaLanguage = language({
 
     // A.2.2 Class Definition
     class_definition: ($) =>
-      seq(optional("encapsulated"), $.class_prefixes, field("class_specifier", $.class_specifier)),
+      seq(
+        optional("encapsulated"),
+        field("class_prefixes", $.class_prefixes),
+        field("class_specifier", $.class_specifier),
+      ),
 
     class_prefixes: () =>
       seq(
@@ -422,20 +426,20 @@ export const modelicaLanguage = language({
         seq(
           semanticToken("class", field("name", $.identifier), ["declaration"]),
           "=",
-          $.base_prefix,
-          $.type_specifier,
-          optional($.array_subscripts),
-          optional($.class_modification),
-          $.description,
+          field("base_prefix", $.base_prefix),
+          field("type_specifier", $.type_specifier),
+          optional(field("array_subscripts", $.array_subscripts)),
+          field("class_modification", optional($.class_modification)),
+          field("description", $.description),
         ),
         seq(
           semanticToken("class", field("name", $.identifier), ["declaration"]),
           "=",
           "enumeration",
           "(",
-          choice(optional($.enum_list), ":"),
+          choice(optional(field("enum_list", $.enum_list)), ":"),
           ")",
-          $.description,
+          field("description", $.description),
         ),
       ),
 
@@ -491,20 +495,20 @@ export const modelicaLanguage = language({
 
     element: ($) =>
       choice(
-        $.import_clause,
-        $.extends_clause,
+        field("import_clause", $.import_clause),
+        field("extends_clause", $.extends_clause),
         seq(
           optional("redeclare"),
           optional("final"),
           optional("inner"),
           optional("outer"),
           choice(
-            $.class_definition,
-            $.component_clause,
+            field("class_definition", $.class_definition),
+            field("component_clause", $.component_clause),
             seq(
               "replaceable",
-              choice($.class_definition, $.component_clause),
-              optional(seq($.constraining_clause, $.description)),
+              choice(field("class_definition", $.class_definition), field("component_clause", $.component_clause)),
+              optional(seq(field("constraining_clause", $.constraining_clause), field("description", $.description))),
             ),
           ),
         ),
@@ -549,10 +553,14 @@ export const modelicaLanguage = language({
         seq(
           field("type_prefix", $.type_prefix),
           field("type_specifier", $.type_specifier),
-          optional($.array_subscripts),
-          $.component_list,
+          optional(field("array_subscripts", $.array_subscripts)),
+          field("component_list", $.component_list),
         ),
-        seq(field("type_specifier", $.type_specifier), optional($.array_subscripts), $.component_list),
+        seq(
+          field("type_specifier", $.type_specifier),
+          optional(field("array_subscripts", $.array_subscripts)),
+          field("component_list", $.component_list),
+        ),
       ),
 
     type_prefix: () =>
@@ -566,7 +574,11 @@ export const modelicaLanguage = language({
         choice("input", "output"),
       ),
 
-    component_list: ($) => seq($.component_declaration, repeat(seq(",", $.component_declaration))),
+    component_list: ($) =>
+      seq(
+        field("component_declaration", $.component_declaration),
+        repeat(seq(",", field("component_declaration", $.component_declaration))),
+      ),
 
     component_declaration: ($) =>
       seq(field("declaration", $.declaration), optional($.condition_attribute), field("description", $.description)),
@@ -768,7 +780,7 @@ export const modelicaLanguage = language({
         ),
 
         // range (:)
-        prec.left(PRECEDENCE.range, seq($.expression, ":", $.expression)),
+        prec.left(PRECEDENCE.range, seq(field("left", $.expression), ":", field("right", $.expression))),
 
         // logical or
         prec.left(PRECEDENCE.or, seq(field("left", $.expression), "or", field("right", $.expression))),

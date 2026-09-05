@@ -49,7 +49,10 @@ export const modelicaEvaluator: ExpressionEvaluator = (
 
   // Handle raw literal values
   if (typeof expression === "number") return expression;
-  if (typeof expression === "string") return expression;
+  if (typeof expression === "string") {
+    if (expression.startsWith('"') && expression.endsWith('"')) return expression.slice(1, -1);
+    return evaluateExprText(expression, scope, db);
+  }
   if (typeof expression === "boolean") return expression;
 
   // Handle CST byte range tuples [startByte, endByte]
@@ -97,6 +100,28 @@ function evaluateModValue(value: ModificationValue, scope: SymbolEntry | null, d
   }
 }
 
+const evaluatingComponentIds = new Set<number>();
+
+function getComponentEvaluatedValue(resolved: SymbolEntry, db: QueryDB): unknown {
+  if (resolved.kind === "Component" && !evaluatingComponentIds.has(resolved.id)) {
+    evaluatingComponentIds.add(resolved.id);
+    try {
+      const compMod = db.query<any>("effectiveModification", resolved.id);
+      if (compMod?.bindingExpression) {
+        const scopeId = compMod.evaluationScopeId ?? resolved.parentId;
+        const scopeEntry = scopeId ? db.symbol(scopeId) : null;
+        const val = evaluateModValue(compMod.bindingExpression, scopeEntry, db);
+        if (val !== null && val !== undefined) {
+          return val;
+        }
+      }
+    } finally {
+      evaluatingComponentIds.delete(resolved.id);
+    }
+  }
+  return resolved;
+}
+
 // ---------------------------------------------------------------------------
 // Text-Based Expression Evaluation (Lightweight)
 // ---------------------------------------------------------------------------
@@ -126,6 +151,29 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     return num;
   }
 
+  // Array subscript indexing: arr[index] or arr[start:stop]
+  const subscriptMatch = trimmed.match(/^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\[([^\]]+)\]$/);
+  if (subscriptMatch) {
+    const baseName = subscriptMatch[1];
+    const subText = subscriptMatch[2].trim();
+    const baseVal = evaluateExprText(baseName, scope, db);
+    if (Array.isArray(baseVal)) {
+      if (subText.includes(":")) {
+        const rangeParts = subText.split(":").map((p) => evaluateExprText(p.trim(), scope, db));
+        if (typeof rangeParts[0] === "number" && typeof rangeParts[1] === "number") {
+          const start = rangeParts[0] - 1; // 1-based to 0-based
+          const stop = rangeParts[1];
+          return baseVal.slice(start, stop);
+        }
+      } else {
+        const idx = evaluateExprText(subText, scope, db);
+        if (typeof idx === "number") {
+          return baseVal[idx - 1]; // 1-based indexing
+        }
+      }
+    }
+  }
+
   // Simple name reference — resolve in scope
   if (/^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(trimmed) && scope) {
     const isQualified = trimmed.includes(".");
@@ -137,7 +185,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         if (resolved.ruleName === "EnumerationLiteral" && resolved.name) {
           return resolved.name;
         }
-        return resolved;
+        return getComponentEvaluatedValue(resolved, db);
       }
     }
 
@@ -149,7 +197,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         if (resolved.ruleName === "EnumerationLiteral" && resolved.name) {
           return resolved.name;
         }
-        return resolved;
+        return getComponentEvaluatedValue(resolved, db);
       }
     }
   }
@@ -301,6 +349,25 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
       }
     }
     // console.error(`[DEBUG EVAL SIZE FAIL] name=${name} arrayArg=${JSON.stringify(arrayArg)}`);
+  }
+
+  if (name === "fill" && args.length >= 2) {
+    const val = args[0];
+    const dims = args.slice(1);
+    if (dims.every((d) => typeof d === "number")) {
+      const buildFill = (depth: number): any => {
+        const count = dims[depth] as number;
+        if (depth === dims.length - 1) {
+          return Array(count).fill(val);
+        }
+        const arr = [];
+        for (let i = 0; i < count; i++) {
+          arr.push(buildFill(depth + 1));
+        }
+        return arr;
+      };
+      return buildFill(0);
+    }
   }
 
   return null;

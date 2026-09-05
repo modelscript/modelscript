@@ -1321,64 +1321,86 @@ export enum SyntaxKind {
 }
 
 export enum FieldId {
-  ClassSpecifier = 1,
-  class_specifier = 1,
-  Name = 2,
-  name = 2,
-  Description = 3,
-  description = 3,
-  Composition = 4,
-  composition = 4,
-  EndName = 5,
-  end_name = 5,
-  TypeSpecifier = 6,
-  type_specifier = 6,
-  TypePrefix = 7,
-  type_prefix = 7,
-  Declaration = 8,
-  declaration = 8,
-  Modification = 9,
-  modification = 9,
+  ClassPrefixes = 1,
+  class_prefixes = 1,
+  ClassSpecifier = 2,
+  class_specifier = 2,
+  Name = 3,
+  name = 3,
+  Description = 4,
+  description = 4,
+  Composition = 5,
+  composition = 5,
+  EndName = 6,
+  end_name = 6,
+  BasePrefix = 7,
+  base_prefix = 7,
+  TypeSpecifier = 8,
+  type_specifier = 8,
+  ArraySubscripts = 9,
+  array_subscripts = 9,
   ClassModification = 10,
   class_modification = 10,
-  ModificationExpression = 11,
-  modification_expression = 11,
-  Lhs = 12,
-  lhs = 12,
-  Rhs = 13,
-  rhs = 13,
-  Target = 14,
-  target = 14,
-  Value = 15,
-  value = 15,
-  Args = 16,
-  args = 16,
-  Condition = 17,
-  condition = 17,
-  Body = 18,
-  body = 18,
-  ElseCondition = 19,
-  elseCondition = 19,
-  ElseBody = 20,
-  elseBody = 20,
-  FinalBody = 21,
-  finalBody = 21,
-  Indices = 22,
-  indices = 22,
-  Variable = 23,
-  variable = 23,
-  Range = 24,
-  range = 24,
-  Left = 25,
-  left = 25,
-  Right = 26,
-  right = 26,
-  Operand = 27,
-  operand = 27,
-  Flexible = 28,
-  flexible = 28,
-  Expression = 29,
-  expression = 29,
+  EnumList = 11,
+  enum_list = 11,
+  ImportClause = 12,
+  import_clause = 12,
+  ExtendsClause = 13,
+  extends_clause = 13,
+  ClassDefinition = 14,
+  class_definition = 14,
+  ComponentClause = 15,
+  component_clause = 15,
+  ConstrainingClause = 16,
+  constraining_clause = 16,
+  TypePrefix = 17,
+  type_prefix = 17,
+  ComponentList = 18,
+  component_list = 18,
+  ComponentDeclaration = 19,
+  component_declaration = 19,
+  Declaration = 20,
+  declaration = 20,
+  Modification = 21,
+  modification = 21,
+  ModificationExpression = 22,
+  modification_expression = 22,
+  Lhs = 23,
+  lhs = 23,
+  Rhs = 24,
+  rhs = 24,
+  Target = 25,
+  target = 25,
+  Value = 26,
+  value = 26,
+  Args = 27,
+  args = 27,
+  Condition = 28,
+  condition = 28,
+  Body = 29,
+  body = 29,
+  ElseCondition = 30,
+  elseCondition = 30,
+  ElseBody = 31,
+  elseBody = 31,
+  FinalBody = 32,
+  finalBody = 32,
+  Indices = 33,
+  indices = 33,
+  Variable = 34,
+  variable = 34,
+  Range = 35,
+  range = 35,
+  Left = 36,
+  left = 36,
+  Right = 37,
+  right = 37,
+  Operand = 38,
+  operand = 38,
+  Flexible = 39,
+  flexible = 39,
+  Expression = 40,
+  expression = 40,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1764,6 +1786,8 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ClassDefinitionNode;
+    classPrefixes(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classPrefixesList(node: SyntaxNode | null | undefined): SyntaxNode[];
     classSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
     classSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -1796,6 +1820,18 @@ export namespace Cst {
     is(node: SyntaxNode | null | undefined): node is ShortClassSpecifierNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    basePrefix(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    basePrefixList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    classModification(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classModificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    arraySubscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    arraySubscriptsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    enumList(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    enumListList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const DerClassSpecifier: {
     readonly typeId: number;
@@ -1848,6 +1884,18 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ElementNode;
+    importClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    importClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    extendsClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    extendsClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    classDefinition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classDefinitionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    componentClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    componentClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    constrainingClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    constrainingClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ImportClause: {
     readonly typeId: number;
@@ -1894,6 +1942,10 @@ export namespace Cst {
     typePrefixList(node: SyntaxNode | null | undefined): SyntaxNode[];
     typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    componentList(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    componentListList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    arraySubscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    arraySubscriptsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const TypePrefix: {
     readonly typeId: number;
@@ -1904,6 +1956,8 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ComponentListNode;
+    componentDeclaration(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    componentDeclarationList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ComponentDeclaration: {
     readonly typeId: number;
@@ -1925,6 +1979,8 @@ export namespace Cst {
     is(node: SyntaxNode | null | undefined): node is DeclarationNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    arraySubscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    arraySubscriptsList(node: SyntaxNode | null | undefined): SyntaxNode[];
     modification(node: SyntaxNode | null | undefined): SyntaxNode | null;
     modificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -2198,6 +2254,8 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ComponentReferenceNode;
+    arraySubscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    arraySubscriptsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ResultReference: {
     readonly typeId: number;

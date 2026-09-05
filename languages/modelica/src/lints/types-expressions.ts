@@ -159,105 +159,159 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 3002,
     message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let nameNode: u32 = 0;
-      for (const n of db.ast.getDescendants(node, $.name)) {
-        nameNode = n;
-        break;
+      let modClause = db.ast.getChildByFieldId(node, "modification");
+      if (modClause == 0) {
+        for (const m of db.ast.getDescendants(node, $.modification)) {
+          let direct = true;
+          for (const anc of db.ast.getAncestors(m)) {
+            if (anc == node) break;
+            if (db.ast.getType(anc) == $.element_modification) {
+              direct = false;
+              break;
+            }
+          }
+          if (direct) {
+            modClause = m;
+            break;
+          }
+        }
       }
-      if (nameNode == 0) return;
+      if (modClause == 0) return;
 
-      // Find enclosing component_clause1, element_redeclaration, component_clause, or extends_clause
-      let parentDecl: u32 = 0;
-      for (const anc of db.ast.getAncestors(node)) {
-        const type = db.ast.getType(anc);
-        if (
-          type == $.component_clause1 ||
-          type == $.element_redeclaration ||
-          type == $.component_clause ||
-          type == $.extends_clause
-        ) {
-          parentDecl = anc;
+      let modExpr = db.ast.getChildByFieldId(modClause, "modification_expression");
+      if (modExpr == 0) {
+        for (const e of db.ast.getDescendants(modClause, $.modification_expression)) {
+          let direct = true;
+          for (const anc of db.ast.getAncestors(e)) {
+            if (anc == modClause) break;
+            if (db.ast.getType(anc) == $.class_modification) {
+              direct = false;
+              break;
+            }
+          }
+          if (direct) {
+            modExpr = e;
+            break;
+          }
+        }
+      }
+      if (modExpr == 0) return;
+
+      let nameNode = db.ast.getChildByFieldId(node, "name");
+      if (nameNode == 0) {
+        for (const n of db.ast.getDescendants(node, $.name)) {
+          nameNode = n;
           break;
         }
       }
-      if (parentDecl == 0) return;
+      if (nameNode == 0) return;
 
-      let typeNode: u32 = 0;
-      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
-        typeNode = t;
-        break;
-      }
-      if (typeNode == 0) return;
-
-      let baseTypeId: u32 = typeNode;
-      for (const id of db.ast.getDescendants(typeNode, $.identifier)) {
-        baseTypeId = id;
-        break;
+      let lastId: u32 = 0;
+      let firstId: u32 = 0;
+      if (db.ast.getType(nameNode) == $.identifier) {
+        lastId = nameNode;
+        firstId = nameNode;
+      } else {
+        for (const id of db.ast.getDescendants(nameNode, $.identifier)) {
+          if (firstId == 0) firstId = id;
+          lastId = id;
+        }
       }
 
       let expectedType: u16 = TYPE_UNKNOWN;
 
-      // 1. Primitive or derived primitive types
-      const basePrim = resolveBasePrimitiveType(db, baseTypeId, $);
-      if (basePrim == TYPE_REAL) {
+      if (lastId != 0) {
         if (
-          db.ast.textEquals(nameNode, "start") ||
-          db.ast.textEquals(nameNode, "min") ||
-          db.ast.textEquals(nameNode, "max") ||
-          db.ast.textEquals(nameNode, "nominal")
-        ) {
-          expectedType = TYPE_REAL;
-        } else if (db.ast.textEquals(nameNode, "fixed") || db.ast.textEquals(nameNode, "uncertain")) {
-          expectedType = TYPE_BOOLEAN;
-        } else if (
-          db.ast.textEquals(nameNode, "unit") ||
-          db.ast.textEquals(nameNode, "displayUnit") ||
-          db.ast.textEquals(nameNode, "quantity")
+          db.ast.textEquals(lastId, "unit") ||
+          db.ast.textEquals(lastId, "displayUnit") ||
+          db.ast.textEquals(lastId, "quantity")
         ) {
           expectedType = TYPE_STRING;
-        }
-      } else if (basePrim == TYPE_INTEGER) {
-        if (
-          db.ast.textEquals(nameNode, "start") ||
-          db.ast.textEquals(nameNode, "min") ||
-          db.ast.textEquals(nameNode, "max")
-        ) {
-          expectedType = TYPE_INTEGER;
-        } else if (db.ast.textEquals(nameNode, "fixed")) {
+        } else if (db.ast.textEquals(lastId, "fixed") || db.ast.textEquals(lastId, "uncertain")) {
           expectedType = TYPE_BOOLEAN;
-        } else if (db.ast.textEquals(nameNode, "quantity")) {
-          expectedType = TYPE_STRING;
         }
-      } else if (basePrim == TYPE_BOOLEAN) {
-        if (db.ast.textEquals(nameNode, "start") || db.ast.textEquals(nameNode, "fixed")) {
-          expectedType = TYPE_BOOLEAN;
-        } else if (db.ast.textEquals(nameNode, "quantity")) {
-          expectedType = TYPE_STRING;
-        }
-      } else if (basePrim == TYPE_STRING) {
-        if (db.ast.textEquals(nameNode, "start") || db.ast.textEquals(nameNode, "quantity")) {
-          expectedType = TYPE_STRING;
-        }
-      } else {
-        // 2. User-defined classes
-        const docRoot = db.ast.getRootNode();
-        if (docRoot != 0) {
-          for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
-            const cName = db.ast.getChildByFieldId(spec, "name");
-            if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
-              let classDef: u32 = spec;
-              for (const anc of db.ast.getAncestors(spec)) {
-                if (db.ast.getType(anc) == $.class_definition) {
-                  classDef = anc;
-                  break;
-                }
-              }
-              expectedType = getVariableTypeInClass(db, classDef, nameNode, $);
-              break;
-            }
+      }
+
+      if (expectedType == TYPE_UNKNOWN) {
+        // Find enclosing component_clause1, element_redeclaration, component_clause, or extends_clause
+        let parentDecl: u32 = 0;
+        for (const anc of db.ast.getAncestors(node)) {
+          const type = db.ast.getType(anc);
+          if (
+            type == $.component_clause1 ||
+            type == $.element_redeclaration ||
+            type == $.component_clause ||
+            type == $.extends_clause
+          ) {
+            parentDecl = anc;
+            break;
           }
-          if (expectedType == TYPE_UNKNOWN) {
-            for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+        }
+        if (parentDecl == 0) return;
+
+        let typeNode: u32 = 0;
+        for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+          typeNode = t;
+          break;
+        }
+        if (typeNode == 0) return;
+
+        let baseTypeId: u32 = typeNode;
+        for (const id of db.ast.getDescendants(typeNode, $.identifier)) {
+          baseTypeId = id;
+          break;
+        }
+
+        // 1. Primitive or derived primitive types
+        const basePrim = resolveBasePrimitiveType(db, baseTypeId, $);
+        if (basePrim == TYPE_REAL) {
+          if (
+            db.ast.textEquals(nameNode, "start") ||
+            db.ast.textEquals(nameNode, "min") ||
+            db.ast.textEquals(nameNode, "max") ||
+            db.ast.textEquals(nameNode, "nominal")
+          ) {
+            expectedType = TYPE_REAL;
+          } else if (db.ast.textEquals(nameNode, "fixed") || db.ast.textEquals(nameNode, "uncertain")) {
+            expectedType = TYPE_BOOLEAN;
+          } else if (
+            db.ast.textEquals(nameNode, "unit") ||
+            db.ast.textEquals(nameNode, "displayUnit") ||
+            db.ast.textEquals(nameNode, "quantity")
+          ) {
+            expectedType = TYPE_STRING;
+          } else {
+            expectedType = TYPE_REAL;
+          }
+        } else if (basePrim == TYPE_INTEGER) {
+          if (
+            db.ast.textEquals(nameNode, "start") ||
+            db.ast.textEquals(nameNode, "min") ||
+            db.ast.textEquals(nameNode, "max")
+          ) {
+            expectedType = TYPE_INTEGER;
+          } else if (db.ast.textEquals(nameNode, "fixed")) {
+            expectedType = TYPE_BOOLEAN;
+          } else if (db.ast.textEquals(nameNode, "quantity")) {
+            expectedType = TYPE_STRING;
+          } else {
+            expectedType = TYPE_INTEGER;
+          }
+        } else if (basePrim == TYPE_BOOLEAN) {
+          if (db.ast.textEquals(nameNode, "start") || db.ast.textEquals(nameNode, "fixed")) {
+            expectedType = TYPE_BOOLEAN;
+          } else if (db.ast.textEquals(nameNode, "quantity")) {
+            expectedType = TYPE_STRING;
+          } else {
+            expectedType = TYPE_BOOLEAN;
+          }
+        } else if (basePrim == TYPE_STRING) {
+          expectedType = TYPE_STRING;
+        } else {
+          // 2. User-defined classes
+          const docRoot = db.ast.getRootNode();
+          if (docRoot != 0) {
+            for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
               const cName = db.ast.getChildByFieldId(spec, "name");
               if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
                 let classDef: u32 = spec;
@@ -267,8 +321,24 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                     break;
                   }
                 }
-                expectedType = getVariableTypeInClass(db, classDef, nameNode, $);
+                expectedType = getVariableTypeInClass(db, classDef, firstId != 0 ? firstId : nameNode, $);
                 break;
+              }
+            }
+            if (expectedType == TYPE_UNKNOWN) {
+              for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+                const cName = db.ast.getChildByFieldId(spec, "name");
+                if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
+                  let classDef: u32 = spec;
+                  for (const anc of db.ast.getAncestors(spec)) {
+                    if (db.ast.getType(anc) == $.class_definition) {
+                      classDef = anc;
+                      break;
+                    }
+                  }
+                  expectedType = getVariableTypeInClass(db, classDef, firstId != 0 ? firstId : nameNode, $);
+                  break;
+                }
               }
             }
           }
@@ -280,14 +350,19 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER || expectedType == TYPE_BOOLEAN) {
         let foundStr = false;
         if ($.string_literal != 0) {
-          for (const str of db.ast.getDescendants(node, $.string_literal)) {
-            db.diagnostic(str);
+          if (db.ast.getType(modExpr) == $.string_literal) {
+            db.diagnostic(modExpr);
             foundStr = true;
-            break;
+          } else {
+            for (const str of db.ast.getDescendants(modExpr, $.string_literal)) {
+              db.diagnostic(str);
+              foundStr = true;
+              break;
+            }
           }
         }
         if (!foundStr) {
-          for (const d of db.ast.getDescendants(node)) {
+          for (const d of db.ast.getDescendants(modExpr)) {
             if (db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'))) {
               db.diagnostic(d);
               break;
@@ -295,11 +370,23 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           }
         }
       } else if (expectedType == TYPE_STRING) {
-        for (const num of db.ast.getDescendants(node, $.unsigned_real)) {
-          db.diagnostic(num);
+        if ($.unsigned_real != 0) {
+          if (db.ast.getType(modExpr) == $.unsigned_real) {
+            db.diagnostic(modExpr);
+          } else {
+            for (const num of db.ast.getDescendants(modExpr, $.unsigned_real)) {
+              db.diagnostic(num);
+            }
+          }
         }
-        for (const num of db.ast.getDescendants(node, $.unsigned_integer)) {
-          db.diagnostic(num);
+        if ($.unsigned_integer != 0) {
+          if (db.ast.getType(modExpr) == $.unsigned_integer) {
+            db.diagnostic(modExpr);
+          } else {
+            for (const num of db.ast.getDescendants(modExpr, $.unsigned_integer)) {
+              db.diagnostic(num);
+            }
+          }
         }
       }
     },

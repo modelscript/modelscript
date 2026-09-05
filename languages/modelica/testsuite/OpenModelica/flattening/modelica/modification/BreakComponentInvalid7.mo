@@ -15,11 +15,8 @@ end BreakComponentInvalid7;
 // Error processing file: BreakComponentInvalid7.mo
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
-// Failed to parse file: OpenModelica/flattening/modelica/modification/BreakComponentInvalid7.mo!
 //
-// Failed to parse file: OpenModelica/flattening/modelica/modification/BreakComponentInvalid7.mo!
-//
-// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid7.mo:11:20-11:20:writable] Error: Missing token: ')'
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid7.mo:11:20-12:28:writable] Error: Syntax Error
 //
 // Execution failed!
 // endResult

@@ -365,6 +365,121 @@ export function simplifyArenaIfElse(
 }
 
 /**
+ * In-place constant fold for a single equation in the arena.
+ */
+export function foldSingleArenaEquation(
+  arena: DAEBuilder,
+  eq: number,
+  db?: QueryDB,
+  scopeId?: SymbolId,
+  omcCompatibility = false,
+  paramMap?: Map<string, number>,
+): boolean {
+  if (eq < 0 || eq >= arena.eqCount) return false;
+  const nameToIdx = new Map<string, number>();
+  if (!paramMap) {
+    paramMap = new Map<string, number>();
+    for (let i = 0; i < arena.varCount; i++) {
+      if (!arena.isVarRemoved(i)) {
+        const v = arena.getVarVariability(i);
+        const name = arena.getVarName(i);
+        nameToIdx.set(name, i);
+        if (v === Variability.Constant || v === Variability.Parameter) {
+          paramMap.set(name, arena.getVarStartValue(i));
+        }
+      }
+    }
+  }
+
+  const eqKind = arena.getEqKind(eq);
+  if (eqKind === EqKind.Simple || eqKind === EqKind.InitialSimple) {
+    let lhsExpr = arena.getEqLhs(eq);
+    const origRhs = (arena as any).getOrigEqRhs ? (arena as any).getOrigEqRhs(eq) : arena.getEqRhs(eq);
+    let rhsExpr = origRhs >= 0 ? origRhs : arena.getEqRhs(eq);
+    if (rhsExpr >= 0) {
+      const foldedRhs = evaluateConstantArenaExpression(arena, rhsExpr, paramMap, nameToIdx, 0, db, scopeId);
+      if (foldedRhs !== null) {
+        let varType = VarType.Real;
+        if (arena.getExprKind(lhsExpr) === ExprKind.Name) {
+          const varName = arena.interner.resolve(arena.getExprData1(lhsExpr));
+          const varIdx = nameToIdx.get(varName);
+          if (varIdx !== undefined) varType = arena.getVarType(varIdx);
+        }
+        let newRhs: number;
+        if (varType === VarType.Boolean && typeof foldedRhs === "boolean") {
+          newRhs = arena.addBoolLiteral(foldedRhs);
+        } else if (varType === VarType.Integer && typeof foldedRhs === "number") {
+          newRhs = arena.addIntLiteral(Math.trunc(foldedRhs));
+        } else if (typeof foldedRhs === "number") {
+          newRhs = arena.addRealLiteral(foldedRhs);
+        } else {
+          newRhs = rhsExpr;
+        }
+        if (newRhs !== rhsExpr) {
+          arena.setEqRhs(eq, newRhs);
+          rhsExpr = newRhs;
+        }
+      }
+
+      const simplifiedRhs = simplifyArenaIfElse(arena, rhsExpr, paramMap, nameToIdx);
+      if (simplifiedRhs !== rhsExpr) arena.setEqRhs(eq, simplifiedRhs);
+      const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, paramMap, nameToIdx);
+      if (simplifiedLhs !== lhsExpr) arena.setEqLhs(eq, simplifiedLhs);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * In-place constant fold targeting only equations that reference a specific parameter.
+ */
+export function foldTargetedParamEquations(
+  arena: DAEBuilder,
+  paramName: string,
+  db?: QueryDB,
+  scopeId?: SymbolId,
+  omcCompatibility = false,
+): void {
+  const paramMap = new Map<string, number>();
+  for (let i = 0; i < arena.varCount; i++) {
+    if (!arena.isVarRemoved(i)) {
+      const v = arena.getVarVariability(i);
+      if (v === Variability.Constant || v === Variability.Parameter) {
+        paramMap.set(arena.getVarName(i), arena.getVarStartValue(i));
+      }
+    }
+  }
+
+  // Update dependent parameters that reference paramName
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Constant || v === Variability.Parameter) {
+      const name = arena.getVarName(i);
+      if (name === paramName) continue;
+      const exprId = arena.getVarExpression(i);
+      if (typeof exprId === "number" && exprId >= 0) {
+        if ((arena as any).exprReferencesName?.(exprId, paramName)) {
+          const evalVal = evaluateConstantArenaExpression(arena, exprId, paramMap, undefined, 0, db, scopeId);
+          if (evalVal !== null && typeof evalVal === "number") {
+            arena.setVarStartValue(i, evalVal);
+            paramMap.set(name, evalVal);
+          }
+        }
+      }
+    }
+  }
+
+  const affectedEqs = (arena as any).getEquationsReferencingParam
+    ? (arena as any).getEquationsReferencingParam(paramName)
+    : [];
+  for (const eqIdx of affectedEqs) {
+    foldSingleArenaEquation(arena, eqIdx, db, scopeId, omcCompatibility, paramMap);
+  }
+}
+
+/**
  * Fold constant and parameter expressions in the arena to literal values
  * where possible. This is done iteratively until fixed point or maxIterations.
  */
@@ -441,8 +556,10 @@ export function foldArenaConstants(
             }
           }
         }
-        paramMap.set(name, arena.getVarStartValue(i));
-        if (v === Variability.Constant) constMap.set(name, arena.getVarStartValue(i));
+        if (v === Variability.Constant) {
+          paramMap.set(name, arena.getVarStartValue(i));
+          constMap.set(name, arena.getVarStartValue(i));
+        }
       }
     }
 
@@ -452,51 +569,50 @@ export function foldArenaConstants(
       const v = arena.getVarVariability(i);
       if (v !== Variability.Constant && v !== Variability.Parameter) continue;
 
-      const exprId = arena.getVarExpression(i);
-      if (typeof exprId === "number" && exprId >= 0) {
-        const evalVal = evaluateConstantArenaExpression(arena, exprId, paramMap, nameToIdx, 0, db, scopeId);
+      const exprId = (arena as any).getExplicitVarExpression
+        ? (arena as any).getExplicitVarExpression(i)
+        : arena.getVarExpression(i);
+      if (exprId >= 0) {
+        const evalVal = evaluateConstantArenaExpression(
+          arena,
+          exprId,
+          omcCompatibility ? constMap : paramMap,
+          nameToIdx,
+          0,
+          db,
+          scopeId,
+        );
         if (evalVal !== null) {
-          let folded: number | boolean | null = null;
+          let foldedValue: number | boolean | number[] | null = evalVal;
           const match = arena.getVarName(i).match(/\[([\d,]+)\]$/);
-          if (match && Array.isArray(evalVal)) {
+          if (match && Array.isArray(foldedValue)) {
             const indices = match[1].split(",").map(Number);
-            let current: any = evalVal;
+            let current: any = foldedValue;
             for (const idx of indices) {
               if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
                 current = current[idx - 1];
               } else {
-                current = null;
+                foldedValue = null;
                 break;
               }
             }
-            if (current !== null && (typeof current === "number" || typeof current === "boolean")) {
-              folded = current;
+            if (foldedValue !== null) {
+              foldedValue = current;
             }
-          } else if (typeof evalVal === "number" || typeof evalVal === "boolean") {
-            folded = evalVal;
           }
-
-          if (folded !== null) {
-            const varType = arena.getVarType(i);
-            let newLiteralId: number;
-            if (varType === VarType.Boolean && typeof folded === "boolean") {
-              newLiteralId = arena.addBoolLiteral(folded);
-            } else if (varType === VarType.Integer && typeof folded === "number") {
-              newLiteralId = arena.addIntLiteral(Math.trunc(folded));
-            } else if (typeof folded === "number") {
-              newLiteralId = arena.addRealLiteral(folded);
-            } else {
-              continue;
-            }
-
-            if (newLiteralId !== exprId) {
-              arena.setVarExpression(i, newLiteralId);
-              const numVal = typeof folded === "boolean" ? (folded ? 1.0 : 0.0) : folded;
-              if (arena.getVarStartValue(i) !== numVal) {
-                arena.setVarStartValue(i, numVal);
-              }
-              changed = true;
-            }
+          if (typeof foldedValue === "number") {
+            const litId =
+              arena.getVarType(i) === VarType.Integer
+                ? arena.addIntLiteral(foldedValue)
+                : arena.addRealLiteral(foldedValue);
+            arena.setVarExpression(i, litId);
+            paramMap.set(arena.getVarName(i), foldedValue);
+            if (v === Variability.Constant) constMap.set(arena.getVarName(i), foldedValue);
+          } else if (typeof foldedValue === "boolean") {
+            const litId = arena.addExpression(ExprKind.BoolLiteral, foldedValue ? 1 : 0);
+            arena.setVarExpression(i, litId);
+            paramMap.set(arena.getVarName(i), foldedValue ? 1.0 : 0.0);
+            if (v === Variability.Constant) constMap.set(arena.getVarName(i), foldedValue ? 1.0 : 0.0);
           }
         }
       }
@@ -511,9 +627,6 @@ export function foldArenaConstants(
         let rhsExpr = arena.getEqRhs(eq);
         if (rhsExpr >= 0) {
           let foldedRhs = evaluateConstantArenaExpression(arena, rhsExpr, eqFoldMap, nameToIdx, 0, db, scopeId);
-          if (foldedRhs === null && omcCompatibility) {
-            foldedRhs = evaluateConstantArenaExpression(arena, rhsExpr, paramMap, nameToIdx, 0, db, scopeId);
-          }
           if (foldedRhs !== null) {
             let varType = VarType.Real;
             if (arena.getExprKind(lhsExpr) === ExprKind.Name) {
@@ -743,8 +856,15 @@ function generateIndices(shape: number[]): number[][] {
  * Returns -1 if index is invalid or expression is not an ArrayCtor.
  */
 function getArrayCtorElement(dae: DAEBuilder, ctorId: number, idx: number[]): number {
+  let depth = 0;
+  let probe = ctorId;
+  while (probe >= 0 && dae.getExprKind(probe) === ExprKind.ArrayCtor) {
+    depth++;
+    probe = dae.getExprLeft(probe);
+  }
+  const effectiveIdx = depth > 0 && depth < idx.length ? idx.slice(idx.length - depth) : idx;
   let curr = ctorId;
-  for (const index of idx) {
+  for (const index of effectiveIdx) {
     const k = index - 1; // 1-based index to 0-based
     if (dae.getExprKind(curr) !== ExprKind.ArrayCtor) {
       return -1;
@@ -990,6 +1110,30 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
       const op = dae.getExprData1(exprId);
       const left = dae.getExprLeft(exprId);
       const right = dae.getExprRight(exprId);
+
+      // Check for matrix-vector multiplication: M * v where M has rows=n
+      if (op === BinOp.Mul) {
+        if (dae.getExprKind(left) === ExprKind.Name) {
+          const leftName = dae.interner.resolve(dae.getExprData1(left));
+          if (leftName && dae.getVarIdxByName(`${leftName}[1,1]`) >= 0) {
+            let cols = 0;
+            while (dae.getVarIdxByName(`${leftName}[1,${cols + 1}]`) >= 0) {
+              cols++;
+            }
+            if (cols > 0 && dae.getVarIdxByName(`${leftName}[${k + 1},1]`) >= 0) {
+              let rowSum: number | null = null;
+              for (let j = 0; j < cols; j++) {
+                const matElem = dae.addExpression(ExprKind.Name, dae.interner.intern(`${leftName}[${k + 1},${j + 1}]`));
+                const vecElem = getNthExpr(dae, right, j, cols);
+                const prod = dae.addBinaryExpr(BinOp.Mul, matElem, vecElem);
+                rowSum = rowSum === null ? prod : dae.addBinaryExpr(BinOp.Add, rowSum, prod);
+              }
+              if (rowSum !== null) return rowSum;
+            }
+          }
+        }
+      }
+
       const leftIsArr = isArrayOfLength(dae, left, n);
       const rightIsArr = isArrayOfLength(dae, right, n);
       const leftElem = leftIsArr ? getNthExpr(dae, left, k, n) : left;
@@ -1175,7 +1319,9 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     const start = dae.getVarStartValue(i);
     const flags = dae.getVarFlags(i);
     const desc = dae.getVarDescription(i);
-    const expr = dae.getVarExpression(i);
+    const expr = (dae as any).getExplicitVarExpression
+      ? (dae as any).getExplicitVarExpression(i)
+      : dae.getVarExpression(i);
     const attrs = dae.getVarAttrExprIds(i);
     const customType = dae.getVarCustomType(i);
     const enumLits = dae.getVarEnumerationLiterals(i);

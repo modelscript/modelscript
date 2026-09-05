@@ -257,18 +257,18 @@ export const SYNTAX_NAMES =
     ? ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"flow\"","\"stream\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/\"[^\"]*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_(within_clause | ())","_(\"final\" | ())","_((\"final\" | ()) class_definition \";\")*","_(name | ())","_(\"encapsulated\" | ())","_(\"partial\" | ())","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | ((\"expandable\" | ()) \"connector\") | (((\"pure\" | \"impure\") | ()) \"function\") | (\"operator\" ((\"record\" | \"function\") | ())) | \"record\")","_(\"expandable\" | ())","_(\"pure\" | \"impure\")","_((\"pure\" | \"impure\") | ())","_(\"record\" | \"function\")","_((\"record\" | \"function\") | ())","_(long_class_specifier | short_class_specifier | der_class_specifier)","_(identifier | ())","_((identifier description_string composition \"end\" (identifier | ())) | (\"extends\" identifier (class_modification | ()) description_string composition \"end\" (identifier | ())))","_(class_modification | ())","_(array_subscripts | ())","_((identifier \"=\" base_prefix type_specifier (array_subscripts | ()) (class_modification | ()) description) | (identifier \"=\" \"enumeration\" \"(\" ((enum_list | ()) | \":\") \")\" description))","_(enum_list | ())","_((enum_list | ()) | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\")","_((\"input\" | \"output\") | ())","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_((external_clause \";\") | ())","_((annotation_clause \";\") | ())","_(language_specification | ())","_(external_function_call | ())","_(annotation_clause | ())","_((component_reference \"=\") | ())","_(expression_list | ())","_(element \";\")*","_(import_clause | extends_clause | ((\"redeclare\" | ()) (\"final\" | ()) (\"inner\" | ()) (\"outer\" | ()) (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))))","_(\"redeclare\" | ())","_(\"inner\" | ())","_(\"outer\" | ())","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) ((constraining_clause description) | ())))","_(class_definition | component_clause)","_((constraining_clause description) | ())","_((identifier \"=\" name) | (name ((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_((\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\")))) | ())","_(class_or_inheritance_modification | ())","_(argument_or_inheritance_modification_list | ())","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier (array_subscripts | ()) component_list) | (type_specifier (array_subscripts | ()) component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_((\"discrete\" | \"parameter\" | \"constant\") | ())","_(((\"flow\" | \"stream\") ((\"discrete\" | \"parameter\" | \"constant\") | ()) ((\"input\" | \"output\") | ())) | ((\"discrete\" | \"parameter\" | \"constant\") ((\"input\" | \"output\") | ())) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_(condition_attribute | ())","_(modification | ())","_((\"=\" modification_expression) | ())","_((class_modification ((\"=\" modification_expression) | ())) | (\"=\" modification_expression))","_(expression | \"break\")","_(argument_list | ())","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_(\"each\" | ())","_(element_modification | element_replaceable)","_(short_class_definition | component_clause1 | element_replaceable)","_(short_class_definition | component_clause1)","_(constraining_clause | ())","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_(\"initial\" | ())","_(some_equation \";\")*","_(statement \";\")*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_((\"else\" (some_equation \";\")*) | ())","_(\"elseif\" expression \"then\" (statement \";\")*)*","_((\"else\" (statement \";\")*) | ())","_(\",\" for_index)*","_((\"in\" expression) | ())","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | (expression \":\" expression) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_(expression \":\" expression)","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" (function_arguments | ()) \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" ((array_subscripts | (\".\" identifier)) | ())) | (\"[\" expression_list (\";\" expression_list)* \"]\") | (\"{\" array_arguments \"}\"))","_(function_arguments | ())","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_((array_subscripts | (\".\" identifier)) | ())","_(\";\" expression_list)*","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(\".\" identifier)*","_(\".\" identifier (array_subscripts | ()))*","_((identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*) | (\".\" identifier (array_subscripts | ()) (\".\" identifier (array_subscripts | ()))*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") ((\",\" unsigned_integer) | ()) \")\"))","_(component_reference | \"time\")","_((\",\" unsigned_integer) | ())","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(expression_list | (expression \"for\" for_indices) | (function_partial_application ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" function_arguments_non_first) | ())","_((function_argument ((\",\" function_arguments_non_first) | ())) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_(((\",\" array_arguments_non_first) | (\"for\" for_indices)) | ())","_((\",\" array_arguments_non_first) | ())","_((\",\" named_arguments) | ())","_(function_partial_application | expression)","_(named_arguments | ())","_(() | ((expression | ()) \",\" (expression | ()) (\",\" (expression | ()))*))","_(expression | ())","_(\",\" (expression | ()))*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","_((string_literal (\"+\" string_literal)*) | ())","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
-  typeof {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`} !== "undefined"
-    ? {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"4026": target=>`Trying to override final element '${target.text}' with modifier.`,"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4051": target=>`A class extending from builtin type '${target.text}' may not have other elements.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"4002": target=>`Duplicate modification of element '${target.text}'.`,"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName)=>`Modified element '${target.text}' not found in class '${typeName.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2000": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`}
+  typeof {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"2090": ()=>`From here:`,"4026": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;let mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:"";if(mText.startsWith("=")){mText=" "+mText}return`Trying to override final element ${eName} with modifier '${mText}'.`},"2091": ()=>`From here:`,"4052": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of final component ${eName} is not allowed.`},"2092": ()=>`From here:`,"4053": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of constant component ${eName} is not allowed.`},"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"2093": ()=>`From here:`,"4002": (target,outerName,innerOrKind,targetName)=>{const isInner=innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber()>3:false;const elemStr=isInner?`${outerName.text}.${innerOrKind.text}`:outerName&&outerName.text!=="0"&&outerName.text!==""?outerName.text:target.text;const kindNum=isInner?1:innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber():1;const kindStr=kindNum===2?"extends":kindNum===3?"inherited class":"component";const tName=targetName&&targetName.text!=="0"&&targetName.text!==""?targetName.text:"";return`Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`},"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName,elemName)=>`Modified element ${elemName&&elemName.text!=="0"&&elemName.text!==""?elemName.text:target.text} not found in class ${typeName.text}.`,"4049": (target,ident)=>`Invalid use of break on non-component '${ident?ident.text:target.text}'.`,"4050": (target,ident)=>`Invalid use of break on component '${ident?ident.text:target.text}', component must be a model, block, or connector.`,"4051": target=>`No matching element found for '${target.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2094": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`} !== "undefined"
+    ? {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"4005": target=>`Protected element '${target.text}' may not be modified from outside.`,"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": target=>`Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,"4011": target=>`Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": ()=>`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,"4017": ()=>`Equations are not allowed in records or connectors.`,"4018": target=>`Illegal to instantiate partial class '${target.text}'.`,"4019": target=>`Trying to redeclare element '${target.text}' but it is not declared as replaceable.`,"4020": target=>`The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": target=>`Connect equation '${target.text}' is not allowed in initial equation sections.`,"2090": ()=>`From here:`,"4026": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;let mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:"";if(mText.startsWith("=")){mText=" "+mText}return`Trying to override final element ${eName} with modifier '${mText}'.`},"2091": ()=>`From here:`,"4052": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of final component ${eName} is not allowed.`},"2092": ()=>`From here:`,"4053": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of constant component ${eName} is not allowed.`},"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": ()=>`Function has more than one algorithm section or external declaration.`,"4036": target=>`Variable '${target.text}' in package must be declared as constant.`,"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"3001": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": target=>`Type mismatch in equation '${target.text}'.`,"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": target=>`Type mismatch in assignment statement '${target.text}'.`,"5008": target=>`Trying to assign to constant component '${target.text}'.`,"5009": target=>`Trying to assign to input component '${target.text}'.`,"5013": target=>`Operand '${target.text}' is not a stream variable.`,"5007": target=>`Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": target=>`Unit mismatch in component binding '${target.text}'.`,"2002": target=>`Variable '${target.text}' not found in scope.`,"2001": target=>`Variable '${target.text}' not found in scope.`,"2003": target=>`Class or type '${target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"2093": ()=>`From here:`,"4002": (target,outerName,innerOrKind,targetName)=>{const isInner=innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber()>3:false;const elemStr=isInner?`${outerName.text}.${innerOrKind.text}`:outerName&&outerName.text!=="0"&&outerName.text!==""?outerName.text:target.text;const kindNum=isInner?1:innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber():1;const kindStr=kindNum===2?"extends":kindNum===3?"inherited class":"component";const tName=targetName&&targetName.text!=="0"&&targetName.text!==""?targetName.text:"";return`Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`},"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": target=>`Modifier found on outer element '${target.text}'.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": target=>`Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName,elemName)=>`Modified element ${elemName&&elemName.text!=="0"&&elemName.text!==""?elemName.text:target.text} not found in class ${typeName.text}.`,"4049": (target,ident)=>`Invalid use of break on non-component '${ident?ident.text:target.text}'.`,"4050": (target,ident)=>`Invalid use of break on component '${ident?ident.text:target.text}', component must be a model, block, or connector.`,"4051": target=>`No matching element found for '${target.text}'.`,"5004": (target,lhsFlows,rhsFlows)=>`Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,"4037": target=>`Invalid variability prefix '${target.text}' on connector.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"2094": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`}
     : {};
 export const LINT_SEVERITIES =
-  typeof {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1} !== "undefined"
-    ? {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"4026": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4051": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"5004": 2,"4037": 1,"4046": 1,"2000": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1}
+  typeof {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"2090": 3,"4026": 1,"2091": 3,"4052": 1,"2092": 3,"4053": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"2093": 3,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"4049": 1,"4050": 1,"4051": 1,"5004": 2,"4037": 1,"4046": 1,"2094": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1} !== "undefined"
+    ? {"1003": 1,"2005": 1,"4005": 1,"4006": 1,"4007": 2,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"4018": 1,"4019": 1,"4020": 1,"4022": 1,"4023": 1,"4024": 1,"2090": 3,"4026": 1,"2091": 3,"4052": 1,"2092": 3,"4053": 1,"4032": 1,"4033": 1,"4036": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"2093": 3,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"4049": 1,"4050": 1,"4051": 1,"5004": 2,"4037": 1,"4046": 1,"2094": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1}
     : {};
 export const LINT_CODES =
-  typeof {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} !== "undefined" ? {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"4026": 4026,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4051": 4051,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"5004": 5004,"4037": 4037,"4046": 4046,"2000": 0,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} : {};
+  typeof {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"2090": 2090,"4026": 4026,"2091": 2091,"4052": 4052,"2092": 2092,"4053": 4053,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"2093": 2093,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"4049": 4049,"4050": 4050,"4051": 4051,"5004": 5004,"4037": 4037,"4046": 4046,"2094": 2094,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} !== "undefined" ? {"1003": 1003,"2005": 2005,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"4018": 4018,"4019": 4019,"4020": 4020,"4022": 4022,"4023": 4023,"4024": 4024,"2090": 2090,"4026": 4026,"2091": 2091,"4052": 4052,"2092": 2092,"4053": 4053,"4032": 4032,"4033": 4033,"4036": 4036,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"2093": 2093,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"4049": 4049,"4050": 4050,"4051": 4051,"5004": 5004,"4037": 4037,"4046": 4046,"2094": 2094,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
-  typeof {"class_specifier":1,"name":2,"description":3,"composition":4,"end_name":5,"type_specifier":6,"type_prefix":7,"declaration":8,"modification":9,"class_modification":10,"modification_expression":11,"lhs":12,"rhs":13,"target":14,"value":15,"args":16,"condition":17,"body":18,"elseCondition":19,"elseBody":20,"finalBody":21,"indices":22,"variable":23,"range":24,"left":25,"right":26,"operand":27,"flexible":28,"expression":29} !== "undefined" ? {"class_specifier":1,"name":2,"description":3,"composition":4,"end_name":5,"type_specifier":6,"type_prefix":7,"declaration":8,"modification":9,"class_modification":10,"modification_expression":11,"lhs":12,"rhs":13,"target":14,"value":15,"args":16,"condition":17,"body":18,"elseCondition":19,"elseBody":20,"finalBody":21,"indices":22,"variable":23,"range":24,"left":25,"right":26,"operand":27,"flexible":28,"expression":29} : {};
+  typeof {"class_prefixes":1,"class_specifier":2,"name":3,"description":4,"composition":5,"end_name":6,"base_prefix":7,"type_specifier":8,"array_subscripts":9,"class_modification":10,"enum_list":11,"import_clause":12,"extends_clause":13,"class_definition":14,"component_clause":15,"constraining_clause":16,"type_prefix":17,"component_list":18,"component_declaration":19,"declaration":20,"modification":21,"modification_expression":22,"lhs":23,"rhs":24,"target":25,"value":26,"args":27,"condition":28,"body":29,"elseCondition":30,"elseBody":31,"finalBody":32,"indices":33,"variable":34,"range":35,"left":36,"right":37,"operand":38,"flexible":39,"expression":40} !== "undefined" ? {"class_prefixes":1,"class_specifier":2,"name":3,"description":4,"composition":5,"end_name":6,"base_prefix":7,"type_specifier":8,"array_subscripts":9,"class_modification":10,"enum_list":11,"import_clause":12,"extends_clause":13,"class_definition":14,"component_clause":15,"constraining_clause":16,"type_prefix":17,"component_list":18,"component_declaration":19,"declaration":20,"modification":21,"modification_expression":22,"lhs":23,"rhs":24,"target":25,"value":26,"args":27,"condition":28,"body":29,"elseCondition":30,"elseBody":31,"finalBody":32,"indices":33,"variable":34,"range":35,"left":36,"right":37,"operand":38,"flexible":39,"expression":40} : {};
 export function createWasmImports(grammar, facade) {
   const hostQueries = grammar.hostQueries || {};
   const queryKeys = Object.keys(hostQueries);
@@ -5005,64 +5005,86 @@ export const SyntaxKind = {
 };
 
 export const FieldId = {
-  ClassSpecifier: 1,
-  class_specifier: 1,
-  Name: 2,
-  name: 2,
-  Description: 3,
-  description: 3,
-  Composition: 4,
-  composition: 4,
-  EndName: 5,
-  end_name: 5,
-  TypeSpecifier: 6,
-  type_specifier: 6,
-  TypePrefix: 7,
-  type_prefix: 7,
-  Declaration: 8,
-  declaration: 8,
-  Modification: 9,
-  modification: 9,
+  ClassPrefixes: 1,
+  class_prefixes: 1,
+  ClassSpecifier: 2,
+  class_specifier: 2,
+  Name: 3,
+  name: 3,
+  Description: 4,
+  description: 4,
+  Composition: 5,
+  composition: 5,
+  EndName: 6,
+  end_name: 6,
+  BasePrefix: 7,
+  base_prefix: 7,
+  TypeSpecifier: 8,
+  type_specifier: 8,
+  ArraySubscripts: 9,
+  array_subscripts: 9,
   ClassModification: 10,
   class_modification: 10,
-  ModificationExpression: 11,
-  modification_expression: 11,
-  Lhs: 12,
-  lhs: 12,
-  Rhs: 13,
-  rhs: 13,
-  Target: 14,
-  target: 14,
-  Value: 15,
-  value: 15,
-  Args: 16,
-  args: 16,
-  Condition: 17,
-  condition: 17,
-  Body: 18,
-  body: 18,
-  ElseCondition: 19,
-  elseCondition: 19,
-  ElseBody: 20,
-  elseBody: 20,
-  FinalBody: 21,
-  finalBody: 21,
-  Indices: 22,
-  indices: 22,
-  Variable: 23,
-  variable: 23,
-  Range: 24,
-  range: 24,
-  Left: 25,
-  left: 25,
-  Right: 26,
-  right: 26,
-  Operand: 27,
-  operand: 27,
-  Flexible: 28,
-  flexible: 28,
-  Expression: 29,
-  expression: 29,
+  EnumList: 11,
+  enum_list: 11,
+  ImportClause: 12,
+  import_clause: 12,
+  ExtendsClause: 13,
+  extends_clause: 13,
+  ClassDefinition: 14,
+  class_definition: 14,
+  ComponentClause: 15,
+  component_clause: 15,
+  ConstrainingClause: 16,
+  constraining_clause: 16,
+  TypePrefix: 17,
+  type_prefix: 17,
+  ComponentList: 18,
+  component_list: 18,
+  ComponentDeclaration: 19,
+  component_declaration: 19,
+  Declaration: 20,
+  declaration: 20,
+  Modification: 21,
+  modification: 21,
+  ModificationExpression: 22,
+  modification_expression: 22,
+  Lhs: 23,
+  lhs: 23,
+  Rhs: 24,
+  rhs: 24,
+  Target: 25,
+  target: 25,
+  Value: 26,
+  value: 26,
+  Args: 27,
+  args: 27,
+  Condition: 28,
+  condition: 28,
+  Body: 29,
+  body: 29,
+  ElseCondition: 30,
+  elseCondition: 30,
+  ElseBody: 31,
+  elseBody: 31,
+  FinalBody: 32,
+  finalBody: 32,
+  Indices: 33,
+  indices: 33,
+  Variable: 34,
+  variable: 34,
+  Range: 35,
+  range: 35,
+  Left: 36,
+  left: 36,
+  Right: 37,
+  right: 37,
+  Operand: 38,
+  operand: 38,
+  Flexible: 39,
+  flexible: 39,
+  Expression: 40,
+  expression: 40,
 };
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -5366,8 +5388,14 @@ export const Cst = {
     typeId: 106,
     type: "class_definition",
     is(node) { return node != null && node.typeId === 106; },
+    classPrefixes(node) {
+      return node ? (node.childForFieldId(1) || node.childForFieldName("class_prefixes")) : null;
+    },
+    classPrefixesList(node) {
+      return node ? node.childrenForFieldName("class_prefixes") : [];
+    },
     classSpecifier(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("class_specifier")) : null;
+      return node ? (node.childForFieldId(2) || node.childForFieldName("class_specifier")) : null;
     },
     classSpecifierList(node) {
       return node ? node.childrenForFieldName("class_specifier") : [];
@@ -5388,25 +5416,25 @@ export const Cst = {
     type: "long_class_specifier",
     is(node) { return node != null && node.typeId === 109; },
     name(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+      return node ? (node.childForFieldId(3) || node.childForFieldName("name")) : null;
     },
     nameList(node) {
       return node ? node.childrenForFieldName("name") : [];
     },
     description(node) {
-      return node ? (node.childForFieldId(3) || node.childForFieldName("description")) : null;
+      return node ? (node.childForFieldId(4) || node.childForFieldName("description")) : null;
     },
     descriptionList(node) {
       return node ? node.childrenForFieldName("description") : [];
     },
     composition(node) {
-      return node ? (node.childForFieldId(4) || node.childForFieldName("composition")) : null;
+      return node ? (node.childForFieldId(5) || node.childForFieldName("composition")) : null;
     },
     compositionList(node) {
       return node ? node.childrenForFieldName("composition") : [];
     },
     endName(node) {
-      return node ? (node.childForFieldId(5) || node.childForFieldName("end_name")) : null;
+      return node ? (node.childForFieldId(6) || node.childForFieldName("end_name")) : null;
     },
     endNameList(node) {
       return node ? node.childrenForFieldName("end_name") : [];
@@ -5417,10 +5445,46 @@ export const Cst = {
     type: "short_class_specifier",
     is(node) { return node != null && node.typeId === 110; },
     name(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+      return node ? (node.childForFieldId(3) || node.childForFieldName("name")) : null;
     },
     nameList(node) {
       return node ? node.childrenForFieldName("name") : [];
+    },
+    basePrefix(node) {
+      return node ? (node.childForFieldId(7) || node.childForFieldName("base_prefix")) : null;
+    },
+    basePrefixList(node) {
+      return node ? node.childrenForFieldName("base_prefix") : [];
+    },
+    typeSpecifier(node) {
+      return node ? (node.childForFieldId(8) || node.childForFieldName("type_specifier")) : null;
+    },
+    typeSpecifierList(node) {
+      return node ? node.childrenForFieldName("type_specifier") : [];
+    },
+    classModification(node) {
+      return node ? (node.childForFieldId(10) || node.childForFieldName("class_modification")) : null;
+    },
+    classModificationList(node) {
+      return node ? node.childrenForFieldName("class_modification") : [];
+    },
+    description(node) {
+      return node ? (node.childForFieldId(4) || node.childForFieldName("description")) : null;
+    },
+    descriptionList(node) {
+      return node ? node.childrenForFieldName("description") : [];
+    },
+    arraySubscripts(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("array_subscripts")) : null;
+    },
+    arraySubscriptsList(node) {
+      return node ? node.childrenForFieldName("array_subscripts") : [];
+    },
+    enumList(node) {
+      return node ? (node.childForFieldId(11) || node.childForFieldName("enum_list")) : null;
+    },
+    enumListList(node) {
+      return node ? node.childrenForFieldName("enum_list") : [];
     },
   },
   DerClassSpecifier: {
@@ -5428,7 +5492,7 @@ export const Cst = {
     type: "der_class_specifier",
     is(node) { return node != null && node.typeId === 111; },
     name(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+      return node ? (node.childForFieldId(3) || node.childForFieldName("name")) : null;
     },
     nameList(node) {
       return node ? node.childrenForFieldName("name") : [];
@@ -5478,6 +5542,42 @@ export const Cst = {
     typeId: 120,
     type: "element",
     is(node) { return node != null && node.typeId === 120; },
+    importClause(node) {
+      return node ? (node.childForFieldId(12) || node.childForFieldName("import_clause")) : null;
+    },
+    importClauseList(node) {
+      return node ? node.childrenForFieldName("import_clause") : [];
+    },
+    extendsClause(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("extends_clause")) : null;
+    },
+    extendsClauseList(node) {
+      return node ? node.childrenForFieldName("extends_clause") : [];
+    },
+    classDefinition(node) {
+      return node ? (node.childForFieldId(14) || node.childForFieldName("class_definition")) : null;
+    },
+    classDefinitionList(node) {
+      return node ? node.childrenForFieldName("class_definition") : [];
+    },
+    componentClause(node) {
+      return node ? (node.childForFieldId(15) || node.childForFieldName("component_clause")) : null;
+    },
+    componentClauseList(node) {
+      return node ? node.childrenForFieldName("component_clause") : [];
+    },
+    constrainingClause(node) {
+      return node ? (node.childForFieldId(16) || node.childForFieldName("constraining_clause")) : null;
+    },
+    constrainingClauseList(node) {
+      return node ? node.childrenForFieldName("constraining_clause") : [];
+    },
+    description(node) {
+      return node ? (node.childForFieldId(4) || node.childForFieldName("description")) : null;
+    },
+    descriptionList(node) {
+      return node ? node.childrenForFieldName("description") : [];
+    },
   },
   ImportClause: {
     typeId: 121,
@@ -5494,7 +5594,7 @@ export const Cst = {
     type: "extends_clause",
     is(node) { return node != null && node.typeId === 123; },
     typeSpecifier(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("type_specifier")) : null;
+      return node ? (node.childForFieldId(8) || node.childForFieldName("type_specifier")) : null;
     },
     typeSpecifierList(node) {
       return node ? node.childrenForFieldName("type_specifier") : [];
@@ -5525,16 +5625,28 @@ export const Cst = {
     type: "component_clause",
     is(node) { return node != null && node.typeId === 128; },
     typePrefix(node) {
-      return node ? (node.childForFieldId(7) || node.childForFieldName("type_prefix")) : null;
+      return node ? (node.childForFieldId(17) || node.childForFieldName("type_prefix")) : null;
     },
     typePrefixList(node) {
       return node ? node.childrenForFieldName("type_prefix") : [];
     },
     typeSpecifier(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("type_specifier")) : null;
+      return node ? (node.childForFieldId(8) || node.childForFieldName("type_specifier")) : null;
     },
     typeSpecifierList(node) {
       return node ? node.childrenForFieldName("type_specifier") : [];
+    },
+    componentList(node) {
+      return node ? (node.childForFieldId(18) || node.childForFieldName("component_list")) : null;
+    },
+    componentListList(node) {
+      return node ? node.childrenForFieldName("component_list") : [];
+    },
+    arraySubscripts(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("array_subscripts")) : null;
+    },
+    arraySubscriptsList(node) {
+      return node ? node.childrenForFieldName("array_subscripts") : [];
     },
   },
   TypePrefix: {
@@ -5546,19 +5658,25 @@ export const Cst = {
     typeId: 130,
     type: "component_list",
     is(node) { return node != null && node.typeId === 130; },
+    componentDeclaration(node) {
+      return node ? (node.childForFieldId(19) || node.childForFieldName("component_declaration")) : null;
+    },
+    componentDeclarationList(node) {
+      return node ? node.childrenForFieldName("component_declaration") : [];
+    },
   },
   ComponentDeclaration: {
     typeId: 131,
     type: "component_declaration",
     is(node) { return node != null && node.typeId === 131; },
     declaration(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("declaration")) : null;
+      return node ? (node.childForFieldId(20) || node.childForFieldName("declaration")) : null;
     },
     declarationList(node) {
       return node ? node.childrenForFieldName("declaration") : [];
     },
     description(node) {
-      return node ? (node.childForFieldId(3) || node.childForFieldName("description")) : null;
+      return node ? (node.childForFieldId(4) || node.childForFieldName("description")) : null;
     },
     descriptionList(node) {
       return node ? node.childrenForFieldName("description") : [];
@@ -5574,13 +5692,19 @@ export const Cst = {
     type: "declaration",
     is(node) { return node != null && node.typeId === 133; },
     name(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+      return node ? (node.childForFieldId(3) || node.childForFieldName("name")) : null;
     },
     nameList(node) {
       return node ? node.childrenForFieldName("name") : [];
     },
+    arraySubscripts(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("array_subscripts")) : null;
+    },
+    arraySubscriptsList(node) {
+      return node ? node.childrenForFieldName("array_subscripts") : [];
+    },
     modification(node) {
-      return node ? (node.childForFieldId(9) || node.childForFieldName("modification")) : null;
+      return node ? (node.childForFieldId(21) || node.childForFieldName("modification")) : null;
     },
     modificationList(node) {
       return node ? node.childrenForFieldName("modification") : [];
@@ -5597,7 +5721,7 @@ export const Cst = {
       return node ? node.childrenForFieldName("class_modification") : [];
     },
     modificationExpression(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("modification_expression")) : null;
+      return node ? (node.childForFieldId(22) || node.childForFieldName("modification_expression")) : null;
     },
     modificationExpressionList(node) {
       return node ? node.childrenForFieldName("modification_expression") : [];
@@ -5633,13 +5757,13 @@ export const Cst = {
     type: "element_modification",
     is(node) { return node != null && node.typeId === 140; },
     name(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+      return node ? (node.childForFieldId(3) || node.childForFieldName("name")) : null;
     },
     nameList(node) {
       return node ? node.childrenForFieldName("name") : [];
     },
     modification(node) {
-      return node ? (node.childForFieldId(9) || node.childForFieldName("modification")) : null;
+      return node ? (node.childForFieldId(21) || node.childForFieldName("modification")) : null;
     },
     modificationList(node) {
       return node ? node.childrenForFieldName("modification") : [];
@@ -5660,13 +5784,13 @@ export const Cst = {
     type: "component_clause1",
     is(node) { return node != null && node.typeId === 143; },
     typePrefix(node) {
-      return node ? (node.childForFieldId(7) || node.childForFieldName("type_prefix")) : null;
+      return node ? (node.childForFieldId(17) || node.childForFieldName("type_prefix")) : null;
     },
     typePrefixList(node) {
       return node ? node.childrenForFieldName("type_prefix") : [];
     },
     typeSpecifier(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("type_specifier")) : null;
+      return node ? (node.childForFieldId(8) || node.childForFieldName("type_specifier")) : null;
     },
     typeSpecifierList(node) {
       return node ? node.childrenForFieldName("type_specifier") : [];
@@ -5707,13 +5831,13 @@ export const Cst = {
     type: "simple_equation",
     is(node) { return node != null && node.typeId === 150; },
     lhs(node) {
-      return node ? (node.childForFieldId(12) || node.childForFieldName("lhs")) : null;
+      return node ? (node.childForFieldId(23) || node.childForFieldName("lhs")) : null;
     },
     lhsList(node) {
       return node ? node.childrenForFieldName("lhs") : [];
     },
     rhs(node) {
-      return node ? (node.childForFieldId(13) || node.childForFieldName("rhs")) : null;
+      return node ? (node.childForFieldId(24) || node.childForFieldName("rhs")) : null;
     },
     rhsList(node) {
       return node ? node.childrenForFieldName("rhs") : [];
@@ -5734,13 +5858,13 @@ export const Cst = {
     type: "assignment_statement",
     is(node) { return node != null && node.typeId === 153; },
     target(node) {
-      return node ? (node.childForFieldId(14) || node.childForFieldName("target")) : null;
+      return node ? (node.childForFieldId(25) || node.childForFieldName("target")) : null;
     },
     targetList(node) {
       return node ? node.childrenForFieldName("target") : [];
     },
     value(node) {
-      return node ? (node.childForFieldId(15) || node.childForFieldName("value")) : null;
+      return node ? (node.childForFieldId(26) || node.childForFieldName("value")) : null;
     },
     valueList(node) {
       return node ? node.childrenForFieldName("value") : [];
@@ -5751,13 +5875,13 @@ export const Cst = {
     type: "function_call",
     is(node) { return node != null && node.typeId === 154; },
     name(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("name")) : null;
+      return node ? (node.childForFieldId(3) || node.childForFieldName("name")) : null;
     },
     nameList(node) {
       return node ? node.childrenForFieldName("name") : [];
     },
     args(node) {
-      return node ? (node.childForFieldId(16) || node.childForFieldName("args")) : null;
+      return node ? (node.childForFieldId(27) || node.childForFieldName("args")) : null;
     },
     argsList(node) {
       return node ? node.childrenForFieldName("args") : [];
@@ -5768,31 +5892,31 @@ export const Cst = {
     type: "if_equation",
     is(node) { return node != null && node.typeId === 155; },
     condition(node) {
-      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+      return node ? (node.childForFieldId(28) || node.childForFieldName("condition")) : null;
     },
     conditionList(node) {
       return node ? node.childrenForFieldName("condition") : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+      return node ? (node.childForFieldId(29) || node.childForFieldName("body")) : null;
     },
     bodyList(node) {
       return node ? node.childrenForFieldName("body") : [];
     },
     elseCondition(node) {
-      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+      return node ? (node.childForFieldId(30) || node.childForFieldName("elseCondition")) : null;
     },
     elseConditionList(node) {
       return node ? node.childrenForFieldName("elseCondition") : [];
     },
     elseBody(node) {
-      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+      return node ? (node.childForFieldId(31) || node.childForFieldName("elseBody")) : null;
     },
     elseBodyList(node) {
       return node ? node.childrenForFieldName("elseBody") : [];
     },
     finalBody(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("finalBody")) : null;
+      return node ? (node.childForFieldId(32) || node.childForFieldName("finalBody")) : null;
     },
     finalBodyList(node) {
       return node ? node.childrenForFieldName("finalBody") : [];
@@ -5803,31 +5927,31 @@ export const Cst = {
     type: "if_statement",
     is(node) { return node != null && node.typeId === 156; },
     condition(node) {
-      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+      return node ? (node.childForFieldId(28) || node.childForFieldName("condition")) : null;
     },
     conditionList(node) {
       return node ? node.childrenForFieldName("condition") : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+      return node ? (node.childForFieldId(29) || node.childForFieldName("body")) : null;
     },
     bodyList(node) {
       return node ? node.childrenForFieldName("body") : [];
     },
     elseCondition(node) {
-      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+      return node ? (node.childForFieldId(30) || node.childForFieldName("elseCondition")) : null;
     },
     elseConditionList(node) {
       return node ? node.childrenForFieldName("elseCondition") : [];
     },
     elseBody(node) {
-      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+      return node ? (node.childForFieldId(31) || node.childForFieldName("elseBody")) : null;
     },
     elseBodyList(node) {
       return node ? node.childrenForFieldName("elseBody") : [];
     },
     finalBody(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("finalBody")) : null;
+      return node ? (node.childForFieldId(32) || node.childForFieldName("finalBody")) : null;
     },
     finalBodyList(node) {
       return node ? node.childrenForFieldName("finalBody") : [];
@@ -5838,13 +5962,13 @@ export const Cst = {
     type: "for_equation",
     is(node) { return node != null && node.typeId === 157; },
     indices(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("indices")) : null;
+      return node ? (node.childForFieldId(33) || node.childForFieldName("indices")) : null;
     },
     indicesList(node) {
       return node ? node.childrenForFieldName("indices") : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+      return node ? (node.childForFieldId(29) || node.childForFieldName("body")) : null;
     },
     bodyList(node) {
       return node ? node.childrenForFieldName("body") : [];
@@ -5855,13 +5979,13 @@ export const Cst = {
     type: "for_statement",
     is(node) { return node != null && node.typeId === 158; },
     indices(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("indices")) : null;
+      return node ? (node.childForFieldId(33) || node.childForFieldName("indices")) : null;
     },
     indicesList(node) {
       return node ? node.childrenForFieldName("indices") : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+      return node ? (node.childForFieldId(29) || node.childForFieldName("body")) : null;
     },
     bodyList(node) {
       return node ? node.childrenForFieldName("body") : [];
@@ -5877,13 +6001,13 @@ export const Cst = {
     type: "for_index",
     is(node) { return node != null && node.typeId === 160; },
     variable(node) {
-      return node ? (node.childForFieldId(23) || node.childForFieldName("variable")) : null;
+      return node ? (node.childForFieldId(34) || node.childForFieldName("variable")) : null;
     },
     variableList(node) {
       return node ? node.childrenForFieldName("variable") : [];
     },
     range(node) {
-      return node ? (node.childForFieldId(24) || node.childForFieldName("range")) : null;
+      return node ? (node.childForFieldId(35) || node.childForFieldName("range")) : null;
     },
     rangeList(node) {
       return node ? node.childrenForFieldName("range") : [];
@@ -5894,13 +6018,13 @@ export const Cst = {
     type: "while_statement",
     is(node) { return node != null && node.typeId === 161; },
     condition(node) {
-      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+      return node ? (node.childForFieldId(28) || node.childForFieldName("condition")) : null;
     },
     conditionList(node) {
       return node ? node.childrenForFieldName("condition") : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+      return node ? (node.childForFieldId(29) || node.childForFieldName("body")) : null;
     },
     bodyList(node) {
       return node ? node.childrenForFieldName("body") : [];
@@ -5911,25 +6035,25 @@ export const Cst = {
     type: "when_equation",
     is(node) { return node != null && node.typeId === 162; },
     condition(node) {
-      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+      return node ? (node.childForFieldId(28) || node.childForFieldName("condition")) : null;
     },
     conditionList(node) {
       return node ? node.childrenForFieldName("condition") : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+      return node ? (node.childForFieldId(29) || node.childForFieldName("body")) : null;
     },
     bodyList(node) {
       return node ? node.childrenForFieldName("body") : [];
     },
     elseCondition(node) {
-      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+      return node ? (node.childForFieldId(30) || node.childForFieldName("elseCondition")) : null;
     },
     elseConditionList(node) {
       return node ? node.childrenForFieldName("elseCondition") : [];
     },
     elseBody(node) {
-      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+      return node ? (node.childForFieldId(31) || node.childForFieldName("elseBody")) : null;
     },
     elseBodyList(node) {
       return node ? node.childrenForFieldName("elseBody") : [];
@@ -5940,25 +6064,25 @@ export const Cst = {
     type: "when_statement",
     is(node) { return node != null && node.typeId === 163; },
     condition(node) {
-      return node ? (node.childForFieldId(17) || node.childForFieldName("condition")) : null;
+      return node ? (node.childForFieldId(28) || node.childForFieldName("condition")) : null;
     },
     conditionList(node) {
       return node ? node.childrenForFieldName("condition") : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("body")) : null;
+      return node ? (node.childForFieldId(29) || node.childForFieldName("body")) : null;
     },
     bodyList(node) {
       return node ? node.childrenForFieldName("body") : [];
     },
     elseCondition(node) {
-      return node ? (node.childForFieldId(19) || node.childForFieldName("elseCondition")) : null;
+      return node ? (node.childForFieldId(30) || node.childForFieldName("elseCondition")) : null;
     },
     elseConditionList(node) {
       return node ? node.childrenForFieldName("elseCondition") : [];
     },
     elseBody(node) {
-      return node ? (node.childForFieldId(20) || node.childForFieldName("elseBody")) : null;
+      return node ? (node.childForFieldId(31) || node.childForFieldName("elseBody")) : null;
     },
     elseBodyList(node) {
       return node ? node.childrenForFieldName("elseBody") : [];
@@ -5969,13 +6093,13 @@ export const Cst = {
     type: "connect_equation",
     is(node) { return node != null && node.typeId === 164; },
     lhs(node) {
-      return node ? (node.childForFieldId(12) || node.childForFieldName("lhs")) : null;
+      return node ? (node.childForFieldId(23) || node.childForFieldName("lhs")) : null;
     },
     lhsList(node) {
       return node ? node.childrenForFieldName("lhs") : [];
     },
     rhs(node) {
-      return node ? (node.childForFieldId(13) || node.childForFieldName("rhs")) : null;
+      return node ? (node.childForFieldId(24) || node.childForFieldName("rhs")) : null;
     },
     rhsList(node) {
       return node ? node.childrenForFieldName("rhs") : [];
@@ -5986,19 +6110,19 @@ export const Cst = {
     type: "expression",
     is(node) { return node != null && node.typeId === 165; },
     left(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("left")) : null;
+      return node ? (node.childForFieldId(36) || node.childForFieldName("left")) : null;
     },
     leftList(node) {
       return node ? node.childrenForFieldName("left") : [];
     },
     right(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("right")) : null;
+      return node ? (node.childForFieldId(37) || node.childForFieldName("right")) : null;
     },
     rightList(node) {
       return node ? node.childrenForFieldName("right") : [];
     },
     operand(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("operand")) : null;
+      return node ? (node.childForFieldId(38) || node.childForFieldName("operand")) : null;
     },
     operandList(node) {
       return node ? node.childrenForFieldName("operand") : [];
@@ -6028,6 +6152,12 @@ export const Cst = {
     typeId: 170,
     type: "component_reference",
     is(node) { return node != null && node.typeId === 170; },
+    arraySubscripts(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("array_subscripts")) : null;
+    },
+    arraySubscriptsList(node) {
+      return node ? node.childrenForFieldName("array_subscripts") : [];
+    },
   },
   ResultReference: {
     typeId: 171,
@@ -6099,13 +6229,13 @@ export const Cst = {
     type: "subscript",
     is(node) { return node != null && node.typeId === 184; },
     flexible(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("flexible")) : null;
+      return node ? (node.childForFieldId(39) || node.childForFieldName("flexible")) : null;
     },
     flexibleList(node) {
       return node ? node.childrenForFieldName("flexible") : [];
     },
     expression(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("expression")) : null;
+      return node ? (node.childForFieldId(40) || node.childForFieldName("expression")) : null;
     },
     expressionList(node) {
       return node ? node.childrenForFieldName("expression") : [];

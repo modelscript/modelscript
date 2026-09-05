@@ -64,6 +64,8 @@ export interface ModificationArg {
   readonly nestedArgs: readonly ModificationArg[];
   /** Byte range of the modifier name in the source text (start, end). */
   readonly nameRange?: readonly [number, number];
+  /** Byte range of the entire modifier in the source text (start, end). */
+  readonly modRange?: readonly [number, number];
   /** Whether this is a redeclaration (replaces a class/component definition). */
   readonly isRedeclaration: boolean;
   /** For redeclarations: the new class prefixes (e.g., "model", "type"). */

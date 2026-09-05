@@ -222,8 +222,11 @@ export class WasmWorkspaceIndex {
     return fileId;
   }
 
-  register(uri: string, loader?: () => any, parentFQN?: string): number {
+  register(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any): number {
     const fileId = this.registerFile(uri, parentFQN);
+    if (editRanges && Array.isArray(editRanges)) {
+      this.fileDirtyRanges.set(uri, editRanges);
+    }
     if (typeof loader === "function") {
       const rootNode = loader();
       if (rootNode) {
@@ -237,7 +240,20 @@ export class WasmWorkspaceIndex {
     return this.uriToId.has(uri) || this.fileSymbols.has(uri);
   }
 
-  markDirty(uri: string, loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
+  private fileDirtyRanges = new Map<string, { startByte: number; endByte: number }[]>();
+
+  getDirtyRanges(uri: string): { startByte: number; endByte: number }[] | undefined {
+    return this.fileDirtyRanges.get(uri);
+  }
+
+  clearDirtyRanges(uri: string): void {
+    this.fileDirtyRanges.delete(uri);
+  }
+
+  markDirty(uri: string, loader?: () => any, editRanges?: any, _totalDelta?: number): void {
+    if (editRanges && Array.isArray(editRanges)) {
+      this.fileDirtyRanges.set(uri, editRanges);
+    }
     if (typeof loader === "function") {
       const rootNode = loader();
       if (rootNode) {
@@ -249,8 +265,15 @@ export class WasmWorkspaceIndex {
     }
   }
 
-  takeGlobalChangedIds(): { changedIds: Set<number> } | null {
-    return { changedIds: new Set<number>() };
+  private globalChangedIds = new Set<number>();
+  private globalStructuralChangedIds = new Set<number>();
+
+  takeGlobalChangedIds(): { changedIds: Set<number>; structuralChangedIds?: Set<number> } | null {
+    const ids = new Set(this.globalChangedIds);
+    const structIds = new Set(this.globalStructuralChangedIds);
+    this.globalChangedIds.clear();
+    this.globalStructuralChangedIds.clear();
+    return { changedIds: ids, structuralChangedIds: structIds };
   }
 
   takeGlobalChangedNames(): Set<string> | null {
@@ -259,19 +282,38 @@ export class WasmWorkspaceIndex {
 
   private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
     const existingIds = this.fileSymbols.get(uri);
+    const prevSignatures: string[] = [];
+    const oldEntriesByKey = new Map<string, SymbolEntry>();
+    const oldSymbolsToDelete = new Set<SymbolId>();
+
     if (existingIds) {
       for (const id of existingIds) {
         const entry = this.unifiedIndex.symbols.get(id);
         if (entry) {
-          this.unifiedIndex.symbols.delete(id);
-          const byNameList = this.unifiedIndex.byName.get(entry.name);
-          if (byNameList) {
+          prevSignatures.push(`${entry.name}:${entry.kind}:${entry.ruleName}`);
+          const parentKey = entry.parentId === null ? "root" : String(entry.parentId);
+          const key = `${parentKey}:${entry.kind}:${entry.name}:${entry.ruleName}`;
+          oldEntriesByKey.set(key, entry);
+          oldSymbolsToDelete.add(id);
+        }
+        this.unifiedIndex.childrenOf.delete(id);
+        if (entry) {
+          const list = this.unifiedIndex.byName.get(entry.name);
+          if (list) {
             this.unifiedIndex.byName.set(
               entry.name,
-              byNameList.filter((symId) => symId !== id),
+              list.filter((symId) => symId !== id),
             );
           }
         }
+      }
+      const rootChildren = this.unifiedIndex.childrenOf.get(0);
+      if (rootChildren) {
+        const existingSet = new Set(existingIds);
+        this.unifiedIndex.childrenOf.set(
+          0,
+          rootChildren.filter((id) => !existingSet.has(id)),
+        );
       }
     }
 
@@ -290,7 +332,26 @@ export class WasmWorkspaceIndex {
         }
       }
 
-      const symId = this.nextSymbolId++;
+      const matchKey = `root:Class:${normalizedName}:SourceFile`;
+      let symId: SymbolId;
+      const existingEntry = oldEntriesByKey.get(matchKey);
+      const rootStart = rootNode.startByte ?? rootNode.startIndex ?? 0;
+      const rootEnd = rootNode.endByte ?? rootNode.endIndex ?? 0;
+      if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
+        symId = existingEntry.id;
+        oldSymbolsToDelete.delete(symId);
+        if (existingEntry.startByte !== rootStart || existingEntry.endByte !== rootEnd) {
+          this.globalChangedIds.add(symId);
+        }
+      } else {
+        symId = this.nextSymbolId++;
+        this.globalChangedIds.add(symId);
+        this.globalStructuralChangedIds.add(symId);
+        if (parentId !== null) {
+          this.globalChangedIds.add(parentId);
+          this.globalStructuralChangedIds.add(parentId);
+        }
+      }
       newIds.push(symId);
 
       const rootEntry: SymbolEntry = {
@@ -407,7 +468,35 @@ export class WasmWorkspaceIndex {
           name = node.type;
         }
 
-        const symId = this.nextSymbolId++;
+        const parentKey = parentId === null ? "root" : String(parentId);
+        const matchKey = `${parentKey}:${hook.kind}:${name}:${hook.ruleName}`;
+        let symId: SymbolId;
+        const existingEntry = oldEntriesByKey.get(matchKey);
+        const nodeStart = node.startByte ?? node.startIndex ?? 0;
+        const nodeEnd = node.endByte ?? node.endIndex ?? 0;
+        if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
+          symId = existingEntry.id;
+          oldSymbolsToDelete.delete(symId);
+          const dirtyRanges = this.fileDirtyRanges.get(uri);
+          const intersectsDirty =
+            dirtyRanges && dirtyRanges.length > 0
+              ? dirtyRanges.some(
+                  (r) => Math.max(r.startByte, existingEntry.startByte) <= Math.min(r.endByte, existingEntry.endByte),
+                )
+              : existingEntry.startByte !== nodeStart || existingEntry.endByte !== nodeEnd;
+          if (intersectsDirty) {
+            this.globalChangedIds.add(symId);
+          }
+        } else {
+          symId = this.nextSymbolId++;
+          this.globalChangedIds.add(symId);
+          this.globalStructuralChangedIds.add(symId);
+          if (parentId !== null) {
+            this.globalChangedIds.add(parentId);
+            this.globalStructuralChangedIds.add(parentId);
+          }
+        }
+
         currentId = symId;
         newIds.push(symId);
 
@@ -455,9 +544,47 @@ export class WasmWorkspaceIndex {
     };
 
     walk(rootNode, null);
+
+    for (const oldId of oldSymbolsToDelete) {
+      this.globalChangedIds.add(oldId);
+      this.globalStructuralChangedIds.add(oldId);
+      const entry = this.unifiedIndex.symbols.get(oldId);
+      if (entry && entry.parentId !== null) {
+        this.globalChangedIds.add(entry.parentId);
+        this.globalStructuralChangedIds.add(entry.parentId);
+      }
+      if (entry) {
+        this.unifiedIndex.symbols.delete(oldId);
+        const byNameList = this.unifiedIndex.byName.get(entry.name);
+        if (byNameList) {
+          this.unifiedIndex.byName.set(
+            entry.name,
+            byNameList.filter((id) => id !== oldId),
+          );
+        }
+      }
+      this.unifiedIndex.childrenOf.delete(oldId);
+    }
+
     this.fileSymbols.set(uri, newIds);
     this._version++;
-    this._structuralRevision++;
+
+    const newSignatures: string[] = [];
+    for (const id of newIds) {
+      const entry = this.unifiedIndex.symbols.get(id);
+      if (entry) {
+        newSignatures.push(`${entry.name}:${entry.kind}:${entry.ruleName}`);
+      }
+    }
+    const isFirstIndex = !existingIds || existingIds.length === 0;
+    const structurallyEqual =
+      !isFirstIndex &&
+      prevSignatures.length === newSignatures.length &&
+      prevSignatures.every((sig, i) => sig === newSignatures[i]);
+
+    if (!structurallyEqual) {
+      this._structuralRevision++;
+    }
   }
 
   getFileIndex(_uri: string): SymbolIndex {

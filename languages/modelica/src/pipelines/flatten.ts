@@ -1,6 +1,125 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { CodeGraph, i32, u16, u32 } from "@modelscript/language";
+import type { CodeGraph, f64, i32, u16, u32, u8 } from "@modelscript/language";
+
+function matchesName(graph: CodeGraph, strId: u32, target: string): boolean {
+  if (strId == 0) return false;
+  const pool = graph.scope.pool;
+  if (strId >= pool.stringCount) return false;
+  const len = pool.stringLengths.get(strId);
+  if (len != (target.length as u32)) return false;
+  const start = pool.stringOffsets.get(strId);
+  for (let i: u32 = 0; i < len; i++) {
+    if (pool.charBuffer.get(start + i) != (target.charCodeAt(i) as u8)) return false;
+  }
+  return true;
+}
+
+function internAscii(graph: CodeGraph, s: string): u32 {
+  const pool = graph.scope.pool;
+  const len: u32 = s.length as u32;
+  for (let id: u32 = 1; id < pool.stringCount; id++) {
+    if (matchesName(graph, id, s)) return id;
+  }
+  const id = pool.stringCount++;
+  const start = pool.charOffset;
+  pool.stringOffsets.set(id, start);
+  pool.stringLengths.set(id, len);
+  for (let i: u32 = 0; i < len; i++) {
+    pool.charBuffer.set(start + i, s.charCodeAt(i) as u8);
+  }
+  pool.charOffset += len;
+  return id;
+}
+
+function isRealExpr(graph: CodeGraph, exprId: u32): boolean {
+  if (exprId == 0) return false;
+  const kind = graph.dae.exprData.get(exprId * 4 + 0);
+  if (kind == 2 /* RealLiteral */) return true;
+  if (kind == 1 /* IntLiteral */) return false;
+  if (kind == 0 /* Name */) {
+    const nameStrId = graph.dae.exprData.get(exprId * 4 + 1) as u32;
+    const vIdx = graph.dae.lookupVariableByName(nameStrId);
+    if (vIdx >= 0 && graph.dae.getVarType(vIdx as u32) == 0 /* VarType.Real */) {
+      return true;
+    }
+    return false;
+  }
+  if (kind == 12 /* Der */) return true;
+  if (kind == 14 /* Negate */) {
+    return isRealExpr(graph, graph.dae.exprData.get(exprId * 4 + 2) as u32);
+  }
+  if (kind == 6 /* Unary */) {
+    return isRealExpr(graph, graph.dae.exprData.get(exprId * 4 + 2) as u32);
+  }
+  if (kind == 5 /* Binary */) {
+    const left = graph.dae.exprData.get(exprId * 4 + 2) as u32;
+    const right = graph.dae.exprData.get(exprId * 4 + 3) as u32;
+    return isRealExpr(graph, left) || isRealExpr(graph, right);
+  }
+  if (kind == 7 /* Call */) {
+    return true;
+  }
+  return false;
+}
+
+function castToReal(graph: CodeGraph, exprId: u32): u32 {
+  if (exprId == 0) return 0;
+  const kind = graph.dae.exprData.get(exprId * 4 + 0);
+  if (kind == 1 /* IntLiteral */) {
+    const val = graph.dae.exprData.get(exprId * 4 + 1);
+    return graph.dae.addRealLiteral(val as f64);
+  }
+  if (kind == 14 /* Negate */) {
+    const operand = castToReal(graph, graph.dae.exprData.get(exprId * 4 + 2) as u32);
+    return graph.dae.addExpression(14 /* Negate */, 0, operand);
+  }
+  if (kind == 6 /* Unary */) {
+    const op = graph.dae.exprData.get(exprId * 4 + 1) as u32;
+    const operand = castToReal(graph, graph.dae.exprData.get(exprId * 4 + 2) as u32);
+    return graph.dae.addExpression(6 /* Unary */, op, operand);
+  }
+  if (kind == 5 /* Binary */) {
+    const op = graph.dae.exprData.get(exprId * 4 + 1) as u16;
+    const left = castToReal(graph, graph.dae.exprData.get(exprId * 4 + 2) as u32);
+    const right = castToReal(graph, graph.dae.exprData.get(exprId * 4 + 3) as u32);
+    return graph.dae.addBinaryExpr(op, left, right);
+  }
+  if (kind == 9 /* ArrayCtor */) {
+    const count = graph.dae.exprData.get(exprId * 4 + 1) as u32;
+    if (count == 0) return exprId;
+    const firstOrig = graph.dae.exprData.get(exprId * 4 + 2) as u32;
+    const firstCast = castToReal(graph, firstOrig);
+    const ctorId = graph.dae.addExpression(9 /* ArrayCtor */, count, firstCast, 0xffffffff);
+    for (let i: u32 = 1; i < count; i++) {
+      const orig = graph.dae.exprData.get((exprId + i) * 4 + 2) as u32;
+      const elemCast = castToReal(graph, orig);
+      graph.dae.addExpression(15 /* Tuple */, 0, elemCast, 0);
+    }
+    return ctorId;
+  }
+  return exprId;
+}
+
+function collectTopLevelExpressions(
+  graph: CodeGraph,
+  container: u32,
+  out: u32[],
+  prefixId: u32,
+  $: Record<string, u16>,
+): void {
+  if (container == 0) return;
+  let ch = graph.ast.getFirstChild(container);
+  while (ch != 0) {
+    const chType = graph.ast.getType(ch);
+    if (chType == $.expression) {
+      out.push(lowerExpression(graph, ch, prefixId, $));
+    } else {
+      collectTopLevelExpressions(graph, ch, out, prefixId, $);
+    }
+    ch = graph.ast.getNextSibling(ch);
+  }
+}
 
 /**
  * Recursively lowers an AST expression into the WASM DAE expression arena.
@@ -17,7 +136,85 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
     const rightId = lowerExpression(graph, rightNode, prefixId, $);
 
     const op = graph.ast.getBinaryOp(leftNode, rightNode);
-    return graph.dae.addBinaryExpr(op, leftId, rightId);
+
+    // Range expression: start : stop or start : step : stop
+    if (op == 18 /* BinOp.Colon */) {
+      const leftKind = graph.dae.exprData.get(leftId * 4 + 0);
+      const leftStep = graph.dae.exprData.get(leftId * 4 + 2);
+      if (leftKind == 10 /* Range */ && leftStep == 0xffffffff) {
+        const startId = graph.dae.exprData.get(leftId * 4 + 1) as u32;
+        const stepId = graph.dae.exprData.get(leftId * 4 + 3) as u32;
+        return graph.dae.addExpression(10 /* Range */, startId, stepId, rightId);
+      }
+      return graph.dae.addExpression(10 /* Range */, leftId, 0xffffffff, rightId);
+    }
+
+    // Algebraic simplification: e - 1 -> -1 + e
+    if (op == 1 /* BinOp.Sub */) {
+      const rightKind = graph.dae.exprData.get(rightId * 4 + 0);
+      const rightVal = graph.dae.exprData.get(rightId * 4 + 1);
+      if (rightKind == 1 /* IntLiteral */ && rightVal == 1) {
+        const negLitId = graph.dae.addExpression(1 /* IntLiteral */, -1 as u32);
+        return graph.dae.addBinaryExpr(0 /* BinOp.Add */, negLitId, leftId);
+      }
+    }
+
+    // Algebraic simplification: sin(x) / cos(x) -> tan(x)
+    if (op == 3 /* BinOp.Div */) {
+      const leftKind = graph.dae.exprData.get(leftId * 4 + 0);
+      const rightKind = graph.dae.exprData.get(rightId * 4 + 0);
+      if (leftKind == 7 /* Call */ && rightKind == 7 /* Call */) {
+        const leftNameId = graph.dae.exprData.get(leftId * 4 + 1) as u32;
+        const rightNameId = graph.dae.exprData.get(rightId * 4 + 1) as u32;
+        if (matchesName(graph, leftNameId, "sin") && matchesName(graph, rightNameId, "cos")) {
+          const leftArg = graph.dae.exprData.get(leftId * 4 + 2) as u32;
+          const rightArg = graph.dae.exprData.get(rightId * 4 + 2) as u32;
+          const leftArgCount = graph.dae.exprData.get(leftId * 4 + 3) as u32;
+          const rightArgCount = graph.dae.exprData.get(rightId * 4 + 3) as u32;
+          let sameArg = leftArg == rightArg;
+          if (!sameArg && leftArg != 0 && rightArg != 0) {
+            const k1 = graph.dae.exprData.get(leftArg * 4 + 0);
+            const k2 = graph.dae.exprData.get(rightArg * 4 + 0);
+            const d1 = graph.dae.exprData.get(leftArg * 4 + 1);
+            const d2 = graph.dae.exprData.get(rightArg * 4 + 1);
+            sameArg = k1 == k2 && d1 == d2;
+          }
+          if (leftArgCount == 1 && rightArgCount == 1 && sameArg) {
+            const tanNameId = internAscii(graph, "tan");
+            return graph.dae.addExpression(7 /* Call */, tanNameId, leftArg, 1);
+          }
+        }
+      }
+    }
+
+    // Algebraic simplification: x * x -> x ^ 2.0
+    if (op == 2 /* BinOp.Mul */) {
+      let same = leftId == rightId;
+      if (!same) {
+        const k1 = graph.dae.exprData.get(leftId * 4 + 0);
+        const k2 = graph.dae.exprData.get(rightId * 4 + 0);
+        const d1 = graph.dae.exprData.get(leftId * 4 + 1);
+        const d2 = graph.dae.exprData.get(rightId * 4 + 1);
+        same = k1 == 0 && k2 == 0 && d1 == d2;
+      }
+      if (same) {
+        const twoExpr = graph.dae.addRealLiteral(2.0);
+        return graph.dae.addBinaryExpr(4 /* BinOp.Pow */, leftId, twoExpr);
+      }
+    }
+
+    // Real operand coercion
+    const leftIsReal = isRealExpr(graph, leftId);
+    const rightIsReal = isRealExpr(graph, rightId);
+    let finalLeft = leftId;
+    let finalRight = rightId;
+    if (leftIsReal && !rightIsReal) {
+      finalRight = castToReal(graph, rightId);
+    } else if (!leftIsReal && rightIsReal) {
+      finalLeft = castToReal(graph, leftId);
+    }
+
+    return graph.dae.addBinaryExpr(op, finalLeft, finalRight);
   }
 
   // 2. Unary Expression (op operand)
@@ -45,19 +242,101 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
     }
   }
 
-  // 4. Literals: Integer
+  // 4. Function Call: name(args...)
+  let fnCallArgsNode: u32 = 0;
+  let fnRefNode: u32 = 0;
+  if (nodeType == $.function_call) {
+    fnRefNode = graph.ast.getChildByFieldId(node, "name");
+    fnCallArgsNode = graph.ast.getChildByFieldId(node, "args");
+  } else if (nodeType == $.primary) {
+    const ch1 = graph.ast.getFirstChild(node);
+    if (ch1 != 0) {
+      const ch2 = graph.ast.getNextSibling(ch1);
+      if (ch2 != 0 && graph.ast.getType(ch2) == $.function_call_args) {
+        fnRefNode = ch1;
+        fnCallArgsNode = ch2;
+      }
+    }
+  }
+  if (fnRefNode != 0 && fnCallArgsNode != 0) {
+    let fnNameStrId: u32 = 0;
+    for (const id of graph.ast.getDescendants(fnRefNode, $.identifier)) {
+      let leafId = id;
+      while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
+      const segStrId = graph.scope.internNode(leafId);
+      if (fnNameStrId == 0) {
+        fnNameStrId = segStrId;
+      } else {
+        fnNameStrId = graph.scope.concatPrefix(fnNameStrId, segStrId);
+      }
+    }
+    if (fnNameStrId == 0) {
+      let leaf = fnRefNode;
+      while (leaf != 0 && graph.ast.getFirstChild(leaf) != 0) leaf = graph.ast.getFirstChild(leaf);
+      fnNameStrId = graph.scope.internNode(leaf);
+    }
+
+    const argExprIds: u32[] = [];
+    collectTopLevelExpressions(graph, fnCallArgsNode, argExprIds, prefixId, $);
+
+    if (
+      matchesName(graph, fnNameStrId, "sin") ||
+      matchesName(graph, fnNameStrId, "cos") ||
+      matchesName(graph, fnNameStrId, "tan") ||
+      matchesName(graph, fnNameStrId, "exp") ||
+      matchesName(graph, fnNameStrId, "log") ||
+      matchesName(graph, fnNameStrId, "sqrt") ||
+      matchesName(graph, fnNameStrId, "asin") ||
+      matchesName(graph, fnNameStrId, "acos") ||
+      matchesName(graph, fnNameStrId, "atan") ||
+      matchesName(graph, fnNameStrId, "sinh") ||
+      matchesName(graph, fnNameStrId, "cosh") ||
+      matchesName(graph, fnNameStrId, "tanh")
+    ) {
+      for (let i = 0; i < argExprIds.length; i++) {
+        argExprIds[i] = castToReal(graph, argExprIds[i]);
+      }
+    }
+
+    if (argExprIds.length == 0) {
+      return graph.dae.addExpression(7 /* Call */, fnNameStrId, 0xffffffff, 0);
+    }
+    const callId = graph.dae.addExpression(7 /* Call */, fnNameStrId, argExprIds[0], argExprIds.length as u32);
+    for (let i = 1; i < argExprIds.length; i++) {
+      graph.dae.addExpression(15 /* Tuple */, 0, argExprIds[i], 0);
+    }
+    return callId;
+  }
+
+  // 5. Array Constructors: [e1, e2] or {e1, e2}
+  if (nodeType == $.primary || nodeType == $.expression) {
+    if (graph.ast.startsWith(node, "[") || graph.ast.startsWith(node, "{")) {
+      const elemIds: u32[] = [];
+      collectTopLevelExpressions(graph, node, elemIds, prefixId, $);
+      if (elemIds.length == 0) {
+        return graph.dae.addExpression(9 /* ArrayCtor */, 0, 0xffffffff, 0xffffffff);
+      }
+      const ctorId = graph.dae.addExpression(9 /* ArrayCtor */, elemIds.length as u32, elemIds[0], 0xffffffff);
+      for (let i = 1; i < elemIds.length; i++) {
+        graph.dae.addExpression(15 /* Tuple */, 0, elemIds[i], 0);
+      }
+      return ctorId;
+    }
+  }
+
+  // 6. Literals: Integer
   if (nodeType == $.unsigned_integer) {
     const val = graph.ast.parseInteger(node);
     return graph.dae.addExpression(1 /* IntLiteral */, val as u32);
   }
 
-  // 5. Literals: Real
+  // 7. Literals: Real
   if (nodeType == $.unsigned_real) {
     const val = graph.ast.parseReal(node);
     return graph.dae.addRealLiteral(val);
   }
 
-  // 6. Boolean literals
+  // 8. Boolean literals
   if (graph.ast.textEquals(node, "true")) {
     return graph.dae.addExpression(3 /* BoolLiteral */, 1);
   }
@@ -65,7 +344,13 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
     return graph.dae.addExpression(3 /* BoolLiteral */, 0);
   }
 
-  // 7. Check if node is an expression / primary / unsigned_number wrapper
+  // 9. Built-in variable: time
+  if (graph.ast.textEquals(node, "time")) {
+    const timeStrId = internAscii(graph, "time");
+    return graph.dae.addExpression(0 /* Name */, timeStrId);
+  }
+
+  // 10. Check if node is an expression / primary / unsigned_number wrapper
   if (nodeType == $.expression || nodeType == $.primary || nodeType == $.unsigned_number) {
     const firstChild = graph.ast.getFirstChild(node);
     if (firstChild != 0 && graph.ast.getNextSibling(firstChild) == 0) {
@@ -90,9 +375,29 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
     }
   }
 
-  // 8. Identifiers / Component References (Variables)
+  // 11. Subscripts: arr[subscripts]
+  let subNode: u32 = 0;
+  if ($.array_subscripts != 0) {
+    for (const s of graph.ast.getDescendants(node, $.array_subscripts)) {
+      subNode = s;
+      break;
+    }
+  }
+
+  // 12. Identifiers / Component References (Variables)
   let nameStrId: u32 = 0;
   for (const id of graph.ast.getDescendants(node, $.identifier)) {
+    if (subNode != 0) {
+      let isInsideSub = false;
+      for (const anc of graph.ast.getAncestors(id, 0)) {
+        if (anc == subNode) {
+          isInsideSub = true;
+          break;
+        }
+      }
+      if (isInsideSub) continue;
+    }
+
     let leafId = id;
     while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
     const segStrId = graph.scope.internNode(leafId);
@@ -109,6 +414,20 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
   }
 
   const fullNameId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, nameStrId) : nameStrId;
+
+  if (subNode != 0) {
+    const subIds: u32[] = [];
+    collectTopLevelExpressions(graph, subNode, subIds, prefixId, $);
+    if (subIds.length > 0) {
+      const baseVarExpr = graph.dae.addExpression(0 /* Name */, fullNameId);
+      const subId = graph.dae.addExpression(8 /* Subscript */, baseVarExpr, subIds[0], subIds.length as u32);
+      for (let i = 1; i < subIds.length; i++) {
+        graph.dae.addExpression(15 /* Tuple */, 0, subIds[i], 0);
+      }
+      return subId;
+    }
+  }
+
   return graph.dae.addExpression(0 /* Name / Var */, fullNameId);
 }
 
@@ -401,8 +720,13 @@ export const modelicaFlatteningPasses = [
             }
           }
           if (lhsNode != 0 && rhsNode != 0) {
-            const lhsExprId = lowerExpression(graph, lhsNode, prefixId, $);
-            const rhsExprId = lowerExpression(graph, rhsNode, prefixId, $);
+            let lhsExprId = lowerExpression(graph, lhsNode, prefixId, $);
+            let rhsExprId = lowerExpression(graph, rhsNode, prefixId, $);
+            if (isRealExpr(graph, lhsExprId) && !isRealExpr(graph, rhsExprId)) {
+              rhsExprId = castToReal(graph, rhsExprId);
+            } else if (!isRealExpr(graph, lhsExprId) && isRealExpr(graph, rhsExprId)) {
+              lhsExprId = castToReal(graph, lhsExprId);
+            }
             graph.dae.addEquation(0, lhsExprId, rhsExprId); // EqKind.Simple
           }
         }
@@ -424,47 +748,8 @@ export const modelicaFlatteningPasses = [
           const lhsNode = graph.ast.getChildByFieldId(conn, "lhs");
           const rhsNode = graph.ast.getChildByFieldId(conn, "rhs");
           if (lhsNode != 0 && rhsNode != 0) {
-            let lhsStrId: u32 = 0;
-            for (const id of graph.ast.getDescendants(lhsNode, $.identifier)) {
-              let leafId = id;
-              while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
-              const segStrId = graph.scope.internNode(leafId);
-              if (lhsStrId == 0) {
-                lhsStrId = segStrId;
-              } else {
-                lhsStrId = graph.scope.concatPrefix(lhsStrId, segStrId);
-              }
-            }
-            if (lhsStrId == 0) {
-              let targetLhs = lhsNode;
-              while (targetLhs != 0 && graph.ast.getFirstChild(targetLhs) != 0)
-                targetLhs = graph.ast.getFirstChild(targetLhs);
-              lhsStrId = graph.scope.internNode(targetLhs);
-            }
-
-            let rhsStrId: u32 = 0;
-            for (const id of graph.ast.getDescendants(rhsNode, $.identifier)) {
-              let leafId = id;
-              while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
-              const segStrId = graph.scope.internNode(leafId);
-              if (rhsStrId == 0) {
-                rhsStrId = segStrId;
-              } else {
-                rhsStrId = graph.scope.concatPrefix(rhsStrId, segStrId);
-              }
-            }
-            if (rhsStrId == 0) {
-              let targetRhs = rhsNode;
-              while (targetRhs != 0 && graph.ast.getFirstChild(targetRhs) != 0)
-                targetRhs = graph.ast.getFirstChild(targetRhs);
-              rhsStrId = graph.scope.internNode(targetRhs);
-            }
-
-            const fullLhsId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, lhsStrId) : lhsStrId;
-            const fullRhsId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, rhsStrId) : rhsStrId;
-
-            const lhsExprId = graph.dae.addExpression(0, fullLhsId);
-            const rhsExprId = graph.dae.addExpression(0, fullRhsId);
+            const lhsExprId = lowerExpression(graph, lhsNode, prefixId, $);
+            const rhsExprId = lowerExpression(graph, rhsNode, prefixId, $);
             graph.dae.addEquation(6, lhsExprId, rhsExprId); // EqKind.Connect
           }
         }

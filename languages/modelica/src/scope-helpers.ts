@@ -1,4 +1,5 @@
 import { type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/language/compiler";
+import { Cst } from "../src-gen/bindings.js";
 
 export interface ScopeData {
   directByName: Record<string, SymbolId>;
@@ -99,15 +100,10 @@ export function resolveSimpleNameHelper(
     const self = db.symbol(classId);
     const meta = self?.metadata as Record<string, unknown>;
     if (self && !meta?.isPredefined) {
-      const cst = db.cstNode(classId) as {
-        childForFieldName?: (fieldName: string) => {
-          type?: string;
-          childForFieldName?: (subFieldName: string) => { text?: string } | null;
-        } | null;
-      } | null;
-      const classSpecifier = cst?.childForFieldName?.("classSpecifier");
-      if (classSpecifier?.type === "ShortClassSpecifier") {
-        const typeSpec = classSpecifier.childForFieldName?.("typeSpecifier");
+      const cst = db.cstNode(classId);
+      const classSpecifier = Cst.ClassDefinition.classSpecifier(cst as any);
+      if (classSpecifier?.type === "ShortClassSpecifier" || classSpecifier?.type === "short_class_specifier") {
+        const typeSpec = Cst.ShortClassSpecifier.typeSpecifier(classSpecifier);
         const typeName = typeSpec?.text;
         if (typeName && self.parentId !== null) {
           const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);

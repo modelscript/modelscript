@@ -183,6 +183,11 @@ export function performBltTransformationArena(
   stateVars?: Set<string | number>,
   dummyDerivatives?: Set<string | number>,
 ): ArenaBltResult {
+  const cached = (arena as any).cachedBlt;
+  if (cached && cached.varCount === arena.varCount && cached.eqCount === arena.eqCount) {
+    return cached;
+  }
+
   if (!isInitialized) {
     throw new Error("BLT WASM engine not initialized. Call initBltWasm() first.");
   }
@@ -304,8 +309,16 @@ export function performBltTransformationArena(
     blocks.push({ eqIdxs: bEqs, vars: bVars });
   }
 
-  return {
+  const result = {
     sortedEquations,
     blocks,
   };
+
+  (arena as any).cachedBlt = {
+    ...result,
+    varCount: arena.varCount,
+    eqCount: arena.eqCount,
+  };
+
+  return result;
 }

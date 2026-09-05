@@ -598,12 +598,6 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (className: string, errorDetail: string) => `Class specialization violation: ${className} ${errorDetail}.`,
   },
-  BUILTIN_EXTENDS_WITH_ELEMENTS: {
-    code: 4051,
-    rule: "builtin-extends-with-elements",
-    severity: "error",
-    message: (typeName: string) => `A class extending from builtin type ${typeName} may not have other elements.`,
-  },
   NEGATIVE_DIMENSION: {
     code: 4041,
     rule: "negative-dimension",
@@ -667,6 +661,37 @@ export const ModelicaErrorCode = {
     rule: "empty-array-constructor",
     severity: "error",
     message: () => "Parse error: Empty array constructors are not valid in Modelica.",
+  },
+  BREAK_ON_NON_COMPONENT: {
+    code: 4049,
+    rule: "break-on-non-component",
+    severity: "error",
+    message: (name: string) => `Invalid use of break on non-component '${name}'.`,
+  },
+  BREAK_COMPONENT_INVALID_TYPE: {
+    code: 4050,
+    rule: "break-component-invalid-type",
+    severity: "error",
+    message: (name: string) =>
+      `Invalid use of break on component '${name}', component must be a model, block, or connector.`,
+  },
+  BREAK_CONNECT_NOT_FOUND: {
+    code: 4051,
+    rule: "break-connect-not-found",
+    severity: "error",
+    message: (connText: string) => `No matching element found for '${connText}'.`,
+  },
+  REDECLARE_FINAL_COMPONENT: {
+    code: 4052,
+    rule: "redeclare-final-component",
+    severity: "error",
+    message: (name: string) => `Redeclaration of final component ${name} is not allowed.`,
+  },
+  REDECLARE_CONSTANT_COMPONENT: {
+    code: 4053,
+    rule: "redeclare-constant-component",
+    severity: "error",
+    message: (name: string) => `Redeclaration of constant component ${name} is not allowed.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

@@ -250,7 +250,7 @@ export class WasmQueryEngine {
 
   public resolveEntry(id: SymbolId): SymbolEntry | undefined {
     if (id < 0) {
-      return this.virtualEntries.get(id);
+      return this.virtualEntries.get(id) ?? this.index.symbols.get(id);
     }
     return this.index.symbols.get(id);
   }
@@ -353,16 +353,23 @@ export class WasmQueryEngine {
     this.tree = tree;
   }
 
-  public updateIndex(newIndex: SymbolIndex, _resourceId?: string): void {
-    const changedIds = new Set<SymbolId>();
-    for (const [id, entry] of newIndex.symbols) {
-      const old = this.index.symbols.get(id);
-      if (!old || old.startByte !== entry.startByte || old.endByte !== entry.endByte) {
-        changedIds.add(id);
+  public updateIndex(
+    newIndex: SymbolIndex,
+    _resourceId?: string,
+    explicitChangedIds?: Set<SymbolId>,
+    structuralChangedIds?: Set<SymbolId>,
+  ): void {
+    const changedIds = explicitChangedIds ? new Set<SymbolId>(explicitChangedIds) : new Set<SymbolId>();
+    if (!explicitChangedIds || explicitChangedIds.size === 0) {
+      for (const [id, entry] of newIndex.symbols) {
+        const old = this.index.symbols.get(id);
+        if (!old || old.startByte !== entry.startByte || old.endByte !== entry.endByte) {
+          changedIds.add(id);
+        }
       }
     }
     this.index = newIndex;
-    this.invalidate(changedIds);
+    this.invalidate(changedIds, structuralChangedIds);
   }
 
   public async preflight(symbolIds: SymbolId[], queryNames?: string[]): Promise<void> {

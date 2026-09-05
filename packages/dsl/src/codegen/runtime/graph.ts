@@ -935,6 +935,7 @@ export class AstAPI {
           }
           if (ch == 97 /* 'a' */) return 10; // and
           if (ch == 111 /* 'o' */) return 11; // or
+          if (ch == 58 /* ':' */) return 18; // BinOp.Colon
           scanOffset += step;
       }
       return 0;

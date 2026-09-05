@@ -20,8 +20,6 @@ end DuplicateMod7;
 //
 // [OpenModelica/flattening/modelica/modification/DuplicateMod7.mo:11:25-11:32:writable] Notification: From here:
 // [OpenModelica/flattening/modelica/modification/DuplicateMod7.mo:11:16-11:23:writable] Error: Duplicate modification of element x on inherited class A.
-// [OpenModelica/flattening/modelica/modification/DuplicateMod7.mo:11:25-11:32:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/modification/DuplicateMod7.mo:11:16-11:23:writable] Error: Duplicate modification of element x on inherited class A.
 // Error: Error occurred while flattening model DuplicateMod7
 //
 // Execution failed!

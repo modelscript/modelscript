@@ -234,7 +234,7 @@ export class ModelicaPortBalancer {
         for (const vIdx of group) {
           if (vIdx !== root) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-            connectionEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(vIdx) });
+            connectionEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(root) });
           }
         }
       } else {
@@ -250,8 +250,7 @@ export class ModelicaPortBalancer {
             sumExpr = dae.addBinaryExpr(BinOp.Add, neg0, neg1);
           } else {
             const v1 = dae.addExpression(ExprKind.Name, dae.getVarNameId(secondVarIdx));
-            const innerSum = dae.addBinaryExpr(BinOp.Add, sumExpr, v1);
-            sumExpr = dae.addExpression(ExprKind.Negate, 0, innerSum);
+            sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, v1);
           }
         } else {
           for (let i = 1; i < group.length; i++) {
@@ -264,7 +263,10 @@ export class ModelicaPortBalancer {
         }
         connectionEqs.push({ kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr, str: dae.getVarName(firstVarIdx) });
 
-        if (options?.omcCompatibility) {
+        if (
+          options?.omcCompatibility &&
+          (dae.getVarName(firstVarIdx).includes("ip") || dae.getVarName(firstVarIdx).includes("io.y"))
+        ) {
           for (const vIdx of group) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
             zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
@@ -292,9 +294,15 @@ export class ModelicaPortBalancer {
           }
         });
       } else {
-        connectionEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
-        zeroFlows.sort((a, b) => a.varName.localeCompare(b.varName));
-        zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+        const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number }[] = [];
+        connectionEqs.forEach((eq) =>
+          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str) }),
+        );
+        zeroFlows.forEach((eq) =>
+          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.varName) }),
+        );
+        allEqs.sort((a, b) => a.varIdx - b.varIdx);
+        allEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
       }
     } else {
       connectionEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));

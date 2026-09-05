@@ -132,6 +132,7 @@ export enum BinOp {
   Gt = 15,
   Lte = 16,
   Gte = 17,
+  Colon = 18,
 }
 
 export enum UnaryOp {
@@ -823,6 +824,26 @@ export class DaeBuilder {
   @inline
   addCall(funcId: i32, firstArg: u32, argCount: u32): u32 {
     return this.addExpression(ExprKind.Call, funcId as u32, firstArg, argCount);
+  }
+
+  @inline
+  getExprKind(exprId: u32): i32 {
+    return this.getExprData().get(exprId * 4 + 0);
+  }
+
+  @inline
+  getExprData1(exprId: u32): u32 {
+    return this.getExprData().get(exprId * 4 + 1) as u32;
+  }
+
+  @inline
+  getExprLeft(exprId: u32): u32 {
+    return this.getExprData().get(exprId * 4 + 2) as u32;
+  }
+
+  @inline
+  getExprRight(exprId: u32): u32 {
+    return this.getExprData().get(exprId * 4 + 3) as u32;
   }
 
   @inline

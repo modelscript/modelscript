@@ -16,7 +16,7 @@ class ModifyUnknown1 = A(b = 5) annotation(__OpenModelica_commandLineOptions="-d
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// Error: In modifier (b = 5), class or component b not found in <ModifyUnknown1>.
+// [OpenModelica/flattening/modelica/modification/ModifyUnknown1.mo:12:26-12:27:writable] Error: In modifier (b = 5), class or component b not found in <ModifyUnknown1>.
 // Error: Error occurred while flattening model ModifyUnknown1
 //
 // Execution failed!

@@ -160,6 +160,7 @@ export interface ScopeAPI {
   equals(id1: u32, id2: u32): boolean;
   hasPrefix(id: u32, prefixId: u32): boolean;
   getSuffixAfterPrefix(id: u32, prefixId: u32): u32;
+  pool: any;
 }
 
 /**
@@ -276,6 +277,13 @@ export interface DaeAPI {
   getVarShapeDim(varIdx: u32, dimIdx: u32): i32;
   extractEquations(rootId: u32): void;
   reset(): void;
+  exprData: any;
+  lookupVariableByName(nameId: u32): i32;
+  getExprKind(exprId: u32): i32;
+  getExprData1(exprId: u32): u32;
+  getExprLeft(exprId: u32): u32;
+  getExprRight(exprId: u32): u32;
+  addCall(funcId: i32, firstArg: u32, argCount: u32): u32;
 }
 
 /**
@@ -365,6 +373,7 @@ export enum BinOp {
   Gt = 15,
   Lte = 16,
   Gte = 17,
+  Colon = 18,
 }
 
 export enum UnaryOp {

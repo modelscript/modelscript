@@ -547,6 +547,19 @@ async function main(): Promise<void> {
         continue;
       }
 
+      // Skip Bug3817.mo — large library package loaded and tested via Bug3817.mos
+      if (moFile === "Bug3817.mo") {
+        skippedResults.push({
+          name: moFile,
+          file: filePath,
+          status: "skipped",
+          duration: 0,
+          cpuTime: 0,
+          message: "Skipped: Bug3817.mo is a large library package tested via Bug3817.mos",
+        });
+        continue;
+      }
+
       allQueued.push({ testCase, suiteName, suiteDir });
     }
   }

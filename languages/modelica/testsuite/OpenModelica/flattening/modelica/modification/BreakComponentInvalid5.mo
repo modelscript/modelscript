@@ -21,8 +21,7 @@ end BreakComponentInvalid5;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid5.mo:16:13-16:20:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid5.mo:12:3-12:6:writable] Error: Invalid use of break on component 'r', component must be a model, block, or connector.
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid5.mo:16:13-16:20:writable] Error: Invalid use of break on component 'r', component must be a model, block, or connector.
 //
 // Execution failed!
 // endResult

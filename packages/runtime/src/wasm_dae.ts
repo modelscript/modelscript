@@ -208,6 +208,7 @@ export enum BinOp {
   Gt = 15,
   Lte = 16,
   Gte = 17,
+  Colon = 18,
 }
 
 /** Unary operator tag. */
@@ -398,6 +399,16 @@ export class WasmDaeBridge implements IDaeBuilder {
   private forMeta = new Map<number, ForEquationMeta>();
   private ifMeta = new Map<number, IfEquationMeta>();
   public stateMachines: ArenaStateMachine[] = [];
+  private eqSourceRanges = new Map<number, { startByte: number; endByte: number }>();
+  private varSourceRanges = new Map<number, { startByte: number; endByte: number }>();
+  private paramNameToEqs = new Map<string, Set<number>>();
+  public origEqRhs = new Map<number, number>();
+  public cachedBlt?: {
+    sortedEquations: number[];
+    blocks: { eqIdxs: number[]; vars: number[] }[];
+    varCount: number;
+    eqCount: number;
+  };
 
   constructor(wasmExportsOrInterner?: any, nameOrPtr: string | number = "Model", desc = "", interner?: StringInterner) {
     if (
@@ -594,6 +605,14 @@ export class WasmDaeBridge implements IDaeBuilder {
     return this.varExpressions.get(varIdx) ?? (this.getVarAttrExpr(varIdx, VarAttrKind.Start) || undefined);
   }
 
+  hasExplicitVarExpression(varIdx: number): boolean {
+    return this.varExpressions.has(varIdx);
+  }
+
+  getExplicitVarExpression(varIdx: number): number | undefined {
+    return this.varExpressions.get(varIdx);
+  }
+
   setVarExpression(varIdx: number, exprId: number): void {
     this.varExpressions.set(varIdx, exprId);
     this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
@@ -765,6 +784,10 @@ export class WasmDaeBridge implements IDaeBuilder {
     }
   }
 
+  getVarAttr(varIdx: number, attrName: string): number | undefined {
+    return this.varAttrs.get(varIdx)?.get(attrName);
+  }
+
   getVarAttrExprId(varIdx: number, attrName: string): number | undefined {
     return this.varAttrs.get(varIdx)?.get(attrName);
   }
@@ -780,6 +803,12 @@ export class WasmDaeBridge implements IDaeBuilder {
       this.varAttrs.set(varIdx, map);
     }
     map.set(attrName, exprId);
+    if (attrName === "start") {
+      this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
+      if (this.getExprKind(exprId) === ExprKind.RealLiteral) {
+        this.setVarStartValue(varIdx, this.getExprRealValue(exprId));
+      }
+    }
   }
 
   addAlias(varIdx: number, targetNameId: number): void {
@@ -816,7 +845,31 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   addEquation(kind: EqKind, lhsId: number, rhsId: number, auxId = 0xffffffff): number {
     if (!this.exports?.dae_addEquation) return -1;
-    return this.exports.dae_addEquation(this.ptr, kind, lhsId, rhsId, auxId);
+    const eqIdx = this.exports.dae_addEquation(this.ptr, kind, lhsId, rhsId, auxId);
+    if (eqIdx >= 0) {
+      this.origEqRhs.set(eqIdx, rhsId);
+      if (rhsId >= 0) {
+        const names = this.collectExprVarNames(rhsId);
+        for (const name of names) {
+          this.registerParamEquationDep(name, eqIdx);
+        }
+      }
+      if (lhsId >= 0) {
+        const names = this.collectExprVarNames(lhsId);
+        for (const name of names) {
+          this.registerParamEquationDep(name, eqIdx);
+        }
+      }
+    }
+    return eqIdx;
+  }
+
+  getOrigEqRhs(eqId: number): number {
+    return this.origEqRhs.get(eqId) ?? this.getEqRhs(eqId);
+  }
+
+  setOrigEqRhs(eqId: number, rhs: number): void {
+    this.origEqRhs.set(eqId, rhs);
   }
 
   setEqLhs(eqId: number, lhs: number): void {
@@ -829,6 +882,188 @@ export class WasmDaeBridge implements IDaeBuilder {
     if (this.exports?.dae_setEqRhs) {
       this.exports.dae_setEqRhs(this.ptr, eqId, rhs);
     }
+  }
+
+  setEqSourceRange(eqIdx: number, startByte: number, endByte: number): void {
+    this.eqSourceRanges.set(eqIdx, { startByte, endByte });
+  }
+
+  getEqSourceRange(eqIdx: number): { startByte: number; endByte: number } | undefined {
+    return this.eqSourceRanges.get(eqIdx);
+  }
+
+  findEqAtRange(startByte: number, endByte: number): number {
+    for (const [idx, range] of this.eqSourceRanges.entries()) {
+      if (startByte >= range.startByte && endByte <= range.endByte) {
+        return idx;
+      }
+      if (startByte < range.endByte && endByte > range.startByte) {
+        return idx;
+      }
+    }
+    return -1;
+  }
+
+  setVarSourceRange(varIdx: number, startByte: number, endByte: number): void {
+    this.varSourceRanges.set(varIdx, { startByte, endByte });
+  }
+
+  getVarSourceRange(varIdx: number): { startByte: number; endByte: number } | undefined {
+    return this.varSourceRanges.get(varIdx);
+  }
+
+  findVarAtRange(startByte: number, endByte: number): number {
+    for (const [idx, range] of this.varSourceRanges.entries()) {
+      if (startByte >= range.startByte && endByte <= range.endByte) {
+        return idx;
+      }
+      if (startByte < range.endByte && endByte > range.startByte) {
+        return idx;
+      }
+    }
+    return -1;
+  }
+
+  patchVarAttrBatch(varIndices: number[], attrName: string, attrExprId: number): void {
+    for (const idx of varIndices) {
+      this.setVarAttr(idx, attrName, attrExprId);
+    }
+  }
+
+  shiftSourceRanges(afterByte: number, delta: number): void {
+    if (delta === 0) return;
+    for (const [idx, range] of this.eqSourceRanges.entries()) {
+      if (range.startByte > afterByte) {
+        this.eqSourceRanges.set(idx, {
+          startByte: range.startByte + delta,
+          endByte: range.endByte + delta,
+        });
+      }
+    }
+    for (const [idx, range] of this.varSourceRanges.entries()) {
+      if (range.startByte > afterByte) {
+        this.varSourceRanges.set(idx, {
+          startByte: range.startByte + delta,
+          endByte: range.endByte + delta,
+        });
+      }
+    }
+  }
+
+  registerParamEquationDep(paramName: string, eqIdx: number): void {
+    let set = this.paramNameToEqs.get(paramName);
+    if (!set) {
+      set = new Set<number>();
+      this.paramNameToEqs.set(paramName, set);
+    }
+    set.add(eqIdx);
+  }
+
+  getEquationsReferencingParam(paramName: string): number[] {
+    const set = this.paramNameToEqs.get(paramName);
+    if (set && set.size > 0) {
+      return Array.from(set);
+    }
+    const eqs: number[] = [];
+    for (let i = 0; i < this.eqCount; i++) {
+      const lhs = this.getEqLhs(i);
+      const rhs = this.getEqRhs(i);
+      if (this.exprReferencesName(lhs, paramName) || this.exprReferencesName(rhs, paramName)) {
+        eqs.push(i);
+      }
+    }
+    return eqs;
+  }
+
+  exprReferencesName(exprId: number, name: string): boolean {
+    if (exprId < 0) return false;
+    const kind = this.getExprKind(exprId);
+    if (kind === ExprKind.Name) {
+      const varName = this.interner.resolve(this.getExprData1(exprId));
+      return varName === name || varName.startsWith(`${name}[`);
+    }
+    if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+      return this.exprReferencesName(this.getExprLeft(exprId), name);
+    }
+    if (kind === ExprKind.Der || kind === ExprKind.Pre) {
+      return this.exprReferencesName(this.getExprData1(exprId), name);
+    }
+    if (kind === ExprKind.Binary) {
+      return (
+        this.exprReferencesName(this.getExprLeft(exprId), name) ||
+        this.exprReferencesName(this.getExprRight(exprId), name)
+      );
+    }
+    if (kind === ExprKind.IfElse) {
+      return (
+        this.exprReferencesName(this.getExprData1(exprId), name) ||
+        this.exprReferencesName(this.getExprLeft(exprId), name) ||
+        this.exprReferencesName(this.getExprRight(exprId), name)
+      );
+    }
+    if (kind === ExprKind.Call) {
+      const argCount = this.getExprRight(exprId);
+      if (argCount > 0) {
+        if (this.exprReferencesName(this.getExprLeft(exprId), name)) return true;
+        for (let i = 1; i < argCount; i++) {
+          if (this.exprReferencesName(this.getExprLeft(exprId + i), name)) return true;
+        }
+      }
+    }
+    if (kind === ExprKind.ArrayCtor) {
+      const count = this.getExprData1(exprId);
+      if (count > 0) {
+        if (this.exprReferencesName(this.getExprLeft(exprId), name)) return true;
+        for (let i = 1; i < count; i++) {
+          if (this.exprReferencesName(this.getExprLeft(exprId + i), name)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  collectExprVarNames(
+    exprId: number,
+    out: Set<string> = new Set<string>(),
+    visited: Set<number> = new Set<number>(),
+  ): Set<string> {
+    if (exprId <= 0 || visited.has(exprId)) return out;
+    visited.add(exprId);
+    const kind = this.getExprKind(exprId);
+    if (kind === ExprKind.Name) {
+      const name = this.interner.resolve(this.getExprData1(exprId));
+      if (name) out.add(name);
+      return out;
+    }
+    if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+      this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+    } else if (kind === ExprKind.Der || kind === ExprKind.Pre) {
+      this.collectExprVarNames(this.getExprData1(exprId), out, visited);
+    } else if (kind === ExprKind.Binary) {
+      this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+      this.collectExprVarNames(this.getExprRight(exprId), out, visited);
+    } else if (kind === ExprKind.IfElse) {
+      this.collectExprVarNames(this.getExprData1(exprId), out, visited);
+      this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+      this.collectExprVarNames(this.getExprRight(exprId), out, visited);
+    } else if (kind === ExprKind.Call) {
+      const argCount = this.getExprRight(exprId);
+      if (argCount > 0) {
+        this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+        for (let i = 1; i < argCount; i++) {
+          this.collectExprVarNames(this.getExprLeft(exprId + i), out, visited);
+        }
+      }
+    } else if (kind === ExprKind.ArrayCtor) {
+      const count = this.getExprData1(exprId);
+      if (count > 0) {
+        this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+        for (let i = 1; i < count; i++) {
+          this.collectExprVarNames(this.getExprLeft(exprId + i), out, visited);
+        }
+      }
+    }
+    return out;
   }
 
   getEqKind(eqId: number): EqKind {
@@ -1447,6 +1682,17 @@ export class WasmDaeBridge implements IDaeBuilder {
     for (const [k, v] of this.ifMeta)
       copy.ifMeta.set(k, { ...v, thenEquations: [...v.thenEquations], elseIfClauses: [...v.elseIfClauses] });
     copy.stateMachines = this.stateMachines.map((sm) => ({ ...sm }));
+    for (const [k, v] of this.eqSourceRanges) copy.eqSourceRanges.set(k, { ...v });
+    for (const [k, v] of this.varSourceRanges) copy.varSourceRanges.set(k, { ...v });
+    for (const [k, v] of this.paramNameToEqs) copy.paramNameToEqs.set(k, new Set(v));
+    if (this.cachedBlt) {
+      copy.cachedBlt = {
+        sortedEquations: [...this.cachedBlt.sortedEquations],
+        blocks: this.cachedBlt.blocks.map((b) => ({ eqIdxs: [...b.eqIdxs], vars: [...b.vars] })),
+        varCount: this.cachedBlt.varCount,
+        eqCount: this.cachedBlt.eqCount,
+      };
+    }
 
     for (let i = 0; i < this.varCount; i++) {
       copy.addVariable(
@@ -1460,6 +1706,9 @@ export class WasmDaeBridge implements IDaeBuilder {
     }
     for (let i = 0; i < this.eqCount; i++) {
       copy.addEquation(this.getEqKind(i), this.getEqLhs(i), this.getEqRhs(i), this.getEqAux(i));
+    }
+    for (const [k, v] of this.origEqRhs) {
+      copy.origEqRhs.set(k, v);
     }
     for (let i = 0; i < this.exprCount; i++) {
       copy.addExpression(this.getExprKind(i), this.getExprData1(i), this.getExprLeft(i), this.getExprRight(i));

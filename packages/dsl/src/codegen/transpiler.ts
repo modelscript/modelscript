@@ -674,6 +674,12 @@ export function transpileQuery(
         return ts.factory.createBinaryExpression(targetObj, ts.SyntaxKind.EqualsEqualsToken, arg);
       }
 
+      // 4b. BigInt literal (0n, 31n) -> Numeric literal for AssemblyScript compatibility
+      if (ts.isBigIntLiteral(node)) {
+        const text = node.text.replace(/n$/, "");
+        return ts.factory.createNumericLiteral(text);
+      }
+
       // 5. === -> == and !== -> != (AssemblyScript compatibility)
       if (context !== "subtyping" && ts.isBinaryExpression(node)) {
         if (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) {

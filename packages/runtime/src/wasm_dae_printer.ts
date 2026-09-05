@@ -203,12 +203,12 @@ export class ArenaDAEPrinter {
           this.out.write("0.0");
           break;
         }
-        if (Number.isInteger(v) && Math.abs(v) < 1e7) {
+        if (Number.isInteger(v) && Math.abs(v) < 1e5) {
           this.out.write(v.toFixed(1));
           break;
         }
         let s: string;
-        if (Number.isInteger(v) && Math.abs(v) >= 1e7) s = v.toExponential();
+        if (Number.isInteger(v) && Math.abs(v) >= 1e5) s = v.toExponential();
         else if (Math.abs(v) < 0.001 && Math.abs(v) > 0) s = v.toExponential();
         else s = v.toString();
         this.out.write(s.replace(/e\+/g, "e"));
@@ -796,7 +796,9 @@ export class ArenaDAEPrinter {
     }
 
     // Expression (binding)
-    const expr = a.getVarExpression(idx);
+    const expr = (a as any).getExplicitVarExpression
+      ? (a as any).getExplicitVarExpression(idx)
+      : a.getVarExpression(idx);
     if (expr != null && typeof expr === "number" && expr >= 0) {
       this.out.write(" = ");
       this.printExpr(expr as number);
@@ -1221,7 +1223,9 @@ export class ArenaDAEPrinter {
         if (varName) {
           const varIdx = a.getVarIdxByName(varName);
           if (varIdx >= 0) {
-            const varExpr = a.getVarExpression(varIdx);
+            const varExpr = (a as any).getExplicitVarExpression
+              ? (a as any).getExplicitVarExpression(varIdx)
+              : a.getVarExpression(varIdx);
             if (varExpr === a.getEqRhs(idx)) {
               return true;
             }

@@ -90,7 +90,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
   missingInner: {
     nodes: ["component_clause"],
     severity: "warning",
-    code: 0,
+    code: 2094,
     message: (target) => `No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let isOuter = false;

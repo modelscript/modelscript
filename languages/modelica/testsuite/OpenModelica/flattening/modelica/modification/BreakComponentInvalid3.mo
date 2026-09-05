@@ -20,6 +20,7 @@ end BreakComponentInvalid3;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid3.mo:7:3-7:23:writable] Error: Variable 'parameter Real x = 0' in package must be declared as constant.
 // [OpenModelica/flattening/modelica/modification/BreakComponentInvalid3.mo:15:13-15:20:writable] Error: Modified element x not found in class A.
 //
 // Execution failed!

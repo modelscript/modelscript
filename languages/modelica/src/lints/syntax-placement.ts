@@ -1,8 +1,10 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
 import {
+  findClassByName,
   getExpressionVariability,
   hasTypePrefix,
   isClassKind,
+  isDescendantOfInnerClass,
   isElementProtected,
   VARIABILITY_CONTINUOUS,
 } from "./helpers.js";
@@ -314,17 +316,564 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   },
 
   /**
+   * M4026-notification: Notification for final override.
+   */
+  finalOverrideNotification: {
+    nodes: ["class_modification", "class_or_inheritance_modification"],
+    severity: "info",
+    code: 2090,
+    message: () => `From here:`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (type == $.component_clause1 || type == $.component_clause || type == $.extends_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const mod of db.ast.getDescendants(node, $.element_modification)) {
+        let isDirect = true;
+        for (const anc of db.ast.getAncestors(mod, 0)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            isDirect = false;
+            break;
+          }
+        }
+        if (!isDirect) continue;
+
+        let nameNode = db.ast.getChildByFieldId(mod, "name");
+        if (nameNode == 0) {
+          for (const n of db.ast.getDescendants(mod, $.name)) {
+            nameNode = n;
+            break;
+          }
+        }
+        if (nameNode == 0) continue;
+
+        let firstId = nameNode;
+        if (db.ast.getType(nameNode) != $.identifier) {
+          for (const id of db.ast.getDescendants(nameNode, $.identifier)) {
+            firstId = id;
+            break;
+          }
+        }
+
+        let foundElem: u32 = 0;
+        for (const el of db.ast.getDescendants(targetClass, $.element)) {
+          if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
+          let declId: u32 = 0;
+          for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            for (const id of db.ast.getDescendants(decl, $.identifier)) {
+              declId = id;
+              break;
+            }
+            break;
+          }
+          if (declId != 0 && db.ast.textEqualsNode(firstId, declId)) {
+            let ch = db.ast.getFirstChild(el);
+            while (ch != 0) {
+              if (db.ast.textEquals(ch, "final")) {
+                foundElem = el;
+                break;
+              }
+              ch = db.ast.getNextSibling(ch);
+            }
+            break;
+          }
+        }
+
+        if (foundElem != 0) {
+          const modClause = db.ast.getChildByFieldId(mod, "modification");
+          if (modClause != 0) {
+            db.diagnostic(foundElem);
+            return;
+          }
+        }
+      }
+    },
+  },
+
+  /**
    * M4026: Trying to override a final element.
    */
   finalOverride: {
-    nodes: ["modification"],
+    nodes: ["class_modification", "class_or_inheritance_modification"],
     severity: "error",
     code: 4026,
-    message: (target) => `Trying to override final element '${target.text}' with modifier.`,
-    query: (db: CodeGraph, node: u32) => {
-      const symId = db.scope.resolve(node);
-      if (symId != 0 && db.model.hasFlag(symId, "isFinal")) {
-        db.diagnostic(node);
+    message: (target, elementName, modText) => {
+      const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
+      let mText = modText && modText.text !== "0" && modText.text !== "" ? modText.text : "";
+      if (mText.startsWith("=")) {
+        mText = " " + mText;
+      }
+      return `Trying to override final element ${eName} with modifier '${mText}'.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (type == $.component_clause1 || type == $.component_clause || type == $.extends_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const mod of db.ast.getDescendants(node, $.element_modification)) {
+        let isDirect = true;
+        for (const anc of db.ast.getAncestors(mod, 0)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            isDirect = false;
+            break;
+          }
+        }
+        if (!isDirect) continue;
+
+        let nameNode = db.ast.getChildByFieldId(mod, "name");
+        if (nameNode == 0) {
+          for (const n of db.ast.getDescendants(mod, $.name)) {
+            nameNode = n;
+            break;
+          }
+        }
+        if (nameNode == 0) continue;
+
+        let firstId = nameNode;
+        if (db.ast.getType(nameNode) != $.identifier) {
+          for (const id of db.ast.getDescendants(nameNode, $.identifier)) {
+            firstId = id;
+            break;
+          }
+        }
+
+        let foundElem: u32 = 0;
+        for (const el of db.ast.getDescendants(targetClass, $.element)) {
+          if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
+          let declId: u32 = 0;
+          for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            for (const id of db.ast.getDescendants(decl, $.identifier)) {
+              declId = id;
+              break;
+            }
+            break;
+          }
+          if (declId != 0 && db.ast.textEqualsNode(firstId, declId)) {
+            let ch = db.ast.getFirstChild(el);
+            while (ch != 0) {
+              if (db.ast.textEquals(ch, "final")) {
+                foundElem = el;
+                break;
+              }
+              ch = db.ast.getNextSibling(ch);
+            }
+            break;
+          }
+        }
+
+        if (foundElem != 0) {
+          const modClause = db.ast.getChildByFieldId(mod, "modification");
+          if (modClause != 0) {
+            db.diagnostic(mod, firstId, modClause);
+            return;
+          }
+        }
+      }
+    },
+  },
+
+  /**
+   * M4052-notification: Notification for redeclaration of final component.
+   */
+  redeclareFinalComponentNotification: {
+    nodes: ["class_modification", "class_or_inheritance_modification"],
+    severity: "info",
+    code: 2091,
+    message: () => `From here:`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      let compDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (compDecl == 0 && (type == $.component_declaration || type == $.component_declaration1)) {
+          compDecl = anc;
+        }
+        if (type == $.component_clause1 || type == $.component_clause || type == $.extends_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const redecl of db.ast.getDescendants(node, $.element_redeclaration)) {
+        let isDirect = true;
+        for (const anc of db.ast.getAncestors(redecl, 0)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            isDirect = false;
+            break;
+          }
+        }
+        if (!isDirect) continue;
+
+        let redeclName: u32 = 0;
+        for (const cd of db.ast.getDescendants(redecl, $.component_declaration1)) {
+          for (const id of db.ast.getDescendants(cd, $.identifier)) {
+            redeclName = id;
+            break;
+          }
+          break;
+        }
+        if (redeclName == 0) continue;
+
+        for (const el of db.ast.getDescendants(targetClass, $.element)) {
+          if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
+          let declId: u32 = 0;
+          for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            for (const id of db.ast.getDescendants(decl, $.identifier)) {
+              declId = id;
+              break;
+            }
+            break;
+          }
+          if (declId != 0 && db.ast.textEqualsNode(redeclName, declId)) {
+            let ch = db.ast.getFirstChild(el);
+            while (ch != 0) {
+              if (db.ast.textEquals(ch, "final")) {
+                db.diagnostic(parentDecl != 0 ? parentDecl : compDecl != 0 ? compDecl : redecl);
+                return;
+              }
+              ch = db.ast.getNextSibling(ch);
+            }
+          }
+        }
+      }
+    },
+  },
+
+  /**
+   * M4052: Redeclaration of final component is not allowed.
+   */
+  redeclareFinalComponent: {
+    nodes: ["class_modification", "class_or_inheritance_modification"],
+    severity: "error",
+    code: 4052,
+    message: (target, elementName) => {
+      const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
+      return `Redeclaration of final component ${eName} is not allowed.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (type == $.component_clause1 || type == $.component_clause || type == $.extends_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const redecl of db.ast.getDescendants(node, $.element_redeclaration)) {
+        let isDirect = true;
+        for (const anc of db.ast.getAncestors(redecl, 0)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            isDirect = false;
+            break;
+          }
+        }
+        if (!isDirect) continue;
+
+        let redeclName: u32 = 0;
+        for (const cd of db.ast.getDescendants(redecl, $.component_declaration1)) {
+          for (const id of db.ast.getDescendants(cd, $.identifier)) {
+            redeclName = id;
+            break;
+          }
+          break;
+        }
+        if (redeclName == 0) continue;
+
+        for (const el of db.ast.getDescendants(targetClass, $.element)) {
+          if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
+          let declId: u32 = 0;
+          for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            for (const id of db.ast.getDescendants(decl, $.identifier)) {
+              declId = id;
+              break;
+            }
+            break;
+          }
+          if (declId != 0 && db.ast.textEqualsNode(redeclName, declId)) {
+            let ch = db.ast.getFirstChild(el);
+            while (ch != 0) {
+              if (db.ast.textEquals(ch, "final")) {
+                db.diagnostic(el, redeclName);
+                return;
+              }
+              ch = db.ast.getNextSibling(ch);
+            }
+          }
+        }
+      }
+    },
+  },
+
+  /**
+   * M4053-notification: Notification for redeclaration of constant component.
+   */
+  redeclareConstantComponentNotification: {
+    nodes: ["class_modification", "class_or_inheritance_modification"],
+    severity: "info",
+    code: 2092,
+    message: () => `From here:`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      let compDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (compDecl == 0 && (type == $.component_declaration || type == $.component_declaration1)) {
+          compDecl = anc;
+        }
+        if (type == $.component_clause1 || type == $.component_clause || type == $.extends_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const redecl of db.ast.getDescendants(node, $.element_redeclaration)) {
+        let isDirect = true;
+        for (const anc of db.ast.getAncestors(redecl, 0)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            isDirect = false;
+            break;
+          }
+        }
+        if (!isDirect) continue;
+
+        let redeclName: u32 = 0;
+        for (const cd of db.ast.getDescendants(redecl, $.component_declaration1)) {
+          for (const id of db.ast.getDescendants(cd, $.identifier)) {
+            redeclName = id;
+            break;
+          }
+          break;
+        }
+        if (redeclName == 0) continue;
+
+        for (const el of db.ast.getDescendants(targetClass, $.element)) {
+          if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
+          let declId: u32 = 0;
+          for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            for (const id of db.ast.getDescendants(decl, $.identifier)) {
+              declId = id;
+              break;
+            }
+            break;
+          }
+          if (declId != 0 && db.ast.textEqualsNode(redeclName, declId)) {
+            if (hasTypePrefix(db, el, "constant", $)) {
+              db.diagnostic(parentDecl != 0 ? parentDecl : compDecl != 0 ? compDecl : redecl);
+              return;
+            }
+          }
+        }
+      }
+    },
+  },
+
+  /**
+   * M4053: Redeclaration of constant component is not allowed.
+   */
+  redeclareConstantComponent: {
+    nodes: ["class_modification", "class_or_inheritance_modification"],
+    severity: "error",
+    code: 4053,
+    message: (target, elementName) => {
+      const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
+      return `Redeclaration of constant component ${eName} is not allowed.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (type == $.component_clause1 || type == $.component_clause || type == $.extends_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const redecl of db.ast.getDescendants(node, $.element_redeclaration)) {
+        let isDirect = true;
+        for (const anc of db.ast.getAncestors(redecl, 0)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            isDirect = false;
+            break;
+          }
+        }
+        if (!isDirect) continue;
+
+        let redeclName: u32 = 0;
+        for (const cd of db.ast.getDescendants(redecl, $.component_declaration1)) {
+          for (const id of db.ast.getDescendants(cd, $.identifier)) {
+            redeclName = id;
+            break;
+          }
+          break;
+        }
+        if (redeclName == 0) continue;
+
+        for (const el of db.ast.getDescendants(targetClass, $.element)) {
+          if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
+          let declId: u32 = 0;
+          for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            for (const id of db.ast.getDescendants(decl, $.identifier)) {
+              declId = id;
+              break;
+            }
+            break;
+          }
+          if (declId != 0 && db.ast.textEqualsNode(redeclName, declId)) {
+            if (hasTypePrefix(db, el, "constant", $)) {
+              db.diagnostic(el, redeclName);
+              return;
+            }
+          }
+        }
       }
     },
   },
@@ -532,40 +1081,6 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             db.diagnostic(arg);
           }
           break;
-        }
-      }
-    },
-  },
-
-  /**
-   * M4051: Class extending builtin type may not have other elements.
-   */
-  builtinExtendsWithElements: {
-    nodes: ["extends_clause"],
-    severity: "error",
-    code: 4051,
-    message: (target) => `A class extending from builtin type '${target.text}' may not have other elements.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const typeSpec = db.ast.getChildByFieldId(node, "type_specifier");
-      if (typeSpec != 0) {
-        if (
-          db.ast.textEquals(typeSpec, "Real") ||
-          db.ast.textEquals(typeSpec, "Integer") ||
-          db.ast.textEquals(typeSpec, "Boolean") ||
-          db.ast.textEquals(typeSpec, "String")
-        ) {
-          for (const cls of db.ast.getAncestors(node, 0)) {
-            if (db.ast.getType(cls) == $.class_definition) {
-              let compCount = 0;
-              for (const comp of db.ast.getDescendants(cls, $.component_declaration)) {
-                if (comp != 0) compCount++;
-              }
-              if (compCount > 0) {
-                db.diagnostic(node);
-              }
-              break;
-            }
-          }
         }
       }
     },

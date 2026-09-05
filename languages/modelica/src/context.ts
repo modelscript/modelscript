@@ -87,6 +87,8 @@ export class Context {
   #workspaceIndex: WorkspaceIndex;
   #queryEngine: QueryEngine;
   #trees = new Map<string, Tree>();
+  #fileTexts = new Map<string, string>();
+  #fileDeltas = new Map<string, number>();
 
   get workspaceIndex(): WorkspaceIndex {
     return this.#workspaceIndex;
@@ -600,25 +602,45 @@ export class Context {
       return null;
     }
 
-    const firstId = symbolIds[0];
+    let targetId = symbolIds[0];
+    if (!name.includes(".") && symbolIds.length > 1) {
+      const topLevel = symbolIds.find((id) => this.#queryEngine.index.symbols.get(id)?.parentId === null);
+      if (topLevel !== undefined) {
+        targetId = topLevel;
+      }
+    }
+    const firstId = targetId;
     if (firstId === undefined) return null;
 
     const queryDB = this.#queryEngine.toQueryDB();
     const flattener = new ModelicaFlattener(queryDB, options);
 
     const currentStructuralRevision = this.#workspaceIndex.structuralRevision;
-    const cacheKey = firstId;
+    const entry = this.#queryEngine.index.symbols.get(firstId);
+    const resourceUri = uri ?? entry?.resourceId;
+    const cacheKey = `${resourceUri ?? ""}:${name}`;
     const cached = (this as any)._daeBodyCache?.get(cacheKey);
 
-    let clonedBuilder = null;
-    if (cached) {
-      if (cached.revision === currentStructuralRevision) {
-        clonedBuilder = cached.builder.clone();
+    if (cached && cached.revision === currentStructuralRevision) {
+      const dirty = resourceUri ? this.#workspaceIndex.getDirtyRanges(resourceUri) : undefined;
+
+      if (dirty && dirty.length > 0) {
+        const delta = resourceUri ? this.#fileDeltas.get(resourceUri) : undefined;
+        const patched = flattener.patch(firstId, cached.builder, dirty, delta);
+        if (patched) {
+          if (resourceUri) {
+            this.#workspaceIndex.clearDirtyRanges(resourceUri);
+            this.#fileDeltas.delete(resourceUri);
+          }
+          return cached.builder.clone();
+        }
+      } else if (!dirty || dirty.length === 0) {
+        return cached.builder.clone();
       }
     }
 
     // Flatten from scratch (or partially from scratch)
-    const dae = flattener.flatten(firstId, clonedBuilder, options);
+    const dae = flattener.flatten(firstId, null, options);
 
     if (flattener.bodySnapshot == null) {
       throw new Error(
@@ -699,14 +721,38 @@ export class Context {
    * @param input - The raw Modelica source code string.
    */
   load(input: string, resourceId?: string): Tree {
-    const tree = this.parse(".mo", input);
     const uri = resourceId ?? "synthetic-" + Math.random().toString();
+    const prevText = this.#fileTexts.get(uri);
+    let editRanges: { startByte: number; endByte: number }[] | undefined = undefined;
+
+    if (prevText !== undefined && prevText !== input) {
+      let prefixLen = 0;
+      const minLen = Math.min(prevText.length, input.length);
+      while (prefixLen < minLen && prevText.charCodeAt(prefixLen) === input.charCodeAt(prefixLen)) {
+        prefixLen++;
+      }
+      let suffixLen = 0;
+      while (
+        suffixLen < minLen - prefixLen &&
+        prevText.charCodeAt(prevText.length - 1 - suffixLen) === input.charCodeAt(input.length - 1 - suffixLen)
+      ) {
+        suffixLen++;
+      }
+      const editStart = prefixLen;
+      const editEnd = input.length - suffixLen;
+      editRanges = [{ startByte: editStart, endByte: Math.max(editStart, editEnd) }];
+      this.#fileDeltas.set(uri, input.length - prevText.length);
+    }
+    this.#fileTexts.set(uri, input);
+
+    const tree = this.parse(".mo", input);
     this.#trees.set(uri, tree);
 
-    this.#workspaceIndex.register(uri, () => tree.rootNode as any);
+    this.#workspaceIndex.register(uri, () => tree.rootNode as any, undefined, editRanges);
     const unified = this.#workspaceIndex.toUnified();
     injectPredefinedTypes(unified);
-    this.#queryEngine.updateIndex(unified);
+    const changedInfo = this.#workspaceIndex.takeGlobalChangedIds();
+    this.#queryEngine.updateIndex(unified, undefined, changedInfo?.changedIds, changedInfo?.structuralChangedIds);
 
     this.#classes = this.#classes.filter((c) => c.db.symbol(c.id)?.resourceId !== uri);
     const db = this.#queryEngine.toQueryDB();

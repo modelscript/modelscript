@@ -5,8 +5,9 @@
  * Semantic query definitions for QueryEngine.
  */
 
-import { error, warning } from "@modelscript/language";
+import { error } from "@modelscript/language";
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/language/compiler";
+import { Cst } from "../src-gen/bindings.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 
 function cyrb53(str: string, seed = 0): string {
@@ -35,9 +36,19 @@ export function checkModifierNotFound(
   const declaredNames = new Set<string>();
 
   let currentEntry: SymbolEntry | null = typeEntry;
-  let isBuiltin = currentEntry?.metadata?.isPredefined;
+  let isBuiltin = Boolean(currentEntry?.metadata?.isPredefined);
   let isEnum = currentEntry?.metadata?.classPrefixes === "enumeration";
   let visited = new Set<SymbolId>();
+
+  if (
+    currentEntry &&
+    (currentEntry.name === "Real" ||
+      currentEntry.name === "Integer" ||
+      currentEntry.name === "Boolean" ||
+      currentEntry.name === "String")
+  ) {
+    isBuiltin = true;
+  }
 
   while (currentEntry && !isBuiltin && !isEnum && !visited.has(currentEntry.id)) {
     visited.add(currentEntry.id);
@@ -47,21 +58,39 @@ export function checkModifierNotFound(
     if (currentEntry.kind === "Component") {
       nextId = db.query<SymbolId | null>("classInstance", currentEntry.id);
     } else if (currentEntry.kind === "Class") {
-      // If it's a ShortClassSpecifier, resolve its type
-      const cst = db.cstNode(currentEntry.id) as any;
-      const spec = cst?.childForFieldName?.("classSpecifier");
-      if (spec?.type === "ShortClassSpecifier") {
-        const typeName = spec.childForFieldName("typeSpecifier")?.text;
-        if (typeName) {
-          const resolve = db.query<any>("resolveName", currentEntry.parentId || currentEntry.id);
-          let baseEntry: SymbolEntry | null = null;
-          if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
-          if (!baseEntry && currentEntry.parentId) {
-            const resSimple = db.query<any>("resolveSimpleName", currentEntry.parentId);
-            if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+      const extendsChildren = db.childrenOf(currentEntry.id).filter((c) => c.kind === "Extends");
+      for (const ext of extendsChildren) {
+        const base = db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
+        if (base && !visited.has(base.id)) {
+          nextId = base.id;
+          break;
+        }
+      }
+      if (!nextId) {
+        const cst = db.cstNode(currentEntry.id) as any;
+        const spec = getShortClassSpecifierNode(cst);
+        if (spec) {
+          const typeSpec =
+            Cst.ShortClassSpecifier.typeSpecifier(spec) ??
+            spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+          let typeName = typeSpec?.text?.trim();
+          if (typeName) {
+            typeName = typeName.split("[")[0].trim();
+            if (typeName === "Real" || typeName === "Integer" || typeName === "Boolean" || typeName === "String") {
+              isBuiltin = true;
+              break;
+            }
+            const resolve = db.query<any>("resolveName", currentEntry.parentId || currentEntry.id);
+            let baseEntry: SymbolEntry | null = null;
+            if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
+            if (!baseEntry && currentEntry.parentId) {
+              const resSimple = db.query<any>("resolveSimpleName", currentEntry.parentId);
+              if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+            }
+            if (!baseEntry) baseEntry = resolveQualified(db, typeName);
+            if (!baseEntry) baseEntry = db.byName(typeName.split(".").pop()!)[0] ?? null;
+            if (baseEntry) nextId = baseEntry.id;
           }
-          if (!baseEntry) baseEntry = db.byName(typeName.split(".").pop()!)[0] ?? null;
-          if (baseEntry) nextId = baseEntry.id;
         }
       }
     }
@@ -69,12 +98,26 @@ export function checkModifierNotFound(
     if (!nextId || nextId === currentEntry.id) break;
     currentEntry = db.symbol(nextId) as SymbolEntry | null;
     if (currentEntry) {
-      isBuiltin = currentEntry.metadata?.isPredefined;
+      isBuiltin =
+        Boolean(currentEntry.metadata?.isPredefined) ||
+        currentEntry.name === "Real" ||
+        currentEntry.name === "Integer" ||
+        currentEntry.name === "Boolean" ||
+        currentEntry.name === "String";
       isEnum = currentEntry.metadata?.classPrefixes === "enumeration";
     }
   }
 
   if (isBuiltin || isEnum) {
+    declaredNames.add("quantity");
+    declaredNames.add("unit");
+    declaredNames.add("displayUnit");
+    declaredNames.add("min");
+    declaredNames.add("max");
+    declaredNames.add("start");
+    declaredNames.add("fixed");
+    declaredNames.add("nominal");
+    declaredNames.add("stateSelect");
     for (const k of Object.keys(currentEntry?.metadata || {})) {
       if (
         k !== "classKind" &&
@@ -112,7 +155,7 @@ export function checkModifierNotFound(
     ) {
       let msg: string;
       if (self.kind === "Class") {
-        if (overrideClassName === self.name) {
+        if (!arg.isRedeclaration && overrideClassName === self.name) {
           let modText = arg.name;
           if (arg.value && typeof arg.value.text === "string") {
             modText += " = " + arg.value.text;
@@ -133,8 +176,8 @@ export function checkModifierNotFound(
         }
         msg = `Variable ${self.name}.${overrideClassName}: In modifier (${modText}), class or component ${arg.name} not found in <${typeEntry.name}$${self.name}$${overrideClassName}>.`;
       } else {
-        // Use the base type name
-        msg = `Variable ${self.name}: In modifier (${arg.name}), class or component ${arg.name} not found in <${typeEntry.name}$${self.name}>.`;
+        // Direct component modifier is already handled by WASM M4045
+        continue;
       }
 
       if (arg.nameRange) {
@@ -165,49 +208,6 @@ export function checkModifierNotFound(
 
       if (originalId) {
         const originalEntry = db.symbol(originalId);
-
-        if (
-          arg.value &&
-          typeof arg.value === "object" &&
-          arg.value.kind === "break" &&
-          !arg.name.startsWith("break_connect:")
-        ) {
-          if (originalEntry && originalEntry.kind !== "Component") {
-            results.push(
-              error(`Invalid use of break on non-component '${arg.name}'.`, {
-                startByte: arg.nameRange ? arg.nameRange[0] : undefined,
-                endByte: arg.nameRange ? arg.nameRange[1] : undefined,
-                field: arg.nameRange ? undefined : "declaration.modification",
-              }),
-            );
-          }
-        }
-
-        const isFinal = db.query<boolean>("isFinal", originalId);
-        if (isFinal) {
-          results.push(
-            error(`Redeclaration of final component ${arg.name} is not allowed.`, {
-              startByte: arg.nameRange ? arg.nameRange[0] : undefined,
-              endByte: arg.nameRange ? arg.nameRange[1] : undefined,
-              field: arg.nameRange ? undefined : "declaration.modification",
-            }),
-          );
-        }
-
-        const variability = db.query<string>("variability", originalId);
-        if (variability === "constant") {
-          const origCst = db.cstNode(originalId) as any;
-          const hasBinding = !!origCst?.childForFieldName?.("modification");
-          if (hasBinding) {
-            results.push(
-              warning(`Redeclaration of constant component ${arg.name} is not allowed.`, {
-                startByte: arg.nameRange ? arg.nameRange[0] : undefined,
-                endByte: arg.nameRange ? arg.nameRange[1] : undefined,
-                field: arg.nameRange ? undefined : "declaration.modification",
-              }),
-            );
-          }
-        }
 
         // Check if both are functions
         if (
@@ -271,6 +271,33 @@ export function checkModifierNotFound(
         if (arg.nestedArgs && arg.nestedArgs.length > 0) {
           let nestedTypeClassId = db.query<SymbolId | null>("classInstance", originalId);
 
+          // Check if originalId's type was redeclared in sibling modifiers of mod.args
+          if (originalId) {
+            const origTypeSpec = db.query<string | null>("typeSpecifier", originalId);
+            if (origTypeSpec) {
+              const siblingRedecl = mod.args.find(
+                (a: any) => a.isRedeclaration && (a.name === origTypeSpec || a.name === origTypeSpec.split(".").pop()),
+              );
+              if (siblingRedecl) {
+                const targetTypeName = siblingRedecl.redeclaredTypeSpecifier || siblingRedecl.name;
+                const resolve = db.query<any>("resolveName", self.id);
+                let redeclEntry: SymbolEntry | null = null;
+                if (resolve) redeclEntry = resolve(targetTypeName, true) as SymbolEntry | null;
+                if (!redeclEntry && self.parentId) {
+                  const resolveParent = db.query<any>("resolveName", self.parentId);
+                  if (resolveParent) redeclEntry = resolveParent(targetTypeName, true) as SymbolEntry | null;
+                }
+                if (!redeclEntry) {
+                  redeclEntry =
+                    db.byName(targetTypeName.split(".").pop()!)?.find((e: any) => e.kind === "Class") ?? null;
+                }
+                if (redeclEntry) {
+                  nestedTypeClassId = redeclEntry.id;
+                }
+              }
+            }
+          }
+
           if (arg.isRedeclaration && arg.redeclaredTypeSpecifier) {
             const resolve = db.query<any>("resolveName", self.id);
             let redeclaredEntry: SymbolEntry | null = null;
@@ -312,16 +339,17 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
     if (!n) return;
     if (n.type === "ElementModification" || n.type === "element_modification") {
       const nameNode =
-        n.childForFieldName("name") ??
+        Cst.ElementModification.name(n) ??
         n.children?.find((c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier");
       const modNode =
-        n.childForFieldName("modification") ??
+        Cst.ElementModification.modification(n) ??
         n.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
       const finalNode = n.children?.find((c: any) => c.type === "final");
       const eachNode = n.children?.find((c: any) => c.type === "each");
 
       const name = nameNode ? nameNode.text : "";
       const nameRange = nameNode ? ([nameNode.startIndex, nameNode.endIndex] as const) : undefined;
+      const modRange = n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined;
       const nested = parseModArgsFromCst(modNode, scopeId);
 
       const parts = name.split(".");
@@ -331,6 +359,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           args: [
             {
               name: parts[i],
+              modRange,
               each: false,
               final: false,
               isRedeclaration: false,
@@ -346,6 +375,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       args.push({
         name: parts[0],
         nameRange,
+        modRange,
         each: !!eachNode,
         final: !!finalNode,
         isRedeclaration: false,
@@ -366,14 +396,14 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         for (const child of arraySubNode.children) {
           if (child.type !== "Subscript" && child.type !== "subscript") continue;
           const flexChild =
-            child.childForFieldName("flexible") ??
+            Cst.Subscript.flexible(child) ??
             child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
           if (flexChild && flexChild.text?.trim() === ":") {
             subs.push({ kind: "flexible" });
             continue;
           }
           const exprChild =
-            child.childForFieldName("expression") ??
+            Cst.Subscript.expression(child) ??
             child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
             (child.childCount > 0 ? child.child(0) : null);
           if (exprChild) {
@@ -392,13 +422,34 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         return subs.length > 0 ? subs : undefined;
       };
 
-      const clause = n.childForFieldName("componentClause");
+      const clause =
+        Cst.Element.componentClause(n) ??
+        n.children?.find(
+          (c: any) => c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
+        );
       if (clause) {
-        const typeSpec = clause.childForFieldName("typeSpecifier");
-        const decl1 = clause.childForFieldName("componentDeclaration");
-        const decl = decl1?.childForFieldName("declaration");
-        const ident = decl?.childForFieldName("identifier");
-        const modNode = decl?.childForFieldName("modification");
+        const typeSpec =
+          Cst.ComponentClause.typeSpecifier(clause) ??
+          clause.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        const compList = Cst.ComponentClause.componentList(clause);
+        const decl1 =
+          (compList ? Cst.ComponentList.componentDeclaration(compList) : null) ??
+          clause.children?.find(
+            (c: any) =>
+              c.type === "component_declaration" ||
+              c.type === "ComponentDeclaration" ||
+              c.type === "component_declaration1",
+          );
+        const decl =
+          Cst.ComponentDeclaration.declaration(decl1) ??
+          decl1?.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration") ??
+          decl1;
+        const ident =
+          Cst.Declaration.name(decl) ??
+          decl?.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+        const modNode =
+          Cst.Declaration.modification(decl) ??
+          decl?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
 
         const name = ident ? ident.text : "";
         const nameRange = ident ? ([ident.startIndex, ident.endIndex] as const) : undefined;
@@ -412,22 +463,48 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           final: false,
           isRedeclaration: true,
           redeclaredTypeSpecifier: typeName,
-          redeclaredArrayDimensionsRaw: extractSubscripts(decl1?.childForFieldName("arraySubscripts")),
+          redeclaredArrayDimensionsRaw: extractSubscripts(
+            (decl ? Cst.Declaration.arraySubscripts(decl) : null) ??
+              (decl1 ? Cst.Declaration.arraySubscripts(decl1) : null) ??
+              decl1?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "arraySubscripts"),
+          ),
           nestedArgs: nested.args,
           value: nested.bindingExpression,
           evaluationScopeId: scopeId,
         });
       } else {
-        const classDef = n.childForFieldName("classDefinition");
+        const classDef =
+          Cst.Element.classDefinition(n) ??
+          n.children?.find(
+            (c: any) =>
+              c.type === "class_definition" ||
+              c.type === "ClassDefinition" ||
+              c.type === "short_class_definition" ||
+              c.type === "ShortClassDefinition",
+          );
         if (classDef) {
-          const shortClass = classDef.childForFieldName("classSpecifier");
+          const shortClass =
+            Cst.ClassDefinition.classSpecifier(classDef) ??
+            classDef.children?.find(
+              (c: any) =>
+                c.type === "class_specifier" ||
+                c.type === "ClassSpecifier" ||
+                c.type === "short_class_specifier" ||
+                c.type === "ShortClassSpecifier",
+            ) ??
+            (classDef.type === "short_class_specifier" || classDef.type === "ShortClassSpecifier" ? classDef : null);
           if (shortClass) {
-            const ident = shortClass.childForFieldName("identifier");
-            const typeSpec = shortClass.childForFieldName("typeSpecifier");
+            const ident =
+              Cst.ShortClassSpecifier.name(shortClass) ??
+              shortClass.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+            const typeSpec =
+              Cst.ShortClassSpecifier.typeSpecifier(shortClass) ??
+              shortClass.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
             const name = ident ? ident.text : "";
             const typeName = typeSpec ? typeSpec.text : "";
-
-            const modNode = shortClass.childForFieldName("classModification");
+            const modNode =
+              Cst.ShortClassSpecifier.classModification(shortClass) ??
+              shortClass.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
             const nested = parseModArgsFromCst(modNode, scopeId);
 
             args.push({
@@ -436,7 +513,10 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               final: false,
               isRedeclaration: true,
               redeclaredTypeSpecifier: typeName,
-              redeclaredArrayDimensionsRaw: extractSubscripts(shortClass.childForFieldName("arraySubscripts")),
+              redeclaredArrayDimensionsRaw: extractSubscripts(
+                Cst.ShortClassSpecifier.arraySubscripts(shortClass) ??
+                  shortClass.children?.find((c: any) => c.type === "array_subscripts" || c.type === "arraySubscripts"),
+              ),
               nestedArgs: nested.args,
               value: nested.bindingExpression,
               evaluationScopeId: scopeId,
@@ -445,15 +525,34 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         }
       }
       return;
-    } else if (n.type === "InheritanceModification") {
-      const connectEq = n.childForFieldName("connectEquation");
+    } else if (n.type === "InheritanceModification" || n.type === "inheritance_modification") {
+      const connectEq =
+        (Cst.ConnectEquation.is(n) ? n : null) ??
+        (n.children || []).find((c: any) => c.type === "connect_equation" || c.type === "ConnectEquation");
       if (connectEq) {
-        const source = connectEq.childForFieldName("componentReference1");
-        const target = connectEq.childForFieldName("componentReference2");
+        const source =
+          Cst.ConnectEquation.lhs(connectEq) ??
+          (connectEq.children || []).filter(
+            (c: any) =>
+              c.type === "component_reference" ||
+              c.type === "expression" ||
+              c.type === "identifier" ||
+              c.type === "name",
+          )[0];
+        const target =
+          Cst.ConnectEquation.rhs(connectEq) ??
+          (connectEq.children || []).filter(
+            (c: any) =>
+              c.type === "component_reference" ||
+              c.type === "expression" ||
+              c.type === "identifier" ||
+              c.type === "name",
+          )[1];
         if (source && target) {
-          const canonEq = `connect(${source.text},${target.text})`;
+          const canonEq = `connect(${source.text.trim()},${target.text.trim()})`;
           args.push({
             name: "break_connect:" + canonEq,
+            isBreak: true,
             each: false,
             final: false,
             isRedeclaration: false,
@@ -463,10 +562,11 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           });
         }
       }
-      const identifier = n.childForFieldName("identifier");
+      const identifier = (n.children || []).find((c: any) => c.type === "identifier" || c.type === "Identifier");
       if (identifier) {
         args.push({
-          name: identifier.text,
+          name: identifier.text.trim(),
+          isBreak: true,
           each: false,
           final: false,
           isRedeclaration: false,
@@ -485,7 +585,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
   let bindingExpression = null;
   const nt = node.type.toLowerCase();
   if (nt === "modification" || nt === "elementmodification" || nt === "element_modification") {
-    const expr = node.childForFieldName("modification_expression") ?? node.childForFieldName("modificationExpression");
+    const expr = Cst.Modification.modificationExpression(node);
     if (expr) bindingExpression = { kind: "expression", cstBytes: [expr.startIndex, expr.endIndex], text: expr.text };
   }
 
@@ -721,9 +821,13 @@ export function resolveSimpleNameHelper(
     const meta = self?.metadata as Record<string, unknown>;
     if (self && !meta?.isPredefined) {
       const cst = db.cstNode(classId) as any;
-      const classSpecifier = cst?.childForFieldName?.("classSpecifier");
-      if (classSpecifier?.type === "ShortClassSpecifier") {
-        const typeSpec = classSpecifier.childForFieldName?.("typeSpecifier");
+      const classSpecifier = Cst.ClassDefinition.classSpecifier(cst);
+      if (
+        Cst.ShortClassSpecifier.is(classSpecifier) ||
+        classSpecifier?.type === "ShortClassSpecifier" ||
+        classSpecifier?.type === "short_class_specifier"
+      ) {
+        const typeSpec = Cst.ShortClassSpecifier.typeSpecifier(classSpecifier);
         const typeName = typeSpec?.text;
         if (typeName && self.parentId !== null) {
           const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
@@ -802,8 +906,11 @@ export function resolveSimpleNameHelper(
  * Used for resolving import targets and global fallbacks.
  */
 function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
+  if (path.startsWith(".")) {
+    path = path.slice(1);
+  }
   const parts = path.split(".");
-  if (parts.length === 0) return null;
+  if (parts.length === 0 || !parts[0]) return null;
 
   // Try to find the root part (entry with no parent)
   const rootEntries = db.byName(parts[0]!);
@@ -905,7 +1012,7 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
 
   // Parenthesized expression — unwrap
   if (type === "ParenthesizedExpression" || (type === "primary" && node.child(0)?.text === "(")) {
-    const inner = node.childForFieldName("expression") ?? node.children?.find((c: any) => c.type === "expression");
+    const inner = (node.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
     return evaluateDimCSTNode(db, self, inner);
   }
 
@@ -945,14 +1052,14 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
 
   // Function call — handle size(), integer(), ndims()
   if (type === "FunctionCall" || (type === "primary" && node.child(1)?.type === "function_call_args")) {
-    const funcRef = node.childForFieldName("functionReference") ?? node.child(0);
+    const funcRef = Cst.FunctionCall.name(node) ?? node.child(0);
     const funcName = funcRef?.text?.trim();
 
     if (funcName === "size") {
       return evaluateDimSizeCall(db, self, node);
     }
     if (funcName === "integer") {
-      const args = node.childForFieldName("functionCallArguments") ?? node.child(1);
+      const args = Cst.FunctionCall.args(node) ?? node.child(1);
       const firstArg =
         args?.namedChildren?.find((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ??
         args?.children?.find((c: any) => c.type === "expression");
@@ -1059,7 +1166,7 @@ function getOrEvaluateNdims(db: QueryDB, resolved: SymbolEntry): number | null {
  * Evaluate a `size(x, d)` call in a dimension context.
  */
 function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number | null {
-  const args = node.childForFieldName("functionCallArguments");
+  const args = Cst.FunctionCall.args(node);
   if (!args) return null;
 
   // Extract the two arguments: size(arrayRef, dimIndex)
@@ -1114,7 +1221,7 @@ function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number 
  * Evaluate an `ndims(x)` call in a dimension context.
  */
 function evaluateDimNdimsCall(db: QueryDB, self: SymbolEntry, node: any): number | null {
-  const args = node.childForFieldName("functionCallArguments");
+  const args = Cst.FunctionCall.args(node);
   if (!args) return null;
 
   const argNodes = args.namedChildren?.filter((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ?? [];
@@ -1211,20 +1318,59 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Precedence constants (matching grammar.js)
-// ---------------------------------------------------------------------------
+export function getShortClassSpecifierNode(cst: any): any {
+  if (!cst) return null;
+  let spec = Cst.ClassDefinition.classSpecifier(cst);
+  if (!spec && (cst.type === "short_class_specifier" || cst.type === "ShortClassSpecifier")) return cst;
+  if (spec && (spec.type === "class_specifier" || spec.type === "ClassSpecifier")) {
+    const shortChild = spec.children?.find(
+      (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+    );
+    if (shortChild) return shortChild;
+  }
+  if (spec && (spec.type === "short_class_specifier" || spec.type === "ShortClassSpecifier")) return spec;
+  return null;
+}
 
 export const classDefinitionQueries: Record<string, any> = {
   /** All direct children of this class. */
+
   members: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id),
+
+  isReplaceable: (db: QueryDB, self: SymbolEntry) => {
+    let current = db.cstNode(self.id) as any;
+    if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
+      current = current.parent;
+    }
+    while (current) {
+      if (current.type === "element_replaceable" || current.type === "ElementReplaceable") return true;
+      if (
+        current.type === "ComponentClause" ||
+        current.type === "component_clause" ||
+        current.type === "element" ||
+        current.type === "Element"
+      ) {
+        if (
+          current.children?.some(
+            (c: any) => c.text?.trim() === "replaceable" || c.type === "replaceable" || c.type === '"replaceable"',
+          )
+        )
+          return true;
+      }
+      if (current.type === "composition" || current.type === "Composition") break;
+      current = current.parent;
+    }
+    return false;
+  },
   /** Extract array dimensions for ShortClassSpecifiers like type ArrayType = Real[3]; */
   arrayDimensions: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as import("@modelscript/language/compiler").CSTNode | null;
+    const cst = db.cstNode(self.id) as any;
     if (!cst) return null;
-    const classSpec = cst.childForFieldName("classSpecifier");
-    if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
-    const arraySubNode = classSpec.childForFieldName("arraySubscripts");
+    const classSpec = getShortClassSpecifierNode(cst);
+    if (!classSpec) return null;
+    const arraySubNode =
+      Cst.ShortClassSpecifier.arraySubscripts(classSpec) ??
+      classSpec.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
     if (!arraySubNode) return null;
 
     const subscripts: Array<
@@ -1234,20 +1380,26 @@ export const classDefinitionQueries: Record<string, any> = {
     > = [];
 
     for (const child of arraySubNode.children) {
-      if (child.type !== "Subscript") continue;
-      const flexChild = child.childForFieldName("flexible");
-      if (flexChild) {
+      if (child.type !== "Subscript" && child.type !== "subscript") continue;
+      const flexChild =
+        Cst.Subscript.flexible(child) ??
+        child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
+      if (flexChild && flexChild.text?.trim() === ":") {
         subscripts.push({ kind: "flexible" });
         continue;
       }
-      const exprChild = child.childForFieldName("expression");
+      const exprChild =
+        Cst.Subscript.expression(child) ??
+        child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
+        (child.childCount > 0 ? child.child(0) : null);
       if (exprChild) {
-        if (exprChild.type === "UNSIGNED_INTEGER") {
-          subscripts.push({ kind: "literal", value: parseInt(exprChild.text, 10) });
+        const num = parseInt(exprChild.text, 10);
+        if (!isNaN(num) && String(num) === exprChild.text.trim()) {
+          subscripts.push({ kind: "literal", value: num });
         } else {
           subscripts.push({
             kind: "expression",
-            cstBytes: [exprChild.startIndex, exprChild.endIndex],
+            cstBytes: [exprChild.startIndex ?? exprChild.startByte, exprChild.endIndex ?? exprChild.endByte],
             text: exprChild.text,
           });
         }
@@ -1261,22 +1413,23 @@ export const classDefinitionQueries: Record<string, any> = {
   effectiveModification: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
     if (!cst) return null;
-    const classSpec = cst.childForFieldName("class_specifier") ?? cst.childForFieldName("classSpecifier");
-    if (!classSpec || (classSpec.type !== "short_class_specifier" && classSpec.type !== "ShortClassSpecifier"))
-      return null;
+    const classSpec = getShortClassSpecifierNode(cst);
+    if (!classSpec) return null;
     const modNode =
-      classSpec.childForFieldName("class_modification") ?? classSpec.childForFieldName("classModification");
+      Cst.ShortClassSpecifier.classModification(classSpec) ??
+      classSpec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as import("./modifications.js").ModelicaModArgs;
   },
   resolvedBaseClass: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
     if (!cst) return null;
-    const classSpec = cst.childForFieldName("class_specifier") ?? cst.childForFieldName("classSpecifier");
-    if (!classSpec || (classSpec.type !== "short_class_specifier" && classSpec.type !== "ShortClassSpecifier"))
-      return null;
-    const typeSpec = classSpec.childForFieldName("type_specifier") ?? classSpec.childForFieldName("typeSpecifier");
-    const typeName = typeSpec?.text;
+    const classSpec = getShortClassSpecifierNode(cst);
+    if (!classSpec) return null;
+    const typeSpec =
+      Cst.ShortClassSpecifier.typeSpecifier(classSpec) ??
+      classSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+    const typeName = typeSpec?.text?.trim();
     if (!typeName) return null;
     if (self.parentId !== null) {
       const parentResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
@@ -1358,10 +1511,26 @@ export const classDefinitionQueries: Record<string, any> = {
           const baseClass = baseEntries?.[0];
           if (baseClass && !visited.has(baseClass.id)) {
             visited.add(baseClass.id);
+            // Extract broken names from extends clause modifications
+            const extendsModParsedRaw = db.query<any>("extendsModificationParsed", child.id);
+            const extendsModParsed: any[] = Array.isArray(extendsModParsedRaw)
+              ? extendsModParsedRaw
+              : (extendsModParsedRaw?.args ?? []);
+            const clauseBrokenNames = new Set<string>();
+            for (const arg of extendsModParsed) {
+              if ((arg.isBreak || arg.value?.kind === "break") && !arg.name.startsWith("break_connect:")) {
+                clauseBrokenNames.add(arg.name);
+              }
+            }
             // Recursively get all elements of the base class
             const baseElements = db.childrenOf(baseClass.id);
             for (const inherited of baseElements) {
-              if (inherited.name && !redeclaredNames.has(inherited.name) && !brokenNames.has(inherited.name)) {
+              if (
+                inherited.name &&
+                !redeclaredNames.has(inherited.name) &&
+                !brokenNames.has(inherited.name) &&
+                !clauseBrokenNames.has(inherited.name)
+              ) {
                 result.push(inherited);
               }
             }
@@ -1578,7 +1747,7 @@ export const classDefinitionQueries: Record<string, any> = {
 
       // Also handle extends in LongClassSpecifier
       const selfCst = db.cstNode(sourceId) as any;
-      const spec = selfCst?.childForFieldName?.("classSpecifier");
+      const spec = Cst.ClassDefinition.classSpecifier(selfCst);
       if (spec?.type === "LongClassSpecifier") {
         let hasExtends = false;
         for (let i = 0; i < spec.childCount; i++) {
@@ -1588,7 +1757,7 @@ export const classDefinitionQueries: Record<string, any> = {
           }
         }
         if (hasExtends) {
-          const identNode = spec.childForFieldName("identifier");
+          const identNode = Cst.LongClassSpecifier.name(spec);
           if (identNode?.text && self.parentId !== null) {
             const baseName = identNode.text;
             const resolveName = db.query<any>("resolveName", self.parentId);
@@ -1723,20 +1892,32 @@ export const classDefinitionQueries: Record<string, any> = {
 
       // Handle ShortClassSpecifier aliases
       const selfCstShort = db.cstNode(sourceId) as any;
-      const specShort = selfCstShort?.childForFieldName?.("classSpecifier");
-      if (specShort?.type === "ShortClassSpecifier") {
-        const typeSpec = specShort.childForFieldName?.("typeSpecifier");
-        const typeName = typeSpec?.text;
-        if (typeName && self.parentId !== null) {
-          const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
-          if (parentResolver) {
-            const resolved = parentResolver(typeName);
-            if (resolved && resolved.id !== self.id) {
-              // Short class alias: instantiate the resolved target directly.
-              // Outer modifications are propagated by the flattener's ModificationStack,
-              // eliminating the need for virtual specialized entries.
-              return db.query<SymbolId[]>("instantiate", resolved.id);
+      const specShort = getShortClassSpecifierNode(selfCstShort);
+      if (specShort) {
+        const typeSpec =
+          Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
+          specShort.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        const typeName = typeSpec?.text?.trim();
+        if (typeName) {
+          let resolved: { id: SymbolId } | null = null;
+          if (self.parentId !== null) {
+            const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
+            if (parentResolver) {
+              resolved = parentResolver(typeName);
             }
+          }
+          if (!resolved) {
+            resolved = resolveQualified(db, typeName);
+          }
+          if (!resolved) {
+            const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+            const matches = db.byName(simpleName);
+            if (matches && matches.length > 0) {
+              resolved = matches[0];
+            }
+          }
+          if (resolved && resolved.id !== self.id) {
+            return db.query<SymbolId[]>("instantiate", resolved.id) || [];
           }
         }
       }
@@ -1752,11 +1933,55 @@ export const classDefinitionQueries: Record<string, any> = {
         }
       }
 
+      // Reorder children so that extends clauses whose base class provides symbols
+      // referenced by earlier components are placed before those components.
+      const orderedChildren: SymbolEntry[] = [];
+      for (const child of children) {
+        if (child.kind === "Extends") {
+          const resolveName = db.query<(n: string) => SymbolEntry | null>("resolveName", self.id);
+          const baseClass =
+            (resolveName ? resolveName(child.name) : null) ??
+            db.byName(child.name)?.find((e) => e.kind === "Class" || e.kind === "Package");
+          if (baseClass) {
+            const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id) || [];
+            const baseNames = new Set(baseElements.map((id) => db.symbol(id)?.name).filter(Boolean));
+            let needsMove = false;
+            for (const c of orderedChildren) {
+              if (c.kind === "Component") {
+                const cst = db.cstNode(c.id);
+                const text = (cst as any)?.text ?? "";
+                for (const bn of baseNames) {
+                  if (new RegExp(`\\b${bn}\\b`).test(text)) {
+                    needsMove = true;
+                    break;
+                  }
+                }
+              }
+              if (needsMove) break;
+            }
+            if (needsMove) {
+              const firstCompIdx = orderedChildren.findIndex((c) => c.kind === "Component");
+              if (firstCompIdx >= 0) {
+                orderedChildren.splice(firstCompIdx, 0, child);
+                continue;
+              }
+            }
+          }
+        }
+        orderedChildren.push(child);
+      }
+
       const elements: SymbolId[] = [];
+      const seenNames = new Set<string>();
+      for (const child of orderedChildren) {
+        if (child.kind === "Component" && child.name) {
+          seenNames.add(child.name);
+        }
+      }
 
       // NEW: handle extends in long class specifier!
       const selfCstExt = db.cstNode(self.id) as any;
-      const specExt = selfCstExt?.childForFieldName?.("classSpecifier");
+      const specExt = Cst.ClassDefinition.classSpecifier(selfCstExt);
       if (specExt?.type === "LongClassSpecifier") {
         let hasExtends = false;
         for (let i = 0; i < specExt.childCount; i++) {
@@ -1766,7 +1991,7 @@ export const classDefinitionQueries: Record<string, any> = {
           }
         }
         if (hasExtends) {
-          const identNode = specExt.childForFieldName("identifier");
+          const identNode = Cst.LongClassSpecifier.name(specExt);
           if (identNode?.text && self.parentId !== null) {
             const baseName = identNode.text;
             const resolveName = db.query<any>("resolveName", self.parentId);
@@ -1801,6 +2026,10 @@ export const classDefinitionQueries: Record<string, any> = {
                 for (const eid of baseElements) {
                   const entry = db.symbol(eid);
                   if (entry && !redeclaredNames.has(entry.name)) {
+                    if (entry.name) {
+                      if (seenNames.has(entry.name)) continue;
+                      seenNames.add(entry.name);
+                    }
                     elements.push(eid);
                   }
                 }
@@ -1810,7 +2039,7 @@ export const classDefinitionQueries: Record<string, any> = {
         }
       }
 
-      for (const child of children) {
+      for (const child of orderedChildren) {
         if (child.kind === "Component") {
           // Always use the static component SymbolId.
           // Outer modifications are resolved by the flattener's ModificationStack,
@@ -1839,7 +2068,7 @@ export const classDefinitionQueries: Record<string, any> = {
           // Instantiate the base class directly (unmodified).
           // Extends modifications are propagated by the flattener's ModificationStack,
           // eliminating the need for virtual specialized base class entries.
-          const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id);
+          const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id) || [];
 
           // Extract broken names from the extends clause modification
           const extendsModParsedRaw = db.query<any>("extendsModificationParsed", child.id);
@@ -1848,7 +2077,7 @@ export const classDefinitionQueries: Record<string, any> = {
             : (extendsModParsedRaw?.args ?? []);
           const brokenNames = new Set<string>();
           for (const arg of extendsModParsed) {
-            if (arg.isBreak && !arg.name.startsWith("break_connect:")) {
+            if ((arg.isBreak || arg.value?.kind === "break") && !arg.name.startsWith("break_connect:")) {
               brokenNames.add(arg.name);
             }
           }
@@ -1857,6 +2086,10 @@ export const classDefinitionQueries: Record<string, any> = {
           for (const eid of baseElements) {
             const entry = db.symbol(eid);
             if (entry && !redeclaredNames.has(entry.name) && !brokenNames.has(entry.name)) {
+              if (entry.name) {
+                if (seenNames.has(entry.name)) continue;
+                seenNames.add(entry.name);
+              }
               elements.push(eid);
             }
           }
@@ -1879,12 +2112,51 @@ export const classDefinitionQueries: Record<string, any> = {
     },
     recovery: (_cycle: unknown, _self: SymbolEntry) => [] as SymbolId[],
   },
+  lint__modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    const spec = getShortClassSpecifierNode(cst);
+    if (!spec) return null;
+    const modNode =
+      Cst.ShortClassSpecifier.classModification(spec) ??
+      spec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
+    const mod = parseModArgsFromCst(modNode, self.parentId);
+    if (!mod || !mod.args || mod.args.length === 0) return null;
+    const typeSpec =
+      Cst.ShortClassSpecifier.typeSpecifier(spec) ??
+      spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+    const typeName = typeSpec?.text?.trim();
+    if (typeName) {
+      let baseEntry: SymbolEntry | null = null;
+      if (self.parentId !== null) {
+        const resolve = db.query<any>("resolveName", self.parentId);
+        if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
+        if (!baseEntry) {
+          const resSimple = db.query<any>("resolveSimpleName", self.parentId);
+          if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+        }
+      }
+      if (!baseEntry) {
+        const entries = db.byName(typeName.split(".").pop()!);
+        baseEntry = entries?.find((e: any) => e.kind === "Class") ?? null;
+      }
+      if (baseEntry) {
+        return checkModifierNotFound(db, self, mod, baseEntry.id, baseEntry, self.name);
+      }
+    }
+    return null;
+  },
 };
 
 export const extendsClauseQueries: Record<string, any> = {
   modificationText: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
-    return cst?.childForFieldName("classOrInheritanceModification")?.text ?? null;
+    const modNode = (cst?.children || []).find(
+      (c: any) =>
+        c.type === "classOrInheritanceModification" ||
+        c.type === "class_or_inheritance_modification" ||
+        c.type === "ClassOrInheritanceModification",
+    );
+    return modNode?.text ?? null;
   },
   /**
    * Resolve the base class referenced by this extends clause.
@@ -1958,7 +2230,12 @@ export const extendsClauseQueries: Record<string, any> = {
    */
   extendsModificationParsed: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
-    const modNode = cst?.childForFieldName("classOrInheritanceModification");
+    const modNode = (cst?.children || []).find(
+      (c: any) =>
+        c.type === "classOrInheritanceModification" ||
+        c.type === "class_or_inheritance_modification" ||
+        c.type === "ClassOrInheritanceModification",
+    );
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
   },
@@ -1978,7 +2255,10 @@ export const componentDeclarationQueries: Record<string, any> = {
     while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
       current = current.parent;
     }
-    return current?.childForFieldName("typeSpecifier")?.text ?? null;
+    const typeSpecNode =
+      Cst.ComponentClause.typeSpecifier(current) ??
+      current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+    return typeSpecNode?.text ?? null;
   },
 
   /**
@@ -1996,7 +2276,10 @@ export const componentDeclarationQueries: Record<string, any> = {
       while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
         current = current.parent;
       }
-      typeName = current?.childForFieldName("typeSpecifier")?.text ?? "";
+      const typeSpecNode =
+        Cst.ComponentClause.typeSpecifier(current) ??
+        current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      typeName = typeSpecNode?.text ?? "";
     }
 
     if (!typeName || typeof typeName !== "string") return null;
@@ -2052,10 +2335,10 @@ export const componentDeclarationQueries: Record<string, any> = {
     const declNode =
       current?.type === "Declaration" || current?.type === "declaration"
         ? current
-        : (current?.childForFieldName("declaration") ??
+        : (Cst.ComponentDeclaration.declaration(current) ??
           current?.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration"));
     const modNode =
-      declNode?.childForFieldName("modification") ??
+      Cst.Declaration.modification(declNode) ??
       declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
@@ -2070,7 +2353,10 @@ export const componentDeclarationQueries: Record<string, any> = {
     while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
       current = current.parent;
     }
-    let typeName = current?.childForFieldName("typeSpecifier")?.text;
+    const typeSpecNode =
+      Cst.ComponentClause.typeSpecifier(current) ??
+      current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+    let typeName = typeSpecNode?.text;
     if (!typeName || typeof typeName !== "string") return false;
 
     let typeEntry: SymbolEntry | null = null;
@@ -2115,8 +2401,8 @@ export const componentDeclarationQueries: Record<string, any> = {
       current.type !== "component_clause1"
     )
       current = current.parent;
-    const tp = current?.childForFieldName("type_prefix") ?? current?.childForFieldName("typePrefix");
-    const vNode = tp?.childForFieldName("variability") ?? current?.childForFieldName("variability");
+    const tp = Cst.ComponentClause.typePrefix(current);
+    const vNode = (tp?.children || current?.children || []).find((c: any) => c.type === "variability");
     if (vNode?.text) return vNode.text;
     const tpText = tp?.text ?? "";
     if (tpText.includes("parameter")) return "parameter";
@@ -2135,8 +2421,8 @@ export const componentDeclarationQueries: Record<string, any> = {
       current.type !== "component_clause1"
     )
       current = current.parent;
-    const tp = current?.childForFieldName("type_prefix") ?? current?.childForFieldName("typePrefix");
-    const cNode = tp?.childForFieldName("causality") ?? current?.childForFieldName("causality");
+    const tp = Cst.ComponentClause.typePrefix(current);
+    const cNode = (tp?.children || current?.children || []).find((c: any) => c.type === "causality");
     if (cNode?.text) return cNode.text;
     const tpText = tp?.text ?? "";
     if (tpText.includes("input")) return "input";
@@ -2154,19 +2440,44 @@ export const componentDeclarationQueries: Record<string, any> = {
       current.type !== "component_clause1"
     )
       current = current.parent;
-    return (
-      current?.childForFieldName("typePrefix")?.children.find((c: any) => c.type === "flow" || c.type === "stream")
-        ?.text ??
-      current?.childForFieldName("flow")?.text ??
-      null
-    );
+    const tp = Cst.ComponentClause.typePrefix(current);
+    if (tp) {
+      const tpText = tp.text?.trim() ?? "";
+      if (tpText.includes("stream")) return "stream";
+      if (tpText.includes("flow")) return "flow";
+    }
+    return (current?.children || []).find((c: any) => c.type === "flow" || c.text === "flow")?.text ?? null;
   },
 
   isFinal: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+    while (current) {
+      if (
+        current.type === "LongClassSpecifier" ||
+        current.type === "ShortClassSpecifier" ||
+        current.type === "long_class_specifier" ||
+        current.type === "short_class_specifier"
+      ) {
+        break;
+      }
+      if (
+        current.type === "element" ||
+        current.type === "Element" ||
+        current.type === "component_clause" ||
+        current.type === "ComponentClause"
+      ) {
+        for (const ch of current.children || []) {
+          if (ch.type === "final" || ch.text === "final") return true;
+        }
+        if (current.type === "element" || current.type === "Element") {
+          const text = current.text || "";
+          if (/\bfinal\b/.test(text.slice(0, 50))) return true;
+          break;
+        }
+      }
       current = current.parent;
-    return !!current?.childForFieldName("final");
+    }
+    return false;
   },
 
   /**
@@ -2178,16 +2489,18 @@ export const componentDeclarationQueries: Record<string, any> = {
     let current = cst;
     while (current && current.type !== "ComponentDeclaration" && current.type !== "component_declaration")
       current = current.parent;
-    const ann = current?.childForFieldName("annotationClause");
+    const ann = (current?.children || []).find(
+      (c: any) => c.type === "annotationClause" || c.type === "AnnotationClause",
+    );
     if (!ann) return false;
-    const classMod = ann.childForFieldName?.("classModification");
+    const classMod = Cst.Modification.classModification(ann);
     if (!classMod) return false;
     for (const arg of classMod.namedChildren ?? []) {
       if (arg.type !== "ElementModification") continue;
-      const argName = arg.childForFieldName?.("name")?.text;
+      const argName = Cst.ElementModification.name(arg)?.text;
       if (argName === "Evaluate") {
-        const modNode = arg.childForFieldName?.("modification");
-        const modExpr = modNode?.childForFieldName?.("modificationExpression");
+        const modNode = Cst.ElementModification.modification(arg);
+        const modExpr = Cst.Modification.modificationExpression(modNode);
         if (modExpr?.text === "true") return true;
       }
     }
@@ -2198,26 +2511,77 @@ export const componentDeclarationQueries: Record<string, any> = {
     let current = db.cstNode(self.id) as any;
     while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
       current = current.parent;
-    return !!current?.childForFieldName("redeclare");
+    return !!(current?.children || []).some((c: any) => c.type === "redeclare" || c.text === "redeclare");
   },
 
   isInner: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+    while (current && current.type !== "Element" && current.type !== "element") {
+      if (current.type === "Composition" || current.type === "composition") break;
       current = current.parent;
-    return current?.text.match(/\binner\b/) !== null;
+    }
+    return current ? /\binner\b/.test(current.text) : false;
   },
 
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+    if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
       current = current.parent;
-    return !!current?.childForFieldName("replaceable");
+    }
+    while (current) {
+      if (current.type === "element_replaceable" || current.type === "ElementReplaceable") return true;
+      if (
+        current.type === "ComponentClause" ||
+        current.type === "component_clause" ||
+        current.type === "element" ||
+        current.type === "Element"
+      ) {
+        if (
+          current.children?.some(
+            (c: any) => c.text?.trim() === "replaceable" || c.type === "replaceable" || c.type === '"replaceable"',
+          )
+        )
+          return true;
+      }
+      if (
+        current.type === "composition" ||
+        current.type === "Composition" ||
+        current.type === "class_definition" ||
+        current.type === "ClassDefinition"
+      )
+        break;
+      current = current.parent;
+    }
+    return false;
   },
 
   isProtected: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "ElementSection") {
+    const rawNode = db.cstNode(self.id) as any;
+    let current = rawNode;
+    const nodeStart = rawNode?.startByte ?? 0;
+    while (current) {
+      if (current.type === "ElementSection" || current.type === "element_section") {
+        const vis = current.children?.find((c: any) => c.text === "protected" || c.text === "public")?.text?.trim();
+        if (vis === "protected" || current.text?.trim()?.startsWith("protected")) return true;
+        if (vis === "public" || current.text?.trim()?.startsWith("public")) return false;
+      }
+      if (current.type === "composition" || current.type === "Composition") {
+        let isProt = false;
+        for (const child of current.children || []) {
+          const t = child.text?.trim();
+          if (child.type === "protected" || t === "protected") {
+            isProt = true;
+          } else if (child.type === "public" || t === "public") {
+            isProt = false;
+          }
+          if (child.startByte !== undefined && child.endByte !== undefined) {
+            if (nodeStart >= child.startByte && nodeStart < child.endByte) {
+              return isProt;
+            }
+          }
+        }
+        return isProt;
+      }
       // Stop at class definition boundaries — don't walk into a parent class
       if (
         current.type === "LongClassSpecifier" ||
@@ -2228,14 +2592,16 @@ export const componentDeclarationQueries: Record<string, any> = {
         return false;
       current = current.parent;
     }
-    return current ? current.childForFieldName("visibility")?.text === "protected" : false;
+    return false;
   },
 
   isOuter: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
+    while (current && current.type !== "Element" && current.type !== "element") {
+      if (current.type === "Composition" || current.type === "composition") break;
       current = current.parent;
-    return !!current?.childForFieldName("outer");
+    }
+    return current ? /\bouter\b/.test(current.text) : false;
   },
 
   // =================================================================
@@ -2264,7 +2630,7 @@ export const componentDeclarationQueries: Record<string, any> = {
       while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
         current = current.parent;
       }
-      const typeSpecNode = current?.childForFieldName("type_specifier") ?? current?.childForFieldName("typeSpecifier");
+      const typeSpecNode = Cst.ComponentClause.typeSpecifier(current);
       typeName =
         typeSpecNode?.text ?? (self.metadata as any)?.typeSpecifier ?? (self.metadata as any)?.type_specifier ?? "";
     }
@@ -2350,14 +2716,14 @@ export const componentDeclarationQueries: Record<string, any> = {
       for (const child of arraySubNode.children) {
         if (child.type !== "Subscript" && child.type !== "subscript") continue;
         const flexChild =
-          child.childForFieldName("flexible") ??
+          Cst.Subscript.flexible(child) ??
           child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
         if (flexChild && flexChild.text?.trim() === ":") {
           subs.push({ kind: "flexible" });
           continue;
         }
         const exprChild =
-          child.childForFieldName("expression") ??
+          Cst.Subscript.expression(child) ??
           child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
           (child.childCount > 0 ? child.child(0) : null);
         if (exprChild) {
@@ -2383,8 +2749,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     while (declNode && declNode.type !== "Declaration" && declNode.type !== "declaration") {
       declNode = declNode.parent;
     }
-    const declArraySubNode =
-      declNode?.childForFieldName("array_subscripts") ?? declNode?.childForFieldName("arraySubscripts");
+    const declArraySubNode = Cst.Declaration.arraySubscripts(declNode);
     const declSubscripts = declArraySubNode ? extractSubscripts(declArraySubNode) : [];
 
     // Navigate up to the ComponentClause to get type-level subscripts (e.g. Real[3])
@@ -2398,8 +2763,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     ) {
       clauseNode = clauseNode.parent;
     }
-    const clauseArraySubNode =
-      clauseNode?.childForFieldName("array_subscripts") ?? clauseNode?.childForFieldName("arraySubscripts");
+    const clauseArraySubNode = Cst.ComponentClause.arraySubscripts(clauseNode);
     const typeSubscripts = clauseArraySubNode ? extractSubscripts(clauseArraySubNode) : [];
 
     // Combine: component dimensions first, then type dimensions.
@@ -2433,9 +2797,11 @@ export const componentDeclarationQueries: Record<string, any> = {
 
         // Check ShortClassSpecifier
         const cstNode = db.cstNode(currentClassId) as any;
-        const spec = cstNode?.childForFieldName?.("classSpecifier");
-        if (spec?.type === "ShortClassSpecifier") {
-          const typeSpec = spec.childForFieldName?.("typeSpecifier");
+        const spec = getShortClassSpecifierNode(cstNode);
+        if (spec) {
+          const typeSpec =
+            Cst.ShortClassSpecifier.typeSpecifier(spec) ??
+            spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
           if (typeSpec?.text) {
             const currentEntry = db.symbol(currentClassId);
             if (currentEntry) {
@@ -2584,6 +2950,14 @@ export const componentDeclarationQueries: Record<string, any> = {
       modification: db.query<any>("effectiveModification", self.id),
     };
   },
+  lint__modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
+    const typeClassId = db.query<SymbolId | null>("classInstance", self.id);
+    if (!typeClassId) return null;
+    const typeEntry = db.symbol(typeClassId);
+    if (!typeEntry) return null;
+    const mod = db.query<any | null>("effectiveModification", self.id);
+    return checkModifierNotFound(db, self, mod, typeClassId, typeEntry, undefined);
+  },
 };
 
 export const shortClassSpecifierQueries: Record<string, any> = {
@@ -2591,9 +2965,11 @@ export const shortClassSpecifierQueries: Record<string, any> = {
     execute: (db: QueryDB, self: SymbolEntry) => {
       const cst = db.cstNode(self.id) as any;
       if (!cst) return null;
-      const classSpec = cst.childForFieldName("classSpecifier");
-      if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
-      const modNode = classSpec.childForFieldName("classModification");
+      const classSpec = getShortClassSpecifierNode(cst);
+      if (!classSpec) return null;
+      const modNode =
+        Cst.ShortClassSpecifier.classModification(classSpec) ??
+        classSpec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
       if (!modNode) return null;
       return parseModArgsFromCst(modNode, self.parentId);
     },
@@ -2602,10 +2978,12 @@ export const shortClassSpecifierQueries: Record<string, any> = {
   resolvedBaseClass: {
     execute: (db: QueryDB, self: SymbolEntry) => {
       const selfCstShort = db.cstNode(self.id) as any;
-      const specShort = selfCstShort?.childForFieldName?.("classSpecifier");
-      if (specShort?.type === "ShortClassSpecifier") {
-        const typeSpec = specShort.childForFieldName?.("typeSpecifier");
-        const typeName = typeSpec?.text;
+      const specShort = getShortClassSpecifierNode(selfCstShort);
+      if (specShort) {
+        const typeSpec =
+          Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
+          specShort.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        const typeName = typeSpec?.text?.trim();
         if (typeName && self.parentId !== null) {
           const parentResolver = db.query<(n: string) => { id: number } | null>("resolveName", self.parentId);
           if (parentResolver) {
@@ -2624,7 +3002,7 @@ export const shortClassSpecifierQueries: Record<string, any> = {
     execute: (db: QueryDB, self: SymbolEntry) => {
       const base = db.query<any>("resolvedBaseClass", self.id);
       if (base && base.id !== self.id) {
-        return db.query<number[]>("instantiate", base.id);
+        return db.query<number[]>("instantiate", base.id) || [];
       }
       return [];
     },
