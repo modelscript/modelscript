@@ -11283,7 +11283,22 @@ import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, 
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType, NodeFlag, Property } from "./parser";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
-import { DaeBuilder, dae_createBuilder, ExprKind, EqKind } from "./dae";
+import {
+  DaeBuilder,
+  dae_createBuilder,
+  ExprKind,
+  EqKind,
+  BinOp,
+  VarAttrKind,
+  EQ_STRIDE,
+  EQ_KIND,
+  EQ_LHS,
+  EQ_RHS,
+  EXPR_STRIDE,
+  EXPR_KIND,
+  EXPR_DATA1,
+} from "./dae";
+import { IntUnionFind } from "./alias";
 import { BltEngine, blt_createEngine } from "./blt";
 import { GenericScopeStack } from "./scope_stack";
 import { ArenaStringPool } from "./string_pool";
@@ -12311,16 +12326,192 @@ class ScopeAPI {
 }
 
 
+export const FLAG_MOD_FINAL: u32 = 0x01;
+export const FLAG_MOD_EACH: u32 = 0x02;
+export const FLAG_MOD_REDECLARE: u32 = 0x04;
+export const FLAG_MOD_REPLACEABLE: u32 = 0x08;
+
+@unmanaged
+export class ModificationEnvironment {
+  keyHashes: ChunkedUint32Array;
+  valExprIds: ChunkedUint32Array;
+  childEnvPtrs: ChunkedUint32Array;
+  redeclareTypeHashes: ChunkedUint32Array;
+  flags: ChunkedUint32Array; // bit 0: isFinal, bit 1: isEach, bit 2: isRedeclare, bit 3: isReplaceable
+  count: u32;
+  parentEnvPtr: u32;
+
+  init(parentPtr: u32 = 0): void {
+    this.keyHashes = createChunkedUint32Array(256);
+    this.valExprIds = createChunkedUint32Array(256);
+    this.childEnvPtrs = createChunkedUint32Array(256);
+    this.redeclareTypeHashes = createChunkedUint32Array(256);
+    this.flags = createChunkedUint32Array(256);
+    this.count = 0;
+    this.parentEnvPtr = parentPtr;
+  }
+
+  bind(keyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    let idx = this.count++;
+    this.keyHashes.set(idx, keyHash);
+    this.valExprIds.set(idx, valExprId);
+    this.childEnvPtrs.set(idx, 0);
+    this.redeclareTypeHashes.set(idx, 0);
+    let f: u32 = (isFinal ? FLAG_MOD_FINAL : 0) | (isEach ? FLAG_MOD_EACH : 0);
+    this.flags.set(idx, f);
+  }
+
+  bindNested(keyHash: u32, childEnvPtr: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    let idx = this.count++;
+    this.keyHashes.set(idx, keyHash);
+    this.valExprIds.set(idx, 0xffffffff);
+    this.childEnvPtrs.set(idx, childEnvPtr);
+    this.redeclareTypeHashes.set(idx, 0);
+    let f: u32 = (isFinal ? FLAG_MOD_FINAL : 0) | (isEach ? FLAG_MOD_EACH : 0);
+    this.flags.set(idx, f);
+  }
+
+  bindRedeclare(keyHash: u32, newTypeHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    let idx = this.count++;
+    this.keyHashes.set(idx, keyHash);
+    this.valExprIds.set(idx, valExprId);
+    this.childEnvPtrs.set(idx, 0);
+    this.redeclareTypeHashes.set(idx, newTypeHash);
+    let f: u32 = FLAG_MOD_REDECLARE | (isFinal ? FLAG_MOD_FINAL : 0) | (isEach ? FLAG_MOD_EACH : 0);
+    this.flags.set(idx, f);
+  }
+
+  lookup(keyHash: u32): u32 {
+    for (let i: i32 = this.count - 1; i >= 0; i--) {
+      if (this.keyHashes.get(i) == keyHash) {
+        return this.valExprIds.get(i);
+      }
+    }
+    if (this.parentEnvPtr != 0) {
+      return changetype<ModificationEnvironment>(this.parentEnvPtr).lookup(keyHash);
+    }
+    return 0xffffffff;
+  }
+
+  lookupNested(keyHash: u32): u32 {
+    for (let i: i32 = this.count - 1; i >= 0; i--) {
+      if (this.keyHashes.get(i) == keyHash) {
+        return this.childEnvPtrs.get(i);
+      }
+    }
+    if (this.parentEnvPtr != 0) {
+      return changetype<ModificationEnvironment>(this.parentEnvPtr).lookupNested(keyHash);
+    }
+    return 0;
+  }
+
+  lookupRedeclare(keyHash: u32): u32 {
+    for (let i: i32 = this.count - 1; i >= 0; i--) {
+      if (this.keyHashes.get(i) == keyHash) {
+        let f = this.flags.get(i);
+        if ((f & FLAG_MOD_REDECLARE) != 0) {
+          return this.redeclareTypeHashes.get(i);
+        }
+      }
+    }
+    if (this.parentEnvPtr != 0) {
+      return changetype<ModificationEnvironment>(this.parentEnvPtr).lookupRedeclare(keyHash);
+    }
+    return 0;
+  }
+
+  lookupFlags(keyHash: u32): u32 {
+    for (let i: i32 = this.count - 1; i >= 0; i--) {
+      if (this.keyHashes.get(i) == keyHash) {
+        return this.flags.get(i);
+      }
+    }
+    if (this.parentEnvPtr != 0) {
+      return changetype<ModificationEnvironment>(this.parentEnvPtr).lookupFlags(keyHash);
+    }
+    return 0;
+  }
+
+  bindDottedPath(parentKeyHash: u32, subKeyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    let childEnvPtr = this.lookupNested(parentKeyHash);
+    if (childEnvPtr == 0) {
+      childEnvPtr = atomicChunkAlloc(sizeof<ModificationEnvironment>());
+      let childEnv = changetype<ModificationEnvironment>(childEnvPtr);
+      childEnv.init(this.parentEnvPtr);
+      this.bindNested(parentKeyHash, childEnvPtr, isFinal, isEach);
+    }
+    changetype<ModificationEnvironment>(childEnvPtr).bind(subKeyHash, valExprId, isFinal, isEach);
+  }
+
+  merge(otherEnvPtr: u32): void {
+    if (otherEnvPtr == 0) return;
+    let other = changetype<ModificationEnvironment>(otherEnvPtr);
+    for (let i: u32 = 0; i < other.count; i++) {
+      let key = other.keyHashes.get(i);
+      let existingFlags = this.lookupFlags(key);
+      if ((existingFlags & FLAG_MOD_FINAL) != 0) {
+        continue;
+      }
+      let val = other.valExprIds.get(i);
+      let child = other.childEnvPtrs.get(i);
+      let redecl = other.redeclareTypeHashes.get(i);
+      let f = other.flags.get(i);
+
+      let idx = this.count++;
+      this.keyHashes.set(idx, key);
+      this.valExprIds.set(idx, val);
+      this.childEnvPtrs.set(idx, child);
+      this.redeclareTypeHashes.set(idx, redecl);
+      this.flags.set(idx, f);
+    }
+  }
+}
+
 class EnvAPI {
   @inline create(parentPtr: u32 = 0): u32 {
-    return parentPtr;
+    let ptr = atomicChunkAlloc(sizeof<ModificationEnvironment>());
+    let env = changetype<ModificationEnvironment>(ptr);
+    env.init(parentPtr);
+    return ptr as u32;
   }
 
   @inline bind(envId: u32, keyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    if (envId != 0) {
+      changetype<ModificationEnvironment>(envId).bind(keyHash, valExprId, isFinal, isEach);
+    }
+  }
+
+  @inline bindNested(envId: u32, keyHash: u32, childEnvId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    if (envId != 0) {
+      changetype<ModificationEnvironment>(envId).bindNested(keyHash, childEnvId, isFinal, isEach);
+    }
+  }
+
+  @inline bindDottedPath(envId: u32, parentKeyHash: u32, subKeyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    if (envId != 0) {
+      changetype<ModificationEnvironment>(envId).bindDottedPath(parentKeyHash, subKeyHash, valExprId, isFinal, isEach);
+    }
+  }
+
+  @inline merge(targetEnvId: u32, otherEnvId: u32): void {
+    if (targetEnvId != 0 && otherEnvId != 0) {
+      changetype<ModificationEnvironment>(targetEnvId).merge(otherEnvId);
+    }
   }
 
   @inline lookup(envId: u32, keyHash: u32): u32 {
-    return 0xffffffff;
+    if (envId == 0) return 0xffffffff;
+    return changetype<ModificationEnvironment>(envId).lookup(keyHash);
+  }
+
+  @inline lookupNested(envId: u32, keyHash: u32): u32 {
+    if (envId == 0) return 0;
+    return changetype<ModificationEnvironment>(envId).lookupNested(keyHash);
+  }
+
+  @inline lookupFlags(envId: u32, keyHash: u32): u32 {
+    if (envId == 0) return 0;
+    return changetype<ModificationEnvironment>(envId).lookupFlags(keyHash);
   }
 }
 
@@ -12337,8 +12528,120 @@ class ConnectorAPI {
     return this.dae.addEquation(EqKind.Connect, e1, e2);
   }
 
-  @inline finalize(): u32 {
-    return 0;
+  finalize(): u32 {
+    let varCount = this.dae.varCount;
+    let eqCount = this.dae.eqCount;
+    if (varCount == 0 || eqCount == 0) return 0;
+
+    let pool = this.dae.getStringPool();
+    let uf = new IntUnionFind(varCount);
+
+    // 1. Gather all Connect equations and unify variables
+    let initialEqCount = eqCount;
+    for (let i: u32 = 0; i < initialEqCount; i++) {
+      let offset = i * EQ_STRIDE;
+      let kind = this.dae.getEqData().get(offset + EQ_KIND);
+      if (kind == (EqKind.Connect as i32)) {
+        let lhsExpr = this.dae.getEqData().get(offset + EQ_LHS) as u32;
+        let rhsExpr = this.dae.getEqData().get(offset + EQ_RHS) as u32;
+        if (lhsExpr < this.dae.exprCount && rhsExpr < this.dae.exprCount) {
+          let lhsKind = this.dae.getExprData().get(lhsExpr * EXPR_STRIDE + EXPR_KIND);
+          let rhsKind = this.dae.getExprData().get(rhsExpr * EXPR_STRIDE + EXPR_KIND);
+          if (lhsKind == (ExprKind.Name as i32) && rhsKind == (ExprKind.Name as i32)) {
+            let fromNameId = this.dae.getExprData().get(lhsExpr * EXPR_STRIDE + EXPR_DATA1) as u32;
+            let toNameId = this.dae.getExprData().get(rhsExpr * EXPR_STRIDE + EXPR_DATA1) as u32;
+
+            let fromExact = this.dae.lookupVariableByName(fromNameId);
+            let toExact = this.dae.lookupVariableByName(toNameId);
+            if (fromExact >= 0 && toExact >= 0) {
+              uf.union(fromExact as u32, toExact as u32);
+            } else {
+              // Hierarchical connector port matching
+              for (let v: u32 = 0; v < varCount; v++) {
+                let vNameId = this.dae.getVarNameId(v);
+                if (pool.hasPrefix(vNameId, fromNameId)) {
+                  let suffId = pool.getSuffixAfterPrefix(vNameId, fromNameId);
+                  if (suffId != 0) {
+                    let targetNameId = pool.concatIds(toNameId, suffId);
+                    let toVar = this.dae.lookupVariableByName(targetNameId);
+                    if (toVar >= 0) {
+                      uf.union(v, toVar as u32);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Emit potential and flow equations
+    let generatedEqs: u32 = 0;
+    let zeroExpr = this.dae.addRealLiteral(0.0);
+
+    // Pass A: Zero-flow for unconnected flow variables
+    for (let v: u32 = 0; v < varCount; v++) {
+      if (this.dae.isVarFlow(v)) {
+        let root = uf.find(v);
+        let hasOther = false;
+        for (let other: u32 = 0; other < varCount; other++) {
+          if (other != v && uf.find(other) == root) {
+            hasOther = true;
+            break;
+          }
+        }
+        if (!hasOther) {
+          let vExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(v));
+          this.dae.addEquation(EqKind.Simple, vExpr, zeroExpr);
+          generatedEqs++;
+        }
+      }
+    }
+
+    // Pass B: Connected components
+    for (let v: u32 = 0; v < varCount; v++) {
+      let root = uf.find(v);
+      if (root != v) continue;
+
+      let isFlow = this.dae.isVarFlow(root);
+      if (isFlow) {
+        let sumExpr: u32 = 0;
+        let memberCount: u32 = 0;
+
+        for (let member: u32 = 0; member < varCount; member++) {
+          if (uf.find(member) == root) {
+            let mExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(member));
+            let negExpr = this.dae.addExpression(ExprKind.Negate, 0, mExpr);
+            if (memberCount == 0) {
+              sumExpr = negExpr;
+            } else {
+              sumExpr = this.dae.addBinaryExpr(BinOp.Add as u16, sumExpr, negExpr);
+            }
+            // Emit zero-flow initial value
+            this.dae.addEquation(EqKind.Simple, mExpr, zeroExpr);
+            generatedEqs++;
+            memberCount++;
+          }
+        }
+
+        if (memberCount > 1) {
+          this.dae.addEquation(EqKind.Simple, sumExpr, zeroExpr);
+          generatedEqs++;
+        }
+      } else {
+        let rootExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(root));
+        for (let member: u32 = 0; member < varCount; member++) {
+          if (member != root && uf.find(member) == root) {
+            let mExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(member));
+            this.dae.addEquation(EqKind.Simple, rootExpr, mExpr);
+            generatedEqs++;
+          }
+        }
+      }
+    }
+
+    return generatedEqs;
   }
 }
 

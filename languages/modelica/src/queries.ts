@@ -429,8 +429,8 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         );
       if (clause) {
         const typeSpec =
-          Cst.ComponentClause.typeSpecifier(clause) ??
-          clause.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+          clause.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier") ??
+          Cst.ComponentClause.typeSpecifier(clause);
         const compList = Cst.ComponentClause.componentList(clause);
         const decl1 =
           (compList ? Cst.ComponentList.componentDeclaration(compList) : null) ??

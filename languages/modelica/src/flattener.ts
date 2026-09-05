@@ -578,6 +578,53 @@ function resolveScopedName(name: string, prefix: string, dae: DAEBuilder, innerO
   return resolvedName ?? (name.includes(".") ? name : `${prefix}.${name}`);
 }
 
+function lookupDbConstant(fullName: string, db: QueryDB): { value: number; isInteger: boolean } | null {
+  const parts = fullName.split(".");
+  if (parts.length === 0) return null;
+  const leafName = parts[parts.length - 1];
+  const candidates = db.byName(leafName);
+  for (const c of candidates) {
+    if (c.kind === "Component") {
+      let curr: SymbolEntry | null = c;
+      let match = true;
+      for (let i = parts.length - 1; i >= 0; i--) {
+        if (!curr || curr.name !== parts[i]) {
+          match = false;
+          break;
+        }
+        if (i > 0) {
+          curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
+        }
+      }
+      if (match) {
+        const variability = db.query<string | null>("variability", c.id);
+        if (variability !== "constant") {
+          continue;
+        }
+        const typeSpec = db.query<string | null>("typeSpecifier", c.id);
+        const isInteger = typeSpec === "Integer";
+        const mod = db.query<any>("effectiveModification", c.id);
+        if (mod?.bindingExpression?.text) {
+          const num = parseFloat(mod.bindingExpression.text.trim());
+          if (!isNaN(num)) {
+            return { value: num, isInteger: isInteger && Number.isInteger(num) };
+          }
+        }
+        const cst = db.cstNode(c.id) as any;
+        const cstText = cst?.text ?? "";
+        const eqMatch = cstText.match(/=\s*([^;,()]+)/);
+        if (eqMatch) {
+          const num = parseFloat(eqMatch[1].trim());
+          if (!isNaN(num)) {
+            return { value: num, isInteger: isInteger && Number.isInteger(num) };
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function lowerCSTExpression(
   node: any,
   dae: DAEBuilder,
@@ -824,7 +871,7 @@ function lowerCSTExpression(
         if (evaluatedNum !== null) {
           subVals.push(evaluatedNum);
         } else {
-          const subId = lowerCSTExpression(expr, dae, prefix, substitutions);
+          const subId = lowerCSTExpression(expr, dae, prefix, substitutions, imports, db, flattener);
           if (subId >= 0 && dae.getExprKind(subId) === ExprKind.IntLiteral) {
             subVals.push(dae.getExprData1(subId));
           } else {
@@ -843,12 +890,12 @@ function lowerCSTExpression(
       return dae.addExpression(ExprKind.Name, dae.interner.intern(candidate));
     }
 
-    const baseId = lowerCSTExpression(baseNode, dae, prefix, substitutions);
+    const baseId = lowerCSTExpression(baseNode, dae, prefix, substitutions, imports, db, flattener);
     const subIds: number[] = [];
     for (let i = 0; i < subsNode.childCount; i++) {
       const c = subsNode.child(i);
       if (c.type === "subscript" || c.type === "expression") {
-        subIds.push(lowerCSTExpression(c, dae, prefix, substitutions));
+        subIds.push(lowerCSTExpression(c, dae, prefix, substitutions, imports, db, flattener));
       }
     }
     return dae.addSubscriptExpr(baseId, subIds);
@@ -865,7 +912,7 @@ function lowerCSTExpression(
     for (let i = 1; i < node.childCount - 1; i++) {
       const c = node.child(i);
       if (c.type === "expression" || c.type === "Expression") {
-        return lowerCSTExpression(c, dae, prefix, substitutions);
+        return lowerCSTExpression(c, dae, prefix, substitutions, imports, db, flattener);
       }
     }
   }
@@ -885,7 +932,7 @@ function lowerCSTExpression(
         const collect = (n: any) => {
           if (!n) return;
           if (n.type === "expression") {
-            elementIds.push(lowerCSTExpression(n, dae, prefix, substitutions));
+            elementIds.push(lowerCSTExpression(n, dae, prefix, substitutions, imports, db, flattener));
             return;
           }
           for (let j = 0; j < n.childCount; j++) collect(n.child(j));
@@ -911,7 +958,7 @@ function lowerCSTExpression(
         const collect = (n: any) => {
           if (!n) return;
           if (n.type === "expression") {
-            const exprId = lowerCSTExpression(n, dae, prefix, substitutions);
+            const exprId = lowerCSTExpression(n, dae, prefix, substitutions, imports, db, flattener);
             if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.ArrayCtor) {
               const count = dae.getExprData1(exprId);
               for (let k = 0; k < count; k++) {
@@ -936,8 +983,8 @@ function lowerCSTExpression(
     node.childCount === 3 &&
     (node.child(1)?.type === ":" || node.child(1)?.text === ":" || node.child(1)?.type === '":"')
   ) {
-    const startId = lowerCSTExpression(node.child(0), dae, prefix, substitutions);
-    const stopId = lowerCSTExpression(node.child(2), dae, prefix, substitutions);
+    const startId = lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener);
+    const stopId = lowerCSTExpression(node.child(2), dae, prefix, substitutions, imports, db, flattener);
     return dae.addExpression(ExprKind.Range, startId, -1, stopId);
   }
   if (
@@ -945,17 +992,25 @@ function lowerCSTExpression(
     (node.child(1)?.type === ":" || node.child(1)?.text === ":" || node.child(1)?.type === '":"') &&
     (node.child(3)?.type === ":" || node.child(3)?.text === ":" || node.child(3)?.type === '":"')
   ) {
-    const startId = lowerCSTExpression(node.child(0), dae, prefix, substitutions);
-    const stepId = lowerCSTExpression(node.child(2), dae, prefix, substitutions);
-    const stopId = lowerCSTExpression(node.child(4), dae, prefix, substitutions);
+    const startId = lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener);
+    const stepId = lowerCSTExpression(node.child(2), dae, prefix, substitutions, imports, db, flattener);
+    const stopId = lowerCSTExpression(node.child(4), dae, prefix, substitutions, imports, db, flattener);
     return dae.addExpression(ExprKind.Range, startId, stepId, stopId);
   }
 
   // If-Else expression: if cond then e1 else e2
   if (firstChildToken === "if" && node.childCount >= 6) {
-    const condId = lowerCSTExpression(node.child(1), dae, prefix, substitutions);
-    const thenId = lowerCSTExpression(node.child(3), dae, prefix, substitutions);
-    const elseId = lowerCSTExpression(node.child(node.childCount - 1), dae, prefix, substitutions);
+    const condId = lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
+    const thenId = lowerCSTExpression(node.child(3), dae, prefix, substitutions, imports, db, flattener);
+    const elseId = lowerCSTExpression(
+      node.child(node.childCount - 1),
+      dae,
+      prefix,
+      substitutions,
+      imports,
+      db,
+      flattener,
+    );
     return dae.addExpression(ExprKind.IfElse, condId, thenId, elseId);
   }
 
@@ -1021,8 +1076,8 @@ function lowerCSTExpression(
         break;
     }
     if (binOp !== null) {
-      let leftId = lowerCSTExpression(node.child(0), dae, prefix, substitutions);
-      let rightId = lowerCSTExpression(node.child(2), dae, prefix, substitutions);
+      let leftId = lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener);
+      let rightId = lowerCSTExpression(node.child(2), dae, prefix, substitutions, imports, db, flattener);
       if (binOp === BinOp.Sub) {
         const rightKind = dae.getExprKind(rightId);
         if (rightKind === ExprKind.IntLiteral && dae.getExprData1(rightId) === 1) {
@@ -1075,15 +1130,15 @@ function lowerCSTExpression(
     const rawOp = node.child(0)?.text?.trim() ?? node.child(0)?.type ?? "";
     const op = rawOp.replace(/^"|"$/g, "");
     if (op === "-") {
-      const operandId = lowerCSTExpression(node.child(1), dae, prefix, substitutions);
+      const operandId = lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
       return dae.addExpression(ExprKind.Negate, 0, operandId);
     }
 
     if (op === "+") {
-      return lowerCSTExpression(node.child(1), dae, prefix, substitutions);
+      return lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
     }
     if (op === "not") {
-      const operandId = lowerCSTExpression(node.child(1), dae, prefix, substitutions);
+      const operandId = lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
       return dae.addExpression(ExprKind.Unary, UnaryOp.Not, operandId);
     }
   }
@@ -1113,7 +1168,7 @@ function lowerCSTExpression(
               if (evaluatedNum !== null) {
                 subVals.push(evaluatedNum);
               } else {
-                const subId = lowerCSTExpression(expr, dae, prefix, substitutions);
+                const subId = lowerCSTExpression(expr, dae, prefix, substitutions, imports, db, flattener);
                 if (subId >= 0 && dae.getExprKind(subId) === ExprKind.IntLiteral) {
                   subVals.push(dae.getExprData1(subId));
                 } else {
@@ -1128,11 +1183,51 @@ function lowerCSTExpression(
         }
       }
       if (parts.length > 0) {
-        let candidate = resolveScopedName(parts.join("."), prefix, dae, (dae as any).innerOuterComponents);
+        let joined = parts.join(".");
+        if (imports && imports.has(parts[0])) {
+          joined = [imports.get(parts[0])!, ...parts.slice(1)].join(".");
+          if (db) {
+            const constRes = lookupDbConstant(joined, db);
+            if (constRes !== null) {
+              return constRes.isInteger
+                ? dae.addIntLiteral(Math.round(constRes.value))
+                : dae.addRealLiteral(constRes.value);
+            }
+          }
+        } else if (db) {
+          const constRes = lookupDbConstant(joined, db);
+          if (constRes !== null) {
+            return constRes.isInteger
+              ? dae.addIntLiteral(Math.round(constRes.value))
+              : dae.addRealLiteral(constRes.value);
+          }
+        }
+        let candidate = resolveScopedName(joined, prefix, dae, (dae as any).innerOuterComponents);
         if (dae.getVarIdxByName(candidate) >= 0) {
           return dae.addExpression(ExprKind.Name, dae.interner.intern(candidate));
         }
         rawName = candidate;
+      }
+    }
+
+    if (imports && rawName.includes(".")) {
+      const p = rawName.split(".");
+      if (imports.has(p[0])) {
+        const mapped = [imports.get(p[0])!, ...p.slice(1)].join(".");
+        if (db) {
+          const constRes = lookupDbConstant(mapped, db);
+          if (constRes !== null) {
+            return constRes.isInteger
+              ? dae.addIntLiteral(Math.round(constRes.value))
+              : dae.addRealLiteral(constRes.value);
+          }
+        }
+        rawName = mapped;
+      }
+    } else if (db && rawName.includes(".")) {
+      const constRes = lookupDbConstant(rawName, db);
+      if (constRes !== null) {
+        return constRes.isInteger ? dae.addIntLiteral(Math.round(constRes.value)) : dae.addRealLiteral(constRes.value);
       }
     }
 
@@ -1214,6 +1309,64 @@ export class ModelicaFlattener {
   private options: Required<FlattenOptions>;
   private currentRootClassId: SymbolId = 0;
   private innerOuterComponents = new Set<string>();
+  currentImports = new Map<string, string>();
+
+  collectClassImports(classId: SymbolId, visited: Set<SymbolId> = new Set<SymbolId>()): Map<string, string> {
+    const result = new Map<string, string>();
+    if (visited.has(classId)) return result;
+    visited.add(classId);
+
+    // 1. Parent scope imports
+    const sym = this.db.symbol(classId);
+    if (sym && sym.parentId !== null) {
+      const parentImports = this.collectClassImports(sym.parentId, visited);
+      for (const [k, v] of parentImports) {
+        result.set(k, v);
+      }
+    }
+
+    // 2. Base class imports (via Extends)
+    const extendsChildren = this.db.childrenOf(classId).filter((c) => c.kind === "Extends");
+    for (const ext of extendsChildren) {
+      const base = this.db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
+      const target = base ?? this.db.byName(ext.name).find((e) => e.kind === "Class");
+      if (target) {
+        const baseImports = this.collectClassImports(target.id, visited);
+        for (const [k, v] of baseImports) {
+          result.set(k, v);
+        }
+      }
+    }
+
+    // 3. Own CST imports
+    const cst = this.db.cstNode(classId) as any;
+    if (cst) {
+      const walkImports = (n: any) => {
+        if (!n) return;
+        if (n.type === "import_clause" || n.type === "ImportClause") {
+          const text = n.text?.trim() ?? "";
+          const m = text.match(/import\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_.]+)/);
+          if (m) {
+            result.set(m[1], m[2]);
+          }
+          return;
+        }
+        if (n !== cst && (n.type === "class_definition" || n.type === "ClassDefinition")) {
+          return;
+        }
+        for (let i = 0; i < (n.childCount || n.children?.length || 0); i++) {
+          walkImports(n.child ? n.child(i) : n.children[i]);
+        }
+      };
+      walkImports(cst);
+    }
+
+    return result;
+  }
+
+  private lowerExpr(node: any, dae: DAEBuilder, prefix = "", substitutions?: Map<string, number>): number {
+    return lowerCSTExpression(node, dae, prefix, substitutions, this.currentImports, this.db, this);
+  }
 
   constructor(db: QueryDB, options?: FlattenOptions) {
     this.db = db;
@@ -1241,6 +1394,7 @@ export class ModelicaFlattener {
   flattenClass(rootClassId: SymbolId, cachedArena?: DAEBuilder | null): DAEBuilder {
     this.currentRootClassId = rootClassId;
     this.innerOuterComponents.clear();
+    this.currentImports = this.collectClassImports(rootClassId);
     const rootSym = this.db.symbol(rootClassId);
     const rootName = rootSym?.name ?? "Model";
     const dae = cachedArena ?? new DAEBuilder(undefined, rootName, "");
@@ -1597,7 +1751,12 @@ export class ModelicaFlattener {
     this.extractClassEquations(rootClassId, "", dae);
 
     // 3. Layer 3: Physical connector expansion & flow balance
-    ModelicaPortBalancer.expandConnections(dae, { omcCompatibility: this.options.omcCompatibility });
+    const rootCst = this.db.cstNode(rootClassId) as any;
+    const isOldFrontend = Boolean(rootCst?.text?.includes("-d=-newInst"));
+    ModelicaPortBalancer.expandConnections(dae, {
+      omcCompatibility: this.options.omcCompatibility,
+      isOldFrontend,
+    });
 
     // 4. Constant folding and alias elimination
     foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
@@ -1643,8 +1802,8 @@ export class ModelicaFlattener {
               (c: any) => c.type === "expression" || c.type === "Expression",
             );
             if (expressions.length >= 2) {
-              let lhsExprId = lowerCSTExpression(expressions[0], dae, "", undefined);
-              let rhsExprId = lowerCSTExpression(expressions[1], dae, "", undefined);
+              let lhsExprId = this.lowerExpr(expressions[0], dae, "");
+              let rhsExprId = this.lowerExpr(expressions[1], dae, "");
               if (isRealExpr(lhsExprId, dae) && !isRealExpr(rhsExprId, dae)) {
                 rhsExprId = castToRealExpr(rhsExprId, dae);
               }
@@ -1973,6 +2132,10 @@ export class ModelicaFlattener {
     const fn = new DAEBuilder(parentDae ? parentDae.interner : undefined, fnName, "");
     fn.classKind = "function";
 
+    const prevImports = this.currentImports;
+    const fnImports = this.collectClassImports(fnSymId);
+    this.currentImports = new Map([...this.currentImports, ...fnImports]);
+
     const cst = this.db.cstNode(fnSymId) as any;
     const shortSpec = getShortClassSpecifierNode(cst);
     let targetSymId = fnSymId;
@@ -2007,6 +2170,7 @@ export class ModelicaFlattener {
 
     this.extractClassEquations(targetSymId, "", fn);
 
+    this.currentImports = prevImports;
     return fn;
   }
 
@@ -2747,7 +2911,7 @@ export class ModelicaFlattener {
           const modChild = elemCst?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
           const exprCst = findBindingExprNode(modChild ?? elemCst);
           if (exprId === null && idxTuple.length === 0 && exprCst && exprCst.text?.trim() === bText) {
-            exprId = lowerCSTExpression(exprCst, dae, prefix);
+            exprId = this.lowerExpr(exprCst, dae, prefix);
             if (varType === VarType.Real && !isRealExpr(exprId, dae)) {
               exprId = castToRealExpr(exprId, dae);
             }
@@ -2758,7 +2922,7 @@ export class ModelicaFlattener {
               const bindCst = this.db.cstNodeRange(effectiveBinding.cstBytes[0], effectiveBinding.cstBytes[1]) as any;
               if (bindCst) {
                 const innerCst = findBindingExprNode(bindCst) ?? bindCst;
-                exprId = lowerCSTExpression(innerCst, dae, prefix);
+                exprId = this.lowerExpr(innerCst, dae, prefix);
                 if (varType === VarType.Real && !isRealExpr(exprId, dae)) {
                   exprId = castToRealExpr(exprId, dae);
                 }
@@ -3084,7 +3248,7 @@ export class ModelicaFlattener {
           };
           const exprCst = findBindingExprNode(modChild ?? elemCst);
           if (exprCst && exprCst.text?.trim() === bText) {
-            rhsExprId = lowerCSTExpression(exprCst, dae, prefix);
+            rhsExprId = this.lowerExpr(exprCst, dae, prefix);
             if (varType === VarType.Real && !isRealExpr(rhsExprId, dae)) {
               rhsExprId = castToRealExpr(rhsExprId, dae);
             }
@@ -3456,7 +3620,7 @@ export class ModelicaFlattener {
           for (let i = 0; i < branches.length; i++) {
             const b = branches[i];
             if (b.conditionNode) {
-              const condExprId = lowerCSTExpression(b.conditionNode, dae, prefix, substitutions);
+              const condExprId = this.lowerExpr(b.conditionNode, dae, prefix, substitutions);
               const evaluated = evalDaeExpr(condExprId, dae);
               if (evaluated === null) {
                 isDynamic = true;
@@ -3485,7 +3649,7 @@ export class ModelicaFlattener {
 
           // Otherwise dynamic If equation in DAE
           if (branches.length > 0 && branches[0].conditionNode) {
-            const firstCondId = lowerCSTExpression(branches[0].conditionNode, dae, prefix, substitutions);
+            const firstCondId = this.lowerExpr(branches[0].conditionNode, dae, prefix, substitutions);
             const ifIdx = dae.addIfEquation(firstCondId);
             const meta = dae.getIfEquationMeta(ifIdx);
 
@@ -3500,8 +3664,8 @@ export class ModelicaFlattener {
               ) {
                 const exprs = (n.children || []).filter((c: any) => c.type === "expression" || c.type === "Expression");
                 if (exprs.length >= 2) {
-                  let lId = lowerCSTExpression(exprs[0], dae, prefix, substitutions);
-                  let rId = lowerCSTExpression(exprs[1], dae, prefix, substitutions);
+                  let lId = this.lowerExpr(exprs[0], dae, prefix, substitutions);
+                  let rId = this.lowerExpr(exprs[1], dae, prefix, substitutions);
                   if (isRealExpr(lId, dae) && !isRealExpr(rId, dae)) {
                     rId = castToRealExpr(rId, dae);
                   }
@@ -3509,7 +3673,7 @@ export class ModelicaFlattener {
                 }
               }
               if (n.type === "function_call" || n.type === "FunctionCall") {
-                const callId = lowerCSTExpression(n, dae, prefix, substitutions);
+                const callId = this.lowerExpr(n, dae, prefix, substitutions);
                 return { kind: EqKind.FunctionCall, lhsExprId: callId, rhsExprId: -1 };
               }
               for (const kid of n.children || []) {
@@ -3529,7 +3693,7 @@ export class ModelicaFlattener {
             for (let i = 1; i < branches.length; i++) {
               const b = branches[i];
               if (b.conditionNode) {
-                const elseCondId = lowerCSTExpression(b.conditionNode, dae, prefix, substitutions);
+                const elseCondId = this.lowerExpr(b.conditionNode, dae, prefix, substitutions);
                 const bodyEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
                 for (const eqNode of b.equationNodes) {
                   const eq = lowerInlineEq(eqNode);
@@ -3607,8 +3771,8 @@ export class ModelicaFlattener {
             (c: any) => c.type === "expression" || c.type === "Expression",
           );
           if (expressions.length >= 2) {
-            let lhsExprId = lowerCSTExpression(expressions[0], dae, prefix, substitutions);
-            let rhsExprId = lowerCSTExpression(expressions[1], dae, prefix, substitutions);
+            let lhsExprId = this.lowerExpr(expressions[0], dae, prefix, substitutions);
+            let rhsExprId = this.lowerExpr(expressions[1], dae, prefix, substitutions);
             if (isRealExpr(lhsExprId, dae) && !isRealExpr(rhsExprId, dae)) {
               rhsExprId = castToRealExpr(rhsExprId, dae);
             }
@@ -3624,7 +3788,7 @@ export class ModelicaFlattener {
 
         // Function call equations (e.g. terminate(...))
         if (node.type === "function_call" || node.type === "FunctionCall") {
-          const callId = lowerCSTExpression(node, dae, prefix, substitutions);
+          const callId = this.lowerExpr(node, dae, prefix, substitutions);
           const eqIdx = dae.addEquation(EqKind.FunctionCall, callId, -1);
           const startB = node.startIndex ?? node.startByte;
           const endB = node.endIndex ?? node.endByte;
@@ -3683,8 +3847,8 @@ export class ModelicaFlattener {
               return;
             }
 
-            const lhsExprId = lowerCSTExpression(refs[0], dae, prefix, substitutions);
-            const rhsExprId = lowerCSTExpression(refs[1], dae, prefix, substitutions);
+            const lhsExprId = this.lowerExpr(refs[0], dae, prefix, substitutions);
+            const rhsExprId = this.lowerExpr(refs[1], dae, prefix, substitutions);
             dae.addEquation(EqKind.Connect, lhsExprId, rhsExprId);
             return;
           }
@@ -3694,7 +3858,7 @@ export class ModelicaFlattener {
           const cond =
             Cst.WhenEquation.condition(node) ??
             (node.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
-          const condId = cond ? lowerCSTExpression(cond, dae, prefix, substitutions) : -1;
+          const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
           const whenIdx = dae.addWhenEquation(condId);
 
           const collectWhenBody = (n: any) => {
@@ -3709,8 +3873,8 @@ export class ModelicaFlattener {
                 (c: any) => c.type === "expression" || c.type === "Expression",
               );
               if (expressions.length >= 2) {
-                let lhsId = lowerCSTExpression(expressions[0], dae, prefix, substitutions);
-                let rhsId = lowerCSTExpression(expressions[1], dae, prefix, substitutions);
+                let lhsId = this.lowerExpr(expressions[0], dae, prefix, substitutions);
+                let rhsId = this.lowerExpr(expressions[1], dae, prefix, substitutions);
                 if (isRealExpr(lhsId, dae) && !isRealExpr(rhsId, dae)) {
                   rhsId = castToRealExpr(rhsId, dae);
                 }
@@ -3742,7 +3906,7 @@ export class ModelicaFlattener {
             }
 
             if (n.type === "function_call" || n.type === "FunctionCall") {
-              const callId = lowerCSTExpression(n, dae, prefix, substitutions);
+              const callId = this.lowerExpr(n, dae, prefix, substitutions);
               dae.addWhenBodyEquation(whenIdx, EqKind.FunctionCall, callId, -1);
               return;
             }
@@ -3818,7 +3982,7 @@ export class ModelicaFlattener {
               const rangeNode = (fIndex?.children || []).find(
                 (c: any) => c.type === "expression" || c.type === "colon_expression",
               );
-              const rangeExprId = rangeNode ? lowerCSTExpression(rangeNode, dae, prefix, substitutions) : -1;
+              const rangeExprId = rangeNode ? this.lowerExpr(rangeNode, dae, prefix, substitutions) : -1;
               const bodyStmts: any[] = [];
               let inLoop = false;
               for (const child of sNode.children || []) {
@@ -3848,8 +4012,8 @@ export class ModelicaFlattener {
                 (c: any) => c.type === "expression" || c.type === "component_reference",
               );
               if (exprs.length >= 2) {
-                const targetId = lowerCSTExpression(exprs[0], dae, prefix, substitutions);
-                const valId = lowerCSTExpression(exprs[1], dae, prefix, substitutions);
+                const targetId = this.lowerExpr(exprs[0], dae, prefix, substitutions);
+                const valId = this.lowerExpr(exprs[1], dae, prefix, substitutions);
                 dae.addStatement(StmtKind.Assignment, targetId, valId);
               }
               return;
@@ -3859,7 +4023,7 @@ export class ModelicaFlattener {
               const cond =
                 Cst.WhenStatement.condition(sNode) ??
                 (sNode.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
-              const condId = cond ? lowerCSTExpression(cond, dae, prefix, substitutions) : -1;
+              const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
 
               let inThen = false;
               let inElseWhen = false;
@@ -3904,7 +4068,7 @@ export class ModelicaFlattener {
                 lowerStatement(s);
               }
               for (const ew of elseWhenList) {
-                const ewCondId = ew.condNode ? lowerCSTExpression(ew.condNode, dae, prefix, substitutions) : -1;
+                const ewCondId = ew.condNode ? this.lowerExpr(ew.condNode, dae, prefix, substitutions) : -1;
                 dae.addStatement(StmtKind.Block, ewCondId, ew.stmts.length);
                 for (const s of ew.stmts) {
                   lowerStatement(s);

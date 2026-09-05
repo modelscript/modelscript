@@ -61,7 +61,7 @@ export class ModelicaPortBalancer {
    * Finalizes all connection graphs on an DAEBuilder, expanding connect()
    * equations into potential equalities, flow balance zero-sums, and stream equations.
    */
-  static expandConnections(dae: DAEBuilder, options?: { omcCompatibility?: boolean }): void {
+  static expandConnections(dae: DAEBuilder, options?: { omcCompatibility?: boolean; isOldFrontend?: boolean }): void {
     const uf = new IntUnionFind(dae.varCount);
     const resolvedPairs: [number, number][] = [];
     const connectPairs: [number, number][] = [];
@@ -206,7 +206,8 @@ export class ModelicaPortBalancer {
     }
 
     // 5. Emit flow-balance and potential equality equations
-    const connectionEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
+    const potentialEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
+    const flowSumEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
     const zeroFlows: { kind: EqKind; lhs: number; rhs: number; varName: string }[] = [];
 
     const zeroExpr = dae.addRealLiteral(0.0);
@@ -234,25 +235,28 @@ export class ModelicaPortBalancer {
         for (const vIdx of group) {
           if (vIdx !== root) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-            connectionEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(root) });
+            potentialEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(root) });
           }
         }
       } else {
-        let sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
-        const secondVarIdx = group[1];
-        if (options?.omcCompatibility && group.length === 2 && secondVarIdx !== undefined) {
-          const v0Name = dae.getVarName(firstVarIdx);
-          if (v0Name.includes("ip") || v0Name.includes("io.y")) {
-            const v0 = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
-            const neg0 = dae.addExpression(ExprKind.Negate, 0, v0);
-            const v1 = dae.addExpression(ExprKind.Name, dae.getVarNameId(secondVarIdx));
-            const neg1 = dae.addExpression(ExprKind.Negate, 0, v1);
-            sumExpr = dae.addBinaryExpr(BinOp.Add, neg0, neg1);
-          } else {
-            const v1 = dae.addExpression(ExprKind.Name, dae.getVarNameId(secondVarIdx));
-            sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, v1);
+        let sumExpr: number;
+        if (options?.omcCompatibility && options?.isOldFrontend) {
+          const v0 = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
+          sumExpr = dae.addExpression(ExprKind.Negate, 0, v0);
+          for (let i = 1; i < group.length; i++) {
+            const vIdx = group[i];
+            if (vIdx !== undefined) {
+              const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+              const negi = dae.addExpression(ExprKind.Negate, 0, vi);
+              sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, negi);
+            }
+          }
+          for (const vIdx of group) {
+            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+            zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
           }
         } else {
+          sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
           for (let i = 1; i < group.length; i++) {
             const vIdx = group[i];
             if (vIdx !== undefined) {
@@ -261,23 +265,12 @@ export class ModelicaPortBalancer {
             }
           }
         }
-        connectionEqs.push({ kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr, str: dae.getVarName(firstVarIdx) });
-
-        if (
-          options?.omcCompatibility &&
-          (dae.getVarName(firstVarIdx).includes("ip") || dae.getVarName(firstVarIdx).includes("io.y"))
-        ) {
-          for (const vIdx of group) {
-            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-            zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
-          }
-        }
+        flowSumEqs.push({ kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr, str: dae.getVarName(firstVarIdx) });
       }
     }
 
     if (options?.omcCompatibility) {
-      const firstVarName = zeroFlows[0]?.varName ?? "";
-      if (firstVarName.includes("ip") || firstVarName.includes("io")) {
+      if (options?.isOldFrontend) {
         zeroFlows.sort((a, b) => {
           if (a.varName === "ip.i") return -1;
           if (b.varName === "ip.i") return 1;
@@ -286,7 +279,10 @@ export class ModelicaPortBalancer {
           return a.varName.localeCompare(b.varName);
         });
         zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
-        connectionEqs.forEach((eq) => {
+
+        const connEqs = [...potentialEqs, ...flowSumEqs];
+        connEqs.sort((a, b) => a.str.localeCompare(b.str));
+        connEqs.forEach((eq) => {
           if (dae.getExprKind(eq.lhs) === ExprKind.Name && dae.interner.resolve(dae.getExprData1(eq.lhs)) === "ip.v") {
             dae.addEquation(eq.kind, eq.rhs, eq.lhs);
           } else {
@@ -295,7 +291,10 @@ export class ModelicaPortBalancer {
         });
       } else {
         const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number }[] = [];
-        connectionEqs.forEach((eq) =>
+        potentialEqs.forEach((eq) =>
+          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str) }),
+        );
+        flowSumEqs.forEach((eq) =>
           allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str) }),
         );
         zeroFlows.forEach((eq) =>
@@ -305,7 +304,8 @@ export class ModelicaPortBalancer {
         allEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
       }
     } else {
-      connectionEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+      potentialEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+      flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
       zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
     }
   }
