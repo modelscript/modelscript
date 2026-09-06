@@ -140,6 +140,27 @@ export function evaluateConstantArenaExpression(
     return null;
   }
 
+  if (kind === ExprKind.ArrayCtor) {
+    const count = arena.getExprData1(exprId);
+    if (count === 0) return [];
+    const elements: any[] = [];
+    for (let i = 0; i < count; i++) {
+      const elemExprId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
+      const val = evaluateConstantArenaExpression(
+        arena,
+        elemExprId,
+        paramMap,
+        nameToIdx,
+        visitedDepth + 1,
+        db,
+        scopeId,
+      );
+      if (val === null) return null;
+      elements.push(val);
+    }
+    return elements;
+  }
+
   if (kind === ExprKind.Unary) {
     const op = arena.getExprData1(exprId);
     const childId = arena.getExprLeft(exprId);
@@ -386,6 +407,13 @@ export function evaluateConstantArenaExpression(
         db,
         scopeId,
       );
+      if (Array.isArray(arg1) && argCount === 1) {
+        if (arg1.length === 0) return null;
+        if (funcName === "max") return Math.max(...(arg1 as number[]));
+        if (funcName === "min") return Math.min(...(arg1 as number[]));
+        if (funcName === "sum") return (arg1 as number[]).reduce((a, b) => (a as number) + (b as number), 0);
+        if (funcName === "product") return (arg1 as number[]).reduce((a, b) => (a as number) * (b as number), 1);
+      }
       if (typeof arg1 === "number") {
         let arg2 = 0.0;
         if (argCount >= 2) {

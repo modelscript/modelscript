@@ -1679,7 +1679,6 @@ expected type:
       const fn = this.dae.interner.resolve(this.dae.getExprData1(exprId));
       // Explicit cast to Real
       if (fn === "/*Real*/" || fn === "Real") return true;
-      // Transcendental functions always return Real
       if (
         fn === "sin" ||
         fn === "cos" ||
@@ -1697,6 +1696,14 @@ expected type:
         fn === "sqrt"
       )
         return true;
+      if (fn === "abs" || fn === "sign") {
+        const argCount = this.dae.getExprRight(exprId);
+        if (argCount > 0) {
+          const firstArg = this.dae.getExprLeft(exprId);
+          return this.isRealTypedExpr(firstArg);
+        }
+        return true;
+      }
     }
     return false;
   }

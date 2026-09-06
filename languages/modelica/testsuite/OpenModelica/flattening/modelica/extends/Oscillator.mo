@@ -77,7 +77,24 @@ end Oscillator;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/extends/Oscillator.mo:34:3-34:64:writable] Error: Class Modelica.Mechanics.Translational.Interfaces.Flange_a not found in scope Rigid.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:11:3-11:55:writable] Error: Class or type 'Modelica.Mechanics.Translational.Interfaces.Flange_a' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:12:3-12:55:writable] Error: Class or type 'Modelica.Mechanics.Translational.Interfaces.Flange_b' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:13:3-13:28:writable] Error: Class or type 'Modelica.SIunits.Distance' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:14:8-14:30:writable] Error: Class or type 'Modelica.SIunits.Force' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:16:11-16:21:writable] Error: Variable 'flange_b.s' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:16:24-16:34:writable] Error: Variable 'flange_a.s' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:17:7-17:17:writable] Error: Variable 'flange_b.f' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:17:20-17:30:writable] Error: Variable 'flange_a.f' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:18:7-18:17:writable] Error: Variable 'flange_b.f' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:24:13-24:38:writable] Error: Class or type 'Modelica.SIunits.Distance' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:27:3-27:25:writable] Error: Type mismatch in equation 'f = c*(s_rel - s_rel0)'.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:34:3-34:55:writable] Error: Class or type 'Modelica.Mechanics.Translational.Interfaces.Flange_a' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:35:3-35:55:writable] Error: Class or type 'Modelica.Mechanics.Translational.Interfaces.Flange_b' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:37:3-37:13:writable] Error: Variable 'flange_a.s' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:38:3-38:13:writable] Error: Variable 'flange_b.s' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:51:3-51:13:writable] Error: Variable 'flange_b.f' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:57:3-57:55:writable] Error: Class or type 'Modelica.Mechanics.Translational.Interfaces.Flange_b' not found in scope.
+// [OpenModelica/flattening/modelica/extends/Oscillator.mo:59:3-59:13:writable] Error: Variable 'flange_b.s' not found in scope.
 // Error: Error occurred while flattening model Oscillator
 //
 // Execution failed!

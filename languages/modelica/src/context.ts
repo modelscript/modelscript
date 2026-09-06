@@ -125,9 +125,20 @@ export class Context {
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId) return null;
-        let tree = this.#trees.get(entry.resourceId);
+        let tree = entry?.resourceId ? this.#trees.get(entry.resourceId) : undefined;
+        if (!tree && this.#trees.size === 1) {
+          tree = this.#trees.values().next().value;
+        }
         if (!tree) {
+          for (const [resId, t] of this.#trees.entries()) {
+            if (resId.includes("modelscript-cas") || resId.includes("modelscript-studies")) continue;
+            if (t.rootNode && t.rootNode.startIndex <= startByte && t.rootNode.endIndex >= endByte) {
+              tree = t;
+              break;
+            }
+          }
+        }
+        if (!tree && entry?.resourceId) {
           try {
             const text = this.#fs.read(entry.resourceId);
             tree = this.parse(".mo", text);
@@ -136,6 +147,7 @@ export class Context {
             return null;
           }
         }
+        if (!tree) return null;
         return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
       },
     };
@@ -223,9 +235,20 @@ export class Context {
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId) return null;
-        let tree = this.#trees.get(entry.resourceId);
+        let tree = entry?.resourceId ? this.#trees.get(entry.resourceId) : undefined;
+        if (!tree && this.#trees.size === 1) {
+          tree = this.#trees.values().next().value;
+        }
         if (!tree) {
+          for (const [resId, t] of this.#trees.entries()) {
+            if (resId.includes("modelscript-cas") || resId.includes("modelscript-studies")) continue;
+            if (t.rootNode && t.rootNode.startIndex <= startByte && t.rootNode.endIndex >= endByte) {
+              tree = t;
+              break;
+            }
+          }
+        }
+        if (!tree && entry?.resourceId) {
           try {
             const text = this.#fs.read(entry.resourceId);
             tree = this.parse(".mo", text);
@@ -234,6 +257,7 @@ export class Context {
             return null;
           }
         }
+        if (!tree) return null;
         return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
       },
     };

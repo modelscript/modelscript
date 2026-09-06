@@ -1934,66 +1934,23 @@ export const classDefinitionQueries: Record<string, any> = {
       }
 
       // In Modelica §5.6.1, elements inherited from extends clauses are added before
-      // elements declared directly in the class, unless an extends clause is explicitly
-      // interleaved with components (i.e. followed by further component declarations).
-      // Trailing extends clauses (no components declared after them) are moved before all components.
-      let lastCompIdx = -1;
-      for (let i = children.length - 1; i >= 0; i--) {
-        if (children[i].kind === "Component") {
-          lastCompIdx = i;
-          break;
-        }
-      }
-
+      // elements declared directly in the class, in the order of the extends-clauses.
       const orderedChildren: SymbolEntry[] = [];
-      const trailingExtends: SymbolEntry[] = [];
+      const extendsClauses: SymbolEntry[] = [];
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
         if (child.kind === "Extends") {
-          if (i > lastCompIdx) {
-            // Trailing extends clause: move before components
-            trailingExtends.push(child);
-            continue;
-          }
-          // Interleaved extends clause: check if referenced by earlier components
-          const resolveName = db.query<(n: string) => SymbolEntry | null>("resolveName", self.id);
-          const baseClass =
-            (resolveName ? resolveName(child.name) : null) ??
-            db.byName(child.name)?.find((e) => e.kind === "Class" || e.kind === "Package");
-          if (baseClass) {
-            const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id) || [];
-            const baseNames = new Set(baseElements.map((id) => db.symbol(id)?.name).filter(Boolean));
-            let needsMove = false;
-            for (const c of orderedChildren) {
-              if (c.kind === "Component") {
-                const cst = db.cstNode(c.id);
-                const text = (cst as any)?.text ?? "";
-                for (const bn of baseNames) {
-                  if (new RegExp(`\\b${bn}\\b`).test(text)) {
-                    needsMove = true;
-                    break;
-                  }
-                }
-              }
-              if (needsMove) break;
-            }
-            if (needsMove) {
-              const firstCompIdx = orderedChildren.findIndex((c) => c.kind === "Component");
-              if (firstCompIdx >= 0) {
-                orderedChildren.splice(firstCompIdx, 0, child);
-                continue;
-              }
-            }
-          }
+          extendsClauses.push(child);
+          continue;
         }
         orderedChildren.push(child);
       }
-      if (trailingExtends.length > 0) {
+      if (extendsClauses.length > 0) {
         const firstCompIdx = orderedChildren.findIndex((c) => c.kind === "Component");
         if (firstCompIdx >= 0) {
-          orderedChildren.splice(firstCompIdx, 0, ...trailingExtends);
+          orderedChildren.splice(firstCompIdx, 0, ...extendsClauses);
         } else {
-          orderedChildren.push(...trailingExtends);
+          orderedChildren.push(...extendsClauses);
         }
       }
 
@@ -2772,6 +2729,12 @@ export const componentDeclarationQueries: Record<string, any> = {
 
     // Navigate up to the Declaration node to get component-level subscripts (e.g. x[2])
     let declNode = cst as any;
+    if (declNode && declNode.type !== "Declaration" && declNode.type !== "declaration") {
+      const childDecl = declNode.children?.find((c: any) => c.type === "Declaration" || c.type === "declaration");
+      if (childDecl) {
+        declNode = childDecl;
+      }
+    }
     while (declNode && declNode.type !== "Declaration" && declNode.type !== "declaration") {
       declNode = declNode.parent;
     }

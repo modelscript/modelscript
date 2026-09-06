@@ -865,16 +865,15 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
             )
             .map((d) => {
               const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-              // Use actual diagnostic range (from LintDiagnostic byte offsets)
-              let prefix = `[${testCase.file}]`;
+              let prefix = "";
               if (d.range && d.range.startPosition && d.range.endPosition) {
                 const relPath = path.relative(testsuiteRoot, testCase.file);
                 const relPathParts = relPath.split(path.sep).join("/");
                 const sp = d.range.startPosition;
                 const ep = d.range.endPosition;
-                prefix = `[${relPathParts}:${sp.row + 1}:${sp.column + 1}-${ep.row + 1}:${ep.column + 1}:writable]`;
+                prefix = `[${relPathParts}:${sp.row + 1}:${sp.column + 1}-${ep.row + 1}:${ep.column + 1}:writable] `;
               }
-              return `${prefix} ${severity}: ${d.message}`;
+              return `${prefix}${severity}: ${d.message}`;
             });
           const uniqueOmcDiagLines: string[] = [];
           const seen = new Set<string>();
@@ -944,15 +943,15 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           .map((d) => {
             const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
             // Use actual diagnostic range (from LintDiagnostic byte offsets)
-            let prefix = `[${testCase.file}]`;
+            let prefix = "";
             if (d.range && d.range.startPosition && d.range.endPosition) {
               const relPath = path.relative(testsuiteRoot, testCase.file);
               const relPathParts = relPath.split(path.sep).join("/");
               const sp = d.range.startPosition;
               const ep = d.range.endPosition;
-              prefix = `[${relPathParts}:${sp.row + 1}:${sp.column + 1}-${ep.row + 1}:${ep.column + 1}:writable]`;
+              prefix = `[${relPathParts}:${sp.row + 1}:${sp.column + 1}-${ep.row + 1}:${ep.column + 1}:writable] `;
             }
-            return `${prefix} ${severity}: ${d.message}`;
+            return `${prefix}${severity}: ${d.message}`;
           });
         const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
         const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");

@@ -1207,6 +1207,56 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
     }
   }
 
+  // 4. Inherited members via short_class_specifier on classNode itself
+  for (const spec of db.ast.getDescendants(classNode, $.short_class_specifier)) {
+    if (isDescendantOfInnerClass(db, spec, classNode, $)) continue;
+    let typeSpec = db.ast.getChildByFieldId(spec, "type_specifier");
+    if (typeSpec == 0) {
+      for (const ts of db.ast.getDescendants(spec, $.type_specifier)) {
+        typeSpec = ts;
+        break;
+      }
+    }
+    if (typeSpec == 0) continue;
+
+    let baseNameId: u32 = typeSpec;
+    for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
+      baseNameId = id;
+      break;
+    }
+
+    for (const lspec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+      const nameId = db.ast.getChildByFieldId(lspec, "name");
+      if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
+        let baseClass: u32 = lspec;
+        for (const anc of db.ast.getAncestors(lspec)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            baseClass = anc;
+            break;
+          }
+        }
+        const res = getMemberKindInClass(db, baseClass, identNode, $);
+        if (res != MEMBER_NONE) return res;
+        break;
+      }
+    }
+    for (const sspec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+      const nameId = db.ast.getChildByFieldId(sspec, "name");
+      if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
+        let baseClass: u32 = sspec;
+        for (const anc of db.ast.getAncestors(sspec)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            baseClass = anc;
+            break;
+          }
+        }
+        const res = getMemberKindInClass(db, baseClass, identNode, $);
+        if (res != MEMBER_NONE) return res;
+        break;
+      }
+    }
+  }
+
   return MEMBER_NONE;
 }
 

@@ -621,11 +621,11 @@ export const modelicaLanguage = language({
         "redeclare",
         optional("each"),
         optional("final"),
-        choice($.short_class_definition, $.component_clause1, $.element_replaceable),
+        choice($.class_definition, $.component_clause1, $.element_replaceable),
       ),
 
     element_replaceable: ($) =>
-      seq("replaceable", choice($.short_class_definition, $.component_clause1), optional($.constraining_clause)),
+      seq("replaceable", choice($.class_definition, $.component_clause1), optional($.constraining_clause)),
 
     component_clause1: ($) =>
       choice(
