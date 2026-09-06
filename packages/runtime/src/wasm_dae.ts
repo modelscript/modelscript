@@ -1179,12 +1179,16 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   addTupleExpr(elements: number[]): number {
-    if (elements.length === 0) return this.addExpression(ExprKind.Tuple, 0, 0xffffffff);
-    let prev = 0xffffffff;
-    for (let i = elements.length - 1; i >= 0; i--) {
-      prev = this.addExpression(ExprKind.Tuple, elements[i]!, prev);
+    if (elements.length === 0) return this.addExpression(ExprKind.Tuple, 0, 0xffffffff, -1);
+    const tupleId = this.addExpression(ExprKind.Tuple, elements.length, elements[0]!, -1);
+    for (let i = 1; i < elements.length; i++) {
+      this.addExpression(ExprKind.Tuple, 0, elements[i]!, 0);
     }
-    return prev;
+    return tupleId;
+  }
+
+  addNegateExpr(operand: number): number {
+    return this.addExpression(ExprKind.Negate, 0, operand);
   }
 
   addArrayCtorExpr(elements: number[]): number {

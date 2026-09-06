@@ -135,17 +135,17 @@ export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Se
       break;
     case ExprKind.ArrayCtor: {
       const count = arena.getExprData1(exprId);
-      const first = arena.getExprLeft(exprId);
       for (let i = 0; i < count; i++) {
-        collectArenaExprDeps(arena, first + i, deps, excludeDer);
+        const elem = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
+        if (elem >= 0) collectArenaExprDeps(arena, elem, deps, excludeDer);
       }
       break;
     }
     case ExprKind.Tuple: {
       const tcount = arena.getExprData1(exprId);
-      const tfirst = arena.getExprLeft(exprId);
       for (let i = 0; i < tcount; i++) {
-        collectArenaExprDeps(arena, tfirst + i, deps, excludeDer);
+        const elem = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
+        if (elem >= 0) collectArenaExprDeps(arena, elem, deps, excludeDer);
       }
       break;
     }

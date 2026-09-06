@@ -644,6 +644,7 @@ function lowerCSTExpression(
   imports?: Map<string, string>,
   db?: QueryDB,
   flattener?: any,
+  tupleContext?: boolean,
 ): number {
   if (!node) return -1;
   const type = node.type;
@@ -657,7 +658,7 @@ function lowerCSTExpression(
       type === "Primary") &&
     node.childCount === 1
   ) {
-    return lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener);
+    return lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener, tupleContext);
   }
 
   // Parenthesized expression: "(" expr ")"
@@ -666,7 +667,7 @@ function lowerCSTExpression(
     (node.child(0).type === "(" || node.child(0).text === "(" || node.child(0).type === '"("') &&
     (node.child(2).type === ")" || node.child(2).text === ")" || node.child(2).type === '")"')
   ) {
-    return lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
+    return lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener, tupleContext);
   }
 
   // Real or Integer literal
@@ -844,12 +845,24 @@ function lowerCSTExpression(
           if (outVal !== null && outVal !== undefined) {
             let outputCount = 0;
             let firstOutputType: VarType | null = null;
+            const outputTypes: VarType[] = [];
             for (let i = 0; i < fnDae.varCount; i++) {
               if (fnDae.getVarCausality(i) === Causality.Output) {
                 if (outputCount === 0) {
                   firstOutputType = fnDae.getVarType(i);
                 }
+                outputTypes.push(fnDae.getVarType(i));
                 outputCount++;
+              }
+            }
+            if (tupleContext && Array.isArray(outVal) && outputCount > 1) {
+              const tupleElemExprIds: number[] = [];
+              for (let i = 0; i < outVal.length; i++) {
+                const elemId = addArenaValueAsExpr(dae, outVal[i], outputTypes[i] ?? undefined);
+                if (elemId >= 0) tupleElemExprIds.push(elemId);
+              }
+              if (tupleElemExprIds.length === outVal.length) {
+                return dae.addTupleExpr(tupleElemExprIds);
               }
             }
             const firstVal = Array.isArray(outVal) && outputCount > 1 ? outVal[0] : outVal;
@@ -914,19 +927,48 @@ function lowerCSTExpression(
     return dae.addSubscriptExpr(baseId, subIds);
   }
 
-  // Parenthesized expression: "(" expr ")"
+  // Parenthesized expression: "(" expr ")" or tuple "( expr1, expr2, ... )"
   if (
-    (type === "primary" || type === "expression") &&
-    (node.child(0)?.type === "(" || node.child(0)?.text === "(" || node.child(0)?.type === '"("') &&
-    (node.child(node.childCount - 1)?.type === ")" ||
-      node.child(node.childCount - 1)?.text === ")" ||
-      node.child(node.childCount - 1)?.type === '")"')
+    (type === "primary" || type === "expression" || type === "output_expression_list" || type === "expression_list") &&
+    (((node.child(0)?.type === "(" || node.child(0)?.text === "(" || node.child(0)?.type === '"("') &&
+      (node.child(node.childCount - 1)?.type === ")" ||
+        node.child(node.childCount - 1)?.text === ")" ||
+        node.child(node.childCount - 1)?.type === '")"')) ||
+      type === "output_expression_list" ||
+      type === "expression_list")
   ) {
-    for (let i = 1; i < node.childCount - 1; i++) {
+    const isParen =
+      (node.child(0)?.type === "(" || node.child(0)?.text === "(" || node.child(0)?.type === '"("') &&
+      (node.child(node.childCount - 1)?.type === ")" ||
+        node.child(node.childCount - 1)?.text === ")" ||
+        node.child(node.childCount - 1)?.type === '")"');
+    const startIdx = isParen ? 1 : 0;
+    const endIdx = isParen ? node.childCount - 1 : node.childCount;
+    const exprNodes: any[] = [];
+    for (let i = startIdx; i < endIdx; i++) {
       const c = node.child(i);
-      if (c.type === "expression" || c.type === "Expression") {
-        return lowerCSTExpression(c, dae, prefix, substitutions, imports, db, flattener);
+      if (!c) continue;
+      const cText = c.text?.trim() ?? "";
+      const cType = c.type ?? "";
+      if (cText === "," || cType === "," || cType === '","') continue;
+      if (cType === "output_expression_list" || cType === "expression_list") {
+        for (let j = 0; j < c.childCount; j++) {
+          const sub = c.child(j);
+          if (sub && sub.text?.trim() !== "," && sub.type !== "," && sub.type !== '","') {
+            exprNodes.push(sub);
+          }
+        }
+      } else {
+        exprNodes.push(c);
       }
+    }
+    if (exprNodes.length === 1) {
+      return lowerCSTExpression(exprNodes[0], dae, prefix, substitutions, imports, db, flattener);
+    } else if (exprNodes.length > 1) {
+      const tupleElemIds = exprNodes.map((e) =>
+        lowerCSTExpression(e, dae, prefix, substitutions, imports, db, flattener),
+      );
+      return dae.addTupleExpr(tupleElemIds);
     }
   }
 
@@ -1392,8 +1434,14 @@ export class ModelicaFlattener {
     return result;
   }
 
-  private lowerExpr(node: any, dae: DAEBuilder, prefix = "", substitutions?: Map<string, number>): number {
-    return lowerCSTExpression(node, dae, prefix, substitutions, this.currentImports, this.db, this);
+  private lowerExpr(
+    node: any,
+    dae: DAEBuilder,
+    prefix = "",
+    substitutions?: Map<string, number>,
+    tupleContext?: boolean,
+  ): number {
+    return lowerCSTExpression(node, dae, prefix, substitutions, this.currentImports, this.db, this, tupleContext);
   }
 
   constructor(db: QueryDB, options?: FlattenOptions) {
@@ -1839,7 +1887,8 @@ export class ModelicaFlattener {
             );
             if (expressions.length >= 2) {
               let lhsExprId = this.lowerExpr(expressions[0], dae, "");
-              let rhsExprId = this.lowerExpr(expressions[1], dae, "");
+              const isTupleLhs = dae.getExprKind(lhsExprId) === ExprKind.Tuple;
+              let rhsExprId = this.lowerExpr(expressions[1], dae, "", undefined, isTupleLhs);
               if (isRealExpr(lhsExprId, dae) && !isRealExpr(rhsExprId, dae)) {
                 rhsExprId = castToRealExpr(rhsExprId, dae);
               }
@@ -3799,7 +3848,8 @@ export class ModelicaFlattener {
           );
           if (expressions.length >= 2) {
             let lhsExprId = this.lowerExpr(expressions[0], dae, prefix, substitutions);
-            let rhsExprId = this.lowerExpr(expressions[1], dae, prefix, substitutions);
+            const isTupleLhs = dae.getExprKind(lhsExprId) === ExprKind.Tuple;
+            let rhsExprId = this.lowerExpr(expressions[1], dae, prefix, substitutions, isTupleLhs);
             if (isRealExpr(lhsExprId, dae) && !isRealExpr(rhsExprId, dae)) {
               rhsExprId = castToRealExpr(rhsExprId, dae);
             }
@@ -3973,7 +4023,11 @@ export class ModelicaFlattener {
               n.type === "when_statement" ||
               n.type === "WhenStatement" ||
               n.type === "for_statement" ||
-              n.type === "ForStatement"
+              n.type === "ForStatement" ||
+              n.type === "while_statement" ||
+              n.type === "WhileStatement" ||
+              n.type === "if_statement" ||
+              n.type === "IfStatement"
             ) {
               return [n];
             }
@@ -4033,6 +4087,118 @@ export class ModelicaFlattener {
               dae.addStatement(StmtKind.For, dae.interner.intern(varName), rangeExprId, bodyStmts.length);
               for (const s of bodyStmts) {
                 lowerStatement(s);
+              }
+              return;
+            }
+
+            if (Cst.WhileStatement.is(sNode) || sNode.type === "while_statement" || sNode.type === "WhileStatement") {
+              const cond =
+                Cst.WhileStatement.condition(sNode) ??
+                (sNode.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
+              const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
+              const bodyStmts: any[] = [];
+              let inLoop = false;
+              for (const child of sNode.children || []) {
+                const t = child.text?.trim() ?? "";
+                const ty = child.type ?? "";
+                if (t === "loop" || ty === '"loop"') {
+                  inLoop = true;
+                  continue;
+                }
+                if (t === "end while" || ty === '"end while"') {
+                  inLoop = false;
+                  break;
+                }
+                if (inLoop && child.type !== ";" && child.text?.trim() !== ";") {
+                  bodyStmts.push(...extractExecutableStmts(child));
+                }
+              }
+              dae.addStatement(StmtKind.While, condId, bodyStmts.length);
+              for (const s of bodyStmts) {
+                lowerStatement(s);
+              }
+              return;
+            }
+
+            if (Cst.IfStatement.is(sNode) || sNode.type === "if_statement" || sNode.type === "IfStatement") {
+              const cond =
+                Cst.IfStatement.condition(sNode) ??
+                (sNode.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
+              const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
+
+              let inThen = false;
+              let inElseIf = false;
+              let inElseIfThen = false;
+              let inElse = false;
+              const thenStmts: any[] = [];
+              const branches: { condNode: any; stmts: any[] }[] = [];
+              let currBranch: { condNode: any; stmts: any[] } | null = null;
+
+              for (const child of sNode.children || []) {
+                const t = child.text?.trim() ?? "";
+                const ty = child.type ?? "";
+                if (t === "then" || ty === '"then"') {
+                  if (inElseIf) {
+                    inElseIfThen = true;
+                  } else if (!inElse) {
+                    inThen = true;
+                  }
+                  continue;
+                }
+                if (t === "elseif" || ty === '"elseif"') {
+                  inThen = false;
+                  inElseIf = true;
+                  inElseIfThen = false;
+                  inElse = false;
+                  currBranch = { condNode: null, stmts: [] };
+                  branches.push(currBranch);
+                  continue;
+                }
+                if (t === "else" || ty === '"else"') {
+                  inThen = false;
+                  inElseIf = false;
+                  inElseIfThen = false;
+                  inElse = true;
+                  currBranch = { condNode: null, stmts: [] };
+                  branches.push(currBranch);
+                  continue;
+                }
+                if (t === "end if" || ty === '"end if"') {
+                  inThen = false;
+                  inElseIf = false;
+                  inElseIfThen = false;
+                  inElse = false;
+                  break;
+                }
+                if (inElseIf && currBranch) {
+                  if (!inElseIfThen) {
+                    if (child.type === "expression" || child.type === "Expression") {
+                      currBranch.condNode = child;
+                    }
+                  } else if (child.type !== ";" && child.text?.trim() !== ";") {
+                    currBranch.stmts.push(...extractExecutableStmts(child));
+                  }
+                } else if (inElse && currBranch) {
+                  if (child.type !== ";" && child.text?.trim() !== ";") {
+                    currBranch.stmts.push(...extractExecutableStmts(child));
+                  }
+                } else if (inThen) {
+                  if (child.type !== ";" && child.text?.trim() !== ";") {
+                    thenStmts.push(...extractExecutableStmts(child));
+                  }
+                }
+              }
+
+              dae.addStatement(StmtKind.If, condId, thenStmts.length, branches.length);
+              for (const s of thenStmts) {
+                lowerStatement(s);
+              }
+              for (const b of branches) {
+                const bCondId = b.condNode ? this.lowerExpr(b.condNode, dae, prefix, substitutions) : -1;
+                dae.addStatement(StmtKind.Block, bCondId, b.stmts.length);
+                for (const s of b.stmts) {
+                  lowerStatement(s);
+                }
               }
               return;
             }
@@ -4113,7 +4279,11 @@ export class ModelicaFlattener {
                 child.type === "assignment_statement" ||
                 child.type === "when_statement" ||
                 child.type === "for_statement" ||
-                child.type === "ForStatement"
+                child.type === "ForStatement" ||
+                child.type === "while_statement" ||
+                child.type === "WhileStatement" ||
+                child.type === "if_statement" ||
+                child.type === "IfStatement"
               ) {
                 lowerStatement(child);
               }
@@ -4126,7 +4296,11 @@ export class ModelicaFlattener {
               stmt.type === "assignment_statement" ||
               stmt.type === "when_statement" ||
               stmt.type === "for_statement" ||
-              stmt.type === "ForStatement"
+              stmt.type === "ForStatement" ||
+              stmt.type === "while_statement" ||
+              stmt.type === "WhileStatement" ||
+              stmt.type === "if_statement" ||
+              stmt.type === "IfStatement"
             ) {
               lowerStatement(stmt);
             }

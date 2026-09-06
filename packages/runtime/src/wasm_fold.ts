@@ -6,7 +6,7 @@
  */
 
 import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
-import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
+import { BinOp, DAEBuilder, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
 
 export type ArenaConstantValue = number | boolean | string | ArenaConstantValue[];
 
@@ -1025,7 +1025,7 @@ export function hasArrayEquations(dae: DAEBuilder): boolean {
   const isComposite = (exprId: number): boolean => {
     if (exprId < 0) return false;
     const k = dae.getExprKind(exprId);
-    if (k === ExprKind.ArrayCtor || k === ExprKind.Tuple) return true;
+    if (k === ExprKind.ArrayCtor) return true;
     if (k === ExprKind.Name) {
       const name = dae.interner.resolve(dae.getExprData1(exprId));
       if (name) {
@@ -1092,26 +1092,43 @@ function getArrayElements(dae: DAEBuilder, exprId: number): number[] | null {
     }
     return elements;
   }
-  if (kind === ExprKind.Tuple) {
-    const count = dae.getExprData1(exprId);
-    const elements: number[] = [];
-    let curr = dae.getExprLeft(exprId);
-    for (let i = 0; i < count; i++) {
-      elements.push(curr);
-      curr = dae.getExprLeft(curr);
-    }
-    return elements;
-  }
   if (kind === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
-    if (name && dae.getVarIdxByName(`${name}[1]`) >= 0) {
-      const elements: number[] = [];
-      let k = 1;
-      while (dae.getVarIdxByName(`${name}[${k}]`) >= 0) {
-        elements.push(dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${k}]`)));
-        k++;
+    if (name) {
+      const vIdx = dae.getVarIdxByName(name);
+      if (vIdx >= 0) {
+        const shape = dae.getVarShape(vIdx);
+        if (shape.length > 0) {
+          const indices = generateIndices(shape);
+          const elements: number[] = [];
+          for (const idx of indices) {
+            elements.push(dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${idx.join(",")}]`)));
+          }
+          return elements;
+        }
       }
-      return elements;
+      if (dae.getVarIdxByName(`${name}[1,1]`) >= 0) {
+        let rows = 0;
+        while (dae.getVarIdxByName(`${name}[${rows + 1},1]`) >= 0) rows++;
+        let cols = 0;
+        while (dae.getVarIdxByName(`${name}[1,${cols + 1}]`) >= 0) cols++;
+        const elements: number[] = [];
+        for (let r = 1; r <= rows; r++) {
+          for (let c = 1; c <= cols; c++) {
+            elements.push(dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${r},${c}]`)));
+          }
+        }
+        return elements;
+      }
+      if (dae.getVarIdxByName(`${name}[1]`) >= 0) {
+        const elements: number[] = [];
+        let k = 1;
+        while (dae.getVarIdxByName(`${name}[${k}]`) >= 0) {
+          elements.push(dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${k}]`)));
+          k++;
+        }
+        return elements;
+      }
     }
   }
   if (kind === ExprKind.Der) {
@@ -1206,7 +1223,30 @@ function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boolean {
   if (kind === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
     if (name) {
+      const vIdx = dae.getVarIdxByName(name);
+      if (vIdx >= 0) {
+        const shape = dae.getVarShape(vIdx);
+        if (shape.length === 1) return shape[0] === n;
+        if (shape.length > 1) {
+          const total = shape.reduce((a, b) => a * b, 1);
+          return total === n;
+        }
+      }
+      if (dae.getVarIdxByName(`${name}[1,1]`) >= 0) {
+        let rows = 0;
+        while (dae.getVarIdxByName(`${name}[${rows + 1},1]`) >= 0) rows++;
+        let cols = 0;
+        while (dae.getVarIdxByName(`${name}[1,${cols + 1}]`) >= 0) cols++;
+        return rows * cols === n;
+      }
       return dae.getVarIdxByName(`${name}[${n}]`) >= 0 && dae.getVarIdxByName(`${name}[${n + 1}]`) < 0;
+    }
+  }
+  if (kind === ExprKind.Call) {
+    const argCount = dae.getExprRight(exprId);
+    for (let i = 0; i < argCount; i++) {
+      const argExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (isArrayOfLength(dae, argExprId, n)) return true;
     }
   }
   return false;
@@ -1225,10 +1265,8 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
     }
     case ExprKind.Tuple: {
       const count = dae.getExprData1(exprId);
-      let curr = dae.getExprLeft(exprId);
-      for (let i = 0; i < count; i++) {
-        if (i === k) return curr;
-        curr = dae.getExprLeft(curr);
+      if (count === n) {
+        return k === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + k);
       }
       return exprId;
     }
@@ -1282,6 +1320,20 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
       const rightElem = rightIsArr ? getNthExpr(dae, right, k, n) : right;
       return dae.addBinaryExpr(op, leftElem, rightElem);
     }
+    case ExprKind.Call: {
+      const funcNameId = dae.getExprData1(exprId);
+      const argCount = dae.getExprRight(exprId);
+      const nthArgs: number[] = [];
+      for (let i = 0; i < argCount; i++) {
+        const argExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+        if (isArrayOfLength(dae, argExprId, n)) {
+          nthArgs.push(getNthExpr(dae, argExprId, k, n));
+        } else {
+          nthArgs.push(argExprId);
+        }
+      }
+      return dae.addCallExpr(dae.interner.resolve(funcNameId) || "", nthArgs);
+    }
     case ExprKind.IfElse: {
       const cond = dae.getExprData1(exprId);
       const thenBranch = dae.getExprLeft(exprId);
@@ -1293,6 +1345,28 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
     case ExprKind.Name: {
       const name = dae.interner.resolve(dae.getExprData1(exprId));
       if (name) {
+        const vIdx = dae.getVarIdxByName(name);
+        if (vIdx >= 0) {
+          const shape = dae.getVarShape(vIdx);
+          if (shape.length > 1) {
+            const indices = generateIndices(shape);
+            if (k < indices.length) {
+              const multiIdx = indices[k]!.join(",");
+              return dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${multiIdx}]`));
+            }
+          }
+        }
+        if (dae.getVarIdxByName(`${name}[1,1]`) >= 0) {
+          let rows = 0;
+          while (dae.getVarIdxByName(`${name}[${rows + 1},1]`) >= 0) rows++;
+          let cols = 0;
+          while (dae.getVarIdxByName(`${name}[1,${cols + 1}]`) >= 0) cols++;
+          if (rows > 0 && cols > 0 && n === rows * cols) {
+            const r = Math.floor(k / cols) + 1;
+            const c = (k % cols) + 1;
+            return dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${r},${c}]`));
+          }
+        }
         const indexedName = `${name}[${k + 1}]`;
         if (dae.getVarIdxByName(indexedName) >= 0) {
           return dae.addExpression(ExprKind.Name, dae.interner.intern(indexedName));
@@ -1384,6 +1458,24 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         const operand = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
         return out.addUnaryExpr(op, operand);
       }
+      case ExprKind.Negate: {
+        const operand = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
+        return out.addExpression(ExprKind.Negate, 0, operand);
+      }
+      case ExprKind.Range: {
+        const start = cloneExpr(dae.getExprData1(exprId), indexSuffix, currentShape);
+        const stepRaw = dae.getExprLeft(exprId);
+        const step = stepRaw >= 0 ? cloneExpr(stepRaw, indexSuffix, currentShape) : -1;
+        const stop = cloneExpr(dae.getExprRight(exprId), indexSuffix, currentShape);
+        return out.addExpression(ExprKind.Range, start, step, stop);
+      }
+      case ExprKind.Colon:
+        return out.addColonExpr();
+      case ExprKind.Comprehension: {
+        const cfn = dae.interner.resolve(dae.getExprData1(exprId));
+        const inner = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
+        return out.addExpression(ExprKind.Comprehension, out.interner.intern(cfn || ""), inner);
+      }
       case ExprKind.Der: {
         const arg = cloneExpr(dae.getExprData1(exprId), indexSuffix, currentShape);
         return out.addDerExpr(arg);
@@ -1404,11 +1496,10 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       }
       case ExprKind.Tuple: {
         const count = dae.getExprData1(exprId);
-        let curr = dae.getExprLeft(exprId);
         const elems: number[] = [];
         for (let i = 0; i < count; i++) {
-          elems.push(cloneExpr(curr, indexSuffix, currentShape));
-          curr = dae.getExprLeft(curr);
+          const elemId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+          elems.push(cloneExpr(elemId, indexSuffix, currentShape));
         }
         return out.addTupleExpr(elems);
       }
@@ -1694,12 +1785,71 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     out.boundaryNodes.push({ ...node });
   }
 
+  const stmtOffset = out.stmtCount;
+  for (let i = 0; i < dae.stmtCount; i++) {
+    const k = dae.getStmtKind(i);
+    switch (k) {
+      case StmtKind.Assignment: {
+        const target = cloneExpr(dae.getStmtData1(i), "", null);
+        const val = cloneExpr(dae.getStmtLeft(i), "", null);
+        out.addStatement(StmtKind.Assignment, target, val);
+        break;
+      }
+      case StmtKind.For: {
+        const iterName = dae.interner.resolve(dae.getStmtData1(i)) || "";
+        const range = cloneExpr(dae.getStmtLeft(i), "", null);
+        out.addStatement(StmtKind.For, out.interner.intern(iterName), range, dae.getStmtRight(i));
+        break;
+      }
+      case StmtKind.While: {
+        const cond = cloneExpr(dae.getStmtData1(i), "", null);
+        out.addStatement(StmtKind.While, cond, dae.getStmtLeft(i));
+        break;
+      }
+      case StmtKind.If: {
+        const cond = cloneExpr(dae.getStmtData1(i), "", null);
+        out.addStatement(StmtKind.If, cond, dae.getStmtLeft(i), dae.getStmtRight(i));
+        break;
+      }
+      case StmtKind.When: {
+        const cond = cloneExpr(dae.getStmtData1(i), "", null);
+        out.addStatement(StmtKind.When, cond, dae.getStmtLeft(i), dae.getStmtRight(i));
+        break;
+      }
+      case StmtKind.Block: {
+        const rawCond = dae.getStmtData1(i);
+        const cond = rawCond >= 0 ? cloneExpr(rawCond, "", null) : -1;
+        out.addStatement(StmtKind.Block, cond, dae.getStmtLeft(i));
+        break;
+      }
+      case StmtKind.Return:
+        out.addStatement(StmtKind.Return);
+        break;
+      case StmtKind.Break:
+        out.addStatement(StmtKind.Break);
+        break;
+      case StmtKind.ProcedureCall: {
+        const call = cloneExpr(dae.getStmtData1(i), "", null);
+        out.addStatement(StmtKind.ProcedureCall, call);
+        break;
+      }
+      case StmtKind.ComplexAssignment: {
+        const val = cloneExpr(dae.getStmtLeft(i), "", null);
+        out.addStatement(StmtKind.ComplexAssignment, dae.getStmtData1(i), val);
+        break;
+      }
+      default:
+        out.addStatement(k, dae.getStmtData1(i), dae.getStmtLeft(i), dae.getStmtRight(i));
+        break;
+    }
+  }
+
   for (const algo of dae.algorithmSections) {
-    out.addAlgorithmSection(algo.start, algo.count);
+    out.addAlgorithmSection(stmtOffset + algo.start, algo.count);
   }
 
   for (const algo of dae.initialAlgorithmSections) {
-    out.addInitialAlgorithmSection(algo.start, algo.count);
+    out.addInitialAlgorithmSection(stmtOffset + algo.start, algo.count);
   }
 
   out.isImpure = dae.isImpure;
