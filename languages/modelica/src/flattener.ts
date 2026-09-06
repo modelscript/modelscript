@@ -44,32 +44,18 @@ export interface FlattenOptions {
 
 function castToRealExpr(exprId: number, dae: DAEBuilder): number {
   if (exprId < 0) return exprId;
+  if (isRealExpr(exprId, dae)) return exprId;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.IntLiteral) {
     const val = dae.getExprData1(exprId);
     return dae.addRealLiteral(val);
   }
-  if (kind === ExprKind.Unary) {
-    const op = dae.getExprData1(exprId);
-    const operand = castToRealExpr(dae.getExprLeft(exprId), dae);
-    return dae.addExpression(ExprKind.Unary, op, operand);
-  }
   if (kind === ExprKind.Negate) {
-    const operand = castToRealExpr(dae.getExprLeft(exprId), dae);
-    return dae.addExpression(ExprKind.Negate, 0, operand);
-  }
-
-  if (kind === ExprKind.Binary) {
-    const op = dae.getExprData1(exprId);
-    const left = castToRealExpr(dae.getExprLeft(exprId), dae);
-    const right = castToRealExpr(dae.getExprRight(exprId), dae);
-    return dae.addBinaryExpr(op, left, right);
-  }
-  if (kind === ExprKind.IfElse) {
-    const cond = dae.getExprData1(exprId);
-    const thenExpr = castToRealExpr(dae.getExprLeft(exprId), dae);
-    const elseExpr = castToRealExpr(dae.getExprRight(exprId), dae);
-    return dae.addExpression(ExprKind.IfElse, cond, thenExpr, elseExpr);
+    const operand = dae.getExprLeft(exprId);
+    if (dae.getExprKind(operand) === ExprKind.IntLiteral) {
+      return dae.addExpression(ExprKind.Negate, 0, dae.addRealLiteral(dae.getExprData1(operand)));
+    }
+    return dae.addCallExpr("/*Real*/", [exprId]);
   }
   if (kind === ExprKind.ArrayCtor) {
     const count = dae.getExprData1(exprId);
@@ -80,33 +66,30 @@ function castToRealExpr(exprId: number, dae: DAEBuilder): number {
     }
     return dae.addArrayCtorExpr(elemIds);
   }
-  if (kind === ExprKind.Name) {
-    const name = dae.interner.resolve(dae.getExprData1(exprId));
-    let vIdx = dae.getVarIdxByName(name);
-    if (vIdx < 0 && name.includes("[")) {
-      vIdx = dae.getVarIdxByName(name.split("[")[0]);
-    }
-    if (vIdx >= 0 && dae.getVarType(vIdx) === VarType.Integer) {
-      return dae.addCallExpr("/*Real*/", [exprId]);
-    }
-    return exprId;
+  if (kind === ExprKind.IfElse) {
+    const cond = dae.getExprData1(exprId);
+    const thenExpr = castToRealExpr(dae.getExprLeft(exprId), dae);
+    const elseExpr = castToRealExpr(dae.getExprRight(exprId), dae);
+    return dae.addExpression(ExprKind.IfElse, cond, thenExpr, elseExpr);
   }
   if (kind === ExprKind.Call) {
     const fnName = dae.interner.resolve(dae.getExprData1(exprId));
     if (fnName === "/*Real*/" || fnName === "Real") return exprId;
-    return exprId;
+    return dae.addCallExpr("/*Real*/", [exprId]);
   }
   if (kind === ExprKind.Der) {
     return exprId;
   }
-  return exprId;
+  return dae.addCallExpr("/*Real*/", [exprId]);
 }
 
 function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
   if (exprId < 0) return false;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.RealLiteral) return true;
+  if (kind === ExprKind.IntLiteral || kind === ExprKind.BoolLiteral || kind === ExprKind.StringLiteral) return false;
   if (kind === ExprKind.Der) return true;
+  if (kind === ExprKind.Pre) return isRealExpr(dae.getExprData1(exprId), dae);
   if (kind === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
     if (name === "time") return true;
@@ -114,13 +97,38 @@ function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
     if (vIdx < 0 && name.includes("[")) {
       vIdx = dae.getVarIdxByName(name.split("[")[0]);
     }
+    if (vIdx < 0) {
+      vIdx = dae.getVarIdxByName(`${name}[1]`);
+      if (vIdx < 0) {
+        vIdx = dae.getVarIdxByName(`${name}[1,1]`);
+      }
+      if (vIdx < 0) {
+        for (let v = 0; v < dae.varCount; v++) {
+          if (dae.getVarName(v).startsWith(`${name}[`)) {
+            vIdx = v;
+            break;
+          }
+        }
+      }
+    }
     if (vIdx >= 0) {
       return dae.getVarType(vIdx) === VarType.Real;
     }
-    return true;
+    const activeDb: QueryDB | undefined = (dae as any).db;
+    if (activeDb) {
+      const syms = activeDb.byName(name);
+      for (const s of syms) {
+        if (s.kind === "Component") {
+          const typeSpec = activeDb.query<string | null>("typeSpecifier", s.id);
+          if (typeSpec === "Real") return true;
+          if (typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String") return false;
+        }
+      }
+    }
+    return false;
   }
   if (kind === ExprKind.Subscript) {
-    return isRealExpr(dae.getExprLeft(exprId), dae);
+    return isRealExpr(dae.getExprData1(exprId), dae);
   }
   if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
     return isRealExpr(dae.getExprLeft(exprId), dae);
@@ -146,11 +154,22 @@ function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
       fnName === "tan" ||
       fnName === "exp" ||
       fnName === "log" ||
-      fnName === "sqrt"
+      fnName === "sqrt" ||
+      fnName === "inStream" ||
+      fnName === "actualStream"
     ) {
       return true;
     }
-    return true;
+    if (fnName === "integer" || fnName === "floor" || fnName === "ceil") return false;
+    const fnDae = dae.functions.get(fnName);
+    if (fnDae) {
+      for (let i = 0; i < fnDae.varCount; i++) {
+        if (fnDae.getVarCausality(i) === Causality.Output) {
+          return fnDae.getVarType(i) === VarType.Real;
+        }
+      }
+    }
+    return false;
   }
   if (kind === ExprKind.ArrayCtor) {
     const count = dae.getExprData1(exprId);
@@ -645,6 +664,7 @@ function lowerCSTExpression(
   db?: QueryDB,
   flattener?: any,
   tupleContext?: boolean,
+  noArrayExpand?: boolean,
 ): number {
   if (!node) return -1;
   const type = node.type;
@@ -655,10 +675,21 @@ function lowerCSTExpression(
       type === "primary" ||
       type === "expression_list" ||
       type === "Expression" ||
-      type === "Primary") &&
+      type === "Primary" ||
+      type === "subscript") &&
     node.childCount === 1
   ) {
-    return lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener, tupleContext);
+    return lowerCSTExpression(
+      node.child(0),
+      dae,
+      prefix,
+      substitutions,
+      imports,
+      db,
+      flattener,
+      tupleContext,
+      noArrayExpand,
+    );
   }
 
   // Parenthesized expression: "(" expr ")"
@@ -916,12 +947,13 @@ function lowerCSTExpression(
       return dae.addExpression(ExprKind.Name, dae.interner.intern(candidate));
     }
 
-    const baseId = lowerCSTExpression(baseNode, dae, prefix, substitutions, imports, db, flattener);
+    const baseId = lowerCSTExpression(baseNode, dae, prefix, substitutions, imports, db, flattener, false, true);
     const subIds: number[] = [];
     for (let i = 0; i < subsNode.childCount; i++) {
       const c = subsNode.child(i);
       if (c.type === "subscript" || c.type === "expression") {
-        subIds.push(lowerCSTExpression(c, dae, prefix, substitutions, imports, db, flattener));
+        const expr = c.children?.find((k: any) => k.type === "expression") ?? c;
+        subIds.push(lowerCSTExpression(expr, dae, prefix, substitutions, imports, db, flattener));
       }
     }
     return dae.addSubscriptExpr(baseId, subIds);
@@ -1134,20 +1166,38 @@ function lowerCSTExpression(
       case "or":
         binOp = BinOp.Or;
         break;
+      case ":":
+        binOp = BinOp.Colon;
+        break;
     }
     if (binOp !== null) {
       let leftId = lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener);
       let rightId = lowerCSTExpression(node.child(2), dae, prefix, substitutions, imports, db, flattener);
       if (binOp === BinOp.Sub) {
+        const leftKind = dae.getExprKind(leftId);
         const rightKind = dae.getExprKind(rightId);
+        if (leftKind === ExprKind.IntLiteral && rightKind === ExprKind.IntLiteral) {
+          return dae.addIntLiteral(dae.getExprData1(leftId) - dae.getExprData1(rightId));
+        }
         if (rightKind === ExprKind.IntLiteral && dae.getExprData1(rightId) === 1) {
-          const negLitId = dae.addIntLiteral(-1);
+          const isReal = isRealExpr(leftId, dae);
+          const negLitId = isReal ? dae.addRealLiteral(-1.0) : dae.addIntLiteral(-1);
           return dae.addBinaryExpr(BinOp.Add, negLitId, leftId);
         }
       }
       if (binOp === BinOp.Div) {
         const leftKind = dae.getExprKind(leftId);
         const rightKind = dae.getExprKind(rightId);
+        if (
+          (leftKind === ExprKind.IntLiteral || leftKind === ExprKind.RealLiteral) &&
+          (rightKind === ExprKind.IntLiteral || rightKind === ExprKind.RealLiteral)
+        ) {
+          const lVal = leftKind === ExprKind.IntLiteral ? dae.getExprData1(leftId) : dae.getExprRealValue(leftId);
+          const rVal = rightKind === ExprKind.IntLiteral ? dae.getExprData1(rightId) : dae.getExprRealValue(rightId);
+          if (rVal !== 0) {
+            return dae.addRealLiteral(lVal / rVal);
+          }
+        }
         if (leftKind === ExprKind.Call && rightKind === ExprKind.Call) {
           const leftFn = dae.interner.resolve(dae.getExprData1(leftId));
           const rightFn = dae.interner.resolve(dae.getExprData1(rightId));
@@ -1304,8 +1354,8 @@ function lowerCSTExpression(
     rawName = resolveScopedName(rawName, prefix, dae, (dae as any).innerOuterComponents);
 
     // Check if rawName is an array variable like e, which has elements e[1] .. e[N]
-    // Only expand if rawName is NOT already subscripted (does not contain '[')
-    if (!rawName.includes("[") && dae.getVarIdxByName(`${rawName}[1]`) >= 0) {
+    // Only expand if rawName is NOT already subscripted (does not contain '[') and noArrayExpand is false
+    if (!noArrayExpand && !rawName.includes("[") && dae.getVarIdxByName(`${rawName}[1]`) >= 0) {
       const elemIds: number[] = [];
       for (let k = 1; ; k++) {
         const vk = dae.getVarIdxByName(`${rawName}[${k}]`);
@@ -1475,6 +1525,7 @@ export class ModelicaFlattener {
     const rootName = rootSym?.name ?? "Model";
     const dae = cachedArena ?? new DAEBuilder(undefined, rootName, "");
     (dae as any).innerOuterComponents = this.innerOuterComponents;
+    (dae as any).db = this.db;
     dae.classKind = (rootSym?.metadata as any)?.classKind ?? "model";
     const classCst = this.db.cstNode(rootClassId) as SyntaxNode | null;
     if (classCst) {
@@ -1854,7 +1905,10 @@ export class ModelicaFlattener {
     }
 
     if (this.options.arrayMode === "scalarize" || hasArrayEquations(dae)) {
-      return scalarizeArena(dae);
+      const scalarized = scalarizeArena(dae);
+      foldArenaConstants(scalarized, this.db, rootClassId, this.options.omcCompatibility);
+      scalarized.groupEquationsForParity();
+      return scalarized;
     }
 
     dae.groupEquationsForParity();
@@ -2117,11 +2171,12 @@ export class ModelicaFlattener {
     };
 
     const isRecordUsed = (sym: any): boolean => {
+      if (sym.parentId === rootClassId) return true;
       const name = sym.name;
       const rootCst = this.db.cstNode(rootClassId) as any;
       if (rootCst) {
         const text = rootCst.text ?? "";
-        const callRegex = new RegExp(`\\b(?:${name})\\s*\\(`, "m");
+        const callRegex = new RegExp(`\\b${name}\\b`, "m");
         if (callRegex.test(text)) return true;
       }
       return false;
@@ -4059,14 +4114,16 @@ export class ModelicaFlattener {
               const indicesNode = (sNode.children || []).find(
                 (c: any) => c.type === "for_indices" || c.type === "ForIndices",
               );
-              const fIndex = indicesNode
-                ? (indicesNode.children || []).find((c: any) => c.type === "for_index" || c.type === "ForIndex")
-                : null;
-              const varName = fIndex?.child(0)?.text?.trim() ?? "i";
-              const rangeNode = (fIndex?.children || []).find(
-                (c: any) => c.type === "expression" || c.type === "colon_expression",
+              const forIndices = (indicesNode?.children || []).filter(
+                (c: any) => c.type === "for_index" || c.type === "ForIndex",
               );
-              const rangeExprId = rangeNode ? this.lowerExpr(rangeNode, dae, prefix, substitutions) : -1;
+              if (forIndices.length === 0) {
+                const fIndex = indicesNode
+                  ? (indicesNode.children || []).find((c: any) => c.type === "for_index" || c.type === "ForIndex")
+                  : null;
+                if (fIndex) forIndices.push(fIndex);
+              }
+
               const bodyStmts: any[] = [];
               let inLoop = false;
               for (const child of sNode.children || []) {
@@ -4084,10 +4141,86 @@ export class ModelicaFlattener {
                   bodyStmts.push(...extractExecutableStmts(child));
                 }
               }
-              dae.addStatement(StmtKind.For, dae.interner.intern(varName), rangeExprId, bodyStmts.length);
-              for (const s of bodyStmts) {
-                lowerStatement(s);
-              }
+
+              const deduceRange = (varName: string): number => {
+                let targetArr = "";
+                let targetDimIdx = -1;
+
+                const findSubscript = (node: any) => {
+                  if (!node || targetArr) return;
+                  if (node.type === "array_subscripts" && node.childCount > 0) {
+                    const p = node.parent;
+                    let baseText = "";
+                    if (p && p.childCount >= 2) {
+                      baseText = p.child(0)?.text?.trim() ?? "";
+                    }
+                    let dim = 0;
+                    for (const sc of node.children || []) {
+                      if (sc.type === "subscript" || sc.type === "expression") {
+                        if (sc.text?.trim() === varName) {
+                          targetArr = baseText;
+                          targetDimIdx = dim;
+                          return;
+                        }
+                        dim++;
+                      }
+                    }
+                  }
+                  for (const c of node.children || []) {
+                    findSubscript(c);
+                  }
+                };
+
+                for (const s of bodyStmts) {
+                  findSubscript(s);
+                  if (targetArr) break;
+                }
+
+                if (targetArr && targetDimIdx >= 0) {
+                  let maxIdx = 0;
+                  const prefixPattern = new RegExp(`^${targetArr}\\[([0-9,]+)\\]$`);
+                  for (let v = 0; v < dae.varCount; v++) {
+                    const vName = dae.getVarName(v);
+                    const m = prefixPattern.exec(vName);
+                    if (m) {
+                      const indices = m[1].split(",").map(Number);
+                      if (targetDimIdx < indices.length && indices[targetDimIdx] > maxIdx) {
+                        maxIdx = indices[targetDimIdx];
+                      }
+                    }
+                  }
+                  if (maxIdx > 0) {
+                    const oneId = dae.addIntLiteral(1);
+                    const maxExprId = dae.addIntLiteral(maxIdx);
+                    return dae.addBinaryExpr(BinOp.Colon, oneId, maxExprId);
+                  }
+                }
+                return -1;
+              };
+
+              const lowerForIndexAt = (idx: number) => {
+                if (idx >= forIndices.length) {
+                  for (const s of bodyStmts) {
+                    lowerStatement(s);
+                  }
+                  return;
+                }
+                const fi = forIndices[idx];
+                const varName = fi.child(0)?.text?.trim() ?? "i";
+                const rangeNode = (fi.children || []).find(
+                  (c: any) => c.type === "expression" || c.type === "colon_expression",
+                );
+                let rangeExprId = rangeNode ? this.lowerExpr(rangeNode, dae, prefix, substitutions) : -1;
+                if (rangeExprId < 0) {
+                  rangeExprId = deduceRange(varName);
+                }
+                const isInnermost = idx === forIndices.length - 1;
+                const childCount = isInnermost ? bodyStmts.length : 1;
+                dae.addStatement(StmtKind.For, dae.interner.intern(varName), rangeExprId, childCount);
+                lowerForIndexAt(idx + 1);
+              };
+
+              lowerForIndexAt(0);
               return;
             }
 
@@ -4209,7 +4342,10 @@ export class ModelicaFlattener {
               );
               if (exprs.length >= 2) {
                 const targetId = this.lowerExpr(exprs[0], dae, prefix, substitutions);
-                const valId = this.lowerExpr(exprs[1], dae, prefix, substitutions);
+                let valId = this.lowerExpr(exprs[1], dae, prefix, substitutions);
+                if (isRealExpr(targetId, dae) && !isRealExpr(valId, dae)) {
+                  valId = castToRealExpr(valId, dae);
+                }
                 dae.addStatement(StmtKind.Assignment, targetId, valId);
               }
               return;
@@ -4338,7 +4474,7 @@ export class ModelicaFlattener {
               otherChildren.push(kid);
             }
           }
-          for (const eqSec of eqSections) {
+          for (const eqSec of eqSections.slice().reverse()) {
             walk(eqSec, substitutions, isInitial);
           }
           for (const other of otherChildren) {

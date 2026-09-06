@@ -933,12 +933,31 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4033,
     message: () => `Function has more than one algorithm section or external declaration.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if (!isClassKind(db, node, "function")) return;
       let count = 0;
       for (const sec of db.ast.getDescendants(node, $.algorithm_section)) {
-        if (sec != 0) count++;
+        if (sec != 0) {
+          let directCls = 0;
+          for (const anc of db.ast.getAncestors(sec, 0)) {
+            if (db.ast.getType(anc) == $.class_definition) {
+              directCls = anc;
+              break;
+            }
+          }
+          if (directCls == node) count++;
+        }
       }
       for (const ext of db.ast.getDescendants(node, $.external_clause)) {
-        if (ext != 0) count++;
+        if (ext != 0) {
+          let directCls = 0;
+          for (const anc of db.ast.getAncestors(ext, 0)) {
+            if (db.ast.getType(anc) == $.class_definition) {
+              directCls = anc;
+              break;
+            }
+          }
+          if (directCls == node) count++;
+        }
       }
       if (count > 1) {
         db.diagnostic(node);

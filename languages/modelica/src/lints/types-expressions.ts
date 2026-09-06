@@ -588,7 +588,14 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["assignment_statement"],
     severity: "error",
     code: 5006,
-    message: (target) => `Type mismatch in assignment statement '${target.text}'.`,
+    message: (target, targetType, valType) => {
+      const typeNames = ["Real", "Integer", "Boolean", "String"];
+      const tIdx = targetType && targetType.asNumber ? targetType.asNumber() : Number(targetType);
+      const vIdx = valType && valType.asNumber ? valType.asNumber() : Number(valType);
+      const tName = tIdx >= 0 && tIdx < typeNames.length ? typeNames[tIdx] : "Unknown";
+      const vName = vIdx >= 0 && vIdx < typeNames.length ? typeNames[vIdx] : "Unknown";
+      return `Type mismatch in assignment in ${target.text} of ${tName} := ${vName}`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const target = db.ast.getChildByFieldId(node, "target");
       const value = db.ast.getChildByFieldId(node, "value");
@@ -597,7 +604,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const valType = inferExprType(db, value, $);
         if (targetType != TYPE_UNKNOWN && valType != TYPE_UNKNOWN) {
           if (!isTypeCompatible(valType, targetType)) {
-            db.diagnostic(node);
+            db.diagnostic(node, targetType, valType);
           }
         }
       }

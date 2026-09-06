@@ -37,6 +37,7 @@ const binOpStr: Record<number, string> = {
   [BinOp.Gt]: ">",
   [BinOp.Lte]: "<=",
   [BinOp.Gte]: ">=",
+  [BinOp.Colon]: ":",
 };
 
 const unaryOpStr: Record<number, string> = {
@@ -490,7 +491,7 @@ export class ArenaDAEPrinter {
         const rhs = a.getExprRight(id);
         let finalLhs = lhs;
         let finalRhs = rhs;
-        if (this.omcCompatibility && op === BinOp.Mul) {
+        if (this.omcCompatibility && (op === BinOp.Mul || op === BinOp.Add)) {
           const lKind = a.getExprKind(lhs);
           const rKind = a.getExprKind(rhs);
           const lIsLit =
@@ -515,7 +516,11 @@ export class ArenaDAEPrinter {
           this.out.write(")");
         } else this.printExpr(finalLhs);
 
-        this.out.write(" " + (binOpStr[op] ?? "+") + " ");
+        if (op === BinOp.Colon) {
+          this.out.write(":");
+        } else {
+          this.out.write(" " + (binOpStr[op] ?? "+") + " ");
+        }
 
         if (needsParens(finalRhs, true)) {
           this.out.write("(");
@@ -1187,13 +1192,9 @@ export class ArenaDAEPrinter {
     }
 
     // Algorithms
-    let hasAlg = false;
     for (const sec of dae.algorithmSections) {
       if (sec.count > 0) {
-        if (!hasAlg) {
-          this.out.write("algorithm\n");
-          hasAlg = true;
-        }
+        this.out.write("algorithm\n");
         let idx = sec.start;
         const end = sec.start + sec.count;
         while (idx < end) idx = this.printStmt(idx);

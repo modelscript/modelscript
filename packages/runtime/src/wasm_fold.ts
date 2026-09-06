@@ -276,6 +276,21 @@ export function evaluateConstantArenaExpression(
       return null;
     }
 
+    if (funcName === "/*Real*/" || funcName === "Real") {
+      const val = evaluateConstantArenaExpression(
+        arena,
+        getCallArg(0),
+        paramMap,
+        nameToIdx,
+        visitedDepth + 1,
+        db,
+        scopeId,
+      );
+      if (typeof val === "number") return val;
+      if (typeof val === "boolean") return val ? 1.0 : 0.0;
+      return null;
+    }
+
     if (funcName === "fill" && argCount >= 2) {
       const val = evaluateConstantArenaExpression(
         arena,
@@ -301,6 +316,61 @@ export function evaluateConstantArenaExpression(
           const result: any[] = [];
           for (let i = 0; i < n; i++) result.push(val);
           return result;
+        }
+      }
+      return null;
+    }
+
+    if (funcName === "size" && argCount >= 1) {
+      const arrArg = getCallArg(0);
+      let dim = 1;
+      if (argCount >= 2) {
+        const dimVal = evaluateConstantArenaExpression(
+          arena,
+          getCallArg(1),
+          paramMap,
+          nameToIdx,
+          visitedDepth + 1,
+          db,
+          scopeId,
+        );
+        if (typeof dimVal === "number") dim = Math.trunc(dimVal);
+      }
+      if (arrArg >= 0) {
+        const arrKind = arena.getExprKind(arrArg);
+        if (arrKind === ExprKind.ArrayCtor) {
+          const count = arena.getExprData1(arrArg);
+          if (dim === 1) return count;
+        }
+        if (arrKind === ExprKind.Name) {
+          const name = arena.interner.resolve(arena.getExprData1(arrArg));
+          if (name) {
+            const vIdx = nameToIdx ? nameToIdx.get(name) : arena.getVarIdxByName(name);
+            if (vIdx !== undefined && vIdx >= 0) {
+              const shape = arena.getVarShape(vIdx);
+              if (shape && shape.length >= dim) {
+                return shape[dim - 1];
+              }
+            }
+            let count = 0;
+            while (arena.getVarIdxByName(`${name}[${count + 1}]`) >= 0) count++;
+            if (count > 0 && dim === 1) return count;
+          }
+        }
+        if (arrKind === ExprKind.Call) {
+          const innerFn = arena.interner.resolve(arena.getExprData1(arrArg));
+          if (innerFn === "fill") {
+            const fillCount = evaluateConstantArenaExpression(
+              arena,
+              arena.getExprLeft(arrArg + 1),
+              paramMap,
+              nameToIdx,
+              visitedDepth + 1,
+              db,
+              scopeId,
+            );
+            if (typeof fillCount === "number" && dim === 1) return Math.trunc(fillCount);
+          }
         }
       }
       return null;
@@ -397,10 +467,23 @@ export function substituteArenaConstants(
       const op = arena.getExprData1(exprId);
       const left = substituteArenaConstants(arena, arena.getExprLeft(exprId), constMap, nameToIdx);
       const right = substituteArenaConstants(arena, arena.getExprRight(exprId), constMap, nameToIdx);
-      if (left !== arena.getExprLeft(exprId) || right !== arena.getExprRight(exprId)) {
-        return arena.addBinaryExpr(op, left, right);
+      const newBinId =
+        left !== arena.getExprLeft(exprId) || right !== arena.getExprRight(exprId)
+          ? arena.addBinaryExpr(op, left, right)
+          : exprId;
+      if (op !== BinOp.Colon) {
+        const folded = evaluateConstantArenaExpression(arena, newBinId, constMap, nameToIdx, 0);
+        if (typeof folded === "number") {
+          if (op === BinOp.Div) {
+            return arena.addRealLiteral(folded);
+          }
+          return Number.isInteger(folded) ? arena.addIntLiteral(folded) : arena.addRealLiteral(folded);
+        }
+        if (typeof folded === "boolean") {
+          return arena.addBoolLiteral(folded);
+        }
       }
-      return exprId;
+      return newBinId;
     }
     case ExprKind.Unary: {
       const op = arena.getExprData1(exprId);
@@ -412,10 +495,12 @@ export function substituteArenaConstants(
     }
     case ExprKind.Negate: {
       const left = substituteArenaConstants(arena, arena.getExprLeft(exprId), constMap, nameToIdx);
-      if (left !== arena.getExprLeft(exprId)) {
-        return arena.addExpression(ExprKind.Negate, 0, left);
+      const newNegId = left !== arena.getExprLeft(exprId) ? arena.addExpression(ExprKind.Negate, 0, left) : exprId;
+      const folded = evaluateConstantArenaExpression(arena, newNegId, constMap, nameToIdx, 0);
+      if (typeof folded === "number") {
+        return Number.isInteger(folded) ? arena.addIntLiteral(folded) : arena.addRealLiteral(folded);
       }
-      return exprId;
+      return newNegId;
     }
     case ExprKind.Der: {
       const data1 = substituteArenaConstants(arena, arena.getExprData1(exprId), constMap, nameToIdx);
@@ -455,11 +540,19 @@ export function substituteArenaConstants(
         args.push(newArg);
         if (newArg !== argExprId) anyChanged = true;
       }
-      if (anyChanged) {
-        const fnName = arena.interner.resolve(funcNameId) || "";
-        return arena.addCallExpr(fnName, args);
+      const fnName = arena.interner.resolve(funcNameId) || "";
+      const callId = anyChanged ? arena.addCallExpr(fnName, args) : exprId;
+      const folded = evaluateConstantArenaExpression(arena, callId, constMap, nameToIdx, 0);
+      if (typeof folded === "number") {
+        if (fnName === "/*Real*/" || fnName === "Real") {
+          return arena.addRealLiteral(folded);
+        }
+        return Number.isInteger(folded) ? arena.addIntLiteral(folded) : arena.addRealLiteral(folded);
       }
-      return exprId;
+      if (typeof folded === "boolean") {
+        return arena.addBoolLiteral(folded);
+      }
+      return callId;
     }
     case ExprKind.ArrayCtor: {
       const count = arena.getExprData1(exprId);
@@ -1217,8 +1310,11 @@ function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boolean {
   if (kind === ExprKind.Der || kind === ExprKind.Pre) {
     return isArrayOfLength(dae, dae.getExprData1(exprId), n);
   }
-  if (kind === ExprKind.Unary) {
+  if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
     return isArrayOfLength(dae, dae.getExprLeft(exprId), n);
+  }
+  if (kind === ExprKind.Binary) {
+    return isArrayOfLength(dae, dae.getExprLeft(exprId), n) || isArrayOfLength(dae, dae.getExprRight(exprId), n);
   }
   if (kind === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
@@ -1243,6 +1339,12 @@ function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boolean {
     }
   }
   if (kind === ExprKind.Call) {
+    const fnName = dae.interner.resolve(dae.getExprData1(exprId));
+    if (fnName === "fill" && dae.getExprRight(exprId) >= 2) {
+      const countExpr = dae.getExprLeft(exprId + 1);
+      const countVal = evaluateConstantArenaExpression(dae, countExpr);
+      if (typeof countVal === "number" && Math.trunc(countVal) === n) return true;
+    }
     const argCount = dae.getExprRight(exprId);
     for (let i = 0; i < argCount; i++) {
       const argExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
@@ -1279,6 +1381,11 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
       const inner = dae.getExprData1(exprId);
       const innerElem = getNthExpr(dae, inner, k, n);
       return dae.addPreExpr(innerElem);
+    }
+    case ExprKind.Negate: {
+      const inner = dae.getExprLeft(exprId);
+      const innerElem = getNthExpr(dae, inner, k, n);
+      return dae.addExpression(ExprKind.Negate, 0, innerElem);
     }
     case ExprKind.Unary: {
       const op = dae.getExprData1(exprId);
@@ -1322,7 +1429,25 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
     }
     case ExprKind.Call: {
       const funcNameId = dae.getExprData1(exprId);
+      const fnName = dae.interner.resolve(funcNameId) || "";
       const argCount = dae.getExprRight(exprId);
+      if (fnName === "/*Real*/" || fnName === "Real") {
+        const inner = dae.getExprLeft(exprId);
+        const innerElem = getNthExpr(dae, inner, k, n);
+        return dae.addCallExpr(fnName, [innerElem]);
+      }
+      if (fnName === "fill" && argCount >= 2) {
+        const valExprId = dae.getExprLeft(exprId);
+        if (argCount === 2) {
+          return valExprId;
+        } else {
+          const remainingArgs: number[] = [valExprId];
+          for (let i = 2; i < argCount; i++) {
+            remainingArgs.push(dae.getExprLeft(exprId + i));
+          }
+          return dae.addCallExpr("fill", remainingArgs);
+        }
+      }
       const nthArgs: number[] = [];
       for (let i = 0; i < argCount; i++) {
         const argExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
@@ -1332,7 +1457,7 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
           nthArgs.push(argExprId);
         }
       }
-      return dae.addCallExpr(dae.interner.resolve(funcNameId) || "", nthArgs);
+      return dae.addCallExpr(fnName, nthArgs);
     }
     case ExprKind.IfElse: {
       const cond = dae.getExprData1(exprId);
@@ -1383,10 +1508,16 @@ function isRealType(dae: DAEBuilder, exprId: number): boolean {
   if (exprId < 0) return false;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.RealLiteral) return true;
+  if (kind === ExprKind.Der) {
+    return isRealType(dae, dae.getExprData1(exprId));
+  }
   if (kind === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
     if (name) {
-      const vIdx = dae.getVarIdxByName(name);
+      let vIdx = dae.getVarIdxByName(name);
+      if (vIdx < 0 && name.includes("[")) {
+        vIdx = dae.getVarIdxByName(name.split("[")[0]);
+      }
       if (vIdx >= 0) return dae.getVarType(vIdx) === VarType.Real;
     }
   }
@@ -1648,8 +1779,16 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         const newLhs = cloneExpr(lhsElements[k], "", null);
         const rk_raw = rhsElements && rhsElements.length === N ? rhsElements[k] : getNthExpr(dae, rhsId, k, N);
         let newRhs = cloneExpr(rk_raw, "", null);
-        if (isRealType(dae, lhsElements[k]) && dae.getExprKind(rk_raw) === ExprKind.IntLiteral) {
-          newRhs = out.addRealLiteral(dae.getExprData1(rk_raw));
+        if (isRealType(dae, lhsElements[k])) {
+          if (dae.getExprKind(rk_raw) === ExprKind.IntLiteral) {
+            newRhs = out.addRealLiteral(dae.getExprData1(rk_raw));
+          } else if (dae.getExprKind(rk_raw) === ExprKind.Negate) {
+            const inner = dae.getExprLeft(rk_raw);
+            if (dae.getExprKind(inner) === ExprKind.IntLiteral) {
+              const realLit = out.addRealLiteral(dae.getExprData1(inner));
+              newRhs = out.addExpression(ExprKind.Negate, 0, realLit);
+            }
+          }
         }
         if (targetList) {
           targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
@@ -1666,8 +1805,16 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         const newRhs = cloneExpr(rhsElements[k], "", null);
         const lk_raw = getNthExpr(dae, lhsId, k, N);
         let newLhs = cloneExpr(lk_raw, "", null);
-        if (isRealType(dae, rhsElements[k]) && dae.getExprKind(lk_raw) === ExprKind.IntLiteral) {
-          newLhs = out.addRealLiteral(dae.getExprData1(lk_raw));
+        if (isRealType(dae, rhsElements[k])) {
+          if (dae.getExprKind(lk_raw) === ExprKind.IntLiteral) {
+            newLhs = out.addRealLiteral(dae.getExprData1(lk_raw));
+          } else if (dae.getExprKind(lk_raw) === ExprKind.Negate) {
+            const inner = dae.getExprLeft(lk_raw);
+            if (dae.getExprKind(inner) === ExprKind.IntLiteral) {
+              const realLit = out.addRealLiteral(dae.getExprData1(inner));
+              newLhs = out.addExpression(ExprKind.Negate, 0, realLit);
+            }
+          }
         }
         if (targetList) {
           targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
