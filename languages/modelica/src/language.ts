@@ -457,7 +457,7 @@ export const modelicaLanguage = language({
         $.description,
       ),
 
-    base_prefix: () => optional(choice("input", "output")),
+    base_prefix: () => optional(choice("input", "output", "flow", "stream")),
 
     enum_list: ($) => seq($.enumeration_literal, repeat(seq(",", $.enumeration_literal))),
 

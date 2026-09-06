@@ -699,11 +699,8 @@ export class ArenaDAEPrinter {
     else if (variability === Variability.Constant) this.out.write("constant ");
 
     const causality = a.getVarCausality(idx);
-    const isNested = a.getVarName(idx).includes(".");
-    if (!isNested) {
-      if (causality === 1) this.out.write("input ");
-      else if (causality === 2) this.out.write("output ");
-    }
+    if (causality === 1) this.out.write("input ");
+    else if (causality === 2) this.out.write("output ");
 
     const customType = a.getVarCustomType(idx);
     if (

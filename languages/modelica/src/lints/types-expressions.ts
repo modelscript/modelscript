@@ -5,6 +5,7 @@ import {
   getVariableTypeInClass,
   inferExprType,
   inferExprUnit,
+  isStreamVariable,
   isTypeCompatible,
   resolveBasePrimitiveType,
   TYPE_BOOLEAN,
@@ -645,23 +646,46 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
    * M5013: Argument to inStream() must be a stream variable.
    */
   notAStreamVariable: {
-    nodes: ["function_call"],
+    nodes: ["component_reference"],
     severity: "error",
     code: 5013,
-    message: (target) => `Operand '${target.text}' is not a stream variable.`,
+    message: (target, argNode, fnName) => {
+      const aText = argNode && argNode.text ? argNode.text : target.text;
+      const fText = fnName && fnName.text ? fnName.text : "inStream";
+      return `Operand '${aText}' to operator '${fText}' is not a stream variable.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const nameNode = db.ast.getChildByFieldId(node, "name");
-      if (nameNode != 0 && (db.ast.textEquals(nameNode, "inStream") || db.ast.textEquals(nameNode, "actualStream"))) {
-        let argNode: u32 = 0;
-        for (const arg of db.ast.getDescendants(node, $.function_argument)) {
+      if (!db.ast.textEquals(node, "inStream") && !db.ast.textEquals(node, "actualStream")) {
+        return;
+      }
+      const next = db.ast.getNextSibling(node);
+      if (next == 0 || db.ast.getType(next) != $.function_call_args) {
+        return;
+      }
+
+      let enclosingClass: u32 = 0;
+      for (const cls of db.ast.getAncestors(node)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          enclosingClass = cls;
+          break;
+        }
+      }
+      if (enclosingClass == 0) return;
+
+      let argNode: u32 = 0;
+      for (const arg of db.ast.getDescendants(next, $.component_reference)) {
+        argNode = arg;
+        break;
+      }
+      if (argNode == 0) {
+        for (const arg of db.ast.getDescendants(next, $.identifier)) {
           argNode = arg;
           break;
         }
-        if (argNode != 0) {
-          const symId = db.scope.resolve(argNode);
-          if (symId != 0 && !db.model.hasFlag(symId, "isStream")) {
-            db.diagnostic(argNode);
-          }
+      }
+      if (argNode != 0) {
+        if (!isStreamVariable(db, enclosingClass, argNode, $)) {
+          db.diagnostic(node, argNode, node);
         }
       }
     },

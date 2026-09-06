@@ -29,16 +29,6 @@ end Units2;
 // # Please check the error message and the flags.
 //
 // [OpenModelica/flattening/modelica/connectors/Units2.mo:23:3-23:16:writable] Error: Cannot connect flow component i.x to non-flow component v.x.
-// [OpenModelica/flattening/modelica/connectors/Units2.mo:23:3-23:16:writable] Error: The type of variables 
-// v type:
-// connector Pin1
-//   Real(unit = "V") x;
-// end Pin1; and 
-// i type:
-// connector Pin2
-//   flow Real(unit = "A") x;
-// end Pin2;
-// are inconsistent in connect equations.
 // Error: Error occurred while flattening model Units2
 //
 // Execution failed!

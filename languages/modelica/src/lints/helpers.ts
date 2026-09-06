@@ -831,6 +831,105 @@ export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u3
 }
 
 /**
+ * Finds the component clause containing declaration of `identNode` in `classNode`.
+ */
+export function findComponentClauseForIdent(
+  db: CodeGraph,
+  classNode: u32,
+  identNode: u32,
+  $: Record<string, u16>,
+): u32 {
+  for (const comp of db.ast.getDescendants(classNode, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, classNode, $)) continue;
+    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+      const nameNode = db.ast.getChildByFieldId(decl, "name");
+      if (nameNode != 0 && db.ast.textEqualsNode(nameNode, identNode)) {
+        return comp;
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ * Checks if there is a flow / non-flow mismatch between two connector classes.
+ * Returns the mismatched declaration identifier node if found, otherwise 0.
+ */
+export function findFlowMismatchInConnectors(db: CodeGraph, lhsClass: u32, rhsClass: u32, $: Record<string, u16>): u32 {
+  if (lhsClass == 0 || rhsClass == 0) return 0;
+  for (const comp of db.ast.getDescendants(lhsClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, lhsClass, $)) continue;
+    const isFlow = hasTypePrefix(db, comp, "flow", $);
+    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+      const nameNode = db.ast.getChildByFieldId(decl, "name");
+      if (nameNode != 0) {
+        const rhsComp = findComponentClauseForIdent(db, rhsClass, nameNode, $);
+        if (rhsComp != 0) {
+          const rhsFlow = hasTypePrefix(db, rhsComp, "flow", $);
+          if (isFlow != rhsFlow) {
+            return nameNode;
+          }
+        }
+      }
+    }
+  }
+  for (const comp of db.ast.getDescendants(rhsClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, rhsClass, $)) continue;
+    const isFlow = hasTypePrefix(db, comp, "flow", $);
+    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+      const nameNode = db.ast.getChildByFieldId(decl, "name");
+      if (nameNode != 0) {
+        const lhsComp = findComponentClauseForIdent(db, lhsClass, nameNode, $);
+        if (lhsComp != 0) {
+          const lhsFlow = hasTypePrefix(db, lhsComp, "flow", $);
+          if (isFlow != lhsFlow) {
+            return nameNode;
+          }
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ * Checks if a potentially dotted variable reference is declared with 'stream' variability.
+ */
+export function isStreamVariable(db: CodeGraph, enclosingClass: u32, varRefNode: u32, $: Record<string, u16>): boolean {
+  if (enclosingClass == 0 || varRefNode == 0) return false;
+  let idCount: u32 = 0;
+  for (const id of db.ast.getDescendants(varRefNode, $.identifier)) {
+    if (id != 0 && !isDescendantOfSubscript(db, id, varRefNode, $)) idCount++;
+  }
+  let currClass = enclosingClass;
+  let leafId: u32 = varRefNode;
+  let idx: u32 = 0;
+  for (const id of db.ast.getDescendants(varRefNode, $.identifier)) {
+    if (id != 0 && !isDescendantOfSubscript(db, id, varRefNode, $)) {
+      if (idx == idCount - 1) {
+        leafId = id;
+        break;
+      }
+      const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
+      if (nextClass == 0) return false;
+      currClass = nextClass;
+      idx++;
+    }
+  }
+
+  for (const comp of db.ast.getDescendants(currClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, currClass, $)) continue;
+    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+      const nameNode = db.ast.getChildByFieldId(decl, "name");
+      if (nameNode != 0 && db.ast.textEqualsNode(nameNode, leafId)) {
+        return hasTypePrefix(db, comp, "stream", $);
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Counts flow variables in `classDefNode` or its base classes.
  */
 export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: Record<string, u16>): u32 {

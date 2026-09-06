@@ -334,9 +334,9 @@ export const ModelicaErrorCode = {
   CONNECT_FLOW_MISMATCH: {
     code: 5004,
     rule: "connect-flow-mismatch",
-    severity: "warning",
-    message: (ref1: string, ref2: string) =>
-      `In connect(${ref1}, ${ref2}): flow variable sets differ between connectors.`,
+    severity: "error",
+    message: (flowComp: string, nonFlowComp: string) =>
+      `Cannot connect flow component ${flowComp} to non-flow component ${nonFlowComp}.`,
   },
   PROTECTED_MODIFICATION: {
     code: 4005,
@@ -692,6 +692,13 @@ export const ModelicaErrorCode = {
     rule: "redeclare-constant-component",
     severity: "error",
     message: (name: string) => `Redeclaration of constant component ${name} is not allowed.`,
+  },
+  STREAM_UNBALANCED_CONNECTOR: {
+    code: 4054,
+    rule: "stream-unbalanced-connector",
+    severity: "error",
+    message: (connectorName: string, flowCount: string) =>
+      `Invalid stream connector .${connectorName}: A stream connector must have exactly one flow variable, this connector has ${flowCount} flow variables.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

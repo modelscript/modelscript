@@ -2069,37 +2069,6 @@ export class ModelicaFlattener {
 
     const isRecordUsed = (sym: any): boolean => {
       const name = sym.name;
-      const qName = sym.parentId === rootClassId ? `${dae.name}.${sym.name}` : sym.name;
-      const allSyms = rootSym?.resourceId
-        ? this.db.allEntries().filter((s: any) => s.resourceId === rootSym.resourceId)
-        : this.db.allEntries();
-
-      for (const s of allSyms) {
-        if (s.kind === "Component") {
-          const typeSpec = (s.metadata as any)?.typeSpecifier ?? (s.metadata as any)?.type_specifier;
-          if (typeSpec === name || typeSpec === qName || typeSpec?.endsWith(`.${name}`)) {
-            return true;
-          }
-          const compInst = this.db.query<ComponentInstanceData>("componentInstance", s.id);
-          if (
-            compInst?.typeSpecifier === name ||
-            compInst?.typeSpecifier === qName ||
-            compInst?.typeSpecifier?.endsWith(`.${name}`)
-          ) {
-            return true;
-          }
-        }
-        if (s.kind === "Class" && (s.metadata as any)?.classKind === "function") {
-          const fnChildren = this.db.childrenOf(s.id);
-          for (const fc of fnChildren) {
-            const typeSpec = (fc.metadata as any)?.typeSpecifier ?? (fc.metadata as any)?.type_specifier;
-            if (typeSpec === name || typeSpec === qName || typeSpec?.endsWith(`.${name}`)) {
-              return true;
-            }
-          }
-        }
-      }
-
       const rootCst = this.db.cstNode(rootClassId) as any;
       if (rootCst) {
         const text = rootCst.text ?? "";
@@ -3905,9 +3874,12 @@ export class ModelicaFlattener {
               return;
             }
 
+            const isR0Outside = prefix !== "" && !r0Raw.includes(".");
+            const isR1Outside = prefix !== "" && !r1Raw.includes(".");
+            const connFlags = (isR0Outside ? 1 : 0) | (isR1Outside ? 2 : 0);
             const lhsExprId = this.lowerExpr(refs[0], dae, prefix, substitutions);
             const rhsExprId = this.lowerExpr(refs[1], dae, prefix, substitutions);
-            dae.addEquation(EqKind.Connect, lhsExprId, rhsExprId);
+            dae.addEquation(EqKind.Connect, lhsExprId, rhsExprId, connFlags);
             return;
           }
         }

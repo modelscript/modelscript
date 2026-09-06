@@ -180,15 +180,37 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M4017: Restriction violation (e.g. equations in record).
    */
   restrictionViolation: {
-    nodes: ["equation_section"],
+    nodes: ["equation_section", "algorithm_section"],
     severity: "error",
     code: 4017,
-    message: () => `Equations are not allowed in records or connectors.`,
+    message: (target, isConnectorNode, isAlgNode) => {
+      const isAlg = isAlgNode != null && isAlgNode.asNumber() == 1;
+      const isConn = isConnectorNode != null && isConnectorNode.asNumber() == 1;
+      if (isAlg) {
+        return `Algorithm sections are not allowed in ${isConn ? "connector" : "records or connectors"}.`;
+      }
+      return `Equations are not allowed in ${isConn ? "connector" : "records or connectors"}.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
-          if (isClassKind(db, cls, "record") || isClassKind(db, cls, "connector")) {
-            db.diagnostic(node);
+          const isConn = isClassKind(db, cls, "connector");
+          const isRec = isClassKind(db, cls, "record");
+          if (isConn || isRec) {
+            const isAlg = db.ast.getType(node) == $.algorithm_section ? 1 : 0;
+            let targetNode = node;
+            if (isConn) {
+              let ch = db.ast.getFirstChild(node);
+              while (ch != 0) {
+                const t = db.ast.getType(ch);
+                if (t == $.equation || t == $.statement || t == $.connect_equation) {
+                  targetNode = ch;
+                  break;
+                }
+                ch = db.ast.getNextSibling(ch);
+              }
+            }
+            db.diagnostic(targetNode, isConn ? 1 : 0, isAlg);
           }
           break;
         }
