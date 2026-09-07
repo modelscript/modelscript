@@ -822,6 +822,9 @@ export class FieldCursor {
           break;
         }
       }
+      if (expectedType != 0 && getNodeType(child) != expectedType) {
+        continue;
+      }
       return child;
     }
     return 0;

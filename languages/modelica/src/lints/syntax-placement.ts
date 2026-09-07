@@ -119,17 +119,23 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["component_clause"],
     severity: "error",
     code: 4011,
-    message: (target) =>
-      `Invalid protected variable with prefix '${target.text}', function inputs/outputs must be public.`,
+    message: (node, varName) =>
+      `Invalid protected variable ${varName && varName.text ? varName.text : node.text}, function variables that are input/output must be public.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
           if (isClassKind(db, cls, "function")) {
             if (isElementProtected(db, node, $)) {
-              for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
-                if (db.ast.textEquals(tp, "input") || db.ast.textEquals(tp, "output")) {
-                  db.diagnostic(tp);
+              if (hasTypePrefix(db, node, "input", $) || hasTypePrefix(db, node, "output", $)) {
+                let varId: u32 = 0;
+                for (const decl of db.ast.getDescendants(node, $.declaration)) {
+                  for (const id of db.ast.getDescendants(decl, $.identifier)) {
+                    varId = id;
+                    break;
+                  }
+                  if (varId != 0) break;
                 }
+                db.diagnostic(node, varId);
               }
             }
           }
@@ -164,15 +170,36 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["output_expression_list"],
     severity: "error",
     code: 4014,
-    message: () =>
-      `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.`,
+    message: (target, exprNode) => {
+      const exprText = exprNode && exprNode.text ? exprNode.text : target ? target.text : "";
+      return `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${
+        exprText
+          ? ` Got the following expression: (${exprText
+              .split(",")
+              .map((s: string) => s.trim())
+              .join(", ")}).`
+          : ""
+      }`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.statement || db.ast.getType(anc) == $.equation_or_procedure) {
           return;
         }
       }
-      db.diagnostic(node);
+      let diagNode = node;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const t = db.ast.getType(anc);
+        if (t == $.component_clause || t == $.statement || t == $.equation) {
+          diagNode = anc;
+          break;
+        }
+      }
+      for (const el of db.ast.getDescendants(diagNode, $.output_expression_list)) {
+        if (el != node) return;
+        break;
+      }
+      db.diagnostic(diagNode, node);
     },
   },
 
@@ -1026,6 +1053,27 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             for (const mod of db.ast.getDescendants(node, $.modification)) {
               if (mod != 0) hasMod = true;
               break;
+            }
+            if (!hasMod) {
+              let nameId: u32 = 0;
+              for (const id of db.ast.getDescendants(node, $.identifier)) {
+                nameId = id;
+                break;
+              }
+              if (nameId != 0) {
+                const docRoot = db.ast.getRootNode();
+                if (docRoot != 0) {
+                  for (const elemMod of db.ast.getDescendants(docRoot, $.element_modification)) {
+                    for (const n of db.ast.getDescendants(elemMod, $.name)) {
+                      if (db.ast.textEqualsNode(n, nameId)) {
+                        hasMod = true;
+                        break;
+                      }
+                    }
+                    if (hasMod) break;
+                  }
+                }
+              }
             }
             if (!hasMod) {
               db.diagnostic(node);

@@ -10,6 +10,9 @@ import {
   iaSin,
   iaCos,
   iaTan,
+  getScratchInterval,
+  markScratchInterval,
+  resetScratchInterval,
 } from "./interval";
 import {
   AdTape,
@@ -38,17 +41,20 @@ import {
 } from "./dae";
 
 /**
- * McCormick Relaxation Tuple for non-convex optimization in WASM.
+ * Unmanaged McCormick Relaxation Tuple for non-convex optimization in WASM.
+ * Fixed 32-byte layout: [cv: f64, cc: f64, lo: f64, hi: f64].
  * Contains convex underestimator (cv), concave overestimator (cc),
  * and guaranteed interval bounds [lo, hi].
  */
+@unmanaged
 export class McCormickTuple {
   cv: f64; // Convex underestimator
   cc: f64; // Concave overestimator
   lo: f64; // Interval lower bound
   hi: f64; // Interval upper bound
 
-  constructor(cv: f64 = 0.0, cc: f64 = 0.0, lo: f64 = 0.0, hi: f64 = 0.0) {
+  @inline
+  set(cv: f64, cc: f64, lo: f64, hi: f64): void {
     this.cv = cv;
     this.cc = cc;
     this.lo = lo;
@@ -56,78 +62,126 @@ export class McCormickTuple {
   }
 
   @inline
-  static create(cv: f64, cc: f64, lo: f64, hi: f64): McCormickTuple {
-    return new McCormickTuple(cv, cc, lo, hi);
+  setConst(v: f64): void {
+    this.cv = v;
+    this.cc = v;
+    this.lo = v;
+    this.hi = v;
   }
 
   @inline
-  static fromConst(v: f64): McCormickTuple {
-    return new McCormickTuple(v, v, v, v);
+  setVar(val: f64, lo: f64, hi: f64): void {
+    this.cv = val;
+    this.cc = val;
+    this.lo = lo;
+    this.hi = hi;
   }
 
   @inline
-  static fromVar(val: f64, lo: f64, hi: f64): McCormickTuple {
-    return new McCormickTuple(val, val, lo, hi);
+  copyFrom(other: McCormickTuple): void {
+    this.cv = other.cv;
+    this.cc = other.cc;
+    this.lo = other.lo;
+    this.hi = other.hi;
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// McCormick Composition Rules
+// Zero-GC Scratch Stack
+// ─────────────────────────────────────────────────────────────────────────────
+
+let scratchMcCormickStackPtr: usize = 0;
+let scratchMcCormickStackHead: usize = 0;
+const SCRATCH_MCCORMICK_MAX: usize = 256;
+
+@inline
+export function getScratchMcCormick(): McCormickTuple {
+  if (scratchMcCormickStackPtr == 0) {
+    scratchMcCormickStackPtr = heap.alloc(SCRATCH_MCCORMICK_MAX * 32);
+  }
+  let ptr = scratchMcCormickStackPtr + (scratchMcCormickStackHead * 32);
+  scratchMcCormickStackHead = (scratchMcCormickStackHead + 1) & (SCRATCH_MCCORMICK_MAX - 1);
+  return changetype<McCormickTuple>(ptr);
+}
+
+@inline
+export function markScratchMcCormick(): usize {
+  return scratchMcCormickStackHead;
+}
+
+@inline
+export function resetScratchMcCormick(mark: usize): void {
+  scratchMcCormickStackHead = mark;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Elementary Operations (Destination-Passing, Alias-Safe)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @inline
-export function mcConst(v: f64): McCormickTuple {
-  return new McCormickTuple(v, v, v, v);
+export function mcConst(v: f64, out: McCormickTuple): void {
+  out.setConst(v);
 }
 
 @inline
-export function mcVar(val: f64, lo: f64, hi: f64): McCormickTuple {
-  return new McCormickTuple(val, val, lo, hi);
+export function mcVar(val: f64, lo: f64, hi: f64, out: McCormickTuple): void {
+  out.setVar(val, lo, hi);
 }
 
 @inline
-export function mcAdd(a: McCormickTuple, b: McCormickTuple): McCormickTuple {
-  return new McCormickTuple(
-    a.cv + b.cv,
-    a.cc + b.cc,
-    a.lo + b.lo,
-    a.hi + b.hi,
-  );
+export function mcAdd(a: McCormickTuple, b: McCormickTuple, out: McCormickTuple): void {
+  let cv = a.cv + b.cv;
+  let cc = a.cc + b.cc;
+  let lo = a.lo + b.lo;
+  let hi = a.hi + b.hi;
+  out.set(cv, cc, lo, hi);
 }
 
 @inline
-export function mcSub(a: McCormickTuple, b: McCormickTuple): McCormickTuple {
-  return new McCormickTuple(
-    a.cv - b.cc,
-    a.cc - b.cv,
-    a.lo - b.hi,
-    a.hi - b.lo,
-  );
+export function mcSub(a: McCormickTuple, b: McCormickTuple, out: McCormickTuple): void {
+  let cv = a.cv - b.cc;
+  let cc = a.cc - b.cv;
+  let lo = a.lo - b.hi;
+  let hi = a.hi - b.lo;
+  out.set(cv, cc, lo, hi);
 }
 
-export function mcMul(a: McCormickTuple, b: McCormickTuple): McCormickTuple {
-  let ia = iaMul(new Interval(a.lo, a.hi), new Interval(b.lo, b.hi));
+export function mcMul(a: McCormickTuple, b: McCormickTuple, out: McCormickTuple): void {
+  let markIv = markScratchInterval();
+  let iaA = getScratchInterval();
+  let iaB = getScratchInterval();
+  let iaRes = getScratchInterval();
+  iaA.set(a.lo, a.hi);
+  iaB.set(b.lo, b.hi);
+  iaMul(iaA, iaB, iaRes);
+
+  let loA = a.lo;
+  let hiA = a.hi;
+  let loB = b.lo;
+  let hiB = b.hi;
 
   // McCormick bilinear envelope
-  let cv1 = a.lo * b.cv + b.lo * a.cv - a.lo * b.lo;
-  let cv2 = a.hi * b.cv + b.hi * a.cv - a.hi * b.hi;
+  let cv1 = loA * b.cv + loB * a.cv - loA * loB;
+  let cv2 = hiA * b.cv + hiB * a.cv - hiA * hiB;
   let cv = Math.max(cv1, cv2);
 
-  let cc1 = a.hi * b.cc + b.lo * a.cc - a.hi * b.lo;
-  let cc2 = a.lo * b.cc + b.hi * a.cc - a.lo * b.hi;
+  let cc1 = hiA * b.cc + loB * a.cc - hiA * loB;
+  let cc2 = loA * b.cc + hiB * a.cc - loA * hiB;
   let cc = Math.min(cc1, cc2);
 
-  return new McCormickTuple(
-    Math.max(ia.lo, cv),
-    Math.min(ia.hi, cc),
-    ia.lo,
-    ia.hi,
-  );
+  let outCv = Math.max(iaRes.lo, cv);
+  let outCc = Math.min(iaRes.hi, cc);
+  let outLo = iaRes.lo;
+  let outHi = iaRes.hi;
+
+  resetScratchInterval(markIv);
+  out.set(outCv, outCc, outLo, outHi);
 }
 
-export function mcReciprocal(b: McCormickTuple): McCormickTuple {
+export function mcReciprocal(b: McCormickTuple, out: McCormickTuple): void {
   if (b.lo <= 0.0 && b.hi >= 0.0) {
-    return new McCormickTuple(NEG_INF, INF, NEG_INF, INF);
+    out.set(NEG_INF, INF, NEG_INF, INF);
+    return;
   }
 
   let invLo = 1.0 / b.hi;
@@ -137,32 +191,50 @@ export function mcReciprocal(b: McCormickTuple): McCormickTuple {
     let slope = (invHi - invLo) / (b.lo - b.hi);
     let cvVal = invHi + slope * (b.cv - b.lo);
     let ccVal = 1.0 / b.cc;
-    return new McCormickTuple(Math.max(invLo, cvVal), Math.min(invHi, ccVal), invLo, invHi);
+    out.set(Math.max(invLo, cvVal), Math.min(invHi, ccVal), invLo, invHi);
   } else {
     let slope = (invHi - invLo) / (b.lo - b.hi);
     let ccVal = invHi + slope * (b.cc - b.lo);
     let cvVal = 1.0 / b.cv;
-    return new McCormickTuple(Math.max(invLo, cvVal), Math.min(invHi, ccVal), invLo, invHi);
+    out.set(Math.max(invLo, cvVal), Math.min(invHi, ccVal), invLo, invHi);
   }
 }
 
-export function mcDiv(a: McCormickTuple, b: McCormickTuple): McCormickTuple {
-  let ia = iaDiv(new Interval(a.lo, a.hi), new Interval(b.lo, b.hi));
+export function mcDiv(a: McCormickTuple, b: McCormickTuple, out: McCormickTuple): void {
+  let markIv = markScratchInterval();
+  let iaA = getScratchInterval();
+  let iaB = getScratchInterval();
+  let iaRes = getScratchInterval();
+  iaA.set(a.lo, a.hi);
+  iaB.set(b.lo, b.hi);
+  iaDiv(iaA, iaB, iaRes);
 
   if (b.lo > 0.0 || b.hi < 0.0) {
-    let invB = mcReciprocal(b);
-    return mcMul(a, invB);
+    let markMc = markScratchMcCormick();
+    let invB = getScratchMcCormick();
+    mcReciprocal(b, invB);
+    mcMul(a, invB, out);
+    resetScratchMcCormick(markMc);
+    resetScratchInterval(markIv);
+    return;
   }
 
-  return new McCormickTuple(ia.lo, ia.hi, ia.lo, ia.hi);
+  let lo = iaRes.lo;
+  let hi = iaRes.hi;
+  resetScratchInterval(markIv);
+  out.set(lo, hi, lo, hi);
 }
 
 @inline
-export function mcNeg(a: McCormickTuple): McCormickTuple {
-  return new McCormickTuple(-a.cc, -a.cv, -a.hi, -a.lo);
+export function mcNeg(a: McCormickTuple, out: McCormickTuple): void {
+  let cv = -a.cc;
+  let cc = -a.cv;
+  let lo = -a.hi;
+  let hi = -a.lo;
+  out.set(cv, cc, lo, hi);
 }
 
-export function mcExp(a: McCormickTuple): McCormickTuple {
+export function mcExp(a: McCormickTuple, out: McCormickTuple): void {
   let loExp = Math.exp(a.lo);
   let hiExp = Math.exp(a.hi);
   let cvVal = Math.exp(a.cv);
@@ -175,10 +247,10 @@ export function mcExp(a: McCormickTuple): McCormickTuple {
     ccVal = loExp + slope * (a.cc - a.lo);
   }
 
-  return new McCormickTuple(Math.max(loExp, cvVal), Math.min(hiExp, ccVal), loExp, hiExp);
+  out.set(Math.max(loExp, cvVal), Math.min(hiExp, ccVal), loExp, hiExp);
 }
 
-export function mcLog(a: McCormickTuple): McCormickTuple {
+export function mcLog(a: McCormickTuple, out: McCormickTuple): void {
   let safeLo = Math.max(1e-300, a.lo);
   let safeHi = Math.max(1e-300, a.hi);
   let loLog = Math.log(safeLo);
@@ -193,10 +265,10 @@ export function mcLog(a: McCormickTuple): McCormickTuple {
     cvVal = loLog + slope * (Math.max(1e-300, a.cv) - safeLo);
   }
 
-  return new McCormickTuple(Math.max(loLog, cvVal), Math.min(hiLog, ccVal), loLog, hiLog);
+  out.set(Math.max(loLog, cvVal), Math.min(hiLog, ccVal), loLog, hiLog);
 }
 
-export function mcSqrt(a: McCormickTuple): McCormickTuple {
+export function mcSqrt(a: McCormickTuple, out: McCormickTuple): void {
   let safeLo = Math.max(0.0, a.lo);
   let safeHi = Math.max(0.0, a.hi);
   let loSqrt = Math.sqrt(safeLo);
@@ -211,49 +283,88 @@ export function mcSqrt(a: McCormickTuple): McCormickTuple {
     cvVal = loSqrt + slope * (Math.max(0.0, a.cv) - safeLo);
   }
 
-  return new McCormickTuple(Math.max(loSqrt, cvVal), Math.min(hiSqrt, ccVal), loSqrt, hiSqrt);
+  out.set(Math.max(loSqrt, cvVal), Math.min(hiSqrt, ccVal), loSqrt, hiSqrt);
 }
 
-export function mcPow(base: McCormickTuple, exp: McCormickTuple): McCormickTuple {
+export function mcPow(base: McCormickTuple, exp: McCormickTuple, out: McCormickTuple): void {
   if (exp.lo == exp.hi) {
     let n = exp.lo;
     let iN = n as i32;
     if ((iN as f64) == n) {
-      if (iN == 0) return mcConst(1.0);
-      if (iN == 1) return base;
-      if (iN == -1) return mcReciprocal(base);
-      if (iN == 2) return mcMul(base, base);
+      if (iN == 0) {
+        mcConst(1.0, out);
+        return;
+      }
+      if (iN == 1) {
+        out.copyFrom(base);
+        return;
+      }
+      if (iN == -1) {
+        mcReciprocal(base, out);
+        return;
+      }
+      if (iN == 2) {
+        mcMul(base, base, out);
+        return;
+      }
     }
   }
 
-  // a^b = exp(b * log(a))
-  let safeBase = new McCormickTuple(
+  let mark = markScratchMcCormick();
+  let safeBase = getScratchMcCormick();
+  let logBase = getScratchMcCormick();
+  let mulExp = getScratchMcCormick();
+
+  safeBase.set(
     Math.max(1e-300, base.cv),
     Math.max(1e-300, base.cc),
     Math.max(1e-300, base.lo),
     Math.max(1e-300, base.hi),
   );
-  let logBase = mcLog(safeBase);
-  return mcExp(mcMul(exp, logBase));
+  mcLog(safeBase, logBase);
+  mcMul(exp, logBase, mulExp);
+  mcExp(mulExp, out);
+  resetScratchMcCormick(mark);
 }
 
-export function mcSin(a: McCormickTuple): McCormickTuple {
-  let ia = iaSin(new Interval(a.lo, a.hi));
-  return new McCormickTuple(ia.lo, ia.hi, ia.lo, ia.hi);
+export function mcSin(a: McCormickTuple, out: McCormickTuple): void {
+  let mark = markScratchInterval();
+  let iv = getScratchInterval();
+  let res = getScratchInterval();
+  iv.set(a.lo, a.hi);
+  iaSin(iv, res);
+  let lo = res.lo;
+  let hi = res.hi;
+  resetScratchInterval(mark);
+  out.set(lo, hi, lo, hi);
 }
 
-export function mcCos(a: McCormickTuple): McCormickTuple {
-  let ia = iaCos(new Interval(a.lo, a.hi));
-  return new McCormickTuple(ia.lo, ia.hi, ia.lo, ia.hi);
+export function mcCos(a: McCormickTuple, out: McCormickTuple): void {
+  let mark = markScratchInterval();
+  let iv = getScratchInterval();
+  let res = getScratchInterval();
+  iv.set(a.lo, a.hi);
+  iaCos(iv, res);
+  let lo = res.lo;
+  let hi = res.hi;
+  resetScratchInterval(mark);
+  out.set(lo, hi, lo, hi);
 }
 
-export function mcTan(a: McCormickTuple): McCormickTuple {
-  let ia = iaTan(new Interval(a.lo, a.hi));
-  return new McCormickTuple(ia.lo, ia.hi, ia.lo, ia.hi);
+export function mcTan(a: McCormickTuple, out: McCormickTuple): void {
+  let mark = markScratchInterval();
+  let iv = getScratchInterval();
+  let res = getScratchInterval();
+  iv.set(a.lo, a.hi);
+  iaTan(iv, res);
+  let lo = res.lo;
+  let hi = res.hi;
+  resetScratchInterval(mark);
+  out.set(lo, hi, lo, hi);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Forward McCormick Propagation Engines
+// Forward McCormick Propagation Engines (Zero-GC)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -275,7 +386,10 @@ export function tape_evaluateMcCormick(
   outHiPtr: usize,
 ): void {
   let count = tape.nodeCount;
-  let tuples = new Array<McCormickTuple>(count);
+  let mark = markScratchMcCormick();
+  let lRes = getScratchMcCormick();
+  let rRes = getScratchMcCormick();
+  let outMc = getScratchMcCormick();
 
   for (let i: u32 = 0; i < count; i++) {
     let offset = i * TAPE_STRIDE;
@@ -283,47 +397,80 @@ export function tape_evaluateMcCormick(
     let left = tape.nodeTable.get(offset + 1);
     let right = tape.nodeTable.get(offset + 2);
 
-    let res: McCormickTuple;
-
     if (op == TAPE_OP_CONST) {
       let val = tape.getNodeValue(i);
-      res = mcConst(val);
+      outMc.setConst(val);
     } else if (op == TAPE_OP_VAR) {
       let varId = left;
       let val = load<f64>(varValsPtr + (varId << 3));
       let lo = load<f64>(varBoundsLoPtr + (varId << 3));
       let hi = load<f64>(varBoundsHiPtr + (varId << 3));
-      res = mcVar(val, lo, hi);
-    } else if (op == TAPE_OP_ADD) {
-      res = mcAdd(tuples[left], tuples[right]);
-    } else if (op == TAPE_OP_SUB) {
-      res = mcSub(tuples[left], tuples[right]);
-    } else if (op == TAPE_OP_MUL) {
-      res = mcMul(tuples[left], tuples[right]);
-    } else if (op == TAPE_OP_DIV) {
-      res = mcDiv(tuples[left], tuples[right]);
-    } else if (op == TAPE_OP_SIN) {
-      res = mcSin(tuples[left]);
-    } else if (op == TAPE_OP_COS) {
-      res = mcCos(tuples[left]);
-    } else if (op == TAPE_OP_EXP) {
-      res = mcExp(tuples[left]);
-    } else if (op == TAPE_OP_LOG) {
-      res = mcLog(tuples[left]);
+      outMc.setVar(val, lo, hi);
     } else {
-      res = new McCormickTuple(NEG_INF, INF, NEG_INF, INF);
+      lRes.set(
+        load<f64>(outCvPtr + (left << 3)),
+        load<f64>(outCcPtr + (left << 3)),
+        load<f64>(outLoPtr + (left << 3)),
+        load<f64>(outHiPtr + (left << 3)),
+      );
+
+      if (op == TAPE_OP_ADD) {
+        rRes.set(
+          load<f64>(outCvPtr + (right << 3)),
+          load<f64>(outCcPtr + (right << 3)),
+          load<f64>(outLoPtr + (right << 3)),
+          load<f64>(outHiPtr + (right << 3)),
+        );
+        mcAdd(lRes, rRes, outMc);
+      } else if (op == TAPE_OP_SUB) {
+        rRes.set(
+          load<f64>(outCvPtr + (right << 3)),
+          load<f64>(outCcPtr + (right << 3)),
+          load<f64>(outLoPtr + (right << 3)),
+          load<f64>(outHiPtr + (right << 3)),
+        );
+        mcSub(lRes, rRes, outMc);
+      } else if (op == TAPE_OP_MUL) {
+        rRes.set(
+          load<f64>(outCvPtr + (right << 3)),
+          load<f64>(outCcPtr + (right << 3)),
+          load<f64>(outLoPtr + (right << 3)),
+          load<f64>(outHiPtr + (right << 3)),
+        );
+        mcMul(lRes, rRes, outMc);
+      } else if (op == TAPE_OP_DIV) {
+        rRes.set(
+          load<f64>(outCvPtr + (right << 3)),
+          load<f64>(outCcPtr + (right << 3)),
+          load<f64>(outLoPtr + (right << 3)),
+          load<f64>(outHiPtr + (right << 3)),
+        );
+        mcDiv(lRes, rRes, outMc);
+      } else if (op == TAPE_OP_SIN) {
+        mcSin(lRes, outMc);
+      } else if (op == TAPE_OP_COS) {
+        mcCos(lRes, outMc);
+      } else if (op == TAPE_OP_EXP) {
+        mcExp(lRes, outMc);
+      } else if (op == TAPE_OP_LOG) {
+        mcLog(lRes, outMc);
+      } else {
+        outMc.set(NEG_INF, INF, NEG_INF, INF);
+      }
     }
 
-    tuples[i] = res;
-    store<f64>(outCvPtr + (i << 3), res.cv);
-    store<f64>(outCcPtr + (i << 3), res.cc);
-    store<f64>(outLoPtr + (i << 3), res.lo);
-    store<f64>(outHiPtr + (i << 3), res.hi);
+    store<f64>(outCvPtr + (i << 3), outMc.cv);
+    store<f64>(outCcPtr + (i << 3), outMc.cc);
+    store<f64>(outLoPtr + (i << 3), outMc.lo);
+    store<f64>(outHiPtr + (i << 3), outMc.hi);
   }
+
+  resetScratchMcCormick(mark);
 }
 
 /**
  * Evaluates an AST expression in DaeBuilder with McCormick relaxations.
+ * Destination-passing into out McCormickTuple.
  */
 export function dae_evaluateExprMcCormick(
   dae: DaeBuilder,
@@ -331,55 +478,103 @@ export function dae_evaluateExprMcCormick(
   varValsPtr: usize,
   varBoundsLoPtr: usize,
   varBoundsHiPtr: usize,
-): McCormickTuple {
-  if (exprId >= dae.exprCount) return mcConst(0.0);
+  out: McCormickTuple,
+): void {
+  if (exprId >= dae.exprCount) {
+    out.setConst(0.0);
+    return;
+  }
 
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.getExprData().get(offset + EXPR_KIND);
+  let exprData = dae.getExprData();
+  let kind = exprData.get(offset + EXPR_KIND);
 
-  if (kind == ExprKind.IntLiteral) {
-    let val = dae.getExprData().get(offset + EXPR_DATA1) as i32;
-    return mcConst(val as f64);
+  if (kind == ExprKind.IntLiteral || kind == ExprKind.BoolLiteral) {
+    let val = exprData.get(offset + EXPR_DATA1) as i32;
+    out.setConst(val as f64);
+    return;
   }
 
   if (kind == ExprKind.RealLiteral) {
-    let lo = dae.getExprData().get(offset + EXPR_LEFT);
-    let hi = dae.getExprData().get(offset + EXPR_RIGHT);
-    let bits = ((hi as u64) << 32) | (lo as u64);
+    let lo = (exprData.get(offset + EXPR_DATA1) as u64) & 0xffffffff;
+    let hi = (exprData.get(offset + EXPR_LEFT) as u64) & 0xffffffff;
+    let bits = (hi << 32) | lo;
     let val = f64.reinterpret_i64(bits as i64);
-    return mcConst(val);
+    out.setConst(val);
+    return;
   }
 
   if (kind == ExprKind.Name) {
-    let varId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let varId = exprData.get(offset + EXPR_DATA1) as u32;
+    if (varId == 0xffffffff || varId >= dae.varCount) {
+      out.setConst(0.0);
+      return;
+    }
     let val = load<f64>(varValsPtr + (varId << 3));
     let lo = load<f64>(varBoundsLoPtr + (varId << 3));
     let hi = load<f64>(varBoundsHiPtr + (varId << 3));
-    return mcVar(val, lo, hi);
+    out.setVar(val, lo, hi);
+    return;
   }
 
   if (kind == ExprKind.Unary) {
-    let op = dae.getExprData().get(offset + EXPR_DATA1) as u16;
-    let operand = dae.getExprData().get(offset + EXPR_LEFT);
-    let subRes = dae_evaluateExprMcCormick(dae, operand, varValsPtr, varBoundsLoPtr, varBoundsHiPtr);
-    if (op == UnaryOp.Negate) return mcNeg(subRes);
-    return subRes;
+    let op = exprData.get(offset + EXPR_DATA1) as u16;
+    let operand = exprData.get(offset + EXPR_LEFT);
+    dae_evaluateExprMcCormick(dae, operand, varValsPtr, varBoundsLoPtr, varBoundsHiPtr, out);
+    if (op == UnaryOp.Negate) {
+      mcNeg(out, out);
+    }
+    return;
   }
 
   if (kind == ExprKind.Binary) {
-    let op = dae.getExprData().get(offset + EXPR_DATA1) as u16;
-    let left = dae.getExprData().get(offset + EXPR_LEFT);
-    let right = dae.getExprData().get(offset + EXPR_RIGHT);
+    let op = exprData.get(offset + EXPR_DATA1) as u16;
+    let left = exprData.get(offset + EXPR_LEFT);
+    let right = exprData.get(offset + EXPR_RIGHT);
 
-    let lRes = dae_evaluateExprMcCormick(dae, left, varValsPtr, varBoundsLoPtr, varBoundsHiPtr);
-    let rRes = dae_evaluateExprMcCormick(dae, right, varValsPtr, varBoundsLoPtr, varBoundsHiPtr);
+    let mark = markScratchMcCormick();
+    let lRes = getScratchMcCormick();
+    let rRes = getScratchMcCormick();
 
-    if (op == BinOp.Add) return mcAdd(lRes, rRes);
-    if (op == BinOp.Sub) return mcSub(lRes, rRes);
-    if (op == BinOp.Mul) return mcMul(lRes, rRes);
-    if (op == BinOp.Div) return mcDiv(lRes, rRes);
-    if (op == BinOp.Pow) return mcPow(lRes, rRes);
+    dae_evaluateExprMcCormick(dae, left, varValsPtr, varBoundsLoPtr, varBoundsHiPtr, lRes);
+    dae_evaluateExprMcCormick(dae, right, varValsPtr, varBoundsLoPtr, varBoundsHiPtr, rRes);
+
+    if (op == BinOp.Add || op == BinOp.ElemAdd) mcAdd(lRes, rRes, out);
+    else if (op == BinOp.Sub || op == BinOp.ElemSub) mcSub(lRes, rRes, out);
+    else if (op == BinOp.Mul || op == BinOp.ElemMul) mcMul(lRes, rRes, out);
+    else if (op == BinOp.Div || op == BinOp.ElemDiv) mcDiv(lRes, rRes, out);
+    else if (op == BinOp.Pow || op == BinOp.ElemPow) mcPow(lRes, rRes, out);
+    else out.set(NEG_INF, INF, NEG_INF, INF);
+
+    resetScratchMcCormick(mark);
+    return;
   }
 
-  return new McCormickTuple(NEG_INF, INF, NEG_INF, INF);
+  out.set(NEG_INF, INF, NEG_INF, INF);
+}
+
+/**
+ * Standalone C-ABI / WASM Export for expression McCormick evaluation.
+ */
+export function dae_evalMcCormick(
+  daePtr: u32,
+  exprId: u32,
+  varValsPtr: usize,
+  varBoundsLoPtr: usize,
+  varBoundsHiPtr: usize,
+  outCvPtr: usize,
+  outCcPtr: usize,
+  outLoPtr: usize,
+  outHiPtr: usize,
+): void {
+  if (daePtr == 0) return;
+  let dae = changetype<DaeBuilder>(daePtr);
+  let mark = markScratchMcCormick();
+  let out = getScratchMcCormick();
+  dae_evaluateExprMcCormick(dae, exprId, varValsPtr, varBoundsLoPtr, varBoundsHiPtr, out);
+  if (outCvPtr != 0) store<f64>(outCvPtr, out.cv);
+  if (outCcPtr != 0) store<f64>(outCcPtr, out.cc);
+  if (outLoPtr != 0) store<f64>(outLoPtr, out.lo);
+  if (outHiPtr != 0) store<f64>(outHiPtr, out.hi);
+  resetScratchMcCormick(mark);
 }

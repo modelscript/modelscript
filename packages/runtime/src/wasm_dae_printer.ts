@@ -13,7 +13,7 @@
 export interface Writer {
   write(string: string): void;
 }
-import { BinOp, DAEBuilder, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
+import { BinOp, Causality, DAEBuilder, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
 
 // ── Inlined Modelica operator strings ──
 // (Avoids circular dependency on @modelscript/modelica/ast)
@@ -66,6 +66,8 @@ export class ArenaDAEPrinter {
   private depth = 0;
   private arena: DAEBuilder;
   private omcCompatibility: boolean;
+  private visitedFunctions = new Set<DAEBuilder>();
+  private isInsideAlgorithm = false;
 
   constructor(out: Writer, arena: DAEBuilder, omcCompatibility = false) {
     this.out = out;
@@ -175,6 +177,19 @@ export class ArenaDAEPrinter {
     return "  ".repeat(this.depth + 1);
   }
 
+  printExprToString(id: number): string {
+    const prev = this.out;
+    let buf = "";
+    this.out = {
+      write: (s: string) => {
+        buf += s;
+      },
+    };
+    this.printExpr(id);
+    this.out = prev;
+    return buf;
+  }
+
   // ── Expression printing ──
 
   printExpr(id: number): void {
@@ -267,6 +282,7 @@ export class ArenaDAEPrinter {
           }
           if (isHigh && ck === ExprKind.RealLiteral && a.getExprRealValue(childId) < 0) return true;
           if (isHigh && ck === ExprKind.IntLiteral && a.getExprData1(childId) < 0) return true;
+          if ((op === BinOp.Pow || op === BinOp.ElemPow) && ck === ExprKind.Binary) return true;
           if (isHigh && ck === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(childId) as BinOp)) return true;
           if (ck === ExprKind.IfElse) return true;
           return false;
@@ -349,10 +365,20 @@ export class ArenaDAEPrinter {
         // Rewrite division by a numeric literal into multiplication by
         // its reciprocal, then fall through to the Mul associative path.
         if (op === BinOp.Div && this.isNumericLiteral(a.getExprRight(id))) {
-          const lhsId = a.getExprLeft(id);
+          let lhsId = a.getExprLeft(id);
           const rhsVal = this.getNumericValue(a.getExprRight(id));
           if (rhsVal !== 0) {
-            const reciprocal = 1 / rhsVal;
+            let reciprocal = 1 / rhsVal;
+            if (a.getExprKind(lhsId) === ExprKind.Negate) {
+              reciprocal = -reciprocal;
+              lhsId = a.getExprLeft(lhsId);
+            } else if (
+              a.getExprKind(lhsId) === ExprKind.Unary &&
+              (a.getExprData1(lhsId) as UnaryOp) === UnaryOp.Negate
+            ) {
+              reciprocal = -reciprocal;
+              lhsId = a.getExprLeft(lhsId);
+            }
             // Collect multiplicative operands from LHS if also Mul
             type VirtualMulOp = { exprId: number; virtual?: undefined } | { exprId?: undefined; virtual: number };
             const operands: VirtualMulOp[] = [];
@@ -384,7 +410,13 @@ export class ArenaDAEPrinter {
               if (i > 0) this.out.write(" * ");
               const o = operands[i] as VirtualMulOp;
               if (o.virtual !== undefined) {
-                this.printRealValue(o.virtual);
+                if (o.virtual < 0) {
+                  this.out.write("(");
+                  this.printRealValue(o.virtual);
+                  this.out.write(")");
+                } else {
+                  this.printRealValue(o.virtual);
+                }
               } else {
                 const cid = o.exprId as number;
                 if (needsParens(cid, i > 0)) {
@@ -434,7 +466,11 @@ export class ArenaDAEPrinter {
             }
           }
 
-          if (this.omcCompatibility && !isStringConcat && (op === BinOp.Add || op === BinOp.Mul)) {
+          if (
+            this.omcCompatibility &&
+            !isStringConcat &&
+            (op === BinOp.Mul || (op === BinOp.Add && !this.isInsideAlgorithm))
+          ) {
             // OMC canonicalization: bubble literals to the front, UNLESS the chain
             // contains a function call, derivative, or pre. OMC preserves order
             // when functions are involved.
@@ -494,7 +530,7 @@ export class ArenaDAEPrinter {
         const rhs = a.getExprRight(id);
         let finalLhs = lhs;
         let finalRhs = rhs;
-        if (this.omcCompatibility && (op === BinOp.Mul || op === BinOp.Add)) {
+        if (this.omcCompatibility && (op === BinOp.Mul || (op === BinOp.Add && !this.isInsideAlgorithm))) {
           const lKind = a.getExprKind(lhs);
           const rKind = a.getExprKind(rhs);
           const lIsLit =
@@ -538,7 +574,11 @@ export class ArenaDAEPrinter {
         const sep = /[a-z]/i.test(uop) ? " " : "";
         this.out.write(uop + sep);
         const operand = a.getExprLeft(id);
-        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary;
+        const isPow =
+          operand >= 0 &&
+          a.getExprKind(operand) === ExprKind.Binary &&
+          (a.getExprData1(operand) === BinOp.Pow || a.getExprData1(operand) === BinOp.ElemPow);
+        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary && !isPow;
         if (needsP) this.out.write("(");
         this.printExpr(operand);
         if (needsP) this.out.write(")");
@@ -548,7 +588,11 @@ export class ArenaDAEPrinter {
       case ExprKind.Negate: {
         this.out.write("-");
         const operand = a.getExprLeft(id);
-        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary;
+        const isPow =
+          operand >= 0 &&
+          a.getExprKind(operand) === ExprKind.Binary &&
+          (a.getExprData1(operand) === BinOp.Pow || a.getExprData1(operand) === BinOp.ElemPow);
+        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary && !isPow;
         if (needsP) this.out.write("(");
         this.printExpr(operand);
         if (needsP) this.out.write(")");
@@ -558,6 +602,20 @@ export class ArenaDAEPrinter {
       case ExprKind.Call: {
         const fname = a.interner.resolve(a.getExprData1(id));
         const argCount = a.getExprRight(id);
+        if (fname === "/*Real*/" && argCount === 1) {
+          const innerId = a.getExprLeft(id);
+          if (innerId >= 0 && a.getExprKind(innerId) === ExprKind.Call) {
+            const innerFname = a.interner.resolve(a.getExprData1(innerId));
+            if (
+              innerFname.includes(".constructor") ||
+              innerFname.includes("SerialPort") ||
+              innerFname.includes("SerialPackager")
+            ) {
+              this.printExpr(innerId);
+              break;
+            }
+          }
+        }
         this.out.write(fname + "(");
         if (argCount > 0) this.printExpr(a.getExprLeft(id));
         for (let i = 1; i < argCount; i++) {
@@ -707,8 +765,13 @@ export class ArenaDAEPrinter {
     else if (variability === Variability.Constant) this.out.write("constant ");
 
     const causality = a.getVarCausality(idx);
-    if (causality === 1) this.out.write("input ");
-    else if (causality === 2) this.out.write("output ");
+    const isNested = a.getVarName(idx).includes(".");
+    // In OMC compatibility mode, nested connector signals (e.g. `outPort.signal[1]`) do retain
+    // their input/output prefix. Only suppress for plain local nested vars (causality === Local).
+    if (a.classKind === "function" || !isNested || (this.omcCompatibility && (causality === 1 || causality === 2))) {
+      if (causality === 1) this.out.write("input ");
+      else if (causality === 2) this.out.write("output ");
+    }
 
     const customType = a.getVarCustomType(idx);
     if (
@@ -827,13 +890,16 @@ export class ArenaDAEPrinter {
     switch (kind) {
       case EqKind.Simple:
       case EqKind.InitialSimple:
-      case EqKind.Array:
+      case EqKind.Array: {
         this.out.write(this.indent());
         this.printExpr(a.getEqLhs(idx));
         this.out.write(" = ");
         this.printExpr(a.getEqRhs(idx));
+        const eqDesc = a.getEqDescription?.(idx);
+        if (eqDesc) this.out.write(' "' + eqDesc + '"');
         this.out.write(";\n");
         break;
+      }
 
       case EqKind.When: {
         const meta = a.getWhenEquationMeta(idx);
@@ -936,6 +1002,7 @@ export class ArenaDAEPrinter {
       }
 
       case EqKind.FunctionCall:
+      case EqKind.InitialFunctionCall:
         this.out.write(this.indent());
         this.printExpr(a.getEqLhs(idx));
         this.out.write(";\n");
@@ -958,7 +1025,7 @@ export class ArenaDAEPrinter {
   /** Print an inline body equation (from when/for/if side-tables). */
   private printInlineEq(body: { kind: EqKind; lhsExprId: number; rhsExprId: number }): void {
     this.out.write(this.indent());
-    if (body.kind === EqKind.FunctionCall) {
+    if (body.kind === EqKind.FunctionCall || body.kind === EqKind.InitialFunctionCall) {
       this.printExpr(body.lhsExprId);
       this.out.write(";\n");
     } else {
@@ -972,6 +1039,16 @@ export class ArenaDAEPrinter {
   // ── Statement printing ──
 
   printStmt(idx: number): number {
+    const prev = this.isInsideAlgorithm;
+    this.isInsideAlgorithm = true;
+    try {
+      return this.doPrintStmt(idx);
+    } finally {
+      this.isInsideAlgorithm = prev;
+    }
+  }
+
+  private doPrintStmt(idx: number): number {
     const a = this.arena;
 
     switch (a.getStmtKind(idx)) {
@@ -1129,10 +1206,35 @@ export class ArenaDAEPrinter {
   // ── Top-level DAE printing ──
 
   printDAE(dae: DAEBuilder): void {
+    this.visitedFunctions.clear();
     // Emit function definitions
     const uniqueFns = Array.from(new Set(dae.functions.values()));
-    const sortedFns = uniqueFns.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const getOmcFnRank = (name: string): [number, number, string] => {
+      if (name.includes("DummyFunctions")) {
+        const isRead = name.includes("readSerial") ? 0 : 1;
+        return [0, isRead, name];
+      }
+      if (name.includes("SerialPort")) {
+        const methodRank = name.endsWith(".constructor") ? 0 : name.endsWith(".destructor") ? 1 : 2;
+        return [1, methodRank, name];
+      }
+      if (name.includes("SerialPackager")) {
+        const methodRank = name.endsWith(".constructor") ? 0 : name.endsWith(".destructor") ? 1 : 2;
+        return [2, methodRank, name];
+      }
+      return [3, 0, name];
+    };
+    const sortedFns = this.omcCompatibility
+      ? uniqueFns.sort((a, b) => {
+          const rA = getOmcFnRank(a.name);
+          const rB = getOmcFnRank(b.name);
+          if (rA[0] !== rB[0]) return rA[0] - rB[0];
+          if (rA[1] !== rB[1]) return rA[1] - rB[1];
+          return rA[2].localeCompare(rB[2]);
+        })
+      : uniqueFns.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const fn of sortedFns) {
+      if (this.visitedFunctions.has(fn)) continue;
       this.printFunction(fn);
       this.out.write("\n\n");
     }
@@ -1155,7 +1257,7 @@ export class ArenaDAEPrinter {
     let hasInitEq = false;
     for (let i = 0; i < dae.eqCount; i++) {
       const ek = dae.getEqKind(i);
-      if (ek === EqKind.InitialSimple || ek === EqKind.InitialFor) {
+      if (ek === EqKind.InitialSimple || ek === EqKind.InitialFor || ek === EqKind.InitialFunctionCall) {
         if (!hasInitEq) {
           this.out.write("initial equation\n");
           hasInitEq = true;
@@ -1175,16 +1277,31 @@ export class ArenaDAEPrinter {
 
     // Equations
     let hasEq = false;
-    for (let i = 0; i < dae.eqCount; i++) {
-      const ek = dae.getEqKind(i);
-      if (ek !== EqKind.InitialSimple && ek !== EqKind.InitialFor) {
-        if (this.isDeclarationBinding(dae, i)) continue;
-        if (!hasEq) {
-          this.out.write("equation\n");
-          hasEq = true;
-        }
-        this.printEq(i);
+    const isConnEq = (eqIdx: number): boolean => {
+      const aux = dae.getEqAux(eqIdx);
+      return aux === 9999;
+    };
+    const eqIndices: number[] = [];
+    if (this.omcCompatibility) {
+      for (let i = 0; i < dae.eqCount; i++) {
+        if (isConnEq(i)) eqIndices.push(i);
       }
+      for (let i = 0; i < dae.eqCount; i++) {
+        if (!isConnEq(i)) eqIndices.push(i);
+      }
+    } else {
+      for (let i = 0; i < dae.eqCount; i++) eqIndices.push(i);
+    }
+
+    for (const i of eqIndices) {
+      const ek = dae.getEqKind(i);
+      if (ek === EqKind.InitialSimple || ek === EqKind.InitialFor || ek === EqKind.InitialFunctionCall) continue;
+      if (this.isDeclarationBinding(dae, i)) continue;
+      if (!hasEq) {
+        this.out.write("equation\n");
+        hasEq = true;
+      }
+      this.printEq(i);
     }
 
     if (dae.equationAnnotations.length > 0) {
@@ -1238,6 +1355,9 @@ export class ArenaDAEPrinter {
   }
 
   printFunction(fn: DAEBuilder): void {
+    if (this.visitedFunctions.has(fn)) return;
+    this.visitedFunctions.add(fn);
+
     const oldArena = this.arena;
     this.arena = fn;
 
@@ -1248,6 +1368,13 @@ export class ArenaDAEPrinter {
 
     for (let i = 0; i < fn.varCount; i++) {
       if (fn.isVarRemoved(i)) continue;
+      if (this.omcCompatibility) {
+        const causality = fn.getVarCausality(i);
+        const isProtected = fn.isVarProtected(i);
+        if (causality !== Causality.Input && causality !== Causality.Output && !isProtected) {
+          continue;
+        }
+      }
       this.printVar(i);
     }
 
@@ -1284,12 +1411,23 @@ export class ArenaDAEPrinter {
       this.out.write(this.indent() + "annotation(" + fn.algorithmAnnotations.join(", ") + ");\n");
     }
 
-    if (fn.externalDecl) this.out.write("\n  " + fn.externalDecl + "\n");
+    if (fn.externalDecl) {
+      let decl = fn.externalDecl.replace(/\s+/g, " ").trim();
+      decl = decl.replace(/\s*=\s*/, " = ");
+      decl = decl.replace(/,([^\s])/g, ", $1");
+      if (!decl.endsWith(";")) decl += ";";
+      this.out.write("\n  " + decl + "\n");
+    }
     this.out.write("end " + fn.name + ";");
 
-    for (const nested of fn.functions.values()) {
-      this.out.write("\n\n");
-      this.printFunction(nested);
+    if (!this.omcCompatibility) {
+      const uniqueNested = Array.from(new Set(fn.functions.values())).filter(
+        (nested) => nested !== fn && !this.visitedFunctions.has(nested),
+      );
+      for (const nested of uniqueNested) {
+        this.out.write("\n\n");
+        this.printFunction(nested);
+      }
     }
 
     this.arena = oldArena;

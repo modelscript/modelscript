@@ -187,6 +187,112 @@ end FallbackTest;`;
     console.log("  ✓ Test 4 passed!");
   }
 
+  // --------------------------------------------------------------------------
+  // Test 5: Scalarized Equation Patching
+  // --------------------------------------------------------------------------
+  {
+    console.log("Test 5: Scalarized Equation Patching...");
+    const ctx = new Context(fs);
+    const uri = "file:///test/ArrayEqPatch.mo";
+
+    const src1 = `model ArrayEqPatch
+  Real x[2];
+equation
+  x[1] = 1.0;
+  x[2] = 2.0;
+end ArrayEqPatch;`;
+
+    ctx.load(src1, uri);
+    const dae1 = ctx.flattenArena("ArrayEqPatch", undefined, uri);
+    assert(dae1 !== null, "Initial flatten must succeed");
+    assert.strictEqual(dae1.varCount, 2, "Must have 2 scalarized variables");
+    assert.strictEqual(dae1.eqCount, 2, "Must have 2 scalarized equations");
+
+    // Check source ranges exist on scalarized equations
+    const range0 = dae1.getEqSourceRange(0);
+    const range1 = dae1.getEqSourceRange(1);
+    assert(range0 !== undefined, "Equation 0 must have source range");
+    assert(range1 !== undefined, "Equation 1 must have source range");
+
+    // Edit equation 2: x[2] = 42.0;
+    const src2 = `model ArrayEqPatch
+  Real x[2];
+equation
+  x[1] = 1.0;
+  x[2] = 42.0;
+end ArrayEqPatch;`;
+
+    const t0 = performance.now();
+    ctx.load(src2, uri);
+    const dae2 = ctx.flattenArena("ArrayEqPatch", undefined, uri);
+    const elapsed = performance.now() - t0;
+    console.log(`  -> Scalarized array equation patch took: ${elapsed.toFixed(3)} ms`);
+
+    assert(dae2 !== null, "Patched flatten must succeed");
+    assert.strictEqual(dae2.eqCount, 2, "Must still have 2 equations");
+    const eq1Rhs = dae2.getEqRhs(1);
+    assert.strictEqual(dae2.getExprKind(eq1Rhs), ExprKind.RealLiteral, "RHS must be RealLiteral");
+    assert.strictEqual(dae2.getExprRealValue(eq1Rhs), 42.0, "Equation 2 RHS must be updated to 42.0");
+    console.log("  ✓ Test 5 passed: Scalarized equation patching verified!");
+  }
+
+  // --------------------------------------------------------------------------
+  // Test 6: Multi-Hunk Non-Adjacent Equation Patching
+  // --------------------------------------------------------------------------
+  {
+    console.log("Test 6: Multi-Hunk Non-Adjacent Equation Patching...");
+    const ctx = new Context(fs);
+    const uri = "file:///test/MultiHunk.mo";
+
+    const src1 = `model MultiHunk
+  Real a;
+  Real b;
+  Real c;
+equation
+  a = 1.0;
+  b = 2.0;
+  c = 3.0;
+end MultiHunk;`;
+
+    ctx.load(src1, uri);
+    const dae1 = ctx.flattenArena("MultiHunk", undefined, uri);
+    assert(dae1 !== null, "Initial flatten must succeed");
+    assert.strictEqual(dae1.eqCount, 3, "Must have 3 equations");
+
+    // Edit equation 'a' and equation 'c' simultaneously, leaving 'b' untouched
+    const src2 = `model MultiHunk
+  Real a;
+  Real b;
+  Real c;
+equation
+  a = 100.0;
+  b = 2.0;
+  c = 300.0;
+end MultiHunk;`;
+
+    const t0 = performance.now();
+    ctx.load(src2, uri);
+    const dae2 = ctx.flattenArena("MultiHunk", undefined, uri);
+    const elapsed = performance.now() - t0;
+    console.log(`  -> Multi-hunk patch took: ${elapsed.toFixed(3)} ms`);
+
+    assert(dae2 !== null, "Multi-hunk patched flatten must succeed");
+    assert.strictEqual(dae2.eqCount, 3, "Must still have 3 equations");
+
+    const aRhs = dae2.getEqRhs(0);
+    assert.strictEqual(dae2.getExprKind(aRhs), ExprKind.RealLiteral);
+    assert.strictEqual(dae2.getExprRealValue(aRhs), 100.0, "Equation a RHS must be 100.0");
+
+    const bRhs = dae2.getEqRhs(1);
+    assert.strictEqual(dae2.getExprKind(bRhs), ExprKind.RealLiteral);
+    assert.strictEqual(dae2.getExprRealValue(bRhs), 2.0, "Equation b RHS must be 2.0");
+
+    const cRhs = dae2.getEqRhs(2);
+    assert.strictEqual(dae2.getExprKind(cRhs), ExprKind.RealLiteral);
+    assert.strictEqual(dae2.getExprRealValue(cRhs), 300.0, "Equation c RHS must be 300.0");
+    console.log("  ✓ Test 6 passed: Multi-hunk non-adjacent equation patching verified!");
+  }
+
   console.log("=== All Incremental DAE Patching Tests Passed Successfully! ===");
 }
 

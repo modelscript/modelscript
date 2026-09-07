@@ -55,6 +55,7 @@ import {
   stubCode,
   tapeCode,
   tearingCode,
+  tgg_reconcilerCode,
   trigramCode,
   verifierCode,
   vmapCode,
@@ -991,6 +992,7 @@ export function generateParserTables(
   code += extractExports(bltCode, "./blt");
   code += extractExports(correspondenceCode, "./correspondence");
   code += extractExports(polyglot_arenaCode, "./polyglot_arena");
+  code += extractExports(tgg_reconcilerCode, "./tgg_reconciler");
   code += extractExports(groebnerCode, "./groebner");
   code += extractExports(linalgCode, "./linalg");
 
@@ -1086,6 +1088,7 @@ export function generateParserTables(
     { filename: "trigram.ts", content: trigramCode },
     { filename: "correspondence.ts", content: correspondenceCode },
     { filename: "polyglot_arena.ts", content: polyglot_arenaCode },
+    { filename: "tgg_reconciler.ts", content: tgg_reconcilerCode },
     { filename: "ontology.ts", content: ontologyCode },
     { filename: "ontology_projection.ts", content: ontology_projectionCode },
     { filename: "builtins_math.ts", content: builtins_mathCode },

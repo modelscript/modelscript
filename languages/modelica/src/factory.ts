@@ -154,8 +154,8 @@ const wasmModelicaIndexerHooks: any[] = [
 ];
 
 const allIndexerHooks = [
-  ...wasmModelicaIndexerHooks,
   ...baseIndexerHooks,
+  ...wasmModelicaIndexerHooks,
   ...refAsIndexerHooks,
   msimIndexerHook,
   msimPropertyHook,

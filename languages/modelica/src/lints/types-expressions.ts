@@ -3,8 +3,11 @@ import { unitsCompatible } from "../units.js";
 import {
   getComponentUnit,
   getVariableTypeInClass,
+  hasTypePrefix,
   inferExprType,
   inferExprUnit,
+  isClassKind,
+  isDescendantOfInnerClass,
   isStreamVariable,
   isTypeCompatible,
   resolveBasePrimitiveType,
@@ -618,13 +621,39 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["assignment_statement"],
     severity: "error",
     code: 5008,
-    message: (target) => `Trying to assign to constant component '${target.text}'.`,
-    query: (db: CodeGraph, node: u32) => {
+    message: (node, idNode) =>
+      `Trying to assign to constant component ${idNode && idNode.text ? idNode.text : node.text}.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const target = db.ast.getChildByFieldId(node, "target");
-      if (target != 0) {
-        const symId = db.scope.resolve(target);
-        if (symId != 0 && db.model.hasFlag(symId, "isConstant")) {
-          db.diagnostic(target);
+      if (target == 0) return;
+      let idNode: u32 = 0;
+      for (const id of db.ast.getDescendants(target, $.identifier)) {
+        idNode = id;
+        break;
+      }
+      if (idNode == 0) return;
+
+      let enclosingClass: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          enclosingClass = anc;
+          break;
+        }
+      }
+      if (enclosingClass == 0) return;
+
+      for (const comp of db.ast.getDescendants(enclosingClass, $.component_clause)) {
+        if (isDescendantOfInnerClass(db, comp, enclosingClass, $)) continue;
+        for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+          for (const did of db.ast.getDescendants(decl, $.identifier)) {
+            if (db.ast.textEqualsNode(did, idNode)) {
+              if (hasTypePrefix(db, comp, "constant", $)) {
+                db.diagnostic(node, idNode);
+              }
+              return;
+            }
+            break;
+          }
         }
       }
     },
@@ -637,13 +666,40 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["assignment_statement"],
     severity: "error",
     code: 5009,
-    message: (target) => `Trying to assign to input component '${target.text}'.`,
-    query: (db: CodeGraph, node: u32) => {
+    message: (node, idNode) =>
+      `Trying to assign to input component ${idNode && idNode.text ? idNode.text : node.text}.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const target = db.ast.getChildByFieldId(node, "target");
-      if (target != 0) {
-        const symId = db.scope.resolve(target);
-        if (symId != 0 && db.model.hasFlag(symId, "isInput")) {
-          db.diagnostic(target);
+      if (target == 0) return;
+      let idNode: u32 = 0;
+      for (const id of db.ast.getDescendants(target, $.identifier)) {
+        idNode = id;
+        break;
+      }
+      if (idNode == 0) return;
+
+      let enclosingClass: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          enclosingClass = anc;
+          break;
+        }
+      }
+      if (enclosingClass == 0) return;
+      if (!isClassKind(db, enclosingClass, "function")) return;
+
+      for (const comp of db.ast.getDescendants(enclosingClass, $.component_clause)) {
+        if (isDescendantOfInnerClass(db, comp, enclosingClass, $)) continue;
+        for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+          for (const did of db.ast.getDescendants(decl, $.identifier)) {
+            if (db.ast.textEqualsNode(did, idNode)) {
+              if (hasTypePrefix(db, comp, "input", $)) {
+                db.diagnostic(node, idNode);
+              }
+              return;
+            }
+            break;
+          }
         }
       }
     },
@@ -702,16 +758,67 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
    * M5007: Iterator in for loop must be a 1D range or array expression.
    */
   forIteratorNot1D: {
-    nodes: ["for_index"],
+    nodes: ["for_statement", "for_equation"],
     severity: "error",
     code: 5007,
-    message: (target) => `Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,
+    message: (node, varNode, packedShape) => {
+      const vName = varNode && varNode.text ? varNode.text : "iterator";
+      const val = packedShape && packedShape.asNumber ? packedShape.asNumber() : Number(packedShape);
+      const typeNum = (val >> 24) & 0xff;
+      const d1 = (val >> 12) & 0xfff;
+      const d2 = val & 0xfff;
+      const typeNames = ["Real", "Integer", "Boolean", "String"];
+      const tName = typeNum >= 0 && typeNum < typeNames.length ? typeNames[typeNum] : "Integer";
+      const shapeStr = d1 && d2 ? `${tName}[${d1}, ${d2}]` : tName;
+      return `Iterator ${vName}, has type ${shapeStr}, but expected a 1D array expression.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const expr = db.ast.getChildByFieldId(node, "expression");
-      if (expr != 0) {
-        const type = inferExprType(db, expr, $);
-        if (type != TYPE_UNKNOWN && type != TYPE_INTEGER && type != 4 /* Enum */) {
-          db.diagnostic(node);
+      if ($.for_index == 0) return;
+      for (const forIdx of db.ast.getDescendants(node, $.for_index)) {
+        let varNode = db.ast.getChildByFieldId(forIdx, "variable");
+        if (varNode == 0) {
+          for (const id of db.ast.getDescendants(forIdx, $.identifier)) {
+            varNode = id;
+            break;
+          }
+        }
+        let rangeNode = db.ast.getChildByFieldId(forIdx, "range");
+        if (rangeNode == 0) continue;
+
+        if ($.array_arguments != 0) {
+          let innerArrayCount: u32 = 0;
+          let firstInnerArray: u32 = 0;
+          let outerArray: u32 = 0;
+
+          for (const args of db.ast.getDescendants(rangeNode, $.array_arguments)) {
+            if (outerArray == 0) {
+              outerArray = args;
+            } else {
+              innerArrayCount++;
+              if (firstInnerArray == 0) {
+                firstInnerArray = args;
+              }
+            }
+          }
+
+          if (firstInnerArray != 0) {
+            let dim2: u32 = 1;
+            if ($.array_arguments_non_first != 0) {
+              for (const elem of db.ast.getDescendants(firstInnerArray, $.array_arguments_non_first)) {
+                if (elem != 0) dim2++;
+              }
+            }
+
+            const elemType = inferExprType(db, firstInnerArray, $);
+            let typeNum: u32 = 1;
+            if (elemType == TYPE_REAL) typeNum = 0;
+            else if (elemType == TYPE_BOOLEAN) typeNum = 2;
+            else if (elemType == TYPE_STRING) typeNum = 3;
+
+            const packedShape: u32 = (typeNum << 24) | ((innerArrayCount & 0xfff) << 12) | (dim2 & 0xfff);
+            db.diagnostic(node, varNode, packedShape);
+            return;
+          }
         }
       }
     },

@@ -328,6 +328,7 @@ export enum EqKind {
   Connect = 6,
   InitialSimple = 7,
   InitialFor = 8,
+  InitialFunctionCall = 9,
 }
 
 export enum ExprKind {

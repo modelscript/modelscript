@@ -31,13 +31,16 @@ export const NEG_INF: f64 = f64.NEGATIVE_INFINITY;
 export const TWO_PI: f64 = 2.0 * Math.PI;
 
 /**
- * Closed interval [lo, hi] for guaranteed bound propagation in WASM.
+ * Unmanaged closed interval [lo, hi] for zero-GC guaranteed bound propagation in WASM.
+ * Fixed 16-byte layout: [lo: f64, hi: f64].
  */
+@unmanaged
 export class Interval {
   lo: f64;
   hi: f64;
 
-  constructor(lo: f64 = 0.0, hi: f64 = 0.0) {
+  @inline
+  set(lo: f64, hi: f64): void {
     if (lo > hi) {
       this.lo = hi;
       this.hi = lo;
@@ -48,23 +51,27 @@ export class Interval {
   }
 
   @inline
-  static create(lo: f64, hi: f64): Interval {
-    return new Interval(lo, hi);
+  setPoint(v: f64): void {
+    this.lo = v;
+    this.hi = v;
   }
 
   @inline
-  static point(v: f64): Interval {
-    return new Interval(v, v);
+  setEntire(): void {
+    this.lo = NEG_INF;
+    this.hi = INF;
   }
 
   @inline
-  static entire(): Interval {
-    return new Interval(NEG_INF, INF);
+  setEmpty(): void {
+    this.lo = INF;
+    this.hi = NEG_INF;
   }
 
   @inline
-  static empty(): Interval {
-    return new Interval(INF, NEG_INF);
+  copyFrom(other: Interval): void {
+    this.lo = other.lo;
+    this.hi = other.hi;
   }
 
   @inline
@@ -74,7 +81,7 @@ export class Interval {
 
   @inline
   mid(): f64 {
-    if (!f64.isFinite(this.lo) || !f64.isFinite(this.hi)) return 0.0;
+    if (this.lo <= NEG_INF || this.hi >= INF) return 0.0;
     return 0.5 * (this.lo + this.hi);
   }
 
@@ -87,96 +94,180 @@ export class Interval {
   containsZero(): bool {
     return this.lo <= 0.0 && this.hi >= 0.0;
   }
-
-  @inline
-  intersect(other: Interval): Interval {
-    return new Interval(Math.max(this.lo, other.lo), Math.min(this.hi, other.hi));
-  }
-
-  @inline
-  hull(other: Interval): Interval {
-    return new Interval(Math.min(this.lo, other.lo), Math.max(this.hi, other.hi));
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Elementary Interval Operations
+// Zero-GC Scratch Stack
+// ─────────────────────────────────────────────────────────────────────────────
+
+let scratchIntervalStackPtr: usize = 0;
+let scratchIntervalStackHead: usize = 0;
+const SCRATCH_INTERVAL_MAX: usize = 256;
+
+@inline
+export function getScratchInterval(): Interval {
+  if (scratchIntervalStackPtr == 0) {
+    scratchIntervalStackPtr = heap.alloc(SCRATCH_INTERVAL_MAX * 16);
+  }
+  let ptr = scratchIntervalStackPtr + (scratchIntervalStackHead * 16);
+  scratchIntervalStackHead = (scratchIntervalStackHead + 1) & (SCRATCH_INTERVAL_MAX - 1);
+  return changetype<Interval>(ptr);
+}
+
+@inline
+export function markScratchInterval(): usize {
+  return scratchIntervalStackHead;
+}
+
+@inline
+export function resetScratchInterval(mark: usize): void {
+  scratchIntervalStackHead = mark;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Elementary Interval Operations (Destination-Passing, Alias-Safe)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @inline
-export function iaAdd(a: Interval, b: Interval): Interval {
-  return new Interval(a.lo + b.lo, a.hi + b.hi);
+export function iaConst(v: f64, out: Interval): void {
+  out.setPoint(v);
 }
 
 @inline
-export function iaSub(a: Interval, b: Interval): Interval {
-  return new Interval(a.lo - b.hi, a.hi - b.lo);
+export function iaVar(lo: f64, hi: f64, out: Interval): void {
+  out.set(lo, hi);
 }
 
-export function iaMul(a: Interval, b: Interval): Interval {
+@inline
+export function iaAdd(a: Interval, b: Interval, out: Interval): void {
+  let lo = a.lo + b.lo;
+  let hi = a.hi + b.hi;
+  out.set(lo, hi);
+}
+
+@inline
+export function iaSub(a: Interval, b: Interval, out: Interval): void {
+  let lo = a.lo - b.hi;
+  let hi = a.hi - b.lo;
+  out.set(lo, hi);
+}
+
+export function iaMul(a: Interval, b: Interval, out: Interval): void {
   let p1 = a.lo * b.lo;
   let p2 = a.lo * b.hi;
   let p3 = a.hi * b.lo;
   let p4 = a.hi * b.hi;
   let minP = Math.min(Math.min(p1, p2), Math.min(p3, p4));
   let maxP = Math.max(Math.max(p1, p2), Math.max(p3, p4));
-  return new Interval(minP, maxP);
+  out.set(minP, maxP);
 }
 
-export function iaDiv(a: Interval, b: Interval): Interval {
+export function iaDiv(a: Interval, b: Interval, out: Interval): void {
   if (b.containsZero()) {
-    if (b.lo == 0.0 && b.hi == 0.0) return Interval.entire();
-    if (b.lo == 0.0) return iaMul(a, new Interval(1.0 / b.hi, INF));
-    if (b.hi == 0.0) return iaMul(a, new Interval(NEG_INF, 1.0 / b.lo));
-    return Interval.entire();
+    if (b.lo == 0.0 && b.hi == 0.0) {
+      out.setEntire();
+      return;
+    }
+    let mark = markScratchInterval();
+    let inv = getScratchInterval();
+    if (b.lo == 0.0) {
+      inv.set(1.0 / b.hi, INF);
+      iaMul(a, inv, out);
+    } else if (b.hi == 0.0) {
+      inv.set(NEG_INF, 1.0 / b.lo);
+      iaMul(a, inv, out);
+    } else {
+      out.setEntire();
+    }
+    resetScratchInterval(mark);
+    return;
   }
-  return iaMul(a, new Interval(1.0 / b.hi, 1.0 / b.lo));
+  let mark = markScratchInterval();
+  let inv = getScratchInterval();
+  inv.set(1.0 / b.hi, 1.0 / b.lo);
+  iaMul(a, inv, out);
+  resetScratchInterval(mark);
 }
 
-export function iaPowInt(a: Interval, n: i32): Interval {
-  if (n == 0) return Interval.point(1.0);
-  if (n == 1) return a;
-  if (n == -1) return iaDiv(Interval.point(1.0), a);
+export function iaPowInt(a: Interval, n: i32, out: Interval): void {
+  if (n == 0) {
+    out.setPoint(1.0);
+    return;
+  }
+  if (n == 1) {
+    out.copyFrom(a);
+    return;
+  }
+  if (n == -1) {
+    let mark = markScratchInterval();
+    let one = getScratchInterval();
+    one.setPoint(1.0);
+    iaDiv(one, a, out);
+    resetScratchInterval(mark);
+    return;
+  }
 
   if (n > 0 && n % 2 == 0) {
+    let pLo = Math.pow(a.lo, n as f64);
+    let pHi = Math.pow(a.hi, n as f64);
     if (a.lo >= 0.0) {
-      return new Interval(Math.pow(a.lo, n as f64), Math.pow(a.hi, n as f64));
+      out.set(pLo, pHi);
     } else if (a.hi <= 0.0) {
-      return new Interval(Math.pow(a.hi, n as f64), Math.pow(a.lo, n as f64));
+      out.set(pHi, pLo);
     } else {
-      return new Interval(0.0, Math.max(Math.pow(a.lo, n as f64), Math.pow(a.hi, n as f64)));
+      out.set(0.0, Math.max(pLo, pHi));
     }
+    return;
   }
 
   if (n > 0) {
-    return new Interval(Math.pow(a.lo, n as f64), Math.pow(a.hi, n as f64));
+    out.set(Math.pow(a.lo, n as f64), Math.pow(a.hi, n as f64));
+    return;
   }
 
-  let posResult = iaPowInt(a, -n);
-  return iaDiv(Interval.point(1.0), posResult);
+  let mark = markScratchInterval();
+  let posResult = getScratchInterval();
+  let one = getScratchInterval();
+  iaPowInt(a, -n, posResult);
+  one.setPoint(1.0);
+  iaDiv(one, posResult, out);
+  resetScratchInterval(mark);
 }
 
-export function iaPow(base: Interval, exp: Interval): Interval {
+export function iaPow(base: Interval, exp: Interval, out: Interval): void {
   if (exp.lo == exp.hi) {
     let n = exp.lo;
     let iN = n as i32;
     if ((iN as f64) == n) {
-      return iaPowInt(base, iN);
+      iaPowInt(base, iN, out);
+      return;
     }
   }
-  let safeBase = new Interval(Math.max(1e-300, base.lo), Math.max(1e-300, base.hi));
-  let logBase = iaLog(safeBase);
-  return iaExp(iaMul(exp, logBase));
+  let mark = markScratchInterval();
+  let safeBase = getScratchInterval();
+  let logBase = getScratchInterval();
+  let mulExp = getScratchInterval();
+
+  safeBase.set(Math.max(1e-300, base.lo), Math.max(1e-300, base.hi));
+  iaLog(safeBase, logBase);
+  iaMul(exp, logBase, mulExp);
+  iaExp(mulExp, out);
+  resetScratchInterval(mark);
 }
 
 @inline
-export function iaNeg(a: Interval): Interval {
-  return new Interval(-a.hi, -a.lo);
+export function iaNeg(a: Interval, out: Interval): void {
+  let lo = -a.hi;
+  let hi = -a.lo;
+  out.set(lo, hi);
 }
 
-export function iaSin(a: Interval): Interval {
+export function iaSin(a: Interval, out: Interval): void {
   let width = a.hi - a.lo;
-  if (width >= TWO_PI) return new Interval(-1.0, 1.0);
+  if (width >= TWO_PI) {
+    out.set(-1.0, 1.0);
+    return;
+  }
 
   let lo = ((a.lo % TWO_PI) + TWO_PI) % TWO_PI;
   let hi = lo + width;
@@ -202,47 +293,69 @@ export function iaSin(a: Interval): Interval {
     if (cp >= lo && cp <= hi) minVal = -1.0;
   }
 
-  return new Interval(minVal, maxVal);
+  out.set(minVal, maxVal);
 }
 
 @inline
-export function iaCos(a: Interval): Interval {
-  return iaSin(new Interval(a.lo + Math.PI / 2.0, a.hi + Math.PI / 2.0));
+export function iaCos(a: Interval, out: Interval): void {
+  let mark = markScratchInterval();
+  let shifted = getScratchInterval();
+  shifted.set(a.lo + Math.PI / 2.0, a.hi + Math.PI / 2.0);
+  iaSin(shifted, out);
+  resetScratchInterval(mark);
 }
 
-export function iaTan(a: Interval): Interval {
+export function iaTan(a: Interval, out: Interval): void {
   let width = a.hi - a.lo;
-  if (width >= Math.PI) return Interval.entire();
+  if (width >= Math.PI) {
+    out.setEntire();
+    return;
+  }
 
   let kMin = Math.floor((a.lo - Math.PI / 2.0) / Math.PI) as i32;
   let kMax = Math.ceil((a.hi - Math.PI / 2.0) / Math.PI) as i32;
   for (let k = kMin; k <= kMax; k++) {
     let asymptote = Math.PI / 2.0 + (k as f64) * Math.PI;
-    if (asymptote > a.lo && asymptote < a.hi) return Interval.entire();
+    if (asymptote > a.lo && asymptote < a.hi) {
+      out.setEntire();
+      return;
+    }
   }
 
-  return new Interval(Math.tan(a.lo), Math.tan(a.hi));
+  out.set(Math.tan(a.lo), Math.tan(a.hi));
 }
 
 @inline
-export function iaExp(a: Interval): Interval {
-  return new Interval(Math.exp(a.lo), Math.exp(a.hi));
+export function iaExp(a: Interval, out: Interval): void {
+  out.set(Math.exp(a.lo), Math.exp(a.hi));
 }
 
-export function iaLog(a: Interval): Interval {
+@inline
+export function iaLog(a: Interval, out: Interval): void {
   let safeLo = Math.max(1e-300, a.lo);
   let safeHi = Math.max(1e-300, a.hi);
-  return new Interval(Math.log(safeLo), Math.log(safeHi));
+  out.set(Math.log(safeLo), Math.log(safeHi));
 }
 
-export function iaSqrt(a: Interval): Interval {
+@inline
+export function iaSqrt(a: Interval, out: Interval): void {
   let safeLo = Math.max(0.0, a.lo);
   let safeHi = Math.max(0.0, a.hi);
-  return new Interval(Math.sqrt(safeLo), Math.sqrt(safeHi));
+  out.set(Math.sqrt(safeLo), Math.sqrt(safeHi));
+}
+
+@inline
+export function iaIntersect(a: Interval, b: Interval, out: Interval): void {
+  out.set(Math.max(a.lo, b.lo), Math.min(a.hi, b.hi));
+}
+
+@inline
+export function iaHull(a: Interval, b: Interval, out: Interval): void {
+  out.set(Math.min(a.lo, b.lo), Math.max(a.hi, b.hi));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Forward Interval Propagation Engines
+// Forward Interval Propagation Engines (Zero-GC)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -260,7 +373,10 @@ export function tape_evaluateInterval(
   outHiPtr: usize,
 ): void {
   let count = tape.nodeCount;
-  let intervals = new Array<Interval>(count);
+  let mark = markScratchInterval();
+  let lRes = getScratchInterval();
+  let rRes = getScratchInterval();
+  let outIv = getScratchInterval();
 
   for (let i: u32 = 0; i < count; i++) {
     let offset = i * TAPE_STRIDE;
@@ -268,98 +384,149 @@ export function tape_evaluateInterval(
     let left = tape.nodeTable.get(offset + 1);
     let right = tape.nodeTable.get(offset + 2);
 
-    let res: Interval;
-
     if (op == TAPE_OP_CONST) {
       let val = tape.getNodeValue(i);
-      res = Interval.point(val);
+      outIv.setPoint(val);
     } else if (op == TAPE_OP_VAR) {
       let varId = left;
       let lo = load<f64>(varBoundsLoPtr + (varId << 3));
       let hi = load<f64>(varBoundsHiPtr + (varId << 3));
-      res = new Interval(lo, hi);
-    } else if (op == TAPE_OP_ADD) {
-      res = iaAdd(intervals[left], intervals[right]);
-    } else if (op == TAPE_OP_SUB) {
-      res = iaSub(intervals[left], intervals[right]);
-    } else if (op == TAPE_OP_MUL) {
-      res = iaMul(intervals[left], intervals[right]);
-    } else if (op == TAPE_OP_DIV) {
-      res = iaDiv(intervals[left], intervals[right]);
-    } else if (op == TAPE_OP_SIN) {
-      res = iaSin(intervals[left]);
-    } else if (op == TAPE_OP_COS) {
-      res = iaCos(intervals[left]);
-    } else if (op == TAPE_OP_EXP) {
-      res = iaExp(intervals[left]);
-    } else if (op == TAPE_OP_LOG) {
-      res = iaLog(intervals[left]);
+      outIv.set(lo, hi);
     } else {
-      res = Interval.entire();
+      lRes.set(load<f64>(outLoPtr + (left << 3)), load<f64>(outHiPtr + (left << 3)));
+
+      if (op == TAPE_OP_ADD) {
+        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        iaAdd(lRes, rRes, outIv);
+      } else if (op == TAPE_OP_SUB) {
+        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        iaSub(lRes, rRes, outIv);
+      } else if (op == TAPE_OP_MUL) {
+        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        iaMul(lRes, rRes, outIv);
+      } else if (op == TAPE_OP_DIV) {
+        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        iaDiv(lRes, rRes, outIv);
+      } else if (op == TAPE_OP_SIN) {
+        iaSin(lRes, outIv);
+      } else if (op == TAPE_OP_COS) {
+        iaCos(lRes, outIv);
+      } else if (op == TAPE_OP_EXP) {
+        iaExp(lRes, outIv);
+      } else if (op == TAPE_OP_LOG) {
+        iaLog(lRes, outIv);
+      } else {
+        outIv.setEntire();
+      }
     }
 
-    intervals[i] = res;
-    store<f64>(outLoPtr + (i << 3), res.lo);
-    store<f64>(outHiPtr + (i << 3), res.hi);
+    store<f64>(outLoPtr + (i << 3), outIv.lo);
+    store<f64>(outHiPtr + (i << 3), outIv.hi);
   }
+
+  resetScratchInterval(mark);
 }
 
 /**
- * Evaluates an AST expression in DaeBuilder with interval bounds.
+ * Recursively evaluates an AST expression in DaeBuilder with interval bounds.
+ * Writes result into out Interval (destination-passing).
  */
 export function dae_evaluateExprInterval(
   dae: DaeBuilder,
   exprId: u32,
   varBoundsLoPtr: usize,
   varBoundsHiPtr: usize,
-): Interval {
-  if (exprId >= dae.exprCount) return Interval.point(0.0);
+  out: Interval,
+): void {
+  if (exprId >= dae.exprCount) {
+    out.setPoint(0.0);
+    return;
+  }
 
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.getExprData().get(offset + EXPR_KIND);
+  let exprData = dae.getExprData();
+  let kind = exprData.get(offset + EXPR_KIND);
 
-  if (kind == ExprKind.IntLiteral) {
-    let val = dae.getExprData().get(offset + EXPR_DATA1) as i32;
-    return Interval.point(val as f64);
+  if (kind == ExprKind.IntLiteral || kind == ExprKind.BoolLiteral) {
+    let val = exprData.get(offset + EXPR_DATA1) as i32;
+    out.setPoint(val as f64);
+    return;
   }
 
   if (kind == ExprKind.RealLiteral) {
-    let lo = dae.getExprData().get(offset + EXPR_LEFT);
-    let hi = dae.getExprData().get(offset + EXPR_RIGHT);
-    let bits = ((hi as u64) << 32) | (lo as u64);
+    let lo = (exprData.get(offset + EXPR_DATA1) as u64) & 0xffffffff;
+    let hi = (exprData.get(offset + EXPR_LEFT) as u64) & 0xffffffff;
+    let bits = (hi << 32) | lo;
     let val = f64.reinterpret_i64(bits as i64);
-    return Interval.point(val);
+    out.setPoint(val);
+    return;
   }
 
   if (kind == ExprKind.Name) {
-    let varId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let varId = exprData.get(offset + EXPR_DATA1) as u32;
+    if (varId == 0xffffffff || varId >= dae.varCount) {
+      out.setPoint(0.0);
+      return;
+    }
     let lo = load<f64>(varBoundsLoPtr + (varId << 3));
     let hi = load<f64>(varBoundsHiPtr + (varId << 3));
-    return new Interval(lo, hi);
+    out.set(lo, hi);
+    return;
   }
 
   if (kind == ExprKind.Unary) {
-    let op = dae.getExprData().get(offset + EXPR_DATA1) as u16;
-    let operand = dae.getExprData().get(offset + EXPR_LEFT);
-    let subRes = dae_evaluateExprInterval(dae, operand, varBoundsLoPtr, varBoundsHiPtr);
-    if (op == UnaryOp.Negate) return iaNeg(subRes);
-    return subRes;
+    let op = exprData.get(offset + EXPR_DATA1) as u16;
+    let operand = exprData.get(offset + EXPR_LEFT);
+    dae_evaluateExprInterval(dae, operand, varBoundsLoPtr, varBoundsHiPtr, out);
+    if (op == UnaryOp.Negate) {
+      iaNeg(out, out);
+    }
+    return;
   }
 
   if (kind == ExprKind.Binary) {
-    let op = dae.getExprData().get(offset + EXPR_DATA1) as u16;
-    let left = dae.getExprData().get(offset + EXPR_LEFT);
-    let right = dae.getExprData().get(offset + EXPR_RIGHT);
+    let op = exprData.get(offset + EXPR_DATA1) as u16;
+    let left = exprData.get(offset + EXPR_LEFT);
+    let right = exprData.get(offset + EXPR_RIGHT);
 
-    let lRes = dae_evaluateExprInterval(dae, left, varBoundsLoPtr, varBoundsHiPtr);
-    let rRes = dae_evaluateExprInterval(dae, right, varBoundsLoPtr, varBoundsHiPtr);
+    let mark = markScratchInterval();
+    let lRes = getScratchInterval();
+    let rRes = getScratchInterval();
 
-    if (op == BinOp.Add) return iaAdd(lRes, rRes);
-    if (op == BinOp.Sub) return iaSub(lRes, rRes);
-    if (op == BinOp.Mul) return iaMul(lRes, rRes);
-    if (op == BinOp.Div) return iaDiv(lRes, rRes);
-    if (op == BinOp.Pow) return iaPow(lRes, rRes);
+    dae_evaluateExprInterval(dae, left, varBoundsLoPtr, varBoundsHiPtr, lRes);
+    dae_evaluateExprInterval(dae, right, varBoundsLoPtr, varBoundsHiPtr, rRes);
+
+    if (op == BinOp.Add || op == BinOp.ElemAdd) iaAdd(lRes, rRes, out);
+    else if (op == BinOp.Sub || op == BinOp.ElemSub) iaSub(lRes, rRes, out);
+    else if (op == BinOp.Mul || op == BinOp.ElemMul) iaMul(lRes, rRes, out);
+    else if (op == BinOp.Div || op == BinOp.ElemDiv) iaDiv(lRes, rRes, out);
+    else if (op == BinOp.Pow || op == BinOp.ElemPow) iaPow(lRes, rRes, out);
+    else out.setEntire();
+
+    resetScratchInterval(mark);
+    return;
   }
 
-  return Interval.entire();
+  out.setEntire();
+}
+
+/**
+ * Standalone C-ABI / WASM Export for expression interval evaluation.
+ */
+export function dae_evalInterval(
+  daePtr: u32,
+  exprId: u32,
+  varBoundsLoPtr: usize,
+  varBoundsHiPtr: usize,
+  outLoPtr: usize,
+  outHiPtr: usize,
+): void {
+  if (daePtr == 0) return;
+  let dae = changetype<DaeBuilder>(daePtr);
+  let mark = markScratchInterval();
+  let out = getScratchInterval();
+  dae_evaluateExprInterval(dae, exprId, varBoundsLoPtr, varBoundsHiPtr, out);
+  if (outLoPtr != 0) store<f64>(outLoPtr, out.lo);
+  if (outHiPtr != 0) store<f64>(outHiPtr, out.hi);
+  resetScratchInterval(mark);
 }

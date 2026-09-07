@@ -229,6 +229,14 @@ function resolveClassName(context: Context, testCase: TestCase): string {
       if (match) return getFqn(match);
     }
 
+    // 0c. If expected result mentions "Cannot instantiate <Name>", prefer that class
+    const cantInstMatch = testCase.expectedResult?.match(/Cannot instantiate\s+([A-Za-z0-9_.]+)/);
+    if (cantInstMatch) {
+      const cantInstName = cantInstMatch[1];
+      const match = fileSymbols.find((s: any) => getFqn(s) === cantInstName || s.name === cantInstName);
+      if (match) return getFqn(match);
+    }
+
     // Exact name match on class
     const exact = fileSymbols.find((s: any) => s.name === testCase.metadata.name || s.name === baseTestName);
     if (exact) {
@@ -608,19 +616,12 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     };
 
     // ── Arena-native flattening ──
-    console.error("[Worker Debug lastClassName]", lastClassName);
-    const t_flatten_start = Date.now();
     const arena = context.flattenArena(lastClassName, undefined, undefined, { omcCompatibility: true });
-    console.error(`[Worker] flattenArena took ${Date.now() - t_flatten_start}ms`);
 
-    const t_lint_start = Date.now();
     const lints = Array.from(context.queryEngine.runAllLints());
-    console.error(`[Worker] Total lints: ${lints.length}`, JSON.stringify(lints, null, 2));
-    console.error(`[Worker] Linter took ${Date.now() - t_lint_start}ms`);
 
     const tree = context.getTree(testCase.file);
     const rawCstDiags: any[] = tree && facade ? (facade as any).getDiagnostics(tree.rootNode.id) : [];
-    console.error("[Worker rawCstDiags]", JSON.stringify(rawCstDiags));
     const cstDiags = rawCstDiags.filter((cd: any) => {
       const msg = cd.message || "";
       if (msg.startsWith("Array shape mismatch:")) return false;
@@ -713,68 +714,73 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       }
     }
 
-    // Linter diagnostics
-    for (const d of lints) {
-      const dd = d as Record<string, unknown>;
-      const lintName: string = (dd.lintName as string) ?? (dd.rule as string) ?? "";
+    // If the arena has a "Cannot instantiate" diagnostic, skip linter and CST diagnostics
+    const hasCannotInstantiate = arena?.diagnostics.some((d) => d.message.includes("Cannot instantiate"));
 
-      if (dd.severity === "warning") continue;
-      if (lintName === "unbalanced-model" || lintName === "unbalancedModel") continue;
+    if (!hasCannotInstantiate) {
+      // Linter diagnostics
+      for (const d of lints) {
+        const dd = d as Record<string, unknown>;
+        const lintName: string = (dd.lintName as string) ?? (dd.rule as string) ?? "";
 
-      if (dd.symbolId != null) {
-        const entry = context.queryEngine.index?.symbols?.get(dd.symbolId);
-        if (entry && typeof entry.resourceId === "string") {
-          if (entry.resourceId === "modelscript-cas.mo" || entry.resourceId.startsWith("modelscript-")) {
-            continue;
+        if (dd.severity === "warning") continue;
+        if (lintName === "unbalanced-model" || lintName === "unbalancedModel") continue;
+
+        if (dd.symbolId != null) {
+          const entry = context.queryEngine.index?.symbols?.get(dd.symbolId);
+          if (entry && typeof entry.resourceId === "string") {
+            if (entry.resourceId === "modelscript-cas.mo" || entry.resourceId.startsWith("modelscript-")) {
+              continue;
+            }
           }
         }
+
+        let code = 0;
+        const codeMatch = d.message.match(/^\[M(\d+)\]/);
+        if (codeMatch) code = parseInt(codeMatch[1], 10);
+
+        // Convert startByte/endByte from LintDiagnostic to row/col positions
+        let range: DiagEntry["range"] = null;
+        if (typeof d.startByte === "number" && typeof d.endByte === "number") {
+          range = {
+            startPosition: byteToPosition(d.startByte),
+            endPosition: byteToPosition(d.endByte),
+          };
+        }
+
+        diagnostics.push({
+          type: d.severity,
+          code,
+          message: d.message,
+          resource: null,
+          range,
+        });
       }
 
-      let code = 0;
-      const codeMatch = d.message.match(/^\[M(\d+)\]/);
-      if (codeMatch) code = parseInt(codeMatch[1], 10);
-
-      // Convert startByte/endByte from LintDiagnostic to row/col positions
-      let range: DiagEntry["range"] = null;
-      if (typeof d.startByte === "number" && typeof d.endByte === "number") {
-        range = {
-          startPosition: byteToPosition(d.startByte),
-          endPosition: byteToPosition(d.endByte),
-        };
+      // CST-level facade diagnostics
+      for (const cd of cstDiags) {
+        if (cd.severity === 2) continue; // skip warnings
+        const sevStr =
+          cd.severity === 1
+            ? "error"
+            : cd.severity === 2
+              ? "warning"
+              : cd.severity === 3 || cd.severity === 4
+                ? "notification"
+                : "info";
+        diagnostics.push({
+          type: sevStr,
+          code: cd.code,
+          message: cd.message,
+          resource: testCase.file,
+          range: cd.range
+            ? {
+                startPosition: { row: cd.range.start.line, column: cd.range.start.character },
+                endPosition: { row: cd.range.end.line, column: cd.range.end.character },
+              }
+            : null,
+        });
       }
-
-      diagnostics.push({
-        type: d.severity,
-        code,
-        message: d.message,
-        resource: null,
-        range,
-      });
-    }
-
-    // CST-level facade diagnostics
-    for (const cd of cstDiags) {
-      if (cd.severity === 2) continue; // skip warnings
-      const sevStr =
-        cd.severity === 1
-          ? "error"
-          : cd.severity === 2
-            ? "warning"
-            : cd.severity === 3 || cd.severity === 4
-              ? "notification"
-              : "info";
-      diagnostics.push({
-        type: sevStr,
-        code: cd.code,
-        message: cd.message,
-        resource: testCase.file,
-        range: cd.range
-          ? {
-              startPosition: { row: cd.range.start.line, column: cd.range.start.character },
-              endPosition: { row: cd.range.end.line, column: cd.range.end.character },
-            }
-          : null,
-      });
     }
 
     // ── Format diagnostics ──

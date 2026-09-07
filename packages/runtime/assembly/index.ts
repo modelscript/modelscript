@@ -1,6 +1,7 @@
 /* eslint-disable */
 // AssemblyScript implementation of WebAssembly Solvers, DAE Builder & BLT
 export * from "../src/wasm/alias";
+export * from "../src/wasm/affine";
 export * from "../src/wasm/bdf";
 export * from "../src/wasm/branch_and_bound";
 export * from "../src/wasm/coloring";

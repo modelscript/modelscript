@@ -40,6 +40,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       if (
         db.ast.textEquals(rootId, "time") ||
         db.ast.textEquals(rootId, "der") ||
+        db.ast.textEquals(rootId, "Real") ||
+        db.ast.textEquals(rootId, "Integer") ||
+        db.ast.textEquals(rootId, "Boolean") ||
+        db.ast.textEquals(rootId, "String") ||
         db.ast.textEquals(rootId, "initial") ||
         db.ast.textEquals(rootId, "terminal") ||
         db.ast.textEquals(rootId, "sample") ||
@@ -285,6 +289,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc == node) continue;
         const t = db.ast.getType(anc);
+        if (($.annotation_clause != 0 && t == $.annotation_clause) || ($.annotation != 0 && t == $.annotation)) {
+          return;
+        }
         if (t == $.class_modification || t == $.class_or_inheritance_modification) {
           isNestedMod = true;
           break;
@@ -536,6 +543,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc == node) continue;
         const t = db.ast.getType(anc);
+        if (($.annotation_clause != 0 && t == $.annotation_clause) || ($.annotation != 0 && t == $.annotation)) {
+          return;
+        }
         if (t == $.class_modification || t == $.class_or_inheritance_modification) {
           isNestedMod = true;
           break;
@@ -1096,6 +1106,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       let parentDecl: u32 = 0;
       for (const anc of db.ast.getAncestors(node, 0)) {
         const type = db.ast.getType(anc);
+        if (($.annotation != 0 && type == $.annotation) || ($.annotation_clause != 0 && type == $.annotation_clause)) {
+          return;
+        }
         if (
           type == $.component_clause1 ||
           type == $.element_redeclaration ||

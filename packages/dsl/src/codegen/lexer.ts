@@ -459,8 +459,9 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       continue;
     }
 
+    const endsInWord = /[a-zA-Z0-9_]$/.test(val);
     let wordBoundaryCheck = "";
-    if (isWord) {
+    if (isWord || endsInWord) {
       wordBoundaryCheck = `
         let isBoundary = true;
         if (cPos < inputLength) {

@@ -1,5 +1,6 @@
 /* eslint-disable */
 // AssemblyScript implementation of WebAssembly Solvers, DAE Builder & BLT
+export * from "../src/codegen/runtime/affine";
 export * from "../src/codegen/runtime/alias";
 export * from "../src/codegen/runtime/bdf";
 export * from "../src/codegen/runtime/branch_and_bound";

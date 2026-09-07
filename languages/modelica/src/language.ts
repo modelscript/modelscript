@@ -489,7 +489,10 @@ export const modelicaLanguage = language({
     language_specification: ($) => $.string_literal,
 
     external_function_call: ($) =>
-      seq(optional(seq($.component_reference, "=")), $.identifier, "(", optional($.expression_list), ")"),
+      choice(
+        seq($.component_reference, "=", $.identifier, "(", optional($.expression_list), ")"),
+        seq($.identifier, "(", optional($.expression_list), ")"),
+      ),
 
     element_list: ($) => repeat(seq($.element, ";")),
 
@@ -497,6 +500,7 @@ export const modelicaLanguage = language({
       choice(
         field("import_clause", $.import_clause),
         field("extends_clause", $.extends_clause),
+        field("annotation_clause", $.annotation_clause),
         seq(
           optional("redeclare"),
           optional("final"),
@@ -916,7 +920,7 @@ export const modelicaLanguage = language({
 
     // Tokens
     identifier: () => token(/[a-zA-Z_][a-zA-Z0-9_]*/),
-    string_literal: () => semanticToken("string", token(/"[^"]*"/)),
+    string_literal: () => semanticToken("string", token(/"(?:[^"\\]|\\.)*"/)),
     unsigned_integer: () => semanticToken("number", token(/\d+/)),
     unsigned_real: () =>
       semanticToken("number", token(/\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+/)),

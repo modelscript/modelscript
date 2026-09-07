@@ -71,6 +71,132 @@ export class ModelicaLibrary {
 }
 
 /**
+ * Computes non-overlapping edit hunks between prevText and newText.
+ * Partitions multi-cursor and non-adjacent modifications into discrete slices.
+ */
+export function computeEditRanges(
+  prevText: string,
+  newText: string,
+): { startByte: number; endByte: number; delta: number }[] {
+  if (prevText === newText) return [];
+
+  let prefixLen = 0;
+  const minLen = Math.min(prevText.length, newText.length);
+  while (prefixLen < minLen && prevText.charCodeAt(prefixLen) === newText.charCodeAt(prefixLen)) {
+    prefixLen++;
+  }
+
+  let suffixLen = 0;
+  while (
+    suffixLen < minLen - prefixLen &&
+    prevText.charCodeAt(prevText.length - 1 - suffixLen) === newText.charCodeAt(newText.length - 1 - suffixLen)
+  ) {
+    suffixLen++;
+  }
+
+  const prevMiddle = prevText.slice(prefixLen, prevText.length - suffixLen);
+  const newMiddle = newText.slice(prefixLen, newText.length - suffixLen);
+
+  if (!prevMiddle.includes("\n") || !newMiddle.includes("\n")) {
+    const editStart = prefixLen;
+    const editEnd = newText.length - suffixLen;
+    return [
+      {
+        startByte: editStart,
+        endByte: Math.max(editStart, editEnd),
+        delta: newText.length - prevText.length,
+      },
+    ];
+  }
+
+  const prevLines = prevMiddle.split("\n");
+  const newLines = newMiddle.split("\n");
+  const hunks: { startByte: number; endByte: number; delta: number }[] = [];
+  let pIdx = 0;
+  let nIdx = 0;
+  let pOffset = prefixLen;
+  let nOffset = prefixLen;
+
+  while (pIdx < prevLines.length || nIdx < newLines.length) {
+    while (pIdx < prevLines.length && nIdx < newLines.length && prevLines[pIdx] === newLines[nIdx]) {
+      const lineLen = newLines[nIdx].length + 1;
+      pOffset += lineLen;
+      nOffset += lineLen;
+      pIdx++;
+      nIdx++;
+    }
+
+    if (pIdx >= prevLines.length && nIdx >= newLines.length) break;
+
+    const hunkStartInNew = nOffset;
+    let foundP = -1;
+    let foundN = -1;
+
+    searchAnchor: for (let d = 1; d <= 20; d++) {
+      for (let di = 0; di <= d; di++) {
+        const checkP = pIdx + di;
+        const checkN = nIdx + (d - di);
+        if (
+          checkP < prevLines.length &&
+          checkN < newLines.length &&
+          prevLines[checkP].trim() !== "" &&
+          prevLines[checkP] === newLines[checkN]
+        ) {
+          foundP = checkP;
+          foundN = checkN;
+          break searchAnchor;
+        }
+      }
+    }
+
+    if (foundP !== -1 && foundN !== -1) {
+      let pLen = 0;
+      for (let i = pIdx; i < foundP; i++) {
+        pLen += prevLines[i].length + (i < prevLines.length - 1 ? 1 : 0);
+      }
+      let nLen = 0;
+      for (let i = nIdx; i < foundN; i++) {
+        nLen += newLines[i].length + (i < newLines.length - 1 ? 1 : 0);
+      }
+      hunks.push({
+        startByte: hunkStartInNew,
+        endByte: hunkStartInNew + nLen,
+        delta: nLen - pLen,
+      });
+      pOffset += pLen;
+      nOffset += nLen;
+      pIdx = foundP;
+      nIdx = foundN;
+    } else {
+      let pLen = 0;
+      for (let i = pIdx; i < prevLines.length; i++) {
+        pLen += prevLines[i].length + (i < prevLines.length - 1 ? 1 : 0);
+      }
+      let nLen = 0;
+      for (let i = nIdx; i < newLines.length; i++) {
+        nLen += newLines[i].length + (i < newLines.length - 1 ? 1 : 0);
+      }
+      hunks.push({
+        startByte: hunkStartInNew,
+        endByte: hunkStartInNew + nLen,
+        delta: nLen - pLen,
+      });
+      break;
+    }
+  }
+
+  return hunks.length > 0
+    ? hunks
+    : [
+        {
+          startByte: prefixLen,
+          endByte: Math.max(prefixLen, newText.length - suffixLen),
+          delta: newText.length - prevText.length,
+        },
+      ];
+}
+
+/**
  * The polyglot compiler context managing file system resources and loaded Modelica code.
  *
  * NOTE: Context no longer extends Scope. It was historically the root scope with
@@ -639,13 +765,34 @@ export class Context {
     const queryDB = this.#queryEngine.toQueryDB();
     const flattener = new ModelicaFlattener(queryDB, options);
 
-    const currentStructuralRevision = this.#workspaceIndex.structuralRevision;
     const entry = this.#queryEngine.index.symbols.get(firstId);
     const resourceUri = uri ?? entry?.resourceId;
     const cacheKey = `${resourceUri ?? ""}:${name}`;
     const cached = (this as any)._daeBodyCache?.get(cacheKey);
 
-    if (cached && cached.revision === currentStructuralRevision) {
+    const getFileRev = (resUri?: string) => {
+      if (!resUri) return this.#workspaceIndex.structuralRevision;
+      return (
+        (this.#workspaceIndex as any).getFileStructuralRevision?.(resUri) ?? this.#workspaceIndex.structuralRevision
+      );
+    };
+
+    const currentFileRevision = getFileRev(resourceUri);
+
+    let isCacheValid = false;
+    if (cached && cached.revision === currentFileRevision) {
+      isCacheValid = true;
+      if (cached.depRevisions && cached.depRevisions.size > 0) {
+        for (const [depUri, depRev] of cached.depRevisions) {
+          if (getFileRev(depUri) !== depRev) {
+            isCacheValid = false;
+            break;
+          }
+        }
+      }
+    }
+
+    if (isCacheValid && cached) {
       const dirty = resourceUri ? this.#workspaceIndex.getDirtyRanges(resourceUri) : undefined;
 
       if (dirty && dirty.length > 0) {
@@ -672,11 +819,32 @@ export class Context {
       );
     }
 
+    // Collect dependency file URIs from symbols referenced by firstId
+    const depRevisions = new Map<string, number>();
+    const visited = new Set<number>();
+    const queue = [firstId];
+    while (queue.length > 0) {
+      const curr = queue.pop()!;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      const children = this.#queryEngine.index.childrenOf.get(curr);
+      if (children) {
+        for (const chId of children) {
+          const chSym = this.#queryEngine.index.symbols.get(chId);
+          if (chSym?.resourceId && chSym.resourceId !== resourceUri) {
+            depRevisions.set(chSym.resourceId, getFileRev(chSym.resourceId));
+          }
+          queue.push(chId);
+        }
+      }
+    }
+
     // Save snapshot of the body phase
     if (!(this as any)._daeBodyCache) (this as any)._daeBodyCache = new Map();
     (this as any)._daeBodyCache.set(cacheKey, {
       builder: flattener.bodySnapshot, // already cloned inside flatten()
-      revision: currentStructuralRevision,
+      revision: currentFileRevision,
+      depRevisions,
     });
 
     return dae;
@@ -747,29 +915,26 @@ export class Context {
   load(input: string, resourceId?: string): Tree {
     const uri = resourceId ?? "synthetic-" + Math.random().toString();
     const prevText = this.#fileTexts.get(uri);
-    let editRanges: { startByte: number; endByte: number }[] | undefined = undefined;
+    let editRanges: { startByte: number; endByte: number; delta?: number }[] | undefined = undefined;
 
     if (prevText !== undefined && prevText !== input) {
-      let prefixLen = 0;
-      const minLen = Math.min(prevText.length, input.length);
-      while (prefixLen < minLen && prevText.charCodeAt(prefixLen) === input.charCodeAt(prefixLen)) {
-        prefixLen++;
-      }
-      let suffixLen = 0;
-      while (
-        suffixLen < minLen - prefixLen &&
-        prevText.charCodeAt(prevText.length - 1 - suffixLen) === input.charCodeAt(input.length - 1 - suffixLen)
-      ) {
-        suffixLen++;
-      }
-      const editStart = prefixLen;
-      const editEnd = input.length - suffixLen;
-      editRanges = [{ startByte: editStart, endByte: Math.max(editStart, editEnd) }];
+      editRanges = computeEditRanges(prevText, input);
       this.#fileDeltas.set(uri, input.length - prevText.length);
     }
     this.#fileTexts.set(uri, input);
 
-    const tree = this.parse(".mo", input);
+    const oldTree = this.#trees.get(uri);
+    let editBounds: { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string } | undefined = undefined;
+    if (editRanges && editRanges.length > 0 && prevText !== undefined) {
+      const editStart = editRanges[0].startByte;
+      const lastRange = editRanges[editRanges.length - 1];
+      const editNewEnd = lastRange.endByte;
+      const totalDelta = input.length - prevText.length;
+      const editOldEnd = editNewEnd - totalDelta;
+      editBounds = { editStart, editOldEnd, editNewEnd, uri };
+    }
+
+    const tree = this.parse(".mo", input, oldTree, editBounds);
     this.#trees.set(uri, tree);
 
     this.#workspaceIndex.register(uri, () => tree.rootNode as any, undefined, editRanges);
@@ -820,11 +985,24 @@ export class Context {
    * @param extname - The file extension determining which parser to use.
    * @param input - The source code to parse.
    * @param oldTree - An optional previous tree-sitter Tree for incremental parsing.
+   * @param editBounds - Optional edit bounds for native WASM tree splicing.
    * @returns The parsed tree-sitter Tree.
    */
-  parse(extname: string, input: string, oldTree?: Tree): Tree {
+  parse(
+    extname: string,
+    input: string,
+    oldTree?: Tree,
+    editBounds?: { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string },
+  ): Tree {
     const parser = this.getParser(extname);
-    return parser.parse(input, oldTree, { bufferSize: input.length * 2 });
+    return (parser as any).parse(
+      input,
+      oldTree,
+      editBounds?.editStart ?? 0,
+      editBounds?.editOldEnd ?? 0,
+      editBounds?.editNewEnd ?? 0,
+      editBounds?.uri ?? "",
+    );
   }
 
   /**

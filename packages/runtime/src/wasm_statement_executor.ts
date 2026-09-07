@@ -914,7 +914,39 @@ export function executeArenaCEvalStatements(
         const targetKind = arena.getExprKind(targetExprId);
         if (targetKind === ExprKind.Name) {
           const name = arena.interner.resolve(arena.getExprData1(targetExprId));
-          if (name) env.set(name, value);
+          if (name) {
+            const match = name.match(/^([^[\]]+)\[([^\]]+)\]$/);
+            if (match && match[1] && match[2]) {
+              const baseName = match[1];
+              const rawIndices = match[2].split(",").map((s) => s.trim());
+              const subscripts: number[] = [];
+              let ok = true;
+              for (const rawIdx of rawIndices) {
+                if (env.has(rawIdx)) {
+                  const ev = env.get(rawIdx);
+                  if (typeof ev === "number") subscripts.push(ev);
+                  else {
+                    ok = false;
+                    break;
+                  }
+                } else {
+                  const num = Number(rawIdx);
+                  if (!isNaN(num)) subscripts.push(num);
+                  else {
+                    ok = false;
+                    break;
+                  }
+                }
+              }
+              if (ok) {
+                const currentArr = env.get(baseName) ?? [];
+                const updatedArr = updateNestedArray(currentArr, subscripts, value);
+                env.set(baseName, updatedArr);
+              }
+            } else {
+              env.set(name, value);
+            }
+          }
         } else if (targetKind === ExprKind.Subscript) {
           let currentExprId = targetExprId;
           const subscripts: number[] = [];
@@ -1230,12 +1262,72 @@ export function executeArenaCEvalStatements(
         }
         break;
       }
-
       case StmtKind.Block:
         break;
     }
 
     i = nextIdx;
+  }
+}
+
+/** Collect all variable names referenced in an arena expression. */
+function collectExprVarNames(arena: DAEBuilder, exprId: number, names: Set<string>): void {
+  if (exprId < 0) return;
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.Name: {
+      const nameId = arena.getExprData1(exprId);
+      const str = arena.interner.resolve(nameId);
+      if (str) names.add(str);
+      break;
+    }
+    case ExprKind.Unary:
+    case ExprKind.Negate: {
+      collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+      break;
+    }
+    case ExprKind.Der:
+    case ExprKind.Pre: {
+      collectExprVarNames(arena, arena.getExprData1(exprId), names);
+      break;
+    }
+    case ExprKind.Binary: {
+      collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+      collectExprVarNames(arena, arena.getExprRight(exprId), names);
+      break;
+    }
+    case ExprKind.Call: {
+      const count = arena.getExprRight(exprId);
+      if (count > 0) {
+        collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+        for (let i = 1; i < count; i++) {
+          collectExprVarNames(arena, arena.getExprLeft(exprId + i), names);
+        }
+      }
+      break;
+    }
+    case ExprKind.IfElse: {
+      collectExprVarNames(arena, arena.getExprData1(exprId), names);
+      collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+      collectExprVarNames(arena, arena.getExprRight(exprId), names);
+      break;
+    }
+    case ExprKind.ArrayCtor:
+    case ExprKind.Tuple: {
+      const count = arena.getExprData1(exprId);
+      if (count > 0) {
+        collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+        for (let i = 1; i < count; i++) {
+          collectExprVarNames(arena, arena.getExprLeft(exprId + i), names);
+        }
+      }
+      break;
+    }
+    case ExprKind.Subscript: {
+      collectExprVarNames(arena, arena.getExprData1(exprId), names);
+      collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+      break;
+    }
   }
 }
 
@@ -1278,7 +1370,72 @@ export function evaluateArenaFunctionCall(
       }
     }
 
+    let hasVectorizedArgs = false;
+    let vectorizedShape: number[] | null = null;
+    if (argValues.length === expectedInputsCount) {
+      let inIdx = 0;
+      for (let i = 0; i < funcArena.varCount; i++) {
+        if (funcArena.isVarRemoved(i) || funcArena.getVarCausality(i) !== 1 /* Input */) continue;
+        const expectedShape = funcArena.getVarShape(i);
+        const arg = argValues[inIdx];
+        const argShape: number[] = [];
+        let curr: any = arg;
+        while (Array.isArray(curr)) {
+          argShape.push(curr.length);
+          curr = curr[0];
+        }
+        if (argShape.length > expectedShape.length) {
+          const extraDims = argShape.slice(0, argShape.length - expectedShape.length);
+          if (!vectorizedShape || extraDims.length > vectorizedShape.length) {
+            vectorizedShape = extraDims;
+          }
+          hasVectorizedArgs = true;
+        }
+        inIdx++;
+      }
+    }
+
+    if (hasVectorizedArgs && vectorizedShape && vectorizedShape.length > 0) {
+      const evalVectorized = (currentPrefixIndices: number[], dimIndex: number): ArenaValue => {
+        if (dimIndex === vectorizedShape!.length) {
+          let argIdx = 0;
+          const sliceArgs: ArenaValue[] = [];
+          for (let i = 0; i < funcArena.varCount; i++) {
+            if (funcArena.isVarRemoved(i) || funcArena.getVarCausality(i) !== 1) continue;
+            const expectedShape = funcArena.getVarShape(i);
+            let val = argValues[argIdx];
+            const argShape: number[] = [];
+            let curr: any = val;
+            while (Array.isArray(curr)) {
+              argShape.push(curr.length);
+              curr = curr[0];
+            }
+            if (argShape.length > expectedShape.length) {
+              for (const idx of currentPrefixIndices) {
+                if (Array.isArray(val)) {
+                  val = val[idx];
+                }
+              }
+            }
+            sliceArgs.push(val);
+            argIdx++;
+          }
+          return evaluateArenaFunctionCall(dae, funcNameId, sliceArgs, db, scopeId) as ArenaValue;
+        }
+
+        const count = vectorizedShape![dimIndex]!;
+        const res: ArenaValue[] = [];
+        for (let k = 0; k < count; k++) {
+          res.push(evalVectorized([...currentPrefixIndices, k], dimIndex + 1));
+        }
+        return res;
+      };
+
+      return evalVectorized([], 0);
+    }
+
     let inputIndex = 0;
+    const unprovidedInputs: { name: string; exprId: number; defaultVal: ArenaValue; deps: Set<string> }[] = [];
 
     for (let i = 0; i < funcArena.varCount; i++) {
       if (funcArena.isVarRemoved(i)) continue;
@@ -1288,9 +1445,14 @@ export function evaluateArenaFunctionCall(
       const startExprId = funcArena.getVarExpression(i) as number | undefined;
 
       let defaultVal: ArenaValue = 0;
-      const type = funcArena.getVarType(i);
-      if (type === VarType.Boolean) defaultVal = false;
-      else if (type === VarType.String) defaultVal = "";
+      const shape = funcArena.getVarShape(i);
+      if (shape && shape.length > 0) {
+        defaultVal = [];
+      } else {
+        const type = funcArena.getVarType(i);
+        if (type === VarType.Boolean) defaultVal = false;
+        else if (type === VarType.String) defaultVal = "";
+      }
 
       if (causality === 1 /* Input */) {
         let val: ArenaValue | undefined;
@@ -1304,17 +1466,17 @@ export function evaluateArenaFunctionCall(
             };
             argValues.forEach(flattenArg);
           }
-          val = flatArgs[flatArgIndex++];
+          if (flatArgIndex < flatArgs.length) {
+            val = flatArgs[flatArgIndex++];
+          }
         }
 
         if (val !== undefined) {
           env.set(name, val);
         } else if (typeof startExprId === "number" && startExprId !== -1) {
-          env.set(
-            name,
-            evaluateArenaExpression(funcArena, startExprId, env, db, scopeId, undefined, false, functionLookup) ??
-              defaultVal,
-          );
+          const deps = new Set<string>();
+          collectExprVarNames(funcArena, startExprId, deps);
+          unprovidedInputs.push({ name, exprId: startExprId, defaultVal, deps });
         } else {
           env.set(name, defaultVal);
         }
@@ -1329,6 +1491,46 @@ export function evaluateArenaFunctionCall(
         } else {
           env.set(name, defaultVal);
         }
+      }
+    }
+
+    if (unprovidedInputs.length > 0) {
+      const unprovidedMap = new Map<string, { exprId: number; defaultVal: ArenaValue; deps: Set<string> }>();
+      for (const item of unprovidedInputs) {
+        unprovidedMap.set(item.name, item);
+      }
+
+      const visiting = new Set<string>();
+      const visited = new Set<string>();
+
+      const resolveInput = (inputName: string) => {
+        if (visited.has(inputName) || env.has(inputName)) return;
+        if (visiting.has(inputName)) {
+          const err = new Error(`The default value of ${inputName} causes a cyclic dependency.`);
+          (err as any).code = 4009;
+          (err as any).paramName = inputName;
+          throw err;
+        }
+        visiting.add(inputName);
+
+        const info = unprovidedMap.get(inputName);
+        if (info) {
+          for (const dep of info.deps) {
+            if (unprovidedMap.has(dep)) {
+              resolveInput(dep);
+            }
+          }
+          const val =
+            evaluateArenaExpression(funcArena, info.exprId, env, db, scopeId, undefined, false, functionLookup) ??
+            info.defaultVal;
+          env.set(inputName, val);
+        }
+        visiting.delete(inputName);
+        visited.add(inputName);
+      };
+
+      for (const item of unprovidedInputs) {
+        resolveInput(item.name);
       }
     }
 

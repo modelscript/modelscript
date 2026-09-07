@@ -76,7 +76,8 @@ export class ModelicaPortBalancer {
         if (dae.getExprKind(lhsId) === ExprKind.Name && dae.getExprKind(rhsId) === ExprKind.Name) {
           const lhsStr = dae.interner.resolve(dae.getExprData1(lhsId));
           const rhsStr = dae.interner.resolve(dae.getExprData1(rhsId));
-          if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip")) {
+          const isExactVar = dae.getVarIdxByName(lhsStr) !== -1 && dae.getVarIdxByName(rhsStr) !== -1;
+          if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip") && !isExactVar) {
             outsideOutsidePairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
           } else {
             connectPairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
@@ -85,20 +86,32 @@ export class ModelicaPortBalancer {
       }
     }
 
-    // 2. Build a prefix map to quickly locate hierarchical descendants without O(N^2) scanning
+    // 2. Build a prefix map ONLY for needed connector prefixes to avoid O(N) allocations
+    const neededPrefixes = new Set<string>();
+    for (const [fromStrId, toStrId] of connectPairs) {
+      const fromStr = dae.interner.resolve(fromStrId);
+      const toStr = dae.interner.resolve(toStrId);
+      if (dae.getVarIdxByName(fromStr) === -1 || dae.getVarIdxByName(toStr) === -1) {
+        neededPrefixes.add(fromStr);
+      }
+    }
+
     const prefixMap = new Map<string, number[]>();
-    for (let i = 0; i < dae.varCount; i++) {
-      const varName = dae.getVarName(i);
-      let dot = varName.indexOf(".");
-      while (dot !== -1) {
-        const prefix = varName.substring(0, dot);
-        let arr = prefixMap.get(prefix);
-        if (!arr) {
-          arr = [];
-          prefixMap.set(prefix, arr);
+    if (neededPrefixes.size > 0) {
+      for (const prefix of neededPrefixes) {
+        prefixMap.set(prefix, []);
+      }
+      for (let i = 0; i < dae.varCount; i++) {
+        const varName = dae.getVarName(i);
+        let dot = varName.indexOf(".");
+        while (dot !== -1) {
+          const prefix = varName.substring(0, dot);
+          const arr = prefixMap.get(prefix);
+          if (arr) {
+            arr.push(i);
+          }
+          dot = varName.indexOf(".", dot + 1);
         }
-        arr.push(i);
-        dot = varName.indexOf(".", dot + 1);
       }
     }
 
@@ -385,6 +398,35 @@ export class ModelicaPortBalancer {
             });
             orderedGroup = [potRoot, ...insideVars, ...outsideVars];
           }
+        } else if (options?.omcCompatibility && group.length > 2) {
+          const counts = new Map<number, number>();
+          for (const [s, t] of resolvedPairs) {
+            counts.set(s, (counts.get(s) ?? 0) + 1);
+            counts.set(t, (counts.get(t) ?? 0) + 1);
+          }
+          let bestVar = potRoot;
+          let bestCount = -1;
+          let tie = false;
+          for (const vIdx of group) {
+            const cnt = counts.get(vIdx) ?? 0;
+            if (cnt > bestCount) {
+              bestCount = cnt;
+              bestVar = vIdx;
+              tie = false;
+            } else if (cnt === bestCount) {
+              tie = true;
+            }
+          }
+          if (bestCount > 1 && !tie) {
+            potRoot = bestVar;
+            const otherVars = group.filter((v) => v !== potRoot);
+            orderedGroup = [potRoot, ...otherVars];
+          } else {
+            const sorted = [...group].sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
+            potRoot = sorted[0]!;
+            const otherVars = group.filter((v) => v !== potRoot);
+            orderedGroup = [potRoot, ...otherVars];
+          }
         }
         const rootExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(potRoot));
         for (const vIdx of orderedGroup) {
@@ -419,6 +461,18 @@ export class ModelicaPortBalancer {
           } else {
             const insideVars = group.filter((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)));
             const outsideVars = group.filter((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
+            if (options?.omcCompatibility) {
+              outsideVars.sort((a, b) => {
+                const nameA = dae.getVarName(a);
+                const nameB = dae.getVarName(b);
+                const mA = nameA.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
+                const mB = nameB.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
+                if (mA && mB && mA[1] === mB[1] && mA[3] === mB[3]) {
+                  return parseInt(mB[2]!, 10) - parseInt(mA[2]!, 10);
+                }
+                return 0;
+              });
+            }
             const orderedVars = [...insideVars, ...outsideVars];
             const first = orderedVars[0]!;
             const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(first));
@@ -684,9 +738,6 @@ export class ModelicaPortBalancer {
               });
             }
           } else {
-            // Flow sums -> unconnected zero flows -> potential equalities
-            flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
-
             // Component precedence for unconnected zero flows: targets first, then source, then others
             const compOrder = new Map<string, number>();
             let rank = 1;
@@ -703,6 +754,11 @@ export class ModelicaPortBalancer {
               }
             }
             zeroFlows.sort((a, b) => {
+              const mA = a.varName.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
+              const mB = b.varName.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
+              if (mA && mB && mA[1] === mB[1] && mA[3] === mB[3]) {
+                return parseInt(mB[2]!, 10) - parseInt(mA[2]!, 10);
+              }
               const compA = a.varName.split(".")[0]!;
               const compB = b.varName.split(".")[0]!;
               const rankA = compOrder.get(compA) ?? 9999;
@@ -710,7 +766,15 @@ export class ModelicaPortBalancer {
               if (rankA !== rankB) return rankA - rankB;
               return a.varName.localeCompare(b.varName);
             });
-            zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+
+            const hasArrayOutside = zeroFlows.some((eq) => /\[\d+\]\./.test(eq.varName));
+            if (hasArrayOutside) {
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+            } else {
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+            }
 
             potentialEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
           }
@@ -726,8 +790,19 @@ export class ModelicaPortBalancer {
         zeroFlows.forEach((eq) =>
           allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.varName) }),
         );
-        allEqs.sort((a, b) => a.varIdx - b.varIdx);
-        allEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+        if (options?.omcCompatibility) {
+          allEqs.sort((a, b) => {
+            const nameA = dae.getExprKind(a.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(a.lhs)) : "";
+            const nameB = dae.getExprKind(b.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(b.lhs)) : "";
+            if (nameA !== nameB) return nameA.localeCompare(nameB);
+            const rhsA = dae.getExprKind(a.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(a.rhs)) : "";
+            const rhsB = dae.getExprKind(b.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(b.rhs)) : "";
+            return rhsA.localeCompare(rhsB);
+          });
+        } else {
+          allEqs.sort((a, b) => a.varIdx - b.varIdx);
+        }
+        allEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
       }
     } else {
       potentialEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));

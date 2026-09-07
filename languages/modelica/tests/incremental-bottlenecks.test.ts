@@ -189,6 +189,74 @@ end BltTest;`;
     console.log("  ✓ Test 3 passed: BLT causal invariance caching verified!");
   }
 
+  // --------------------------------------------------------------------------
+  // Test 4: Cross-Model Scoped Cache Isolation
+  // --------------------------------------------------------------------------
+  {
+    console.log("Test 4: Cross-Model Scoped Cache Isolation...");
+    const ctx = new Context(fs);
+    const uriA = "file:///test/ModelA.mo";
+    const uriB = "file:///test/ModelB.mo";
+
+    const srcA1 = `model ModelA
+  Real a;
+equation
+  a = 1.0;
+end ModelA;`;
+
+    const srcB = `model ModelB
+  Real b;
+equation
+  b = 2.0;
+end ModelB;`;
+
+    ctx.load(srcA1, uriA);
+    ctx.load(srcB, uriB);
+
+    const daeA1 = ctx.flattenArena("ModelA", undefined, uriA);
+    const daeB1 = ctx.flattenArena("ModelB", undefined, uriB);
+    assert(daeA1 !== null && daeB1 !== null);
+
+    const ws = (ctx as any).workspaceIndex;
+    const revA1 = ws.getFileStructuralRevision(uriA);
+    const revB1 = ws.getFileStructuralRevision(uriB);
+
+    const bCacheEntryBefore = (ctx as any)._daeBodyCache?.get(`${uriB}:ModelB`);
+    assert(bCacheEntryBefore, "ModelB must have cached bodySnapshot");
+
+    // Perform a structural edit on ModelA: add a new variable and equation
+    const srcA2 = `model ModelA
+  Real a;
+  Real a2;
+equation
+  a = 1.0;
+  a2 = 5.0;
+end ModelA;`;
+
+    ctx.load(srcA2, uriA);
+
+    // Verify file-scoped structural revision
+    const revA2 = ws.getFileStructuralRevision(uriA);
+    const revB2 = ws.getFileStructuralRevision(uriB);
+    assert(revA2 > revA1, "ModelA file structural revision must have advanced");
+    assert.strictEqual(revB2, revB1, "ModelB file structural revision must remain unchanged");
+
+    // Flatten ModelB -> must hit cache in O(1) without re-flattening!
+    const t0 = performance.now();
+    const daeB2 = ctx.flattenArena("ModelB", undefined, uriB);
+    const bElapsed = performance.now() - t0;
+    console.log(`  -> ModelB cache hit took: ${bElapsed.toFixed(4)} ms`);
+
+    const bCacheEntryAfter = (ctx as any)._daeBodyCache?.get(`${uriB}:ModelB`);
+    assert.strictEqual(
+      bCacheEntryAfter.builder,
+      bCacheEntryBefore.builder,
+      "ModelB bodySnapshot must remain untouched in cache despite structural change in ModelA",
+    );
+    assert.strictEqual(daeB2?.varCount, 1, "ModelB must still have 1 variable");
+    console.log("  ✓ Test 4 passed: Cross-model cache isolation verified!");
+  }
+
   console.log("=== All Incremental Bottlenecks Tests Passed Successfully! ===");
 }
 

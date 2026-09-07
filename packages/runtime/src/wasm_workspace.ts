@@ -153,6 +153,7 @@ export class WasmWorkspaceIndex {
   private nextSymbolId = 1;
   private _version = 0;
   private _structuralRevision = 0;
+  private fileStructuralRevisions = new Map<string, number>();
   private hookMap = new Map<string, IndexerHook>();
   private fileSymbols = new Map<string, SymbolId[]>();
   private unifiedIndex: SymbolIndex = {
@@ -180,6 +181,16 @@ export class WasmWorkspaceIndex {
 
   get structuralRevision(): number {
     return this._structuralRevision;
+  }
+
+  getFileStructuralRevision(uri: string): number {
+    return this.fileStructuralRevisions.get(uri) ?? 0;
+  }
+
+  bumpFileStructuralRevision(uri?: string): void {
+    if (uri) {
+      this.fileStructuralRevisions.set(uri, (this.fileStructuralRevisions.get(uri) ?? 0) + 1);
+    }
   }
 
   get fileCount(): number {
@@ -262,6 +273,7 @@ export class WasmWorkspaceIndex {
     } else {
       this._version++;
       this._structuralRevision++;
+      this.bumpFileStructuralRevision(uri);
     }
   }
 
@@ -584,6 +596,7 @@ export class WasmWorkspaceIndex {
 
     if (!structurallyEqual) {
       this._structuralRevision++;
+      this.bumpFileStructuralRevision(uri);
     }
   }
 
@@ -644,6 +657,8 @@ export class WasmWorkspaceIndex {
     );
     this._version++;
     this._structuralRevision++;
+    const fileUri = this.idToUri.get(fileId);
+    if (fileUri) this.bumpFileStructuralRevision(fileUri);
     return stubId;
   }
 
@@ -751,6 +766,16 @@ export class UnifiedWorkspace {
       if (ws && typeof ws.structuralRevision === "number") r += ws.structuralRevision;
     }
     return r;
+  }
+
+  getFileStructuralRevision(uri: string): number {
+    for (const ws of this.workspaces.values()) {
+      if (ws && typeof (ws as any).getFileStructuralRevision === "function") {
+        const rev = (ws as any).getFileStructuralRevision(uri);
+        if (rev > 0) return rev;
+      }
+    }
+    return 0;
   }
 
   registerWorkspace(language: string, index: any, config?: any): void {

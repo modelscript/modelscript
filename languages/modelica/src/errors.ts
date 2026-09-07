@@ -124,6 +124,13 @@ export const ModelicaErrorCode = {
     message: (modName: string, expectedType: string, actualType: string) =>
       `Type mismatch: '${modName}' expects type '${expectedType}' but got '${actualType}'.`,
   },
+  TYPE_MISMATCH_MODIFIER_BINDING: {
+    code: 3002,
+    rule: "type-mismatch-modifier-binding",
+    severity: "error",
+    message: (compName: string, expectedType: string, exprText: string, actualType: string) =>
+      `Type mismatch in modifier of component ${compName}, expected type ${expectedType}, got modifier ${exprText} of type ${actualType}.`,
+  },
   NOT_PLUG_COMPATIBLE: {
     code: 3003,
     rule: "not-plug-compatible",

@@ -706,12 +706,8 @@ export function getSequenceElements(
 ): number[] {
   if (count === 0) return [];
   const elements = [firstElement];
-  const kind = dae.getExprKind(baseExprId);
-  const redirect = dae.getExprRight(baseExprId);
-  const usesRedirect = kind === ExprKind.Call || kind === ExprKind.Range || kind === ExprKind.ArrayCtor;
-  const actualBase = usesRedirect && redirect >= 0 ? redirect : baseExprId;
   for (let i = 1; i < count; i++) {
-    const tupleId = actualBase + i;
+    const tupleId = baseExprId + i;
     elements.push(dae.getExprLeft(tupleId));
   }
   return elements;
@@ -1475,19 +1471,33 @@ export function evaluateArenaExpression(
           const varName = dae.interner.resolve(dae.getExprData1(firstArgId));
           if (varName) {
             let shape: number[] | null = null;
-            const varIdx = dae.getVarIdxByName(varName);
-            if (varIdx >= 0) {
-              const varShape = dae.getVarShape(varIdx);
-              if (varShape && varShape.length > 0 && !varShape.includes(0)) shape = varShape;
-            } else if (dae.hasArrayElements(varName)) {
-              const elements = dae.getArrayElementIndices(varName);
-              if (elements.length > 0) {
-                const lastIdx = elements[elements.length - 1];
-                if (lastIdx !== undefined) {
-                  const lastElemName = dae.getVarName(lastIdx);
-                  const match = lastElemName.match(/\[([\d,]+)\]$/);
-                  if (match && match[1]) {
-                    shape = match[1].split(",").map(Number);
+            if (parameters && parameters.has(varName)) {
+              const pVal = parameters.get(varName);
+              if (Array.isArray(pVal)) {
+                const valShape: number[] = [];
+                let cur: any = pVal;
+                while (Array.isArray(cur)) {
+                  valShape.push(cur.length);
+                  cur = cur[0];
+                }
+                shape = valShape;
+              }
+            }
+            if (!shape) {
+              const varIdx = dae.getVarIdxByName(varName);
+              if (varIdx >= 0) {
+                const varShape = dae.getVarShape(varIdx);
+                if (varShape && varShape.length > 0 && !varShape.includes(0)) shape = varShape;
+              } else if (dae.hasArrayElements(varName)) {
+                const elements = dae.getArrayElementIndices(varName);
+                if (elements.length > 0) {
+                  const lastIdx = elements[elements.length - 1];
+                  if (lastIdx !== undefined) {
+                    const lastElemName = dae.getVarName(lastIdx);
+                    const match = lastElemName.match(/\[([\d,]+)\]$/);
+                    if (match && match[1]) {
+                      shape = match[1].split(",").map(Number);
+                    }
                   }
                 }
               }
@@ -1625,6 +1635,22 @@ export function evaluateArenaExpression(
         }
       }
 
+      return null;
+    }
+
+    case ExprKind.Negate: {
+      const childId = dae.getExprLeft(exprId);
+      const childVal = evaluateArenaExpression(
+        dae,
+        childId,
+        parameters,
+        db,
+        scopeId,
+        visitedVars,
+        onlyConstants,
+        functionLookup,
+      );
+      if (typeof childVal === "number") return -childVal;
       return null;
     }
 

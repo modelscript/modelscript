@@ -7,6 +7,7 @@
 
 import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
 import { BinOp, DAEBuilder, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
+import { evaluateArenaFunctionCall } from "./wasm_statement_executor.js";
 
 export type ArenaConstantValue = number | boolean | string | ArenaConstantValue[];
 
@@ -288,8 +289,9 @@ export function evaluateConstantArenaExpression(
         const n = Math.trunc(a3);
         if (n >= 2) {
           const result: number[] = [];
+          const step = (a2 - a1) / (n - 1);
           for (let i = 0; i < n; i++) {
-            result.push(a1 + (i / (n - 1)) * (a2 - a1));
+            result.push(i === 0 ? a1 : i === n - 1 ? a2 : a1 + i * step);
           }
           return result;
         }
@@ -309,6 +311,7 @@ export function evaluateConstantArenaExpression(
       );
       if (typeof val === "number") return val;
       if (typeof val === "boolean") return val ? 1.0 : 0.0;
+      if (Array.isArray(val)) return val.map((v) => (typeof v === "number" ? v : Number(v)));
       return null;
     }
 
@@ -433,6 +436,33 @@ export function evaluateConstantArenaExpression(
           return evalMathBuiltin(funcName, arg1, arg2);
         }
       }
+
+      const fnBridge = arena.getFunction(funcName);
+      if (fnBridge) {
+        const args: any[] = [];
+        let allOk = true;
+        for (let i = 0; i < argCount; i++) {
+          const val = evaluateConstantArenaExpression(
+            arena,
+            getCallArg(i),
+            paramMap,
+            nameToIdx,
+            visitedDepth + 1,
+            db,
+            scopeId,
+          );
+          if (val === null) {
+            allOk = false;
+            break;
+          }
+          args.push(val);
+        }
+        if (allOk) {
+          const fnInternId = arena.interner.intern(funcName);
+          const res = evaluateArenaFunctionCall(arena, fnInternId, args, db, scopeId);
+          if (res !== null) return res as any;
+        }
+      }
     }
   }
 
@@ -548,6 +578,13 @@ export function substituteArenaConstants(
       const cond = substituteArenaConstants(arena, arena.getExprData1(exprId), constMap, nameToIdx);
       const left = substituteArenaConstants(arena, arena.getExprLeft(exprId), constMap, nameToIdx);
       const right = substituteArenaConstants(arena, arena.getExprRight(exprId), constMap, nameToIdx);
+      const condKind = arena.getExprKind(cond);
+      if (condKind === ExprKind.BoolLiteral) {
+        return arena.getExprData1(cond) !== 0 ? left : right;
+      }
+      if (condKind === ExprKind.IntLiteral) {
+        return arena.getExprData1(cond) !== 0 ? left : right;
+      }
       if (
         cond !== arena.getExprData1(exprId) ||
         left !== arena.getExprLeft(exprId) ||
@@ -602,6 +639,23 @@ export function substituteArenaConstants(
   }
 }
 
+function arrayValueToArenaExpr(arena: DAEBuilder, val: any, varType: VarType): number {
+  if (Array.isArray(val)) {
+    const elemIds = val.map((item) => arrayValueToArenaExpr(arena, item, varType));
+    return arena.addArrayCtorExpr(elemIds);
+  }
+  if (typeof val === "number") {
+    return varType === VarType.Integer ? arena.addIntLiteral(Math.trunc(val)) : arena.addRealLiteral(val);
+  }
+  if (typeof val === "boolean") {
+    return arena.addBoolLiteral(val);
+  }
+  if (typeof val === "string") {
+    return arena.addStringLiteral(val);
+  }
+  return arena.addRealLiteral(Number(val));
+}
+
 /**
  * In-place constant fold for a single equation in the arena.
  */
@@ -644,7 +698,9 @@ export function foldSingleArenaEquation(
           if (varIdx !== undefined) varType = arena.getVarType(varIdx);
         }
         let newRhs: number;
-        if (varType === VarType.Boolean && typeof foldedRhs === "boolean") {
+        if (Array.isArray(foldedRhs)) {
+          newRhs = arrayValueToArenaExpr(arena, foldedRhs, varType);
+        } else if (varType === VarType.Boolean && typeof foldedRhs === "boolean") {
           newRhs = arena.addBoolLiteral(foldedRhs);
         } else if (varType === VarType.Integer && typeof foldedRhs === "number") {
           newRhs = arena.addIntLiteral(Math.trunc(foldedRhs));
@@ -750,6 +806,7 @@ export function foldArenaConstants(
 
   const paramMap = new Map<string, number>();
   const constMap = new Map<string, number>();
+  const finalParamOrConstMap = new Map<string, number>();
 
   let changed = true;
   let iterations = 0;
@@ -761,6 +818,7 @@ export function foldArenaConstants(
     // 1. Update parameter map from current constant and parameter variables
     paramMap.clear();
     constMap.clear();
+    finalParamOrConstMap.clear();
     for (let i = 0; i < arena.varCount; i++) {
       if (arena.isVarRemoved(i)) continue;
       const v = arena.getVarVariability(i);
@@ -790,6 +848,9 @@ export function foldArenaConstants(
             if (typeof foldedValue === "number") {
               paramMap.set(name, foldedValue);
               if (v === Variability.Constant) constMap.set(name, foldedValue);
+              if (v === Variability.Constant || (v === Variability.Parameter && arena.isVarFinal(i))) {
+                finalParamOrConstMap.set(name, foldedValue);
+              }
               if (arena.getVarStartValue(i) !== foldedValue) {
                 arena.setVarStartValue(i, foldedValue);
                 changed = true;
@@ -799,6 +860,9 @@ export function foldArenaConstants(
               const numVal = foldedValue ? 1.0 : 0.0;
               paramMap.set(name, numVal);
               if (v === Variability.Constant) constMap.set(name, numVal);
+              if (v === Variability.Constant || (v === Variability.Parameter && arena.isVarFinal(i))) {
+                finalParamOrConstMap.set(name, numVal);
+              }
               if (arena.getVarStartValue(i) !== numVal) {
                 arena.setVarStartValue(i, numVal);
                 changed = true;
@@ -810,6 +874,9 @@ export function foldArenaConstants(
         if (v === Variability.Constant) {
           paramMap.set(name, arena.getVarStartValue(i));
           constMap.set(name, arena.getVarStartValue(i));
+          finalParamOrConstMap.set(name, arena.getVarStartValue(i));
+        } else if (v === Variability.Parameter && arena.isVarFinal(i)) {
+          finalParamOrConstMap.set(name, arena.getVarStartValue(i));
         }
       }
     }
@@ -859,11 +926,17 @@ export function foldArenaConstants(
             arena.setVarExpression(i, litId);
             paramMap.set(arena.getVarName(i), foldedValue);
             if (v === Variability.Constant) constMap.set(arena.getVarName(i), foldedValue);
+            if (v === Variability.Constant || (v === Variability.Parameter && arena.isVarFinal(i))) {
+              finalParamOrConstMap.set(arena.getVarName(i), foldedValue);
+            }
           } else if (typeof foldedValue === "boolean") {
             const litId = arena.addExpression(ExprKind.BoolLiteral, foldedValue ? 1 : 0);
             arena.setVarExpression(i, litId);
             paramMap.set(arena.getVarName(i), foldedValue ? 1.0 : 0.0);
             if (v === Variability.Constant) constMap.set(arena.getVarName(i), foldedValue ? 1.0 : 0.0);
+            if (v === Variability.Constant || (v === Variability.Parameter && arena.isVarFinal(i))) {
+              finalParamOrConstMap.set(arena.getVarName(i), foldedValue ? 1.0 : 0.0);
+            }
           }
         }
       }
@@ -871,6 +944,7 @@ export function foldArenaConstants(
 
     // 3. Fold equations (LHS == RHS, When bodies, If bodies)
     const eqFoldMap = omcCompatibility ? constMap : paramMap;
+    const ifElseFoldMap = omcCompatibility ? finalParamOrConstMap : paramMap;
     for (let eq = 0; eq < arena.eqCount; eq++) {
       const eqKind = arena.getEqKind(eq);
       if (eqKind === EqKind.Simple || eqKind === EqKind.InitialSimple) {
@@ -890,17 +964,7 @@ export function foldArenaConstants(
 
             let newRhs: number;
             if (Array.isArray(foldedRhs)) {
-              const elemIds: number[] = [];
-              for (const v of foldedRhs) {
-                if (typeof v === "number") {
-                  elemIds.push(
-                    varType === VarType.Integer ? arena.addIntLiteral(Math.trunc(v)) : arena.addRealLiteral(v),
-                  );
-                } else if (typeof v === "boolean") {
-                  elemIds.push(arena.addBoolLiteral(v));
-                }
-              }
-              newRhs = arena.addArrayCtorExpr(elemIds);
+              newRhs = arrayValueToArenaExpr(arena, foldedRhs, varType);
             } else if (varType === VarType.Boolean && typeof foldedRhs === "boolean") {
               newRhs = arena.addBoolLiteral(foldedRhs);
             } else if (varType === VarType.Integer && typeof foldedRhs === "number") {
@@ -918,7 +982,7 @@ export function foldArenaConstants(
             }
           }
 
-          const simplifiedRhs = simplifyArenaIfElse(arena, rhsExpr, paramMap, nameToIdx);
+          const simplifiedRhs = simplifyArenaIfElse(arena, rhsExpr, ifElseFoldMap, nameToIdx);
           if (simplifiedRhs !== rhsExpr) {
             arena.setEqRhs(eq, simplifiedRhs);
             changed = true;
@@ -929,7 +993,7 @@ export function foldArenaConstants(
             arena.setEqRhs(eq, constSubRhs);
             changed = true;
           }
-          const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, paramMap, nameToIdx);
+          const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, ifElseFoldMap, nameToIdx);
           if (simplifiedLhs !== lhsExpr) {
             arena.setEqLhs(eq, simplifiedLhs);
             changed = true;
@@ -956,17 +1020,7 @@ export function foldArenaConstants(
                 db,
                 scopeId,
               );
-              if (foldedRhs === null && omcCompatibility) {
-                foldedRhs = evaluateConstantArenaExpression(
-                  arena,
-                  bodyEq.rhsExprId,
-                  paramMap,
-                  nameToIdx,
-                  0,
-                  db,
-                  scopeId,
-                );
-              }
+
               if (foldedRhs !== null) {
                 let varType = VarType.Real;
                 if (arena.getExprKind(bodyEq.lhsExprId) === ExprKind.Name) {
@@ -979,17 +1033,7 @@ export function foldArenaConstants(
 
                 let newRhs: number;
                 if (Array.isArray(foldedRhs)) {
-                  const elemIds: number[] = [];
-                  for (const v of foldedRhs) {
-                    if (typeof v === "number") {
-                      elemIds.push(
-                        varType === VarType.Integer ? arena.addIntLiteral(Math.trunc(v)) : arena.addRealLiteral(v),
-                      );
-                    } else if (typeof v === "boolean") {
-                      elemIds.push(arena.addBoolLiteral(v));
-                    }
-                  }
-                  newRhs = arena.addArrayCtorExpr(elemIds);
+                  newRhs = arrayValueToArenaExpr(arena, foldedRhs, varType);
                 } else if (varType === VarType.Boolean && typeof foldedRhs === "boolean") {
                   newRhs = arena.addBoolLiteral(foldedRhs);
                 } else if (varType === VarType.Integer && typeof foldedRhs === "number") {
@@ -1004,6 +1048,17 @@ export function foldArenaConstants(
                   bodyEq.rhsExprId = newRhs;
                   changed = true;
                 }
+              }
+
+              const simplifiedRhs = simplifyArenaIfElse(arena, bodyEq.rhsExprId, ifElseFoldMap, nameToIdx);
+              if (simplifiedRhs !== bodyEq.rhsExprId) {
+                bodyEq.rhsExprId = simplifiedRhs;
+                changed = true;
+              }
+              const constSub = substituteArenaConstants(arena, bodyEq.rhsExprId, constMap, nameToIdx);
+              if (constSub !== bodyEq.rhsExprId) {
+                bodyEq.rhsExprId = constSub;
+                changed = true;
               }
             }
           }
@@ -1024,17 +1079,7 @@ export function foldArenaConstants(
                   db,
                   scopeId,
                 );
-                if (foldedRhs === null && omcCompatibility) {
-                  foldedRhs = evaluateConstantArenaExpression(
-                    arena,
-                    bodyEq.rhsExprId,
-                    paramMap,
-                    nameToIdx,
-                    0,
-                    db,
-                    scopeId,
-                  );
-                }
+
                 if (foldedRhs !== null) {
                   let varType = VarType.Real;
                   if (arena.getExprKind(bodyEq.lhsExprId) === ExprKind.Name) {
@@ -1047,17 +1092,7 @@ export function foldArenaConstants(
 
                   let newRhs: number;
                   if (Array.isArray(foldedRhs)) {
-                    const elemIds: number[] = [];
-                    for (const v of foldedRhs) {
-                      if (typeof v === "number") {
-                        elemIds.push(
-                          varType === VarType.Integer ? arena.addIntLiteral(Math.trunc(v)) : arena.addRealLiteral(v),
-                        );
-                      } else if (typeof v === "boolean") {
-                        elemIds.push(arena.addBoolLiteral(v));
-                      }
-                    }
-                    newRhs = arena.addArrayCtorExpr(elemIds);
+                    newRhs = arrayValueToArenaExpr(arena, foldedRhs, varType);
                   } else if (varType === VarType.Boolean && typeof foldedRhs === "boolean") {
                     newRhs = arena.addBoolLiteral(foldedRhs);
                   } else if (varType === VarType.Integer && typeof foldedRhs === "number") {
@@ -1072,6 +1107,17 @@ export function foldArenaConstants(
                     bodyEq.rhsExprId = newRhs;
                     changed = true;
                   }
+                }
+
+                const simplifiedRhs = simplifyArenaIfElse(arena, bodyEq.rhsExprId, ifElseFoldMap, nameToIdx);
+                if (simplifiedRhs !== bodyEq.rhsExprId) {
+                  bodyEq.rhsExprId = simplifiedRhs;
+                  changed = true;
+                }
+                const constSub = substituteArenaConstants(arena, bodyEq.rhsExprId, constMap, nameToIdx);
+                if (constSub !== bodyEq.rhsExprId) {
+                  bodyEq.rhsExprId = constSub;
+                  changed = true;
                 }
               }
             }
@@ -1210,6 +1256,22 @@ function getArrayElements(dae: DAEBuilder, exprId: number): number[] | null {
     const elements: number[] = [];
     for (let i = 0; i < count; i++) {
       elements.push(i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i));
+    }
+    let hasNested = false;
+    for (const e of elements) {
+      if (dae.getExprKind(e) === ExprKind.ArrayCtor || getArrayElements(dae, e) !== null) {
+        hasNested = true;
+        break;
+      }
+    }
+    if (hasNested) {
+      const flattened: number[] = [];
+      for (const e of elements) {
+        const sub = getArrayElements(dae, e);
+        if (sub) flattened.push(...sub);
+        else flattened.push(e);
+      }
+      return flattened;
     }
     return elements;
   }
@@ -1391,6 +1453,10 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
       if (count === n) {
         return k === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + k);
       }
+      const elems = getArrayElements(dae, exprId);
+      if (elems && elems.length === n) {
+        return elems[k]!;
+      }
       return exprId;
     }
     case ExprKind.Tuple: {
@@ -1462,7 +1528,51 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
       if (fnName === "/*Real*/" || fnName === "Real") {
         const inner = dae.getExprLeft(exprId);
         const innerElem = getNthExpr(dae, inner, k, n);
+        if (dae.getExprKind(innerElem) === ExprKind.RealLiteral) {
+          return innerElem;
+        }
+        if (dae.getExprKind(innerElem) === ExprKind.IntLiteral) {
+          return dae.addRealLiteral(dae.getExprData1(innerElem));
+        }
         return dae.addCallExpr(fnName, [innerElem]);
+      }
+      if (fnName === "linspace" && argCount >= 2) {
+        const startExpr = dae.getExprLeft(exprId);
+        const stopExpr = dae.getExprLeft(exprId + 1);
+        const evalNum = (id: number): number | null => {
+          const knd = dae.getExprKind(id);
+          if (knd === ExprKind.IntLiteral) return dae.getExprData1(id);
+          if (knd === ExprKind.RealLiteral) return dae.getExprRealValue(id);
+          if (knd === ExprKind.Negate) {
+            const v = evalNum(dae.getExprLeft(id));
+            return v !== null ? -v : null;
+          }
+          if (knd === ExprKind.Name) {
+            const nm = dae.interner.resolve(dae.getExprData1(id));
+            if (nm) {
+              const vi = dae.getVarIdxByName(nm);
+              if (vi >= 0) {
+                const bx = dae.getVarExpression(vi);
+                if (bx >= 0) return evalNum(bx);
+                const sv = dae.getVarStartValue(vi);
+                if (sv !== 0) return sv;
+              }
+            }
+          }
+          return null;
+        };
+        const sVal = evalNum(startExpr);
+        const eVal = evalNum(stopExpr);
+        let nVal = n;
+        if (argCount >= 3) {
+          const argN = evalNum(dae.getExprLeft(exprId + 2));
+          if (argN !== null && argN >= 2) nVal = Math.trunc(argN);
+        }
+        if (sVal !== null && eVal !== null && nVal >= 2) {
+          const step = (eVal - sVal) / (nVal - 1);
+          const val = k === 0 ? sVal : k === nVal - 1 ? eVal : sVal + k * step;
+          return dae.addRealLiteral(val);
+        }
       }
       if (fnName === "fill" && argCount >= 2) {
         const valExprId = dae.getExprLeft(exprId);
@@ -1783,10 +1893,14 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
   }
 
   const checkShape = (id: number) => {
-    if (dae.getExprKind(id) === ExprKind.Name) {
+    if (id < 0) return null;
+    const kind = dae.getExprKind(id);
+    if (kind === ExprKind.Name) {
       const name = dae.interner.resolve(dae.getExprData1(id));
-      if (name && arrayShapes.has(name)) {
-        return arrayShapes.get(name)!;
+      const idx = dae.lookupVariable(name);
+      if (idx >= 0) {
+        const s = dae.getVarShape(idx);
+        return s.length > 0 ? s : null;
       }
     }
     return null;
@@ -1798,7 +1912,17 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     rhsId: number,
     eqFlags: number,
     targetList?: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    origEqIdx?: number,
   ) => {
+    const recordEqMeta = (newEqIdx: number) => {
+      if (origEqIdx !== undefined) {
+        const desc = dae.getEqDescription?.(origEqIdx);
+        if (desc) out.setEqDescription(newEqIdx, desc);
+        const range = dae.getEqSourceRange?.(origEqIdx);
+        if (range) out.setEqSourceRange(newEqIdx, range.startByte, range.endByte);
+      }
+    };
+
     const lhsElements = getArrayElements(dae, lhsId);
     const rhsElements = getArrayElements(dae, rhsId);
     if (lhsElements && lhsElements.length > 0) {
@@ -1822,6 +1946,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
         } else {
           out.addEquation(kind, newLhs, newRhs, eqFlags);
+          recordEqMeta(out.eqCount - 1);
         }
       }
       return;
@@ -1848,6 +1973,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
         } else {
           out.addEquation(kind, newLhs, newRhs, eqFlags);
+          recordEqMeta(out.eqCount - 1);
         }
       }
       return;
@@ -1864,6 +1990,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
         } else {
           out.addEquation(kind, newLhs, newRhs, eqFlags);
+          recordEqMeta(out.eqCount - 1);
         }
       }
       return;
@@ -1880,6 +2007,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
         } else {
           out.addEquation(kind, newLhs, newRhs, eqFlags);
+          recordEqMeta(out.eqCount - 1);
         }
       }
     } else {
@@ -1889,6 +2017,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
       } else {
         out.addEquation(kind, newLhs, newRhs, eqFlags);
+        recordEqMeta(out.eqCount - 1);
       }
     }
   };
@@ -1905,6 +2034,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       if (meta) {
         const condId = cloneExpr(meta.conditionExprId, "", null);
         const ifIdx = out.addIfEquation(condId);
+        const ifRange = dae.getEqSourceRange?.(i);
+        if (ifRange) out.setEqSourceRange(ifIdx, ifRange.startByte, ifRange.endByte);
         const outMeta = out.getIfEquationMeta(ifIdx);
         if (outMeta) {
           for (const eq of meta.thenEquations) {
@@ -1933,6 +2064,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       if (meta) {
         const condId = cloneExpr(meta.conditionExprId, "", null);
         const whenIdx = out.addWhenEquation(condId);
+        const whenRange = dae.getEqSourceRange?.(i);
+        if (whenRange) out.setEqSourceRange(whenIdx, whenRange.startByte, whenRange.endByte);
         const outMeta = out.getWhenEquationMeta(whenIdx);
         if (outMeta) {
           for (const eq of meta.bodyEquations) {
@@ -1953,7 +2086,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       }
     }
 
-    emitEquation(kind, lhsId, rhsId, eqFlags);
+    emitEquation(kind, lhsId, rhsId, eqFlags, undefined, i);
   }
 
   for (const node of dae.boundaryNodes) {

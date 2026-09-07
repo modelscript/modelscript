@@ -53,6 +53,7 @@ export enum EqKind {
   Connect = 6,
   InitialSimple = 7,
   InitialFor = 8,
+  InitialFunctionCall = 9,
 }
 
 /** Variable attribute kind tag. */
@@ -392,6 +393,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   private varAttrs = new Map<number, Map<string, number>>();
   private varExpressions = new Map<number, number>();
   private varDescriptions = new Map<number, string>();
+  private eqDescriptions = new Map<number, string>();
   private varCadAnnotations = new Map<number, any>();
   private varCustomTypes = new Map<number, string>();
   private varEnumLiterals = new Map<number, any[]>();
@@ -403,6 +405,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   private varSourceRanges = new Map<number, { startByte: number; endByte: number }>();
   private paramNameToEqs = new Map<string, Set<number>>();
   public origEqRhs = new Map<number, number>();
+  public nameExprIndices: number[] = [];
   public cachedBlt?: {
     sortedEquations: number[];
     blocks: { eqIdxs: number[]; vars: number[] }[];
@@ -892,6 +895,14 @@ export class WasmDaeBridge implements IDaeBuilder {
     return this.eqSourceRanges.get(eqIdx);
   }
 
+  getEqDescription(eqIdx: number): string | undefined {
+    return this.eqDescriptions.get(eqIdx);
+  }
+
+  setEqDescription(eqIdx: number, desc: string): void {
+    this.eqDescriptions.set(eqIdx, desc);
+  }
+
   findEqAtRange(startByte: number, endByte: number): number {
     for (const [idx, range] of this.eqSourceRanges.entries()) {
       if (startByte >= range.startByte && endByte <= range.endByte) {
@@ -1103,7 +1114,11 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   addExpression(kind: ExprKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
     if (!this.exports?.dae_addExpression) return -1;
-    return this.exports.dae_addExpression(this.ptr, kind, data1, left, right);
+    const exprId = this.exports.dae_addExpression(this.ptr, kind, data1, left, right);
+    if (kind === ExprKind.Name && exprId >= 0) {
+      this.nameExprIndices.push(exprId);
+    }
+    return exprId;
   }
 
   addBinaryExpr(op: BinOp, left: number, right: number): number {
@@ -1720,6 +1735,14 @@ export class WasmDaeBridge implements IDaeBuilder {
     for (let i = 0; i < this.stmtCount; i++) {
       copy.addStatement(this.getStmtKind(i), this.getStmtData1(i), this.getStmtLeft(i), this.getStmtRight(i));
     }
+    if (this.cachedBlt) {
+      copy.cachedBlt = {
+        sortedEquations: [...this.cachedBlt.sortedEquations],
+        blocks: this.cachedBlt.blocks.map((b) => ({ eqIdxs: [...b.eqIdxs], vars: [...b.vars] })),
+        varCount: this.cachedBlt.varCount,
+        eqCount: this.cachedBlt.eqCount,
+      };
+    }
     return copy;
   }
 }
@@ -2128,21 +2151,34 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
 
   if (aliasMap.size === 0) return;
 
-  for (let i = 0; i < dae.exprCount; i++) {
-    if (dae.getExprKind(i) === ExprKind.Name) {
-      const nameId = dae.getExprData1(i);
+  const nameIndices = (dae as any).nameExprIndices;
+  if (nameIndices && Array.isArray(nameIndices) && nameIndices.length > 0) {
+    for (const exprId of nameIndices) {
+      const nameId = dae.getExprData1(exprId);
       const rootId = find(nameId);
       if (rootId !== nameId) {
         if (dae.exports?.dae_setExprData1) {
-          dae.exports.dae_setExprData1(dae.ptr, i, rootId);
+          dae.exports.dae_setExprData1(dae.ptr, exprId, rootId);
+        }
+      }
+    }
+  } else {
+    for (let i = 0; i < dae.exprCount; i++) {
+      if (dae.getExprKind(i) === ExprKind.Name) {
+        const nameId = dae.getExprData1(i);
+        const rootId = find(nameId);
+        if (rootId !== nameId) {
+          if (dae.exports?.dae_setExprData1) {
+            dae.exports.dae_setExprData1(dae.ptr, i, rootId);
+          }
         }
       }
     }
   }
 }
 
-export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarType {
-  if (exprId < 0) return VarType.Real;
+export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarType | null {
+  if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
   switch (kind) {
     case ExprKind.RealLiteral:
@@ -2159,7 +2195,12 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
       const nameId = dae.getExprData1(exprId);
       const vIdx = dae.lookupVariable(nameId);
       if (vIdx >= 0) return dae.getVarType(vIdx);
-      return VarType.Real;
+      const nameStr = dae.interner.resolve(nameId);
+      if (nameStr) {
+        const vIdx2 = dae.getVarIdxByName(nameStr);
+        if (vIdx2 >= 0) return dae.getVarType(vIdx2);
+      }
+      return null;
     }
     case ExprKind.Binary: {
       const op = dae.getExprData1(exprId) as BinOp;
@@ -2185,6 +2226,7 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
         case BinOp.ElemPow: {
           const lType = inferArenaExprVarType(dae, dae.getExprLeft(exprId));
           const rType = inferArenaExprVarType(dae, dae.getExprRight(exprId));
+          if (lType === null || rType === null) return null;
           if (lType === VarType.Real || rType === VarType.Real) return VarType.Real;
           if (lType === VarType.Integer && rType === VarType.Integer) {
             return op === BinOp.Div ? VarType.Real : VarType.Integer;
@@ -2192,7 +2234,7 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
           return lType;
         }
       }
-      return VarType.Real;
+      return null;
     }
     case ExprKind.Unary: {
       const uop = dae.getExprData1(exprId) as UnaryOp;
@@ -2204,12 +2246,77 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
       return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
     case ExprKind.IfElse:
       return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+    case ExprKind.ArrayCtor:
+      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+    case ExprKind.Subscript: {
+      const base = dae.getExprData1(exprId) || dae.getExprLeft(exprId);
+      return inferArenaExprVarType(dae, base);
+    }
+    case ExprKind.Call: {
+      const nameId = dae.getExprData1(exprId);
+      const fnName = dae.interner.resolve(nameId);
+      if (
+        fnName === "integer" ||
+        fnName === "floor" ||
+        fnName === "ceil" ||
+        fnName === "round" ||
+        fnName === "div" ||
+        fnName === "mod" ||
+        fnName === "rem" ||
+        fnName === "cardinality" ||
+        fnName === "sign" ||
+        fnName === "size" ||
+        fnName === "ndims" ||
+        fnName === "Integer" ||
+        fnName === "/*Integer*/"
+      ) {
+        return VarType.Integer;
+      }
+      if (fnName === "Boolean" || fnName === "/*Boolean*/") return VarType.Boolean;
+      if (fnName === "String" || fnName === "/*String*/" || fnName === "getInstanceName" || fnName === "typeName") {
+        return VarType.String;
+      }
+      if (
+        fnName === "Real" ||
+        fnName === "/*Real*/" ||
+        fnName === "sin" ||
+        fnName === "cos" ||
+        fnName === "tan" ||
+        fnName === "asin" ||
+        fnName === "acos" ||
+        fnName === "atan" ||
+        fnName === "atan2" ||
+        fnName === "sinh" ||
+        fnName === "cosh" ||
+        fnName === "tanh" ||
+        fnName === "exp" ||
+        fnName === "log" ||
+        fnName === "log10" ||
+        fnName === "sqrt"
+      ) {
+        return VarType.Real;
+      }
+      let fnDae = dae.getFunction(nameId) ?? (fnName ? dae.getFunction(fnName) : undefined);
+      if (!fnDae && fnName && fnName.includes(".")) {
+        const base = fnName.split(".").pop();
+        if (base) fnDae = dae.getFunction(base);
+      }
+      if (fnDae) {
+        for (let i = 0; i < fnDae.varCount; i++) {
+          if (fnDae.getVarCausality(i) === Causality.Output) {
+            return fnDae.getVarType(i);
+          }
+        }
+      }
+      return null;
+    }
     default:
-      return VarType.Real;
+      return null;
   }
 }
 
-export function isAssignableType(source: VarType, target: VarType): boolean {
+export function isAssignableType(source: VarType | null, target: VarType): boolean {
+  if (source === null) return false;
   if (source === target) return true;
   if (source === VarType.Integer && target === VarType.Real) return true;
   return false;
