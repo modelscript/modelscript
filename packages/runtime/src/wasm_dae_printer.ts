@@ -248,7 +248,10 @@ export class ArenaDAEPrinter {
           const ck = a.getExprKind(childId);
           if (ck === ExprKind.Unary) {
             const uop = a.getExprData1(childId) as UnaryOp;
-            if (uop !== UnaryOp.Negate) return true; // `not` etc. need parens
+            if (uop === UnaryOp.Not) {
+              return op !== BinOp.And && op !== BinOp.Or;
+            }
+            if (uop !== UnaryOp.Negate) return true; // other unary ops need parens
             // Negate needs parens on Add, on RHS of Sub to avoid `a - -b`, and inside high-prec ops
             if (op === BinOp.Add) return true;
             if (isRhs && op === BinOp.Sub) return true;

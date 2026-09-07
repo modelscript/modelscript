@@ -48,6 +48,10 @@
       "types": "./dist/codegen/compile_tgg.d.ts",
       "default": "./dist/codegen/compile_tgg.js"
     },
+    "./cpa": {
+      "types": "./dist/codegen/cpa.d.ts",
+      "default": "./dist/codegen/cpa.js"
+    },
     "./egraph": {
       "types": "./dist/codegen/egraph.d.ts",
       "default": "./dist/codegen/egraph.js"

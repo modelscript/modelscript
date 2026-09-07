@@ -1,8 +1,17 @@
+import assert from "node:assert";
+import { describe, it } from "node:test";
 import { compileTGGRules } from "../src/codegen/compile_tgg.js";
 import { tggCompute, tggDefaultVal, tggEq, tggRule, tggTypeMap, type PolyglotConfig } from "../src/dsl/language.js";
 import { PolyglotTransformer } from "../src/transformers/polyglot-transformer.js";
 import { emitModelica, type SysML2PartDef } from "./fixtures/modelica-transformer.js";
 import { emitSysML2, type ModelicaModel } from "./fixtures/sysml2-transformer.js";
+
+const expect = (val: any) => ({
+  toBe: (expected: any) => assert.strictEqual(val, expected),
+  toEqual: (expected: any) => assert.deepStrictEqual(val, expected),
+  toBeDefined: () => assert.notStrictEqual(val, undefined),
+  toContain: (str: string) => assert.ok(String(val).includes(str)),
+});
 
 describe("TGG Polyglot End-to-End Workflow", () => {
   it("should process declarative polyglot config through compilation and transformation", () => {

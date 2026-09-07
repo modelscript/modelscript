@@ -56,6 +56,7 @@ export declare const string_poolCode: string;
 export declare const stubCode: string;
 export declare const tapeCode: string;
 export declare const tearingCode: string;
+export declare const tgg_reconcilerCode: string;
 export declare const trigramCode: string;
 export declare const unparserCode: string;
 export declare const verifierCode: string;

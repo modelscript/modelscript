@@ -152,6 +152,103 @@ export class PolyglotTransformer {
       });
   }
 
+  /** Registered multi-master conflicts waiting for reconciliation */
+  private conflicts = new Map<
+    string,
+    {
+      id: string;
+      sourceVal: any;
+      targetVal: any;
+      ruleName?: string;
+      resolved?: any;
+      isResolved: boolean;
+    }
+  >();
+
+  /**
+   * Records a concurrent modification conflict between source and target models.
+   */
+  recordConflict(id: string, sourceVal: any, targetVal: any, ruleName?: string): void {
+    this.conflicts.set(id, {
+      id,
+      sourceVal,
+      targetVal,
+      ruleName,
+      isResolved: false,
+    });
+  }
+
+  /**
+   * Retrieves all recorded conflict items.
+   */
+  getConflicts(): { id: string; sourceVal: any; targetVal: any; isResolved: boolean; resolved?: any }[] {
+    return Array.from(this.conflicts.values());
+  }
+
+  /**
+   * Manually or programmatically reconciles a recorded conflict.
+   */
+  resolveConflict(id: string, resolution: "source" | "target" | any): void {
+    const item = this.conflicts.get(id);
+    if (!item) return;
+    if (resolution === "source") {
+      item.resolved = item.sourceVal;
+    } else if (resolution === "target") {
+      item.resolved = item.targetVal;
+    } else {
+      item.resolved = resolution;
+    }
+    item.isResolved = true;
+  }
+
+  /**
+   * Evaluates Negative Application Conditions (NACs) for a given rule against a node.
+   * Returns false if any forbidden subgraph / attribute pattern is present.
+   */
+  checkNAC(rule: TGGRuleOptions, node: PolyglotNode): boolean {
+    const vProxy = (name: string) => `__var_${name}`;
+    const constraints = typeof rule.where === "function" ? rule.where(vProxy) : rule.where || [];
+    const nacConstraints = constraints.filter((c) => c.kind === "not");
+
+    for (const nac of nacConstraints) {
+      const [forbiddenPattern] = nac.args;
+      const forbiddenName = typeof forbiddenPattern === "object" ? forbiddenPattern.nodeType : String(forbiddenPattern);
+
+      // Check if node has a child, attribute, or port matching the forbidden pattern
+      const hasMatchingAttribute = (node.attributes || []).some(
+        (a) => a.name === forbiddenName || a.type === forbiddenName,
+      );
+      const hasMatchingPort = (node.ports || []).some((p) => p.name === forbiddenName || p.type === forbiddenName);
+      const hasMatchingComponent = (node.components || []).some(
+        (c) => c.name === forbiddenName || c.typeSpecifier === forbiddenName,
+      );
+
+      if (hasMatchingAttribute || hasMatchingPort || hasMatchingComponent) {
+        return false; // Forbidden pattern present, rule must not apply
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Resolves a multi-hop property path on a polyglot graph node (e.g. "ports/connection/target").
+   */
+  resolvePath(node: PolyglotNode, pathString: string): any {
+    const segments = pathString.split("/");
+    let current: any = node;
+    for (const seg of segments) {
+      if (!current || typeof current !== "object") return null;
+      if (Array.isArray(current)) {
+        current = current.find(
+          (item) => item.name === seg || item.type === seg || item.source === seg || item.target === seg,
+        );
+      } else {
+        current = current[seg];
+      }
+    }
+    return current;
+  }
+
   /**
    * Transforms a generic polyglot node graph into source code for the specified target language.
    *

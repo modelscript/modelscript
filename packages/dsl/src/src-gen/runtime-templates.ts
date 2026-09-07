@@ -5145,6 +5145,7 @@ import { atomicChunkAlloc } from "./arena";
 export const CORR_FLAG_SYNCED: u16 = 0x0001;
 export const CORR_FLAG_STALE: u16 = 0x0002;
 export const CORR_FLAG_USER_OVERRIDE: u16 = 0x0004;
+export const CORR_FLAG_CONFLICT: u16 = 0x0008;
 
 export const CORR_STRIDE = 4;
 export const CORR_SOURCE = 0;
@@ -5270,6 +5271,45 @@ export class CorrespondenceIndex {
   }
 
   @inline
+  isConflicted(slot: u32): boolean {
+    if (slot >= this.count) return false;
+    let offset = slot * CORR_STRIDE + CORR_META;
+    return (this.data.get(offset) & CORR_FLAG_CONFLICT) != 0;
+  }
+
+  @inline
+  markConflict(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * CORR_STRIDE + CORR_META;
+    let meta = this.data.get(offset);
+    let ruleId = (meta >>> 16) as u16;
+    let flags = ((meta & 0xffff) as u16) | CORR_FLAG_CONFLICT;
+    this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+  }
+
+  @inline
+  clearConflict(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * CORR_STRIDE + CORR_META;
+    let meta = this.data.get(offset);
+    let ruleId = (meta >>> 16) as u16;
+    let flags = ((meta & 0xffff) as u16) & ~CORR_FLAG_CONFLICT;
+    this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+  }
+
+  @inline
+  getRevision(slot: u32): u32 {
+    if (slot >= this.count) return 0;
+    return this.data.get(slot * CORR_STRIDE + CORR_REVISION);
+  }
+
+  @inline
+  setRevision(slot: u32, revision: u32): void {
+    if (slot >= this.count) return;
+    this.data.set(slot * CORR_STRIDE + CORR_REVISION, revision);
+  }
+
+  @inline
   reset(): void {
     this.count = 0;
     if (this.sourceToSlot != null) this.sourceToSlot.init();
@@ -5301,6 +5341,18 @@ export function corr_findByTarget(ptr: usize, targetNodeId: u32): u32 {
 
 export function corr_markStale(ptr: usize, sourceNodeId: u32): void {
   changetype<CorrespondenceIndex>(ptr).markStale(sourceNodeId);
+}
+
+export function corr_isConflicted(ptr: usize, slot: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).isConflicted(slot) ? 1 : 0;
+}
+
+export function corr_markConflict(ptr: usize, slot: u32): void {
+  changetype<CorrespondenceIndex>(ptr).markConflict(slot);
+}
+
+export function corr_clearConflict(ptr: usize, slot: u32): void {
+  changetype<CorrespondenceIndex>(ptr).clearConflict(slot);
 }
 
 export function corr_reset(ptr: usize): void {
@@ -30684,6 +30736,83 @@ export function dae_solveTornBlock(daePtr: u32, tornBlockPtr: u32, varValuesPtr:
   return solveTornBlock(changetype<DaeBuilder>(daePtr), changetype<TornBlock>(tornBlockPtr), varValuesPtr, scratchPtr);
 }
 
+`;
+
+export const tgg_reconcilerCode = `/* eslint-disable */
+/**
+ * @fileoverview WASM TGG Multi-Master Conflict Reconciler
+ *
+ * Provides linear-memory conflict detection and constraint-based reconciliation
+ * for concurrent multi-domain edits across the Digital Thread.
+ */
+
+import { CorrespondenceIndex, CORR_FLAG_CONFLICT, CORR_FLAG_SYNCED } from "./correspondence";
+
+export const RECONCILE_STRATEGY_SMT: u32 = 0;
+export const RECONCILE_STRATEGY_SOURCE_WINS: u32 = 1;
+export const RECONCILE_STRATEGY_TARGET_WINS: u32 = 2;
+export const RECONCILE_STRATEGY_NARROWER_RANGE: u32 = 3;
+
+/**
+ * Reconciles concurrent numeric parameter updates by computing continuous interval intersection.
+ * If intervals overlap, resolves to the optimal consensus value and clears the conflict flag.
+ * If disjoint, flags an irreconcilable conflict in the correspondence index.
+ */
+export function tgg_reconcile_interval(
+  slot: u32,
+  srcMin: f64,
+  srcMax: f64,
+  tgtMin: f64,
+  tgtMax: f64,
+  corr: CorrespondenceIndex
+): f64 {
+  let overlapMin: f64 = srcMin > tgtMin ? srcMin : tgtMin;
+  let overlapMax: f64 = srcMax < tgtMax ? srcMax : tgtMax;
+
+  if (overlapMin <= overlapMax) {
+    // Solvable constraint: pick midpoint of overlapping region
+    let consensusVal: f64 = (overlapMin + overlapMax) * 0.5;
+    corr.clearConflict(slot);
+    return consensusVal;
+  }
+
+  // Disjoint / irreconcilable: flag conflict
+  corr.markConflict(slot);
+  return f64.NaN;
+}
+
+/**
+ * Reconciles scalar values based on designated resolution strategy.
+ */
+export function tgg_reconcile_scalar(
+  slot: u32,
+  srcVal: f64,
+  tgtVal: f64,
+  strategy: u32,
+  corr: CorrespondenceIndex
+): f64 {
+  if (srcVal == tgtVal) {
+    corr.clearConflict(slot);
+    return srcVal;
+  }
+
+  if (strategy == RECONCILE_STRATEGY_SOURCE_WINS) {
+    corr.clearConflict(slot);
+    return srcVal;
+  } else if (strategy == RECONCILE_STRATEGY_TARGET_WINS) {
+    corr.clearConflict(slot);
+    return tgtVal;
+  } else if (strategy == RECONCILE_STRATEGY_NARROWER_RANGE) {
+    // Prefer smaller absolute value or narrower deviation
+    let chosen = Math.abs(srcVal) < Math.abs(tgtVal) ? srcVal : tgtVal;
+    corr.clearConflict(slot);
+    return chosen;
+  }
+
+  // Default SMT/strict: differing values without solver resolution constitute a conflict
+  corr.markConflict(slot);
+  return srcVal;
+}
 `;
 
 export const trigramCode = `/**

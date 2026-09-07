@@ -1700,7 +1700,17 @@ export interface TGGPattern {
   children?: TGGPattern[];
 }
 
-export type TGGConstraintKind = "eq" | "typeMap" | "defaultVal" | "formatUri" | "mapList" | "compute";
+export type TGGConstraintKind =
+  | "eq"
+  | "typeMap"
+  | "defaultVal"
+  | "formatUri"
+  | "mapList"
+  | "compute"
+  | "not"
+  | "path"
+  | "forEach"
+  | "reconcile";
 
 export interface TGGConstraint {
   kind: TGGConstraintKind;
@@ -1789,6 +1799,38 @@ export function tggMapList(sourceListVar: any, targetListVar: any, mapper: (item
 
 export function tggCompute(targetVar: any, queryName: string, sourceVar: any): TGGConstraint {
   return { kind: "compute", args: [targetVar, queryName, sourceVar] };
+}
+
+/**
+ * Negative Application Condition (NAC) — ensures forbidden subgraph is absent.
+ */
+export function tggNot(pattern: any): TGGConstraint {
+  return { kind: "not", args: [pattern] };
+}
+
+/**
+ * Property path expression traversing multi-edge non-tree relations.
+ */
+export function tggPath(sourceVar: any, pathString: string, targetVar: any): TGGConstraint {
+  return { kind: "path", args: [sourceVar, pathString, targetVar] };
+}
+
+/**
+ * Multi-amalgamated 1-to-N rule expansion over collections.
+ */
+export function tggForEach(collectionVar: any, itemVar: any, bodyConstraints: TGGConstraint[]): TGGConstraint {
+  return { kind: "forEach", args: [collectionVar, itemVar, bodyConstraints] };
+}
+
+/**
+ * Declarative conflict reconciliation strategy for concurrent multi-master edits.
+ */
+export function tggReconcile(
+  sourceVar: any,
+  targetVar: any,
+  strategy: "smt-simplex" | "source-wins" | "target-wins" | "prefer-narrower-range" = "smt-simplex",
+): TGGConstraint {
+  return { kind: "reconcile", args: [sourceVar, targetVar, strategy] };
 }
 
 // ---------------------------------------------------------------------------

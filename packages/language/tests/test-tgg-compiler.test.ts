@@ -1,5 +1,14 @@
+import assert from "node:assert";
+import { describe, it } from "node:test";
 import { compileTGGRules } from "../src/codegen/compile_tgg.js";
 import { tggDefaultVal, tggEq, tggRule, tggTypeMap } from "../src/dsl/language.js";
+
+const expect = (val: any) => ({
+  toBe: (expected: any) => assert.strictEqual(val, expected),
+  toEqual: (expected: any) => assert.deepStrictEqual(val, expected),
+  toBeDefined: () => assert.notStrictEqual(val, undefined),
+  toContain: (str: string) => assert.ok(String(val).includes(str)),
+});
 
 describe("AOT TGG Compiler", () => {
   it("should compile declarative TGG rules into AssemblyScript dispatch tables", () => {

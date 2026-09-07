@@ -1,10 +1,14 @@
 import { PolyglotConfig, TGGConstraint, TGGRuleOptions } from "../dsl/language.js";
+import { runCPA, type CpaConflict, type CpaReport } from "./cpa.js";
 import { getDJB2Hash } from "./utils.js";
+
+export { runCPA, type CpaConflict, type CpaReport };
 
 export interface CompiledTGGOutput {
   sourceCode: string;
   ruleCount: number;
   ruleNames: string[];
+  cpaReport?: CpaReport;
 }
 
 /**
@@ -17,19 +21,33 @@ export function compileTGGRules(
   options: {
     sourceLang?: string;
     targetLang?: string;
+    strictCpa?: boolean;
   } = {},
 ): CompiledTGGOutput {
   const rules: TGGRuleOptions[] = Array.isArray(config) ? config : config.rules || [];
   const typeMaps = !Array.isArray(config) ? config.typeMaps || {} : {};
 
+  // 1. Run Ahead-of-Time Critical Pair Analysis
+  const cpaReport = runCPA(rules);
+  if (options.strictCpa && cpaReport.hasConflicts) {
+    const errorConflicts = cpaReport.conflicts.filter((c) => c.severity === "error");
+    if (errorConflicts.length > 0) {
+      throw new Error(
+        `Critical Pair Analysis failed with ${errorConflicts.length} error(s):\n` +
+          errorConflicts.map((c) => `  - [${c.kind}] ${c.description}`).join("\n"),
+      );
+    }
+  }
+
   const ruleNames: string[] = [];
   let code = `// ============================================================================\n`;
   code += `// AOT Compiled Triple Graph Grammar (TGG) Polyglot Transformation Kernel\n`;
   code += `// ============================================================================\n`;
-  code += `import { CorrespondenceIndex, CORR_FLAG_SYNCED, CORR_FLAG_STALE } from "./correspondence";\n`;
+  code += `import { CorrespondenceIndex, CORR_FLAG_SYNCED, CORR_FLAG_STALE, CORR_FLAG_CONFLICT } from "./correspondence";\n`;
   code += `import { PolyglotArena } from "./polyglot_arena";\n`;
   code += `import { graph, ModelAPI } from "./graph";\n`;
-  code += `import { getNodeType, getNodeFirstChild, getNodeNextSibling, ast_createNode } from "./arena";\n\n`;
+  code += `import { getNodeType, getNodeFirstChild, getNodeNextSibling, ast_createNode } from "./arena";\n`;
+  code += `import { tgg_reconcile_scalar, tgg_reconcile_interval } from "./tgg_reconciler";\n\n`;
 
   // Helper Proxy to evaluate pattern builder functions during compilation
   const $proxy: any = new Proxy(
@@ -91,6 +109,27 @@ export function compileTGGRules(
       } else if (c.kind === "compute") {
         const [targetVar, queryName, sourceVar] = c.args;
         code += `  // Compute: ${targetVar} = query("${queryName}", ${sourceVar})\n`;
+      } else if (c.kind === "not") {
+        const [forbiddenPattern] = c.args;
+        const evaluatedForbidden =
+          typeof forbiddenPattern === "function" ? forbiddenPattern($proxy, vProxy) : forbiddenPattern;
+        const forbiddenType = evaluatedForbidden?.nodeType || String(forbiddenPattern);
+        const forbiddenHash = getDJB2Hash(forbiddenType);
+        code += `  // NAC: Verify forbidden pattern '${forbiddenType}' is absent\n`;
+        code += `  let checkChild = getNodeFirstChild(sourceNodeId);\n`;
+        code += `  while (checkChild != 0) {\n`;
+        code += `    if (getNodeType(checkChild) == ((${forbiddenHash} & 0xffff) as u16)) return 0;\n`;
+        code += `    checkChild = getNodeNextSibling(checkChild);\n`;
+        code += `  }\n`;
+      } else if (c.kind === "path") {
+        const [sourceVar, pathString, targetVar] = c.args;
+        code += `  // Property path: ${sourceVar} --[${pathString}]--> ${targetVar}\n`;
+      } else if (c.kind === "forEach") {
+        const [collectionVar, itemVar] = c.args;
+        code += `  // Multi-amalgamation: forEach ${itemVar} in ${collectionVar}\n`;
+      } else if (c.kind === "reconcile") {
+        const [sourceVar, targetVar, strategy] = c.args;
+        code += `  // Conflict reconciliation policy: ${sourceVar} <-> ${targetVar} (${strategy})\n`;
       }
     }
 
@@ -117,6 +156,20 @@ export function compileTGGRules(
     code += `  let sourceNodeId = corr.getSource(slot);\n`;
     code += `  let targetNodeId = corr.getTarget(slot);\n`;
     code += `  if (sourceNodeId == 0 || targetNodeId == 0) return;\n`;
+    code += `  \n`;
+    code += `  // If slot is conflicted, attempt reconciliation before propagating\n`;
+    code += `  if (corr.isConflicted(slot)) {\n`;
+    const recConstraint = constraints.find((c) => c.kind === "reconcile");
+    if (recConstraint) {
+      const strat = recConstraint.args[2] || "smt-simplex";
+      const stratNum =
+        strat === "source-wins" ? 1 : strat === "target-wins" ? 2 : strat === "prefer-narrower-range" ? 3 : 0;
+      code += `    tgg_reconcile_scalar(slot, 0.0, 0.0, ${stratNum}, corr);\n`;
+      code += `    if (corr.isConflicted(slot)) return;\n`;
+    } else {
+      code += `    return;\n`;
+    }
+    code += `  }\n`;
     code += `  \n`;
     code += `  // Update target node properties without reallocating\n`;
     code += `  // Reset STALE flag\n`;
@@ -172,11 +225,23 @@ export function compileTGGRules(
   code += `    }\n`;
   code += `  }\n`;
   code += `  return updatedCount;\n`;
+  code += `}\n\n`;
+
+  code += `export function tgg_reconcile_all_conflicts(corr: CorrespondenceIndex, strategy: u32 = 0): u32 {\n`;
+  code += `  let resolvedCount: u32 = 0;\n`;
+  code += `  for (let slot: u32 = 0; slot < corr.count; slot++) {\n`;
+  code += `    if (corr.isConflicted(slot)) {\n`;
+  code += `      tgg_reconcile_scalar(slot, 0.0, 0.0, strategy, corr);\n`;
+  code += `      if (!corr.isConflicted(slot)) resolvedCount++;\n`;
+  code += `    }\n`;
+  code += `  }\n`;
+  code += `  return resolvedCount;\n`;
   code += `}\n`;
 
   return {
     sourceCode: code,
     ruleCount: rules.length,
     ruleNames,
+    cpaReport,
   };
 }

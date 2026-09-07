@@ -9,6 +9,7 @@ export * from "./compile_mcp.js";
 export * from "./compile_rules.js";
 export * from "./compile_tgg.js";
 export * from "./config.js";
+export * from "./cpa.js";
 export * from "./dataflow.js";
 export * from "./egraph.js";
 export * from "./emit_wat.js";
