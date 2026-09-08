@@ -971,10 +971,14 @@ export class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot) {
+  getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
-    const numElements = this.exports.lsp_getDiagnostics(astRoot);
+    const numElements =
+      rangeEnd > rangeStart &&
+      typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rangeStart, rangeEnd)
+        : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
     let memory = new Uint32Array(this.wasmMemory.buffer);
@@ -3389,7 +3393,7 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri) {
+  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri, oldRoot) {
     const getInputBuf =
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
@@ -3414,8 +3418,13 @@ export class LspFacade {
       this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
     this.currentInputLength = text.length;
-    const prevAstRoot = this.getDocumentRoot(uri);
-    let baseRoot = prevAstRoot;
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    let baseRoot =
+      oldRoot !== undefined && oldRoot !== 0
+        ? oldRoot
+        : prevAstRoot !== 0
+          ? prevAstRoot
+          : this.lastAstRoot;
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = text.length;
       baseRoot = 0;
@@ -4547,7 +4556,14 @@ export class TreeSitterParser {
   getLanguage() {
     return this.languageBinding;
   }
-  parse(source, oldTree = null) {
+  parse(
+    source,
+    oldTree = null,
+    editStart = 0,
+    editOldEnd = 0,
+    editNewEnd = 0,
+    uri,
+  ) {
     if (!this.languageBinding) {
       throw new Error("Language not set on Parser. Call setLanguage() first.");
     }
@@ -4563,11 +4579,32 @@ export class TreeSitterParser {
     }
     const code =
       typeof source === "string" ? source : new TextDecoder().decode(source);
-    const astRoot = facade.parse(code);
+    const oldRoot = oldTree
+      ? (oldTree.rootPtr ?? oldTree.rootNode?.id ?? oldTree.rootNode?.ptr ?? 0)
+      : 0;
+    const astRoot = facade.parse(
+      code,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+      uri,
+      oldRoot,
+    );
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
   }
-  reset() {}
+  reset() {
+    if (this.languageBinding) {
+      if (typeof this.languageBinding.resetParser === "function") {
+        this.languageBinding.resetParser();
+      } else if (
+        this.languageBinding.exports &&
+        typeof this.languageBinding.exports.resetParser === "function"
+      ) {
+        this.languageBinding.exports.resetParser();
+      }
+    }
+  }
 }
 export const WasmLanguageBinding = LspFacade;
 export default WasmLanguageBinding;

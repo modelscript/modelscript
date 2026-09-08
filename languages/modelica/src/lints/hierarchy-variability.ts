@@ -6,6 +6,7 @@ import {
   getExpressionVariability,
   getMemberKindInClass,
   hasMatchingConnectEquation,
+  hasTypePrefix,
   isClassKind,
   isDescendantOfInnerClass,
   isDottedVariableDeclared,

@@ -307,7 +307,11 @@ export declare class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot: number): Diagnostic[];
+  getDiagnostics(
+    astRoot: number,
+    rangeStart?: number,
+    rangeEnd?: number,
+  ): Diagnostic[];
   /**
    * Retrieves semantic tokens for syntax highlighting.
    * Returns a raw `Uint32Array` mapped directly from WASM memory for speed.
@@ -839,6 +843,7 @@ export declare class LspFacade {
     editOldEnd?: number,
     editNewEnd?: number,
     uri?: string,
+    oldRoot?: number,
   ): number;
   /**
    * Compares two ASTs generated before and after an edit, and emits
@@ -1056,7 +1061,14 @@ export declare class TreeSitterParser {
   private languageBinding;
   setLanguage(language: any): void;
   getLanguage(): any;
-  parse(source: string | Uint8Array, oldTree?: Tree | null): Tree | null;
+  parse(
+    source: string | Uint8Array,
+    oldTree?: Tree | null,
+    editStart?: number,
+    editOldEnd?: number,
+    editNewEnd?: number,
+    uri?: string,
+  ): Tree | null;
   reset(): void;
 }
 export declare const WasmLanguageBinding: typeof LspFacade;

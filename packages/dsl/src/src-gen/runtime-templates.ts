@@ -1918,7 +1918,7 @@ function cloneNodeInner(nodeId: u32, deep: boolean, depth: i32): u32 {
     let child = getNodeFirstChild(nodeId);
     let prevNewChild: u32 = 0;
     let siblingCount = 0;
-    while (child != 0 && siblingCount++ < 10000) {
+    while (child != 0 && siblingCount++ < 200000) {
       let newChild = cloneNodeInner(child, true, depth + 1);
       if (prevNewChild == 0) {
         setFirstChild(newPtr, newChild);
@@ -9957,7 +9957,7 @@ export class AncestorCursor {
          }
          let child = getNodeFirstChild(current);
          if (child != 0) {
-             if (stackDepth < 256) {
+             if (stackDepth < 4096) {
                  store<u32>(stack + (stackDepth << 2), current);
                  stackDepth++;
              }
@@ -10014,7 +10014,7 @@ for (let i = 0; i < 16; i++) {
   let ptr = heap.alloc(offsetof<AncestorCursor>());
   let cursor = changetype<AncestorCursor>(ptr);
   cursor.isActive = false;
-  cursor.pathStack = heap.alloc(256 * 4) as u32;
+  cursor.pathStack = heap.alloc(4096 * 4) as u32;
   ancestorCursorPool[i] = cursor;
 }
 
@@ -10026,7 +10026,7 @@ export function getAncestors(node: u32, filterType: u16, rootNode: u32): Ancesto
   } else {
     let ptr = heap.alloc(offsetof<AncestorCursor>());
     cursor = changetype<AncestorCursor>(ptr);
-    cursor.pathStack = heap.alloc(256 * 4) as u32;
+    cursor.pathStack = heap.alloc(4096 * 4) as u32;
   }
   cursor.init(node, filterType, rootNode);
   return cursor;
@@ -10074,7 +10074,7 @@ export class DescendantCursor {
   @inline advance(): void {
      let child = getNodeFirstChild(this.current);
      if (child != 0) {
-         if (this.stackDepth < 256) {
+         if (this.stackDepth < 4096) {
              store<u32>(this.stack + (this.stackDepth << 2), this.current);
              this.stackDepth++;
          }
@@ -10111,7 +10111,7 @@ for (let i = 0; i < 16; i++) {
   let ptr = heap.alloc(offsetof<DescendantCursor>());
   let cursor = changetype<DescendantCursor>(ptr);
   cursor.isActive = false;
-  cursor.stack = heap.alloc(256 * 4) as u32;
+  cursor.stack = heap.alloc(4096 * 4) as u32;
   descendantCursorPool[i] = cursor;
 }
 
@@ -10123,7 +10123,7 @@ export function getDescendants(node: u32, filterType: u16): DescendantCursor {
   } else {
     let ptr = heap.alloc(offsetof<DescendantCursor>());
     cursor = changetype<DescendantCursor>(ptr);
-    cursor.stack = heap.alloc(256 * 4) as u32;
+    cursor.stack = heap.alloc(4096 * 4) as u32;
   }
   cursor.init(node, filterType);
   return cursor;
@@ -18330,15 +18330,17 @@ function lsp_clearVisited(): void {
  * @param astRoot The root node pointer of the parsed tree.
  * @returns The number of \`u32\` records inside \`t_lspBinaryBuffer\` (4 u32s per diagnostic).
  */
-function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
+function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart: u32 = 0, rangeEnd: u32 = 0): void {
   if (astRoot == 0) return;
   globalAstRoot = astRoot;
 
-  ensureNodeOffsetMap();
-  if (t_nodeOffsetMapAstRoot != astRoot) {
-    t_nodeOffsetMap.clear();
-    t_nodeOffsetMapAstRoot = astRoot;
-    lsp_populateNodeOffsetMap(astRoot, 0);
+  if (rangeEnd == 0) {
+    ensureNodeOffsetMap();
+    if (t_nodeOffsetMapAstRoot != astRoot) {
+      t_nodeOffsetMap.clear();
+      t_nodeOffsetMapAstRoot = astRoot;
+      lsp_populateNodeOffsetMap(astRoot, 0);
+    }
   }
 
   let prevLen = t_lspBinaryBuffer.length;
@@ -18363,7 +18365,9 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
     let inTainted = getInTaintedFromStack(offsetStackVal);
 
-    t_nodeOffsetMap.set(node as u64, start);
+    if (rangeEnd == 0) {
+      t_nodeOffsetMap.set(node as u64, start);
+    }
 
     if (stackTop > 500000) { break; }
 
@@ -18374,6 +18378,13 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let nodeStart = start;
     let nodeEnd = nodeStart + len;
     let type = getNodeType(node);
+
+    // Range bounding pruning: if outside range and has no error flags, skip subtree
+    if (rangeEnd > rangeStart && (nodeEnd < rangeStart || nodeStart > rangeEnd)) {
+      if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
+        continue;
+      }
+    }
 
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
@@ -18523,7 +18534,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
     }
 
-    if (!isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
+    if (rangeEnd == 0 && !isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
       executeLints(type, node, nodeStart, nodeEnd);
     }
 
@@ -18534,7 +18545,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
       let countChild = child;
       let failsafe1 = 0;
       while (countChild != 0) {
-        if (failsafe1++ > 10000) { break; }
+        if (failsafe1++ > 200000) { break; }
         childCount++;
         countChild = getNodeNextSibling(countChild);
       }
@@ -18594,6 +18605,33 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 }
 
 /**
+ * Traverses the AST to extract diagnostic error locations restricted to a byte range.
+ * @param astRoot The root AST node pointer.
+ * @param rangeStart The start byte offset of the range.
+ * @param rangeEnd The end byte offset of the range.
+ * @returns The number of \`u32\` records inside \`t_lspBinaryBuffer\` (7 u32s per diagnostic).
+ */
+export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd: u32): u32 {
+  ensureLspBuffers();
+  if (astRoot != 0) {
+    globalAstRoot = astRoot;
+    lsp_extractDiagnosticsForRoot(astRoot, 0, rangeStart, rangeEnd);
+  }
+  if (astRoot == globalAstRoot) {
+    for (let i = 0; i < errorCount; i++) {
+      let s = t_errorStarts[i];
+      let e = t_errorEnds[i];
+      if (e > s && (s <= rangeEnd && e >= rangeStart)) {
+        lsp_allocDiagnostic(s, e, 0, 0, 0);
+      }
+    }
+  }
+  lsp_clearVisited();
+  flushBinaryBuffer();
+  return t_lspBinaryBuffer.length / 7;
+}
+
+/**
  * Traverses the AST root to extract and serialize diagnostic error locations.
  * Merges adjacent error nodes and writes 7-u32 tuple records into \`t_lspBinaryBuffer\`.
  * @param astRoot The root AST node pointer.
@@ -18603,7 +18641,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
   if (astRoot != 0) {
     globalAstRoot = astRoot;
-    lsp_extractDiagnosticsForRoot(astRoot, 0);
+    lsp_extractDiagnosticsForRoot(astRoot, 0, 0, 0);
   }
   if (astRoot == globalAstRoot) {
     for (let i = 0; i < errorCount; i++) {
@@ -33654,10 +33692,14 @@ export class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot) {
+  getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
-    const numElements = this.exports.lsp_getDiagnostics(astRoot);
+    const numElements =
+      rangeEnd > rangeStart &&
+      typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rangeStart, rangeEnd)
+        : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
     let memory = new Uint32Array(this.wasmMemory.buffer);
@@ -36072,7 +36114,7 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri) {
+  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri, oldRoot) {
     const getInputBuf =
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
@@ -36097,8 +36139,13 @@ export class LspFacade {
       this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
     this.currentInputLength = text.length;
-    const prevAstRoot = this.getDocumentRoot(uri);
-    let baseRoot = prevAstRoot;
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    let baseRoot =
+      oldRoot !== undefined && oldRoot !== 0
+        ? oldRoot
+        : prevAstRoot !== 0
+          ? prevAstRoot
+          : this.lastAstRoot;
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = text.length;
       baseRoot = 0;
@@ -37230,7 +37277,14 @@ export class TreeSitterParser {
   getLanguage() {
     return this.languageBinding;
   }
-  parse(source, oldTree = null) {
+  parse(
+    source,
+    oldTree = null,
+    editStart = 0,
+    editOldEnd = 0,
+    editNewEnd = 0,
+    uri,
+  ) {
     if (!this.languageBinding) {
       throw new Error("Language not set on Parser. Call setLanguage() first.");
     }
@@ -37246,11 +37300,32 @@ export class TreeSitterParser {
     }
     const code =
       typeof source === "string" ? source : new TextDecoder().decode(source);
-    const astRoot = facade.parse(code);
+    const oldRoot = oldTree
+      ? (oldTree.rootPtr ?? oldTree.rootNode?.id ?? oldTree.rootNode?.ptr ?? 0)
+      : 0;
+    const astRoot = facade.parse(
+      code,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+      uri,
+      oldRoot,
+    );
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
   }
-  reset() {}
+  reset() {
+    if (this.languageBinding) {
+      if (typeof this.languageBinding.resetParser === "function") {
+        this.languageBinding.resetParser();
+      } else if (
+        this.languageBinding.exports &&
+        typeof this.languageBinding.exports.resetParser === "function"
+      ) {
+        this.languageBinding.exports.resetParser();
+      }
+    }
+  }
 }
 export const WasmLanguageBinding = LspFacade;
 export default WasmLanguageBinding;
@@ -37810,7 +37885,11 @@ export declare class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot: number): Diagnostic[];
+  getDiagnostics(
+    astRoot: number,
+    rangeStart?: number,
+    rangeEnd?: number,
+  ): Diagnostic[];
   /**
    * Retrieves semantic tokens for syntax highlighting.
    * Returns a raw \`Uint32Array\` mapped directly from WASM memory for speed.
@@ -38342,6 +38421,7 @@ export declare class LspFacade {
     editOldEnd?: number,
     editNewEnd?: number,
     uri?: string,
+    oldRoot?: number,
   ): number;
   /**
    * Compares two ASTs generated before and after an edit, and emits
@@ -38559,7 +38639,14 @@ export declare class TreeSitterParser {
   private languageBinding;
   setLanguage(language: any): void;
   getLanguage(): any;
-  parse(source: string | Uint8Array, oldTree?: Tree | null): Tree | null;
+  parse(
+    source: string | Uint8Array,
+    oldTree?: Tree | null,
+    editStart?: number,
+    editOldEnd?: number,
+    editNewEnd?: number,
+    uri?: string,
+  ): Tree | null;
   reset(): void;
 }
 export declare const WasmLanguageBinding: typeof LspFacade;

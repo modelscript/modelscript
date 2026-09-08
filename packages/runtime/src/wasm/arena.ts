@@ -1143,7 +1143,7 @@ function cloneNodeInner(nodeId: u32, deep: boolean, depth: i32): u32 {
     let child = getNodeFirstChild(nodeId);
     let prevNewChild: u32 = 0;
     let siblingCount = 0;
-    while (child != 0 && siblingCount++ < 10000) {
+    while (child != 0 && siblingCount++ < 200000) {
       let newChild = cloneNodeInner(child, true, depth + 1);
       if (prevNewChild == 0) {
         setFirstChild(newPtr, newChild);

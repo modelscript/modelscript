@@ -319,15 +319,17 @@ function lsp_clearVisited(): void {
  * @param astRoot The root node pointer of the parsed tree.
  * @returns The number of `u32` records inside `t_lspBinaryBuffer` (4 u32s per diagnostic).
  */
-function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
+function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart: u32 = 0, rangeEnd: u32 = 0): void {
   if (astRoot == 0) return;
   globalAstRoot = astRoot;
 
-  ensureNodeOffsetMap();
-  if (t_nodeOffsetMapAstRoot != astRoot) {
-    t_nodeOffsetMap.clear();
-    t_nodeOffsetMapAstRoot = astRoot;
-    lsp_populateNodeOffsetMap(astRoot, 0);
+  if (rangeEnd == 0) {
+    ensureNodeOffsetMap();
+    if (t_nodeOffsetMapAstRoot != astRoot) {
+      t_nodeOffsetMap.clear();
+      t_nodeOffsetMapAstRoot = astRoot;
+      lsp_populateNodeOffsetMap(astRoot, 0);
+    }
   }
 
   let prevLen = t_lspBinaryBuffer.length;
@@ -352,7 +354,9 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
     let inTainted = getInTaintedFromStack(offsetStackVal);
 
-    t_nodeOffsetMap.set(node as u64, start);
+    if (rangeEnd == 0) {
+      t_nodeOffsetMap.set(node as u64, start);
+    }
 
     if (stackTop > 500000) { break; }
 
@@ -363,6 +367,13 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let nodeStart = start;
     let nodeEnd = nodeStart + len;
     let type = getNodeType(node);
+
+    // Range bounding pruning: if outside range and has no error flags, skip subtree
+    if (rangeEnd > rangeStart && (nodeEnd < rangeStart || nodeStart > rangeEnd)) {
+      if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
+        continue;
+      }
+    }
 
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
@@ -512,7 +523,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
     }
 
-    if (!isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
+    if (rangeEnd == 0 && !isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
       executeLints(type, node, nodeStart, nodeEnd);
     }
 
@@ -523,7 +534,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
       let countChild = child;
       let failsafe1 = 0;
       while (countChild != 0) {
-        if (failsafe1++ > 10000) { break; }
+        if (failsafe1++ > 200000) { break; }
         childCount++;
         countChild = getNodeNextSibling(countChild);
       }
@@ -583,6 +594,33 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 }
 
 /**
+ * Traverses the AST to extract diagnostic error locations restricted to a byte range.
+ * @param astRoot The root AST node pointer.
+ * @param rangeStart The start byte offset of the range.
+ * @param rangeEnd The end byte offset of the range.
+ * @returns The number of `u32` records inside `t_lspBinaryBuffer` (7 u32s per diagnostic).
+ */
+export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd: u32): u32 {
+  ensureLspBuffers();
+  if (astRoot != 0) {
+    globalAstRoot = astRoot;
+    lsp_extractDiagnosticsForRoot(astRoot, 0, rangeStart, rangeEnd);
+  }
+  if (astRoot == globalAstRoot) {
+    for (let i = 0; i < errorCount; i++) {
+      let s = t_errorStarts[i];
+      let e = t_errorEnds[i];
+      if (e > s && (s <= rangeEnd && e >= rangeStart)) {
+        lsp_allocDiagnostic(s, e, 0, 0, 0);
+      }
+    }
+  }
+  lsp_clearVisited();
+  flushBinaryBuffer();
+  return t_lspBinaryBuffer.length / 7;
+}
+
+/**
  * Traverses the AST root to extract and serialize diagnostic error locations.
  * Merges adjacent error nodes and writes 7-u32 tuple records into `t_lspBinaryBuffer`.
  * @param astRoot The root AST node pointer.
@@ -592,7 +630,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
   if (astRoot != 0) {
     globalAstRoot = astRoot;
-    lsp_extractDiagnosticsForRoot(astRoot, 0);
+    lsp_extractDiagnosticsForRoot(astRoot, 0, 0, 0);
   }
   if (astRoot == globalAstRoot) {
     for (let i = 0; i < errorCount; i++) {

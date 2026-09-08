@@ -1057,10 +1057,13 @@ export class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot: number): Diagnostic[] {
+  getDiagnostics(astRoot: number, rangeStart: number = 0, rangeEnd: number = 0): Diagnostic[] {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
-    const numElements = this.exports.lsp_getDiagnostics(astRoot);
+    const numElements =
+      rangeEnd > rangeStart && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rangeStart, rangeEnd)
+        : this.exports.lsp_getDiagnostics(astRoot);
     const diags: Diagnostic[] = [];
 
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
@@ -3453,7 +3456,14 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0, uri?: string): number {
+  parse(
+    text: string,
+    editStart: number = 0,
+    editOldEnd: number = 0,
+    editNewEnd: number = 0,
+    uri?: string,
+    oldRoot?: number,
+  ): number {
     const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
@@ -3474,9 +3484,10 @@ export class LspFacade {
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
 
     this.currentInputLength = text.length;
-    const prevAstRoot = this.getDocumentRoot(uri);
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
 
-    let baseRoot = prevAstRoot;
+    let baseRoot =
+      oldRoot !== undefined && oldRoot !== 0 ? oldRoot : prevAstRoot !== 0 ? prevAstRoot : this.lastAstRoot;
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = text.length;
       baseRoot = 0;
@@ -4598,7 +4609,14 @@ export class TreeSitterParser {
     return this.languageBinding;
   }
 
-  parse(source: string | Uint8Array, oldTree: Tree | null = null): Tree | null {
+  parse(
+    source: string | Uint8Array,
+    oldTree: Tree | null = null,
+    editStart: number = 0,
+    editOldEnd: number = 0,
+    editNewEnd: number = 0,
+    uri?: string,
+  ): Tree | null {
     if (!this.languageBinding) {
       throw new Error("Language not set on Parser. Call setLanguage() first.");
     }
@@ -4613,12 +4631,23 @@ export class TreeSitterParser {
       facade = this.languageBinding;
     }
     const code = typeof source === "string" ? source : new TextDecoder().decode(source);
-    const astRoot = facade.parse(code);
+    const oldRoot = oldTree
+      ? ((oldTree as any).rootPtr ?? (oldTree as any).rootNode?.id ?? (oldTree as any).rootNode?.ptr ?? 0)
+      : 0;
+    const astRoot = facade.parse(code, editStart, editOldEnd, editNewEnd, uri, oldRoot);
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
   }
 
-  reset(): void {}
+  reset(): void {
+    if (this.languageBinding) {
+      if (typeof this.languageBinding.resetParser === "function") {
+        this.languageBinding.resetParser();
+      } else if (this.languageBinding.exports && typeof this.languageBinding.exports.resetParser === "function") {
+        this.languageBinding.exports.resetParser();
+      }
+    }
+  }
 }
 
 export const WasmLanguageBinding = LspFacade;

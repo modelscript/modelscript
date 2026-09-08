@@ -949,7 +949,7 @@ export class AncestorCursor {
          }
          let child = getNodeFirstChild(current);
          if (child != 0) {
-             if (stackDepth < 256) {
+             if (stackDepth < 4096) {
                  store<u32>(stack + (stackDepth << 2), current);
                  stackDepth++;
              }
@@ -1006,7 +1006,7 @@ for (let i = 0; i < 16; i++) {
   let ptr = heap.alloc(offsetof<AncestorCursor>());
   let cursor = changetype<AncestorCursor>(ptr);
   cursor.isActive = false;
-  cursor.pathStack = heap.alloc(256 * 4) as u32;
+  cursor.pathStack = heap.alloc(4096 * 4) as u32;
   ancestorCursorPool[i] = cursor;
 }
 
@@ -1018,7 +1018,7 @@ export function getAncestors(node: u32, filterType: u16, rootNode: u32): Ancesto
   } else {
     let ptr = heap.alloc(offsetof<AncestorCursor>());
     cursor = changetype<AncestorCursor>(ptr);
-    cursor.pathStack = heap.alloc(256 * 4) as u32;
+    cursor.pathStack = heap.alloc(4096 * 4) as u32;
   }
   cursor.init(node, filterType, rootNode);
   return cursor;
@@ -1066,7 +1066,7 @@ export class DescendantCursor {
   @inline advance(): void {
      let child = getNodeFirstChild(this.current);
      if (child != 0) {
-         if (this.stackDepth < 256) {
+         if (this.stackDepth < 4096) {
              store<u32>(this.stack + (this.stackDepth << 2), this.current);
              this.stackDepth++;
          }
@@ -1103,7 +1103,7 @@ for (let i = 0; i < 16; i++) {
   let ptr = heap.alloc(offsetof<DescendantCursor>());
   let cursor = changetype<DescendantCursor>(ptr);
   cursor.isActive = false;
-  cursor.stack = heap.alloc(256 * 4) as u32;
+  cursor.stack = heap.alloc(4096 * 4) as u32;
   descendantCursorPool[i] = cursor;
 }
 
@@ -1115,7 +1115,7 @@ export function getDescendants(node: u32, filterType: u16): DescendantCursor {
   } else {
     let ptr = heap.alloc(offsetof<DescendantCursor>());
     cursor = changetype<DescendantCursor>(ptr);
-    cursor.stack = heap.alloc(256 * 4) as u32;
+    cursor.stack = heap.alloc(4096 * 4) as u32;
   }
   cursor.init(node, filterType);
   return cursor;
