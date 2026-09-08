@@ -11,16 +11,19 @@ import {
   type MemorySnapshot,
 } from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 import { generateSimulationC } from "./sim-c-codegen.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface SimulateArgs {
   name: string;
@@ -115,8 +118,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
   }) as CommandModule<{}, SimulateArgs>["builder"],
   handler: async (args) => {
     const profiler = new Profiler();
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
+    const { parser } = await createWasmParser(modelicaWasmPath);
 
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
@@ -305,7 +307,10 @@ async function simulateWasm(
 
   // Compile to WASM
   profiler.start("compilation");
-  const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions);
+  const wasmOpt = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1" : "-O2";
+  const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions, {
+    optimizationLevel: wasmOpt,
+  });
   profiler.end("compilation");
 
   if (args.memoryProfile && lastSnap) {
@@ -397,10 +402,11 @@ async function simulateC(
   fs.writeFileSync(cFile, cSource);
 
   const cc = process.env.CC ?? "gcc";
-  const ccCmd = [cc, "-O3", "-Wall", cFile, "-o", binFile, "-lm"].join(" ");
+  const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1 -fno-tree-vectorize" : "-O3";
+  const ccCmd = [cc, optFlag, "-Wall", cFile, "-o", binFile, "-lm"].join(" ");
 
   try {
-    execSync(ccCmd, { stdio: "pipe", timeout: 30000 });
+    execSync(ccCmd, { stdio: "pipe", timeout: 300000 });
   } catch (e: unknown) {
     const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
     console.error(`C compilation failed:\n${stderr}`);
@@ -415,7 +421,7 @@ async function simulateC(
     lastSnap = snap;
   }
 
-  console.error(`Compiled: ${cc} -O3 → ${binFile}`);
+  console.error(`Compiled: ${cc} ${optFlag} → ${binFile}`);
 
   // Execute the compiled binary and capture stdout
   profiler.start("simulation");

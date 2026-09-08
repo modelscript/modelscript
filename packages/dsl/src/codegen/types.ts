@@ -17,7 +17,9 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
 
   // Create reverse mapping from integer ID to symbol string (preferring human-readable names)
   const intToSym = new Map<number, string>();
+  let maxSymId = 0;
   for (const [sym, i] of normalized.symToInt.entries()) {
+    if (i > maxSymId) maxSymId = i;
     const existing = intToSym.get(i);
     if (!existing) {
       intToSym.set(i, sym);
@@ -32,7 +34,7 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
 
   // Output symbols in strict sequential ID order
   const emittedNames = new Set<string>();
-  for (let i = 1; i <= intToSym.size; i++) {
+  for (let i = 1; i <= maxSymId; i++) {
     const sym = intToSym.get(i);
     if (!sym) continue;
 
@@ -57,6 +59,18 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
 
     typeCode += `  ${finalName} = ${i},\n`;
     emittedNames.add(finalName);
+  }
+
+  // Ensure all named rules in symToInt are also present as enum values
+  for (const [sym, i] of normalized.symToInt.entries()) {
+    if (!sym.startsWith('"') && !sym.startsWith("/")) {
+      let safeName = sym.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+      if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
+      if (!emittedNames.has(safeName)) {
+        typeCode += `  ${safeName} = ${i},\n`;
+        emittedNames.add(safeName);
+      }
+    }
   }
 
   // Automatically generate shadow SyntaxTypes for any types defined in `model` or `lints` but not in `rules`

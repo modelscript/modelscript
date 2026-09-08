@@ -39,6 +39,8 @@ async function main() {
   console.log("Incremental Edit Benchmark with New In-Place WASM DAE & Salsa 3.0");
   console.log("================================================================================");
 
+  const jsonResults: Record<string, any> = {};
+
   for (const N of Ns) {
     const src = generateHeatConduction1D(N);
     const filename = `file:///HeatConduction1D_${N}.mo`;
@@ -117,6 +119,14 @@ async function main() {
     const avgStructIndex = structIndexSum / RUNS;
     const avgStructFlatten = structFlattenSum / RUNS;
 
+    jsonResults[N] = {
+      cold: { reindex: avgColdIndex, flatten: avgColdFlatten, total: avgColdIndex + avgColdFlatten },
+      isolatedEq: { reindex: avgEqIndex, flatten: avgEqFlatten, total: avgEqIndex + avgEqFlatten },
+      paramVal: { reindex: avgParamIndex, flatten: avgParamFlatten, total: avgParamIndex + avgParamFlatten },
+      stateMod: { reindex: avgStateIndex, flatten: avgStateFlatten, total: avgStateIndex + avgStateFlatten },
+      structEdit: { reindex: avgStructIndex, flatten: avgStructFlatten, total: avgStructIndex + avgStructFlatten },
+    };
+
     console.log(`\n--- N = ${N} Equations (Average of ${RUNS} runs) ---`);
     console.log(
       `  Cold Start:             re-index=${avgColdIndex.toFixed(2)}ms, flatten=${avgColdFlatten.toFixed(2)}ms, total=${(avgColdIndex + avgColdFlatten).toFixed(2)}ms`,
@@ -133,6 +143,14 @@ async function main() {
     console.log(
       `  Structural Edit:        re-index=${avgStructIndex.toFixed(2)}ms, re-flatten=${avgStructFlatten.toFixed(2)}ms, total=${(avgStructIndex + avgStructFlatten).toFixed(2)}ms`,
     );
+  }
+
+  const outIdx = process.argv.indexOf("--out");
+  const outPath = outIdx !== -1 && process.argv[outIdx + 1] ? process.argv[outIdx + 1] : process.env.BENCHMARK_OUTPUT;
+  if (outPath) {
+    const fs = await import("node:fs");
+    fs.writeFileSync(outPath, JSON.stringify(jsonResults, null, 2));
+    console.log(`Saved incremental WASM benchmark results to ${outPath}`);
   }
 }
 

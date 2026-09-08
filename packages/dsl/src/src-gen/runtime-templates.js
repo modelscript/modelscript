@@ -6592,6 +6592,7 @@ export enum EqKind {
   Connect = 6,
   InitialSimple = 7,
   InitialFor = 8,
+  InitialFunctionCall = 9,
 }
 
 export enum ExprKind {
@@ -9948,7 +9949,7 @@ export class AncestorCursor {
      let current = rootNode;
      let iters = 0;
      
-     while (current != 0 && ++iters < 50000) {
+     while (current != 0 && ++iters < 2000000) {
          if (current == targetNode) {
              this.pathLength = stackDepth;
              this.currentIndex = stackDepth - 1;
@@ -11943,7 +11944,7 @@ import {
   getInputBuffer
 } from "./arena";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array } from "./array";
-import { globalAstRoot, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic } from "./lsp";
+import { globalAstRoot, globalEnclosingClassRoot, globalEnclosingClassNode, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren, debugLog } from "./engine";
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType, NodeFlag, Property } from "./parser";
@@ -12609,18 +12610,33 @@ export class HashAPI {
   }
 }
 
+let globalClassHasUnitsRoot: u32 = 0;
+let globalClassHasUnitsResult: boolean = false;
+let globalClassHasInnerRoot: u32 = 0;
+let globalClassHasInnerResult: boolean = false;
+
 /**
  * AST navigation and node span query API.
  */
 export class AstAPI {
+  @inline getCachedHasUnits(classNode: u32): i32 {
+    return classNode == globalClassHasUnitsRoot ? (globalClassHasUnitsResult ? 1 : 0) : -1;
+  }
+  @inline setCachedHasUnits(classNode: u32, hasUnits: boolean): void {
+    globalClassHasUnitsRoot = classNode;
+    globalClassHasUnitsResult = hasUnits;
+  }
+  @inline getCachedHasInnerClass(classNode: u32): i32 {
+    return classNode == globalClassHasInnerRoot ? (globalClassHasInnerResult ? 1 : 0) : -1;
+  }
+  @inline setCachedHasInnerClass(classNode: u32, hasInner: boolean): void {
+    globalClassHasInnerRoot = classNode;
+    globalClassHasInnerResult = hasInner;
+  }
+
   @inline startsWith(nodeId: u32, prefix: string): boolean {
       if (nodeId == 0 || prefix.length == 0) return false;
-      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
-      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
-      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
-      if (offset < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
-      }
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return false;
       let step = getEncodingStep();
       let actualOffset = offset as u32;
@@ -12646,37 +12662,20 @@ export class AstAPI {
 
   @inline textEquals(nodeId: u32, text: string): boolean {
       if (nodeId == 0) return false;
-      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
-      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
-      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
-      if (offset < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
-      }
-      if (offset < 0) return false;
       let step = getEncodingStep();
+      let nodeLen = getNodeByteLength(nodeId);
+      let expectedByteLen = (text.length as u32) * step;
+      if (nodeLen != expectedByteLen) return false;
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
+      if (offset < 0) return false;
       let actualOffset = offset as u32;
       let buffer = getInputBuffer();
-      while (true) {
-          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
-          if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
-              actualOffset += step;
-          } else {
-              break;
-          }
-      }
       for (let i = 0; i < text.length; i++) {
           let code = text.charCodeAt(i);
           if (step == 2) {
               if (load<u16>(buffer + actualOffset + (i << 1)) != (code as u16)) return false;
           } else {
               if (load<u8>(buffer + actualOffset + i) != (code as u8)) return false;
-          }
-      }
-      let nextOffset = actualOffset + text.length * step;
-      let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
-      if (nextCh != 0 && nextCh != 32 && nextCh != 9 && nextCh != 10 && nextCh != 13 && nextCh != 59 && nextCh != 40 && nextCh != 41 && nextCh != 44) {
-          if ((nextCh >= 65 && nextCh <= 90) || (nextCh >= 97 && nextCh <= 122) || (nextCh >= 48 && nextCh <= 57) || nextCh == 95 || nextCh == 46) {
-              return false;
           }
       }
       return true;
@@ -12687,16 +12686,8 @@ export class AstAPI {
       let lenA = getNodeByteLength(nodeA);
       let lenB = getNodeByteLength(nodeB);
       if (lenA != lenB) return false;
-      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
-      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
-      let offsetA = lsp_findNodeOffset(root, nodeA, rootStart);
-      if (offsetA < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        offsetA = lsp_findNodeOffset(globalAstRoot, nodeA, 0);
-      }
-      let offsetB = lsp_findNodeOffset(root, nodeB, rootStart);
-      if (offsetB < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        offsetB = lsp_findNodeOffset(globalAstRoot, nodeB, 0);
-      }
+      let offsetA = lsp_findNodeOffset(globalAstRoot, nodeA, 0);
+      let offsetB = lsp_findNodeOffset(globalAstRoot, nodeB, 0);
       if (offsetA < 0 || offsetB < 0) return false;
       let buffer = getInputBuffer();
       for (let i: u32 = 0; i < lenA; i++) {
@@ -12709,7 +12700,7 @@ export class AstAPI {
 
   @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 { return getChildByFieldId(nodeId, fieldId); }
   @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor { return getChildrenByFieldId(nodeId, fieldId); }
-  @inline getAncestors(nodeId: u32, filterType: u16 = 0xFFFF): AncestorCursor { return getAncestors(nodeId, filterType, globalAstRoot); }
+  @inline getAncestors(nodeId: u32, filterType: u16 = 0xFFFF, rootNode: u32 = 0): AncestorCursor { return getAncestors(nodeId, filterType, rootNode == 0 ? globalAstRoot : rootNode); }
   @inline getDescendants(nodeId: u32, filterType: u16 = 0xFFFF): DescendantCursor { return getDescendants(nodeId, filterType); }
   @inline getPathTokens(nodeId: u32): DescendantCursor { return getPathTokens(nodeId); }
 
@@ -12718,12 +12709,7 @@ export class AstAPI {
 
   @inline parseInteger(nodeId: u32): i32 {
       if (nodeId == 0) return 0;
-      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
-      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
-      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
-      if (offset < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
-      }
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return 0;
       let step = getEncodingStep();
       let offsetU: u32 = offset as u32;
@@ -12756,12 +12742,7 @@ export class AstAPI {
 
   @inline parseReal(nodeId: u32): f64 {
       if (nodeId == 0) return 0.0;
-      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
-      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
-      let offset = lsp_findNodeOffset(root, nodeId, rootStart);
-      if (offset < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
-      }
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return 0.0;
       let step = getEncodingStep();
       let offsetU: u32 = offset as u32;
@@ -12805,17 +12786,9 @@ export class AstAPI {
   }
 
   @inline getBinaryOp(leftNode: u32, rightNode: u32): u16 {
-      let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
-      let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
-      let leftOffset = lsp_findNodeOffset(root, leftNode, rootStart);
-      if (leftOffset < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        leftOffset = lsp_findNodeOffset(globalAstRoot, leftNode, 0);
-      }
+      let leftOffset = lsp_findNodeOffset(globalAstRoot, leftNode, 0);
       let leftLen = getNodeByteLength(leftNode);
-      let rightOffset = lsp_findNodeOffset(root, rightNode, rootStart);
-      if (rightOffset < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-        rightOffset = lsp_findNodeOffset(globalAstRoot, rightNode, 0);
-      }
+      let rightOffset = lsp_findNodeOffset(globalAstRoot, rightNode, 0);
       if (leftOffset < 0 || rightOffset < 0) return 0;
 
       let step = getEncodingStep();
@@ -12876,14 +12849,16 @@ export class AstAPI {
   @inline getByteLength(nodeId: u32): u32 { return getNodeByteLength(nodeId); }
 
   @inline getRootNode(): u32 { return globalAstRoot; }
+  @inline getCachedEnclosingClass(root: u32): u32 {
+    return root == globalEnclosingClassRoot ? globalEnclosingClassNode : 0;
+  }
+  @inline setCachedEnclosingClass(root: u32, cls: u32): void {
+    globalEnclosingClassRoot = root;
+    globalEnclosingClassNode = cls;
+  }
   @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { 
     if (absoluteStart == 0xFFFFFFFF) {
-        let root = currentLintNode != 0 ? currentLintNode : globalAstRoot;
-        let rootStart = currentLintNode != 0 ? currentLintNodeStart : 0;
-        let offset = lsp_findNodeOffset(root, nodeId, rootStart);
-        if (offset < 0 && currentLintNode != 0 && globalAstRoot != 0) {
-          offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
-        }
+        let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
         if (offset >= 0) absoluteStart = offset as u32;
     }
     return ast_getTextSpan(nodeId, absoluteStart); 
@@ -18065,7 +18040,7 @@ import {
 } from "./arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds } from "./engine";
 import { inputLength, inputEncoding } from "./parser";
-import { UnmanagedMap64To64, createMap64To64 } from "./hashmap";
+import { UnmanagedMap64To64, createMap64To64, UnmanagedMap64 } from "./hashmap";
 import { stub_getDefinition, stub_getBinaryBuffer } from "./stub";
 
 @inline
@@ -18088,6 +18063,24 @@ let t_lspFindOffsetStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array
 let t_lspFindStackCapacity: u32 = 0;
 
 export let globalAstRoot: u32 = 0;
+export let globalEnclosingClassRoot: u32 = 0;
+export let globalEnclosingClassNode: u32 = 0;
+
+let t_nodeOffsetMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let t_nodeOffsetMapAstRoot: u32 = 0;
+
+function ensureNodeOffsetMap(): void {
+  if (changetype<usize>(t_nodeOffsetMap) == 0) {
+    t_nodeOffsetMap = changetype<UnmanagedMap64>(UnmanagedMap64.create(16384));
+  }
+}
+
+export function clearNodeOffsetCache(): void {
+  if (changetype<usize>(t_nodeOffsetMap) != 0) {
+    t_nodeOffsetMap.clear();
+  }
+  t_nodeOffsetMapAstRoot = 0;
+}
 
 // --- Multi-File Document Registry ---
 let t_documentRoots: UnmanagedMap64To64 = changetype<UnmanagedMap64To64>(0);
@@ -18129,6 +18122,7 @@ export function lsp_evictDocumentAst(fileId: u32): void {
 
 export function lsp_clearDocuments(): void {
   t_documentRoots = changetype<UnmanagedMap64To64>(createMap64To64());
+  clearNodeOffsetCache();
 }
 
 export function lsp_getDocumentRoot(fileId: u32): u32 {
@@ -18340,6 +18334,13 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
   if (astRoot == 0) return;
   globalAstRoot = astRoot;
 
+  ensureNodeOffsetMap();
+  if (t_nodeOffsetMapAstRoot != astRoot) {
+    t_nodeOffsetMap.clear();
+    t_nodeOffsetMapAstRoot = astRoot;
+    lsp_populateNodeOffsetMap(astRoot, 0);
+  }
+
   let prevLen = t_lspBinaryBuffer.length;
 
   ensureTraverseStack(1);
@@ -18361,6 +18362,8 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let inError = getInErrorFromStack(offsetStackVal);
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
     let inTainted = getInTaintedFromStack(offsetStackVal);
+
+    t_nodeOffsetMap.set(node as u64, start);
 
     if (stackTop > 500000) { break; }
 
@@ -19105,26 +19108,24 @@ export function lsp_getNodeLeadingPad(node: u32): u32 {
   return getNodePadding(node);
 }
 
-export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u32): i32 {
-   if (rootNode == 0 || targetNode == 0) return -1;
+export function lsp_populateNodeOffsetMap(rootNode: u32, rootOffset: u32 = 0): void {
+   if (rootNode == 0) return;
    ensureFindTraverseStack(1);
    let rootStart = (rootOffset == 0) ? getNodeLeadingPad(rootNode) : rootOffset;
-   if (rootNode == targetNode) return rootStart as i32;
 
    let stackTop: i32 = 0;
    t_lspFindTraverseStack[0] = rootNode;
    t_lspFindOffsetStack[0] = rootStart;
+   t_nodeOffsetMap.set(rootNode as u64, rootStart);
    stackTop++;
    
    let iterations: i32 = 0;
-   while (stackTop > 0 && ++iterations < 50000) {
+   while (stackTop > 0 && ++iterations < 2000000) {
       stackTop--;
       let current = t_lspFindTraverseStack[stackTop];
       let nodeStart = t_lspFindOffsetStack[stackTop];
       
-      if (current == targetNode) {
-         return nodeStart as i32;
-      }
+      t_nodeOffsetMap.set(current as u64, nodeStart);
       
       let child = getNodeFirstChild(current);
       if (child != 0) {
@@ -19153,6 +19154,23 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
          }
          stackTop += childCount;
       }
+   }
+}
+
+export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u32): i32 {
+   if (rootNode == 0 || targetNode == 0) return -1;
+   if (globalAstRoot == 0) globalAstRoot = rootNode;
+   let rootStart = (rootOffset == 0) ? getNodeLeadingPad(rootNode) : rootOffset;
+   if (rootNode == targetNode) return rootStart as i32;
+
+   ensureNodeOffsetMap();
+   if (t_nodeOffsetMapAstRoot != rootNode) {
+      t_nodeOffsetMap.clear();
+      t_nodeOffsetMapAstRoot = rootNode;
+      lsp_populateNodeOffsetMap(rootNode, rootOffset);
+   }
+   if (t_nodeOffsetMap.has(targetNode as u64)) {
+      return t_nodeOffsetMap.get(targetNode as u64) as i32;
    }
    if (rootNode != globalAstRoot && globalAstRoot != 0) {
       return lsp_findNodeOffset(globalAstRoot, targetNode, 0);
@@ -33686,7 +33704,7 @@ export class LspFacade {
       stackOffsets[0] = getNodePad(astRoot);
       stackTop = 1;
       let iterations = 0;
-      while (stackTop > 0 && ++iterations < 100000) {
+      while (stackTop > 0 && ++iterations < 2000000) {
         stackTop--;
         const current = stackPtrs[stackTop];
         const nodeStart = stackOffsets[stackTop];

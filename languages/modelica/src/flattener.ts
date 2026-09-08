@@ -2011,7 +2011,7 @@ function lowerCSTExpression(
                 const scopeName =
                   (flattener?.currentRootClassId ? db?.symbol(flattener.currentRootClassId)?.name : "") ??
                   flattener?.currentRootClassName ??
-                  dae.modelName ??
+                  (dae as any).modelName ??
                   "";
                 const r = {
                   startByte: node.startIndex ?? node.startByte,
@@ -2352,27 +2352,17 @@ export class ModelicaFlattener {
       }
     }
 
-    // 3. Own CST imports
-    const cst = this.db.cstNode(classId) as any;
-    if (cst) {
-      const walkImports = (n: any) => {
-        if (!n) return;
-        if (n.type === "import_clause" || n.type === "ImportClause") {
-          const text = n.text?.trim() ?? "";
-          const m = text.match(/import\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_.]+)/);
-          if (m) {
-            result.set(m[1], m[2]);
-          }
-          return;
+    // 3. Own imports from index
+    for (const child of this.db.childrenOf(classId)) {
+      if (child.kind === "Import") {
+        const meta = child.metadata as Record<string, unknown>;
+        const importKind = (meta?.importKind as string | undefined) ?? "simple";
+        const pkgName = (meta?.packageName ?? child.name) as string;
+        if (importKind === "simple") {
+          const shortName = (meta?.shortName as string) ?? pkgName.split(".").pop() ?? pkgName;
+          result.set(shortName, pkgName);
         }
-        if (n !== cst && (n.type === "class_definition" || n.type === "ClassDefinition")) {
-          return;
-        }
-        for (let i = 0; i < (n.childCount || n.children?.length || 0); i++) {
-          walkImports(n.child ? n.child(i) : n.children[i]);
-        }
-      };
-      walkImports(cst);
+      }
     }
 
     return result;
@@ -2422,7 +2412,7 @@ export class ModelicaFlattener {
     }
 
     const dae = this.flattenClass(rootClassId, cachedArena);
-    this.bodySnapshot = dae.clone();
+    this.bodySnapshot = dae;
     return dae;
   }
 
@@ -2826,9 +2816,11 @@ export class ModelicaFlattener {
 
     // 1. Layer 1: Component instantiation
     const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
+
     if (elements) {
       const rootExtendsMods = this.collectExtendsMods(rootClassId);
       const rootProtectedNames = this.collectProtectedNames(rootClassId);
+
       this.instantiateElements(
         elements,
         "",
@@ -2890,7 +2882,7 @@ export class ModelicaFlattener {
     if (!rootCst) return false;
 
     for (const range of dirtyRanges) {
-      const curDelta = range.delta ?? (dirtyRanges.length === 1 ? delta : 0);
+      const curDelta = (range as any).delta ?? (dirtyRanges.length === 1 ? delta : 0);
       // 1. Check if range matches an equation
       const eqIdx = dae.findEqAtRange(range.startByte, range.endByte);
       const varIdx = dae.findVarAtRange(range.startByte, range.endByte);
@@ -3694,6 +3686,109 @@ export class ModelicaFlattener {
       if (compInst.isOuter && compInst.isInner) {
         const fullCompName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
         this.innerOuterComponents.add(fullCompName);
+      }
+
+      // FAST-PATH: Primitive scalar declarations without complex hierarchy or condition attributes
+      const isPrimType =
+        compInst.typeSpecifier === "Real" ||
+        compInst.typeSpecifier === "Integer" ||
+        compInst.typeSpecifier === "Boolean" ||
+        compInst.typeSpecifier === "String";
+
+      const hasArray = Boolean(compInst.arrayDimensions && compInst.arrayDimensions.length > 0);
+      const hasParentMods = Boolean(parentMods && parentMods.args && parentMods.args.length > 0);
+
+      if (
+        isPrimType &&
+        !hasArray &&
+        !hasParentMods &&
+        !compInst.isInner &&
+        !compInst.isOuter &&
+        !compInst.isRedeclare &&
+        !compInst.isReplaceable &&
+        !compInst.isProtected &&
+        !parentMods?.isProtected &&
+        !parentMods?.protectedNames?.has(compInst.name)
+      ) {
+        const bText = compInst.modification?.bindingExpression?.text?.trim();
+        const hasComplexBinding =
+          bText &&
+          (bText.includes("(") ||
+            bText.includes("[") ||
+            bText.includes("{") ||
+            bText.includes("+") ||
+            bText.includes("-") ||
+            bText.includes("*") ||
+            bText.includes("/") ||
+            isNaN(Number(bText)));
+
+        if (!hasComplexBinding) {
+          const name = prefix ? `${prefix}.${compInst.name}` : compInst.name;
+          let varType = VarType.Real;
+          if (compInst.typeSpecifier === "Integer") varType = VarType.Integer;
+          else if (compInst.typeSpecifier === "Boolean") varType = VarType.Boolean;
+          else if (compInst.typeSpecifier === "String") varType = VarType.String;
+
+          let variability = Variability.Continuous;
+          if (compInst.variability === "parameter") variability = Variability.Parameter;
+          else if (compInst.variability === "constant") variability = Variability.Constant;
+          else if (compInst.variability === "discrete") variability = Variability.Discrete;
+
+          let causality = Causality.Local;
+          if (compInst.causality === "input") causality = Causality.Input;
+          else if (compInst.causality === "output") causality = Causality.Output;
+
+          const varIdx = dae.addVariable(dae.interner.intern(name), varType, variability, causality, 0.0);
+
+          const sym = this.db.symbol(elemId);
+          if (sym && sym.startByte != null && sym.endByte != null) {
+            dae.setVarSourceRange(varIdx, sym.startByte, sym.endByte);
+          }
+          if (compInst.flowPrefix === "flow") dae.setVarFlow(varIdx, true);
+          if (compInst.flowPrefix === "stream") dae.setVarStream(varIdx, true);
+          if (compInst.isFinal) dae.setVarFinal(varIdx, true);
+
+          if (bText) {
+            const num = Number(bText);
+            const exprId = varType === VarType.Integer ? dae.addIntLiteral(Math.round(num)) : dae.addRealLiteral(num);
+            dae.setVarExpression(varIdx, exprId);
+          }
+
+          if (compInst.modification?.args) {
+            for (const arg of compInst.modification.args) {
+              if (
+                arg.name === "start" ||
+                arg.name === "min" ||
+                arg.name === "max" ||
+                arg.name === "nominal" ||
+                arg.name === "fixed"
+              ) {
+                let attrExprId: number | null = null;
+                if (arg.value?.kind === "literal" && typeof arg.value.value === "number") {
+                  attrExprId =
+                    varType === VarType.Integer
+                      ? dae.addIntLiteral(arg.value.value)
+                      : dae.addRealLiteral(arg.value.value);
+                } else if (arg.value?.kind === "literal" && typeof arg.value.value === "boolean") {
+                  attrExprId = dae.addExpression(ExprKind.BoolLiteral, arg.value.value ? 1 : 0);
+                } else if (arg.value?.kind === "expression" && arg.value.text) {
+                  const num = Number(arg.value.text.trim());
+                  if (!isNaN(num)) {
+                    attrExprId =
+                      varType === VarType.Integer ? dae.addIntLiteral(Math.round(num)) : dae.addRealLiteral(num);
+                  } else if (arg.value.text.trim() === "true" || arg.value.text.trim() === "false") {
+                    attrExprId = dae.addExpression(ExprKind.BoolLiteral, arg.value.text.trim() === "true" ? 1 : 0);
+                  }
+                }
+                if (attrExprId !== null) {
+                  dae.setVarAttr(varIdx, arg.name, attrExprId);
+                }
+              }
+            }
+          }
+
+          continue;
+        }
       }
 
       const elemCst = this.db.cstNode(elemId) as any;
@@ -5109,9 +5204,12 @@ export class ModelicaFlattener {
         if (curBreakContext.brokenComponents.has(child.name)) {
           continue;
         }
+        const typeSpec = (child.metadata as any)?.typeSpecifier ?? (child.metadata as any)?.type_specifier;
+        if (typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String") {
+          continue;
+        }
         let compClassId = this.db.query<SymbolId | null>("classInstance", child.id);
         if (!compClassId) {
-          const typeSpec = (child.metadata as any)?.typeSpecifier ?? (child.metadata as any)?.type_specifier;
           if (typeSpec) {
             const targets = this.db.byName(typeSpec);
             if (targets.length > 0 && targets[0].kind === "Class") {

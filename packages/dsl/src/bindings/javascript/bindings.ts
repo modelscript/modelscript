@@ -1113,7 +1113,7 @@ export class LspFacade {
       stackTop = 1;
 
       let iterations = 0;
-      while (stackTop > 0 && ++iterations < 100000) {
+      while (stackTop > 0 && ++iterations < 2000000) {
         stackTop--;
         const current = stackPtrs[stackTop];
         const nodeStart = stackOffsets[stackTop];

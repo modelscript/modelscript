@@ -2920,23 +2920,140 @@ export const componentDeclarationQueries: Record<string, any> = {
    * Aggregate query returning the component's metadata.
    */
   componentInstance: (db: QueryDB, self: SymbolEntry) => {
+    const cstNode = db.cstNode(self.id) as any;
+    if (!cstNode) {
+      return {
+        id: self.id,
+        name: self.name,
+        classInstance: null,
+        variability: null,
+        causality: null,
+        flowPrefix: null,
+        isFinal: false,
+        isRedeclare: false,
+        isInner: false,
+        isOuter: false,
+        isReplaceable: false,
+        isProtected: false,
+        arrayDimensions: null,
+        isConnectorType: false,
+        typeSpecifier: null,
+        modification: null,
+      };
+    }
+
+    let clause = cstNode;
+    while (
+      clause &&
+      clause.type !== "ComponentClause" &&
+      clause.type !== "ComponentClause1" &&
+      clause.type !== "component_clause" &&
+      clause.type !== "component_clause1"
+    ) {
+      clause = clause.parent;
+    }
+
+    const typeSpecNode =
+      Cst.ComponentClause.typeSpecifier(clause) ??
+      clause?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+    const typeSpec = typeSpecNode?.text ?? null;
+
+    const tp = Cst.ComponentClause.typePrefix(clause);
+    const tpText = tp?.text ?? "";
+    let variability: string | null = null;
+    if (tpText.includes("parameter")) variability = "parameter";
+    else if (tpText.includes("constant")) variability = "constant";
+    else if (tpText.includes("discrete")) variability = "discrete";
+
+    let causality: string | null = null;
+    if (tpText.includes("input")) causality = "input";
+    else if (tpText.includes("output")) causality = "output";
+
+    let flowPrefix: string | null = null;
+    if (tpText.includes("flow")) flowPrefix = "flow";
+    else if (tpText.includes("stream")) flowPrefix = "stream";
+
+    const elemParent = clause?.parent;
+    let isProtected = false;
+    let sec = elemParent;
+    while (sec && sec.type !== "Composition" && sec.type !== "composition" && sec.type !== "ClassDefinition") {
+      if (sec.type === "ElementSection" || sec.type === "element_section") {
+        isProtected = sec.children?.[0]?.text === "protected";
+        break;
+      }
+      if (sec.type === "protected_element_list" || sec.type === "ProtectedElementList") {
+        isProtected = true;
+        break;
+      }
+      sec = sec.parent;
+    }
+
+    const checkNode =
+      elemParent && (elemParent.type === "Element" || elemParent.type === "element") ? elemParent : clause;
+    const checkText = checkNode?.text ?? "";
+    const isFinal = /\bfinal\b/.test(checkText);
+    const isInner = /\binner\b/.test(checkText);
+    const isOuter = /\bouter\b/.test(checkText);
+    const isReplaceable = /\breplaceable\b/.test(checkText);
+    const isRedeclare = /\bredeclare\b/.test(checkText);
+
+    let declNode = cstNode;
+    if (cstNode.type !== "Declaration" && cstNode.type !== "declaration") {
+      declNode =
+        Cst.ComponentDeclaration.declaration(cstNode) ??
+        cstNode.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration") ??
+        cstNode;
+    }
+
+    const modNode =
+      Cst.Declaration.modification(declNode) ??
+      declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+    const modification = modNode ? (parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs) : null;
+
+    const arraySub =
+      Cst.Declaration.arraySubscripts(declNode) ??
+      declNode?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
+
+    const isPrim = typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String";
+
+    if (isPrim && !arraySub) {
+      return {
+        id: self.id,
+        name: self.name,
+        classInstance: null,
+        variability,
+        causality,
+        flowPrefix,
+        isFinal,
+        isRedeclare,
+        isInner,
+        isOuter,
+        isReplaceable,
+        isProtected,
+        arrayDimensions: null,
+        isConnectorType: false,
+        typeSpecifier: typeSpec,
+        modification,
+      };
+    }
+
     return {
       id: self.id,
       name: self.name,
       classInstance: db.query<SymbolId | null>("classInstance", self.id),
-      variability: db.query<string | null>("variability", self.id),
-      causality: db.query<string | null>("causality", self.id),
-      flowPrefix: db.query<string | null>("flowPrefix", self.id),
-      isFinal: db.query<boolean>("isFinal", self.id),
-      isRedeclare: db.query<boolean>("isRedeclare", self.id),
-      isInner: db.query<boolean>("isInner", self.id),
-      isOuter: db.query<boolean>("isOuter", self.id),
-      isReplaceable: db.query<boolean>("isReplaceable", self.id),
-      isProtected: db.query<boolean>("isProtected", self.id),
+      variability,
+      causality,
+      flowPrefix,
+      isFinal,
+      isRedeclare,
+      isInner,
+      isOuter,
+      isReplaceable,
+      isProtected,
       arrayDimensions: db.query<number[] | null>("resolvedArrayDimensions", self.id),
-      isConnectorType: db.query<boolean>("isConnectorType", self.id),
-      typeSpecifier: db.query<string | null>("typeSpecifier", self.id),
-      modification: db.query<any>("effectiveModification", self.id),
+      isConnectorType: isPrim ? false : db.query<boolean>("isConnectorType", self.id),
+      typeSpecifier: typeSpec,
+      modification,
     };
   },
   lint__modifierNotFound: (db: QueryDB, self: SymbolEntry) => {

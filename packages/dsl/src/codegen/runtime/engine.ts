@@ -941,7 +941,7 @@ export class AncestorCursor {
      let current = rootNode;
      let iters = 0;
      
-     while (current != 0 && ++iters < 50000) {
+     while (current != 0 && ++iters < 2000000) {
          if (current == targetNode) {
              this.pathLength = stackDepth;
              this.currentIndex = stackDepth - 1;

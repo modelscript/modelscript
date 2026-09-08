@@ -216,7 +216,7 @@ export interface AstAPI<RuleName extends string, FieldName extends string = stri
   getChildByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): Cursor;
 
-  getAncestors(nodeId: u32, stopAtType?: Extract<RuleName, string> | (string & {}) | u16): Cursor;
+  getAncestors(nodeId: u32, stopAtType?: Extract<RuleName, string> | (string & {}) | u16, rootNode?: u32): Cursor;
   getDescendants(nodeId: u32, filterType?: Extract<RuleName, string> | (string & {}) | u16): Cursor;
   getPathTokens(nodeId: u32): Cursor;
 
@@ -235,6 +235,12 @@ export interface AstAPI<RuleName extends string, FieldName extends string = stri
 
   getTextSpan(nodeId: u32, absoluteStart?: u32): u64;
   getRootNode(): u32;
+  getCachedEnclosingClass(root: u32): u32;
+  setCachedEnclosingClass(root: u32, cls: u32): void;
+  getCachedHasUnits(classNode: u32): i32;
+  setCachedHasUnits(classNode: u32, hasUnits: boolean): void;
+  getCachedHasInnerClass(classNode: u32): i32;
+  setCachedHasInnerClass(classNode: u32, hasInner: boolean): void;
   hashSpan(span: u64): u32;
 }
 

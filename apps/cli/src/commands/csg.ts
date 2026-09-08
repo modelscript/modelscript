@@ -3,12 +3,15 @@
 import { CSGWorker } from "@modelscript/language/cad";
 import { Context } from "@modelscript/modelica/context";
 import { extractCSGTopology } from "@modelscript/modelica/csg";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface CSGArgs {
   name: string;
@@ -33,8 +36,7 @@ export const BuildCSG: CommandModule<{}, CSGArgs> = {
       });
   },
   handler: async (args) => {
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
+    const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
     const context = new Context(new NodeFileSystem());
 

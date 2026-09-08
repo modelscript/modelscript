@@ -596,73 +596,76 @@ function generateWasmC(
 
   // ── Embedded RK4 stepper ──
   L.push("/* Embedded RK4 integration step */");
-
+  L.push("static double rk4_k1[N_STATES + 1];");
+  L.push("static double rk4_k2[N_STATES + 1];");
+  L.push("static double rk4_k3[N_STATES + 1];");
+  L.push("static double rk4_k4[N_STATES + 1];");
+  L.push("static double rk4_tmp_states[N_STATES + 1];");
+  L.push("static double rk4_y0[N_STATES + 1];");
+  L.push("static double rk4_z_prev[N_EVENT_INDICATORS + 1];");
+  L.push("");
   L.push("static void rk4_step(double t_start, double dt) {");
   L.push("  int i;");
-  L.push("  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
-  L.push("  double tmp_states[N_STATES + 1];");
-  L.push("  double y0[N_STATES + 1];");
-  L.push("  double z_prev[N_EVENT_INDICATORS + 1];");
   L.push("  double t = t_start;");
   L.push("  double t_end = t_start + dt;");
   L.push("");
   L.push("  while (t < t_end - 1e-13) {");
   L.push("    double h = t_end - t;");
   L.push("    int step_accepted = 0;");
-  L.push("    for (i = 0; i < N_STATES; i++) y0[i] = g_states[i];");
+  L.push("    for (i = 0; i < N_STATES; i++) rk4_y0[i] = g_states[i];");
   L.push("    g_time = t;");
   for (const sv of stateVarRefs) {
-    L.push(`    g_vars[${sv.vr}] = y0[${sv.idx}];`);
+    L.push(`    g_vars[${sv.vr}] = rk4_y0[${sv.idx}];`);
   }
   L.push("    if (N_EVENT_INDICATORS > 0) {");
   L.push("      model_get_event_indicators();");
-  L.push("      for (i = 0; i < N_EVENT_INDICATORS; i++) z_prev[i] = g_event_indicators[i];");
+  L.push("      for (i = 0; i < N_EVENT_INDICATORS; i++) rk4_z_prev[i] = g_event_indicators[i];");
   L.push("    }");
   L.push("    while (!step_accepted) {");
   L.push("      /* k1 */");
   L.push("      g_time = t;");
   for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = y0[${sv.idx}];`);
+    L.push(`      g_vars[${sv.vr}] = rk4_y0[${sv.idx}];`);
   }
   L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k1[i] = g_derivatives[i];");
+  L.push("      for (i = 0; i < N_STATES; i++) rk4_k1[i] = g_derivatives[i];");
   L.push("      /* k2 */");
   L.push("      g_time = t + 0.5 * h;");
-  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k1[i];");
+  L.push("      for (i = 0; i < N_STATES; i++) rk4_tmp_states[i] = rk4_y0[i] + 0.5 * h * rk4_k1[i];");
   for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+    L.push(`      g_vars[${sv.vr}] = rk4_tmp_states[${sv.idx}];`);
   }
   L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k2[i] = g_derivatives[i];");
+  L.push("      for (i = 0; i < N_STATES; i++) rk4_k2[i] = g_derivatives[i];");
   L.push("      /* k3 */");
-  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k2[i];");
+  L.push("      for (i = 0; i < N_STATES; i++) rk4_tmp_states[i] = rk4_y0[i] + 0.5 * h * rk4_k2[i];");
   for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+    L.push(`      g_vars[${sv.vr}] = rk4_tmp_states[${sv.idx}];`);
   }
   L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k3[i] = g_derivatives[i];");
+  L.push("      for (i = 0; i < N_STATES; i++) rk4_k3[i] = g_derivatives[i];");
   L.push("      /* k4 */");
   L.push("      g_time = t + h;");
-  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + h * k3[i];");
+  L.push("      for (i = 0; i < N_STATES; i++) rk4_tmp_states[i] = rk4_y0[i] + h * rk4_k3[i];");
   for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+    L.push(`      g_vars[${sv.vr}] = rk4_tmp_states[${sv.idx}];`);
   }
   L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k4[i] = g_derivatives[i];");
+  L.push("      for (i = 0; i < N_STATES; i++) rk4_k4[i] = g_derivatives[i];");
   L.push("      /* Combine */");
   L.push(
-    "      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + (h / 6.0) * (k1[i] + 2.0*k2[i] + 2.0*k3[i] + k4[i]);",
+    "      for (i = 0; i < N_STATES; i++) rk4_tmp_states[i] = rk4_y0[i] + (h / 6.0) * (rk4_k1[i] + 2.0*rk4_k2[i] + 2.0*rk4_k3[i] + rk4_k4[i]);",
   );
   L.push("      ");
   L.push("      int crossing = 0;");
   L.push("      if (N_EVENT_INDICATORS > 0) {");
   L.push("        g_time = t + h;");
   for (const sv of stateVarRefs) {
-    L.push(`        g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+    L.push(`        g_vars[${sv.vr}] = rk4_tmp_states[${sv.idx}];`);
   }
   L.push("        model_get_event_indicators();");
   L.push("        for (i = 0; i < N_EVENT_INDICATORS; i++) {");
-  L.push("          if (z_prev[i] * g_event_indicators[i] < 0.0) { crossing = 1; break; }");
+  L.push("          if (rk4_z_prev[i] * g_event_indicators[i] < 0.0) { crossing = 1; break; }");
   L.push("        }");
   L.push("      }");
   L.push("      if (crossing && h > 1e-7) {");
@@ -672,7 +675,7 @@ function generateWasmC(
   L.push("      }");
   L.push("    }");
   L.push("    t += h;");
-  L.push("    for (i = 0; i < N_STATES; i++) g_states[i] = tmp_states[i];");
+  L.push("    for (i = 0; i < N_STATES; i++) g_states[i] = rk4_tmp_states[i];");
   for (const sv of stateVarRefs) {
     L.push(`    g_vars[${sv.vr}] = g_states[${sv.idx}];`);
   }

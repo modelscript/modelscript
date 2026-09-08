@@ -2,6 +2,7 @@ import type { CodeGraph, CompilerLint, u16, u32, u64 } from "@modelscript/langua
 import {
   findClassByName,
   findComponentTypeInClass,
+  getEnclosingClass,
   getExpressionVariability,
   getMemberKindInClass,
   hasMatchingConnectEquation,
@@ -36,6 +37,14 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         break;
       }
       if (rootId == 0) rootId = node;
+
+      const enclosingClass = getEnclosingClass(db, node, $);
+      if (enclosingClass == 0) return;
+
+      // FAST PATH 1: Is it declared in enclosingClass?
+      if (isDottedVariableDeclared(db, enclosingClass, node, $)) {
+        return;
+      }
 
       if (
         db.ast.textEquals(rootId, "time") ||
@@ -111,16 +120,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
-      let enclosingClass: u32 = 0;
-      for (const anc of db.ast.getAncestors(node, 0)) {
-        if (db.ast.getType(anc) == $.class_definition) {
-          enclosingClass = anc;
-          break;
-        }
-      }
-      if (enclosingClass == 0) return;
-
       // Check if inside inheritance_modification (break clauses) or annotation
+      // or for_equation / for_index iterator variable in ancestors
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc == enclosingClass) break;
         const ancType = db.ast.getType(anc);
@@ -131,12 +132,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         ) {
           return;
         }
-      }
-
-      // Check if rootId is defined as an iterator variable in an enclosing for-loop or comprehension
-      for (const anc of db.ast.getAncestors(node, 0)) {
-        if (anc == enclosingClass) break;
-        const ancType = db.ast.getType(anc);
         if (
           ($.for_equation != 0 && ancType == $.for_equation) ||
           ($.for_statement != 0 && ancType == $.for_statement) ||
@@ -154,16 +149,19 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         }
       }
 
+      // Check outer classes if nested
       let currClass = enclosingClass;
       while (currClass != 0) {
-        if (isDottedVariableDeclared(db, currClass, node, $)) {
-          return;
-        }
         let parentClass: u32 = 0;
         for (const anc of db.ast.getAncestors(currClass, 0)) {
           if (anc != currClass && db.ast.getType(anc) == $.class_definition) {
             parentClass = anc;
             break;
+          }
+        }
+        if (parentClass != 0) {
+          if (isDottedVariableDeclared(db, parentClass, node, $)) {
+            return;
           }
         }
         currClass = parentClass;
@@ -858,9 +856,76 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
       let varCount = 0;
       let eqCount = 0;
-      for (const elem of db.ast.getDescendants(node, $.component_declaration)) {
-        if (elem != 0 && !isDescendantOfInnerClass(db, elem, node, $)) varCount++;
+      for (const clause of db.ast.getDescendants(node, $.component_clause)) {
+        if (clause == 0 || isDescendantOfInnerClass(db, clause, node, $)) continue;
+        if (hasTypePrefix(db, clause, "parameter", $) || hasTypePrefix(db, clause, "constant", $)) {
+          continue;
+        }
+        for (const elem of db.ast.getDescendants(clause, $.component_declaration)) {
+          if (elem == 0) continue;
+          let dim = 1;
+          for (const subs of db.ast.getDescendants(elem, $.array_subscripts)) {
+            for (const sub of db.ast.getDescendants(subs, $.subscript)) {
+              let parsedDim = 0;
+              for (const num of db.ast.getDescendants(sub, $.unsigned_integer)) {
+                parsedDim = db.ast.parseInteger(num);
+                break;
+              }
+              if (parsedDim == 0 && $.number != 0) {
+                for (const num of db.ast.getDescendants(sub, $.number)) {
+                  parsedDim = db.ast.parseInteger(num);
+                  break;
+                }
+              }
+              if (parsedDim == 0) {
+                for (const id of db.ast.getDescendants(sub, $.identifier)) {
+                  for (const pClause of db.ast.getDescendants(node, $.component_clause)) {
+                    if (pClause == 0 || isDescendantOfInnerClass(db, pClause, node, $)) continue;
+                    if (!hasTypePrefix(db, pClause, "parameter", $)) continue;
+                    for (const decl of db.ast.getDescendants(pClause, $.declaration)) {
+                      let match = false;
+                      for (const pId of db.ast.getDescendants(decl, $.identifier)) {
+                        if (db.ast.textEqualsNode(id, pId)) {
+                          match = true;
+                          break;
+                        }
+                        break;
+                      }
+                      if (match) {
+                        for (const num of db.ast.getDescendants(decl, $.unsigned_integer)) {
+                          parsedDim = db.ast.parseInteger(num);
+                          break;
+                        }
+                        if (parsedDim == 0 && $.number != 0) {
+                          for (const num of db.ast.getDescendants(decl, $.number)) {
+                            parsedDim = db.ast.parseInteger(num);
+                            break;
+                          }
+                        }
+                      }
+                      if (parsedDim > 0) break;
+                    }
+                    if (parsedDim > 0) break;
+                  }
+                  break;
+                }
+              }
+              if (parsedDim > 0) {
+                dim *= parsedDim;
+              }
+            }
+          }
+          varCount += dim;
+        }
       }
+      if ($.component_clause1 != 0) {
+        for (const clause of db.ast.getDescendants(node, $.component_clause1)) {
+          if (clause == 0 || isDescendantOfInnerClass(db, clause, node, $)) continue;
+          if (hasTypePrefix(db, clause, "parameter", $) || hasTypePrefix(db, clause, "constant", $)) continue;
+          varCount++;
+        }
+      }
+
       for (const eq of db.ast.getDescendants(node, $.simple_equation)) {
         if (eq != 0 && !isDescendantOfInnerClass(db, eq, node, $)) eqCount++;
       }

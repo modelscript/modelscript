@@ -2,8 +2,10 @@ import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
 import { unitsCompatible } from "../units.js";
 import {
   getComponentUnit,
+  getEnclosingClass,
   getVariableTypeInClass,
   hasTypePrefix,
+  hasUnitInClass,
   inferExprType,
   inferExprUnit,
   isClassKind,
@@ -537,11 +539,12 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5001,
     message: (target) => `Type mismatch in equation '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let lhs = db.ast.getChildByFieldId(node, "lhs");
-      let rhs = db.ast.getChildByFieldId(node, "rhs");
-      if (lhs == 0) lhs = db.ast.getFirstChild(node);
-      if (rhs == 0 && lhs != 0) {
-        let sib = db.ast.getNextSibling(lhs);
+      let lhs = db.ast.getFirstChild(node);
+      if (lhs == 0) return;
+      let eqToken = db.ast.getNextSibling(lhs);
+      let rhs = eqToken != 0 ? db.ast.getNextSibling(eqToken) : 0;
+      if (rhs == 0) {
+        let sib = eqToken;
         while (sib != 0) {
           if (db.ast.getType(sib) != 0 && !db.ast.textEquals(sib, "=")) {
             rhs = sib;
@@ -833,14 +836,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 3010,
     message: (target) => `Unit mismatch in equation '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let classNode: u32 = 0;
-      for (const anc of db.ast.getAncestors(node)) {
-        const t = db.ast.getType(anc);
-        if (t == $.class_definition || t == $.short_class_definition) {
-          classNode = anc;
-          break;
-        }
-      }
+      let classNode: u32 = getEnclosingClass(db, node, $);
+      if (classNode == 0 || !hasUnitInClass(db, classNode, $)) return;
 
       let lhs = db.ast.getChildByFieldId(node, "lhs");
       let rhs = db.ast.getChildByFieldId(node, "rhs");
@@ -879,14 +876,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 3010,
     message: (target) => `Unit mismatch in component binding '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let classNode: u32 = 0;
-      for (const anc of db.ast.getAncestors(node)) {
-        const t = db.ast.getType(anc);
-        if (t == $.class_definition || t == $.short_class_definition) {
-          classNode = anc;
-          break;
-        }
-      }
+      let classNode: u32 = getEnclosingClass(db, node, $);
 
       const compUnit = getComponentUnit(db, node, $);
       if (compUnit == null) return;

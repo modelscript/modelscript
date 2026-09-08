@@ -29,7 +29,7 @@ import {
 } from "./arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds } from "./engine";
 import { inputLength, inputEncoding } from "./parser";
-import { UnmanagedMap64To64, createMap64To64 } from "./hashmap";
+import { UnmanagedMap64To64, createMap64To64, UnmanagedMap64 } from "./hashmap";
 import { stub_getDefinition, stub_getBinaryBuffer } from "./stub";
 
 @inline
@@ -52,6 +52,24 @@ let t_lspFindOffsetStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array
 let t_lspFindStackCapacity: u32 = 0;
 
 export let globalAstRoot: u32 = 0;
+export let globalEnclosingClassRoot: u32 = 0;
+export let globalEnclosingClassNode: u32 = 0;
+
+let t_nodeOffsetMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let t_nodeOffsetMapAstRoot: u32 = 0;
+
+function ensureNodeOffsetMap(): void {
+  if (changetype<usize>(t_nodeOffsetMap) == 0) {
+    t_nodeOffsetMap = changetype<UnmanagedMap64>(UnmanagedMap64.create(16384));
+  }
+}
+
+export function clearNodeOffsetCache(): void {
+  if (changetype<usize>(t_nodeOffsetMap) != 0) {
+    t_nodeOffsetMap.clear();
+  }
+  t_nodeOffsetMapAstRoot = 0;
+}
 
 // --- Multi-File Document Registry ---
 let t_documentRoots: UnmanagedMap64To64 = changetype<UnmanagedMap64To64>(0);
@@ -93,6 +111,7 @@ export function lsp_evictDocumentAst(fileId: u32): void {
 
 export function lsp_clearDocuments(): void {
   t_documentRoots = changetype<UnmanagedMap64To64>(createMap64To64());
+  clearNodeOffsetCache();
 }
 
 export function lsp_getDocumentRoot(fileId: u32): u32 {
@@ -304,6 +323,13 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
   if (astRoot == 0) return;
   globalAstRoot = astRoot;
 
+  ensureNodeOffsetMap();
+  if (t_nodeOffsetMapAstRoot != astRoot) {
+    t_nodeOffsetMap.clear();
+    t_nodeOffsetMapAstRoot = astRoot;
+    lsp_populateNodeOffsetMap(astRoot, 0);
+  }
+
   let prevLen = t_lspBinaryBuffer.length;
 
   ensureTraverseStack(1);
@@ -325,6 +351,8 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let inError = getInErrorFromStack(offsetStackVal);
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
     let inTainted = getInTaintedFromStack(offsetStackVal);
+
+    t_nodeOffsetMap.set(node as u64, start);
 
     if (stackTop > 500000) { break; }
 
@@ -1069,26 +1097,24 @@ export function lsp_getNodeLeadingPad(node: u32): u32 {
   return getNodePadding(node);
 }
 
-export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u32 = 0): i32 {
-   if (rootNode == 0 || targetNode == 0) return -1;
+export function lsp_populateNodeOffsetMap(rootNode: u32, rootOffset: u32 = 0): void {
+   if (rootNode == 0) return;
    ensureFindTraverseStack(1);
    let rootStart = (rootOffset == 0) ? getNodeLeadingPad(rootNode) : rootOffset;
-   if (rootNode == targetNode) return rootStart as i32;
 
    let stackTop: i32 = 0;
    t_lspFindTraverseStack[0] = rootNode;
    t_lspFindOffsetStack[0] = rootStart;
+   t_nodeOffsetMap.set(rootNode as u64, rootStart);
    stackTop++;
    
    let iterations: i32 = 0;
-   while (stackTop > 0 && ++iterations < 50000) {
+   while (stackTop > 0 && ++iterations < 2000000) {
       stackTop--;
       let current = t_lspFindTraverseStack[stackTop];
       let nodeStart = t_lspFindOffsetStack[stackTop];
       
-      if (current == targetNode) {
-         return nodeStart as i32;
-      }
+      t_nodeOffsetMap.set(current as u64, nodeStart);
       
       let child = getNodeFirstChild(current);
       if (child != 0) {
@@ -1117,6 +1143,23 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
          }
          stackTop += childCount;
       }
+   }
+}
+
+export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u32): i32 {
+   if (rootNode == 0 || targetNode == 0) return -1;
+   if (globalAstRoot == 0) globalAstRoot = rootNode;
+   let rootStart = (rootOffset == 0) ? getNodeLeadingPad(rootNode) : rootOffset;
+   if (rootNode == targetNode) return rootStart as i32;
+
+   ensureNodeOffsetMap();
+   if (t_nodeOffsetMapAstRoot != rootNode) {
+      t_nodeOffsetMap.clear();
+      t_nodeOffsetMapAstRoot = rootNode;
+      lsp_populateNodeOffsetMap(rootNode, rootOffset);
+   }
+   if (t_nodeOffsetMap.has(targetNode as u64)) {
+      return t_nodeOffsetMap.get(targetNode as u64) as i32;
    }
    if (rootNode != globalAstRoot && globalAstRoot != 0) {
       return lsp_findNodeOffset(globalAstRoot, targetNode, 0);
@@ -1169,7 +1212,7 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
             let root = load<u64>(valsPtr + (i * 8)) as u32;
              if (root != 0) {
                 globalAstRoot = root;
-                let offset = lsp_findNodeOffset(root, defNode);
+                let offset = lsp_findNodeOffset(root, defNode, 0);
                 if (offset >= 0) {
                    targetFileId = key as u32;
                    startOffset = offset;
@@ -1181,7 +1224,7 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    }
 
    if (startOffset < 0) {
-      startOffset = lsp_findNodeOffset(rootNode, defNode);
+      startOffset = lsp_findNodeOffset(rootNode, defNode, 0);
       targetFileId = 0;
    }
 
@@ -1674,7 +1717,7 @@ export function lsp_getCompletionContext(rootNode: u32, cursorOffset: u32): u32 
 
   if (targetNode == 0) return 0;
 
-  let targetStart = lsp_findNodeOffset(rootNode, targetNode);
+  let targetStart = lsp_findNodeOffset(rootNode, targetNode, 0);
   if (targetStart < 0) return 0;
   let targetEnd = (targetStart as u32) + getNodeByteLength(targetNode);
 
