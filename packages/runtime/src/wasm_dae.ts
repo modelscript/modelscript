@@ -1676,6 +1676,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     copy.externalObjects = this.externalObjects.map((o) => ({ ...o }));
     copy.equationAnnotations = [...this.equationAnnotations];
     copy.algorithmAnnotations = [...this.algorithmAnnotations];
+    copy.diagnostics = [...this.diagnostics];
     copy.experiment = { ...this.experiment };
     for (const [k, v] of this.functions) copy.functions.set(k, v);
     for (const s of this._algorithmSections) copy._algorithmSections.push({ ...s });

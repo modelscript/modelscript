@@ -3488,12 +3488,17 @@ export class LspFacade {
 
     let baseRoot =
       oldRoot !== undefined && oldRoot !== 0 ? oldRoot : prevAstRoot !== 0 ? prevAstRoot : this.lastAstRoot;
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = text.length;
+    let editStartByte = editStart * 2;
+    let editOldEndByte = editOldEnd * 2;
+    let editNewEndByte = editNewEnd * 2;
+    if (baseRoot === 0 || (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)) {
+      editNewEndByte = lenBytes;
       baseRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
     }
 
-    const newAstRoot = this.exports.parse(baseRoot, editStart, editOldEnd, editNewEnd);
+    const newAstRoot = this.exports.parse(baseRoot, editStartByte, editOldEndByte, editNewEndByte);
 
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {

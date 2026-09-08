@@ -2862,10 +2862,12 @@ export class ModelicaFlattener {
       const scalarized = scalarizeArena(dae);
       foldArenaConstants(scalarized, this.db, rootClassId, this.options.omcCompatibility);
       scalarized.groupEquationsForParity();
+      this.checkBalance(scalarized, rootClassId);
       return scalarized;
     }
 
     dae.groupEquationsForParity();
+    this.checkBalance(dae, rootClassId);
     return dae;
   }
 
@@ -3553,7 +3555,60 @@ export class ModelicaFlattener {
       eliminateArenaAliases(dae);
     }
 
+    this.checkBalance(dae);
+
     return dae;
+  }
+
+  /**
+   * Checks model equation/variable balance and pushes an M4004 diagnostic if unbalanced.
+   * Should be called after all equation lowering is complete.
+   */
+  checkBalance(dae: DAEBuilder, rootClassId?: SymbolId): void {
+    const classId = rootClassId ?? this.currentRootClassId;
+    if (!classId) return;
+    const rootSym = this.db.symbol(classId);
+    const rootName = rootSym?.name ?? "Model";
+    const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
+    let specKind: string | null = null;
+    if (typeof rawKind === "string") {
+      const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+      const words = cleanKind.split(/\s+/).filter(Boolean);
+      if (words.includes("package")) specKind = "package";
+      else if (words.includes("function")) specKind = "function";
+      else if (words.includes("record")) specKind = "record";
+      else if (words.includes("type")) specKind = "type";
+      else if (words.includes("connector")) specKind = "connector";
+    }
+    if (
+      specKind === "package" ||
+      specKind === "function" ||
+      specKind === "record" ||
+      specKind === "type" ||
+      specKind === "connector"
+    ) {
+      return;
+    }
+
+    // Clear any previous balance diagnostics
+    dae.diagnostics = dae.diagnostics.filter((d: any) => d.code !== ModelicaErrorCode.UNBALANCED_MODEL.code);
+
+    let stateCount = 0;
+    for (let i = 0; i < dae.getVarCount(); i++) {
+      const v = dae.getVarVariability(i);
+      if (v === Variability.Continuous || v === Variability.Discrete) {
+        stateCount++;
+      }
+    }
+    const eqCount = dae.getEqCount();
+    if (stateCount > 0 && eqCount > 0 && stateCount !== eqCount) {
+      const kindStr = specKind ?? (typeof rawKind === "string" ? rawKind.trim() : "model");
+      dae.diagnostics.push({
+        severity: ModelicaErrorCode.UNBALANCED_MODEL.severity,
+        code: ModelicaErrorCode.UNBALANCED_MODEL.code,
+        message: ModelicaErrorCode.UNBALANCED_MODEL.message(kindStr, rootName, String(eqCount), String(stateCount)),
+      });
+    }
   }
 
   private isClassType(classId: SymbolId, visited = new Set<SymbolId>()): boolean {

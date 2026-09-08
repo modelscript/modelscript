@@ -55,8 +55,11 @@ export async function testIncrementalEdits(N: number): Promise<ConditionResult[]
     Context.registerParser(".mo", parser as any);
     const ctx = new Context(new NodeFileSystem());
 
-    // 1. Establish pristine baseline
-    ctx.load(baseSrc, uri);
+    // 1. Establish pristine baseline for incremental conditions
+    if (mutator) {
+      ctx.load(baseSrc, uri);
+      ctx.flattenArena(`HeatConduction1D_${N}`, undefined, uri);
+    }
 
     // 2. Perform incremental mutation from baseline
     const src = mutator ? mutator(baseSrc) : baseSrc;
@@ -118,7 +121,9 @@ export async function testIncrementalEdits(N: number): Promise<ConditionResult[]
       `[${name}] ${res.totalMs.toFixed(2)}ms (load=${res.loadMs.toFixed(2)}ms, salsa=${res.salsaMs.toFixed(2)}ms, cstDiags=${res.cstDiagsMs.toFixed(2)}ms, flatten=${res.flattenMs.toFixed(2)}ms) | Diags: ${res.diagCount} | Flatten: ${res.flattenSuccess}`,
     );
     for (const d of allDiags.slice(0, 3)) {
-      console.log(`    - [${d.severity || d.type || "diag"}] code=${d.code} ${d.message || d.lintName || ""}`);
+      console.log(
+        `    - [${d.severity || d.type || "diag"}] code=${d.code} ${d.message || d.lintName || ""} [range=${d.start ?? d.range?.start?.line}:${d.end ?? d.range?.end?.line}]`,
+      );
     }
 
     return res;

@@ -1060,9 +1060,13 @@ export class LspFacade {
   getDiagnostics(astRoot: number, rangeStart: number = 0, rangeEnd: number = 0): Diagnostic[] {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
+    const encoding = typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
+    const encStep = encoding === 1 ? 2 : 1;
+    const rStartByte = rangeStart * encStep;
+    const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
     const numElements =
-      rangeEnd > rangeStart && typeof this.exports.lsp_getDiagnosticsRange === "function"
-        ? this.exports.lsp_getDiagnosticsRange(astRoot, rangeStart, rangeEnd)
+      rangeEnd > 0 && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rStartByte, rEndByte)
         : this.exports.lsp_getDiagnostics(astRoot);
     const diags: Diagnostic[] = [];
 
@@ -3488,12 +3492,17 @@ export class LspFacade {
 
     let baseRoot =
       oldRoot !== undefined && oldRoot !== 0 ? oldRoot : prevAstRoot !== 0 ? prevAstRoot : this.lastAstRoot;
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = text.length;
+    let editStartByte = editStart * 2;
+    let editOldEndByte = editOldEnd * 2;
+    let editNewEndByte = editNewEnd * 2;
+    if (baseRoot === 0 || (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)) {
+      editNewEndByte = lenBytes;
       baseRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
     }
 
-    const newAstRoot = this.exports.parse(baseRoot, editStart, editOldEnd, editNewEnd);
+    const newAstRoot = this.exports.parse(baseRoot, editStartByte, editOldEndByte, editNewEndByte);
 
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {

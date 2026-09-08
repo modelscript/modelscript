@@ -70,6 +70,15 @@ export class ModelicaLibrary {
   }
 }
 
+function isIdentChar(ch: number): boolean {
+  return (
+    (ch >= 48 && ch <= 57) || // 0-9
+    (ch >= 65 && ch <= 90) || // A-Z
+    (ch >= 97 && ch <= 122) || // a-z
+    ch === 95 // _
+  );
+}
+
 /**
  * Computes non-overlapping edit hunks between prevText and newText.
  * Partitions multi-cursor and non-adjacent modifications into discrete slices.
@@ -86,12 +95,38 @@ export function computeEditRanges(
     prefixLen++;
   }
 
+  // If prefixLen lands inside or immediately adjacent to an identifier in either
+  // prevText or newText, expand backwards to the start of the identifier to avoid splitting tokens.
+  if (
+    prefixLen > 0 &&
+    isIdentChar(prevText.charCodeAt(prefixLen - 1)) &&
+    ((prefixLen < prevText.length && isIdentChar(prevText.charCodeAt(prefixLen))) ||
+      (prefixLen < newText.length && isIdentChar(newText.charCodeAt(prefixLen))))
+  ) {
+    while (prefixLen > 0 && isIdentChar(prevText.charCodeAt(prefixLen - 1))) {
+      prefixLen--;
+    }
+  }
+
   let suffixLen = 0;
   while (
     suffixLen < minLen - prefixLen &&
     prevText.charCodeAt(prevText.length - 1 - suffixLen) === newText.charCodeAt(newText.length - 1 - suffixLen)
   ) {
     suffixLen++;
+  }
+
+  // If suffixLen lands inside or immediately adjacent to an identifier in either
+  // prevText or newText, shrink suffixLen to avoid splitting tokens.
+  if (
+    suffixLen > 0 &&
+    isIdentChar(prevText.charCodeAt(prevText.length - suffixLen)) &&
+    ((prevText.length - suffixLen > 0 && isIdentChar(prevText.charCodeAt(prevText.length - suffixLen - 1))) ||
+      (newText.length - suffixLen > 0 && isIdentChar(newText.charCodeAt(newText.length - suffixLen - 1))))
+  ) {
+    while (suffixLen > 0 && isIdentChar(prevText.charCodeAt(prevText.length - suffixLen))) {
+      suffixLen--;
+    }
   }
 
   const prevMiddle = prevText.slice(prefixLen, prevText.length - suffixLen);
@@ -803,7 +838,9 @@ export class Context {
             this.#workspaceIndex.clearDirtyRanges(resourceUri);
             this.#fileDeltas.delete(resourceUri);
           }
-          return cached.builder.clone();
+          const result = cached.builder.clone();
+          flattener.checkBalance(result, firstId);
+          return result;
         }
       } else if (!dirty || dirty.length === 0) {
         return cached.builder.clone();
