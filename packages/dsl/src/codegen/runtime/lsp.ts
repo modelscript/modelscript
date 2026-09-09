@@ -601,6 +601,11 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
  * @returns The number of `u32` records inside `t_lspBinaryBuffer` (7 u32s per diagnostic).
  */
 export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd: u32): u32 {
+  if (astRoot == 0) return 0;
+  let rootFlags = getNodeFlags(astRoot);
+  if (errorCount == 0 && (rootFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
+    return 0;
+  }
   ensureLspBuffers();
   if (astRoot != 0) {
     globalAstRoot = astRoot;
@@ -627,6 +632,11 @@ export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd:
  * @returns The number of `u32` records inside `t_lspBinaryBuffer` (7 u32s per diagnostic).
  */
 export function lsp_getDiagnostics(astRoot: u32): u32 {
+  if (astRoot == 0) return 0;
+  let rootFlags = getNodeFlags(astRoot);
+  if (errorCount == 0 && (rootFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
+    return 0;
+  }
   ensureLspBuffers();
   if (astRoot != 0) {
     globalAstRoot = astRoot;

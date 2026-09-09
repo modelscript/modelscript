@@ -18612,6 +18612,11 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
  * @returns The number of \`u32\` records inside \`t_lspBinaryBuffer\` (7 u32s per diagnostic).
  */
 export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd: u32): u32 {
+  if (astRoot == 0) return 0;
+  let rootFlags = getNodeFlags(astRoot);
+  if (errorCount == 0 && (rootFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
+    return 0;
+  }
   ensureLspBuffers();
   if (astRoot != 0) {
     globalAstRoot = astRoot;
@@ -18638,6 +18643,11 @@ export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd:
  * @returns The number of \`u32\` records inside \`t_lspBinaryBuffer\` (7 u32s per diagnostic).
  */
 export function lsp_getDiagnostics(astRoot: u32): u32 {
+  if (astRoot == 0) return 0;
+  let rootFlags = getNodeFlags(astRoot);
+  if (errorCount == 0 && (rootFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
+    return 0;
+  }
   ensureLspBuffers();
   if (astRoot != 0) {
     globalAstRoot = astRoot;
@@ -24476,26 +24486,29 @@ function invokeLexer(pos: u32): i32 {
  * 
  * @returns The final accepted AST root node pointer, or 0 if transitioning to GLR.
  */
-function parseLR(): u32 {
-  let pos: u32 = 0;
-  let token: i32 = 0;
-  let pendingPadding: u32 = 0;
-  
-  t_lrStateStack[0] = 0;
-  t_lrNodeStack[0] = 0;
-  lrStackDepth = 1;
-  
-  token = invokeLexer(pos);
-  while (load<u8>(is_extra_token + token) == 1) {
-    if (lexLen == 0) {
-      pos += 1;
-      break;
-    }
-    pendingPadding += lexLen;
-    let nextPos = pos + lexLen;
-    pos = nextPos > pos ? nextPos : pos + 1;
+function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 = 0): u32 {
+  let pos: u32 = startPos;
+  let token: i32 = startToken;
+  let pendingPadding: u32 = startPendingPad;
+
+  if (startToken == -1) {
+    t_lrStateStack[0] = 0;
+    t_lrNodeStack[0] = 0;
+    lrStackDepth = 1;
+
     token = invokeLexer(pos);
+    while (load<u8>(is_extra_token + token) == 1) {
+      if (lexLen == 0) {
+        pos += 1;
+        break;
+      }
+      pendingPadding += lexLen;
+      let nextPos = pos + lexLen;
+      pos = nextPos > pos ? nextPos : pos + 1;
+      token = invokeLexer(pos);
+    }
   }
+
   
   let consecutiveReductions: u32 = 0;
   while (currentParserMode == MODE_LR) {
@@ -25192,6 +25205,12 @@ function sanitizeTree(root: u32): void {
           modified = true;
         }
       } else {
+        if (g_oldTree != 0 && !isNodeGen2(child)) {
+          prevChild = child;
+          child = nextSib;
+          continue;
+        }
+
         // Check if this child was already visited (shared subtree)
         let cFlags = getNodeFlags(child);
         let isShared = (cFlags & FLAG_LSP_VISITED) != 0;
@@ -25574,7 +25593,9 @@ export function fixNodeLengthRecursive(node: u32): void {
 
     let child = getNodeFirstChild(curr);
     while (child != 0) {
-      t_sanitizeStack.push(child);
+      if (g_oldTree == 0 || isNodeGen2(child)) {
+        t_sanitizeStack.push(child);
+      }
       child = getNodeNextSibling(child);
     }
   }
@@ -27177,6 +27198,7 @@ function pruneGSS(pos: u32): void {
 
 
 
+export let g_oldTree: u32 = 0;
 export let g_editStart: u32 = 0;
 export let g_editOldEnd: u32 = 0;
 export let g_editNewEnd: u32 = 0;
@@ -27255,11 +27277,12 @@ export function advanceGLR(): void {
           expectedPadding
         );
         if (reusedNode != 0) {
-          let freshReuse = deepCloneSubtree(reusedNode, 0);
+          let freshReuse = cloneNodeShallow(reusedNode);
           if (freshReuse != 0) reusedNode = freshReuse;
           setNodePadding(reusedNode, expectedPadding);
         }
       }
+
 
       if (reusedNode != 0) {
         let nodeSym = getNodeType(reusedNode) as i32;
@@ -27490,6 +27513,57 @@ export function advanceGLR(): void {
 
     // 4. Swap buffers and advance
     swapActiveAndNextHeads();
+
+    // 5. GLR-to-LR Transition: If a single deterministic head has recovered, resume fast-path LR parsing
+    if (activeHeadsCount == 1 && g_oldTree != 0) {
+      let singleHead = changetype<ParseHead>(t_activeHeads[0]);
+      if (singleHead.successfulShifts >= 2 && singleHead.consecutiveInsertions == 0) {
+        let depth: u32 = 0;
+        let curr: ParseHead | null = singleHead;
+        while (curr) {
+          depth++;
+          curr = curr.prev;
+        }
+
+        if (depth > 0 && depth < 10000) {
+          curr = singleHead;
+          let d: i32 = (depth as i32) - 1;
+          while (curr && d >= 0) {
+            t_lrStateStack[d] = curr.state as u32;
+            t_lrNodeStack[d] = curr.astNode;
+            curr = curr.prev;
+            d--;
+          }
+          lrStackDepth = depth;
+          currentParserMode = MODE_LR;
+
+
+          initGlobalCursor(g_oldTree);
+
+          let resumePos = singleHead.pos;
+          let resumePad = singleHead.pendingPadding;
+          let resumeTok = invokeLexer(resumePos);
+          while (load<u8>(is_extra_token + resumeTok) == 1) {
+            if (lexLen == 0) {
+              resumePos += 1;
+              break;
+            }
+            resumePad += lexLen;
+            let nextP = resumePos + lexLen;
+            resumePos = nextP > resumePos ? nextP : resumePos + 1;
+            resumeTok = invokeLexer(resumePos);
+          }
+
+          let lrAccepted = parseLR(resumePos, resumeTok, resumePad);
+          if (currentParserMode == MODE_LR && lrAccepted != 0) {
+            acceptedNode = lrAccepted;
+            singleHead.pos = inputLength;
+            bestAcceptingHead = changetype<u32>(singleHead);
+            return;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -27503,9 +27577,11 @@ export function advanceGLR(): void {
  * @returns Pointer to the new AST root node.
  */
 export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
+  g_oldTree = oldTree;
   g_editStart = editStart;
   g_editOldEnd = editOldEnd;
   g_editNewEnd = editNewEnd;
+
   globalIsCatastrophic = false;
   globalSearchIterations = 0;
   debugLog(9001, oldTree, editStart, editOldEnd);
@@ -27829,14 +27905,29 @@ export function findReusableNode(
 
     if (canReuse && nodeType > (MAX_TERMINAL_ID as u16)) {
       if (end <= editStart || start >= editOldEnd) {
-        if (nodeStartState == (currentState as u32)) {
+        let canTransition = (nodeStartState == (currentState as u32));
+        if (!canTransition && (currentState as i32) >= 0 && (currentState as i32) < goto_offsets.length) {
+          let gOffset = goto_offsets[currentState];
+          if (gOffset >= 0 && gOffset < goto_data.length) {
+            let gCount = goto_data[gOffset];
+            for (let gi = 0; gi < gCount; gi++) {
+              if (goto_data[gOffset + 1 + gi * 2] == (nodeType as i32)) {
+                canTransition = true;
+                break;
+              }
+            }
+          }
+        }
+        if (canTransition) {
           let typeFlags = getNodeFlags(cPtr);
           let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
-          if (!hasErrorFlags && !nodeHasAnyErrors(cPtr)) {
+          let isCleanGen1 = (g_oldTree != 0 && !isNodeGen2(cPtr));
+          if (!hasErrorFlags && (isCleanGen1 || !nodeHasAnyErrors(cPtr))) {
             debugLog(9008, cPtr, start, end);
             return cPtr;
           }
         }
+
       }
     }
 
@@ -28392,7 +28483,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
 
-  while (anc != null && depth <= 8) {
+  while (anc != null && depth <= 20) {
     let ancState = anc.state;
     // Guard: Do not unwind all the way back to root position 0 when deep inside a class
     if (anc.pos == 0 && pos > 20 && depth > 2) {
@@ -28476,7 +28567,9 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
  * with Tree-sitter's standard ERROR_COST_PER_SKIPPED_TREE penalty.
  */
 export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
+  if (head.errorCost >= 200) return;
   if (head.errorCost > 0 && head.successfulShifts == 0) return;
+
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
   let pad = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
@@ -33765,10 +33858,14 @@ export class LspFacade {
   getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
+    const encoding =
+      typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
+    const encStep = encoding === 1 ? 2 : 1;
+    const rStartByte = rangeStart * encStep;
+    const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
     const numElements =
-      rangeEnd > rangeStart &&
-      typeof this.exports.lsp_getDiagnosticsRange === "function"
-        ? this.exports.lsp_getDiagnosticsRange(astRoot, rangeStart, rangeEnd)
+      rangeEnd > 0 && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rStartByte, rEndByte)
         : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
@@ -36216,15 +36313,23 @@ export class LspFacade {
         : prevAstRoot !== 0
           ? prevAstRoot
           : this.lastAstRoot;
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = text.length;
+    let editStartByte = editStart * 2;
+    let editOldEndByte = editOldEnd * 2;
+    let editNewEndByte = editNewEnd * 2;
+    if (
+      baseRoot === 0 ||
+      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+    ) {
+      editNewEndByte = lenBytes;
       baseRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
     }
     const newAstRoot = this.exports.parse(
       baseRoot,
-      editStart,
-      editOldEnd,
-      editNewEnd,
+      editStartByte,
+      editOldEndByte,
+      editNewEndByte,
     );
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {

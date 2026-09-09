@@ -974,10 +974,14 @@ export class LspFacade {
   getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
+    const encoding =
+      typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
+    const encStep = encoding === 1 ? 2 : 1;
+    const rStartByte = rangeStart * encStep;
+    const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
     const numElements =
-      rangeEnd > rangeStart &&
-      typeof this.exports.lsp_getDiagnosticsRange === "function"
-        ? this.exports.lsp_getDiagnosticsRange(astRoot, rangeStart, rangeEnd)
+      rangeEnd > 0 && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rStartByte, rEndByte)
         : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
@@ -3425,15 +3429,23 @@ export class LspFacade {
         : prevAstRoot !== 0
           ? prevAstRoot
           : this.lastAstRoot;
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = text.length;
+    let editStartByte = editStart * 2;
+    let editOldEndByte = editOldEnd * 2;
+    let editNewEndByte = editNewEnd * 2;
+    if (
+      baseRoot === 0 ||
+      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+    ) {
+      editNewEndByte = lenBytes;
       baseRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
     }
     const newAstRoot = this.exports.parse(
       baseRoot,
-      editStart,
-      editOldEnd,
-      editNewEnd,
+      editStartByte,
+      editOldEndByte,
+      editNewEndByte,
     );
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
@@ -4238,7 +4250,7 @@ export class SyntaxNode {
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      if ((flags & 128) !== 0) return true; // FLAG_HAS_ERROR
+      return (flags & 128) !== 0; // FLAG_HAS_ERROR
     }
     for (const kid of this.children) {
       if (kid.hasError()) return true;

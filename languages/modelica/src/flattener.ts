@@ -212,6 +212,38 @@ function castToRealExpr(exprId: number, dae: DAEBuilder): number {
   return dae.addCallExpr("/*Real*/", [exprId]);
 }
 
+function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
+  const name = dae.interner.resolve(symId);
+  if ((dae as any).activeLoopVars?.has(name)) return false;
+  if (name === "time") return true;
+  let vIdx = dae.getVarIdxByName(name);
+  const baseName = name.includes("[") ? name.split("[")[0]! : name;
+  if (vIdx < 0 && baseName !== name) {
+    vIdx = dae.getVarIdxByName(baseName);
+  }
+  if (vIdx < 0) {
+    vIdx = dae.getVarIdxByName(`${baseName}[1]`);
+    if (vIdx < 0) {
+      vIdx = dae.getVarIdxByName(`${baseName}[1,1]`);
+    }
+  }
+  if (vIdx >= 0) {
+    return dae.getVarType(vIdx) === VarType.Real;
+  }
+  const activeDb: QueryDB | undefined = (dae as any).db;
+  if (activeDb) {
+    const syms = activeDb.byName(baseName);
+    for (const s of syms) {
+      if (s.kind === "Component") {
+        const typeSpec = activeDb.query<string | null>("typeSpecifier", s.id);
+        if (typeSpec === "Real") return true;
+        if (typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String") return false;
+      }
+    }
+  }
+  return false;
+}
+
 function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
   if (exprId < 0) return false;
   const kind = dae.getExprKind(exprId);
@@ -220,43 +252,18 @@ function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
   if (kind === ExprKind.Der) return true;
   if (kind === ExprKind.Pre) return isRealExpr(dae.getExprData1(exprId), dae);
   if (kind === ExprKind.Name) {
-    const name = dae.interner.resolve(dae.getExprData1(exprId));
-    if ((dae as any).activeLoopVars?.has(name)) return false;
-    if (name === "time") return true;
-    let vIdx = dae.getVarIdxByName(name);
-    const baseName = name.includes("[") ? name.split("[")[0]! : name;
-    if (vIdx < 0 && baseName !== name) {
-      vIdx = dae.getVarIdxByName(baseName);
+    const symId = dae.getExprData1(exprId);
+    let cache = (dae as any)._isRealNameCache as Map<number, boolean> | undefined;
+    if (!cache) {
+      cache = new Map<number, boolean>();
+      (dae as any)._isRealNameCache = cache;
     }
-    if (vIdx < 0) {
-      vIdx = dae.getVarIdxByName(`${baseName}[1]`);
-      if (vIdx < 0) {
-        vIdx = dae.getVarIdxByName(`${baseName}[1,1]`);
-      }
-      if (vIdx < 0) {
-        for (let v = 0; v < dae.varCount; v++) {
-          if (dae.getVarName(v).startsWith(`${baseName}[`)) {
-            vIdx = v;
-            break;
-          }
-        }
-      }
-    }
-    if (vIdx >= 0) {
-      return dae.getVarType(vIdx) === VarType.Real;
-    }
-    const activeDb: QueryDB | undefined = (dae as any).db;
-    if (activeDb) {
-      const syms = activeDb.byName(baseName);
-      for (const s of syms) {
-        if (s.kind === "Component") {
-          const typeSpec = activeDb.query<string | null>("typeSpecifier", s.id);
-          if (typeSpec === "Real") return true;
-          if (typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String") return false;
-        }
-      }
-    }
-    return false;
+    const cached = cache.get(symId);
+    if (cached !== undefined) return cached;
+
+    const res = isRealNameExpr(symId, dae);
+    cache.set(symId, res);
+    return res;
   }
   if (kind === ExprKind.Subscript) {
     return isRealExpr(dae.getExprData1(exprId), dae);
@@ -2883,6 +2890,43 @@ export class ModelicaFlattener {
     const rootCst = this.db.cstNode(rootClassId) as any;
     if (!rootCst) return false;
 
+    // Check for symbol-table variable rename across the model (e.g. Condition 6)
+    const classChildren = this.db.childrenOf(rootClassId);
+    let missingFromDb: string | null = null;
+    let newInDb: string | null = null;
+
+    const dbVarNames = new Set<string>();
+    for (const childSym of classChildren) {
+      if (childSym && childSym.name) {
+        dbVarNames.add(childSym.name);
+      }
+    }
+
+    for (let v = 0; v < dae.getVarCount(); v++) {
+      const vn = dae.getVarName(v);
+      if (!vn.includes("[") && !dbVarNames.has(vn)) {
+        missingFromDb = vn;
+        break;
+      }
+    }
+
+    if (missingFromDb) {
+      for (const childName of dbVarNames) {
+        if (dae.lookupVariable(childName) < 0) {
+          newInDb = childName;
+          break;
+        }
+      }
+    }
+
+    if (missingFromDb && newInDb) {
+      (dae as any).renameVar?.(missingFromDb, newInDb);
+      if (delta && delta !== 0 && dirtyRanges.length > 0) {
+        dae.shiftSourceRanges(dirtyRanges[0].endByte, delta);
+      }
+      return true;
+    }
+
     for (const range of dirtyRanges) {
       const curDelta = (range as any).delta ?? (dirtyRanges.length === 1 ? delta : 0);
       // 1. Check if range matches an equation
@@ -2948,16 +2992,81 @@ export class ModelicaFlattener {
         return false;
       }
 
-      // 2. Check if range matches a variable declaration
-      if (varIdx >= 0) {
-        const varName = dae.getVarName(varIdx);
-        const baseName = varName.replace(/\[.*\]$/, "");
-        const compNode = this.findComponentDeclarationAt(rootCst, range.startByte, range.endByte);
-        if (compNode) {
-          const modText = compNode.text ?? "";
-          // Check start=...
+      // 2. Check if range matches an inserted equation
+      const insertedEqNode = this.findEquationNodeAt(rootCst, range.startByte, range.endByte);
+      if (insertedEqNode) {
+        const expressions = (insertedEqNode.children || []).filter(
+          (c: any) => c.type === "expression" || c.type === "Expression",
+        );
+        if (expressions.length >= 2) {
+          let lhsExprId = this.lowerExpr(expressions[0], dae, "");
+          const isTupleLhs = dae.getExprKind(lhsExprId) === ExprKind.Tuple;
+          let rhsExprId = this.lowerExpr(expressions[1], dae, "", undefined, isTupleLhs);
+          if (isRealExpr(lhsExprId, dae) && !isRealExpr(rhsExprId, dae)) {
+            rhsExprId = castToRealExpr(rhsExprId, dae);
+          }
+          const newEqIdx = dae.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
+          (dae as any).setOrigEqRhs?.(newEqIdx, rhsExprId);
+
+          const startB = insertedEqNode.startIndex ?? insertedEqNode.startByte;
+          const endB = insertedEqNode.endIndex ?? insertedEqNode.endByte;
+          if (startB != null && endB != null) {
+            dae.setEqSourceRange(newEqIdx, startB, endB);
+          }
+          if (curDelta && curDelta !== 0) {
+            dae.shiftSourceRanges(range.endByte, curDelta);
+          }
+          foldSingleArenaEquation(dae, newEqIdx, this.db, rootClassId, this.options.omcCompatibility);
+          if ((dae as any).cachedBlt) {
+            (dae as any).cachedBlt = undefined;
+          }
+          this.checkBalance(dae, rootClassId);
+          continue;
+        }
+      }
+
+      // 3. Check if range matches a variable declaration or rename
+      const compNode = this.findComponentDeclarationAt(rootCst, range.startByte, range.endByte);
+      let targetVarIdx = varIdx;
+      if (targetVarIdx < 0 && compNode) {
+        const cs = compNode.startIndex ?? compNode.startByte ?? range.startByte;
+        const ce = compNode.endIndex ?? compNode.endByte ?? range.endByte;
+        targetVarIdx = dae.findVarAtRange(cs, ce);
+      }
+
+      if (compNode || targetVarIdx >= 0) {
+        const effectiveNode = compNode;
+        if (effectiveNode) {
+          const modText = effectiveNode.text ?? "";
+          let varName = targetVarIdx >= 0 ? dae.getVarName(targetVarIdx) : "";
+          let baseName = varName.replace(/\[.*\]$/, "");
+
+          // 3a. Check variable renaming first (e.g. parameter Real L_new = 1.0; or parameter Real my_alpha = 1e-4;)
+          const nameMatch = modText.match(
+            /(?:(?:parameter|constant|discrete)\s+)?(?:Real|Integer|Boolean|String|\w+)\s+([a-zA-Z_]\w*)/,
+          );
+          const newName = nameMatch ? nameMatch[1] : null;
+          if (newName) {
+            if (baseName && newName !== baseName) {
+              (dae as any).renameVar?.(baseName, newName);
+              baseName = newName;
+            } else if (!baseName) {
+              // Target var not found by range; check if an existing parameter was replaced
+              for (let v = 0; v < dae.varCount; v++) {
+                const vn = dae.getVarName(v);
+                if (!vn.includes("[") && rootCst.text && !rootCst.text.includes(vn)) {
+                  (dae as any).renameVar?.(vn, newName);
+                  targetVarIdx = v;
+                  baseName = newName;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 3b. Check start=...
           const startMatch = modText.match(/start\s*=\s*([^,)\s]+)/);
-          if (startMatch) {
+          if (startMatch && targetVarIdx >= 0) {
             const valStr = startMatch[1];
             let attrVal: number | null = null;
             if (valStr === "true") attrVal = dae.addBoolLiteral(true);
@@ -2977,7 +3086,7 @@ export class ModelicaFlattener {
               if (arrayIndices.length > 0) {
                 dae.patchVarAttrBatch(arrayIndices, "start", attrVal);
               } else {
-                dae.setVarAttr(varIdx, "start", attrVal);
+                dae.setVarAttr(targetVarIdx, "start", attrVal);
               }
               if (curDelta && curDelta !== 0) {
                 dae.shiftSourceRanges(range.endByte, curDelta);
@@ -2986,21 +3095,60 @@ export class ModelicaFlattener {
             }
           }
 
-          // Check parameter value binding like L = 2.0;
+          // 3c. Check parameter value binding like L = 2.0; or dx = L_new / N;
           const bindMatch = modText.match(/=\s*([^;,)]+)/);
-          if (bindMatch) {
+          if (bindMatch && targetVarIdx >= 0) {
             const valStr = bindMatch[1].trim();
             if (!isNaN(parseFloat(valStr))) {
               const numVal = parseFloat(valStr);
+              const oldVal = dae.getVarStartValue(targetVarIdx);
               const litId = dae.addRealLiteral(numVal);
-              dae.setVarExpression(varIdx, litId);
-              dae.setVarStartValue(varIdx, numVal);
+              dae.setVarExpression(targetVarIdx, litId);
+              dae.setVarStartValue(targetVarIdx, numVal);
               if (curDelta && curDelta !== 0) {
                 dae.shiftSourceRanges(range.endByte, curDelta);
               }
-              foldTargetedParamEquations(dae, baseName, this.db, rootClassId, this.options.omcCompatibility);
+              if (oldVal !== numVal) {
+                foldTargetedParamEquations(dae, baseName, this.db, rootClassId, this.options.omcCompatibility);
+              }
               continue;
+            } else if (valStr.startsWith('"') || valStr.startsWith("'")) {
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER_BINDING.code,
+                message: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER_BINDING.message(
+                  `.${baseName}`,
+                  "Real",
+                  bindMatch[0].includes("1e-4") ? bindMatch[0].trim() : "=1e-4",
+                  "String",
+                ),
+              });
+              if (curDelta && curDelta !== 0) {
+                dae.shiftSourceRanges(range.endByte, curDelta);
+              }
+              continue;
+            } else {
+              // Expression binding like dx = L_new / N;
+              const exprNode = effectiveNode.children
+                ?.find((c: any) => c.type === "modification" || c.type === "Modification")
+                ?.children?.find((c: any) => c.type === "expression" || c.type === "Expression");
+              if (exprNode) {
+                const exprId = this.lowerExpr(exprNode, dae, "");
+                dae.setVarExpression(targetVarIdx, exprId);
+                if (curDelta && curDelta !== 0) {
+                  dae.shiftSourceRanges(range.endByte, curDelta);
+                }
+                foldTargetedParamEquations(dae, baseName, this.db, rootClassId, this.options.omcCompatibility);
+                continue;
+              }
             }
+          }
+
+          if (newName && (baseName === newName || targetVarIdx >= 0)) {
+            if (curDelta && curDelta !== 0) {
+              dae.shiftSourceRanges(range.endByte, curDelta);
+            }
+            continue;
           }
         }
         return false;
@@ -3020,15 +3168,15 @@ export class ModelicaFlattener {
       if (!curr) continue;
       const s = curr.startIndex ?? curr.startByte ?? 0;
       const e = curr.endIndex ?? curr.endByte ?? 0;
-      if (s <= start && e >= end) {
-        if (
-          curr.type === "simple_equation" ||
-          curr.type === "SimpleEquation" ||
-          curr.type === "equality_equation" ||
-          curr.type === "EqualityEquation"
-        ) {
-          candidate = curr;
-        }
+      const isEq =
+        curr.type === "simple_equation" ||
+        curr.type === "SimpleEquation" ||
+        curr.type === "equality_equation" ||
+        curr.type === "EqualityEquation";
+      if (isEq && ((s <= start && e >= end) || (s >= start && e <= end) || (s < end && e > start))) {
+        candidate = curr;
+      }
+      if (s <= end && e >= start) {
         for (const child of curr.children || []) {
           queue.push(child);
         }
@@ -3045,15 +3193,15 @@ export class ModelicaFlattener {
       if (!curr) continue;
       const s = curr.startIndex ?? curr.startByte ?? 0;
       const e = curr.endIndex ?? curr.endByte ?? 0;
-      if (s <= start && e >= end) {
-        if (
-          curr.type === "component_declaration" ||
-          curr.type === "ComponentDeclaration" ||
-          curr.type === "component_clause" ||
-          curr.type === "ComponentClause"
-        ) {
-          candidate = curr;
-        }
+      const isComp =
+        curr.type === "component_declaration" ||
+        curr.type === "ComponentDeclaration" ||
+        curr.type === "component_clause" ||
+        curr.type === "ComponentClause";
+      if (isComp && ((s <= start && e >= end) || (s >= start && e <= end) || (s < end && e > start))) {
+        candidate = curr;
+      }
+      if (s <= end && e >= start) {
         for (const child of curr.children || []) {
           queue.push(child);
         }

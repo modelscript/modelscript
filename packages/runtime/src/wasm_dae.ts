@@ -555,7 +555,18 @@ export class WasmDaeBridge implements IDaeBuilder {
     return -1;
   }
 
+  renameVar(oldName: string, newName: string): boolean {
+    const varIdx = this.getVarIdxByName(oldName);
+    if (varIdx < 0) return false;
+    if (!(this as any)._renamedVars) (this as any)._renamedVars = new Map<number, string>();
+    (this as any)._renamedVars.set(varIdx, newName);
+    (this as any)._isRealNameCache?.clear();
+    return true;
+  }
+
   getVarName(varIdx: number): string {
+    const renamed = (this as any)._renamedVars?.get(varIdx);
+    if (renamed !== undefined) return renamed;
     const nId = this.getVarNameId(varIdx);
     return this.interner.resolve(nId) ?? "";
   }
@@ -1714,9 +1725,15 @@ export class WasmDaeBridge implements IDaeBuilder {
       };
     }
 
+    if ((this as any)._renamedVars) {
+      (copy as any)._renamedVars = new Map((this as any)._renamedVars);
+    }
+
     for (let i = 0; i < this.varCount; i++) {
+      const varName = this.getVarName(i);
+      const nameId = copy.interner.intern(varName);
       copy.addVariable(
-        this.getVarNameId(i),
+        nameId,
         this.getVarType(i),
         this.getVarVariability(i),
         this.getVarCausality(i),

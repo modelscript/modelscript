@@ -91,7 +91,8 @@ export async function testIncrementalEdits(N: number): Promise<ConditionResult[]
     let flattenResult = null;
     try {
       flattenResult = ctx.flattenArena(`HeatConduction1D_${N}`, undefined, uri);
-    } catch {
+    } catch (e) {
+      console.error("Flatten exception:", e);
       /* ignore flattening errors for invalid models */
     }
     const t4 = performance.now();
@@ -103,6 +104,13 @@ export async function testIncrementalEdits(N: number): Promise<ConditionResult[]
 
     const arenaDiags = flattenResult ? flattenResult.diagnostics : [];
     const allDiags = [...cstDiags, ...diags, ...arenaDiags];
+    const lightDiags = allDiags.map((d: any) => ({
+      severity: d.severity || d.type || "diag",
+      code: d.code,
+      message: d.message || d.lintName || "",
+      start: d.start ?? d.range?.start?.line,
+      end: d.end ?? d.range?.end?.line,
+    }));
 
     const res: ConditionResult = {
       name,
@@ -113,7 +121,7 @@ export async function testIncrementalEdits(N: number): Promise<ConditionResult[]
       totalMs: t4 - t0,
       diagCount: allDiags.length,
       flattenSuccess: flattenResult !== null,
-      diagnostics: allDiags,
+      diagnostics: lightDiags,
     };
     results.push(res);
 

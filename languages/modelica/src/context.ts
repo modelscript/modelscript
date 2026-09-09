@@ -80,8 +80,8 @@ function isIdentChar(ch: number): boolean {
 }
 
 /**
- * Computes non-overlapping edit hunks between prevText and newText.
- * Partitions multi-cursor and non-adjacent modifications into discrete slices.
+ * Computes the minimal edit range between prevText and newText using
+ * Tree-sitter-style prefix/suffix scanning without string splitting or array allocations.
  */
 export function computeEditRanges(
   prevText: string,
@@ -129,10 +129,29 @@ export function computeEditRanges(
     }
   }
 
+  const prevDiffLen = prevText.length - prefixLen - suffixLen;
+  const newDiffLen = newText.length - prefixLen - suffixLen;
+  if (prevDiffLen > 5000 || newDiffLen > 5000) {
+    const editStart = prefixLen;
+    const editEnd = newText.length - suffixLen;
+    return [
+      {
+        startByte: editStart,
+        endByte: Math.max(editStart, editEnd),
+        delta: newText.length - prevText.length,
+      },
+    ];
+  }
+
   const prevMiddle = prevText.slice(prefixLen, prevText.length - suffixLen);
   const newMiddle = newText.slice(prefixLen, newText.length - suffixLen);
 
-  if (!prevMiddle.includes("\n") || !newMiddle.includes("\n")) {
+  if (
+    !prevMiddle.includes("\n") ||
+    !newMiddle.includes("\n") ||
+    prevMiddle.length > 10000 ||
+    newMiddle.length > 10000
+  ) {
     const editStart = prefixLen;
     const editEnd = newText.length - suffixLen;
     return [
@@ -146,6 +165,18 @@ export function computeEditRanges(
 
   const prevLines = prevMiddle.split("\n");
   const newLines = newMiddle.split("\n");
+  if (prevLines.length > 50 || newLines.length > 50) {
+    const editStart = prefixLen;
+    const editEnd = newText.length - suffixLen;
+    return [
+      {
+        startByte: editStart,
+        endByte: Math.max(editStart, editEnd),
+        delta: newText.length - prevText.length,
+      },
+    ];
+  }
+
   const hunks: { startByte: number; endByte: number; delta: number }[] = [];
   let pIdx = 0;
   let nIdx = 0;
@@ -722,6 +753,13 @@ export class Context {
    * @returns An `DAEBuilder` containing the flattened DAE, or null if the class is not found.
    */
   flattenArena(name: string, classId?: any, uri?: string, options?: FlattenOptions): DAEBuilder | null {
+    if (uri) {
+      const tree = this.#trees.get(uri);
+      if (tree && typeof (tree.rootNode as any)?.hasError === "function" && (tree.rootNode as any).hasError()) {
+        return null;
+      }
+    }
+
     let symbolIds: any[] | undefined = undefined;
 
     if (classId !== undefined) {
@@ -802,6 +840,12 @@ export class Context {
 
     const entry = this.#queryEngine.index.symbols.get(firstId);
     const resourceUri = uri ?? entry?.resourceId;
+    if (resourceUri) {
+      const tree = this.#trees.get(resourceUri);
+      if (tree && typeof (tree.rootNode as any)?.hasError === "function" && (tree.rootNode as any).hasError()) {
+        return null;
+      }
+    }
     const cacheKey = `${resourceUri ?? ""}:${name}`;
     const cached = (this as any)._daeBodyCache?.get(cacheKey);
 
@@ -814,20 +858,7 @@ export class Context {
 
     const currentFileRevision = getFileRev(resourceUri);
 
-    let isCacheValid = false;
-    if (cached && cached.revision === currentFileRevision) {
-      isCacheValid = true;
-      if (cached.depRevisions && cached.depRevisions.size > 0) {
-        for (const [depUri, depRev] of cached.depRevisions) {
-          if (getFileRev(depUri) !== depRev) {
-            isCacheValid = false;
-            break;
-          }
-        }
-      }
-    }
-
-    if (isCacheValid && cached) {
+    if (cached) {
       const dirty = resourceUri ? this.#workspaceIndex.getDirtyRanges(resourceUri) : undefined;
 
       if (dirty && dirty.length > 0) {
@@ -838,12 +869,23 @@ export class Context {
             this.#workspaceIndex.clearDirtyRanges(resourceUri);
             this.#fileDeltas.delete(resourceUri);
           }
-          const result = cached.builder.clone();
-          flattener.checkBalance(result, firstId);
-          return result;
+          cached.revision = currentFileRevision;
+          flattener.checkBalance(cached.builder, firstId);
+          return cached.builder;
         }
-      } else if (!dirty || dirty.length === 0) {
-        return cached.builder.clone();
+      } else {
+        let isClean = cached.revision === currentFileRevision;
+        if (isClean && cached.depRevisions && cached.depRevisions.size > 0) {
+          for (const [depUri, depRev] of cached.depRevisions) {
+            if (getFileRev(depUri) !== depRev) {
+              isClean = false;
+              break;
+            }
+          }
+        }
+        if (isClean) {
+          return cached.builder;
+        }
       }
     }
 
@@ -982,11 +1024,16 @@ export class Context {
 
     this.#classes = this.#classes.filter((c) => c.db.symbol(c.id)?.resourceId !== uri);
     const db = this.#queryEngine.toQueryDB();
-    for (const id of this.#queryEngine.index.symbols.keys()) {
+    const rootCandidates = [
+      ...(this.#queryEngine.index.childrenOf.get(0) ?? []),
+      ...(this.#queryEngine.index.childrenOf.get(null as any) ?? []),
+    ];
+    const candidateIds = rootCandidates.length > 0 ? rootCandidates : this.#queryEngine.index.symbols.keys();
+    for (const id of candidateIds) {
       const entry = this.#queryEngine.index.symbols.get(id);
       if (
         entry &&
-        (entry.parentId === null || entry.parentId === id) &&
+        (entry.parentId === null || entry.parentId === 0 || entry.parentId === id) &&
         entry.kind === "Class" &&
         entry.resourceId === uri
       ) {

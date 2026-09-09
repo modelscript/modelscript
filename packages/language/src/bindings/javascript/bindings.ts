@@ -1060,9 +1060,13 @@ export class LspFacade {
   getDiagnostics(astRoot: number, rangeStart: number = 0, rangeEnd: number = 0): Diagnostic[] {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
+    const encoding = typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
+    const encStep = encoding === 1 ? 2 : 1;
+    const rStartByte = rangeStart * encStep;
+    const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
     const numElements =
-      rangeEnd > rangeStart && typeof this.exports.lsp_getDiagnosticsRange === "function"
-        ? this.exports.lsp_getDiagnosticsRange(astRoot, rangeStart, rangeEnd)
+      rangeEnd > 0 && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rStartByte, rEndByte)
         : this.exports.lsp_getDiagnostics(astRoot);
     const diags: Diagnostic[] = [];
 
@@ -4273,7 +4277,7 @@ export class SyntaxNode {
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      if ((flags & 128) !== 0) return true; // FLAG_HAS_ERROR
+      return (flags & 128) !== 0; // FLAG_HAS_ERROR
     }
     for (const kid of this.children) {
       if (kid.hasError()) return true;

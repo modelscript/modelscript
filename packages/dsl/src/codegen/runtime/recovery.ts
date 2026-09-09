@@ -170,7 +170,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
 
-  while (anc != null && depth <= 8) {
+  while (anc != null && depth <= 20) {
     let ancState = anc.state;
     // Guard: Do not unwind all the way back to root position 0 when deep inside a class
     if (anc.pos == 0 && pos > 20 && depth > 2) {
@@ -254,7 +254,9 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
  * with Tree-sitter's standard ERROR_COST_PER_SKIPPED_TREE penalty.
  */
 export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
+  if (head.errorCost >= 200) return;
   if (head.errorCost > 0 && head.successfulShifts == 0) return;
+
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
   let pad = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
