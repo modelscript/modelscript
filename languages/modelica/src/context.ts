@@ -321,6 +321,15 @@ export class Context {
         if (!tree && this.#trees.size === 1) {
           tree = this.#trees.values().next().value;
         }
+        if (!tree && entry?.resourceId) {
+          try {
+            const text = this.#fs.read(entry.resourceId);
+            tree = this.parse(".mo", text);
+            this.#trees.set(entry.resourceId, tree);
+          } catch {
+            // ignore
+          }
+        }
         if (!tree) {
           for (const [resId, t] of this.#trees.entries()) {
             if (resId.includes("modelscript-cas") || resId.includes("modelscript-studies")) continue;
@@ -328,15 +337,6 @@ export class Context {
               tree = t;
               break;
             }
-          }
-        }
-        if (!tree && entry?.resourceId) {
-          try {
-            const text = this.#fs.read(entry.resourceId);
-            tree = this.parse(".mo", text);
-            this.#trees.set(entry.resourceId, tree);
-          } catch {
-            return null;
           }
         }
         if (!tree) return null;
@@ -431,6 +431,15 @@ export class Context {
         if (!tree && this.#trees.size === 1) {
           tree = this.#trees.values().next().value;
         }
+        if (!tree && entry?.resourceId) {
+          try {
+            const text = this.#fs.read(entry.resourceId);
+            tree = this.parse(".mo", text);
+            this.#trees.set(entry.resourceId, tree);
+          } catch {
+            // ignore
+          }
+        }
         if (!tree) {
           for (const [resId, t] of this.#trees.entries()) {
             if (resId.includes("modelscript-cas") || resId.includes("modelscript-studies")) continue;
@@ -438,15 +447,6 @@ export class Context {
               tree = t;
               break;
             }
-          }
-        }
-        if (!tree && entry?.resourceId) {
-          try {
-            const text = this.#fs.read(entry.resourceId);
-            tree = this.parse(".mo", text);
-            this.#trees.set(entry.resourceId, tree);
-          } catch {
-            return null;
           }
         }
         if (!tree) return null;
@@ -605,6 +605,7 @@ export class Context {
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".mo", text);
+              this.#trees.set(dir, tree);
               return tree.rootNode as any;
             },
             parentFQN,

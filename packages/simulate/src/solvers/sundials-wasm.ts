@@ -408,9 +408,10 @@ export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscri
     const currentDir = dirname(fileURLToPath(import.meta.url));
 
     const candidateDirs = [
-      join(currentDir, "..", "..", "wasm"),
-      join(currentDir, "..", "..", "..", "..", "wasm"),
       join(currentDir, "..", "wasm"),
+      join(currentDir, "..", "..", "wasm"),
+      join(currentDir, "..", "..", "src", "wasm"),
+      join(currentDir, "..", "..", "..", "..", "wasm"),
     ];
 
     let wasmDir = candidateDirs.find((d) => existsSync(join(d, "sundials.js"))) ?? candidateDirs[0]!;

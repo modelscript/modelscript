@@ -100,12 +100,24 @@ export function evaluateConstantArenaExpression(
       if (paramMap.has(varName)) {
         return paramMap.get(varName) ?? null;
       }
-      return null;
     }
-    const varIdx = nameToIdx ? nameToIdx.get(varName) : undefined;
-    if (varIdx !== undefined && !arena.isVarRemoved(varIdx)) {
+    const varIdx = nameToIdx ? nameToIdx.get(varName) : arena.getVarIdxByName(varName);
+    if (varIdx !== undefined && varIdx >= 0 && !arena.isVarRemoved(varIdx)) {
+      const bindExpr = arena.getVarExpression(varIdx);
+      if (bindExpr !== undefined && bindExpr >= 0 && bindExpr !== exprId) {
+        const val = evaluateConstantArenaExpression(
+          arena,
+          bindExpr,
+          paramMap,
+          nameToIdx,
+          visitedDepth + 1,
+          db,
+          scopeId,
+        );
+        if (val !== null) return val;
+      }
       const variability = arena.getVarVariability(varIdx);
-      if (variability === Variability.Constant) {
+      if (variability === Variability.Constant || variability === Variability.Parameter) {
         return arena.getVarStartValue(varIdx);
       }
     }
@@ -114,11 +126,43 @@ export function evaluateConstantArenaExpression(
       if (resolveName) {
         const resolved = resolveName(varName);
         if (resolved) {
-          if (resolved.kind === "Component" && resolved.metadata) {
-            const csvValue = (resolved.metadata as any).csvValue;
-            if (csvValue !== undefined) {
-              return csvValue;
+          if (resolved.kind === "Component") {
+            if (resolved.metadata) {
+              const csvValue = (resolved.metadata as any).csvValue;
+              if (csvValue !== undefined) {
+                return csvValue;
+              }
             }
+            const variability =
+              (resolved.metadata as any)?.variability ?? db.query<string | null>("variability", resolved.id);
+            if (variability === "constant" || variability === "parameter") {
+              const mod = db.query<any | null>("effectiveModification", resolved.id);
+              if (mod?.bindingExpression) {
+                try {
+                  const evalVal = db.evaluate(mod.bindingExpression, resolved.parentId);
+                  if (typeof evalVal === "number" || typeof evalVal === "boolean") {
+                    return evalVal;
+                  }
+                  if (Array.isArray(evalVal)) {
+                    return evalVal;
+                  }
+                } catch {
+                  // ignore evaluation failure
+                }
+              }
+            }
+          }
+        } else if (varName.includes("[") || varName.includes(".")) {
+          try {
+            const evalVal = db.evaluate(varName, scopeId);
+            if (typeof evalVal === "number" || typeof evalVal === "boolean") {
+              return evalVal;
+            }
+            if (Array.isArray(evalVal)) {
+              return evalVal;
+            }
+          } catch {
+            // ignore evaluation failure
           }
         }
       }
@@ -363,8 +407,20 @@ export function evaluateConstantArenaExpression(
       if (arrArg >= 0) {
         const arrKind = arena.getExprKind(arrArg);
         if (arrKind === ExprKind.ArrayCtor) {
-          const count = arena.getExprData1(arrArg);
-          if (dim === 1) return count;
+          if (dim === 1) {
+            return arena.getExprData1(arrArg);
+          }
+          let cur = arrArg;
+          for (let d = 1; d < dim; d++) {
+            if (arena.getExprKind(cur) === ExprKind.ArrayCtor && arena.getExprData1(cur) > 0) {
+              cur = arena.getExprLeft(cur);
+            } else {
+              break;
+            }
+          }
+          if (arena.getExprKind(cur) === ExprKind.ArrayCtor) {
+            return arena.getExprData1(cur);
+          }
         }
         if (arrKind === ExprKind.Name) {
           const name = arena.interner.resolve(arena.getExprData1(arrArg));
@@ -376,6 +432,27 @@ export function evaluateConstantArenaExpression(
                 return shape[dim - 1];
               }
             }
+            let maxDim = 0;
+            const prefixMatch = `${name}[`;
+            for (let i = 0; i < arena.varCount; i++) {
+              if (!arena.isVarRemoved(i)) {
+                const vn = arena.getVarName(i);
+                if (vn.startsWith(prefixMatch)) {
+                  const rest = vn.slice(prefixMatch.length);
+                  const endBracket = rest.indexOf("]");
+                  if (endBracket >= 0) {
+                    const idxList = rest.slice(0, endBracket).split(",");
+                    if (dim >= 1 && dim <= idxList.length) {
+                      const val = parseInt(idxList[dim - 1]!.trim(), 10);
+                      if (!isNaN(val) && val > maxDim) {
+                        maxDim = val;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            if (maxDim > 0) return maxDim;
             let count = 0;
             while (arena.getVarIdxByName(`${name}[${count + 1}]`) >= 0) count++;
             if (count > 0 && dim === 1) return count;
@@ -411,11 +488,12 @@ export function evaluateConstantArenaExpression(
         scopeId,
       );
       if (Array.isArray(arg1) && argCount === 1) {
-        if (arg1.length === 0) return null;
-        if (funcName === "max") return Math.max(...(arg1 as number[]));
-        if (funcName === "min") return Math.min(...(arg1 as number[]));
-        if (funcName === "sum") return (arg1 as number[]).reduce((a, b) => (a as number) + (b as number), 0);
-        if (funcName === "product") return (arg1 as number[]).reduce((a, b) => (a as number) * (b as number), 1);
+        const flat = (arg1 as any[]).flat(Infinity) as number[];
+        if (flat.length === 0) return null;
+        if (funcName === "max") return Math.max(...flat);
+        if (funcName === "min") return Math.min(...flat);
+        if (funcName === "sum") return flat.reduce((a, b) => a + b, 0);
+        if (funcName === "product") return flat.reduce((a, b) => a * b, 1);
       }
       if (typeof arg1 === "number") {
         let arg2 = 0.0;
@@ -885,7 +963,7 @@ export function foldArenaConstants(
     for (let i = 0; i < arena.varCount; i++) {
       if (arena.isVarRemoved(i)) continue;
       const v = arena.getVarVariability(i);
-      if (v !== Variability.Constant && v !== Variability.Parameter) continue;
+      if (v !== Variability.Constant && v !== Variability.Parameter && !omcCompatibility) continue;
 
       const exprId = (arena as any).getExplicitVarExpression
         ? (arena as any).getExplicitVarExpression(i)
@@ -1312,6 +1390,16 @@ function getArrayElements(dae: DAEBuilder, exprId: number): number[] | null {
         }
         return elements;
       }
+      const prefixMatch = `${name}[`;
+      const elements: number[] = [];
+      for (let v = 0; v < dae.varCount; v++) {
+        if (dae.isVarRemoved(v)) continue;
+        const vName = dae.getVarName(v);
+        if (vName.startsWith(prefixMatch) && vName.endsWith("]")) {
+          elements.push(dae.addExpression(ExprKind.Name, dae.interner.intern(vName)));
+        }
+      }
+      if (elements.length > 0) return elements;
     }
   }
   if (kind === ExprKind.Der) {
@@ -1391,7 +1479,220 @@ function getFieldExpr(dae: DAEBuilder, out: DAEBuilder, exprId: number, field: s
   }
 }
 
-function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boolean {
+function evalConstantNum(dae: DAEBuilder, exprId: number): number | null {
+  const val = evaluateConstantArenaExpression(dae, exprId);
+  if (typeof val === "number") return val;
+  return null;
+}
+
+export function getMatrixDimensions(
+  dae: DAEBuilder,
+  exprId: number,
+  isInnerRow = false,
+): { rows: number; cols: number } | null {
+  if (exprId < 0) return null;
+  const kind = dae.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.Name: {
+      const name = dae.interner.resolve(dae.getExprData1(exprId));
+      if (!name) return null;
+      if (dae.getVarIdxByName(`${name}[1,1]`) >= 0) {
+        let rows = 0;
+        while (dae.getVarIdxByName(`${name}[${rows + 1},1]`) >= 0) rows++;
+        let cols = 0;
+        while (dae.getVarIdxByName(`${name}[1,${cols + 1}]`) >= 0) cols++;
+        if (rows > 0 && cols > 0) return { rows, cols };
+      }
+      const vIdx = dae.getVarIdxByName(name);
+      if (vIdx >= 0) {
+        const shape = dae.getVarShape(vIdx);
+        if (shape.length === 2) return { rows: shape[0]!, cols: shape[1]! };
+        if (shape.length === 1) return { rows: shape[0]!, cols: 1 };
+      }
+      if (dae.getVarIdxByName(`${name}[1]`) >= 0) {
+        let count = 0;
+        while (dae.getVarIdxByName(`${name}[${count + 1}]`) >= 0) count++;
+        if (count > 0) return { rows: count, cols: 1 };
+      }
+      return null;
+    }
+    case ExprKind.Call: {
+      const fnName = dae.interner.resolve(dae.getExprData1(exprId));
+      if (fnName === "/*Real*/" || fnName === "Real") {
+        return getMatrixDimensions(dae, dae.getExprLeft(exprId), isInnerRow);
+      }
+      if (fnName === "transpose") {
+        const inner = dae.getExprLeft(exprId);
+        const innerDims = getMatrixDimensions(dae, inner, false);
+        if (innerDims) {
+          return { rows: innerDims.cols, cols: innerDims.rows };
+        }
+        return null;
+      }
+      if (fnName === "zeros" || fnName === "ones") {
+        const argCount = dae.getExprRight(exprId);
+        if (argCount >= 2) {
+          const r = evalConstantNum(dae, dae.getExprLeft(exprId));
+          const c = evalConstantNum(dae, dae.getExprLeft(exprId + 1));
+          if (r !== null && c !== null && r > 0 && c > 0) {
+            return { rows: Math.trunc(r), cols: Math.trunc(c) };
+          }
+        } else if (argCount === 1) {
+          const n = evalConstantNum(dae, dae.getExprLeft(exprId));
+          if (n !== null && n > 0) {
+            return { rows: Math.trunc(n), cols: 1 };
+          }
+        }
+      }
+      return null;
+    }
+    case ExprKind.ArrayCtor: {
+      const count = dae.getExprData1(exprId);
+      if (count <= 0) return null;
+      const elems = getArrayElements(dae, exprId);
+      if (!elems || elems.length === 0) return null;
+
+      if (isInnerRow) {
+        return { rows: 1, cols: count };
+      }
+
+      const hasArrayOrMatrixChild = elems.some((e) => {
+        const k = dae.getExprKind(e);
+        if (k === ExprKind.ArrayCtor) return true;
+        if (k === ExprKind.Call) {
+          const fn = dae.interner.resolve(dae.getExprData1(e));
+          if (fn === "zeros" || fn === "ones" || fn === "transpose" || fn === "/*Real*/" || fn === "Real") return true;
+        }
+        return false;
+      });
+
+      if (hasArrayOrMatrixChild) {
+        let totalRows = 0;
+        let maxCols = 1;
+        for (const elem of elems) {
+          const d = getMatrixDimensions(dae, elem, true);
+          if (d) {
+            totalRows += d.rows;
+            if (d.cols > maxCols) maxCols = d.cols;
+          } else {
+            totalRows += 1;
+          }
+        }
+        return { rows: totalRows, cols: maxCols };
+      }
+
+      return { rows: count, cols: 1 };
+    }
+    default:
+      return null;
+  }
+}
+
+export function getMatrixElement(
+  dae: DAEBuilder,
+  exprId: number,
+  row: number,
+  col: number,
+  isInnerRow = false,
+): number | null {
+  if (exprId < 0) return null;
+  const kind = dae.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.Name: {
+      const name = dae.interner.resolve(dae.getExprData1(exprId));
+      if (!name) return null;
+      if (dae.getVarIdxByName(`${name}[1,1]`) >= 0) {
+        return dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${row},${col}]`));
+      }
+      const vIdx = dae.getVarIdxByName(name);
+      if (vIdx >= 0) {
+        const shape = dae.getVarShape(vIdx);
+        if (shape.length === 2) {
+          return dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${row},${col}]`));
+        }
+        if (shape.length === 1 && col === 1) {
+          return dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${row}]`));
+        }
+      }
+      if (col === 1 && dae.getVarIdxByName(`${name}[${row}]`) >= 0) {
+        return dae.addExpression(ExprKind.Name, dae.interner.intern(`${name}[${row}]`));
+      }
+      return null;
+    }
+    case ExprKind.Call: {
+      const fnName = dae.interner.resolve(dae.getExprData1(exprId));
+      if (fnName === "/*Real*/" || fnName === "Real") {
+        return getMatrixElement(dae, dae.getExprLeft(exprId), row, col, isInnerRow);
+      }
+      if (fnName === "transpose") {
+        const inner = dae.getExprLeft(exprId);
+        return getMatrixElement(dae, inner, col, row, false);
+      }
+      if (fnName === "zeros" || fnName === "ones") {
+        return dae.addRealLiteral(fnName === "zeros" ? 0.0 : 1.0);
+      }
+      return null;
+    }
+    case ExprKind.ArrayCtor: {
+      const elems = getArrayElements(dae, exprId);
+      if (!elems || elems.length === 0) return null;
+
+      if (isInnerRow) {
+        if (row === 1 && col >= 1 && col <= elems.length) {
+          return elems[col - 1]!;
+        }
+        return null;
+      }
+
+      const hasArrayOrMatrixChild = elems.some((e) => {
+        const k = dae.getExprKind(e);
+        if (k === ExprKind.ArrayCtor) return true;
+        if (k === ExprKind.Call) {
+          const fn = dae.interner.resolve(dae.getExprData1(e));
+          if (fn === "zeros" || fn === "ones" || fn === "transpose" || fn === "/*Real*/" || fn === "Real") return true;
+        }
+        return false;
+      });
+
+      if (hasArrayOrMatrixChild) {
+        let currentRow = 1;
+        for (const elem of elems) {
+          const d = getMatrixDimensions(dae, elem, true);
+          const elemRows = d ? d.rows : 1;
+          if (row >= currentRow && row < currentRow + elemRows) {
+            const subRow = row - currentRow + 1;
+            if (d) {
+              return getMatrixElement(dae, elem, subRow, col, true);
+            } else {
+              if (col === 1) return elem;
+              return null;
+            }
+          }
+          currentRow += elemRows;
+        }
+        return null;
+      }
+
+      if (col === 1 && row >= 1 && row <= elems.length) {
+        return elems[row - 1]!;
+      }
+      return null;
+    }
+    default:
+      if (row === 1 && col === 1) return exprId;
+      return null;
+  }
+}
+
+function isLiteralZero(dae: DAEBuilder, exprId: number): boolean {
+  if (exprId < 0) return false;
+  const k = dae.getExprKind(exprId);
+  if (k === ExprKind.RealLiteral && dae.getExprRealValue(exprId) === 0) return true;
+  if (k === ExprKind.IntLiteral && dae.getExprData1(exprId) === 0) return true;
+  return false;
+}
+
+export function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boolean {
   if (exprId < 0) return false;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.ArrayCtor || kind === ExprKind.Tuple) {
@@ -1404,6 +1705,12 @@ function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boolean {
     return isArrayOfLength(dae, dae.getExprLeft(exprId), n);
   }
   if (kind === ExprKind.Binary) {
+    const op = dae.getExprData1(exprId);
+    if (op === BinOp.Mul) {
+      const l = dae.getExprLeft(exprId);
+      const matDim = getMatrixDimensions(dae, l);
+      if (matDim && matDim.rows === n) return true;
+    }
     return isArrayOfLength(dae, dae.getExprLeft(exprId), n) || isArrayOfLength(dae, dae.getExprRight(exprId), n);
   }
   if (kind === ExprKind.Name) {
@@ -1444,25 +1751,43 @@ function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boolean {
   return false;
 }
 
-function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): number {
+export function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): number {
   if (exprId < 0) return exprId;
   const kind = dae.getExprKind(exprId);
   switch (kind) {
     case ExprKind.ArrayCtor: {
+      let res = exprId;
       const count = dae.getExprData1(exprId);
       if (count === n) {
-        return k === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + k);
+        res = k === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + k);
+      } else {
+        const elems = getArrayElements(dae, exprId);
+        if (elems && elems.length === n) {
+          res = elems[k]!;
+        }
       }
-      const elems = getArrayElements(dae, exprId);
-      if (elems && elems.length === n) {
-        return elems[k]!;
+      if (res !== exprId && res >= 0) {
+        while (
+          (dae.getExprKind(res) === ExprKind.ArrayCtor || dae.getExprKind(res) === ExprKind.Tuple) &&
+          dae.getExprData1(res) === 1
+        ) {
+          res = dae.getExprLeft(res);
+        }
+        return res;
       }
       return exprId;
     }
     case ExprKind.Tuple: {
       const count = dae.getExprData1(exprId);
       if (count === n) {
-        return k === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + k);
+        let res = k === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + k);
+        while (
+          (dae.getExprKind(res) === ExprKind.ArrayCtor || dae.getExprKind(res) === ExprKind.Tuple) &&
+          dae.getExprData1(res) === 1
+        ) {
+          res = dae.getExprLeft(res);
+        }
+        return res;
       }
       return exprId;
     }
@@ -1494,24 +1819,20 @@ function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number): numb
 
       // Check for matrix-vector multiplication: M * v where M has rows=n
       if (op === BinOp.Mul) {
-        if (dae.getExprKind(left) === ExprKind.Name) {
-          const leftName = dae.interner.resolve(dae.getExprData1(left));
-          if (leftName && dae.getVarIdxByName(`${leftName}[1,1]`) >= 0) {
-            let cols = 0;
-            while (dae.getVarIdxByName(`${leftName}[1,${cols + 1}]`) >= 0) {
-              cols++;
-            }
-            if (cols > 0 && dae.getVarIdxByName(`${leftName}[${k + 1},1]`) >= 0) {
-              let rowSum: number | null = null;
-              for (let j = 0; j < cols; j++) {
-                const matElem = dae.addExpression(ExprKind.Name, dae.interner.intern(`${leftName}[${k + 1},${j + 1}]`));
-                const vecElem = getNthExpr(dae, right, j, cols);
-                const prod = dae.addBinaryExpr(BinOp.Mul, matElem, vecElem);
-                rowSum = rowSum === null ? prod : dae.addBinaryExpr(BinOp.Add, rowSum, prod);
-              }
-              if (rowSum !== null) return rowSum;
-            }
+        const matDim = getMatrixDimensions(dae, left);
+        if (matDim && matDim.rows === n && matDim.cols > 0) {
+          let rowSum: number | null = null;
+          for (let j = 0; j < matDim.cols; j++) {
+            const matElem = getMatrixElement(dae, left, k + 1, j + 1);
+            if (matElem === null) continue;
+            if (isLiteralZero(dae, matElem)) continue;
+            const vecElem = getNthExpr(dae, right, j, matDim.cols);
+            if (isLiteralZero(dae, vecElem)) continue;
+            const prod = dae.addBinaryExpr(BinOp.Mul, matElem, vecElem);
+            rowSum = rowSum === null ? prod : dae.addBinaryExpr(BinOp.Add, rowSum, prod);
           }
+          if (rowSum !== null) return rowSum;
+          return dae.addRealLiteral(0.0);
         }
       }
 
@@ -1718,8 +2039,21 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       }
       case ExprKind.Binary: {
         const op = dae.getExprData1(exprId);
-        const left = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
-        const right = cloneExpr(dae.getExprRight(exprId), indexSuffix, currentShape);
+        const origLeft = dae.getExprLeft(exprId);
+        const origRight = dae.getExprRight(exprId);
+        const left = cloneExpr(origLeft, indexSuffix, currentShape);
+        const right = cloneExpr(origRight, indexSuffix, currentShape);
+        if (op === BinOp.Mul) {
+          const leftName =
+            dae.getExprKind(origLeft) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(origLeft)) : null;
+          const rightName =
+            dae.getExprKind(origRight) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(origRight)) : null;
+          const leftIsArray = Boolean(leftName && arrayShapes.has(leftName));
+          const rightIsArray = Boolean(rightName && arrayShapes.has(rightName));
+          if (!leftIsArray && rightIsArray) {
+            return out.addBinaryExpr(op, right, left);
+          }
+        }
         return out.addBinaryExpr(op, left, right);
       }
       case ExprKind.Unary: {
@@ -1922,6 +2256,18 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         if (range) out.setEqSourceRange(newEqIdx, range.startByte, range.endByte);
       }
     };
+
+    if (kind === EqKind.Array) {
+      const newLhs = cloneExpr(lhsId, "", null);
+      const newRhs = cloneExpr(rhsId, "", null);
+      if (targetList) {
+        targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
+      } else {
+        out.addEquation(kind, newLhs, newRhs, eqFlags);
+        recordEqMeta(out.eqCount - 1);
+      }
+      return;
+    }
 
     const lhsElements = getArrayElements(dae, lhsId);
     const rhsElements = getArrayElements(dae, rhsId);

@@ -136,6 +136,7 @@
       "default": "./dist/src/arena-script-interpreter.js"
     },
     "./parser.wasm": "./dist/parser.wasm",
+    "./dist/parser.wasm": "./dist/parser.wasm",
     "./ast-visitor": {
       "types": "./dist/src/ast-visitor.d.ts",
       "default": "./dist/src/ast-visitor.js"

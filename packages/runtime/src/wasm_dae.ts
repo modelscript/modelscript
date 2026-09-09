@@ -2314,6 +2314,17 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
       ) {
         return VarType.Real;
       }
+      if (fnName === "min" || fnName === "max" || fnName === "abs") {
+        const argCount = dae.getExprRight(exprId);
+        if (argCount > 0) {
+          const t0 = inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+          if (t0 !== null) return t0;
+          for (let i = 1; i < argCount; i++) {
+            const ti = inferArenaExprVarType(dae, dae.getExprLeft(exprId + i));
+            if (ti !== null) return ti;
+          }
+        }
+      }
       let fnDae = dae.getFunction(nameId) ?? (fnName ? dae.getFunction(fnName) : undefined);
       if (!fnDae && fnName && fnName.includes(".")) {
         const base = fnName.split(".").pop();
@@ -2337,6 +2348,7 @@ export function isAssignableType(source: VarType | null, target: VarType): boole
   if (source === null) return false;
   if (source === target) return true;
   if (source === VarType.Integer && target === VarType.Real) return true;
+  if (source === VarType.Integer && target === VarType.Enumeration) return true;
   return false;
 }
 

@@ -999,11 +999,58 @@ function evaluateDimExpr(
 }
 
 /**
+ * Extract argument CST nodes from a function call or primary node.
+ */
+function extractFunctionCallArgNodes(node: any): any[] {
+  const fca = node.type === "primary" ? node.child(1) : (Cst.FunctionCall?.args?.(node) ?? node.child(1));
+  if (!fca) return [];
+  const results: any[] = [];
+  function collectExprs(n: any) {
+    if (!n) return;
+    if (n.type === "expression_list") {
+      for (let i = 0; i < n.childCount; i++) {
+        const c = n.child(i);
+        if (c.type !== "," && c.text !== "," && c.type !== "(" && c.type !== ")") {
+          results.push(c);
+        }
+      }
+      return;
+    }
+    if (n.type === "expression" || n.type === "named_argument") {
+      results.push(n);
+      return;
+    }
+    for (let i = 0; i < n.childCount; i++) {
+      const c = n.child(i);
+      if (c.type !== "(" && c.type !== ")" && c.type !== "," && c.text !== ",") {
+        collectExprs(c);
+      }
+    }
+  }
+  collectExprs(fca);
+  return results.filter((a) => a && a.type !== "," && a.text !== ",");
+}
+
+/**
  * Recursively evaluate a CST node to an integer value in a Salsa context.
  */
 function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number | null {
   if (!node) return null;
   const type = node.type;
+
+  if (
+    (type === "expression" ||
+      type === "simple_expression" ||
+      type === "logical_expression" ||
+      type === "primary" ||
+      type === "expression_list" ||
+      type === "Expression" ||
+      type === "Primary" ||
+      type === "subscript") &&
+    node.childCount === 1
+  ) {
+    return evaluateDimCSTNode(db, self, node.child(0));
+  }
 
   // Integer literal
   if (type === "UNSIGNED_INTEGER" || type === "unsigned_integer") {
@@ -1012,32 +1059,31 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
 
   // Parenthesized expression — unwrap
   if (type === "ParenthesizedExpression" || (type === "primary" && node.child(0)?.text === "(")) {
-    const inner = (node.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
+    const inner =
+      node.namedChildren?.find((c: any) => c.type !== "(" && c.type !== ")") ??
+      node.children?.find((c: any) => c.type !== "(" && c.type !== ")");
     return evaluateDimCSTNode(db, self, inner);
   }
 
-  // Primary or Expression wrapper with single child
-  if ((type === "primary" || type === "expression") && node.childCount === 1) {
-    return evaluateDimCSTNode(db, self, node.child(0));
-  }
+  // Binary expression (+, -, *, /)
+  if (type === "BinaryExpression" || (node.childCount === 3 && node.type === "expression")) {
+    const rawOp = (node.child(1)?.text ?? "").trim();
+    const op = rawOp.replace(/^"|"$/g, "");
+    const left = evaluateDimCSTNode(db, self, node.child(0));
+    const right = evaluateDimCSTNode(db, self, node.child(2));
+    if (left === null || right === null) return null;
 
-  // Binary expression (a + b, a * b, a - b)
-  if (
-    type === "BinaryExpression" ||
-    (node.childCount === 3 && (node.type === "expression" || node.type === "BinaryExpression"))
-  ) {
-    const rawOp = node.child(1)?.text?.trim() ?? "";
-    const opText = rawOp.replace(/^"|"$/g, "");
-    if (opText === "+" || opText === "-" || opText === "*" || opText === "/" || opText === "^") {
-      const left = evaluateDimCSTNode(db, self, node.child(0));
-      const right = evaluateDimCSTNode(db, self, node.child(2));
-      if (left === null || right === null) return null;
-      if (opText === "+") return left + right;
-      if (opText === "-") return left - right;
-      if (opText === "*") return left * right;
-      if (opText === "/") return right !== 0 ? Math.floor(left / right) : null;
-      if (opText === "^") return Math.pow(left, right);
-      return null;
+    switch (op) {
+      case "+":
+        return left + right;
+      case "-":
+        return left - right;
+      case "*":
+        return left * right;
+      case "/":
+        return right !== 0 ? Math.floor(left / right) : null;
+      default:
+        return null;
     }
   }
 
@@ -1059,11 +1105,8 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
       return evaluateDimSizeCall(db, self, node);
     }
     if (funcName === "integer") {
-      const args = Cst.FunctionCall.args(node) ?? node.child(1);
-      const firstArg =
-        args?.namedChildren?.find((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ??
-        args?.children?.find((c: any) => c.type === "expression");
-      return evaluateDimCSTNode(db, self, firstArg);
+      const argNodes = extractFunctionCallArgNodes(node);
+      return argNodes.length > 0 ? evaluateDimCSTNode(db, self, argNodes[0]) : null;
     }
     if (funcName === "ndims") {
       return evaluateDimNdimsCall(db, self, node);
@@ -1166,12 +1209,7 @@ function getOrEvaluateNdims(db: QueryDB, resolved: SymbolEntry): number | null {
  * Evaluate a `size(x, d)` call in a dimension context.
  */
 function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number | null {
-  const args = Cst.FunctionCall.args(node);
-  if (!args) return null;
-
-  // Extract the two arguments: size(arrayRef, dimIndex)
-  const argNodes = args.namedChildren?.filter((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ?? [];
-
+  const argNodes = extractFunctionCallArgNodes(node);
   if (argNodes.length < 2) return null;
 
   const arrayRefNode = argNodes[0];
@@ -1180,7 +1218,7 @@ function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number 
   if (dimIndex === null) return null;
 
   // Resolve the array reference to a symbol
-  const refName = arrayRefNode?.text;
+  const refName = arrayRefNode?.text?.trim();
   if (!refName) return null;
 
   // Find the component in the parent scope
@@ -1203,14 +1241,12 @@ function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number 
   }
 
   if (!resolved) {
-    // console.error(`[DEBUG LANG SIZE CALL FAIL] refName=${refName} NOT RESOLVED!`);
     return null;
   }
 
   activeDimQueriesStack.push({ symbolId: resolved.id, dimIndex: dimIndex - 1 });
   try {
     const res = getOrEvaluateSingleDimension(db, resolved, dimIndex - 1);
-    // console.error(`[DEBUG LANG SIZE CALL] refName=${refName} dimIndex=${dimIndex} res=${res}`);
     return res;
   } finally {
     activeDimQueriesStack.pop();
@@ -1221,14 +1257,10 @@ function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number 
  * Evaluate an `ndims(x)` call in a dimension context.
  */
 function evaluateDimNdimsCall(db: QueryDB, self: SymbolEntry, node: any): number | null {
-  const args = Cst.FunctionCall.args(node);
-  if (!args) return null;
-
-  const argNodes = args.namedChildren?.filter((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ?? [];
-
+  const argNodes = extractFunctionCallArgNodes(node);
   if (argNodes.length < 1) return null;
 
-  const refName = argNodes[0]?.text;
+  const refName = argNodes[0]?.text?.trim();
   if (!refName) return null;
 
   const parentId = self.parentId;
@@ -1253,6 +1285,7 @@ function evaluateDimNdimsCall(db: QueryDB, self: SymbolEntry, node: any): number
  * Looks up the symbol and reads its binding value if it's a parameter or constant.
  */
 function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): number | null {
+  if (name === "Boolean") return 2;
   const parentId = self.parentId;
   if (parentId === null) return null;
 
@@ -1276,7 +1309,18 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
   if (resolved.kind === "Class") {
     const meta = resolved.metadata as Record<string, unknown>;
     const classPrefixes = meta?.classPrefixes;
-    if (typeof classPrefixes === "string" && classPrefixes.includes("enumeration")) {
+    const cstText = (db.cstNode(resolved.id) as any)?.text ?? "";
+    const isEnum =
+      (typeof classPrefixes === "string" && classPrefixes.includes("enumeration")) || cstText.includes("enumeration(");
+    if (isEnum) {
+      const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+      if (enumMatch) {
+        const lits = enumMatch[1]
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (lits.length > 0) return lits.length;
+      }
       const children = db.childrenOf(resolved.id);
       return children.filter((c) => c.kind === "Component").length;
     }
@@ -2541,7 +2585,7 @@ export const componentDeclarationQueries: Record<string, any> = {
   isProtected: (db: QueryDB, self: SymbolEntry) => {
     const rawNode = db.cstNode(self.id) as any;
     let current = rawNode;
-    const nodeStart = rawNode?.startByte ?? 0;
+    const nodeStart = rawNode?.startIndex ?? rawNode?.startByte ?? 0;
     while (current) {
       if (current.type === "ElementSection" || current.type === "element_section") {
         const vis = current.children?.find((c: any) => c.text === "protected" || c.text === "public")?.text?.trim();
@@ -2557,8 +2601,10 @@ export const componentDeclarationQueries: Record<string, any> = {
           } else if (child.type === "public" || t === "public") {
             isProt = false;
           }
-          if (child.startByte !== undefined && child.endByte !== undefined) {
-            if (nodeStart >= child.startByte && nodeStart < child.endByte) {
+          const start = child.startIndex ?? child.startByte;
+          const end = child.endIndex ?? child.endByte;
+          if (start !== undefined && end !== undefined) {
+            if (nodeStart >= start && nodeStart < end) {
               return isProt;
             }
           }
@@ -2856,8 +2902,20 @@ export const componentDeclarationQueries: Record<string, any> = {
           if (mod?.bindingExpression) {
             const val = db.evaluate(mod.bindingExpression, self.parentId);
             if (Array.isArray(val)) {
-              shape.push(val.length);
-              continue;
+              let cur: any = val;
+              let valid = true;
+              for (let d = 0; d < i; d++) {
+                if (Array.isArray(cur) && cur.length > 0) {
+                  cur = cur[0];
+                } else {
+                  valid = false;
+                  break;
+                }
+              }
+              if (valid && Array.isArray(cur)) {
+                shape.push(cur.length);
+                continue;
+              }
             }
           }
           shape.push(0); // Inferred from binding later
@@ -2987,6 +3045,24 @@ export const componentDeclarationQueries: Record<string, any> = {
       }
       sec = sec.parent;
     }
+    if (!isProtected && sec && (sec.type === "Composition" || sec.type === "composition")) {
+      const clauseStart = clause?.startIndex ?? clause?.startByte ?? 0;
+      let currProt = false;
+      for (const child of sec.children || []) {
+        const t = child.text?.trim();
+        if (child.type === "protected" || t === "protected") {
+          currProt = true;
+        } else if (child.type === "public" || t === "public") {
+          currProt = false;
+        }
+        const start = child.startIndex ?? child.startByte;
+        const end = child.endIndex ?? child.endByte;
+        if (start !== undefined && end !== undefined && clauseStart >= start && clauseStart < end) {
+          isProtected = currProt;
+          break;
+        }
+      }
+    }
 
     const checkNode =
       elemParent && (elemParent.type === "Element" || elemParent.type === "element") ? elemParent : clause;
@@ -3013,10 +3089,13 @@ export const componentDeclarationQueries: Record<string, any> = {
     const arraySub =
       Cst.Declaration.arraySubscripts(declNode) ??
       declNode?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
+    const clauseArraySub =
+      Cst.ComponentClause.arraySubscripts(clause) ??
+      clause?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
 
     const isPrim = typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String";
 
-    if (isPrim && !arraySub) {
+    if (isPrim && !arraySub && !clauseArraySub) {
       return {
         id: self.id,
         name: self.name,

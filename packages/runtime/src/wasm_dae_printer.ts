@@ -284,6 +284,7 @@ export class ArenaDAEPrinter {
           if (isHigh && ck === ExprKind.IntLiteral && a.getExprData1(childId) < 0) return true;
           if ((op === BinOp.Pow || op === BinOp.ElemPow) && ck === ExprKind.Binary) return true;
           if (isHigh && ck === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(childId) as BinOp)) return true;
+          if (isRhs && (op === BinOp.Div || op === BinOp.ElemDiv) && ck === ExprKind.Binary) return true;
           if (ck === ExprKind.IfElse) return true;
           return false;
         };
@@ -432,6 +433,40 @@ export class ArenaDAEPrinter {
           }
         }
 
+        if (this.omcCompatibility && op === BinOp.Mul) {
+          const leftId = a.getExprLeft(id);
+          if (leftId >= 0 && a.getExprKind(leftId) === ExprKind.Binary && a.getExprData1(leftId) === BinOp.Div) {
+            // (a / b) * c => a * c / b
+            const aId = a.getExprLeft(leftId);
+            const bId = a.getExprRight(leftId);
+            const cId = a.getExprRight(id);
+            if (needsParens(aId, false)) {
+              this.out.write("(");
+              this.printExpr(aId);
+              this.out.write(")");
+            } else {
+              this.printExpr(aId);
+            }
+            this.out.write(" * ");
+            if (needsParens(cId, true)) {
+              this.out.write("(");
+              this.printExpr(cId);
+              this.out.write(")");
+            } else {
+              this.printExpr(cId);
+            }
+            this.out.write(" / ");
+            if (needsParens(bId, true)) {
+              this.out.write("(");
+              this.printExpr(bId);
+              this.out.write(")");
+            } else {
+              this.printExpr(bId);
+            }
+            break;
+          }
+        }
+
         if (ASSOCIATIVE_OPS.has(op)) {
           // Flatten associative chain
           const operands: number[] = [];
@@ -505,6 +540,13 @@ export class ArenaDAEPrinter {
                   nonLiterals.push(childId);
                 }
               }
+              if (op === BinOp.Mul && nonLiterals.every((nid) => a.getExprKind(nid) === ExprKind.Name)) {
+                nonLiterals.sort((x, y) => {
+                  const nx = a.interner.resolve(a.getExprData1(x)) || "";
+                  const ny = a.interner.resolve(a.getExprData1(y)) || "";
+                  return nx.localeCompare(ny);
+                });
+              }
               operands.length = 0;
               operands.push(...literals, ...nonLiterals);
             }
@@ -546,6 +588,13 @@ export class ArenaDAEPrinter {
           if (rIsLit && !lIsLit) {
             finalLhs = rhs;
             finalRhs = lhs;
+          } else if (op === BinOp.Mul && lKind === ExprKind.Name && rKind === ExprKind.Name) {
+            const lName = a.interner.resolve(a.getExprData1(lhs));
+            const rName = a.interner.resolve(a.getExprData1(rhs));
+            if (lName && rName && lName.localeCompare(rName) > 0) {
+              finalLhs = rhs;
+              finalRhs = lhs;
+            }
           }
         }
 
@@ -765,13 +814,8 @@ export class ArenaDAEPrinter {
     else if (variability === Variability.Constant) this.out.write("constant ");
 
     const causality = a.getVarCausality(idx);
-    const isNested = a.getVarName(idx).includes(".");
-    // In OMC compatibility mode, nested connector signals (e.g. `outPort.signal[1]`) do retain
-    // their input/output prefix. Only suppress for plain local nested vars (causality === Local).
-    if (a.classKind === "function" || !isNested || (this.omcCompatibility && (causality === 1 || causality === 2))) {
-      if (causality === 1) this.out.write("input ");
-      else if (causality === 2) this.out.write("output ");
-    }
+    if (causality === 1) this.out.write("input ");
+    else if (causality === 2) this.out.write("output ");
 
     const customType = a.getVarCustomType(idx);
     if (

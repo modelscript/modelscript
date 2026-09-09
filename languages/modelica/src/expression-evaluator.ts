@@ -171,6 +171,40 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
           return baseVal[idx - 1]; // 1-based indexing
         }
       }
+    } else if (baseVal && typeof baseVal === "object" && "id" in baseVal && (baseVal as any).kind === "Component") {
+      return baseVal;
+    }
+  }
+
+  // Member access on indexed expression: arr[i].field
+  if (trimmed.includes("[")) {
+    const lastDot = findTopLevelOperator(trimmed, ["."]);
+    if (lastDot > 0) {
+      const lhs = trimmed.slice(0, lastDot).trim();
+      const rhs = trimmed.slice(lastDot + 1).trim();
+      if (/^[a-zA-Z_]\w*$/.test(rhs)) {
+        const lhsVal = evaluateExprText(lhs, scope, db);
+        if (lhsVal && typeof lhsVal === "object") {
+          if (rhs in (lhsVal as Record<string, unknown>)) {
+            return (lhsVal as Record<string, unknown>)[rhs];
+          }
+          if ("id" in lhsVal && (lhsVal as any).kind === "Component") {
+            const sym = lhsVal as SymbolEntry;
+            const typeSpec = db.query<string | null>("typeSpecifier", sym.id);
+            if (typeSpec && sym.parentId) {
+              const parentResolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", sym.parentId);
+              const typeSym = parentResolver ? parentResolver(typeSpec) : null;
+              if (typeSym) {
+                const typeChildren = db.childrenOf(typeSym.id);
+                const fieldSym = typeChildren.find((c) => c.name === rhs && c.kind === "Component");
+                if (fieldSym) {
+                  return getComponentEvaluatedValue(fieldSym, db);
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -231,12 +265,13 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     }
   }
 
-  const mulIdx = findTopLevelOperator(trimmed, ["*", "/"]);
-  if (mulIdx > 0) {
-    const lhs = evaluateExprText(trimmed.slice(0, mulIdx), scope, db);
-    const op = trimmed[mulIdx];
-    const rhs = evaluateExprText(trimmed.slice(mulIdx + 1), scope, db);
+  // Multiplication and division: a * b, a / b
+  const mulDivIdx = findTopLevelOperator(trimmed, ["*", "/"]);
+  if (mulDivIdx > 0) {
+    const lhs = evaluateExprText(trimmed.slice(0, mulDivIdx), scope, db);
+    const rhs = evaluateExprText(trimmed.slice(mulDivIdx + 1), scope, db);
     if (typeof lhs === "number" && typeof rhs === "number") {
+      const op = trimmed[mulDivIdx];
       return op === "*" ? lhs * rhs : rhs !== 0 ? lhs / rhs : null;
     }
   }
@@ -251,12 +286,52 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     }
   }
 
-  // Built-in function calls: funcName(args)
-  const funcMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*\((.+)\)$/s);
+  // Built-in function calls: funcName(args) or Record constructor
+  const funcMatch = trimmed.match(/^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*\((.+)\)$/s);
   if (funcMatch) {
     const funcName = funcMatch[1]!;
     const argsText = funcMatch[2]!;
-    return evaluateBuiltinCall(funcName, argsText, scope, db);
+    const builtinVal = evaluateBuiltinCall(funcName, argsText, scope, db);
+    if (builtinVal !== null) return builtinVal;
+
+    // Check if funcName resolves to a record constructor
+    if (scope) {
+      const isQualified = funcName.includes(".");
+      const resolveHook = isQualified ? "resolveName" : "resolveSimpleName";
+      const resolver = db.query<(n: string) => SymbolEntry | null>(resolveHook, scope.id);
+      let targetClass = resolver ? resolver(funcName) : null;
+      if (!targetClass) {
+        const simpleName = isQualified ? funcName.split(".").pop()! : funcName;
+        const matches = db.byName(simpleName);
+        targetClass = matches?.find((e) => e.kind === "Class") ?? null;
+      }
+      if (targetClass && targetClass.kind === "Class") {
+        const meta = targetClass.metadata as Record<string, unknown> | undefined;
+        const isRecord =
+          meta?.classPrefixes === "record" ||
+          (typeof meta?.classPrefixes === "string" && meta.classPrefixes.includes("record")) ||
+          targetClass.ruleName === "record_definition";
+        if (isRecord) {
+          const rawArgs = splitTopLevel(argsText, ",").map((a) => a.trim());
+          const fields = db.childrenOf(targetClass.id).filter((c) => c.kind === "Component");
+          const recordObj: Record<string, unknown> = {};
+          for (let i = 0; i < rawArgs.length; i++) {
+            const arg = rawArgs[i]!;
+            if (arg.includes("=")) {
+              const eqIdx = arg.indexOf("=");
+              const fieldName = arg.slice(0, eqIdx).trim();
+              const fieldVal = evaluateExprText(arg.slice(eqIdx + 1).trim(), scope, db);
+              recordObj[fieldName] = fieldVal;
+            } else if (i < fields.length) {
+              const fieldName = fields[i]!.name;
+              const fieldVal = evaluateExprText(arg, scope, db);
+              recordObj[fieldName] = fieldVal;
+            }
+          }
+          return recordObj;
+        }
+      }
+    }
   }
 
   // Cannot evaluate — return null (will be handled as symbolic)

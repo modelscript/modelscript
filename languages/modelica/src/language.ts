@@ -282,6 +282,7 @@ export const modelicaLanguage = language({
     component_declaration: { name: "declaration.name", kind: "Component", scope: false },
     extends_clause: { name: "type_specifier", kind: "Extends", scope: false },
     connect_equation: { name: "lhs", kind: "ConnectEquation", scope: false },
+    import_clause: { name: "name", kind: "Import", scope: false },
   },
 
   lints: allModelicaLints,

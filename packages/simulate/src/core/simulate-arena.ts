@@ -86,9 +86,9 @@ export class ArenaSimulator {
 
   prepare() {
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
+    this.identifyDerivatives();
     this.resolveParameters();
     this.eliminateAliases();
-    this.identifyDerivatives();
 
     // Arena-Native Pantelides Index Reduction
     const pantelidesRes = pantelidesIndexReductionArena(
@@ -224,18 +224,28 @@ export class ArenaSimulator {
   private resolveParameters() {
     for (let i = 0; i < this.arena.varCount; i++) {
       if (this.arena.isVarRemoved(i)) continue;
-      if (this.arena.getVarVariability(i) !== Variability.Parameter) continue;
+      const variability = this.arena.getVarVariability(i);
+      const isParam = variability === Variability.Parameter || variability === Variability.Constant;
+      const hasExplicitExpr = (this.arena as any).hasExplicitVarExpression?.(i);
+      const isNotState = !this.stateVars.has(i);
+
+      if (!isParam && !(hasExplicitExpr && isNotState)) continue;
 
       this.parameterVars.add(i);
 
-      const exprId = this.arena.getVarExpression(i) as number | undefined;
+      const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
       const name = this.arena.getVarName(i);
+      let val: number | null = null;
       if (typeof exprId === "number" && exprId !== -1) {
-        const val = evaluateArenaExpression(this.arena, exprId, this.parameters);
-        if (val !== null && typeof val === "number") {
-          this.parameters.set(name, val);
+        const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
+        if (typeof rawVal === "number" && isFinite(rawVal)) {
+          val = rawVal;
         }
       }
+      if (val === null || typeof val !== "number" || !isFinite(val)) {
+        val = this.arena.getVarStartValue(i);
+      }
+      this.parameters.set(name, val);
     }
   }
 
@@ -1887,7 +1897,18 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const timeId = arena.interner.intern("time");
   valuesByStringId[timeId] = startTime;
 
-  // Set parameters from the simulator's resolved parameters
+  // Set parameters from the simulator's resolved parameters and arena start values
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Parameter || v === Variability.Constant) {
+      const name = arena.getVarName(i);
+      const nameId = arena.getVarNameId(i);
+      const val = sim.parameters.get(name) ?? arena.getVarStartValue(i);
+      valuesByStringId[nameId] = val;
+      sim.parameters.set(name, val);
+    }
+  }
   for (const [name, val] of sim.parameters) {
     const nameId = arena.interner.intern(name);
     valuesByStringId[nameId] = val;
@@ -1906,7 +1927,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
     const v = arena.getVarVariability(i);
-    if (v === Variability.Parameter || v === Variability.Constant) continue;
+    if (v === Variability.Parameter || v === Variability.Constant || sim.parameterVars.has(i)) continue;
 
     const nameId = arena.getVarNameId(i);
     const startVal = arena.getVarStartValue(i);
@@ -2004,6 +2025,18 @@ export async function simulateArenaAsync(
   const timeId = arena.interner.intern("time");
   valuesByStringId[timeId] = startTime;
 
+  // Set parameters from the simulator's resolved parameters and arena start values
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Parameter || v === Variability.Constant) {
+      const name = arena.getVarName(i);
+      const nameId = arena.getVarNameId(i);
+      const val = sim.parameters.get(name) ?? arena.getVarStartValue(i);
+      valuesByStringId[nameId] = val;
+      sim.parameters.set(name, val);
+    }
+  }
   for (const [name, val] of sim.parameters) {
     const nameId = arena.interner.intern(name);
     valuesByStringId[nameId] = val;
@@ -2020,7 +2053,7 @@ export async function simulateArenaAsync(
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
     const v = arena.getVarVariability(i);
-    if (v === Variability.Parameter || v === Variability.Constant) continue;
+    if (v === Variability.Parameter || v === Variability.Constant || sim.parameterVars.has(i)) continue;
 
     const nameId = arena.getVarNameId(i);
     const startVal = arena.getVarStartValue(i);

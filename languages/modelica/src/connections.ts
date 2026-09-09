@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEBuilder, EqKind, ExprKind } from "@modelscript/language/compiler";
+import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "@modelscript/language/compiler";
 
 /**
  * Union-Find data structure with path compression and union-by-rank.
@@ -432,7 +432,21 @@ export class ModelicaPortBalancer {
         for (const vIdx of orderedGroup) {
           if (vIdx !== potRoot) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-            potentialEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(potRoot) });
+            if (
+              options?.omcCompatibility &&
+              (dae.getVarVariability(potRoot) === Variability.Parameter ||
+                dae.getVarVariability(vIdx) === Variability.Parameter)
+            ) {
+              const eqExpr = dae.addBinaryExpr(BinOp.Eq, rootExpr, vExpr);
+              const msgExpr = dae.addExpression(
+                ExprKind.StringLiteral,
+                dae.interner.intern("automatically generated from connect"),
+              );
+              const callExpr = dae.addCallExpr("assert", [eqExpr, msgExpr]);
+              potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
+            } else {
+              potentialEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(potRoot) });
+            }
           }
         }
       } else {

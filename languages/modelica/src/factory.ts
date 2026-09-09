@@ -151,6 +151,45 @@ const wasmModelicaIndexerHooks: any[] = [
     inheritPaths: [],
     metadataFieldPaths: {},
   },
+  {
+    ruleName: "import_clause",
+    kind: "Import",
+    namePath: "name",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "SimpleImportClause",
+    kind: "Import",
+    namePath: "packageName",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {
+      packageName: "packageName",
+      shortName: "shortName",
+    },
+  },
+  {
+    ruleName: "UnqualifiedImportClause",
+    kind: "Import",
+    namePath: "packageName",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {
+      packageName: "packageName",
+    },
+  },
+  {
+    ruleName: "CompoundImportClause",
+    kind: "Import",
+    namePath: "packageName",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {
+      packageName: "packageName",
+    },
+  },
 ];
 
 const allIndexerHooks = [

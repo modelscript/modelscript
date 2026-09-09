@@ -200,7 +200,11 @@ export function performBltTransformationArena(
     if (arena.isVarRemoved(i)) continue;
     const variability = arena.getVarVariability(i);
     // Ignore parameter/constant variables during dynamic equation BLT
-    if (variability === Variability.Parameter || variability === Variability.Constant) {
+    if (
+      variability === Variability.Parameter ||
+      variability === Variability.Constant ||
+      (arena.hasExplicitVarExpression?.(i) && (!stateVars || !stateVars.has(i)))
+    ) {
       continue;
     }
     // If state variables are specified, the state variable x itself is known at each integration step
