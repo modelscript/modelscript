@@ -130,11 +130,11 @@
 // Error processing file: GenericMicroCircuit.mo
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+// Failed to parse file: OpenModelica/flattening/modelica/extends/GenericMicroCircuit.mo!
 //
-// [OpenModelica/flattening/modelica/extends/GenericMicroCircuit.mo:76:7-76:19:writable] Error: Identifier at end of class ('TempResistor') does not match start ('TempResistor2').
-// [OpenModelica/flattening/modelica/extends/GenericMicroCircuit.mo:81:7-81:19:writable] Error: Identifier at end of class ('TempResistor') does not match start ('Resistor2').
-// [OpenModelica/flattening/modelica/extends/GenericMicroCircuit.mo:85:17-85:25:writable] Error: Class or type 'CompType' not found in scope.
-// [OpenModelica/flattening/modelica/extends/GenericMicroCircuit.mo:86:23-127:43:writable] Error: Syntax Error
+// Failed to parse file: OpenModelica/flattening/modelica/extends/GenericMicroCircuit.mo!
+//
+// [OpenModelica/flattening/modelica/extends/GenericMicroCircuit.mo:73:9-76:18:writable] Error: Parse error: The identifier at start and end are different
 //
 // Execution failed!
 // endResult

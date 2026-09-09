@@ -11,7 +11,7 @@ end Duplicate;
 // Failed to parse file: OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/Duplicate/package.mo!
 //
 // [OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/Duplicate/package.mo:2:1-3:14:writable] Error: Expected the package to have within ; but got within Invalid;.
-// Error: Failed to load package Duplicate () using MODELICAPATH /home/omar/git/modelscript/packages/core/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid.
+// Error: Failed to load package Duplicate () using MODELICAPATH /home/omar/git3/modelscript/languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid.
 //
 // Execution failed!
 // endResult

@@ -27,6 +27,16 @@ end ConnectFlowEffort2;
 // # Please check the error message and the flags.
 //
 // [OpenModelica/flattening/modelica/connectors/ConnectFlowEffort2.mo:20:3-20:18:writable] Error: Cannot connect flow component c2.e to non-flow component c1.e.
+// [OpenModelica/flattening/modelica/connectors/ConnectFlowEffort2.mo:20:3-20:18:writable] Error: The type of variables 
+// c2 type:
+// connector Connector2
+//   flow Real e;
+// end Connector2; and 
+// c1 type:
+// connector Connector1
+//   Real e;
+// end Connector1;
+// are inconsistent in connect equations.
 // Error: Error occurred while flattening model ConnectFlowEffort2
 //
 // Execution failed!

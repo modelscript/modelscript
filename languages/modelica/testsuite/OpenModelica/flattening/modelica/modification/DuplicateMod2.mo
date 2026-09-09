@@ -13,6 +13,7 @@ model DuplicateMod2
 end DuplicateMod2;
 
 // Result:
+// - elab_untyped_mod (x = 1, x = 2) failed
 // Error processing file: DuplicateMod2.mo
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

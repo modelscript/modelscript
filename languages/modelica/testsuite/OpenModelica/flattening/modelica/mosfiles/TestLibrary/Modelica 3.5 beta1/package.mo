@@ -4,7 +4,7 @@ annotation(version = "3.5 beta1");
 end Modelica;
 
 // Result:
-// File does not exist: /home/omar/git/modelscript/packages/core/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Modelica
+// File does not exist: /home/omar/git3/modelscript/languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Modelica
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //

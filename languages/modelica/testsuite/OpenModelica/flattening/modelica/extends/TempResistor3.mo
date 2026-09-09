@@ -51,8 +51,7 @@ end TempResistor3;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/extends/TempResistor3.mo:9:21-9:25:writable] Error: In modifier (Unit = "V"), class or component Unit not found in <Voltage>.
-// [OpenModelica/flattening/modelica/extends/TempResistor3.mo:11:21-11:25:writable] Error: In modifier (Unit = "A"), class or component Unit not found in <Current>.
+// Error: Internal error Unknown redeclare in NFSCodeFlattenImports.flattenRedeclare
 // Error: Error occurred while flattening model TempResistor3
 //
 // Execution failed!

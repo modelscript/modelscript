@@ -1001,10 +1001,10 @@ end BC11;
 // Result:
 // class BC11
 //   parameter Integer transferFunction1.inPort.n = 1 "Dimension of signal vector";
-//   input Real transferFunction1.inPort.signal[1] "Real input signals";
+//   Real transferFunction1.inPort.signal[1] "Real input signals";
 //   parameter Integer transferFunction1.outPort.n = 1 "Dimension of signal vector";
-//   output Real transferFunction1.outPort.signal[1] "Real output signals";
-//   output Real transferFunction1.y;
+//   Real transferFunction1.outPort.signal[1] "Real output signals";
+//   Real transferFunction1.y;
 //   protected Real transferFunction1.u = transferFunction1.inPort.signal[1];
 //   parameter Real transferFunction1.b[1] = 1.0 "Numerator coefficients of transfer function.";
 //   parameter Real transferFunction1.a[1] = 1.0 "Denominator coefficients of transfer function.";
@@ -1016,8 +1016,8 @@ end BC11;
 //   protected Real transferFunction1.x1dot "Derivative of first state of TransferFcn";
 //   protected Real transferFunction1.xn "Highest order state of TransferFcn";
 //   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = 1 "Dimension of signal vector";
-//   output Real constant1.outPort.signal[1] "Real output signals";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
 //   Real constant1.y[1];
 //   parameter Real constant1.k[1] = 1.0 "Constant output values";
 // equation
@@ -1026,9 +1026,9 @@ end BC11;
 //   transferFunction1.u = transferFunction1.a[1] * transferFunction1.x1dot + transferFunction1.a[2] * transferFunction1.x[1];
 //   transferFunction1.y = transferFunction1.b[1] * transferFunction1.x[1];
 //   transferFunction1.y = transferFunction1.outPort.signal[1];
-//   constant1.outPort.signal[1] = 1.0;
+//   constant1.outPort.signal[1] = constant1.k[1];
 //   constant1.y[1] = constant1.outPort.signal[1];
 //   assert(transferFunction1.inPort.n == constant1.outPort.n, "automatically generated from connect");
-//   transferFunction1.inPort.signal[1] = constant1.outPort.signal[1];
+//   constant1.outPort.signal[1] = transferFunction1.inPort.signal[1];
 // end BC11;
 // endResult

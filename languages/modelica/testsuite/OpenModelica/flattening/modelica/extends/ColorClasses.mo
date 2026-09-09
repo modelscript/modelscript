@@ -45,7 +45,9 @@ end ColorClasses;
 //
 // Error: Variable C1.obj1 in package C1 is not constant.
 // Error: Variable C1.obj1.green in package C1 is not constant.
-// [OpenModelica/flattening/modelica/extends/ColorClasses.mo:34:7-34:20:writable] Error: Variable C1.obj1.green not found in scope ColorClasses.
+// Error: Variable C1.obj1 in package C1 is not constant.
+// Error: Variable C1.obj1.green in package C1 is not constant.
+// [OpenModelica/flattening/modelica/extends/ColorClasses.mo:34:3-34:20:writable] Error: Variable C1.obj1.green not found in scope ColorClasses.
 // Error: Error occurred while flattening model ColorClasses
 //
 // Execution failed!

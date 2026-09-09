@@ -16,7 +16,7 @@ end Type8;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/types/Type8.mo:11:7-11:14:writable] Error: Variable 'x.start' not found in scope.
+// [OpenModelica/flattening/modelica/types/Type8.mo:11:3-11:14:writable] Error: Variable x.start not found in scope Type8.
 // Error: Error occurred while flattening model Type8
 //
 // Execution failed!

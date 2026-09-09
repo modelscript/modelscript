@@ -9,8 +9,8 @@ end Invalid;
 //
 // Failed to parse file: OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/package.mo!
 //
-// [OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/package.mo:1:1-2:12:writable] Error: The same class is defined in multiple files: /home/omar/git/modelscript/packages/core/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/Duplicate.mo, /home/omar/git/modelscript/packages/core/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/Duplicate/package.mo.
-// Error: Failed to load package Invalid () using MODELICAPATH /home/omar/git/modelscript/packages/core/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary.
+// [OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/package.mo:1:1-2:12:writable] Error: The same class is defined in multiple files: /home/omar/git3/modelscript/languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/Duplicate.mo, /home/omar/git3/modelscript/languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Invalid/Duplicate/package.mo.
+// Error: Failed to load package Invalid () using MODELICAPATH /home/omar/git3/modelscript/languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary.
 //
 // Execution failed!
 // endResult

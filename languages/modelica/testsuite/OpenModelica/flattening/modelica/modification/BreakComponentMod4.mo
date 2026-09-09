@@ -28,7 +28,7 @@ end BreakComponentMod4;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/modification/BreakComponentMod4.mo:23:13-23:21:writable] Error: Modified element m not found in class C.
+// [OpenModelica/flattening/modelica/modification/BreakComponentMod4.mo:15:13-15:21:writable] Error: Modified element m not found in class A.
 //
 // Execution failed!
 // endResult
