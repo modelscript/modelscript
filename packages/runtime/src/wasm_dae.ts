@@ -547,10 +547,14 @@ export class WasmDaeBridge implements IDaeBuilder {
       const idx = this.exports.dae_lookupVariable(this.ptr, nId);
       if (idx >= 0) return idx;
     }
+    const renamed = (this as any)._renamedVars as Map<number, string> | undefined;
+    if (!renamed || renamed.size === 0) {
+      return -1;
+    }
     const targetName = typeof nameOrId === "string" ? nameOrId : this.interner.resolve(nameOrId);
     if (!targetName) return -1;
-    for (let i = 0; i < this.varCount; i++) {
-      if (this.getVarName(i) === targetName) return i;
+    for (const [vIdx, name] of renamed.entries()) {
+      if (name === targetName) return vIdx;
     }
     return -1;
   }
@@ -616,7 +620,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   getVarExpression(varIdx: number): number | undefined {
-    return this.varExpressions.get(varIdx) ?? (this.getVarAttrExpr(varIdx, VarAttrKind.Start) || undefined);
+    return this.varExpressions.get(varIdx);
   }
 
   hasExplicitVarExpression(varIdx: number): boolean {

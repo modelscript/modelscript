@@ -10,7 +10,7 @@
 
 import { type DAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
 
-import type { FmuOptions, FmuResult } from "./fmi.js";
+import type { FmiScalarVariable, FmuOptions, FmuResult } from "./fmi.js";
 import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";
 
 // ── Public interface ──
@@ -313,11 +313,19 @@ function generateWasmC(
     if (nameMatch) derMap.set(nameMatch[1] ?? "", i);
   }
 
+  // ── Fast lookup maps ──
+  const varByName = new Map<string, FmiScalarVariable>();
+  const varByVr = new Map<number, FmiScalarVariable>();
+  for (const sv of result.scalarVariables) {
+    varByName.set(sv.name, sv);
+    varByVr.set(sv.valueReference, sv);
+  }
+
   // ── State variable ↔ index mapping ──
   const stateVarRefs: { name: string; vr: number; derVr: number; idx: number }[] = [];
   for (const sv of result.scalarVariables) {
     if (sv.derivative !== undefined) {
-      const stateSv = result.scalarVariables.find((v) => v.valueReference === sv.derivative);
+      const stateSv = varByVr.get(sv.derivative);
       if (stateSv) {
         stateVarRefs.push({
           name: stateSv.name,
@@ -327,6 +335,11 @@ function generateWasmC(
         });
       }
     }
+  }
+
+  const stateRefByVr = new Map<number, (typeof stateVarRefs)[0]>();
+  for (const s of stateVarRefs) {
+    stateRefByVr.set(s.vr, s);
   }
 
   // ── Initialize function ──
@@ -553,10 +566,10 @@ function generateWasmC(
           if (bodyEq.kind === EqKind.Simple) {
             const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
             if (lhsName) {
-              const sv = result.scalarVariables.find((v) => v.name === lhsName);
+              const sv = varByName.get(lhsName);
               if (sv) {
                 L.push(`    g_vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId)};  /* ${lhsName} */`);
-                const stateRef = stateVarRefs.find((s) => s.vr === sv.valueReference);
+                const stateRef = stateRefByVr.get(sv.valueReference);
                 if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);
               }
             }
@@ -569,10 +582,10 @@ function generateWasmC(
                 const arg1 = dae.getExprLeft(callId + 1);
                 if (dae.getExprKind(arg0) === ExprKind.Name) {
                   const stateName = dae.interner.resolve(dae.getExprData1(arg0));
-                  const sv = result.scalarVariables.find((v) => v.name === stateName);
+                  const sv = varByName.get(stateName);
                   if (sv) {
                     L.push(`    g_vars[${sv.valueReference}] = ${exprToC(dae, arg1)};  /* reinit(${stateName}) */`);
-                    const stateRef = stateVarRefs.find((s) => s.vr === sv.valueReference);
+                    const stateRef = stateRefByVr.get(sv.valueReference);
                     if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);
                   }
                 }

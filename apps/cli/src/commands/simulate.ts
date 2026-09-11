@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { initBltWasm, type DAEBuilder } from "@modelscript/language/compiler";
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmu";
+import { generateFmu } from "@modelscript/language/fmu";
 import {
-  ArenaSimulator,
-  runWasmSimulation,
   simulateArena,
   simulateArenaAsync,
   snapshotMemory,
@@ -80,7 +78,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       .option("format", {
         description: "output format",
         type: "string",
-        choices: ["csv", "json"],
+        choices: ["csv", "json", "none"],
         default: "csv",
       })
       .option("solver", {
@@ -289,28 +287,68 @@ async function simulateWasm(
   memProfiles: Record<string, unknown>,
   lastSnap: MemorySnapshot | null,
 ): Promise<void> {
-  // Generate FMI result for scalar variable metadata
-  const simulator = new ArenaSimulator(arena);
-  simulator.prepare();
-
   const modelIdentifier = args.name.replace(/\./g, "_");
-  const stateVars = new Set<string>();
-  for (const varIdx of simulator.stateVars) {
-    stateVars.add(arena.getVarName(varIdx));
-  }
-  const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" }, stateVars);
+  const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" });
+  const isCvode = args.solver === "cvode";
 
-  // Generate WASM C source
+  // Generate standalone C simulation source
   profiler.start("codegen");
-  const wasmSource = generateFmuWasmSource(arena, fmuResult, { modelIdentifier });
+  const cSource = generateSimulationC(arena, fmuResult, {
+    modelIdentifier,
+    startTime,
+    stopTime,
+    stepSize: step,
+    quiet: args.format === "none",
+    solver: isCvode ? "cvode" : "rk4",
+    tolerance: args.tolerance,
+  });
   profiler.end("codegen");
 
-  // Compile to WASM
+  // Compile with Emscripten
   profiler.start("compilation");
-  const wasmOpt = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1" : "-O2";
-  const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions, {
-    optimizationLevel: wasmOpt,
-  });
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-wasm-"));
+  const cFile = path.join(tmpDir, `${modelIdentifier}_sim.c`);
+  const jsFile = path.join(tmpDir, `${modelIdentifier}_sim.js`);
+
+  fs.writeFileSync(cFile, cSource);
+
+  const emcc = process.env.EMCC ?? "emcc";
+  const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1" : "-O3";
+  let cvodeFlags = "";
+  if (isCvode) {
+    const sundialsInstall = path.resolve(
+      path.dirname(require.resolve("@modelscript/language/package.json")),
+      ".build/sundials/install",
+    );
+    cvodeFlags = [
+      `-I${path.join(sundialsInstall, "include")}`,
+      path.join(sundialsInstall, "lib/libsundials_cvode.a"),
+      path.join(sundialsInstall, "lib/libsundials_nvecserial.a"),
+      path.join(sundialsInstall, "lib/libsundials_core.a"),
+    ].join(" ");
+  }
+
+  const emccCmd = [
+    emcc,
+    optFlag,
+    "-w",
+    cFile,
+    cvodeFlags,
+    "-s ALLOW_MEMORY_GROWTH=1",
+    "-s NODEJS_CATCH_EXIT=0",
+    "-o",
+    jsFile,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  try {
+    execSync(emccCmd, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
+  } catch (e: unknown) {
+    const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
+    console.error(`WASM compilation failed:\n${stderr}`);
+    return;
+  }
   profiler.end("compilation");
 
   if (args.memoryProfile && lastSnap) {
@@ -319,25 +357,28 @@ async function simulateWasm(
     lastSnap = snap;
   }
 
-  if (!compileResult.success || !compileResult.wasm || !compileResult.jsGlue) {
-    console.error(`WASM compilation failed: ${compileResult.message}`);
-    return;
-  }
+  console.error(`WASM compiled: ${emcc} ${optFlag} → ${jsFile}`);
 
-  console.error(`WASM compiled: ${compileResult.message}`);
-
-  // Run simulation via WASM runner
+  // Run simulation via Node
   profiler.start("simulation");
-  const scalarVars = fmuResult.scalarVariables.map((sv) => ({
-    name: sv.name,
-    valueReference: sv.valueReference,
-    causality: sv.causality,
-  }));
-
-  const result = await runWasmSimulation(compileResult.wasm, compileResult.jsGlue, scalarVars, {
-    startTime,
-    stopTime,
-    stepSize: step,
+  const output = await new Promise<string>((resolve, reject) => {
+    const child = spawn("node", [jsFile], { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    child.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+    child.on("close", (code: number | null) => {
+      if (code !== 0) {
+        reject(new Error(`WASM simulation exited with code ${code}: ${stderr}`));
+      } else {
+        resolve(stdout);
+      }
+    });
+    child.on("error", reject);
   });
   profiler.end("simulation");
 
@@ -346,19 +387,19 @@ async function simulateWasm(
     memProfiles["simulation"] = { before: lastSnap, after: snap };
   }
 
-  if (result.error) {
-    console.error(`WASM simulation error: ${result.error}`);
-    return;
+  if (args.format === "none") {
+    // No output
+  } else if (args.format === "json") {
+    const lines = output.trim().split("\n");
+    const header = lines[0]?.split(",") ?? [];
+    const rows = lines.slice(1).map((l) => l.split(",").map(Number));
+    const times = rows.map((r) => r[0] ?? 0);
+    const y = rows.map((r) => r.slice(1));
+    const varNames = header.slice(1);
+    outputResults(times, y, varNames, "json");
+  } else {
+    process.stdout.write(output);
   }
-
-  // Convert WASM result format (column-major trajectories) to row-major
-  const times = result.times;
-  const names = result.variableNames;
-  const y = times.map((_t: number, i: number) =>
-    names.map((_n: string, j: number) => result.trajectories[j]?.[i] ?? 0),
-  );
-
-  outputResults(times, y, names, args.format);
 }
 
 // ── C Engine ──
@@ -373,15 +414,9 @@ async function simulateC(
   memProfiles: Record<string, unknown>,
   lastSnap: MemorySnapshot | null,
 ): Promise<void> {
-  const simulator = new ArenaSimulator(arena);
-  simulator.prepare();
-
   const modelIdentifier = args.name.replace(/\./g, "_");
-  const stateVars = new Set<string>();
-  for (const varIdx of simulator.stateVars) {
-    stateVars.add(arena.getVarName(varIdx));
-  }
-  const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" }, stateVars);
+  const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" });
+  const isCvode = args.solver === "cvode";
 
   // Generate standalone C simulation source
   profiler.start("codegen");
@@ -390,6 +425,9 @@ async function simulateC(
     startTime,
     stopTime,
     stepSize: step,
+    quiet: args.format === "none",
+    solver: isCvode ? "cvode" : "rk4",
+    tolerance: args.tolerance,
   });
   profiler.end("codegen");
 
@@ -403,14 +441,16 @@ async function simulateC(
 
   const cc = process.env.CC ?? "gcc";
   const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1 -fno-tree-vectorize" : "-O3";
-  const ccCmd = [cc, optFlag, "-Wall", cFile, "-o", binFile, "-lm"].join(" ");
+  const cvodeFlags = isCvode
+    ? "-I/usr/include/omc/sundials -L/usr/lib/x86_64-linux-gnu/omc -Wl,-rpath=/usr/lib/x86_64-linux-gnu/omc -lsundials_cvode -lsundials_nvecserial"
+    : "";
+  const ccCmd = [cc, optFlag, "-w", cFile, cvodeFlags, "-o", binFile, "-lm"].filter(Boolean).join(" ");
 
   try {
-    execSync(ccCmd, { stdio: "pipe", timeout: 300000 });
+    execSync(ccCmd, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
   } catch (e: unknown) {
     const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
     console.error(`C compilation failed:\n${stderr}`);
-    //fs.rmSync(tmpDir, { recursive: true, force: true });
     return;
   }
   profiler.end("compilation");
@@ -451,12 +491,10 @@ async function simulateC(
     memProfiles["simulation"] = { before: lastSnap, after: snap };
   }
 
-  // Clean up temp files
-  //fs.rmSync(tmpDir, { recursive: true, force: true });
-
   // The C binary outputs CSV to stdout — relay it or convert to JSON
-  if (args.format === "json") {
-    // Parse the CSV output and convert to JSON
+  if (args.format === "none") {
+    // No output requested
+  } else if (args.format === "json") {
     const lines = output.trim().split("\n");
     const header = lines[0]?.split(",") ?? [];
     const rows = lines.slice(1).map((line) => {
@@ -477,6 +515,7 @@ async function simulateC(
 // ── Output helpers ──
 
 function outputResults(t: number[], y: number[][], varNames: string[], format: string): void {
+  if (format === "none") return;
   if (format === "json") {
     const rows = t.map((time: number, i: number) => {
       const row: Record<string, number> = { time };

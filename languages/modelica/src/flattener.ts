@@ -3190,7 +3190,9 @@ export class ModelicaFlattener {
       this.generateFunctions(rootClassId, dae);
     }
 
+    const t_start = performance.now();
     // 1. Layer 1: Component instantiation
+    const t0 = performance.now();
     const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
 
     if (elements) {
@@ -3206,6 +3208,7 @@ export class ModelicaFlattener {
           : undefined,
       );
     }
+    const t1 = performance.now();
     if (this.options.omcCompatibility && dae.diagnostics.some((d) => d.severity === "error")) {
       return dae;
     }
@@ -3220,6 +3223,7 @@ export class ModelicaFlattener {
       }
       this.pendingArrayBindings.clear();
     }
+    const t2 = performance.now();
 
     // 3. Layer 3: Physical connector expansion & flow balance
     const rootCst = this.db.cstNode(rootClassId) as any;
@@ -3228,13 +3232,16 @@ export class ModelicaFlattener {
       omcCompatibility: this.options.omcCompatibility,
       isOldFrontend,
     });
+    const t3 = performance.now();
 
     // 4. Constant folding and alias elimination
     foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
+    const t4 = performance.now();
 
     if (this.options.eliminateAliases) {
       eliminateArenaAliases(dae);
     }
+    const t5 = performance.now();
 
     if (this.options.omcCompatibility) {
       this.generateRecordConstructors(rootClassId, dae);
@@ -3251,7 +3258,22 @@ export class ModelicaFlattener {
     }
 
     dae.groupEquationsForParity();
+    const t6 = performance.now();
     this.checkBalance(dae, rootClassId);
+    const t7 = performance.now();
+
+    if (t7 - t_start > 100) {
+      console.log(
+        `[flattenClass timings for ${rootName}] total=${(t7 - t_start).toFixed(1)}ms: ` +
+          `instantiate=${(t1 - t0).toFixed(1)}ms, ` +
+          `equations=${(t2 - t1).toFixed(1)}ms, ` +
+          `expandConn=${(t3 - t2).toFixed(1)}ms, ` +
+          `foldConst=${(t4 - t3).toFixed(1)}ms, ` +
+          `elimAlias=${(t5 - t4).toFixed(1)}ms, ` +
+          `groupEqs=${(t6 - t5).toFixed(1)}ms, ` +
+          `checkBalance=${(t7 - t6).toFixed(1)}ms`,
+      );
+    }
     return dae;
   }
 

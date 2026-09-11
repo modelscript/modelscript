@@ -27,6 +27,10 @@ export interface SundialsWasmOptions {
   maxSteps?: number;
   maxStep?: number;
   useExactJacobian?: boolean;
+  linearSolver?: "auto" | "dense" | "band" | "klu" | "spgmr";
+  mu?: number;
+  ml?: number;
+  nnz?: number;
 }
 
 export type RhsFunction = (t: number, y: Float64Array, ydot: Float64Array) => number;
@@ -118,8 +122,35 @@ export class CvodeSolver {
       this.registeredFunctions.push(eventFnPtr);
     }
 
-    // Call cvode_init
-    if ((module as any)._cvode_init) {
+    // Linear solver selection: 0=auto, 1=dense, 2=band, 3=klu, 4=spgmr
+    let solverType = 0;
+    if (options?.linearSolver === "dense") solverType = 1;
+    else if (options?.linearSolver === "band") solverType = 2;
+    else if (options?.linearSolver === "klu") solverType = 3;
+    else if (options?.linearSolver === "spgmr") solverType = 4;
+
+    const mu = options?.mu ?? 0;
+    const ml = options?.ml ?? 1;
+    const nnz = options?.nnz ?? 3 * nStates;
+
+    // Call cvode_init_advanced or cvode_init
+    if ((module as any)._cvode_init_advanced) {
+      this.ctxPtr = (module as any)._cvode_init_advanced(
+        nStates,
+        solverType,
+        mu,
+        ml,
+        nnz,
+        0, // jac_fn_ptr
+        t0,
+        this.y0Ptr,
+        rhsFnPtr,
+        nEvents,
+        eventFnPtr,
+        rtol,
+        atol,
+      );
+    } else if ((module as any)._cvode_init) {
       this.ctxPtr = (module as any)._cvode_init(nStates, t0, this.y0Ptr, rhsFnPtr, nEvents, eventFnPtr, rtol, atol);
     } else {
       this.ctxPtr = module.ccall(

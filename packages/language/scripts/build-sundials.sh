@@ -131,6 +131,11 @@ cat > "$BUILD_DIR/sundials_wasm_entry.c" << 'ENTRY_EOF'
 /* Include the full SUNDIALS interface implementation */
 #include <sunmatrix/sunmatrix_dense.h>
 #include <sunlinsol/sunlinsol_dense.h>
+#include <sunmatrix/sunmatrix_band.h>
+#include <sunlinsol/sunlinsol_band.h>
+#include <sunmatrix/sunmatrix_sparse.h>
+#include <sunlinsol/sunlinsol_klu.h>
+#include <sunlinsol/sunlinsol_spgmr.h>
 #include "sundials-interface.c"
 
 /* Type for the WASM RHS callback */
@@ -298,8 +303,13 @@ static int cvode_step_root_wrapper(sunrealtype t, N_Vector y, sunrealtype* gout,
     return 0;
 }
 
-CvodeStepContext* cvode_init(
+CvodeStepContext* cvode_init_advanced(
     int n_states,
+    int solver_type, /* 0=auto, 1=dense, 2=band, 3=klu, 4=spgmr */
+    int mu,
+    int ml,
+    int nnz,
+    int jac_fn_ptr,
     double t0,
     double* y0,
     int rhs_fn_ptr,
@@ -315,6 +325,8 @@ CvodeStepContext* cvode_init(
     ctx->n_events = n_events;
     ctx->rhs_fn = (wasm_rhs_fn)(long)rhs_fn_ptr;
     ctx->event_fn = event_fn_ptr ? (wasm_event_fn)(long)event_fn_ptr : NULL;
+    ctx->A = NULL;
+    ctx->LS = NULL;
 
     if (SUNContext_Create(SUN_COMM_NULL, &ctx->sunctx) != 0) {
         free(ctx);
@@ -345,15 +357,54 @@ CvodeStepContext* cvode_init(
     CVodeSStolerances(ctx->cvode_mem, (sunrealtype)rtol, (sunrealtype)atol);
     CVodeSetUserData(ctx->cvode_mem, ctx);
 
-    ctx->A = SUNDenseMatrix(n_states, n_states, ctx->sunctx);
-    ctx->LS = SUNLinSol_Dense(ctx->y, ctx->A, ctx->sunctx);
-    CVodeSetLinearSolver(ctx->cvode_mem, ctx->LS, ctx->A);
+    // Auto-select linear solver
+    if (solver_type == 0) {
+        if (n_states <= 50) {
+            solver_type = 1; // Dense
+        } else if (mu >= 0 && ml >= 0 && (mu + ml) < 100) {
+            solver_type = 2; // Banded
+        } else {
+            solver_type = 4; // SPGMR
+        }
+    }
+
+    if (solver_type == 2) {
+        ctx->A = SUNBandMatrix(n_states, mu, ml, ctx->sunctx);
+        if (ctx->A) ctx->LS = SUNLinSol_Band(ctx->y, ctx->A, ctx->sunctx);
+    } else if (solver_type == 3) {
+        int actual_nnz = nnz > 0 ? nnz : (3 * n_states);
+        ctx->A = SUNSparseMatrix(n_states, n_states, actual_nnz, CSC_MAT, ctx->sunctx);
+        if (ctx->A) ctx->LS = SUNLinSol_KLU(ctx->y, ctx->A, ctx->sunctx);
+    } else if (solver_type == 4) {
+        ctx->A = NULL;
+        ctx->LS = SUNLinSol_SPGMR(ctx->y, SUN_PREC_NONE, 5, ctx->sunctx);
+    } else {
+        ctx->A = SUNDenseMatrix(n_states, n_states, ctx->sunctx);
+        if (ctx->A) ctx->LS = SUNLinSol_Dense(ctx->y, ctx->A, ctx->sunctx);
+    }
+
+    if (ctx->LS) {
+        CVodeSetLinearSolver(ctx->cvode_mem, ctx->LS, ctx->A);
+    }
 
     if (n_events > 0 && ctx->event_fn) {
         CVodeRootInit(ctx->cvode_mem, n_events, cvode_step_root_wrapper);
     }
 
     return ctx;
+}
+
+CvodeStepContext* cvode_init(
+    int n_states,
+    double t0,
+    double* y0,
+    int rhs_fn_ptr,
+    int n_events,
+    int event_fn_ptr,
+    double rtol,
+    double atol
+) {
+    return cvode_init_advanced(n_states, 0, 0, 1, 0, 0, t0, y0, rhs_fn_ptr, n_events, event_fn_ptr, rtol, atol);
 }
 
 int cvode_step(CvodeStepContext* ctx, double t_out, double* t_ret_ptr, double* y_ret) {
@@ -401,20 +452,36 @@ emcc -O2 \
   -lsundials_nvecserial \
   -lsundials_sunmatrixsparse \
   -lsundials_sunmatrixdense \
+  -lsundials_sunmatrixband \
   -lsundials_sunlinsoldense \
+  -lsundials_sunlinsolband \
   -lsundials_sunlinsolklu \
+  -lsundials_sunlinsolspgmr \
   -lsundials_core \
   -L"$SUITESPARSE_INSTALL/lib" -lklu -lamd -lcolamd -lbtf -lsuitesparseconfig \
   -lm \
   -s MODULARIZE=1 \
   -s EXPORT_ES6=1 \
-  -s EXPORTED_FUNCTIONS='["_sundials_cvode_wasm","_sundials_kinsol_wasm","_cvode_init","_cvode_step","_cvode_reinit","_cvode_free","_malloc","_free"]' \
+  -s EXPORTED_FUNCTIONS='["_sundials_cvode_wasm","_sundials_kinsol_wasm","_cvode_init","_cvode_init_advanced","_cvode_step","_cvode_reinit","_cvode_free","_malloc","_free"]' \
   -s EXPORTED_RUNTIME_METHODS='["addFunction","removeFunction","ccall","cwrap","HEAPF64","HEAPU8","HEAP32","wasmMemory"]' \
   -s ALLOW_TABLE_GROWTH=1 \
   -s ALLOW_MEMORY_GROWTH=1 \
   -s INITIAL_MEMORY=16777216 \
   -s STACK_SIZE=1048576 \
   -o "$WASM_DIR/sundials.js"
+
+mkdir -p "$PACKAGE_DIR/src/compiler/wasm"
+cp "$WASM_DIR/sundials.js" "$WASM_DIR/sundials.wasm" "$PACKAGE_DIR/src/compiler/wasm/"
+
+SIM_WASM_DIR="$PACKAGE_DIR/../simulate/src/wasm"
+if [ -d "$SIM_WASM_DIR" ]; then
+  cp "$WASM_DIR/sundials.js" "$WASM_DIR/sundials.wasm" "$SIM_WASM_DIR/"
+fi
+
+SIM_DIST_DIR="$PACKAGE_DIR/../simulate/dist/wasm"
+if [ -d "$SIM_DIST_DIR" ]; then
+  cp "$WASM_DIR/sundials.js" "$WASM_DIR/sundials.wasm" "$SIM_DIST_DIR/"
+fi
 
 echo "=== SUNDIALS WASM build complete ==="
 echo "  Output: $WASM_DIR/sundials.js + sundials.wasm"

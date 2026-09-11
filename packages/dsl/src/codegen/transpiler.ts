@@ -674,10 +674,13 @@ export function transpileQuery(
         return ts.factory.createBinaryExpression(targetObj, ts.SyntaxKind.EqualsEqualsToken, arg);
       }
 
-      // 4b. BigInt literal (0n, 31n) -> Numeric literal for AssemblyScript compatibility
+      // 4b. BigInt literal (0n, 31n) -> <u64>numeric literal for AssemblyScript compatibility
       if (ts.isBigIntLiteral(node)) {
         const text = node.text.replace(/n$/, "");
-        return ts.factory.createNumericLiteral(text);
+        return ts.factory.createTypeAssertion(
+          ts.factory.createTypeReferenceNode("u64"),
+          ts.factory.createNumericLiteral(text),
+        );
       }
 
       // 5. === -> == and !== -> != (AssemblyScript compatibility)

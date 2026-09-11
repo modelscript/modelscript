@@ -4250,7 +4250,7 @@ export class SyntaxNode {
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      if ((flags & 128) !== 0) return true; // FLAG_HAS_ERROR
+      return (flags & 128) !== 0; // FLAG_HAS_ERROR
     }
     for (const kid of this.children) {
       if (kid.hasError()) return true;

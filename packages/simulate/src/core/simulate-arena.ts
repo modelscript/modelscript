@@ -6,6 +6,7 @@ import {
   DAEBuilder,
   EqKind,
   ExprKind,
+  UnaryOp,
   Variability,
   evaluateArenaExpression,
   isolateSymbolicallyArena,
@@ -51,6 +52,7 @@ export class ArenaSimulator {
   public blocks: { eqIdxs: number[]; vars: number[] }[] = [];
   public dummyDerivatives = new Set<number>();
   public executionBlocks: import("@modelscript/runtime").ArenaExecutionBlock[] = [];
+  public compiledBlocks: ((env: Float64Array) => void) | null = null;
 
   /** Extracted when-clauses for event handling. */
   public whenClauses: ArenaWhenClause[] = [];
@@ -105,6 +107,7 @@ export class ArenaSimulator {
     this.blocks = bltRes.blocks;
 
     this.buildExecutionBlocks();
+    this.compiledBlocks = this.compileBlocks();
     this.extractWhenClauses();
     this.extractAssertions();
     this.extractEventIndicators();
@@ -814,7 +817,128 @@ export class ArenaSimulator {
   // Block Evaluation (shared between integrators)
   // ─────────────────────────────────────────────────────────────────────────
 
+  private compileBlocks(): ((env: Float64Array) => void) | null {
+    try {
+      const arena = this.arena;
+      if (this.executionBlocks.length === 0) return () => {};
+
+      function exprToJs(exprId: number): string {
+        if (exprId < 0) return "0";
+        const kind = arena.getExprKind(exprId);
+        switch (kind) {
+          case ExprKind.RealLiteral:
+            return arena.getExprRealValue(exprId).toString();
+          case ExprKind.IntLiteral:
+          case ExprKind.BoolLiteral:
+          case ExprKind.EnumLiteral:
+            return arena.getExprData1(exprId).toString();
+          case ExprKind.Name: {
+            const nameId = arena.getExprData1(exprId);
+            return `env[${nameId}]`;
+          }
+          case ExprKind.Negate: {
+            return `(-(${exprToJs(arena.getExprLeft(exprId))}))`;
+          }
+          case ExprKind.Unary: {
+            const op = arena.getExprData1(exprId);
+            const operand = exprToJs(arena.getExprLeft(exprId));
+            if (op === UnaryOp.Negate) return `(-(${operand}))`;
+            if (op === UnaryOp.Not) return `((${operand}) === 0 ? 1 : 0)`;
+            return "0";
+          }
+          case ExprKind.Binary: {
+            const op = arena.getExprData1(exprId);
+            const left = exprToJs(arena.getExprLeft(exprId));
+            const right = exprToJs(arena.getExprRight(exprId));
+            switch (op) {
+              case BinOp.Add:
+              case BinOp.ElemAdd:
+                return `((${left}) + (${right}))`;
+              case BinOp.Sub:
+              case BinOp.ElemSub:
+                return `((${left}) - (${right}))`;
+              case BinOp.Mul:
+              case BinOp.ElemMul:
+                return `((${left}) * (${right}))`;
+              case BinOp.Div:
+              case BinOp.ElemDiv:
+                return `((${left}) / (${right}))`;
+              case BinOp.Lt:
+                return `((${left}) < (${right}) ? 1 : 0)`;
+              case BinOp.Lte:
+                return `((${left}) <= (${right}) ? 1 : 0)`;
+              case BinOp.Gt:
+                return `((${left}) > (${right}) ? 1 : 0)`;
+              case BinOp.Gte:
+                return `((${left}) >= (${right}) ? 1 : 0)`;
+              case BinOp.Eq:
+                return `((${left}) === (${right}) ? 1 : 0)`;
+              case BinOp.Neq:
+                return `((${left}) !== (${right}) ? 1 : 0)`;
+              default:
+                return "0";
+            }
+          }
+          case ExprKind.IfElse: {
+            const cond = exprToJs(arena.getExprData1(exprId));
+            const thenVal = exprToJs(arena.getExprLeft(exprId));
+            const elseVal = exprToJs(arena.getExprRight(exprId));
+            return `((${cond}) !== 0 ? (${thenVal}) : (${elseVal}))`;
+          }
+          case ExprKind.Call: {
+            const fnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+            const arg = exprToJs(arena.getExprLeft(exprId));
+            if (fnName === "sin") return `Math.sin(${arg})`;
+            if (fnName === "cos") return `Math.cos(${arg})`;
+            if (fnName === "exp") return `Math.exp(${arg})`;
+            if (fnName === "sqrt") return `Math.sqrt(${arg})`;
+            if (fnName === "abs") return `Math.abs(${arg})`;
+            return "0";
+          }
+          default:
+            return "0";
+        }
+      }
+
+      // Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
+      const CHUNK_SIZE = 4000;
+      const chunks: ((env: Float64Array) => void)[] = [];
+      let currentLines: string[] = [];
+
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const varNameId = arena.getVarNameId(block.varIdx);
+          const exprJs = exprToJs(block.exprId);
+          currentLines.push(`env[${varNameId}] = ${exprJs};`);
+          if (currentLines.length >= CHUNK_SIZE) {
+            chunks.push(new Function("env", currentLines.join("\n")) as (env: Float64Array) => void);
+            currentLines = [];
+          }
+        } else {
+          return null; // System block requires nonlinear solver
+        }
+      }
+
+      if (currentLines.length > 0) {
+        chunks.push(new Function("env", currentLines.join("\n")) as (env: Float64Array) => void);
+      }
+
+      if (chunks.length === 1) {
+        return chunks[0]!;
+      }
+      return (env: Float64Array) => {
+        for (const chunk of chunks) chunk(env);
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private evaluateBlocks(valuesByStringId: Float64Array): void {
+    if (this.compiledBlocks) {
+      this.compiledBlocks(valuesByStringId);
+      return;
+    }
     for (const block of this.executionBlocks) {
       if (block.type === "single") {
         const val = evaluateArenaRuntime(this.arena, block.exprId, valuesByStringId);
@@ -1413,6 +1537,10 @@ export class ArenaSimulator {
     const solver = new CvodeSolverClass(wasmMod, n, t, y0, rhsFn, nEvents, eventFn, {
       atol: options?.atol,
       rtol: options?.rtol,
+      linearSolver: (options as any)?.linearSolver ?? (n > 50 ? "band" : "auto"),
+      mu: (options as any)?.mu ?? 0,
+      ml: (options as any)?.ml ?? 1,
+      nnz: (options as any)?.nnz,
     });
 
     let resultT = new Float64Array(steps + 1);
@@ -2008,7 +2136,9 @@ export async function simulateArenaAsync(
   if (options?.debuggerHook) {
     sim.debuggerHook = options.debuggerHook;
   }
+  const t_prep0 = performance.now();
   sim.prepare();
+  const t_prep = performance.now() - t_prep0;
 
   const exp = arena.experiment;
   const startTime = options?.startTime ?? exp.startTime ?? 0;
@@ -2070,8 +2200,10 @@ export async function simulateArenaAsync(
     }
   }
 
+  const t_init0 = performance.now();
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
+  const t_init = performance.now() - t_init0;
 
   const stateNameIds: number[] = [];
   const derivNameIds: number[] = [];
@@ -2172,6 +2304,7 @@ export async function simulateArenaAsync(
     }
   }
 
+  const t_sim0 = performance.now();
   const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
     solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
     ...(options?.signal !== undefined && { signal: options.signal }),
@@ -2179,9 +2312,11 @@ export async function simulateArenaAsync(
     ...(options?.rtol !== undefined && { rtol: options.rtol }),
     ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
   });
+  const t_sim = performance.now() - t_sim0;
 
   sim.terminateFmuSubsystems();
 
+  const t_post0 = performance.now();
   const t = rawResult.t;
   const y: number[][] = rawResult.y.map((row) => Array.from(row as ArrayLike<number>));
 
@@ -2189,6 +2324,5 @@ export async function simulateArenaAsync(
   if (options?.outputStringIds) {
     outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
   }
-
   return { t, y, states: outNames };
 }

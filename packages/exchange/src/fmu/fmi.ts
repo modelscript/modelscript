@@ -164,12 +164,20 @@ export function generateFmu(dae: DAEBuilder, options: FmuOptions, _stateVars?: S
     }
   }
 
+  // Fast lookup maps
+  const svByName = new Map<string, FmiScalarVariable>();
+  const svByVr = new Map<number, FmiScalarVariable>();
+  for (const sv of scalarVariables) {
+    svByName.set(sv.name, sv);
+    svByVr.set(sv.valueReference, sv);
+  }
+
   // Link derivative variables to state variables
   for (const sv of scalarVariables) {
     const match = sv.name.match(/^der\((.+)\)$/);
     if (match) {
       const stateName = match[1] ?? "";
-      const stateSv = scalarVariables.find((v) => v.name === stateName);
+      const stateSv = svByName.get(stateName);
       if (stateSv) {
         sv.derivative = stateSv.valueReference;
         derivativeRefs.push(sv.valueReference);
@@ -185,7 +193,7 @@ export function generateFmu(dae: DAEBuilder, options: FmuOptions, _stateVars?: S
 
   // ── Compute dependencies ──
   const filteredInitialUnknowns = initialUnknownRefs.filter((ref) => {
-    const v = scalarVariables.find((sv) => sv.valueReference === ref);
+    const v = svByVr.get(ref);
     return v && v.initial === "calculated";
   });
   const deps = computeDependencies(dae, scalarVariables, outputRefs, derivativeRefs, filteredInitialUnknowns);
@@ -281,7 +289,11 @@ function computeDependencies(
 ): Map<number, DepEntry2[]> {
   const deps = new Map<number, DepEntry2[]>();
   const svByName = new Map<string, FmiScalarVariable>();
-  for (const sv of scalarVariables) svByName.set(sv.name, sv);
+  const svByVr = new Map<number, FmiScalarVariable>();
+  for (const sv of scalarVariables) {
+    svByName.set(sv.name, sv);
+    svByVr.set(sv.valueReference, sv);
+  }
 
   const equationDeps = new Map<string, Set<string>>();
   for (let idx = 0; idx < dae.eqCount; idx++) {
@@ -298,7 +310,7 @@ function computeDependencies(
 
   const allUnknownRefs = [...outputRefs, ...derivativeRefs, ...initialUnknownRefs];
   for (const ref of allUnknownRefs) {
-    const sv = scalarVariables.find((v) => v.valueReference === ref);
+    const sv = svByVr.get(ref);
     if (!sv) continue;
 
     const rhsNames = equationDeps.get(sv.name);
@@ -604,6 +616,12 @@ function generateModelDescriptionXml(
     lines.push("  </TypeDefinitions>");
   }
 
+  // Fast index lookup: valueReference -> 1-based variable index
+  const varIndexByVr = new Map<number, number>();
+  for (let i = 0; i < variables.length; i++) {
+    varIndexByVr.set(variables[i].valueReference, i + 1);
+  }
+
   lines.push("");
   lines.push("  <ModelVariables>");
   for (const sv of variables) {
@@ -619,7 +637,7 @@ function generateModelDescriptionXml(
     const duAttr = sv.displayUnit ? ` displayUnit="${escapeXml(sv.displayUnit)}"` : "";
     let derivAttr = "";
     if (sv.derivative !== undefined) {
-      const stateIndex = variables.findIndex((v) => v.valueReference === sv.derivative) + 1;
+      const stateIndex = varIndexByVr.get(sv.derivative) ?? 0;
       if (stateIndex > 0) derivAttr = ` derivative="${stateIndex}"`;
     }
     const declTypeAttr = sv.declaredType ? ` declaredType="${escapeXml(sv.declaredType)}"` : "";
@@ -634,8 +652,8 @@ function generateModelDescriptionXml(
   if (opts.outputRefs.length > 0) {
     lines.push("    <Outputs>");
     for (const ref of opts.outputRefs) {
-      const idx = variables.findIndex((v) => v.valueReference === ref);
-      if (idx >= 0) lines.push(formatUnknown(idx + 1, ref, opts.deps, variables));
+      const idx = varIndexByVr.get(ref);
+      if (idx !== undefined && idx > 0) lines.push(formatUnknown(idx, ref, opts.deps, varIndexByVr));
     }
     lines.push("    </Outputs>");
   }
@@ -643,8 +661,8 @@ function generateModelDescriptionXml(
   if (opts.derivativeRefs.length > 0) {
     lines.push("    <Derivatives>");
     for (const ref of opts.derivativeRefs) {
-      const idx = variables.findIndex((v) => v.valueReference === ref);
-      if (idx >= 0) lines.push(formatUnknown(idx + 1, ref, opts.deps, variables));
+      const idx = varIndexByVr.get(ref);
+      if (idx !== undefined && idx > 0) lines.push(formatUnknown(idx, ref, opts.deps, varIndexByVr));
     }
     lines.push("    </Derivatives>");
   }
@@ -652,8 +670,8 @@ function generateModelDescriptionXml(
   if (opts.initialUnknownRefs.length > 0) {
     lines.push("    <InitialUnknowns>");
     for (const ref of opts.initialUnknownRefs) {
-      const idx = variables.findIndex((v) => v.valueReference === ref);
-      if (idx >= 0) lines.push(formatUnknown(idx + 1, ref, opts.deps, variables));
+      const idx = varIndexByVr.get(ref);
+      if (idx !== undefined && idx > 0) lines.push(formatUnknown(idx, ref, opts.deps, varIndexByVr));
     }
     lines.push("    </InitialUnknowns>");
   }
@@ -669,15 +687,13 @@ function formatUnknown(
   index: number,
   ref: number,
   deps: Map<number, DepEntry2[]>,
-  variables: FmiScalarVariable[],
+  varIndexByVr: Map<number, number>,
 ): string {
   const entries = deps.get(ref);
   if (!entries || entries.length === 0) {
     return `      <Unknown index="${index}" />`;
   }
-  const depItems = entries
-    .map((e) => ({ idx: variables.findIndex((v) => v.valueReference === e.vr) + 1, kind: e.kind }))
-    .filter((d) => d.idx > 0);
+  const depItems = entries.map((e) => ({ idx: varIndexByVr.get(e.vr) ?? 0, kind: e.kind })).filter((d) => d.idx > 0);
   const depsAttr = ` dependencies="${depItems.map((d) => d.idx).join(" ")}"`;
   const kindsAttr = ` dependenciesKind="${depItems.map((d) => d.kind).join(" ")}"`;
   return `      <Unknown index="${index}"${depsAttr}${kindsAttr} />`;

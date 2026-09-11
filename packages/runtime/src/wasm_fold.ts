@@ -103,6 +103,10 @@ export function evaluateConstantArenaExpression(
     }
     const varIdx = nameToIdx ? nameToIdx.get(varName) : arena.getVarIdxByName(varName);
     if (varIdx !== undefined && varIdx >= 0 && !arena.isVarRemoved(varIdx)) {
+      const variability = arena.getVarVariability(varIdx);
+      if (variability !== Variability.Constant && variability !== Variability.Parameter) {
+        return null;
+      }
       const bindExpr = arena.getVarExpression(varIdx);
       if (bindExpr !== undefined && bindExpr >= 0 && bindExpr !== exprId) {
         const val = evaluateConstantArenaExpression(
@@ -116,10 +120,7 @@ export function evaluateConstantArenaExpression(
         );
         if (val !== null) return val;
       }
-      const variability = arena.getVarVariability(varIdx);
-      if (variability === Variability.Constant || variability === Variability.Parameter) {
-        return arena.getVarStartValue(varIdx);
-      }
+      return arena.getVarStartValue(varIdx);
     }
     if (db && scopeId !== undefined) {
       const resolveName = db.query<(q: string) => SymbolEntry | null>("resolveName", scopeId);

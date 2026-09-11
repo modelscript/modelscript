@@ -2960,6 +2960,7 @@ async function Module(moduleArg = {}) {
     _free,
     _sundials_cvode_wasm,
     _sundials_kinsol_wasm,
+    _cvode_init_advanced,
     _cvode_init,
     _cvode_step,
     _cvode_reinit,
@@ -2976,6 +2977,7 @@ async function Module(moduleArg = {}) {
     _free = Module["_free"] = wasmExports["free"];
     _sundials_cvode_wasm = Module["_sundials_cvode_wasm"] = wasmExports["sundials_cvode_wasm"];
     _sundials_kinsol_wasm = Module["_sundials_kinsol_wasm"] = wasmExports["sundials_kinsol_wasm"];
+    _cvode_init_advanced = Module["_cvode_init_advanced"] = wasmExports["cvode_init_advanced"];
     _cvode_init = Module["_cvode_init"] = wasmExports["cvode_init"];
     _cvode_step = Module["_cvode_step"] = wasmExports["cvode_step"];
     _cvode_reinit = Module["_cvode_reinit"] = wasmExports["cvode_reinit"];

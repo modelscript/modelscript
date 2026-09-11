@@ -5,11 +5,10 @@
  *
  * Generates a self-contained C source file with a `main()` function that:
  *   1. Initializes model state from the DAE
- *   2. Runs an RK4 integration loop
+ *   2. Runs either SUNDIALS CVODE (with CVDiag) or an embedded RK4 integration loop
  *   3. Outputs CSV results to stdout
  *
- * Designed for `msc simulate --engine=c` — the generated binary is compiled
- * with `gcc -O3 -lm` and executed as a subprocess.
+ * Designed for `msc simulate --engine=c` and `msc simulate --engine=wasm`.
  */
 
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
@@ -22,6 +21,9 @@ export interface SimulationCOptions {
   startTime: number;
   stopTime: number;
   stepSize: number;
+  quiet?: boolean | undefined;
+  solver?: "rk4" | "cvode" | undefined;
+  tolerance?: number | undefined;
 }
 
 /**
@@ -29,16 +31,26 @@ export interface SimulationCOptions {
  */
 export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, options: SimulationCOptions): string {
   const { modelIdentifier: id, startTime, stopTime, stepSize } = options;
+  const isCvode = options.solver === "cvode";
+  const tol = options.tolerance ?? 1e-6;
   const vars = fmuResult.scalarVariables;
   const nVars = vars.length;
   const L: string[] = [];
+
+  // Fast lookup maps: O(1) by name and by VR
+  const varByName = new Map<string, FmiScalarVariable>();
+  const varByVr = new Map<number, FmiScalarVariable>();
+  for (const sv of vars) {
+    varByName.set(sv.name, sv);
+    varByVr.set(sv.valueReference, sv);
+  }
 
   // Determine state variables and derivatives
   const derVars = vars.filter((sv) => sv.name.startsWith("der("));
   const stateVarRefs: { name: string; vr: number; derVr: number; idx: number }[] = [];
   for (const sv of vars) {
     if (sv.derivative !== undefined) {
-      const stateSv = vars.find((v) => v.valueReference === sv.derivative);
+      const stateSv = varByVr.get(sv.derivative);
       if (stateSv) {
         stateVarRefs.push({
           name: stateSv.name,
@@ -50,6 +62,9 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
     }
   }
   const nStates = stateVarRefs.length;
+
+  const stateRefByVr = new Map<number, { name: string; vr: number; derVr: number; idx: number }>();
+  for (const s of stateVarRefs) stateRefByVr.set(s.vr, s);
 
   // VR map for variable access
   const vrMap = new Map<string, number>();
@@ -69,7 +84,30 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
   L.push("#include <string.h>");
   L.push("#include <stdio.h>");
   L.push("#include <stdint.h>");
+  L.push("#include <stdlib.h>");
   L.push("");
+
+  if (isCvode) {
+    L.push("/* SUNDIALS CVODE headers & compatibility */");
+    L.push("#include <sundials/sundials_config.h>");
+    L.push("#include <sundials/sundials_types.h>");
+    L.push("#include <cvode/cvode.h>");
+    L.push("#include <cvode/cvode_diag.h>");
+    L.push("#include <nvector/nvector_serial.h>");
+    L.push("");
+    L.push("#if defined(SUNDIALS_VERSION_MAJOR) && SUNDIALS_VERSION_MAJOR >= 6");
+    L.push("#include <sundials/sundials_context.h>");
+    L.push("typedef sunrealtype msc_realtype;");
+    L.push("#define MSC_NV_NEW(n, ctx) N_VNew_Serial((n), (ctx))");
+    L.push("#define MSC_CVODE_CREATE(lmm, ctx) CVodeCreate((lmm), (ctx))");
+    L.push("#else");
+    L.push("typedef realtype msc_realtype;");
+    L.push("typedef void* SUNContext;");
+    L.push("#define MSC_NV_NEW(n, ctx) N_VNew_Serial((n))");
+    L.push("#define MSC_CVODE_CREATE(lmm, ctx) CVodeCreate((lmm))");
+    L.push("#endif");
+    L.push("");
+  }
 
   // ── Constants ──
   L.push(`#define N_VARS ${nVars}`);
@@ -77,12 +115,9 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
   L.push(`#define START_TIME ${formatCDouble(startTime)}`);
   L.push(`#define STOP_TIME ${formatCDouble(stopTime)}`);
   L.push(`#define STEP_SIZE ${formatCDouble(stepSize)}`);
-  L.push("");
-
-  // ── VR defines ──
-  for (const sv of vars) {
-    const cName = sanitizeIdentifier(sv.name).toUpperCase();
-    L.push(`#define VR_${cName} ${sv.valueReference}`);
+  if (isCvode) {
+    L.push(`#define RTOL ${formatCDouble(tol)}`);
+    L.push(`#define ATOL ${formatCDouble(tol)}`);
   }
   L.push("");
 
@@ -98,6 +133,28 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
   L.push("static double g_event_indicators[N_EVENT_INDICATORS > 0 ? N_EVENT_INDICATORS : 1];");
   L.push(`#define N_WHEN_CONDITIONS ${dae.eqCount} /* Overestimate is fine */`);
   L.push("static double g_when_prev[N_WHEN_CONDITIONS > 0 ? N_WHEN_CONDITIONS : 1];");
+  L.push("");
+
+  // ── State VR mapping ──
+  L.push(`static const int g_state_vr[N_STATES > 0 ? N_STATES : 1] = {`);
+  const vrChunks: string[] = [];
+  for (let i = 0; i < stateVarRefs.length; i += 20) {
+    vrChunks.push(
+      "  " +
+        stateVarRefs
+          .slice(i, i + 20)
+          .map((s) => s.vr)
+          .join(", "),
+    );
+  }
+  L.push(vrChunks.join(",\n") || "  0");
+  L.push("};");
+  L.push("");
+  L.push("static inline void model_sync_states_to_vars(const double *s) {");
+  L.push("  for (int i = 0; i < N_STATES; i++) {");
+  L.push("    g_vars[g_state_vr[i]] = s[i];");
+  L.push("  }");
+  L.push("}");
   L.push("");
 
   // ── Initialize function ──
@@ -119,7 +176,7 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
       const ref = vrMap.get(name);
       const exprId = dae.getVarExpression(i);
       if (ref !== undefined && typeof exprId === "number" && exprId >= 0) {
-        L.push(`  g_vars[${ref}] = ${exprToC(dae, exprId, vars)};  /* ${name} */`);
+        L.push(`  g_vars[${ref}] = ${exprToC(dae, exprId, varByName, derMap)};  /* ${name} */`);
       }
     }
   }
@@ -135,7 +192,7 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
         const startAttr = dae.getVarAttrExprId(i, "start");
         const initExpr = typeof startAttr === "number" && startAttr >= 0 ? startAttr : dae.getVarExpression(i);
         if (typeof initExpr === "number" && initExpr >= 0) {
-          L.push(`  g_vars[${ref}] = ${exprToC(dae, initExpr, vars)};  /* ${name} */`);
+          L.push(`  g_vars[${ref}] = ${exprToC(dae, initExpr, varByName, derMap)};  /* ${name} */`);
         } else {
           const startVal = dae.getVarStartValue(i);
           if (startVal !== 0) {
@@ -158,25 +215,6 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
   // ── getDerivatives function ──
   L.push("static void model_get_derivatives(void) {");
 
-  // Collect referenced variable names for local alias emission
-  const refNames = new Set<string>();
-  for (let i = 0; i < dae.eqCount; i++) {
-    const kind = dae.getEqKind(i);
-    if (kind === EqKind.Simple) {
-      collectReferencedNames(dae, dae.getEqLhs(i), refNames);
-      collectReferencedNames(dae, dae.getEqRhs(i), refNames);
-    }
-  }
-
-  // Local aliases for referenced variables (read from g_vars[])
-  for (const sv of vars) {
-    if (sv.causality === "independent") continue;
-    if (!refNames.has(sv.name)) continue;
-    const cName = varToC(dae, sv.name, vars);
-    L.push(`  double ${cName} = g_vars[${sv.valueReference}];`);
-  }
-  L.push("");
-
   // Emit derivative equations
   for (let i = 0; i < dae.eqCount; i++) {
     const kind = dae.getEqKind(i);
@@ -188,12 +226,12 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
     if (lhsDer) {
       const idx = derMap.get(lhsDer);
       if (idx !== undefined) {
-        L.push(`  g_derivatives[${idx}] = ${exprToC(dae, rhs, vars)};  /* der(${lhsDer}) */`);
+        L.push(`  g_derivatives[${idx}] = ${exprToC(dae, rhs, varByName, derMap)};  /* der(${lhsDer}) */`);
       }
     } else if (rhsDer) {
       const idx = derMap.get(rhsDer);
       if (idx !== undefined) {
-        L.push(`  g_derivatives[${idx}] = ${exprToC(dae, lhs, vars)};  /* der(${rhsDer}) */`);
+        L.push(`  g_derivatives[${idx}] = ${exprToC(dae, lhs, varByName, derMap)};  /* der(${rhsDer}) */`);
       }
     }
   }
@@ -209,7 +247,7 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
       if (!targetName.startsWith("der(")) {
         const ref = vrMap.get(targetName);
         if (ref !== undefined) {
-          L.push(`  g_vars[${ref}] = ${exprToC(dae, rhs, vars)};  /* ${targetName} */`);
+          L.push(`  g_vars[${ref}] = ${exprToC(dae, rhs, varByName, derMap)};  /* ${targetName} */`);
         }
       }
     }
@@ -218,33 +256,16 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
   L.push("}");
   L.push("");
 
-  // ── RK4 stepper ──
+  // ── Event Indicators ──
   L.push("/* Compute event indicators for zero-crossing detection */");
   L.push("static void model_get_event_indicators(void) {");
   if (dae.eventIndicatorExprIds.length === 0) {
     L.push("  /* no event indicators */");
   } else {
-    // Collect referenced variable names for local alias emission
-    const refNames = new Set<string>();
-    for (const indicator of dae.eventIndicatorExprIds) {
-      if (indicator !== undefined && indicator >= 0) {
-        collectReferencedNames(dae, indicator, refNames);
-      }
-    }
-
-    // Local aliases for referenced variables (read from g_vars[])
-    for (const sv of vars) {
-      if (sv.causality === "independent") continue;
-      if (!refNames.has(sv.name)) continue;
-      const cName = varToC(dae, sv.name, vars);
-      L.push(`  double ${cName} = g_vars[${sv.valueReference}];`);
-    }
-    L.push("");
-
     for (let i = 0; i < dae.eventIndicatorExprIds.length; i++) {
       const indicator = dae.eventIndicatorExprIds[i];
       if (indicator !== undefined && indicator >= 0) {
-        L.push(`  g_event_indicators[${i}] = ${exprToC(dae, indicator, vars)};`);
+        L.push(`  g_event_indicators[${i}] = ${exprToC(dae, indicator, varByName, derMap)};`);
       }
     }
   }
@@ -259,38 +280,6 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
   }
 
   if (whenEqIdxs.length > 0) {
-    // Collect referenced variable names for local alias emission
-    const refNames = new Set<string>();
-    for (const eqIdx of whenEqIdxs) {
-      const weq = dae.getWhenEquationMeta(eqIdx);
-      if (!weq) continue;
-      collectReferencedNames(dae, weq.conditionExprId, refNames);
-      for (const eq of weq.bodyEquations) {
-        collectReferencedNames(dae, eq.rhsExprId, refNames);
-        if (dae.getExprKind(eq.lhsExprId) === ExprKind.Call) {
-          collectReferencedNames(dae, dae.getExprLeft(eq.lhsExprId + 1), refNames); // arg1 of reinit
-        }
-      }
-      for (const clause of weq.elseWhenClauses) {
-        collectReferencedNames(dae, clause.conditionExprId, refNames);
-        for (const eq of clause.bodyEquations) {
-          collectReferencedNames(dae, eq.rhsExprId, refNames);
-          if (dae.getExprKind(eq.lhsExprId) === ExprKind.Call) {
-            collectReferencedNames(dae, dae.getExprLeft(eq.lhsExprId + 1), refNames);
-          }
-        }
-      }
-    }
-
-    // Local aliases for referenced variables (read from g_vars[])
-    for (const sv of vars) {
-      if (sv.causality === "independent") continue;
-      if (!refNames.has(sv.name)) continue;
-      const cName = varToC(dae, sv.name, vars);
-      L.push(`  double ${cName} = g_vars[${sv.valueReference}];`);
-    }
-    L.push("");
-
     let whenIdx = 0;
     for (const eqIdx of whenEqIdxs) {
       const weq = dae.getWhenEquationMeta(eqIdx);
@@ -300,16 +289,18 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
         condExprId: number,
         bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
       ) => {
-        const condC = conditionToZeroCrossingC(dae, condExprId, vars);
+        const condC = conditionToZeroCrossingC(dae, condExprId, varByName, derMap);
         L.push(`  if (${condC} > 0.0 && g_when_prev[${whenIdx}] <= 0.0) {`);
         for (const bodyEq of bodyEquations) {
           if (bodyEq.kind === EqKind.Simple) {
             const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
             if (lhsName) {
-              const sv = vars.find((v) => v.name === lhsName);
+              const sv = varByName.get(lhsName);
               if (sv) {
-                L.push(`    g_vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId, vars)};  /* ${lhsName} */`);
-                const stateRef = stateVarRefs.find((s) => s.vr === sv.valueReference);
+                L.push(
+                  `    g_vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId, varByName, derMap)};  /* ${lhsName} */`,
+                );
+                const stateRef = stateRefByVr.get(sv.valueReference);
                 if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);
               }
             }
@@ -322,12 +313,12 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
                 const arg1 = dae.getExprLeft(callId + 1);
                 if (dae.getExprKind(arg0) === ExprKind.Name) {
                   const stateName = dae.interner.resolve(dae.getExprData1(arg0));
-                  const sv = vars.find((v) => v.name === stateName);
+                  const sv = varByName.get(stateName);
                   if (sv) {
                     L.push(
-                      `    g_vars[${sv.valueReference}] = ${exprToC(dae, arg1, vars)};  /* reinit(${stateName}) */`,
+                      `    g_vars[${sv.valueReference}] = ${exprToC(dae, arg1, varByName, derMap)};  /* reinit(${stateName}) */`,
                     );
-                    const stateRef = stateVarRefs.find((s) => s.vr === sv.valueReference);
+                    const stateRef = stateRefByVr.get(sv.valueReference);
                     if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);
                   }
                 }
@@ -349,121 +340,188 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
   L.push("}");
   L.push("");
 
-  L.push("/* Embedded RK4 integration step */");
-
-  L.push("static void rk4_step(double t_start, double dt) {");
-  L.push("  int i;");
-  L.push("  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
-  L.push("  double tmp_states[N_STATES + 1];");
-  L.push("  double y0[N_STATES + 1];");
-  L.push("  double z_prev[N_EVENT_INDICATORS + 1];");
-  L.push("  double t = t_start;");
-  L.push("  double t_end = t_start + dt;");
-  L.push("");
-  L.push("  while (t < t_end - 1e-13) {");
-  L.push("    double h = t_end - t;");
-  L.push("    int step_accepted = 0;");
-  L.push("    for (i = 0; i < N_STATES; i++) y0[i] = g_states[i];");
-  L.push("    g_time = t;");
-  for (const sv of stateVarRefs) {
-    L.push(`    g_vars[${sv.vr}] = y0[${sv.idx}];`);
+  if (isCvode) {
+    // ── SUNDIALS CVODE RHS Callback ──
+    L.push("/* SUNDIALS CVODE RHS evaluation callback */");
+    L.push("static int cvode_rhs(msc_realtype t, N_Vector y, N_Vector ydot, void *user_data) {");
+    L.push("  (void)user_data;");
+    L.push("  msc_realtype *y_data = (msc_realtype*)N_VGetArrayPointer(y);");
+    L.push("  msc_realtype *ydot_data = (msc_realtype*)N_VGetArrayPointer(ydot);");
+    L.push("  g_time = (double)t;");
+    L.push("  for (int i = 0; i < N_STATES; i++) {");
+    L.push("    g_states[i] = (double)y_data[i];");
+    L.push("  }");
+    L.push("  model_sync_states_to_vars(g_states);");
+    L.push("  model_get_derivatives();");
+    L.push("  for (int i = 0; i < N_STATES; i++) {");
+    L.push("    ydot_data[i] = (msc_realtype)g_derivatives[i];");
+    L.push("  }");
+    L.push("  return 0;");
+    L.push("}");
+    L.push("");
+  } else {
+    // ── RK4 stepper ──
+    L.push("/* Embedded RK4 integration step */");
+    L.push("static void rk4_step(double t_start, double dt) {");
+    L.push("  int i;");
+    L.push("  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
+    L.push("  double tmp_states[N_STATES + 1];");
+    L.push("  double y0[N_STATES + 1];");
+    L.push("  double z_prev[N_EVENT_INDICATORS + 1];");
+    L.push("  double t = t_start;");
+    L.push("  double t_end = t_start + dt;");
+    L.push("");
+    L.push("  while (t < t_end - 1e-13) {");
+    L.push("    double h = t_end - t;");
+    L.push("    int step_accepted = 0;");
+    L.push("    for (i = 0; i < N_STATES; i++) y0[i] = g_states[i];");
+    L.push("    g_time = t;");
+    L.push("    model_sync_states_to_vars(y0);");
+    L.push("    if (N_EVENT_INDICATORS > 0) {");
+    L.push("      model_get_event_indicators();");
+    L.push("      for (i = 0; i < N_EVENT_INDICATORS; i++) z_prev[i] = g_event_indicators[i];");
+    L.push("    }");
+    L.push("    while (!step_accepted) {");
+    L.push("      /* k1 */");
+    L.push("      g_time = t;");
+    L.push("      model_sync_states_to_vars(y0);");
+    L.push("      model_get_derivatives();");
+    L.push("      for (i = 0; i < N_STATES; i++) k1[i] = g_derivatives[i];");
+    L.push("      /* k2 */");
+    L.push("      g_time = t + 0.5 * h;");
+    L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k1[i];");
+    L.push("      model_sync_states_to_vars(tmp_states);");
+    L.push("      model_get_derivatives();");
+    L.push("      for (i = 0; i < N_STATES; i++) k2[i] = g_derivatives[i];");
+    L.push("      /* k3 */");
+    L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k2[i];");
+    L.push("      model_sync_states_to_vars(tmp_states);");
+    L.push("      model_get_derivatives();");
+    L.push("      for (i = 0; i < N_STATES; i++) k3[i] = g_derivatives[i];");
+    L.push("      /* k4 */");
+    L.push("      g_time = t + h;");
+    L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + h * k3[i];");
+    L.push("      model_sync_states_to_vars(tmp_states);");
+    L.push("      model_get_derivatives();");
+    L.push("      for (i = 0; i < N_STATES; i++) k4[i] = g_derivatives[i];");
+    L.push("      /* Combine */");
+    L.push(
+      "      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + (h / 6.0) * (k1[i] + 2.0*k2[i] + 2.0*k3[i] + k4[i]);",
+    );
+    L.push("      ");
+    L.push("      int crossing = 0;");
+    L.push("      if (N_EVENT_INDICATORS > 0) {");
+    L.push("        g_time = t + h;");
+    L.push("        model_sync_states_to_vars(tmp_states);");
+    L.push("        model_get_event_indicators();");
+    L.push("        for (i = 0; i < N_EVENT_INDICATORS; i++) {");
+    L.push("          if (z_prev[i] * g_event_indicators[i] < 0.0) { crossing = 1; break; }");
+    L.push("        }");
+    L.push("      }");
+    L.push("      if (crossing && h > 1e-7) {");
+    L.push("        h *= 0.5;");
+    L.push("      } else {");
+    L.push("        step_accepted = 1;");
+    L.push("      }");
+    L.push("    }");
+    L.push("    t += h;");
+    L.push("    for (i = 0; i < N_STATES; i++) g_states[i] = tmp_states[i];");
+    L.push("    model_sync_states_to_vars(g_states);");
+    L.push("    g_time = t;");
+    L.push("    model_event_update();");
+    L.push("  }");
+    L.push("}");
+    L.push("");
   }
-  L.push("    if (N_EVENT_INDICATORS > 0) {");
-  L.push("      model_get_event_indicators();");
-  L.push("      for (i = 0; i < N_EVENT_INDICATORS; i++) z_prev[i] = g_event_indicators[i];");
-  L.push("    }");
-  L.push("    while (!step_accepted) {");
-  L.push("      /* k1 */");
-  L.push("      g_time = t;");
-  for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = y0[${sv.idx}];`);
-  }
-  L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k1[i] = g_derivatives[i];");
-  L.push("      /* k2 */");
-  L.push("      g_time = t + 0.5 * h;");
-  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k1[i];");
-  for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
-  }
-  L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k2[i] = g_derivatives[i];");
-  L.push("      /* k3 */");
-  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k2[i];");
-  for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
-  }
-  L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k3[i] = g_derivatives[i];");
-  L.push("      /* k4 */");
-  L.push("      g_time = t + h;");
-  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + h * k3[i];");
-  for (const sv of stateVarRefs) {
-    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
-  }
-  L.push("      model_get_derivatives();");
-  L.push("      for (i = 0; i < N_STATES; i++) k4[i] = g_derivatives[i];");
-  L.push("      /* Combine */");
-  L.push(
-    "      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + (h / 6.0) * (k1[i] + 2.0*k2[i] + 2.0*k3[i] + k4[i]);",
-  );
-  L.push("      ");
-  L.push("      int crossing = 0;");
-  L.push("      if (N_EVENT_INDICATORS > 0) {");
-  L.push("        g_time = t + h;");
-  for (const sv of stateVarRefs) {
-    L.push(`        g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
-  }
-  L.push("        model_get_event_indicators();");
-  L.push("        for (i = 0; i < N_EVENT_INDICATORS; i++) {");
-  L.push("          if (z_prev[i] * g_event_indicators[i] < 0.0) { crossing = 1; break; }");
-  L.push("        }");
-  L.push("      }");
-  L.push("      if (crossing && h > 1e-7) {");
-  L.push("        h *= 0.5;");
-  L.push("      } else {");
-  L.push("        step_accepted = 1;");
-  L.push("      }");
-  L.push("    }");
-  L.push("    t += h;");
-  L.push("    for (i = 0; i < N_STATES; i++) g_states[i] = tmp_states[i];");
-  for (const sv of stateVarRefs) {
-    L.push(`    g_vars[${sv.vr}] = g_states[${sv.idx}];`);
-  }
-  L.push("    g_time = t;");
-  L.push("    model_event_update();");
-  L.push("  }");
-  L.push("}");
 
   // ── main() ──
+  const quiet = !!options.quiet;
   const outputVars = vars.filter((sv) => sv.causality !== "independent" && !sv.name.startsWith("der("));
 
   L.push("int main(void) {");
   L.push("  model_initialize();");
   L.push("");
-  L.push("  /* Print CSV header */");
 
-  const headerNames = ["time", ...outputVars.map((sv) => sv.name)];
-  L.push(`  printf("${headerNames.join(",")}\\n");`);
-  L.push("");
+  if (!quiet) {
+    /* Print CSV header */
+    const headerNames = ["time", ...outputVars.map((sv) => sv.name)];
+    L.push(`  printf("${headerNames.join(",")}\\n");`);
+    L.push("");
+  }
 
   L.push("  double t = START_TIME;");
   L.push("  double dt = STEP_SIZE;");
   L.push("");
 
-  // Print initial state
-  L.push("  /* Print initial state */");
-  L.push(generatePrintfLine(outputVars));
-  L.push("");
+  if (!quiet) {
+    // Print initial state
+    L.push("  /* Print initial state */");
+    L.push(generatePrintfLine(outputVars));
+    L.push("");
+  }
 
-  L.push("  /* Integration loop */");
-  L.push("  while (t < STOP_TIME - 1e-15) {");
-  L.push("    double t_end = t + dt;");
-  L.push("    if (t_end > STOP_TIME) t_end = STOP_TIME;");
-  L.push("    rk4_step(t, t_end - t);");
-  L.push("    t = t_end;");
-  L.push("    " + generatePrintfLine(outputVars));
-  L.push("  }");
+  if (isCvode && nStates > 0) {
+    L.push("  /* Initialize SUNDIALS CVODE (with CVDiag for O(N) scaling) */");
+    L.push("  SUNContext sunctx = NULL;");
+    L.push("#if defined(SUNDIALS_VERSION_MAJOR) && SUNDIALS_VERSION_MAJOR >= 6");
+    L.push("  SUNContext_Create(SUN_COMM_NULL, &sunctx);");
+    L.push("#endif");
+    L.push("  N_Vector y = MSC_NV_NEW(N_STATES, sunctx);");
+    L.push("  msc_realtype *y_data = (msc_realtype*)N_VGetArrayPointer(y);");
+    L.push("  for (int i = 0; i < N_STATES; i++) {");
+    L.push("    y_data[i] = (msc_realtype)g_states[i];");
+    L.push("  }");
+    L.push("  void *cvode_mem = MSC_CVODE_CREATE(CV_BDF, sunctx);");
+    L.push("  CVodeInit(cvode_mem, cvode_rhs, (msc_realtype)START_TIME, y);");
+    L.push("  CVodeSStolerances(cvode_mem, (msc_realtype)RTOL, (msc_realtype)ATOL);");
+    L.push("  CVDiag(cvode_mem);");
+    L.push("  CVodeSetMaxNumSteps(cvode_mem, 1000000);");
+    L.push("");
+    L.push("  /* Integration loop */");
+    L.push("  while (t < STOP_TIME - 1e-15) {");
+    L.push("    double t_end = t + dt;");
+    L.push("    if (t_end > STOP_TIME) t_end = STOP_TIME;");
+    L.push("    msc_realtype tret;");
+    L.push("    int flag = CVode(cvode_mem, (msc_realtype)t_end, y, &tret, CV_NORMAL);");
+    L.push("    if (flag < 0) {");
+    L.push('      fprintf(stderr, "CVODE step error flag: %d\\n", flag);');
+    L.push("      break;");
+    L.push("    }");
+    L.push("    t = (double)tret;");
+    L.push("    g_time = t;");
+    L.push("    for (int i = 0; i < N_STATES; i++) {");
+    L.push("      g_states[i] = (double)y_data[i];");
+    L.push("    }");
+    L.push("    model_sync_states_to_vars(g_states);");
+    L.push("    model_event_update();");
+    if (!quiet) {
+      L.push("    " + generatePrintfLine(outputVars));
+    }
+    L.push("  }");
+    L.push("");
+    L.push("  CVodeFree(&cvode_mem);");
+    L.push("  N_VDestroy(y);");
+    L.push("#if defined(SUNDIALS_VERSION_MAJOR) && SUNDIALS_VERSION_MAJOR >= 6");
+    L.push("  SUNContext_Free(&sunctx);");
+    L.push("#endif");
+  } else {
+    L.push("  /* Integration loop */");
+    L.push("  while (t < STOP_TIME - 1e-15) {");
+    L.push("    double t_end = t + dt;");
+    L.push("    if (t_end > STOP_TIME) t_end = STOP_TIME;");
+    if (nStates > 0) {
+      L.push("    rk4_step(t, t_end - t);");
+    } else {
+      L.push("    g_time = t_end;");
+      L.push("    model_get_derivatives();");
+    }
+    L.push("    t = t_end;");
+    if (!quiet) {
+      L.push("    " + generatePrintfLine(outputVars));
+    }
+    L.push("  }");
+  }
+
   L.push("");
   L.push("  return 0;");
   L.push("}");
@@ -482,21 +540,26 @@ function generatePrintfLine(outputVars: FmiScalarVariable[]): string {
 
 // ── DAE Analysis Helpers ──
 
-function conditionToZeroCrossingC(dae: DAEBuilder, id: number, vars: FmiScalarVariable[]): string {
+function conditionToZeroCrossingC(
+  dae: DAEBuilder,
+  id: number,
+  vars: FmiScalarVariable[] | Map<string, FmiScalarVariable>,
+  derMap?: Map<string, number>,
+): string {
   if (id < 0) return "0.0";
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
     if (op === BinOp.Lt || op === BinOp.Lte) {
-      const lhs = exprToC(dae, dae.getExprLeft(id), vars);
-      const rhs = exprToC(dae, dae.getExprRight(id), vars);
+      const lhs = exprToC(dae, dae.getExprLeft(id), vars, derMap);
+      const rhs = exprToC(dae, dae.getExprRight(id), vars, derMap);
       return `(${rhs}) - (${lhs})`;
     } else if (op === BinOp.Gt || op === BinOp.Gte) {
-      const lhs = exprToC(dae, dae.getExprLeft(id), vars);
-      const rhs = exprToC(dae, dae.getExprRight(id), vars);
+      const lhs = exprToC(dae, dae.getExprLeft(id), vars, derMap);
+      const rhs = exprToC(dae, dae.getExprRight(id), vars, derMap);
       return `(${lhs}) - (${rhs})`;
     }
   }
-  return `(${exprToC(dae, id, vars)} ? 1.0 : -1.0)`;
+  return `(${exprToC(dae, id, vars, derMap)} ? 1.0 : -1.0)`;
 }
 
 function extractAssignmentTarget(dae: DAEBuilder, id: number): string | null {
@@ -516,7 +579,12 @@ function sanitizeIdentifier(name: string): string {
     .replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-function varToC(dae: DAEBuilder, name: string, vars: FmiScalarVariable[]): string {
+function varToC(
+  dae: DAEBuilder,
+  name: string,
+  vars: FmiScalarVariable[] | Map<string, FmiScalarVariable>,
+  derMap?: Map<string, number>,
+): string {
   if (name === "time") return "g_time";
 
   // Handle der(v) and pre(v)
@@ -526,11 +594,15 @@ function varToC(dae: DAEBuilder, name: string, vars: FmiScalarVariable[]): strin
   if (isDer) baseName = name.slice(4, -1);
   else if (isPre) baseName = name.slice(4, -1);
 
-  const sv = vars.find((v) => v.name === baseName);
+  if (isDer && derMap) {
+    const idx = derMap.get(baseName);
+    if (idx !== undefined) return `g_derivatives[${idx}]`;
+  }
+
+  const sv = vars instanceof Map ? vars.get(baseName) : vars.find((v) => v.name === baseName);
   if (!sv) return `0.0 /* unknown ${name} */`;
 
-  if (isDer) return `der_${sanitizeIdentifier(baseName)}`;
-  return `v_${sanitizeIdentifier(baseName)}`;
+  return `g_vars[${sv.valueReference}]`;
 }
 
 function formatCDouble(value: number): string {
@@ -619,7 +691,12 @@ function mapFunctionName(name: string): string {
   return builtins[name] ?? sanitizeIdentifier(name);
 }
 
-function exprToC(dae: DAEBuilder, id: number, vars: FmiScalarVariable[]): string {
+function exprToC(
+  dae: DAEBuilder,
+  id: number,
+  vars: FmiScalarVariable[] | Map<string, FmiScalarVariable>,
+  derMap?: Map<string, number>,
+): string {
   if (id < 0) return "0.0 /* null */";
   switch (dae.getExprKind(id)) {
     case ExprKind.RealLiteral:
@@ -631,28 +708,28 @@ function exprToC(dae: DAEBuilder, id: number, vars: FmiScalarVariable[]): string
     case ExprKind.StringLiteral:
       return `"${escapeCString(dae.interner.resolve(dae.getExprData1(id)))}"`;
     case ExprKind.Name:
-      return varToC(dae, dae.interner.resolve(dae.getExprData1(id)), vars);
+      return varToC(dae, dae.interner.resolve(dae.getExprData1(id)), vars, derMap);
     case ExprKind.Unary: {
       const uop = dae.getExprData1(id) as UnaryOp;
       const op = uop === UnaryOp.Not ? "!" : "-";
-      return `(${op}${exprToC(dae, dae.getExprLeft(id), vars)})`;
+      return `(${op}${exprToC(dae, dae.getExprLeft(id), vars, derMap)})`;
     }
     case ExprKind.Negate:
-      return `(-${exprToC(dae, dae.getExprLeft(id), vars)})`;
+      return `(-${exprToC(dae, dae.getExprLeft(id), vars, derMap)})`;
     case ExprKind.Der: {
       const arg = dae.getExprData1(id);
       const name = dae.interner.resolve(dae.getExprData1(arg));
-      return varToC(dae, `der(${name})`, vars);
+      return varToC(dae, `der(${name})`, vars, derMap);
     }
     case ExprKind.Pre: {
       const arg = dae.getExprData1(id);
       const name = dae.interner.resolve(dae.getExprData1(arg));
-      return varToC(dae, `pre(${name})`, vars);
+      return varToC(dae, `pre(${name})`, vars, derMap);
     }
     case ExprKind.Binary: {
       const op = dae.getExprData1(id) as BinOp;
-      const lhs = exprToC(dae, dae.getExprLeft(id), vars);
-      const rhs = exprToC(dae, dae.getExprRight(id), vars);
+      const lhs = exprToC(dae, dae.getExprLeft(id), vars, derMap);
+      const rhs = exprToC(dae, dae.getExprRight(id), vars, derMap);
       const opStr = binaryOpToC(op);
       if (opStr === "pow") return `pow(${lhs}, ${rhs})`;
       return `(${lhs} ${opStr} ${rhs})`;
@@ -662,7 +739,7 @@ function exprToC(dae: DAEBuilder, id: number, vars: FmiScalarVariable[]): string
       const argCount = dae.getExprRight(id);
       const args: string[] = [];
       for (let i = 0; i < argCount; i++) {
-        args.push(exprToC(dae, dae.getExprLeft(id + i), vars));
+        args.push(exprToC(dae, dae.getExprLeft(id + i), vars, derMap));
       }
       if (fname === "initial") return "g_isInitPhase";
       if (fname === "terminal") return "0";
@@ -672,9 +749,9 @@ function exprToC(dae: DAEBuilder, id: number, vars: FmiScalarVariable[]): string
       return `${mapFunctionName(fname)}(${args.join(", ")})`;
     }
     case ExprKind.IfElse: {
-      const cond = exprToC(dae, dae.getExprData1(id), vars);
-      const then = exprToC(dae, dae.getExprLeft(id), vars);
-      const els = exprToC(dae, dae.getExprRight(id), vars);
+      const cond = exprToC(dae, dae.getExprData1(id), vars, derMap);
+      const then = exprToC(dae, dae.getExprLeft(id), vars, derMap);
+      const els = exprToC(dae, dae.getExprRight(id), vars, derMap);
       return `(${cond} ? ${then} : ${els})`;
     }
     default:
@@ -694,65 +771,4 @@ function extractDerName(dae: DAEBuilder, exprId: number): string | null {
     }
   }
   return null;
-}
-
-function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>): void {
-  if (id < 0) return;
-  const kind = dae.getExprKind(id);
-  switch (kind) {
-    case ExprKind.RealLiteral:
-    case ExprKind.IntLiteral:
-    case ExprKind.BoolLiteral:
-    case ExprKind.StringLiteral:
-    case ExprKind.Colon:
-    case ExprKind.EnumLiteral:
-      break;
-    case ExprKind.Name: {
-      const name = dae.interner.resolve(dae.getExprData1(id));
-      names.add(name);
-      break;
-    }
-    case ExprKind.Binary:
-      collectReferencedNames(dae, dae.getExprLeft(id), names);
-      collectReferencedNames(dae, dae.getExprRight(id), names);
-      break;
-    case ExprKind.Unary:
-    case ExprKind.Negate:
-      collectReferencedNames(dae, dae.getExprLeft(id), names);
-      break;
-    case ExprKind.Der:
-    case ExprKind.Pre:
-      collectReferencedNames(dae, dae.getExprData1(id), names);
-      break;
-    case ExprKind.Subscript: {
-      collectReferencedNames(dae, dae.getExprData1(id), names);
-      const scount = dae.getExprRight(id);
-      for (let i = 0; i < scount; i++) {
-        collectReferencedNames(dae, dae.getExprLeft(id + i), names);
-      }
-      break;
-    }
-    case ExprKind.ArrayCtor: {
-      const count = dae.getExprData1(id);
-      if (count > 0) {
-        collectReferencedNames(dae, dae.getExprLeft(id), names);
-        for (let i = 1; i < count; i++) {
-          collectReferencedNames(dae, dae.getExprRight(id + i), names);
-        }
-      }
-      break;
-    }
-    case ExprKind.Call: {
-      const argCount = dae.getExprRight(id);
-      for (let i = 0; i < argCount; i++) {
-        collectReferencedNames(dae, dae.getExprLeft(id + i), names);
-      }
-      break;
-    }
-    case ExprKind.IfElse:
-      collectReferencedNames(dae, dae.getExprData1(id), names);
-      collectReferencedNames(dae, dae.getExprLeft(id), names);
-      collectReferencedNames(dae, dae.getExprRight(id), names);
-      break;
-  }
 }
