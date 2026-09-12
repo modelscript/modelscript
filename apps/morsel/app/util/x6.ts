@@ -27,8 +27,8 @@ import {
   type IText,
 } from "@modelscript/modelica/diagram";
 import { Marker, Svg } from "@svgdotjs/svg.js";
-export type ModelicaClassInstance = unknown;
-export type ModelicaComponentInstance = unknown;
+export type ModelicaClassInstance = any;
+export type ModelicaComponentInstance = any;
 
 export interface X6Markup {
   tagName: string;
@@ -41,7 +41,7 @@ export interface X6Markup {
 
 // ── Color inversion for dark mode (core algorithm from @modelscript/core) ──
 
-import { invertColorHelmlab, invertSvgColors } from "@modelscript/language/utils";
+import { invertColorHelmlab, invertSvgColors } from "@modelscript/dsl/utils";
 export { invertColorHelmlab, invertSvgColors };
 
 /** Regex that matches rgb() or hex color values. */

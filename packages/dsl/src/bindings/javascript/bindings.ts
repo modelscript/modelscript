@@ -1075,18 +1075,23 @@ export class LspFacade {
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
 
-    // Pre-calculate all needed nodePtr offsets in a single O(N) pass
-    // to prevent O(N^2) lockups caused by repeated WASM lsp_findNodeOffset calls.
+    // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges.
+    // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
     const requiredNodePtrs = new Set<number>();
     for (let i = 0; i < numElements * 7; i += 7) {
-      const arg0 = memory[(dirPtr >> 2) + i + 3];
-      const arg1 = memory[(dirPtr >> 2) + i + 4];
-      const arg2 = memory[(dirPtr >> 2) + i + 5];
-      const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (arg0) requiredNodePtrs.add(arg0);
-      if (arg1) requiredNodePtrs.add(arg1);
-      if (arg2) requiredNodePtrs.add(arg2);
-      if (arg3) requiredNodePtrs.add(arg3);
+      const startByte = memory[(dirPtr >> 2) + i];
+      const endByte = memory[(dirPtr >> 2) + i + 1];
+      const lintId = memory[(dirPtr >> 2) + i + 2];
+      if (lintId > 0 && startByte === 0 && endByte === 0) {
+        const arg0 = memory[(dirPtr >> 2) + i + 3];
+        const arg1 = memory[(dirPtr >> 2) + i + 4];
+        const arg2 = memory[(dirPtr >> 2) + i + 5];
+        const arg3 = memory[(dirPtr >> 2) + i + 6];
+        if (arg0) requiredNodePtrs.add(arg0);
+        if (arg1) requiredNodePtrs.add(arg1);
+        if (arg2) requiredNodePtrs.add(arg2);
+        if (arg3) requiredNodePtrs.add(arg3);
+      }
     }
 
     const offsetCache = new Map<number, number>();
@@ -1174,7 +1179,7 @@ export class LspFacade {
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
 
-      if (arg0 > 0 && offsetCache.has(arg0)) {
+      if (lintId > 0 && startByte === 0 && endByte === 0 && arg0 > 0 && offsetCache.has(arg0)) {
         startByte = offsetCache.get(arg0)!;
         const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
         endByte = startByte + (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
@@ -1381,9 +1386,15 @@ export class LspFacade {
       const charDiv = encoding === 1 ? 2 : 1;
 
       // Prevent diagnostic bleed: if a diagnostic ends exactly at the start of the next line,
-      // clamp it to the end of the previous line so VS Code doesn't render it under the next token.
+      // clamp it to the end of the previous line so Monaco/VS Code doesn't render it under the next token.
       if (endPos.line > startPos.line && endPos.character === 0) {
-        endPos = { line: endPos.line - 1, character: startPos.character + 1 };
+        const prevLine = endPos.line - 1;
+        const prevLineStart = lineStarts[prevLine] || 0;
+        const currLineStart = lineStarts[endPos.line] || prevLineStart + charDiv;
+        const prevLineCharLen = Math.max(0, Math.floor((currLineStart - prevLineStart) / charDiv) - 1);
+        const clampedChar =
+          prevLine === startPos.line ? Math.max(startPos.character + 1, prevLineCharLen) : prevLineCharLen;
+        endPos = { line: prevLine, character: clampedChar };
       }
 
       const range = {

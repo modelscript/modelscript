@@ -15,7 +15,7 @@ import {
   type DiagramEditAction,
   type DiagramNode,
   type DiagramPort,
-} from "@modelscript/language/lsp/diagramProtocol";
+} from "@modelscript/diagram/protocol";
 import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
 import { getLsp, startLsp } from "./lsp-worker";
 

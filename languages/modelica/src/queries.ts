@@ -5,8 +5,8 @@
  * Semantic query definitions for QueryEngine.
  */
 
-import { error } from "@modelscript/language";
-import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/language/compiler";
+import { error } from "@modelscript/dsl";
+import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
 import { Cst } from "../src-gen/bindings.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 
@@ -1626,7 +1626,7 @@ export const classDefinitionQueries: Record<string, any> = {
     const kind = (self.metadata as Record<string, unknown>)?.classPrefixes;
     if (kind !== "operator record") return null;
 
-    type CSTNode = import("@modelscript/language/compiler").CSTNode;
+    type CSTNode = import("@modelscript/runtime").CSTNode;
     const recordName = self.name;
 
     interface OperatorOverload {
@@ -2726,7 +2726,7 @@ export const componentDeclarationQueries: Record<string, any> = {
    */
   arrayDimensions: (db: QueryDB, self: SymbolEntry) => {
     // Get the CST node for this ComponentDeclaration
-    const cst = db.cstNode(self.id) as import("@modelscript/language/compiler").CSTNode | null;
+    const cst = db.cstNode(self.id) as import("@modelscript/runtime").CSTNode | null;
     if (!cst) return null;
 
     /** Extract subscript descriptors from an ArraySubscripts CST node. */

@@ -8,8 +8,8 @@
  * modelDescription.xml is automatically parsed for metadata extraction.
  */
 
-import type { FmiScalarVariable, StoredFmu } from "@modelscript/language/cosim";
-import { FmuStorage } from "@modelscript/language/cosim";
+import type { FmiScalarVariable, StoredFmu } from "@modelscript/exchange/cosim";
+import { FmuStorage } from "@modelscript/exchange/cosim";
 import express from "express";
 
 /**

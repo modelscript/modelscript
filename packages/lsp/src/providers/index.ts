@@ -10,4 +10,5 @@ export * from "./hoverProvider.js";
 export * from "./inlayHintProvider.js";
 export * from "./semanticTokensProvider.js";
 export * from "./signatureHelpProvider.js";
+export * from "./threadDiagnosticsProvider.js";
 export * from "./workspaceFeaturesProvider.js";

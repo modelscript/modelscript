@@ -14,7 +14,7 @@
 
 import "./setup.js";
 
-import { CosimMqttClient, HistorianRecorder, attachCosimWebSocket } from "@modelscript/language/cosim";
+import { CosimMqttClient, HistorianRecorder, attachCosimWebSocket } from "@modelscript/exchange/cosim";
 import { createApp } from "./app.js";
 import { locationService } from "./services/location.js";
 

@@ -11,8 +11,8 @@
  * Designed for `msc simulate --engine=c` and `msc simulate --engine=wasm`.
  */
 
-import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/language/compiler";
-import type { FmiScalarVariable, FmuResult } from "@modelscript/language/fmu";
+import type { FmiScalarVariable, FmuResult } from "@modelscript/exchange/fmu";
+import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/runtime";
 
 // ── Public interface ──
 

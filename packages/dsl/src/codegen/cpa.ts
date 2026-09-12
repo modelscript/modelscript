@@ -146,7 +146,24 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
 
       // Check for backward overlap (both match the same target AST type)
       if (r1.targetNodeType === r2.targetNodeType && r1.targetNodeType !== "UnknownNode") {
-        if (r1.priority === r2.priority && r1.sourceNodeType !== r2.sourceNodeType) {
+        const overlappingTargetKeys = Object.keys(r1.targetBindings).filter((k) => k in r2.targetBindings);
+        let hasDisjointTargetBinding = false;
+        for (const k of overlappingTargetKeys) {
+          const val1 = r1.targetBindings[k];
+          const val2 = r2.targetBindings[k];
+          if (
+            val1 !== undefined &&
+            val2 !== undefined &&
+            val1 !== val2 &&
+            !(typeof val1 === "string" && val1.startsWith("__var_")) &&
+            !(typeof val2 === "string" && val2.startsWith("__var_"))
+          ) {
+            hasDisjointTargetBinding = true;
+            break;
+          }
+        }
+
+        if (!hasDisjointTargetBinding && r1.priority === r2.priority && r1.sourceNodeType !== r2.sourceNodeType) {
           conflicts.push({
             kind: "overlap",
             rule1: r1.name,

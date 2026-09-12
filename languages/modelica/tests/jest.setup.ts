@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { createWasmParser } from "@modelscript/language";
+import { createWasmParser } from "@modelscript/dsl";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Context } from "../src/context.js";

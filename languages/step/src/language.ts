@@ -1,4 +1,4 @@
-import { choice, def, field, language, optional, ref, repeat, repeat1, seq } from "@modelscript/language";
+import { choice, def, field, language, optional, ref, repeat, repeat1, seq } from "@modelscript/dsl";
 
 export const stepLanguage = language({
   name: "step",

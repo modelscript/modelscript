@@ -3,8 +3,18 @@
 
 import { generateDroneChassisGeometry } from "@modelscript/cad/mesh-fallbacks";
 import { LspContext } from "../LspContext.js";
-import { cadComponentsCache, simpleHash } from "../browserServerMain.js";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
+
+function simpleHash(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return hash >>> 0;
+}
+
+export const cadComponentsCache = new Map<string, { version: string; data: any }>();
+export { simpleHash };
 
 export function registerDiagramHandlers(context: LspContext) {
   context.connection.onRequest(

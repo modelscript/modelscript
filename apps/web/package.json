@@ -11,8 +11,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@modelscript/language": "*",
+    "@modelscript/diagram": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/simulate": "*",
     "@monaco-editor/react": "^4.7.0",
     "@primer/octicons-react": "^19.23.1",
     "@primer/react": "^38.14.0",

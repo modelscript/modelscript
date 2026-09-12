@@ -163,6 +163,31 @@ export class ArenaStringPool {
     return id;
   }
 
+  internUtf16(srcPtr: usize, byteLen: u32): u32 {
+    if (byteLen == 0 || srcPtr == 0) return 0;
+    let charCount = byteLen >> 1;
+    if (charCount == 0) return 0;
+
+    let tempStart = this.charOffset;
+    for (let i: u32 = 0; i < charCount; i++) {
+      let ch = load<u16>(srcPtr + (i as usize) * 2);
+      this.charBuffer.set(tempStart + i, ch < 128 ? (ch as u8) : 63);
+    }
+
+    let h = hashChunkedBytes64(this.charBuffer, tempStart, charCount);
+    let existingId = this.getStringMap().get(h);
+    if (existingId != 0 && this._matchesChunk(existingId, tempStart, charCount)) {
+      return existingId;
+    }
+
+    let id = this.stringCount++;
+    this.stringOffsets.set(id, tempStart);
+    this.stringLengths.set(id, charCount);
+    this.charOffset += charCount;
+    this.getStringMap().set(h, id);
+    return id;
+  }
+
   lookup(srcPtr: usize, len: u32): u32 {
     if (len == 0 || srcPtr == 0) return 0;
     let h = hashBytes64(srcPtr, len);
@@ -333,6 +358,11 @@ export function stringPool_create(): usize {
 export function stringPool_internUtf8(poolPtr: usize, strPtr: usize, len: u32): u32 {
   if (poolPtr == 0) return 0;
   return changetype<ArenaStringPool>(poolPtr).intern(strPtr, len);
+}
+
+export function stringPool_internUtf16(poolPtr: usize, strPtr: usize, byteLen: u32): u32 {
+  if (poolPtr == 0) return 0;
+  return changetype<ArenaStringPool>(poolPtr).internUtf16(strPtr, byteLen);
 }
 
 export function stringPool_lookupUtf8(poolPtr: usize, strPtr: usize, len: u32): u32 {

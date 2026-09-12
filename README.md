@@ -30,9 +30,14 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 
 ### Packages (`packages/`)
 
-| Package                                         | Description                                                                                                                                                                                                                                                   |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/language`](./packages/language/) | ModelScript DSL Compiler & Polyglot Runtime — Salsa query engine, incremental compilation, type checking, DAE/BLT solvers, simulation, optimization, parser/lexer codegen, WASM runtime, LSP, FMI, CoSim, CAD, ECAD, reasoner, MCP server, and core utilities |
+| Package                                         | Description                                                                                                                                     |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/dsl`](./packages/dsl/)           | Grammar DSL syntax combinators, WASM GLR parser compiler, term-rewriting engines (TGG, CPA, E-graph), and tools                                 |
+| [`@modelscript/runtime`](./packages/runtime/)   | Linear-memory WebAssembly DAE arena, `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, in-WASM BLT and structural solvers |
+| [`@modelscript/simulate`](./packages/simulate/) | Numerical simulation runner, SUNDIALS CVODE/IDA integration, WebGPU batched solver, surrogate modeling                                          |
+| [`@modelscript/lsp`](./packages/lsp/)           | Multi-language Language Server Protocol server, language services, and multi-file workspace indexing                                            |
+| [`@modelscript/diagram`](./packages/diagram/)   | Polyglot diagram builder, auto-layout, and diagram protocol                                                                                     |
+| [`@modelscript/exchange`](./packages/exchange/) | FMI 2.0/3.0 FMU export/import, SSP container toolkit, and Co-Simulation master orchestrator                                                     |
 
 ### Languages (`languages/`)
 

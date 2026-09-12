@@ -54,6 +54,12 @@ export class CorrespondenceIndex {
     let slot: u32;
     if (existingSlotPlusOne != 0) {
       slot = existingSlotPlusOne - 1;
+      let offsetOld = slot * CORR_STRIDE;
+      let oldTarget = this.data.get(offsetOld + CORR_TARGET);
+      if (oldTarget != targetNodeId) {
+        if (oldTarget != 0) this.targetToSlot.set(oldTarget as u64, 0);
+        this.targetToSlot.set(targetNodeId as u64, slot + 1);
+      }
     } else {
       slot = this.count++;
       this.sourceToSlot.set(key, slot + 1);
@@ -196,6 +202,7 @@ export class CorrespondenceIndex {
     let slotPlusOne = this.sourceToSlot.get(sourceNodeId as u64);
     if (slotPlusOne == 0) return 0;
     let slot = slotPlusOne - 1;
+    if (this.isRemoved(slot)) return 0;
     this.markRemoved(slot);
     let offset = slot * CORR_STRIDE;
     return this.data.get(offset + CORR_TARGET);
@@ -206,6 +213,7 @@ export class CorrespondenceIndex {
     let slotPlusOne = this.targetToSlot.get(targetNodeId as u64);
     if (slotPlusOne == 0) return 0;
     let slot = slotPlusOne - 1;
+    if (this.isRemoved(slot)) return 0;
     this.markRemoved(slot);
     let offset = slot * CORR_STRIDE;
     return this.data.get(offset + CORR_SOURCE);

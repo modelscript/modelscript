@@ -1,4 +1,4 @@
-import { type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/language/compiler";
+import { type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/runtime";
 import { Cst } from "../src-gen/bindings.js";
 
 export interface ScopeData {

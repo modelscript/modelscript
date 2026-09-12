@@ -5,9 +5,9 @@
  * Runs each model through both the legacy (flattenDAE) and arena (flattenArena)
  * pipelines, comparing the printed DAE output for parity.
  */
-import { ArenaDAEPrinter } from "@modelscript/language/compiler";
-import { StringWriter } from "@modelscript/language/utils";
+import { StringWriter } from "@modelscript/dsl/utils";
 import Modelica from "@modelscript/modelica/parser";
+import { ArenaDAEPrinter } from "@modelscript/runtime";
 import Parser from "tree-sitter";
 import { Context } from "../src/compiler/context.js";
 import { NodeFileSystem } from "./node-filesystem.js";

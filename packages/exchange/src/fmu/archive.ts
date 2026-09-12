@@ -25,7 +25,7 @@ import {
   UnaryOp,
   Variability,
   VarType,
-} from "@modelscript/language/compiler";
+} from "@modelscript/runtime";
 import { deflateRaw } from "pako";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";

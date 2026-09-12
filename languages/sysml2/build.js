@@ -11,7 +11,7 @@ const buildScriptContent = `import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { buildParser } from "@modelscript/language";
+import { buildParser } from "@modelscript/dsl";
 import { sysml2Language } from "./src/language.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

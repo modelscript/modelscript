@@ -23,8 +23,8 @@ export {
 
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars */
 
-import type { JSONValue, Point, SyntaxNode, Triple, Writer } from "@modelscript/language/utils";
-import { toEnum } from "@modelscript/language/utils";
+import type { JSONValue, Point, SyntaxNode, Triple, Writer } from "@modelscript/dsl/utils";
+import { toEnum } from "@modelscript/dsl/utils";
 
 export interface IModelicaSyntaxNode {
   "@type": string;

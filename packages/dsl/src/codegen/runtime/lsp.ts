@@ -45,6 +45,7 @@ let t_lspVisitedCapacity: u32 = 0;
 
 let t_lspTraverseStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let t_lspOffsetStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let t_lspParentStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let t_lspStackCapacity: u32 = 0;
 
 let t_lspFindTraverseStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
@@ -174,6 +175,7 @@ function ensureLspBuffers(): void {
     t_lspStackCapacity = 50000;
     t_lspTraverseStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(t_lspStackCapacity * 4));
     t_lspOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(t_lspStackCapacity * 4));
+    t_lspParentStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(t_lspStackCapacity * 4));
 
     t_lspVisitedCapacity = 50000;
     t_lspVisitedNodes = changetype<UnmanagedUint32Array>(atomicChunkAlloc(t_lspVisitedCapacity * 4));
@@ -226,14 +228,20 @@ function ensureTraverseStack(required: u32): void {
         if (newCap == 0) newCap = required;
         let newTraverse = atomicChunkAlloc(newCap * 4);
         let newOffset = atomicChunkAlloc(newCap * 4);
+        let newParent = atomicChunkAlloc(newCap * 4);
         let oldTraverse = changetype<usize>(t_lspTraverseStack);
         let oldOffset = changetype<usize>(t_lspOffsetStack);
+        let oldParent = changetype<usize>(t_lspParentStack);
         if (t_lspStackCapacity > 0 && oldTraverse != 0) {
            memory.copy(newTraverse, oldTraverse, t_lspStackCapacity * 4);
            memory.copy(newOffset, oldOffset, t_lspStackCapacity * 4);
+           if (oldParent != 0) {
+             memory.copy(newParent, oldParent, t_lspStackCapacity * 4);
+           }
         }
         t_lspTraverseStack = changetype<UnmanagedUint32Array>(newTraverse);
         t_lspOffsetStack = changetype<UnmanagedUint32Array>(newOffset);
+        t_lspParentStack = changetype<UnmanagedUint32Array>(newParent);
         t_lspStackCapacity = newCap;
     }
 }
@@ -486,14 +494,24 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
               prevNonWs -= step;
             }
             if (prevNonWs > 0 && peekChar(prevNonWs - step) != 10 && peekChar(prevNonWs - step) != 13) {
-              let tokStart = prevNonWs - step;
-              while (tokStart > 0) {
-                let c = peekChar(tokStart - step);
-                if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0) break;
-                tokStart -= step;
+              let prevCh = peekChar(prevNonWs - step);
+              let isPunct = prevCh == 59 || prevCh == 44 || prevCh == 40 || prevCh == 41 ||
+                            prevCh == 123 || prevCh == 125 || prevCh == 91 || prevCh == 93 ||
+                            prevCh == 61 || prevCh == 58;
+              if (isPunct) {
+                dStart = prevNonWs - step;
+                dEnd = prevNonWs;
+              } else {
+                let tokStart = prevNonWs - step;
+                while (tokStart > 0) {
+                  let c = peekChar(tokStart - step);
+                  if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0 ||
+                      c == 59 || c == 44 || c == 40 || c == 41 || c == 123 || c == 125 || c == 91 || c == 93 || c == 61 || c == 58) break;
+                  tokStart -= step;
+                }
+                dStart = tokStart;
+                dEnd = prevNonWs;
               }
-              dStart = tokStart;
-              dEnd = prevNonWs;
             }
           }
         }
@@ -601,17 +619,14 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
  * @returns The number of `u32` records inside `t_lspBinaryBuffer` (7 u32s per diagnostic).
  */
 export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd: u32): u32 {
-  if (astRoot == 0) return 0;
-  let rootFlags = getNodeFlags(astRoot);
-  if (errorCount == 0 && (rootFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
-    return 0;
-  }
   ensureLspBuffers();
+  let extractedCount: u32 = 0;
   if (astRoot != 0) {
     globalAstRoot = astRoot;
     lsp_extractDiagnosticsForRoot(astRoot, 0, rangeStart, rangeEnd);
+    extractedCount = t_lspBinaryBuffer.length / 7;
   }
-  if (astRoot == globalAstRoot) {
+  if (extractedCount == 0 && astRoot == globalAstRoot) {
     for (let i = 0; i < errorCount; i++) {
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];
@@ -632,17 +647,14 @@ export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd:
  * @returns The number of `u32` records inside `t_lspBinaryBuffer` (7 u32s per diagnostic).
  */
 export function lsp_getDiagnostics(astRoot: u32): u32 {
-  if (astRoot == 0) return 0;
-  let rootFlags = getNodeFlags(astRoot);
-  if (errorCount == 0 && (rootFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
-    return 0;
-  }
   ensureLspBuffers();
+  let extractedCount: u32 = 0;
   if (astRoot != 0) {
     globalAstRoot = astRoot;
     lsp_extractDiagnosticsForRoot(astRoot, 0, 0, 0);
+    extractedCount = t_lspBinaryBuffer.length / 7;
   }
-  if (astRoot == globalAstRoot) {
+  if (extractedCount == 0 && astRoot == globalAstRoot) {
     for (let i = 0; i < errorCount; i++) {
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];
@@ -1055,8 +1067,9 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
   ensureLspBuffers();
   
   let stackTop: i32 = 0;
+  let rootPad = getNodeLeadingPad(rootNode);
   t_lspTraverseStack[0] = rootNode;
-  t_lspOffsetStack[0] = 0; 
+  t_lspOffsetStack[0] = rootPad; 
   stackTop = 1;
   
   let bestMatch: u32 = 0;
@@ -1641,19 +1654,18 @@ export function lsp_getCompletionContext(rootNode: u32, cursorOffset: u32): u32 
   let stackTop: i32 = 0;
   t_lspTraverseStack[0] = rootNode;
   t_lspOffsetStack[0] = 0; 
+  t_lspParentStack[0] = 0;
   stackTop = 1;
   
   let bestMatch: u32 = 0;
   let bestParent: u32 = 0;
   let bestStart: u32 = 0;
 
-  let parentStack: u32[] = [0];
-
   while (stackTop > 0) {
     stackTop--;
     let node = t_lspTraverseStack[stackTop];
     let tokenStart = t_lspOffsetStack[stackTop];
-    let parent: u32 = parentStack.length > stackTop ? parentStack[stackTop] : 0;
+    let parent: u32 = t_lspParentStack[stackTop];
     let len = getNodeByteLength(node);
     let tokenEnd = tokenStart + len;
     
@@ -1702,8 +1714,7 @@ export function lsp_getCompletionContext(rootNode: u32, cursorOffset: u32): u32 
          if (writeIdx >= 0) {
             t_lspTraverseStack[writeIdx] = c;
             t_lspOffsetStack[writeIdx] = currOffset;
-            while (parentStack.length <= writeIdx) parentStack.push(0);
-            parentStack[writeIdx] = node;
+            t_lspParentStack[writeIdx] = node;
             writeIdx--;
          }
          currOffset += cLen;

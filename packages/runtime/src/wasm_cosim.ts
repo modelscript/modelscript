@@ -7,7 +7,7 @@
  *  - High-performance multi-rate Gauss-Seidel and Jacobi co-simulation orchestration in WASM linear memory
  *  - Zero-copy variable coupling propagation between FMI 2.0 and FMI 3.0 FMU instances
  *  - Algebraic loop relaxation and convergence checking
- *  - Direct integration between @modelscript/language/cosim and in-memory WASM FMUs
+ *  - Direct integration between @modelscript/exchange/cosim and in-memory WASM FMUs
  */
 
 /** Co-simulation coupling method. */

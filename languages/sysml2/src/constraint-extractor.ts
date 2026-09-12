@@ -10,7 +10,7 @@
  * This bridges the polyglot layer: SysML2 requirements → Optimica constraints.
  */
 
-import type { QueryDB, SymbolEntry } from "@modelscript/language/compiler";
+import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public interfaces

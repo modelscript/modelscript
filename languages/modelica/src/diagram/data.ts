@@ -50,7 +50,7 @@ export type {
   DiagramNode,
   DiagramPort,
   X6Markup,
-} from "@modelscript/language/diagram/protocol";
+} from "@modelscript/diagram/protocol";
 
 import type {
   ComponentPropertyData,
@@ -59,7 +59,7 @@ import type {
   DiagramNode,
   DiagramPort,
   X6Markup,
-} from "@modelscript/language/diagram/protocol";
+} from "@modelscript/diagram/protocol";
 
 // ── Build diagram data from a class instance ──
 

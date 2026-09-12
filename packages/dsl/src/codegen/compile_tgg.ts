@@ -1,14 +1,20 @@
 import { PolyglotConfig, TGGConstraint, TGGRuleOptions } from "../dsl/language.js";
 import { runCPA, type CpaConflict, type CpaReport } from "./cpa.js";
+import { verifySuiteLosslessness, type LosslessnessReport } from "./losslessness.js";
 import { getDJB2Hash } from "./utils.js";
 
-export { runCPA, type CpaConflict, type CpaReport };
+export { runCPA, verifySuiteLosslessness, type CpaConflict, type CpaReport, type LosslessnessReport };
 
 export interface CompiledTGGOutput {
   sourceCode: string;
   ruleCount: number;
   ruleNames: string[];
   cpaReport?: CpaReport;
+  losslessnessReport?: {
+    isFullyLossless: boolean;
+    reports: LosslessnessReport[];
+    leakedRuleCount: number;
+  };
 }
 
 /**
@@ -22,6 +28,7 @@ export function compileTGGRules(
     sourceLang?: string;
     targetLang?: string;
     strictCpa?: boolean;
+    verifyLossless?: boolean;
   } = {},
 ): CompiledTGGOutput {
   const rules: TGGRuleOptions[] = Array.isArray(config) ? config : config.rules || [];
@@ -29,6 +36,9 @@ export function compileTGGRules(
 
   // 1. Run Ahead-of-Time Critical Pair Analysis
   const cpaReport = runCPA(rules);
+
+  // 1b. Run Automated Round-Trip Losslessness Proofs
+  const losslessnessReport = verifySuiteLosslessness(rules);
   if (options.strictCpa && cpaReport.hasConflicts) {
     const errorConflicts = cpaReport.conflicts.filter((c) => c.severity === "error");
     if (errorConflicts.length > 0) {
@@ -290,5 +300,6 @@ export function compileTGGRules(
     ruleCount: rules.length,
     ruleNames,
     cpaReport,
+    losslessnessReport,
   };
 }

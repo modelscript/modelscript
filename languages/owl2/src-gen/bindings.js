@@ -971,26 +971,39 @@ export class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot) {
+  getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
-    const numElements = this.exports.lsp_getDiagnostics(astRoot);
+    const encoding =
+      typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
+    const encStep = encoding === 1 ? 2 : 1;
+    const rStartByte = rangeStart * encStep;
+    const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
+    const numElements =
+      rangeEnd > 0 && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rStartByte, rEndByte)
+        : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    // Pre-calculate all needed nodePtr offsets in a single O(N) pass
-    // to prevent O(N^2) lockups caused by repeated WASM lsp_findNodeOffset calls.
+    // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges.
+    // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
     const requiredNodePtrs = new Set();
     for (let i = 0; i < numElements * 7; i += 7) {
-      const arg0 = memory[(dirPtr >> 2) + i + 3];
-      const arg1 = memory[(dirPtr >> 2) + i + 4];
-      const arg2 = memory[(dirPtr >> 2) + i + 5];
-      const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (arg0) requiredNodePtrs.add(arg0);
-      if (arg1) requiredNodePtrs.add(arg1);
-      if (arg2) requiredNodePtrs.add(arg2);
-      if (arg3) requiredNodePtrs.add(arg3);
+      const startByte = memory[(dirPtr >> 2) + i];
+      const endByte = memory[(dirPtr >> 2) + i + 1];
+      const lintId = memory[(dirPtr >> 2) + i + 2];
+      if (lintId > 0 && startByte === 0 && endByte === 0) {
+        const arg0 = memory[(dirPtr >> 2) + i + 3];
+        const arg1 = memory[(dirPtr >> 2) + i + 4];
+        const arg2 = memory[(dirPtr >> 2) + i + 5];
+        const arg3 = memory[(dirPtr >> 2) + i + 6];
+        if (arg0) requiredNodePtrs.add(arg0);
+        if (arg1) requiredNodePtrs.add(arg1);
+        if (arg2) requiredNodePtrs.add(arg2);
+        if (arg3) requiredNodePtrs.add(arg3);
+      }
     }
     const offsetCache = new Map();
     if (requiredNodePtrs.size > 0 && astRoot) {
@@ -1021,7 +1034,7 @@ export class LspFacade {
       stackOffsets[0] = getNodePad(astRoot);
       stackTop = 1;
       let iterations = 0;
-      while (stackTop > 0 && ++iterations < 100000) {
+      while (stackTop > 0 && ++iterations < 2000000) {
         stackTop--;
         const current = stackPtrs[stackTop];
         const nodeStart = stackOffsets[stackTop];
@@ -1071,7 +1084,13 @@ export class LspFacade {
       const arg1 = memory[(dirPtr >> 2) + i + 4];
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (arg0 > 0 && offsetCache.has(arg0)) {
+      if (
+        lintId > 0 &&
+        startByte === 0 &&
+        endByte === 0 &&
+        arg0 > 0 &&
+        offsetCache.has(arg0)
+      ) {
         startByte = offsetCache.get(arg0);
         const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
         endByte =
@@ -1318,9 +1337,21 @@ export class LspFacade {
       const encoding = this.getInputEncoding();
       const charDiv = encoding === 1 ? 2 : 1;
       // Prevent diagnostic bleed: if a diagnostic ends exactly at the start of the next line,
-      // clamp it to the end of the previous line so VS Code doesn't render it under the next token.
+      // clamp it to the end of the previous line so Monaco/VS Code doesn't render it under the next token.
       if (endPos.line > startPos.line && endPos.character === 0) {
-        endPos = { line: endPos.line - 1, character: startPos.character + 1 };
+        const prevLine = endPos.line - 1;
+        const prevLineStart = lineStarts[prevLine] || 0;
+        const currLineStart =
+          lineStarts[endPos.line] || prevLineStart + charDiv;
+        const prevLineCharLen = Math.max(
+          0,
+          Math.floor((currLineStart - prevLineStart) / charDiv) - 1,
+        );
+        const clampedChar =
+          prevLine === startPos.line
+            ? Math.max(startPos.character + 1, prevLineCharLen)
+            : prevLineCharLen;
+        endPos = { line: prevLine, character: clampedChar };
       }
       const range = {
         start: startPos,
@@ -3389,7 +3420,7 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri) {
+  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri, oldRoot) {
     const getInputBuf =
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
@@ -3414,17 +3445,30 @@ export class LspFacade {
       this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
     this.currentInputLength = text.length;
-    const prevAstRoot = this.getDocumentRoot(uri);
-    let baseRoot = prevAstRoot;
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = text.length;
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    let baseRoot =
+      oldRoot !== undefined && oldRoot !== 0
+        ? oldRoot
+        : prevAstRoot !== 0
+          ? prevAstRoot
+          : this.lastAstRoot;
+    let editStartByte = editStart * 2;
+    let editOldEndByte = editOldEnd * 2;
+    let editNewEndByte = editNewEnd * 2;
+    if (
+      baseRoot === 0 ||
+      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+    ) {
+      editNewEndByte = lenBytes;
       baseRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
     }
     const newAstRoot = this.exports.parse(
       baseRoot,
-      editStart,
-      editOldEnd,
-      editNewEnd,
+      editStartByte,
+      editOldEndByte,
+      editNewEndByte,
     );
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
@@ -4229,7 +4273,7 @@ export class SyntaxNode {
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      if ((flags & 128) !== 0) return true; // FLAG_HAS_ERROR
+      return (flags & 128) !== 0; // FLAG_HAS_ERROR
     }
     for (const kid of this.children) {
       if (kid.hasError()) return true;
@@ -4238,7 +4282,11 @@ export class SyntaxNode {
   }
   /** Finds the smallest syntax node covering the character range [start, end]. */
   descendantForIndex(start, end = start) {
-    if (start < this.startIndex || end > this.endIndex) return null;
+    if (
+      this.parent !== null &&
+      (start < this.startIndex || end > this.endIndex)
+    )
+      return null;
     for (const kid of this.children) {
       if (start >= kid.startIndex && end <= kid.endIndex) {
         return kid.descendantForIndex(start, end);
@@ -4458,7 +4506,14 @@ export class Tree {
   rootPtr;
   sourceCode;
   lineStarts;
-  mem32;
+  _mem32 = null;
+  get mem32() {
+    const buf = this.facade.wasmMemory.buffer;
+    if (!this._mem32 || this._mem32.buffer !== buf) {
+      this._mem32 = new Uint32Array(buf);
+    }
+    return this._mem32;
+  }
   constructor(facade, rootPtr, sourceCode) {
     this.facade = facade;
     this.rootPtr = rootPtr;
@@ -4468,22 +4523,30 @@ export class Tree {
     for (let i = 0; i < sourceCode.length; i++) {
       if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * 2);
     }
-    this.mem32 = new Uint32Array(facade.wasmMemory.buffer);
   }
   /** Gets the root node of the syntax tree. */
   get rootNode() {
     if (!this.rootPtr) throw new Error("Null root pointer");
-    const typeFlags = this.mem32[this.rootPtr / 4];
+    const mem32 = this.mem32;
+    const typeFlags = mem32[this.rootPtr / 4];
     const typeId = typeFlags & 0x03ff;
-    const envHashPadding = this.mem32[(this.rootPtr + 4) / 4];
+    const envHashPadding = mem32[(this.rootPtr + 4) / 4];
     const rawPad = typeFlags >>> 22;
     const isFat = (envHashPadding >>> 23) & 1;
     const pad =
       isFat && this.facade.exports.getFatPaddingPtr
-        ? this.mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
+        ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
         : rawPad;
     const len = envHashPadding & 0x007fffff;
-    return new SyntaxNode(this, this.rootPtr, 0, null, pad, len, typeId);
+    return new SyntaxNode(
+      this,
+      this.rootPtr,
+      0,
+      null,
+      pad,
+      len > 0 ? len : this.sourceCode.length * 2,
+      typeId,
+    );
   }
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
   walk() {
@@ -4528,7 +4591,14 @@ export class TreeSitterParser {
   getLanguage() {
     return this.languageBinding;
   }
-  parse(source, oldTree = null) {
+  parse(
+    source,
+    oldTree = null,
+    editStart = 0,
+    editOldEnd = 0,
+    editNewEnd = 0,
+    uri,
+  ) {
     if (!this.languageBinding) {
       throw new Error("Language not set on Parser. Call setLanguage() first.");
     }
@@ -4544,11 +4614,32 @@ export class TreeSitterParser {
     }
     const code =
       typeof source === "string" ? source : new TextDecoder().decode(source);
-    const astRoot = facade.parse(code);
+    const oldRoot = oldTree
+      ? (oldTree.rootPtr ?? oldTree.rootNode?.id ?? oldTree.rootNode?.ptr ?? 0)
+      : 0;
+    const astRoot = facade.parse(
+      code,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+      uri,
+      oldRoot,
+    );
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
   }
-  reset() {}
+  reset() {
+    if (this.languageBinding) {
+      if (typeof this.languageBinding.resetParser === "function") {
+        this.languageBinding.resetParser();
+      } else if (
+        this.languageBinding.exports &&
+        typeof this.languageBinding.exports.resetParser === "function"
+      ) {
+        this.languageBinding.exports.resetParser();
+      }
+    }
+  }
 }
 export const WasmLanguageBinding = LspFacade;
 export default WasmLanguageBinding;
@@ -4787,9 +4878,476 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
   if (syntaxNames && syntaxNames.length > 0) {
     facade.syntaxNames = syntaxNames;
   }
+  if (facade.exports.configEnableMultiFile) {
+    facade.exports.configEnableMultiFile.value = 1;
+  }
+  if (facade.exports.lsp_setConfigEnableMultiFile) {
+    facade.exports.lsp_setConfigEnableMultiFile(true);
+  }
   const parser = new TreeSitterParser();
   parser.setLanguage(facade);
   return { facade, parser };
 }
 
 export const semanticLegend = { tokenTypes: ["identifier"], tokenModifiers: [] };
+
+export const SyntaxKind = {
+  ERROR: 0,
+  IDENT: 68,
+  FullIRI: 69,
+  StringLiteral: 71,
+  OntologyDocument: 35,
+  PrefixDeclaration: 36,
+  PrefixName: 37,
+  AbbreviatedIRI: 38,
+  IRI: 39,
+  Ontology: 40,
+  ImportDeclaration: 41,
+  Axiom: 42,
+  _Axiom: 42,
+  Declaration: 43,
+  Entity: 44,
+  _Entity: 44,
+  ClassEntity: 45,
+  ObjectPropertyEntity: 46,
+  DataPropertyEntity: 47,
+  NamedIndividualEntity: 48,
+  ClassExpression: 49,
+  _ClassExpression: 49,
+  ObjectIntersectionOf: 50,
+  ObjectUnionOf: 51,
+  ObjectComplementOf: 52,
+  ObjectSomeValuesFrom: 53,
+  ObjectAllValuesFrom: 54,
+  DataSomeValuesFrom: 55,
+  DataAllValuesFrom: 56,
+  DataRange: 57,
+  SubClassOfAxiom: 58,
+  EquivalentClassesAxiom: 59,
+  DisjointClassesAxiom: 60,
+  ObjectPropertyAssertionAxiom: 61,
+  DataPropertyAssertionAxiom: 62,
+  ClassAssertionAxiom: 63,
+  TransitiveObjectPropertyAxiom: 64,
+  START: 65,
+  _START: 65,
+  EOF: 1023,
+};
+
+export const FieldId = {
+  Name: 1,
+  name: 1,
+  Iri: 2,
+  iri: 2,
+  Import: 3,
+  import: 3,
+  Axiom: 4,
+  axiom: 4,
+  Entity: 5,
+  entity: 5,
+  SubClass: 6,
+  subClass: 6,
+  SuperClass: 7,
+  superClass: 7,
+  ClassExpr: 8,
+  classExpr: 8,
+  Property: 9,
+  property: 9,
+  Subject: 10,
+  subject: 10,
+  ObjectNode: 11,
+  object: 11,
+  Value: 12,
+  value: 12,
+  Individual: 13,
+  individual: 13,
+};
+
+/** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
+export function normalizeToken(token) {
+  if (!token) return "";
+  return token.charCodeAt(0) === 34 && token.charCodeAt(token.length - 1) === 34
+    ? token.slice(1, -1)
+    : token;
+}
+
+/** Returns the normalized type of a CST node (stripped of quotes). */
+export function cstKind(node) {
+  return node ? normalizeToken(node.type) : "";
+}
+export function isOntologyDocument(node) {
+  return node != null && node.typeId === 35;
+}
+export function isPrefixDeclaration(node) {
+  return node != null && node.typeId === 36;
+}
+export function isPrefixName(node) {
+  return node != null && node.typeId === 37;
+}
+export function isAbbreviatedIRI(node) {
+  return node != null && node.typeId === 38;
+}
+export function isIRI(node) {
+  return node != null && node.typeId === 39;
+}
+export function isOntology(node) {
+  return node != null && node.typeId === 40;
+}
+export function isImportDeclaration(node) {
+  return node != null && node.typeId === 41;
+}
+export function isDeclaration(node) {
+  return node != null && node.typeId === 43;
+}
+export function isClassEntity(node) {
+  return node != null && node.typeId === 45;
+}
+export function isObjectPropertyEntity(node) {
+  return node != null && node.typeId === 46;
+}
+export function isDataPropertyEntity(node) {
+  return node != null && node.typeId === 47;
+}
+export function isNamedIndividualEntity(node) {
+  return node != null && node.typeId === 48;
+}
+export function isObjectIntersectionOf(node) {
+  return node != null && node.typeId === 50;
+}
+export function isObjectUnionOf(node) {
+  return node != null && node.typeId === 51;
+}
+export function isObjectComplementOf(node) {
+  return node != null && node.typeId === 52;
+}
+export function isObjectSomeValuesFrom(node) {
+  return node != null && node.typeId === 53;
+}
+export function isObjectAllValuesFrom(node) {
+  return node != null && node.typeId === 54;
+}
+export function isDataSomeValuesFrom(node) {
+  return node != null && node.typeId === 55;
+}
+export function isDataAllValuesFrom(node) {
+  return node != null && node.typeId === 56;
+}
+export function isDataRange(node) {
+  return node != null && node.typeId === 57;
+}
+export function isSubClassOfAxiom(node) {
+  return node != null && node.typeId === 58;
+}
+export function isEquivalentClassesAxiom(node) {
+  return node != null && node.typeId === 59;
+}
+export function isDisjointClassesAxiom(node) {
+  return node != null && node.typeId === 60;
+}
+export function isObjectPropertyAssertionAxiom(node) {
+  return node != null && node.typeId === 61;
+}
+export function isDataPropertyAssertionAxiom(node) {
+  return node != null && node.typeId === 62;
+}
+export function isClassAssertionAxiom(node) {
+  return node != null && node.typeId === 63;
+}
+export function isTransitiveObjectPropertyAxiom(node) {
+  return node != null && node.typeId === 64;
+}
+export function isIDENT(node) {
+  return node != null && node.typeId === 68;
+}
+export function isFullIRI(node) {
+  return node != null && node.typeId === 69;
+}
+export function isStringLiteral(node) {
+  return node != null && node.typeId === 71;
+}
+export const Cst = {
+  kind: cstKind,
+  normalize: normalizeToken,
+  OntologyDocument: {
+    typeId: 35,
+    type: "OntologyDocument",
+    is(node) { return node != null && node.typeId === 35; },
+  },
+  PrefixDeclaration: {
+    typeId: 36,
+    type: "PrefixDeclaration",
+    is(node) { return node != null && node.typeId === 36; },
+    name(node) {
+      return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
+    },
+    nameList(node) {
+      return node ? node.childrenForFieldName("name") : [];
+    },
+    iri(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("iri")) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldName("iri") : [];
+    },
+  },
+  PrefixName: {
+    typeId: 37,
+    type: "PrefixName",
+    is(node) { return node != null && node.typeId === 37; },
+  },
+  AbbreviatedIRI: {
+    typeId: 38,
+    type: "AbbreviatedIRI",
+    is(node) { return node != null && node.typeId === 38; },
+  },
+  IRI: {
+    typeId: 39,
+    type: "IRI",
+    is(node) { return node != null && node.typeId === 39; },
+  },
+  Ontology: {
+    typeId: 40,
+    type: "Ontology",
+    is(node) { return node != null && node.typeId === 40; },
+    iri(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("iri")) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldName("iri") : [];
+    },
+    import(node) {
+      return node ? (node.childForFieldId(3) || node.childForFieldName("import")) : null;
+    },
+    importList(node) {
+      return node ? node.childrenForFieldName("import") : [];
+    },
+    axiom(node) {
+      return node ? (node.childForFieldId(4) || node.childForFieldName("axiom")) : null;
+    },
+    axiomList(node) {
+      return node ? node.childrenForFieldName("axiom") : [];
+    },
+  },
+  ImportDeclaration: {
+    typeId: 41,
+    type: "ImportDeclaration",
+    is(node) { return node != null && node.typeId === 41; },
+    iri(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("iri")) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldName("iri") : [];
+    },
+  },
+  Declaration: {
+    typeId: 43,
+    type: "Declaration",
+    is(node) { return node != null && node.typeId === 43; },
+    entity(node) {
+      return node ? (node.childForFieldId(5) || node.childForFieldName("entity")) : null;
+    },
+    entityList(node) {
+      return node ? node.childrenForFieldName("entity") : [];
+    },
+  },
+  ClassEntity: {
+    typeId: 45,
+    type: "ClassEntity",
+    is(node) { return node != null && node.typeId === 45; },
+    iri(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("iri")) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldName("iri") : [];
+    },
+  },
+  ObjectPropertyEntity: {
+    typeId: 46,
+    type: "ObjectPropertyEntity",
+    is(node) { return node != null && node.typeId === 46; },
+    iri(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("iri")) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldName("iri") : [];
+    },
+  },
+  DataPropertyEntity: {
+    typeId: 47,
+    type: "DataPropertyEntity",
+    is(node) { return node != null && node.typeId === 47; },
+    iri(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("iri")) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldName("iri") : [];
+    },
+  },
+  NamedIndividualEntity: {
+    typeId: 48,
+    type: "NamedIndividualEntity",
+    is(node) { return node != null && node.typeId === 48; },
+    iri(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("iri")) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldName("iri") : [];
+    },
+  },
+  ObjectIntersectionOf: {
+    typeId: 50,
+    type: "ObjectIntersectionOf",
+    is(node) { return node != null && node.typeId === 50; },
+  },
+  ObjectUnionOf: {
+    typeId: 51,
+    type: "ObjectUnionOf",
+    is(node) { return node != null && node.typeId === 51; },
+  },
+  ObjectComplementOf: {
+    typeId: 52,
+    type: "ObjectComplementOf",
+    is(node) { return node != null && node.typeId === 52; },
+  },
+  ObjectSomeValuesFrom: {
+    typeId: 53,
+    type: "ObjectSomeValuesFrom",
+    is(node) { return node != null && node.typeId === 53; },
+  },
+  ObjectAllValuesFrom: {
+    typeId: 54,
+    type: "ObjectAllValuesFrom",
+    is(node) { return node != null && node.typeId === 54; },
+  },
+  DataSomeValuesFrom: {
+    typeId: 55,
+    type: "DataSomeValuesFrom",
+    is(node) { return node != null && node.typeId === 55; },
+  },
+  DataAllValuesFrom: {
+    typeId: 56,
+    type: "DataAllValuesFrom",
+    is(node) { return node != null && node.typeId === 56; },
+  },
+  DataRange: {
+    typeId: 57,
+    type: "DataRange",
+    is(node) { return node != null && node.typeId === 57; },
+  },
+  SubClassOfAxiom: {
+    typeId: 58,
+    type: "SubClassOfAxiom",
+    is(node) { return node != null && node.typeId === 58; },
+    subClass(node) {
+      return node ? (node.childForFieldId(6) || node.childForFieldName("subClass")) : null;
+    },
+    subClassList(node) {
+      return node ? node.childrenForFieldName("subClass") : [];
+    },
+    superClass(node) {
+      return node ? (node.childForFieldId(7) || node.childForFieldName("superClass")) : null;
+    },
+    superClassList(node) {
+      return node ? node.childrenForFieldName("superClass") : [];
+    },
+  },
+  EquivalentClassesAxiom: {
+    typeId: 59,
+    type: "EquivalentClassesAxiom",
+    is(node) { return node != null && node.typeId === 59; },
+  },
+  DisjointClassesAxiom: {
+    typeId: 60,
+    type: "DisjointClassesAxiom",
+    is(node) { return node != null && node.typeId === 60; },
+  },
+  ObjectPropertyAssertionAxiom: {
+    typeId: 61,
+    type: "ObjectPropertyAssertionAxiom",
+    is(node) { return node != null && node.typeId === 61; },
+    property(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("property")) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldName("property") : [];
+    },
+    subject(node) {
+      return node ? (node.childForFieldId(10) || node.childForFieldName("subject")) : null;
+    },
+    subjectList(node) {
+      return node ? node.childrenForFieldName("subject") : [];
+    },
+    object(node) {
+      return node ? (node.childForFieldId(11) || node.childForFieldName("object")) : null;
+    },
+    objectList(node) {
+      return node ? node.childrenForFieldName("object") : [];
+    },
+  },
+  DataPropertyAssertionAxiom: {
+    typeId: 62,
+    type: "DataPropertyAssertionAxiom",
+    is(node) { return node != null && node.typeId === 62; },
+    property(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("property")) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldName("property") : [];
+    },
+    subject(node) {
+      return node ? (node.childForFieldId(10) || node.childForFieldName("subject")) : null;
+    },
+    subjectList(node) {
+      return node ? node.childrenForFieldName("subject") : [];
+    },
+    value(node) {
+      return node ? (node.childForFieldId(12) || node.childForFieldName("value")) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldName("value") : [];
+    },
+  },
+  ClassAssertionAxiom: {
+    typeId: 63,
+    type: "ClassAssertionAxiom",
+    is(node) { return node != null && node.typeId === 63; },
+    classExpr(node) {
+      return node ? (node.childForFieldId(8) || node.childForFieldName("classExpr")) : null;
+    },
+    classExprList(node) {
+      return node ? node.childrenForFieldName("classExpr") : [];
+    },
+    individual(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("individual")) : null;
+    },
+    individualList(node) {
+      return node ? node.childrenForFieldName("individual") : [];
+    },
+  },
+  TransitiveObjectPropertyAxiom: {
+    typeId: 64,
+    type: "TransitiveObjectPropertyAxiom",
+    is(node) { return node != null && node.typeId === 64; },
+    property(node) {
+      return node ? (node.childForFieldId(9) || node.childForFieldName("property")) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldName("property") : [];
+    },
+  },
+  IDENT: {
+    typeId: 68,
+    type: "IDENT",
+    is(node) { return node != null && node.typeId === 68; },
+  },
+  FullIRI: {
+    typeId: 69,
+    type: "FullIRI",
+    is(node) { return node != null && node.typeId === 69; },
+  },
+  StringLiteral: {
+    typeId: 71,
+    type: "StringLiteral",
+    is(node) { return node != null && node.typeId === 71; },
+  },
+};

@@ -971,26 +971,39 @@ export class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot) {
+  getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
-    const numElements = this.exports.lsp_getDiagnostics(astRoot);
+    const encoding =
+      typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
+    const encStep = encoding === 1 ? 2 : 1;
+    const rStartByte = rangeStart * encStep;
+    const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
+    const numElements =
+      rangeEnd > 0 && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rStartByte, rEndByte)
+        : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    // Pre-calculate all needed nodePtr offsets in a single O(N) pass
-    // to prevent O(N^2) lockups caused by repeated WASM lsp_findNodeOffset calls.
+    // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges.
+    // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
     const requiredNodePtrs = new Set();
     for (let i = 0; i < numElements * 7; i += 7) {
-      const arg0 = memory[(dirPtr >> 2) + i + 3];
-      const arg1 = memory[(dirPtr >> 2) + i + 4];
-      const arg2 = memory[(dirPtr >> 2) + i + 5];
-      const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (arg0) requiredNodePtrs.add(arg0);
-      if (arg1) requiredNodePtrs.add(arg1);
-      if (arg2) requiredNodePtrs.add(arg2);
-      if (arg3) requiredNodePtrs.add(arg3);
+      const startByte = memory[(dirPtr >> 2) + i];
+      const endByte = memory[(dirPtr >> 2) + i + 1];
+      const lintId = memory[(dirPtr >> 2) + i + 2];
+      if (lintId > 0 && startByte === 0 && endByte === 0) {
+        const arg0 = memory[(dirPtr >> 2) + i + 3];
+        const arg1 = memory[(dirPtr >> 2) + i + 4];
+        const arg2 = memory[(dirPtr >> 2) + i + 5];
+        const arg3 = memory[(dirPtr >> 2) + i + 6];
+        if (arg0) requiredNodePtrs.add(arg0);
+        if (arg1) requiredNodePtrs.add(arg1);
+        if (arg2) requiredNodePtrs.add(arg2);
+        if (arg3) requiredNodePtrs.add(arg3);
+      }
     }
     const offsetCache = new Map();
     if (requiredNodePtrs.size > 0 && astRoot) {
@@ -1021,7 +1034,7 @@ export class LspFacade {
       stackOffsets[0] = getNodePad(astRoot);
       stackTop = 1;
       let iterations = 0;
-      while (stackTop > 0 && ++iterations < 100000) {
+      while (stackTop > 0 && ++iterations < 2000000) {
         stackTop--;
         const current = stackPtrs[stackTop];
         const nodeStart = stackOffsets[stackTop];
@@ -1071,7 +1084,13 @@ export class LspFacade {
       const arg1 = memory[(dirPtr >> 2) + i + 4];
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (arg0 > 0 && offsetCache.has(arg0)) {
+      if (
+        lintId > 0 &&
+        startByte === 0 &&
+        endByte === 0 &&
+        arg0 > 0 &&
+        offsetCache.has(arg0)
+      ) {
         startByte = offsetCache.get(arg0);
         const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
         endByte =
@@ -1318,9 +1337,21 @@ export class LspFacade {
       const encoding = this.getInputEncoding();
       const charDiv = encoding === 1 ? 2 : 1;
       // Prevent diagnostic bleed: if a diagnostic ends exactly at the start of the next line,
-      // clamp it to the end of the previous line so VS Code doesn't render it under the next token.
+      // clamp it to the end of the previous line so Monaco/VS Code doesn't render it under the next token.
       if (endPos.line > startPos.line && endPos.character === 0) {
-        endPos = { line: endPos.line - 1, character: startPos.character + 1 };
+        const prevLine = endPos.line - 1;
+        const prevLineStart = lineStarts[prevLine] || 0;
+        const currLineStart =
+          lineStarts[endPos.line] || prevLineStart + charDiv;
+        const prevLineCharLen = Math.max(
+          0,
+          Math.floor((currLineStart - prevLineStart) / charDiv) - 1,
+        );
+        const clampedChar =
+          prevLine === startPos.line
+            ? Math.max(startPos.character + 1, prevLineCharLen)
+            : prevLineCharLen;
+        endPos = { line: prevLine, character: clampedChar };
       }
       const range = {
         start: startPos,
@@ -3389,7 +3420,7 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri) {
+  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri, oldRoot) {
     const getInputBuf =
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
@@ -3414,17 +3445,30 @@ export class LspFacade {
       this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
     this.currentInputLength = text.length;
-    const prevAstRoot = this.getDocumentRoot(uri);
-    let baseRoot = prevAstRoot;
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = text.length;
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    let baseRoot =
+      oldRoot !== undefined && oldRoot !== 0
+        ? oldRoot
+        : prevAstRoot !== 0
+          ? prevAstRoot
+          : this.lastAstRoot;
+    let editStartByte = editStart * 2;
+    let editOldEndByte = editOldEnd * 2;
+    let editNewEndByte = editNewEnd * 2;
+    if (
+      baseRoot === 0 ||
+      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+    ) {
+      editNewEndByte = lenBytes;
       baseRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
     }
     const newAstRoot = this.exports.parse(
       baseRoot,
-      editStart,
-      editOldEnd,
-      editNewEnd,
+      editStartByte,
+      editOldEndByte,
+      editNewEndByte,
     );
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
@@ -4229,7 +4273,7 @@ export class SyntaxNode {
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      if ((flags & 128) !== 0) return true; // FLAG_HAS_ERROR
+      return (flags & 128) !== 0; // FLAG_HAS_ERROR
     }
     for (const kid of this.children) {
       if (kid.hasError()) return true;
@@ -4547,7 +4591,14 @@ export class TreeSitterParser {
   getLanguage() {
     return this.languageBinding;
   }
-  parse(source, oldTree = null) {
+  parse(
+    source,
+    oldTree = null,
+    editStart = 0,
+    editOldEnd = 0,
+    editNewEnd = 0,
+    uri,
+  ) {
     if (!this.languageBinding) {
       throw new Error("Language not set on Parser. Call setLanguage() first.");
     }
@@ -4563,11 +4614,32 @@ export class TreeSitterParser {
     }
     const code =
       typeof source === "string" ? source : new TextDecoder().decode(source);
-    const astRoot = facade.parse(code);
+    const oldRoot = oldTree
+      ? (oldTree.rootPtr ?? oldTree.rootNode?.id ?? oldTree.rootNode?.ptr ?? 0)
+      : 0;
+    const astRoot = facade.parse(
+      code,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+      uri,
+      oldRoot,
+    );
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
   }
-  reset() {}
+  reset() {
+    if (this.languageBinding) {
+      if (typeof this.languageBinding.resetParser === "function") {
+        this.languageBinding.resetParser();
+      } else if (
+        this.languageBinding.exports &&
+        typeof this.languageBinding.exports.resetParser === "function"
+      ) {
+        this.languageBinding.exports.resetParser();
+      }
+    }
+  }
 }
 export const WasmLanguageBinding = LspFacade;
 export default WasmLanguageBinding;

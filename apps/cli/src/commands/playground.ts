@@ -49,7 +49,7 @@ function bundleDsl(entryPath: string): string {
     content = content.replace(/export\s*\{[\s\S]*?\}(?:\s*from\s+['"][^'"]+['"])?;?\n?/g, "");
 
     if (!isEntry) {
-      // In helper files, also strip external @modelscript/language imports
+      // In helper files, also strip external @modelscript/dsl imports
       content = content.replace(/import\s+[\s\S]*?from\s+['"]@modelscript\/language['"];?\n?/g, "");
       importedChunks.push(content.trim());
       return "";
@@ -131,7 +131,9 @@ end ChuaCircuit;`;
       } else if (urlPath === "/browser.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const browserJsPath = join(__dirname, "../../../../packages/language/dist/browser.js");
+        const browserJsPath = existsSync(join(__dirname, "../../../../packages/dsl/dist/browser.js"))
+          ? join(__dirname, "../../../../packages/dsl/dist/browser.js")
+          : join(__dirname, "../../../../packages/language/dist/browser.js");
         if (existsSync(browserJsPath)) {
           let content = readFileSync(browserJsPath, "utf-8");
           content = content.replace(
@@ -147,12 +149,16 @@ end ChuaCircuit;`;
       } else if (urlPath === "/typescript.mjs") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const tsJsPath = join(__dirname, "../../../../packages/language/dist/typescript.mjs");
+        const tsJsPath = existsSync(join(__dirname, "../../../../packages/dsl/dist/typescript.mjs"))
+          ? join(__dirname, "../../../../packages/dsl/dist/typescript.mjs")
+          : join(__dirname, "../../../../packages/language/dist/typescript.mjs");
         res.end(existsSync(tsJsPath) ? readFileSync(tsJsPath) : "");
       } else if (urlPath === "/diagram.browser.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const diagramJsPath = join(__dirname, "../../../../packages/language/dist/diagram.browser.js");
+        const diagramJsPath = existsSync(join(__dirname, "../../../../packages/diagram/dist/diagram.browser.js"))
+          ? join(__dirname, "../../../../packages/diagram/dist/diagram.browser.js")
+          : join(__dirname, "../../../../packages/language/dist/diagram.browser.js");
         res.end(existsSync(diagramJsPath) ? readFileSync(diagramJsPath) : "");
       } else if (urlPath?.startsWith("/vendor/")) {
         headers["Content-Type"] = "application/javascript";
@@ -252,7 +258,7 @@ end ChuaCircuit;`;
         req.on("end", async () => {
           try {
             const payload = JSON.parse(body);
-            const { bundleExtension } = await import("@modelscript/language");
+            const { bundleExtension } = await import("@modelscript/dsl");
             const langInput = payload.languages || payload.language || { name: payload.name || "dsl", rules: {} };
             const files = bundleExtension(langInput, payload.options);
             res.writeHead(200, { "Content-Type": "application/json" });
@@ -262,6 +268,35 @@ end ChuaCircuit;`;
             res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));
           }
         });
+      } else if (urlPath === "/api/thread/hypergraph") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            version: "1.0",
+            threads: [
+              {
+                threadId: "THREAD-EV-001",
+                status: "synced",
+                revision: 1,
+                domains: {
+                  sysml2: { name: "ElectricPowertrain", kind: "PartDef", properties: { torque: 350.0, mass: 12.5 } },
+                  modelica: {
+                    name: "ElectricPowertrain",
+                    kind: "ModelicaClass",
+                    properties: { tau_max: 350.0, mass: 12.5 },
+                  },
+                  cad: { name: "Powertrain_Assembly", kind: "StepComponent", properties: { mass: 12.5 } },
+                  requirements: {
+                    name: "REQ-01",
+                    kind: "Requirement",
+                    properties: { targetTorque: 350.0, status: "Verified" },
+                  },
+                },
+              },
+            ],
+          }),
+        );
       } else {
         res.writeHead(404);
         res.end("Not found");
@@ -324,8 +359,8 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
         #editors { display: flex; flex: 1; height: calc(100vh - 48px); min-height: 0; min-width: 0; }
         #dsl-editor { flex: 1; border-right: 1px solid var(--border-color); min-width: 0; height: 100%; min-height: 0; }
         #right-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; }
-        #code-editor { flex: 1; border-bottom: 1px solid var(--border-color); min-width: 0; min-height: 0; height: 50%; }
-        #react-ast-root { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 50%; background: var(--toolbar-bg); }
+        #code-editor { flex: 1; border-bottom: 1px solid var(--border-color); min-width: 0; min-height: 0; height: 50%; position: relative; overflow: hidden; }
+        #react-ast-root { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 50%; background: var(--toolbar-bg); position: relative; overflow: hidden; }
         #ast-viewer { flex: 1; overflow: auto; padding: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; white-space: pre; font-size: 12px; min-height: 0; }
         
         .ghost-node { opacity: 0.6; color: #d73a49; font-style: italic; }
@@ -380,20 +415,81 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             50% { transform: scale(1.1); opacity: 1; }
             100% { transform: scale(0.95); opacity: 0.5; }
         }
+        #panel-tabs {
+            display: flex;
+            align-items: center;
+            background: var(--toolbar-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 8px;
+            gap: 2px;
+            user-select: none;
+            min-height: 38px;
+            height: 38px;
+            flex-shrink: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            box-sizing: border-box;
+        }
+        #panel-tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+        #panel-tabs::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
         .tab-btn {
-            background: none;
+            background: transparent;
             border: none;
             border-bottom: 2px solid transparent;
-            padding: 8px 16px;
+            padding: 6px 14px;
             cursor: pointer;
-            font-weight: 600;
+            font-weight: 500;
             font-size: 13px;
             color: var(--text-color);
             opacity: 0.7;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 120ms ease;
+            box-sizing: border-box;
+            border-radius: 4px 4px 0 0;
+        }
+        #panel-tabs .tab-btn {
+            height: 38px;
+            padding: 0 14px;
+        }
+        .tab-btn:hover {
+            opacity: 1;
+            background: rgba(128, 128, 128, 0.08);
         }
         .tab-btn.active {
             opacity: 1;
-            border-bottom-color: #fd8c73;
+            font-weight: 600;
+            border-bottom-color: #0969da;
+            color: #0969da;
+        }
+        @media (prefers-color-scheme: dark) {
+            .tab-btn.active {
+                border-bottom-color: #58a6ff;
+                color: #58a6ff;
+            }
+        }
+        .tab-badge {
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+            background: rgba(128, 128, 128, 0.2);
+            line-height: 1.2;
+        }
+        .tab-badge.error {
+            background: #cf222e;
+            color: #ffffff;
+        }
+        .tab-badge.warning {
+            background: #9a6700;
+            color: #ffffff;
         }
         #right-header {
             display: flex;
@@ -517,10 +613,10 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
 
             const dslLib = ${JSON.stringify(dslLibStr)};
             const dslLibModule = ${JSON.stringify(dslLibModuleStr)};
-            const dslModuleDecl = ${JSON.stringify('declare module "@modelscript/language" {\n' + dslLibModuleStr + "\n}")};
+            const dslModuleDecl = ${JSON.stringify('declare module "@modelscript/dsl" {\n' + dslLibModuleStr + "\n}")};
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLib, 'ts:filename/dsl.d.ts');
-            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'file:///node_modules/@modelscript/language/index.d.ts');
-            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'node_modules/@modelscript/language/index.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'file:///node_modules/@modelscript/dsl/index.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'node_modules/@modelscript/dsl/index.d.ts');
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'ts:filename/dsl-module.d.ts');
 
             monaco.editor.defineTheme('dark-modern', {
@@ -1072,8 +1168,19 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                             let endLine = d.range ? d.range.end.line + 1 : startLine;
                             let endCol = d.range ? d.range.end.character + 1 : startCol;
 
+                            const currentModel = this.editor.getModel() || this.model;
                             if (startLine === endLine && startCol === endCol) {
-                                endCol = startCol + 1;
+                                if (currentModel) {
+                                    const maxCol = currentModel.getLineMaxColumn(startLine);
+                                    if (startCol >= maxCol) {
+                                        startCol = Math.max(1, maxCol - 1);
+                                        endCol = maxCol;
+                                    } else {
+                                        endCol = startCol + 1;
+                                    }
+                                } else {
+                                    endCol = startCol + 1;
+                                }
                             }
                             return {
                                 severity: d.severity === 1 ? monaco.MarkerSeverity.Error 
@@ -1169,7 +1276,6 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
 
                 disposables.push(monaco.languages.registerFoldingRangeProvider(langId, {
                     provideFoldingRanges: async (model, context, token) => {
-                        await new Promise(r => setTimeout(r, 150));
                         if (token.isCancellationRequested) return null;
 
                         const result = await languageClient.sendRequest('textDocument/foldingRange', {
@@ -1188,7 +1294,6 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
 
                 disposables.push(monaco.languages.registerDocumentSymbolProvider(langId, {
                     provideDocumentSymbols: async (model, token) => {
-                        await new Promise(r => setTimeout(r, 150));
                         if (token.isCancellationRequested) return null;
 
                         const result = await languageClient.sendRequest('textDocument/documentSymbol', {
@@ -1241,13 +1346,34 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     }
                 }));
 
+                disposables.push(monaco.languages.registerHoverProvider(langId, {
+                    provideHover: async (model, position, token) => {
+                        if (token.isCancellationRequested) return null;
+                        const result = await languageClient.sendRequest('textDocument/hover', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 }
+                        });
+                        if (result && result.contents) {
+                            return {
+                                contents: Array.isArray(result.contents) ? result.contents : [result.contents],
+                                range: result.range ? new monaco.Range(
+                                    result.range.start.line + 1,
+                                    result.range.start.character + 1,
+                                    result.range.end.line + 1,
+                                    result.range.end.character + 1
+                                ) : undefined
+                            };
+                        }
+                        return null;
+                    }
+                }));
+
                 disposables.push(monaco.languages.registerCompletionItemProvider(langId, {
                     triggerCharacters: ['.', ' ', ':', '=', '(', ','],
                     provideCompletionItems: async (model, position, context, token) => {
                         const result = await languageClient.sendRequest('textDocument/completion', {
                             textDocument: { 
-                                uri: model.uri.toString(),
-                                text: model.getValue()
+                                uri: model.uri.toString()
                             },
                             position: { line: position.lineNumber - 1, character: position.column - 1 },
                             context: {
@@ -2281,6 +2407,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             const [activeTab, setActiveTab] = useState('ast');
             const [pipelines, setPipelines] = useState([]);
             const [grammarConflicts, setGrammarConflicts] = useState(window.grammarConflicts || []);
+            const [diagnostics, setDiagnostics] = useState(window['__latestDiagnostics'] || []);
 
             useEffect(() => {
                 const handler = () => {
@@ -2289,19 +2416,25 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 const conflictHandler = (e) => {
                     setGrammarConflicts(e.detail || window.grammarConflicts || []);
                 };
+                const diagHandler = () => {
+                    setDiagnostics(window['__latestDiagnostics'] || []);
+                };
                 window.addEventListener('pipelinesUpdated', handler);
                 window.addEventListener('grammarConflictsUpdated', conflictHandler);
+                window.addEventListener('diagnosticsUpdated', diagHandler);
                 return () => {
                     window.removeEventListener('pipelinesUpdated', handler);
                     window.removeEventListener('grammarConflictsUpdated', conflictHandler);
+                    window.removeEventListener('diagnosticsUpdated', diagHandler);
                 };
             }, []);
 
             const activePipeline = pipelines.find(p => p.id === activeTab);
+            const errCount = diagnostics.filter(d => d.severity === 'error' || d.severity === 1 || d.severity === 8).length;
 
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
-                    <div id="panel-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    <div id="panel-tabs">
                         <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => { setActiveTab('ast'); window['__activeTab'] = 'ast'; }}>
                             🌳 AST Tree
                         </button>
@@ -2323,13 +2456,22 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         ))}
                         <button className={"tab-btn " + (activeTab === 'diagnostics' ? 'active' : '')} onClick={() => { setActiveTab('diagnostics'); window['__activeTab'] = 'diagnostics'; }}>
                             🔍 Code Diagnostics
+                            {diagnostics.length > 0 && (
+                                <span className={"tab-badge " + (errCount > 0 ? 'error' : 'warning')}>
+                                    {diagnostics.length}
+                                </span>
+                            )}
                         </button>
                         <button 
                             className={"tab-btn " + (activeTab === 'grammar-conflicts' ? 'active' : '')} 
-                            onClick={() => setActiveTab('grammar-conflicts')}
-                            style={grammarConflicts.length > 0 ? { borderBottom: '2px solid #d97706', color: '#d97706' } : {}}
+                            onClick={() => { setActiveTab('grammar-conflicts'); window['__activeTab'] = 'grammar-conflicts'; }}
                         >
-                            ⚠️ Grammar {grammarConflicts.length > 0 ? '(' + grammarConflicts.length + ')' : ''}
+                            ⚠️ Grammar
+                            {grammarConflicts.length > 0 && (
+                                <span className="tab-badge warning">
+                                    {grammarConflicts.length}
+                                </span>
+                            )}
                         </button>
                     </div>
                     <div style={{ display: activeTab === 'ast' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -2591,6 +2733,8 @@ let Tree = null;
 let SyntaxNode = null;
 let LspFacade = null;
 let latestUri = 'inmemory://example.mo';
+const uriByFileId = new Map();
+const fileIdByUri = new Map();
 let currentTextLength = 0;
 let currentGenerationId = Date.now();
 let pendingFullText = null;
@@ -2962,7 +3106,18 @@ self.onmessage = async (e) => {
     } else if (e.data.method === 'textDocument/didChange' || e.data.method === 'textDocument/didOpen') {
         const params = e.data.params;
         const uri = params.textDocument?.uri;
-        if (uri) latestUri = uri;
+        if (uri) {
+            latestUri = uri;
+            if (lspFacade && typeof lspFacade.getOrCreateDocumentId === 'function') {
+                try {
+                    const fid = lspFacade.getOrCreateDocumentId(uri);
+                    if (fid) {
+                        uriByFileId.set(fid, uri);
+                        fileIdByUri.set(uri, fid);
+                    }
+                } catch(e) {}
+            }
+        }
         
         if (e.data.method === 'textDocument/didOpen') {
             const fullText = params.textDocument?.text || params.contentChanges?.[0]?.text;
@@ -2997,10 +3152,11 @@ self.onmessage = async (e) => {
         if (def) {
             const startPos = lspFacade.offsetToPos(def.start, lineStarts);
             const endPos = lspFacade.offsetToPos(def.end, lineStarts);
+            const targetUri = (def.fileId && uriByFileId.get(def.fileId)) || latestUri;
             self.postMessage({
                 jsonrpc: '2.0',
                 id: e.data.id,
-                result: { uri: latestUri, range: { start: startPos, end: endPos } }
+                result: { uri: targetUri, range: { start: startPos, end: endPos } }
             });
         } else {
             self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
@@ -3016,7 +3172,7 @@ self.onmessage = async (e) => {
         }
         const refs = lspFacade.getReferences(globalAstRoot, offset);
         const result = refs.map(ref => ({
-            uri: latestUri,
+            uri: (ref.fileId && uriByFileId.get(ref.fileId)) || latestUri,
             range: {
                 start: lspFacade.offsetToPos(ref.start, lineStarts),
                 end: lspFacade.offsetToPos(ref.end, lineStarts)
@@ -3047,6 +3203,35 @@ self.onmessage = async (e) => {
             };
         });
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
+    } else if (e.data.method === 'textDocument/hover') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        const pos = e.data.params.position;
+        const lineStarts = lspFacade.getLineStarts();
+        const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
+        let offset = 0;
+        if (pos.line < lineStarts.length) {
+            offset = lineStarts[pos.line] + (pos.character * charMult);
+        }
+        const node = (lspFacade.getNodeAtByteOffset ? lspFacade.getNodeAtByteOffset(globalAstRoot, offset) : 0);
+        if (node > 0) {
+            const typeId = lspFacade.getNodeType(node);
+            const typeName = self.syntaxNames ? self.syntaxNames[typeId] : ("Node #" + typeId);
+            const nodeLen = lspFacade.exports && lspFacade.exports.getNodeLength ? lspFacade.exports.getNodeLength(node) : charMult;
+            const startPos = lspFacade.offsetToPos(offset, lineStarts);
+            const endPos = lspFacade.offsetToPos(offset + nodeLen, lineStarts);
+            self.postMessage({
+                jsonrpc: '2.0',
+                id: e.data.id,
+                result: {
+                    contents: [
+                        { value: "**Syntax Kind:** " + typeName }
+                    ],
+                    range: { start: startPos, end: endPos }
+                }
+            });
+        } else {
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        }
     } else if (e.data.method === 'textDocument/rename') {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
         const pos = e.data.params.position;
@@ -3087,33 +3272,31 @@ self.onmessage = async (e) => {
             const params = e.data.params;
             const pos = params.position; // { line, character }
             
-            let docText = (params.textDocument && typeof params.textDocument.text === 'string') 
-                ? params.textDocument.text 
-                : "";
-            
-            if (!docText && lspFacade && lspFacade.exports && lspFacade.exports.getInputBuffer && currentTextLength > 0) {
-                const inputBuf = lspFacade.exports.getInputBuffer();
-                if (inputBuf > 0) {
-                    const isUtf16 = (lspFacade.getInputEncoding ? lspFacade.getInputEncoding() : 1) === 1;
-                    const decoder = isUtf16 ? new TextDecoder('utf-16le') : new TextDecoder('utf-8');
-                    const rawBytes = new Uint8Array(lspFacade.wasmMemory.buffer, inputBuf, currentTextLength * (isUtf16 ? 2 : 1));
-                    const copyBytes = new Uint8Array(rawBytes);
-                    docText = decoder.decode(copyBytes).replace(/\0/g, '');
-                }
-            }
-            
-            const NL = String.fromCharCode(10);
-            const lines = docText.split(NL);
-            const lineText = lines[pos.line] || '';
-            const textBeforeCursor = lineText.slice(0, pos.character);
-            
-            const items = [];
-            
             const lineStarts = (lspFacade && typeof lspFacade.getLineStarts === 'function')
                 ? lspFacade.getLineStarts()
                 : new Uint32Array([0]);
             const isUtf16 = (lspFacade && lspFacade.getInputEncoding ? lspFacade.getInputEncoding() : 1) === 1;
             const charMult = isUtf16 ? 2 : 1;
+
+            let lineText = '';
+            if (params.textDocument && typeof params.textDocument.text === 'string') {
+                const NL = String.fromCharCode(10);
+                const lines = params.textDocument.text.split(NL);
+                lineText = lines[pos.line] || '';
+            } else if (lspFacade && lspFacade.exports && lspFacade.exports.getInputBuffer && currentTextLength > 0 && pos.line < lineStarts.length) {
+                const inputBuf = lspFacade.exports.getInputBuffer();
+                if (inputBuf > 0) {
+                    const lineStartByte = lineStarts[pos.line];
+                    const nextLineByte = (pos.line + 1 < lineStarts.length) ? lineStarts[pos.line + 1] : (currentTextLength * charMult);
+                    const lineByteLen = Math.max(0, nextLineByte - lineStartByte);
+                    const decoder = isUtf16 ? new TextDecoder('utf-16le') : new TextDecoder('utf-8');
+                    const rawBytes = new Uint8Array(lspFacade.wasmMemory.buffer, inputBuf + lineStartByte, lineByteLen);
+                    lineText = decoder.decode(rawBytes).replace(/\\r?\\n$/, '');
+                }
+            }
+            const textBeforeCursor = lineText.slice(0, pos.character);
+            
+            const items = [];
 
             let cursorOffset = 0;
             if (lspFacade && typeof lspFacade.posToOffset === 'function') {

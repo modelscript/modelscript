@@ -4,10 +4,8 @@
  * Arena-based DAE printer — reads directly from DAEBuilder
  * without materializing any legacy ModelicaExpression objects.
  *
- * Moved from `@modelscript/symbolics/systems/arena-printer.ts` to
- * `@modelscript/language/compiler` to eliminate the dependency on the symbolics
- * package. Operator string constants are inlined to avoid importing
- * from `@modelscript/modelica/ast`.
+ * Moved to `@modelscript/runtime` to eliminate the dependency on the symbolics
+ * package. Operator string constants are inlined.
  */
 
 export interface Writer {
@@ -16,7 +14,6 @@ export interface Writer {
 import { BinOp, Causality, DAEBuilder, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
 
 // ── Inlined Modelica operator strings ──
-// (Avoids circular dependency on @modelscript/modelica/ast)
 
 const binOpStr: Record<number, string> = {
   [BinOp.Add]: "+",

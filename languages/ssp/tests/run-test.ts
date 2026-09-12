@@ -1,4 +1,4 @@
-import { createZipArchive, defaultContainerToolkit, extractContainerArchive } from "@modelscript/language";
+import { createZipArchive, defaultContainerToolkit, extractContainerArchive } from "@modelscript/runtime";
 import { sspLanguage } from "../src/language.js";
 import { sspToModelicaBlock } from "../src/projection.js";
 import { parseSsd, parseSsv } from "../src/ssd-parser.js";

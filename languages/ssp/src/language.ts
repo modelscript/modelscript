@@ -7,7 +7,7 @@
  * polyglot cross-language projections for SSP archives and SSD models.
  */
 
-import { language } from "@modelscript/language/dsl";
+import { language } from "@modelscript/dsl";
 import { sspToModelicaBlock } from "./projection.js";
 import { parseSsd } from "./ssd-parser.js";
 

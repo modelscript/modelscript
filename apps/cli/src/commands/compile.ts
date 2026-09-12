@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { printArenaDAE } from "@modelscript/language/compiler";
-import { snapshotMemory } from "@modelscript/language/simulator";
 import { Context } from "@modelscript/modelica/context";
 import Modelica from "@modelscript/modelica/parser";
+import { printArenaDAE } from "@modelscript/runtime";
+import { snapshotMemory } from "@modelscript/simulate";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,7 +53,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
   handler: async (args) => {
     const profiler = new Profiler();
 
-    const { UnifiedWorkspace } = await import("@modelscript/language/compiler");
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
     const { createModelicaQueryEngine, createModelicaWorkspaceIndex } = await import("@modelscript/modelica/factory");
     const { createSysML2WorkspaceIndex } = await import("@modelscript/sysml2/factory");
     const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;
@@ -82,7 +82,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     profiler.start("parsing");
     for (const p of args.paths) {
       if (p.endsWith(".sysml")) {
-        const { createWasmParser } = await import("@modelscript/language");
+        const { createWasmParser } = await import("@modelscript/dsl");
         const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
         if (!sysmlParser) {
           const sysmlResult = await createWasmParser(wasmPath);

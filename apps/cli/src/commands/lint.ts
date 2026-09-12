@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable no-useless-assignment */
 
-import { UnifiedWorkspace } from "@modelscript/language/compiler";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
@@ -91,7 +91,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
     }
 
     if (hasSysML) {
-      const { createWasmParser } = await import("@modelscript/language");
+      const { createWasmParser } = await import("@modelscript/dsl");
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = path.dirname(__filename);
       const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");

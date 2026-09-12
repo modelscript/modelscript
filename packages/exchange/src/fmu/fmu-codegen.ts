@@ -28,7 +28,7 @@ import {
   pantelidesIndexReductionArena,
   performBltTransformationArena,
   simplifyArenaExpression,
-} from "@modelscript/language/compiler";
+} from "@modelscript/runtime";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { groupFmi3Variables } from "./fmi.js";
 import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";

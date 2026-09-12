@@ -1,4 +1,4 @@
-import { createWasmParser } from "@modelscript/language";
+import { createWasmParser } from "@modelscript/dsl";
 import { createWasmParser as createModelicaParser } from "@modelscript/modelica/parser";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import path from "node:path";

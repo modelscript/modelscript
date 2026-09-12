@@ -528,7 +528,13 @@ export function verifyTrajectoryDirect(
     const timeVal = Array.isArray(t) ? t[i]! : t[i]!;
     let val: number;
     if (Array.isArray(y)) {
-      val = y[i]![stateIdx]!;
+      if (y.length === numSteps && y[i] && y[i]![stateIdx] !== undefined) {
+        val = y[i]![stateIdx]!;
+      } else if (y[stateIdx] && y[stateIdx]![i] !== undefined) {
+        val = y[stateIdx]![i]!;
+      } else {
+        val = y[i] && y[i]![stateIdx] !== undefined ? y[i]![stateIdx]! : 0;
+      }
     } else {
       val = y[i * numStates + stateIdx]!;
     }

@@ -10,15 +10,9 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  extractIndexerHooks,
-  extractQueryHooksMap,
-  extractRefHooks,
-  LSPBridge,
-  PositionIndex,
-  QueryEngine,
-  WorkspaceIndex,
-} from "@modelscript/language/compiler";
+import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
+import { LSPBridge, PositionIndex } from "@modelscript/lsp";
+import { QueryEngine, WorkspaceIndex } from "@modelscript/runtime";
 
 import csvLangDef from "@modelscript/csv/language";
 import modelicaLangDef from "./language.js";

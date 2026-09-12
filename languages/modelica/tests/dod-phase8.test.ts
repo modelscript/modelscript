@@ -1,4 +1,4 @@
-import { createWasmParser } from "@modelscript/language";
+import { createWasmParser } from "@modelscript/dsl";
 import { unlinkSync, writeFileSync } from "fs";
 import assert from "node:assert";
 import { describe, it } from "node:test";

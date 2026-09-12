@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @modelscript/language/runtime
+ * @modelscript/runtime
  * High-performance WebAssembly data-oriented DAE arena, memoized Salsa queries,
  * structural analysis, numerical integrators, and symbolic solvers.
  */
 
 export * from "./config_client.js";
 export * from "./indexeddb_snapshot.js";
+export * from "./pipeline.js";
 export * from "./polyglot-transformer.js";
+export * from "./provenance.js";
+export * from "./reqif.js";
 export * from "./runtime.js";
 export * from "./solvers_bridge.js";
+export * from "./thread_hypergraph.js";
+export * from "./thread_serializer.js";
+export * from "./vcycle_verifier.js";
 export * from "./wasm_bdf.js";
 export * from "./wasm_blt.js";
 export * from "./wasm_cache_store.js";
@@ -49,3 +55,5 @@ export {
   type SimulationResult as VerifierSimulationResult,
 } from "./wasm_verifier.js";
 export * from "./wasm_workspace.js";
+export { WasmWorkspaceIndex as WorkspaceIndex } from "./wasm_workspace.js";
+export type CSTNode = any;

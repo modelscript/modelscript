@@ -51,12 +51,25 @@
     "transformers/**"
   ],
   "scripts": {
-    "build": "node build.js && tsc",
+    "build": "npm run clean && node build.js && tsc",
     "clean": "rimraf dist src-gen *.wasm"
   },
   "dependencies": {
-    "@modelscript/language": "*",
+    "@modelscript/diagram": "*",
+    "@modelscript/dsl": "*",
+    "@modelscript/lsp": "*",
+    "@modelscript/runtime": "*",
     "vscode-languageserver": "^9.0.1"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "nx": {
+    "targets": {
+      "build": {
+        "dependsOn": [
+          "@modelscript/dsl:build",
+          "@modelscript/runtime:build"
+        ]
+      }
+    }
+  }
 }

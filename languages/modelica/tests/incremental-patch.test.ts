@@ -296,7 +296,11 @@ end MultiHunk;`;
   console.log("=== All Incremental DAE Patching Tests Passed Successfully! ===");
 }
 
-runTests().catch((err) => {
-  console.error("Test failed with error:", err);
-  process.exit(1);
-});
+runTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("Test failed with error:", err);
+    process.exit(1);
+  });

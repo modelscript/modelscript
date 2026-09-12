@@ -2164,6 +2164,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     const enumLits = dae.getVarEnumerationLiterals(i);
     const cad = dae.getVarCadAnnotation(i);
 
+    const vRange = dae.getVarSourceRange(i);
+
     if (shape.length > 0) {
       const indices = generateIndices(shape);
       for (const idx of indices) {
@@ -2173,6 +2175,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         if (customType) out.setVarCustomType(scalarIdx, customType);
         if (enumLits) out.setVarEnumerationLiterals(scalarIdx, enumLits);
         if (cad) out.setVarCadAnnotation(scalarIdx, cad);
+        if (vRange) out.setVarSourceRange(scalarIdx, vRange.startByte, vRange.endByte);
 
         if (expr != null && expr >= 0) {
           if (dae.getExprKind(expr) === ExprKind.ArrayCtor) {
@@ -2216,6 +2219,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       if (customType) out.setVarCustomType(scalarIdx, customType);
       if (enumLits) out.setVarEnumerationLiterals(scalarIdx, enumLits);
       if (cad) out.setVarCadAnnotation(scalarIdx, cad);
+      if (vRange) out.setVarSourceRange(scalarIdx, vRange.startByte, vRange.endByte);
       if (expr != null && expr >= 0) {
         out.setVarExpression(scalarIdx, cloneExpr(expr, "", null));
       }

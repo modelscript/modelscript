@@ -39,7 +39,7 @@ export function registerArenaSimulator(syncSim: ArenaSimulatorFn, asyncSim?: Asy
 export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions): ArenaSimulationResult {
   if (!_defaultSimulator) {
     throw new Error(
-      "ArenaSimulator not registered. Call registerArenaSimulator(...) or import from @modelscript/simulate or @modelscript/language.",
+      "ArenaSimulator not registered. Call registerArenaSimulator(...) or import from @modelscript/simulate.",
     );
   }
   return _defaultSimulator(arena, options);

@@ -5,7 +5,9 @@
  * and DL-Lite/OWL2 semantic reasoner feature inference across multi-language model graphs.
  */
 
-import type { PolyglotConfig, TGGRuleOptions } from "@modelscript/dsl/dsl/language.js";
+import type { PolyglotConfig, TGGDpoRuleOptions, TGGRuleOptions } from "@modelscript/dsl/dsl/language.js";
+import { DigitalThreadHypergraph } from "./thread_hypergraph.js";
+import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
 
 /**
  * Generic, schema-agnostic node model for polyglot cross-language graph transformation.
@@ -258,6 +260,9 @@ export class PolyglotTransformer {
   /** N-Ary digital thread alignments: threadId -> domain projections */
   private threads = new Map<string, Record<string, PolyglotNode>>();
 
+  /** In-memory linear memory compatible Digital Thread Hypergraph */
+  private hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
+
   /** CST source ranges for live bi-directional IDE spans */
   private cstSpans = new Map<string, { startByte: number; endByte: number; line: number; column: number }>();
 
@@ -295,6 +300,26 @@ export class PolyglotTransformer {
    */
   registerThread(threadId: string, domainNodes: Record<string, PolyglotNode>): void {
     this.threads.set(threadId, domainNodes);
+
+    // Sync with linear-memory Struct-of-Arrays hypergraph
+    const numericId = parseInt(threadId.replace(/\D/g, "") || "1", 10);
+    const slot = this.hypergraph.createThread(numericId);
+
+    let pseudoNodeId = 100;
+    for (const [domName, node] of Object.entries(domainNodes)) {
+      const domIdx = DOMAIN_NAME_TO_INDEX[domName.toLowerCase()];
+      if (domIdx !== undefined) {
+        const nodeId = (node as any).id || pseudoNodeId++;
+        this.hypergraph.bindDomainNode(slot, domIdx, nodeId);
+      }
+    }
+  }
+
+  /**
+   * Retrieves the underlying DigitalThreadHypergraph instance.
+   */
+  getHypergraph(): DigitalThreadHypergraph {
+    return this.hypergraph;
   }
 
   /**
@@ -365,4 +390,160 @@ export class PolyglotTransformer {
     }
     return emitter(node, this);
   }
+
+  /**
+   * Executes an algebraic In-Place DPO (Double Pushout) rewrite on a container node/graph.
+   * Enforces the Gluing Condition (dangling edges and identification condition)
+   * and emits DBSP multiset differential streams (negative retractions and positive additions).
+   */
+  applyInPlaceDPO(
+    rule: TGGDpoRuleOptions,
+    containerNode: PolyglotNode,
+    matchBindings: Record<string, string>,
+  ): DpoExecutionResult {
+    const deleteSpecs = rule.elements.filter((e) => e.action === "delete");
+    const preserveSpecs = rule.elements.filter((e) => e.action === "preserve");
+    const createSpecs = rule.elements.filter((e) => e.action === "create");
+
+    // 1. Check Identification Condition
+    const matchedNames = new Set<string>();
+    for (const spec of [...deleteSpecs, ...preserveSpecs]) {
+      const boundName = matchBindings[spec.nodeType] || spec.bindings?.name;
+      if (boundName) {
+        if (matchedNames.has(boundName) && spec.action === "delete") {
+          return {
+            success: false,
+            ruleName: rule.name,
+            status: "IDENTIFICATION_VIOLATION",
+          };
+        }
+        matchedNames.add(boundName);
+      }
+    }
+
+    // 2. Check Dangling Edge Condition
+    if (rule.danglingEdgePolicy === "strict" || !rule.danglingEdgePolicy) {
+      const knownNodeNames = new Set<string>();
+      for (const spec of [...deleteSpecs, ...preserveSpecs]) {
+        const boundName = matchBindings[spec.nodeType] || spec.bindings?.name;
+        if (boundName) knownNodeNames.add(boundName);
+      }
+
+      for (const delSpec of deleteSpecs) {
+        const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.name;
+        if (!targetName) continue;
+
+        const connections = (containerNode as any).connections || [];
+        const incidentConns = connections.filter(
+          (conn: any) =>
+            conn.from?.startsWith(`${targetName}.`) ||
+            conn.to?.startsWith(`${targetName}.`) ||
+            conn.from === targetName ||
+            conn.to === targetName,
+        );
+
+        for (const conn of incidentConns) {
+          const otherEndpoint = (
+            conn.from?.startsWith(`${targetName}.`) || conn.from === targetName ? conn.to : conn.from
+          )?.split(".")[0];
+
+          // If otherEndpoint is an external node not matched by the rule, it is an illegal dangling edge
+          if (otherEndpoint && !knownNodeNames.has(otherEndpoint)) {
+            return {
+              success: false,
+              ruleName: rule.name,
+              status: "DANGLING_EDGE_VIOLATION",
+            };
+          }
+        }
+      }
+    }
+
+    // 3. Pushout Complement (D = G \ (L \ K)): Delete elements and retract via DBSP
+    const negativeDelta: string[] = [];
+    const recycledNodes: string[] = [];
+
+    for (const delSpec of deleteSpecs) {
+      const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.name;
+      if (!targetName) continue;
+
+      if (containerNode.components) {
+        const idx = containerNode.components.findIndex((c) => c.name === targetName);
+        if (idx !== -1) {
+          containerNode.components.splice(idx, 1);
+          this.retract(targetName);
+          negativeDelta.push(targetName);
+          recycledNodes.push(targetName);
+        }
+      }
+
+      if ((containerNode as any).connections) {
+        const conns = (containerNode as any).connections;
+        const remaining = conns.filter(
+          (conn: any) =>
+            !conn.from?.startsWith(`${targetName}.`) &&
+            !conn.to?.startsWith(`${targetName}.`) &&
+            conn.from !== targetName &&
+            conn.to !== targetName,
+        );
+        (containerNode as any).connections = remaining;
+      }
+    }
+
+    // 4. Pushout (H = D +_K R): Create new elements and rewire to preserved interface K
+    const positiveDelta: PolyglotNode[] = [];
+    const createdNodes: PolyglotNode[] = [];
+
+    for (const createSpec of createSpecs) {
+      if (createSpec.nodeType.toLowerCase().includes("connect")) {
+        const connObj = {
+          from: createSpec.bindings?.from,
+          to: createSpec.bindings?.to,
+        };
+        (containerNode as any).connections = (containerNode as any).connections || [];
+        (containerNode as any).connections.push(connObj);
+      } else {
+        const newComp: any = {
+          name: createSpec.bindings?.name || `created_${createSpec.nodeType}`,
+          typeSpecifier: createSpec.nodeType,
+          attributes: createSpec.bindings?.attributes || [],
+          value: createSpec.bindings?.value,
+        };
+        containerNode.components = containerNode.components || [];
+        containerNode.components.push(newComp);
+        createdNodes.push(newComp);
+        positiveDelta.push(newComp);
+      }
+    }
+
+    // 5. Coupled Target Synchronization
+    let targetSyncResult: any = undefined;
+    if (rule.targetSyncHandler) {
+      targetSyncResult = rule.targetSyncHandler(createdNodes[0], undefined);
+    }
+
+    return {
+      success: true,
+      ruleName: rule.name,
+      status: "SUCCESS",
+      recycledNodes,
+      createdNodes,
+      preservedNodes: preserveSpecs.map((s) => matchBindings[s.nodeType] || s.bindings?.name || s.nodeType),
+      negativeDelta,
+      positiveDelta,
+      targetSyncResult,
+    };
+  }
+}
+
+export interface DpoExecutionResult {
+  success: boolean;
+  ruleName: string;
+  status: "SUCCESS" | "DANGLING_EDGE_VIOLATION" | "IDENTIFICATION_VIOLATION" | "MATCH_FAILED";
+  recycledNodes?: string[];
+  createdNodes?: PolyglotNode[];
+  preservedNodes?: string[];
+  negativeDelta?: string[];
+  positiveDelta?: PolyglotNode[];
+  targetSyncResult?: any;
 }

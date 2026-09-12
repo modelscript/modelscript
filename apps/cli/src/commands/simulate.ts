@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { initBltWasm, type DAEBuilder } from "@modelscript/language/compiler";
-import { generateFmu } from "@modelscript/language/fmu";
-import {
-  simulateArena,
-  simulateArenaAsync,
-  snapshotMemory,
-  type MemorySnapshot,
-} from "@modelscript/language/simulator";
+import { generateFmu } from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
+import { initBltWasm, type DAEBuilder } from "@modelscript/runtime";
+import { simulateArena, simulateArenaAsync, snapshotMemory, type MemorySnapshot } from "@modelscript/simulate";
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -317,7 +312,7 @@ async function simulateWasm(
   let cvodeFlags = "";
   if (isCvode) {
     const sundialsInstall = path.resolve(
-      path.dirname(require.resolve("@modelscript/language/package.json")),
+      path.dirname(require.resolve("@modelscript/dsl/package.json")),
       ".build/sundials/install",
     );
     cvodeFlags = [

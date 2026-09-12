@@ -9,9 +9,9 @@
  *   3. Compares variable counts, equation counts, and prints a diff
  */
 
-import { ArenaDAEPrinter } from "@modelscript/language/compiler";
-import { StringWriter } from "@modelscript/language/utils";
+import { StringWriter } from "@modelscript/dsl/utils";
 import { createWasmParser } from "@modelscript/modelica/parser";
+import { ArenaDAEPrinter } from "@modelscript/runtime";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

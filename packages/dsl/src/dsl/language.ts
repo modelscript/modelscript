@@ -1885,6 +1885,102 @@ export function tggThreadRule<DomainNames extends string = string>(
 }
 
 // ---------------------------------------------------------------------------
+// In-Place DPO (Double Pushout) Graph Rewriting Declarative DSL
+// ---------------------------------------------------------------------------
+
+export interface DpoElementSpec {
+  action: "preserve" | "delete" | "create";
+  nodeType: string;
+  bindings?: Record<string, any>;
+}
+
+export interface DpoRuleBuilder {
+  preserve(nodeType: string, bindings?: Record<string, any>): any;
+  delete(nodeType: string, bindings?: Record<string, any>): any;
+  create(nodeType: string, bindings?: Record<string, any>): any;
+  danglingEdgePolicy(policy: "strict" | "cascade"): void;
+  where(constraintFn: (varProxy: (name: string) => string) => TGGConstraint[]): void;
+}
+
+export interface TGGDpoRuleOptions {
+  name: string;
+  domain: string;
+  elements: DpoElementSpec[];
+  danglingEdgePolicy?: "strict" | "cascade";
+  targetSyncDomain?: string;
+  targetSyncHandler?: (srcReq: any, targetBlock: any) => void;
+  where?: TGGConstraint[];
+}
+
+export class TGGDpoRuleFluentBuilder {
+  private _name: string;
+  private _domain: string = "";
+  private _elements: DpoElementSpec[] = [];
+  private _danglingEdgePolicy: "strict" | "cascade" = "strict";
+  private _targetSyncDomain?: string;
+  private _targetSyncHandler?: (srcReq: any, targetBlock: any) => void;
+  private _constraints: TGGConstraint[] = [];
+
+  constructor(name: string) {
+    this._name = name;
+  }
+
+  inPlace(domain: string, builder: (rule: DpoRuleBuilder) => void): this {
+    this._domain = domain;
+    const ruleHelper: DpoRuleBuilder = {
+      preserve: (nodeType, bindings) => {
+        const spec: DpoElementSpec = { action: "preserve", nodeType, bindings };
+        this._elements.push(spec);
+        return { nodeType, bindings, action: "preserve" };
+      },
+      delete: (nodeType, bindings) => {
+        const spec: DpoElementSpec = { action: "delete", nodeType, bindings };
+        this._elements.push(spec);
+        return { nodeType, bindings, action: "delete" };
+      },
+      create: (nodeType, bindings) => {
+        const spec: DpoElementSpec = { action: "create", nodeType, bindings };
+        this._elements.push(spec);
+        return { nodeType, bindings, action: "create" };
+      },
+      danglingEdgePolicy: (policy) => {
+        this._danglingEdgePolicy = policy;
+      },
+      where: (fn) => {
+        this._constraints.push(...fn((name: string) => `__var_${name}`));
+      },
+    };
+    builder(ruleHelper);
+    return this;
+  }
+
+  synchronizeTarget(domain: string, handler?: (srcReq: any, targetBlock: any) => void): this {
+    this._targetSyncDomain = domain;
+    this._targetSyncHandler = handler;
+    return this;
+  }
+
+  build(): TGGDpoRuleOptions {
+    return {
+      name: this._name,
+      domain: this._domain,
+      elements: this._elements,
+      danglingEdgePolicy: this._danglingEdgePolicy,
+      targetSyncDomain: this._targetSyncDomain,
+      targetSyncHandler: this._targetSyncHandler,
+      where: this._constraints,
+    };
+  }
+}
+
+/**
+ * Declares an in-place DPO (Double Pushout) algebraic graph rewriting rule.
+ */
+export function tggRewriteRule(name: string): TGGDpoRuleFluentBuilder {
+  return new TGGDpoRuleFluentBuilder(name);
+}
+
+// ---------------------------------------------------------------------------
 // Declarative Model Context Protocol (MCP) DSL (In-WASM Polyglot Engine)
 // ---------------------------------------------------------------------------
 

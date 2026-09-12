@@ -16,7 +16,7 @@
  * FMI 3.0 specification: https://fmi-standard.org/
  */
 
-import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "@modelscript/language/compiler";
+import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "@modelscript/runtime";
 
 // ── Public interface ──
 

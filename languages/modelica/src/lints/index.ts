@@ -1,4 +1,4 @@
-import type { CompilerLint } from "@modelscript/language";
+import type { CompilerLint } from "@modelscript/dsl";
 import { modelicaConnectionLints } from "./connections-streams.js";
 import { modelicaHierarchyLints } from "./hierarchy-variability.js";
 import { modelicaSyncLints } from "./synchronous-clocks.js";

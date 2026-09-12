@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "@modelscript/language/compiler";
+import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "@modelscript/runtime";
 import { extractStepAssembly } from "./assembly-extractor.js";
 import type { StepAssemblyModel } from "./physical-data.js";
 

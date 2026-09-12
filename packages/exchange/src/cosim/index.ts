@@ -18,7 +18,7 @@ export {
   type WasmCosimMethod,
   type WasmCouplingSpec,
   type WasmParticipantSpec,
-} from "@modelscript/language/runtime";
+} from "@modelscript/runtime";
 export * from "./coupling.js";
 export * from "./orchestrator.js";
 export * from "./participant.js";

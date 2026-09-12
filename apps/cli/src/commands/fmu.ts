@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { initBltWasm } from "@modelscript/language/compiler";
 import {
   type FmuArchiveOptions,
   FMI2_FUNCTIONS_H,
@@ -13,10 +12,11 @@ import {
   generateFmuAsSources,
   generateFmuCSources,
   generateFmuWasmSource,
-} from "@modelscript/language/fmu";
-import { ArenaSimulator } from "@modelscript/language/simulator";
+} from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
+import { initBltWasm } from "@modelscript/runtime";
+import { ArenaSimulator } from "@modelscript/simulate";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";

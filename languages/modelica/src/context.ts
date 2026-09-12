@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { FileSystem, Parser, Tree } from "@modelscript/dsl/utils";
 import {
   MODELSCRIPT_CAS_PACKAGE,
   printArenaDAE,
@@ -8,8 +9,7 @@ import {
   type HomotopyMode,
   type QueryEngine,
   type WorkspaceIndex,
-} from "@modelscript/language/compiler";
-import type { FileSystem, Parser, Tree } from "@modelscript/language/utils";
+} from "@modelscript/runtime";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ModelicaFlattener, type FlattenOptions } from "./flattener.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./po.js";

@@ -156,9 +156,9 @@ export default function Index() {
           </div>
           <div className="packages-grid">
             <PackageCard
-              name="@modelscript/language"
+              name="@modelscript/dsl"
               description="Polyglot modeling language runtime — parsing, semantic queries, DSL compilation, and diagram rendering."
-              install="npm install @modelscript/language"
+              install="npm install @modelscript/dsl"
             />
             <PackageCard
               name="@modelscript/cli"

@@ -38,26 +38,39 @@ export class ThreadHypergraph {
   count: u32;
   // Map composite key ((domainIdx as u64) << 32) | (nodeId as u64) -> threadSlot + 1
   nodeToThreadSlot: UnmanagedMap64;
+  threadIdToSlot: UnmanagedMap64;
 
   init(initialCapacity: u32 = 512): void {
     this.data = createChunkedUint32Array(initialCapacity * THREAD_STRIDE);
     this.count = 0;
     this.nodeToThreadSlot = changetype<UnmanagedMap64>(createMap64());
+    this.threadIdToSlot = changetype<UnmanagedMap64>(createMap64());
   }
 
   @inline
   createThread(threadId: u32, revision: u32 = 0): u32 {
+    let existingSlotPlusOne = this.threadIdToSlot.get(threadId as u64);
+    if (existingSlotPlusOne != 0) return existingSlotPlusOne - 1;
+
     let slot = this.count++;
     let offset = slot * THREAD_STRIDE;
     this.data.set(offset + THREAD_FIELD_ID, threadId);
     this.data.set(offset + THREAD_FIELD_MASK, 0);
     this.data.set(offset + THREAD_FIELD_STATUS, THREAD_STATUS_SYNCED);
     this.data.set(offset + THREAD_FIELD_REVISION, revision);
+    this.threadIdToSlot.set(threadId as u64, slot + 1);
 
     for (let d: u32 = 0; d < MAX_THREAD_DOMAINS; d++) {
       this.data.set(offset + THREAD_HEADER_WORDS + d, 0);
     }
     return slot;
+  }
+
+  @inline
+  findSlotByThreadId(threadId: u32): u32 {
+    let slotPlusOne = this.threadIdToSlot.get(threadId as u64);
+    if (slotPlusOne == 0) return 0xffffffff;
+    return slotPlusOne - 1;
   }
 
   @inline
@@ -173,4 +186,8 @@ export function thread_isStale(ptr: usize, slot: u32): u32 {
 
 export function thread_markRemoved(ptr: usize, slot: u32): void {
   changetype<ThreadHypergraph>(ptr).markRemoved(slot);
+}
+
+export function thread_findByThreadId(ptr: usize, threadId: u32): u32 {
+  return changetype<ThreadHypergraph>(ptr).findSlotByThreadId(threadId);
 }

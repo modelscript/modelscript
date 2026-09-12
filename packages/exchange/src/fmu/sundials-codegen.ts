@@ -4,7 +4,7 @@
  * SUNDIALS C glue-code generator.
  */
 
-import type { DAEBuilder } from "@modelscript/language/compiler";
+import type { DAEBuilder } from "@modelscript/runtime";
 import type { FmuResult } from "./fmi.js";
 import type { SolverOptions } from "./solver-options.js";
 import { formatCDouble } from "./transpiler-utils.js";

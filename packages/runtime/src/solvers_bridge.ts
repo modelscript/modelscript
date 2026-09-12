@@ -186,9 +186,7 @@ export class SolversBridge {
       return _sundialsDaeRunner(sundialsModule, this.wasmExports, daePtr, stateVarIds, derivEqIds, y0, options);
     }
     try {
-      const { simulateDaeWithSundials } = await (Function(
-        'return import("@modelscript/language/compiler")',
-      )() as Promise<any>);
+      const { simulateDaeWithSundials } = await (Function('return import("@modelscript/simulate")')() as Promise<any>);
       return simulateDaeWithSundials(sundialsModule, this.wasmExports, daePtr, stateVarIds, derivEqIds, y0, options);
     } catch {
       throw new Error(

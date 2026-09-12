@@ -1,4 +1,4 @@
-import { type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/language/compiler";
+import { type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/runtime";
 
 import { type Fmi3Variable } from "./fmi3.js";
 

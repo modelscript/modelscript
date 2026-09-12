@@ -808,6 +808,14 @@ export class DaeBuilder {
   }
 
   @inline
+  getExprRealValue(exprId: u32): f64 {
+    let lo = (this.getExprData().get(exprId * 4 + 1) as u64) & 0xffffffff;
+    let hi = (this.getExprData().get(exprId * 4 + 2) as u64) << 32;
+    let bits = hi | lo;
+    return f64.reinterpret_i64(bits as i64);
+  }
+
+  @inline
   addBinaryExpr(op: u16, left: u32, right: u32): u32 {
     return this.addExpression(ExprKind.Binary, op as u32, left, right);
   }

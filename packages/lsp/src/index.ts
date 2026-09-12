@@ -16,6 +16,7 @@ export * from "./LspContext.js";
 export * from "./providers/index.js";
 export * from "./requirements.js";
 export * from "./services/index.js";
+export * from "./utils/hook-extractor.js";
 export {
   LineIndex,
   type Edit,
@@ -27,3 +28,4 @@ export {
   type Point as TreePoint,
 } from "./utils/index.js";
 export * from "./vfs/index.js";
+export * from "./workers/worker-pool.js";

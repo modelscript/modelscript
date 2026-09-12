@@ -1,4 +1,4 @@
-import { createWasmParser } from "@modelscript/language";
+import { createWasmParser } from "@modelscript/dsl";
 import assert from "node:assert";
 import nodeFs from "node:fs";
 import path from "node:path";

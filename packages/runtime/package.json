@@ -73,5 +73,14 @@
     "assemblyscript": "^0.27.36",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
+  },
+  "nx": {
+    "targets": {
+      "build": {
+        "dependsOn": [
+          "@modelscript/dsl:build"
+        ]
+      }
+    }
   }
 }

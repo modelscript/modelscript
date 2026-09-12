@@ -58,6 +58,7 @@ import {
   TOKEN_UNKNOWN,
   peekChar,
   peekCharLen,
+  inputEncoding,
 } from "./parser";
 
 export const ERROR_COST_PER_SKIPPED_TREE: i32 = 100;
@@ -203,17 +204,42 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
 
         let errNode = wrapPoppedNodesInError(head, anc, pos);
         let firstPad: u32 = getNodePadding(errNode);
-        let baseStart = cleanHead != null ? cleanHead.pos : anc.pos;
-        let diagStart = baseStart + firstPad;
-        let diagEnd = pos > diagStart ? pos : diagStart + 1;
-        while (diagStart < diagEnd && (peekChar(diagStart) == 32 || peekChar(diagStart) == 9 || peekChar(diagStart) == 10 || peekChar(diagStart) == 13)) {
-          let cl = peekCharLen(diagStart);
-          diagStart += cl > 0 ? cl : 1;
+
+        // Check if any of the popped nodes between head and anc were actual error nodes
+        let hasAnyPoppedError = false;
+        let scanP: ParseHead | null = head;
+        while (scanP != null && scanP != anc) {
+          let sn = scanP.astNode;
+          if (sn != 0 && (getNodeType(sn) == NODE_TYPE_ERROR || (getNodeFlags(sn) & FLAG_HAS_ERROR) != 0)) {
+            hasAnyPoppedError = true;
+            break;
+          }
+          scanP = scanP.prev;
+        }
+
+        let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+        let diagStart: u32 = pos;
+        let diagEnd: u32 = pos + (lexLen > 0 ? lexLen : peekCharLen(pos));
+        if (hasAnyPoppedError) {
+          let baseStart = cleanHead != null ? cleanHead.pos : anc.pos;
+          diagStart = baseStart + firstPad;
+          diagEnd = pos > diagStart ? pos : diagStart + (lexLen > 0 ? lexLen : step);
+        }
+
+        while (diagStart < diagEnd) {
+          let ch = peekChar(diagStart);
+          if (ch == 32 || ch == 9 || ch == 10 || ch == 13 || ch == 0) {
+            let cl = peekCharLen(diagStart);
+            diagStart += cl > 0 ? cl : step;
+          } else {
+            break;
+          }
         }
         while (diagEnd > diagStart) {
-          let lastCh = peekChar(diagEnd - 1);
-          if (lastCh == 32 || lastCh == 9 || lastCh == 10 || lastCh == 13) {
-            diagEnd--;
+          let cl = peekCharLen(diagEnd - step);
+          let lastCh = peekChar(diagEnd - step);
+          if (lastCh == 32 || lastCh == 9 || lastCh == 10 || lastCh == 13 || lastCh == 0) {
+            diagEnd -= cl > 0 ? cl : step;
           } else {
             break;
           }

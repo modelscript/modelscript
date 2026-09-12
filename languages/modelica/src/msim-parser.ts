@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-function */
-import type { Edit, Parser, Point, SyntaxNode, Tree } from "@modelscript/language/utils";
+import type { Edit, Parser, Point, SyntaxNode, Tree } from "@modelscript/dsl/utils";
 
 function createSyntheticNode(
   type: string,

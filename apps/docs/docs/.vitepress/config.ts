@@ -1,14 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const modelicaGrammar = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, "../../../../extensions/vscode/syntaxes/modelica.tmLanguage.json"), "utf-8"),
-);
-modelicaGrammar.name = "modelica";
-modelicaGrammar.aliases = ["Modelica", "mo"];
+let modelicaGrammar: Record<string, unknown> = { name: "modelica", displayName: "modelica", patterns: [] };
+const grammarPath = path.resolve(__dirname, "../../../../dist/extension/syntaxes/modelica.tmLanguage.json");
+if (fs.existsSync(grammarPath)) {
+  try {
+    modelicaGrammar = JSON.parse(fs.readFileSync(grammarPath, "utf-8"));
+    modelicaGrammar.name = "modelica";
+    modelicaGrammar.aliases = ["Modelica", "mo"];
+  } catch {
+    // fallback
+  }
+}
 
 export default defineConfig({
   markdown: {

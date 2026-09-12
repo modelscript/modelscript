@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Dirent, FileSystem, Stats } from "@modelscript/language/utils";
+import type { Dirent, FileSystem, Stats } from "@modelscript/dsl/utils";
 import fs from "node:fs";
 import { basename, extname, join, resolve, sep } from "node:path";
 

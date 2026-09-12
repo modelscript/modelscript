@@ -639,8 +639,7 @@ globalThis.simpleHash = simpleHash;
 // Legacy handler — delegates to shared implementation
 // Custom request: get component properties on-demand (lazy loading for diagram panel)
 // Custom request: get CAD components for the webview
-// Cache for CAD components — avoids re-flattening on every keystroke.
-const cadComponentsCache = new Map<string, { version: string; data: any }>();
+import { cadComponentsCache } from "./handlers/diagramHandler.js";
 // ── Unified Diagram API (dispatch-based) ──
 
 // Lazy-initialized dispatch — backends require runtime state that isn't available at import time.

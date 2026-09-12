@@ -156,8 +156,22 @@
   },
   "dependencies": {
     "@modelscript/csv": "*",
-    "@modelscript/language": "^0.0.18",
+    "@modelscript/diagram": "*",
+    "@modelscript/dsl": "*",
+    "@modelscript/lsp": "*",
+    "@modelscript/runtime": "*",
+    "@modelscript/simulate": "*",
     "@svgdotjs/svg.js": "^3.2.4",
     "vscode-languageserver": "^9.0.1"
+  },
+  "nx": {
+    "targets": {
+      "build": {
+        "dependsOn": [
+          "@modelscript/dsl:build",
+          "@modelscript/runtime:build"
+        ]
+      }
+    }
   }
 }

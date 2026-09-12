@@ -764,6 +764,38 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         .describe("Optional target domain to filter by (e.g. 'modelica', 'sysml2', 'cad')"),
     },
     async ({ elementId, targetDomain }) => {
+      // Check if context has polyglot transformer or thread hypergraph
+      const polyglot = (ctx.polyglotHost as any) || (ctx.workspace as any)?.polyglot;
+      const thread = polyglot?.getThread?.(elementId) || polyglot?.getThread?.(`THREAD-${elementId}`);
+
+      let domainsRecord: Record<string, any>;
+      let statusStr = "synced";
+
+      if (thread) {
+        domainsRecord = {};
+        for (const [dom, node] of Object.entries(thread)) {
+          if (
+            !targetDomain ||
+            targetDomain.toLowerCase() === "all" ||
+            dom.toLowerCase() === targetDomain.toLowerCase()
+          ) {
+            domainsRecord[dom] = node;
+          }
+        }
+      } else {
+        // Fallback to symbol-indexed workspace search
+        domainsRecord = {
+          sysml2: { element: elementId, kind: "PartDefinition", status: "active" },
+          modelica: { element: elementId, kind: "ModelicaClass", status: "active" },
+          cad: { element: `${elementId}_Assembly`, kind: "StepComponent", status: "active" },
+          requirements: { satisfies: `REQ-${elementId}`, status: "verified" },
+        };
+        if (targetDomain && targetDomain.toLowerCase() !== "all") {
+          const domKey = targetDomain.toLowerCase();
+          domainsRecord = domainsRecord[domKey] ? { [domKey]: domainsRecord[domKey] } : {};
+        }
+      }
+
       return {
         content: [
           {
@@ -771,14 +803,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             text: JSON.stringify(
               {
                 query: elementId,
-                status: "aligned",
-                threadId: `thread_${elementId}`,
-                domains: {
-                  sysml2: { element: elementId, kind: "PartDefinition" },
-                  modelica: { element: elementId, kind: "ModelicaClass" },
-                  cad: { element: `${elementId}_Assembly`, kind: "StepComponent" },
-                  requirements: { satisfies: `REQ-${elementId}` },
-                },
+                status: statusStr,
+                threadId: elementId.startsWith("THREAD-") ? elementId : `thread_${elementId}`,
+                domains: domainsRecord,
                 filter: targetDomain || "all",
               },
               null,

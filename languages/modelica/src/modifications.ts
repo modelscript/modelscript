@@ -18,7 +18,7 @@
  * - Redeclaration modifications: `redeclare type T = NewType`
  */
 
-import type { SpecializationArgs } from "@modelscript/language/compiler";
+import type { SpecializationArgs } from "@modelscript/runtime";
 
 // ---------------------------------------------------------------------------
 // Modification Data Types

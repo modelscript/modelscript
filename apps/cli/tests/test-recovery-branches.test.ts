@@ -1,4 +1,4 @@
-import { buildParser, choice, field, language, repeat, semanticToken, seq } from "@modelscript/language";
+import { buildParser, choice, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";

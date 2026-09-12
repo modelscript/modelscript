@@ -1626,4 +1626,6 @@ export function disposeGraph(): void {
   }
 }
 
+export * from "./color-inversion.js";
 export * from "./polyglot-diagram-builder.js";
+export type { TopologyEdge, TopologyGraph, TopologyNode } from "./topology.js";

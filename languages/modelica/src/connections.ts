@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "@modelscript/language/compiler";
+import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "@modelscript/runtime";
 
 /**
  * Union-Find data structure with path compression and union-by-rank.
@@ -62,6 +62,16 @@ export class ModelicaPortBalancer {
    * equations into potential equalities, flow balance zero-sums, and stream equations.
    */
   static expandConnections(dae: DAEBuilder, options?: { omcCompatibility?: boolean; isOldFrontend?: boolean }): void {
+    if (dae.exports && typeof dae.exports.flattener_expandConnections === "function" && !options?.omcCompatibility) {
+      const wasmFlattener =
+        (dae as any)._wasmFlattener ??
+        ((dae as any)._wasmFlattener = dae.exports.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0);
+      if (wasmFlattener) {
+        const expanded = dae.exports.flattener_expandConnections(wasmFlattener, 0);
+        if (expanded > 0) return;
+      }
+    }
+
     const uf = new IntUnionFind(dae.varCount);
     const resolvedPairs: [number, number][] = [];
     const connectPairs: [number, number][] = [];
@@ -126,6 +136,10 @@ export class ModelicaPortBalancer {
       if (fromExact !== -1 && toExact !== -1) {
         uf.union(fromExact, toExact);
         resolvedPairs.push([fromExact, toExact]);
+        if (dae.exports?.flattener_unionSets) {
+          const wasmFlattener = (dae as any)._wasmFlattener;
+          if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, fromExact, toExact);
+        }
       } else {
         const fromDesc = prefixMap.get(fromStr);
         if (fromDesc) {
@@ -138,6 +152,10 @@ export class ModelicaPortBalancer {
             if (idxB !== -1) {
               uf.union(idxA, idxB);
               resolvedPairs.push([idxA, idxB]);
+              if (dae.exports?.flattener_unionSets) {
+                const wasmFlattener = (dae as any)._wasmFlattener;
+                if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
+              }
             }
           }
         }

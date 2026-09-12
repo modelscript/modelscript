@@ -45,7 +45,8 @@
     "lint": "eslint src --no-warn-ignored"
   },
   "dependencies": {
-    "@modelscript/language": "*",
+    "@modelscript/runtime": "*",
+    "@modelscript/simulate": "*",
     "aedes": "^1.0.2",
     "aedes-server-factory": "^0.2.1",
     "fflate": "^0.8.2",

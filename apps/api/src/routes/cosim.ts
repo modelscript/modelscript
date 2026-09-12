@@ -7,8 +7,8 @@
  * MQTT participant discovery, variable couplings, and orchestrator control.
  */
 
-import type { CosimMqttClient } from "@modelscript/language/cosim";
-import { FmuJsParticipant, FmuStorage, Orchestrator, SessionManager } from "@modelscript/language/cosim";
+import type { CosimMqttClient } from "@modelscript/exchange/cosim";
+import { FmuJsParticipant, FmuStorage, Orchestrator, SessionManager } from "@modelscript/exchange/cosim";
 import express from "express";
 
 const sessionManager = new SessionManager();

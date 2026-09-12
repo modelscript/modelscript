@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildParser, bundleExtension, type ExtensionGeneratedFile } from "@modelscript/language";
+import { buildParser, bundleExtension, type ExtensionGeneratedFile } from "@modelscript/dsl";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

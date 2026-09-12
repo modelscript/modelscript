@@ -578,32 +578,33 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   // 1. Normalize default polyglot languages
   const builtInLanguages: any[] = [];
   const dynamicImport = (m: string): Promise<any> => Function("m", "return import(m)")(m);
+  const pkgPrefix = "@modelscript" + "/";
   try {
-    const modelicaLang = (await dynamicImport("@modelscript/modelica/language")).default;
+    const modelicaLang = (await dynamicImport(pkgPrefix + "modelica/language")).default;
     builtInLanguages.push(modelicaLang);
   } catch {
     // optional
   }
   try {
-    const sysml2Lang = (await dynamicImport("@modelscript/sysml2/language")).default;
+    const sysml2Lang = (await dynamicImport(pkgPrefix + "sysml2/language")).default;
     builtInLanguages.push(sysml2Lang);
   } catch {
     // optional
   }
   try {
-    const stepLang = (await dynamicImport("@modelscript/step/language")).default;
+    const stepLang = (await dynamicImport(pkgPrefix + "step/language")).default;
     builtInLanguages.push(stepLang);
   } catch {
     // optional
   }
   try {
-    const owl2Lang = (await dynamicImport("@modelscript/owl2/language")).default;
+    const owl2Lang = (await dynamicImport(pkgPrefix + "owl2/language")).default;
     builtInLanguages.push(owl2Lang);
   } catch {
     // optional
   }
   try {
-    const csvLang = (await dynamicImport("@modelscript/csv/language")).default;
+    const csvLang = (await dynamicImport(pkgPrefix + "csv/language")).default;
     builtInLanguages.push(csvLang);
   } catch {
     // optional

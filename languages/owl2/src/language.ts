@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/language";
+import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
 
 export const owl2Language = language({
   name: "owl2",

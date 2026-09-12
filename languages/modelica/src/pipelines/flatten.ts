@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { CodeGraph, f64, i32, u16, u32, u8 } from "@modelscript/language";
+import type { CodeGraph, f64, i32, u16, u32, u8 } from "@modelscript/dsl";
 
 function matchesName(graph: CodeGraph, strId: u32, target: string): boolean {
   if (strId == 0) return false;

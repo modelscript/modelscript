@@ -1,4 +1,4 @@
-import type { CodeGraph, u16, u32 } from "@modelscript/language";
+import type { CodeGraph, u16, u32 } from "@modelscript/dsl";
 import {
   choice,
   domain,
@@ -15,7 +15,7 @@ import {
   tggRule,
   tggTypeMap,
   token,
-} from "@modelscript/language";
+} from "@modelscript/dsl";
 import { modelicaFlattenerWasmCode } from "./flattener-wasm.js";
 import { getDottedVariableType, getVariableTypeInClass } from "./lints/helpers.js";
 import { allModelicaLints } from "./lints/index.js";

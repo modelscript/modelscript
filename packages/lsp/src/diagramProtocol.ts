@@ -1,2 +1,2 @@
-// Re-export canonical diagram protocol types from @modelscript/language/diagram
+// Re-export canonical diagram protocol types from @modelscript/diagram/protocol
 export * from "@modelscript/diagram/protocol";

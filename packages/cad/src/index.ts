@@ -53,3 +53,11 @@ export { compileAssemblyToStep, compileToStep } from "./step-compiler.js";
 
 // CSG OpenCascade Worker
 export { CSGWorker, type CSGExecutionGraph, type CSGNode } from "./worker.js";
+
+// Parameter Inversion & ROM Load Pipeline
+export {
+  ParameterInversionEngine,
+  type InversionResult as CadInversionResult,
+  type ParameterInversionUpdate,
+} from "./parameter-inversion.js";
+export { RomLoadPipeline, type FeaBoundaryCondition, type TransientPeakLoad } from "./rom_load_pipeline.js";

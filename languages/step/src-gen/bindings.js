@@ -971,26 +971,39 @@ export class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot) {
+  getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
-    const numElements = this.exports.lsp_getDiagnostics(astRoot);
+    const encoding =
+      typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
+    const encStep = encoding === 1 ? 2 : 1;
+    const rStartByte = rangeStart * encStep;
+    const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
+    const numElements =
+      rangeEnd > 0 && typeof this.exports.lsp_getDiagnosticsRange === "function"
+        ? this.exports.lsp_getDiagnosticsRange(astRoot, rStartByte, rEndByte)
+        : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    // Pre-calculate all needed nodePtr offsets in a single O(N) pass
-    // to prevent O(N^2) lockups caused by repeated WASM lsp_findNodeOffset calls.
+    // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges.
+    // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
     const requiredNodePtrs = new Set();
     for (let i = 0; i < numElements * 7; i += 7) {
-      const arg0 = memory[(dirPtr >> 2) + i + 3];
-      const arg1 = memory[(dirPtr >> 2) + i + 4];
-      const arg2 = memory[(dirPtr >> 2) + i + 5];
-      const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (arg0) requiredNodePtrs.add(arg0);
-      if (arg1) requiredNodePtrs.add(arg1);
-      if (arg2) requiredNodePtrs.add(arg2);
-      if (arg3) requiredNodePtrs.add(arg3);
+      const startByte = memory[(dirPtr >> 2) + i];
+      const endByte = memory[(dirPtr >> 2) + i + 1];
+      const lintId = memory[(dirPtr >> 2) + i + 2];
+      if (lintId > 0 && startByte === 0 && endByte === 0) {
+        const arg0 = memory[(dirPtr >> 2) + i + 3];
+        const arg1 = memory[(dirPtr >> 2) + i + 4];
+        const arg2 = memory[(dirPtr >> 2) + i + 5];
+        const arg3 = memory[(dirPtr >> 2) + i + 6];
+        if (arg0) requiredNodePtrs.add(arg0);
+        if (arg1) requiredNodePtrs.add(arg1);
+        if (arg2) requiredNodePtrs.add(arg2);
+        if (arg3) requiredNodePtrs.add(arg3);
+      }
     }
     const offsetCache = new Map();
     if (requiredNodePtrs.size > 0 && astRoot) {
@@ -1021,7 +1034,7 @@ export class LspFacade {
       stackOffsets[0] = getNodePad(astRoot);
       stackTop = 1;
       let iterations = 0;
-      while (stackTop > 0 && ++iterations < 100000) {
+      while (stackTop > 0 && ++iterations < 2000000) {
         stackTop--;
         const current = stackPtrs[stackTop];
         const nodeStart = stackOffsets[stackTop];
@@ -1071,7 +1084,13 @@ export class LspFacade {
       const arg1 = memory[(dirPtr >> 2) + i + 4];
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (arg0 > 0 && offsetCache.has(arg0)) {
+      if (
+        lintId > 0 &&
+        startByte === 0 &&
+        endByte === 0 &&
+        arg0 > 0 &&
+        offsetCache.has(arg0)
+      ) {
         startByte = offsetCache.get(arg0);
         const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
         endByte =
@@ -1318,9 +1337,21 @@ export class LspFacade {
       const encoding = this.getInputEncoding();
       const charDiv = encoding === 1 ? 2 : 1;
       // Prevent diagnostic bleed: if a diagnostic ends exactly at the start of the next line,
-      // clamp it to the end of the previous line so VS Code doesn't render it under the next token.
+      // clamp it to the end of the previous line so Monaco/VS Code doesn't render it under the next token.
       if (endPos.line > startPos.line && endPos.character === 0) {
-        endPos = { line: endPos.line - 1, character: startPos.character + 1 };
+        const prevLine = endPos.line - 1;
+        const prevLineStart = lineStarts[prevLine] || 0;
+        const currLineStart =
+          lineStarts[endPos.line] || prevLineStart + charDiv;
+        const prevLineCharLen = Math.max(
+          0,
+          Math.floor((currLineStart - prevLineStart) / charDiv) - 1,
+        );
+        const clampedChar =
+          prevLine === startPos.line
+            ? Math.max(startPos.character + 1, prevLineCharLen)
+            : prevLineCharLen;
+        endPos = { line: prevLine, character: clampedChar };
       }
       const range = {
         start: startPos,
@@ -3389,7 +3420,7 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri) {
+  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri, oldRoot) {
     const getInputBuf =
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
@@ -3414,17 +3445,30 @@ export class LspFacade {
       this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
     this.currentInputLength = text.length;
-    const prevAstRoot = this.getDocumentRoot(uri);
-    let baseRoot = prevAstRoot;
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = text.length;
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    let baseRoot =
+      oldRoot !== undefined && oldRoot !== 0
+        ? oldRoot
+        : prevAstRoot !== 0
+          ? prevAstRoot
+          : this.lastAstRoot;
+    let editStartByte = editStart * 2;
+    let editOldEndByte = editOldEnd * 2;
+    let editNewEndByte = editNewEnd * 2;
+    if (
+      baseRoot === 0 ||
+      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+    ) {
+      editNewEndByte = lenBytes;
       baseRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
     }
     const newAstRoot = this.exports.parse(
       baseRoot,
-      editStart,
-      editOldEnd,
-      editNewEnd,
+      editStartByte,
+      editOldEndByte,
+      editNewEndByte,
     );
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
@@ -4229,7 +4273,7 @@ export class SyntaxNode {
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      if ((flags & 128) !== 0) return true; // FLAG_HAS_ERROR
+      return (flags & 128) !== 0; // FLAG_HAS_ERROR
     }
     for (const kid of this.children) {
       if (kid.hasError()) return true;
@@ -4238,7 +4282,11 @@ export class SyntaxNode {
   }
   /** Finds the smallest syntax node covering the character range [start, end]. */
   descendantForIndex(start, end = start) {
-    if (start < this.startIndex || end > this.endIndex) return null;
+    if (
+      this.parent !== null &&
+      (start < this.startIndex || end > this.endIndex)
+    )
+      return null;
     for (const kid of this.children) {
       if (start >= kid.startIndex && end <= kid.endIndex) {
         return kid.descendantForIndex(start, end);
@@ -4458,7 +4506,14 @@ export class Tree {
   rootPtr;
   sourceCode;
   lineStarts;
-  mem32;
+  _mem32 = null;
+  get mem32() {
+    const buf = this.facade.wasmMemory.buffer;
+    if (!this._mem32 || this._mem32.buffer !== buf) {
+      this._mem32 = new Uint32Array(buf);
+    }
+    return this._mem32;
+  }
   constructor(facade, rootPtr, sourceCode) {
     this.facade = facade;
     this.rootPtr = rootPtr;
@@ -4468,22 +4523,30 @@ export class Tree {
     for (let i = 0; i < sourceCode.length; i++) {
       if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * 2);
     }
-    this.mem32 = new Uint32Array(facade.wasmMemory.buffer);
   }
   /** Gets the root node of the syntax tree. */
   get rootNode() {
     if (!this.rootPtr) throw new Error("Null root pointer");
-    const typeFlags = this.mem32[this.rootPtr / 4];
+    const mem32 = this.mem32;
+    const typeFlags = mem32[this.rootPtr / 4];
     const typeId = typeFlags & 0x03ff;
-    const envHashPadding = this.mem32[(this.rootPtr + 4) / 4];
+    const envHashPadding = mem32[(this.rootPtr + 4) / 4];
     const rawPad = typeFlags >>> 22;
     const isFat = (envHashPadding >>> 23) & 1;
     const pad =
       isFat && this.facade.exports.getFatPaddingPtr
-        ? this.mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
+        ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
         : rawPad;
     const len = envHashPadding & 0x007fffff;
-    return new SyntaxNode(this, this.rootPtr, 0, null, pad, len, typeId);
+    return new SyntaxNode(
+      this,
+      this.rootPtr,
+      0,
+      null,
+      pad,
+      len > 0 ? len : this.sourceCode.length * 2,
+      typeId,
+    );
   }
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
   walk() {
@@ -4528,7 +4591,14 @@ export class TreeSitterParser {
   getLanguage() {
     return this.languageBinding;
   }
-  parse(source, oldTree = null) {
+  parse(
+    source,
+    oldTree = null,
+    editStart = 0,
+    editOldEnd = 0,
+    editNewEnd = 0,
+    uri,
+  ) {
     if (!this.languageBinding) {
       throw new Error("Language not set on Parser. Call setLanguage() first.");
     }
@@ -4544,11 +4614,32 @@ export class TreeSitterParser {
     }
     const code =
       typeof source === "string" ? source : new TextDecoder().decode(source);
-    const astRoot = facade.parse(code);
+    const oldRoot = oldTree
+      ? (oldTree.rootPtr ?? oldTree.rootNode?.id ?? oldTree.rootNode?.ptr ?? 0)
+      : 0;
+    const astRoot = facade.parse(
+      code,
+      editStart,
+      editOldEnd,
+      editNewEnd,
+      uri,
+      oldRoot,
+    );
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
   }
-  reset() {}
+  reset() {
+    if (this.languageBinding) {
+      if (typeof this.languageBinding.resetParser === "function") {
+        this.languageBinding.resetParser();
+      } else if (
+        this.languageBinding.exports &&
+        typeof this.languageBinding.exports.resetParser === "function"
+      ) {
+        this.languageBinding.exports.resetParser();
+      }
+    }
+  }
 }
 export const WasmLanguageBinding = LspFacade;
 export default WasmLanguageBinding;
@@ -4787,9 +4878,333 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
   if (syntaxNames && syntaxNames.length > 0) {
     facade.syntaxNames = syntaxNames;
   }
+  if (facade.exports.configEnableMultiFile) {
+    facade.exports.configEnableMultiFile.value = 1;
+  }
+  if (facade.exports.lsp_setConfigEnableMultiFile) {
+    facade.exports.lsp_setConfigEnableMultiFile(true);
+  }
   const parser = new TreeSitterParser();
   parser.setLanguage(facade);
   return { facade, parser };
 }
 
 export const semanticLegend = { tokenTypes: [], tokenModifiers: [] };
+
+export const SyntaxKind = {
+  ERROR: 0,
+  Trailer: 46,
+  OMITTEDPARAMETER: 55,
+  OMITTED_PARAMETER: 55,
+  DERIVEDPARAMETER: 56,
+  DERIVED_PARAMETER: 56,
+  ENTITYINSTANCENAME: 57,
+  ENTITY_INSTANCE_NAME: 57,
+  KEYWORD: 58,
+  INTEGER: 59,
+  REAL: 60,
+  STRING: 61,
+  ENUMERATION: 62,
+  BLOCKCOMMENT: 63,
+  BLOCK_COMMENT: 63,
+  StepFile: 31,
+  HeaderSection: 32,
+  HeaderEntity: 33,
+  DataSection: 34,
+  EntityInstance: 35,
+  Record: 36,
+  _Record: 36,
+  SimpleRecord: 37,
+  ComplexRecord: 38,
+  ParameterList: 39,
+  Parameter: 40,
+  _Parameter: 40,
+  EntityReference: 41,
+  TypedParameter: 42,
+  ListValue: 43,
+  START: 44,
+  _START: 44,
+  EOF: 1023,
+};
+
+export const FieldId = {
+  HeaderEntity: 1,
+  headerEntity: 1,
+  Keyword: 2,
+  keyword: 2,
+  Parameters: 3,
+  parameters: 3,
+  ScopeName: 4,
+  scopeName: 4,
+  Entity: 5,
+  entity: 5,
+  Id: 6,
+  id: 6,
+  Record: 7,
+  record: 7,
+  Target: 8,
+  target: 8,
+};
+
+/** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
+export function normalizeToken(token) {
+  if (!token) return "";
+  return token.charCodeAt(0) === 34 && token.charCodeAt(token.length - 1) === 34
+    ? token.slice(1, -1)
+    : token;
+}
+
+/** Returns the normalized type of a CST node (stripped of quotes). */
+export function cstKind(node) {
+  return node ? normalizeToken(node.type) : "";
+}
+export function isStepFile(node) {
+  return node != null && node.typeId === 31;
+}
+export function isHeaderSection(node) {
+  return node != null && node.typeId === 32;
+}
+export function isHeaderEntity(node) {
+  return node != null && node.typeId === 33;
+}
+export function isDataSection(node) {
+  return node != null && node.typeId === 34;
+}
+export function isEntityInstance(node) {
+  return node != null && node.typeId === 35;
+}
+export function isSimpleRecord(node) {
+  return node != null && node.typeId === 37;
+}
+export function isComplexRecord(node) {
+  return node != null && node.typeId === 38;
+}
+export function isParameterList(node) {
+  return node != null && node.typeId === 39;
+}
+export function isEntityReference(node) {
+  return node != null && node.typeId === 41;
+}
+export function isTypedParameter(node) {
+  return node != null && node.typeId === 42;
+}
+export function isListValue(node) {
+  return node != null && node.typeId === 43;
+}
+export function isTrailer(node) {
+  return node != null && node.typeId === 46;
+}
+export function isOMITTEDPARAMETER(node) {
+  return node != null && node.typeId === 55;
+}
+export function isDERIVEDPARAMETER(node) {
+  return node != null && node.typeId === 56;
+}
+export function isENTITYINSTANCENAME(node) {
+  return node != null && node.typeId === 57;
+}
+export function isKEYWORD(node) {
+  return node != null && node.typeId === 58;
+}
+export function isINTEGER(node) {
+  return node != null && node.typeId === 59;
+}
+export function isREAL(node) {
+  return node != null && node.typeId === 60;
+}
+export function isSTRING(node) {
+  return node != null && node.typeId === 61;
+}
+export function isENUMERATION(node) {
+  return node != null && node.typeId === 62;
+}
+export function isBLOCKCOMMENT(node) {
+  return node != null && node.typeId === 63;
+}
+export const Cst = {
+  kind: cstKind,
+  normalize: normalizeToken,
+  StepFile: {
+    typeId: 31,
+    type: "StepFile",
+    is(node) { return node != null && node.typeId === 31; },
+  },
+  HeaderSection: {
+    typeId: 32,
+    type: "HeaderSection",
+    is(node) { return node != null && node.typeId === 32; },
+    headerEntity(node) {
+      return node ? (node.childForFieldId(1) || node.childForFieldName("headerEntity")) : null;
+    },
+    headerEntityList(node) {
+      return node ? node.childrenForFieldName("headerEntity") : [];
+    },
+  },
+  HeaderEntity: {
+    typeId: 33,
+    type: "HeaderEntity",
+    is(node) { return node != null && node.typeId === 33; },
+    keyword(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("keyword")) : null;
+    },
+    keywordList(node) {
+      return node ? node.childrenForFieldName("keyword") : [];
+    },
+    parameters(node) {
+      return node ? (node.childForFieldId(3) || node.childForFieldName("parameters")) : null;
+    },
+    parametersList(node) {
+      return node ? node.childrenForFieldName("parameters") : [];
+    },
+  },
+  DataSection: {
+    typeId: 34,
+    type: "DataSection",
+    is(node) { return node != null && node.typeId === 34; },
+    scopeName(node) {
+      return node ? (node.childForFieldId(4) || node.childForFieldName("scopeName")) : null;
+    },
+    scopeNameList(node) {
+      return node ? node.childrenForFieldName("scopeName") : [];
+    },
+    entity(node) {
+      return node ? (node.childForFieldId(5) || node.childForFieldName("entity")) : null;
+    },
+    entityList(node) {
+      return node ? node.childrenForFieldName("entity") : [];
+    },
+  },
+  EntityInstance: {
+    typeId: 35,
+    type: "EntityInstance",
+    is(node) { return node != null && node.typeId === 35; },
+    id(node) {
+      return node ? (node.childForFieldId(6) || node.childForFieldName("id")) : null;
+    },
+    idList(node) {
+      return node ? node.childrenForFieldName("id") : [];
+    },
+    record(node) {
+      return node ? (node.childForFieldId(7) || node.childForFieldName("record")) : null;
+    },
+    recordList(node) {
+      return node ? node.childrenForFieldName("record") : [];
+    },
+  },
+  SimpleRecord: {
+    typeId: 37,
+    type: "SimpleRecord",
+    is(node) { return node != null && node.typeId === 37; },
+    keyword(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("keyword")) : null;
+    },
+    keywordList(node) {
+      return node ? node.childrenForFieldName("keyword") : [];
+    },
+    parameters(node) {
+      return node ? (node.childForFieldId(3) || node.childForFieldName("parameters")) : null;
+    },
+    parametersList(node) {
+      return node ? node.childrenForFieldName("parameters") : [];
+    },
+  },
+  ComplexRecord: {
+    typeId: 38,
+    type: "ComplexRecord",
+    is(node) { return node != null && node.typeId === 38; },
+  },
+  ParameterList: {
+    typeId: 39,
+    type: "ParameterList",
+    is(node) { return node != null && node.typeId === 39; },
+  },
+  EntityReference: {
+    typeId: 41,
+    type: "EntityReference",
+    is(node) { return node != null && node.typeId === 41; },
+    target(node) {
+      return node ? (node.childForFieldId(8) || node.childForFieldName("target")) : null;
+    },
+    targetList(node) {
+      return node ? node.childrenForFieldName("target") : [];
+    },
+  },
+  TypedParameter: {
+    typeId: 42,
+    type: "TypedParameter",
+    is(node) { return node != null && node.typeId === 42; },
+    keyword(node) {
+      return node ? (node.childForFieldId(2) || node.childForFieldName("keyword")) : null;
+    },
+    keywordList(node) {
+      return node ? node.childrenForFieldName("keyword") : [];
+    },
+    parameters(node) {
+      return node ? (node.childForFieldId(3) || node.childForFieldName("parameters")) : null;
+    },
+    parametersList(node) {
+      return node ? node.childrenForFieldName("parameters") : [];
+    },
+  },
+  ListValue: {
+    typeId: 43,
+    type: "ListValue",
+    is(node) { return node != null && node.typeId === 43; },
+    parameters(node) {
+      return node ? (node.childForFieldId(3) || node.childForFieldName("parameters")) : null;
+    },
+    parametersList(node) {
+      return node ? node.childrenForFieldName("parameters") : [];
+    },
+  },
+  Trailer: {
+    typeId: 46,
+    type: "Trailer",
+    is(node) { return node != null && node.typeId === 46; },
+  },
+  OMITTEDPARAMETER: {
+    typeId: 55,
+    type: "OMITTED_PARAMETER",
+    is(node) { return node != null && node.typeId === 55; },
+  },
+  DERIVEDPARAMETER: {
+    typeId: 56,
+    type: "DERIVED_PARAMETER",
+    is(node) { return node != null && node.typeId === 56; },
+  },
+  ENTITYINSTANCENAME: {
+    typeId: 57,
+    type: "ENTITY_INSTANCE_NAME",
+    is(node) { return node != null && node.typeId === 57; },
+  },
+  KEYWORD: {
+    typeId: 58,
+    type: "KEYWORD",
+    is(node) { return node != null && node.typeId === 58; },
+  },
+  INTEGER: {
+    typeId: 59,
+    type: "INTEGER",
+    is(node) { return node != null && node.typeId === 59; },
+  },
+  REAL: {
+    typeId: 60,
+    type: "REAL",
+    is(node) { return node != null && node.typeId === 60; },
+  },
+  STRING: {
+    typeId: 61,
+    type: "STRING",
+    is(node) { return node != null && node.typeId === 61; },
+  },
+  ENUMERATION: {
+    typeId: 62,
+    type: "ENUMERATION",
+    is(node) { return node != null && node.typeId === 62; },
+  },
+  BLOCKCOMMENT: {
+    typeId: 63,
+    type: "BLOCK_COMMENT",
+    is(node) { return node != null && node.typeId === 63; },
+  },
+};

@@ -1,4 +1,4 @@
-import { invertSvgColors } from "@modelscript/language/utils";
+import { invertSvgColors } from "@modelscript/diagram";
 import React, { useEffect, useReducer, useRef } from "react";
 import { useTheme } from "../theme";
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Range } from "@modelscript/language/utils";
+import type { Range } from "@modelscript/dsl/utils";
 
 /**
  * Severity level for a diagnostic.

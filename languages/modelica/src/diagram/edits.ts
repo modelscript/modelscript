@@ -8,7 +8,7 @@
 type ModelicaClassInstance = any;
 import { Range, TextEdit } from "vscode-languageserver";
 
-import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/language/diagram/protocol";
+import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
 
 // ── Placement edits (move / resize / rotate) ──
 

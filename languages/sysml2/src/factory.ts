@@ -5,17 +5,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  LSPBridge,
-  PositionIndex,
-  QueryEngine,
-  WorkspaceIndex,
-  extractIndexerHooks,
-  extractQueryHooksMap,
-  extractRefHooks,
-  type VerificationResult,
-} from "@modelscript/language/compiler";
-import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/language/diagram/builder";
+import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
+import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
+import { LSPBridge, PositionIndex } from "@modelscript/lsp";
+import { QueryEngine, WorkspaceIndex, type VerificationResult } from "@modelscript/runtime";
 import { sysml2Language } from "./language.js";
 
 const indexerHooks = extractIndexerHooks(sysml2Language) ?? (globalThis as any).__sysml2IndexerHooksFallback ?? [];

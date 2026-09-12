@@ -8,3 +8,11 @@ export * from "./codegen/index.js";
 
 // Language Bindings (WASM / JS wrapper generator)
 export * from "./bindings/javascript/index.js";
+
+// Core Utilities & FileSystem Abstractions
+export * as utils from "./utils/index.js";
+
+// Language Tools (I18n, Semantic Diff)
+export * from "./tools/index.js";
+
+export type CSTNode = any;

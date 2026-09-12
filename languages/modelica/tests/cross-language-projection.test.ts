@@ -1,4 +1,4 @@
-import { compileTGGRules } from "@modelscript/language";
+import { compileTGGRules } from "@modelscript/dsl";
 import assert from "node:assert";
 import sysml2Config from "../../sysml2/src/language.js";
 import modelicaConfig from "../src/language.js";

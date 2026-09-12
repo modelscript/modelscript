@@ -1,5 +1,5 @@
 import CSV from "@modelscript/csv/parser";
-import { createWasmParser } from "@modelscript/language";
+import { createWasmParser } from "@modelscript/dsl";
 import assert from "node:assert";
 import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";

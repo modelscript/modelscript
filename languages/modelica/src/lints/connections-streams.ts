@@ -1,4 +1,4 @@
-import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
+import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/dsl";
 import {
   findClassByName,
   findComponentClauseForIdent,

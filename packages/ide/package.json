@@ -10,7 +10,9 @@
     "lint": "eslint src --no-warn-ignored"
   },
   "dependencies": {
-    "@modelscript/language": "*",
+    "@modelscript/diagram": "*",
+    "@modelscript/dsl": "*",
+    "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",
     "@modelscript/step": "*",

@@ -155,13 +155,14 @@ export class WasmStringPool implements IStringInterner {
   }
 
   private _ensureScratch(size: number): number {
-    if (!this.wasmExports?.alloc || !this.wasmExports?.memory) return 0;
+    const allocFn = this.wasmExports?.alloc ?? this.wasmExports?.dae_alloc ?? this.wasmExports?.arena_alloc;
+    if (!allocFn || !this.wasmExports?.memory) return 0;
     if (this.scratchCapacity < size) {
       if (this.scratchPtr && this.wasmExports.free) {
         this.wasmExports.free(this.scratchPtr);
       }
       this.scratchCapacity = Math.max(size, 256);
-      this.scratchPtr = this.wasmExports.alloc(this.scratchCapacity);
+      this.scratchPtr = allocFn(this.scratchCapacity);
     }
     return this.scratchPtr;
   }
@@ -243,21 +244,30 @@ export class WasmStringPool implements IStringInterner {
     }
 
     // WASM memory resolution if active
-    if (
-      this.wasmExports?.stringPool_getOffset &&
-      this.wasmExports?.stringPool_getLength &&
-      this.poolPtr &&
-      this.wasmExports?.memory
-    ) {
-      const offset = this.wasmExports.stringPool_getOffset(this.poolPtr, id);
+    if (this.wasmExports?.stringPool_getLength && this.poolPtr && this.wasmExports?.memory) {
       const len = this.wasmExports.stringPool_getLength(this.poolPtr, id);
       if (len > 0) {
-        const mem = new Uint8Array(this.wasmExports.memory.buffer, offset, len);
-        const str = this.utf8Decoder.decode(mem);
-        this.reverse[id] = str;
-        this.table.set(str, id);
-        if (str.length < 16) this.shortTable.set(str, id);
-        return str;
+        if (this.wasmExports.stringPool_copyOut) {
+          const scratch = this._ensureScratch(len);
+          if (scratch) {
+            this.wasmExports.stringPool_copyOut(this.poolPtr, id, scratch);
+            const mem = new Uint8Array(this.wasmExports.memory.buffer, scratch, len);
+            const str = this.utf8Decoder.decode(mem);
+            this.reverse[id] = str;
+            this.table.set(str, id);
+            if (str.length < 16) this.shortTable.set(str, id);
+            return str;
+          }
+        }
+        if (this.wasmExports.stringPool_getOffset) {
+          const offset = this.wasmExports.stringPool_getOffset(this.poolPtr, id);
+          const mem = new Uint8Array(this.wasmExports.memory.buffer, offset, len);
+          const str = this.utf8Decoder.decode(mem);
+          this.reverse[id] = str;
+          this.table.set(str, id);
+          if (str.length < 16) this.shortTable.set(str, id);
+          return str;
+        }
       }
     }
 

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { UnifiedWorkspace, VerificationRunner } from "@modelscript/language/compiler";
-import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/language/fmu";
-import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/language/simulator";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
+import { UnifiedWorkspace, VerificationRunner } from "@modelscript/runtime";
+import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/simulate";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
@@ -65,7 +65,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     Context.registerParser(".mo", modelicaParser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
-    const { createWasmParser } = await import("@modelscript/language");
+    const { createWasmParser } = await import("@modelscript/dsl");
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");

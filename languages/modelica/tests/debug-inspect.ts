@@ -22,7 +22,7 @@ async function main() {
 
   const rootClassId = queryDB.byName("inn")[0].id;
   const dae = flattener.flattenClass(rootClassId);
-  const { ArenaDAEPrinter } = await import("@modelscript/language/compiler");
+  const { ArenaDAEPrinter } = await import("@modelscript/runtime");
   console.log("Printed output:\n" + ArenaDAEPrinter.print(dae));
 }
 

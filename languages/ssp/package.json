@@ -37,6 +37,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@modelscript/language": "*"
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
   }
 }

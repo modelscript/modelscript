@@ -307,7 +307,11 @@ export declare class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot: number): Diagnostic[];
+  getDiagnostics(
+    astRoot: number,
+    rangeStart?: number,
+    rangeEnd?: number,
+  ): Diagnostic[];
   /**
    * Retrieves semantic tokens for syntax highlighting.
    * Returns a raw `Uint32Array` mapped directly from WASM memory for speed.
@@ -839,6 +843,7 @@ export declare class LspFacade {
     editOldEnd?: number,
     editNewEnd?: number,
     uri?: string,
+    oldRoot?: number,
   ): number;
   /**
    * Compares two ASTs generated before and after an edit, and emits
@@ -1037,7 +1042,8 @@ export declare class Tree {
   readonly rootPtr: number;
   readonly sourceCode: string;
   lineStarts: number[];
-  mem32: Uint32Array;
+  private _mem32;
+  get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
   /** Gets the root node of the syntax tree. */
   get rootNode(): SyntaxNode;
@@ -1055,7 +1061,14 @@ export declare class TreeSitterParser {
   private languageBinding;
   setLanguage(language: any): void;
   getLanguage(): any;
-  parse(source: string | Uint8Array, oldTree?: Tree | null): Tree | null;
+  parse(
+    source: string | Uint8Array,
+    oldTree?: Tree | null,
+    editStart?: number,
+    editOldEnd?: number,
+    editNewEnd?: number,
+    uri?: string,
+  ): Tree | null;
   reset(): void;
 }
 export declare const WasmLanguageBinding: typeof LspFacade;
@@ -1133,3 +1146,283 @@ export declare function createWasmParser(
 }>;
 
 export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+
+export enum SyntaxKind {
+  ERROR = 0,
+  Trailer = 46,
+  OMITTEDPARAMETER = 55,
+  OMITTED_PARAMETER = 55,
+  DERIVEDPARAMETER = 56,
+  DERIVED_PARAMETER = 56,
+  ENTITYINSTANCENAME = 57,
+  ENTITY_INSTANCE_NAME = 57,
+  KEYWORD = 58,
+  INTEGER = 59,
+  REAL = 60,
+  STRING = 61,
+  ENUMERATION = 62,
+  BLOCKCOMMENT = 63,
+  BLOCK_COMMENT = 63,
+  StepFile = 31,
+  HeaderSection = 32,
+  HeaderEntity = 33,
+  DataSection = 34,
+  EntityInstance = 35,
+  Record = 36,
+  _Record = 36,
+  SimpleRecord = 37,
+  ComplexRecord = 38,
+  ParameterList = 39,
+  Parameter = 40,
+  _Parameter = 40,
+  EntityReference = 41,
+  TypedParameter = 42,
+  ListValue = 43,
+  START = 44,
+  _START = 44,
+  EOF = 1023,
+}
+
+export enum FieldId {
+  HeaderEntity = 1,
+  headerEntity = 1,
+  Keyword = 2,
+  keyword = 2,
+  Parameters = 3,
+  parameters = 3,
+  ScopeName = 4,
+  scopeName = 4,
+  Entity = 5,
+  entity = 5,
+  Id = 6,
+  id = 6,
+  Record = 7,
+  record = 7,
+  Target = 8,
+  target = 8,
+}
+
+/** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
+export declare function normalizeToken(token: string | null | undefined): string;
+
+/** Returns the normalized type of a CST node (stripped of quotes). */
+export declare function cstKind(node: SyntaxNode | null | undefined): string;
+export interface StepFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StepFile;
+}
+export declare function isStepFile(node: SyntaxNode | null | undefined): node is StepFileNode;
+export interface HeaderSectionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.HeaderSection;
+}
+export declare function isHeaderSection(node: SyntaxNode | null | undefined): node is HeaderSectionNode;
+export interface HeaderEntityNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.HeaderEntity;
+}
+export declare function isHeaderEntity(node: SyntaxNode | null | undefined): node is HeaderEntityNode;
+export interface DataSectionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DataSection;
+}
+export declare function isDataSection(node: SyntaxNode | null | undefined): node is DataSectionNode;
+export interface EntityInstanceNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EntityInstance;
+}
+export declare function isEntityInstance(node: SyntaxNode | null | undefined): node is EntityInstanceNode;
+export interface SimpleRecordNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SimpleRecord;
+}
+export declare function isSimpleRecord(node: SyntaxNode | null | undefined): node is SimpleRecordNode;
+export interface ComplexRecordNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComplexRecord;
+}
+export declare function isComplexRecord(node: SyntaxNode | null | undefined): node is ComplexRecordNode;
+export interface ParameterListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ParameterList;
+}
+export declare function isParameterList(node: SyntaxNode | null | undefined): node is ParameterListNode;
+export interface EntityReferenceNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EntityReference;
+}
+export declare function isEntityReference(node: SyntaxNode | null | undefined): node is EntityReferenceNode;
+export interface TypedParameterNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TypedParameter;
+}
+export declare function isTypedParameter(node: SyntaxNode | null | undefined): node is TypedParameterNode;
+export interface ListValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ListValue;
+}
+export declare function isListValue(node: SyntaxNode | null | undefined): node is ListValueNode;
+export interface TrailerNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Trailer;
+}
+export declare function isTrailer(node: SyntaxNode | null | undefined): node is TrailerNode;
+export interface OMITTEDPARAMETERNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.OMITTEDPARAMETER;
+}
+export declare function isOMITTEDPARAMETER(node: SyntaxNode | null | undefined): node is OMITTEDPARAMETERNode;
+export interface DERIVEDPARAMETERNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DERIVEDPARAMETER;
+}
+export declare function isDERIVEDPARAMETER(node: SyntaxNode | null | undefined): node is DERIVEDPARAMETERNode;
+export interface ENTITYINSTANCENAMENode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ENTITYINSTANCENAME;
+}
+export declare function isENTITYINSTANCENAME(node: SyntaxNode | null | undefined): node is ENTITYINSTANCENAMENode;
+export interface KEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.KEYWORD;
+}
+export declare function isKEYWORD(node: SyntaxNode | null | undefined): node is KEYWORDNode;
+export interface INTEGERNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.INTEGER;
+}
+export declare function isINTEGER(node: SyntaxNode | null | undefined): node is INTEGERNode;
+export interface REALNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.REAL;
+}
+export declare function isREAL(node: SyntaxNode | null | undefined): node is REALNode;
+export interface STRINGNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.STRING;
+}
+export declare function isSTRING(node: SyntaxNode | null | undefined): node is STRINGNode;
+export interface ENUMERATIONNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ENUMERATION;
+}
+export declare function isENUMERATION(node: SyntaxNode | null | undefined): node is ENUMERATIONNode;
+export interface BLOCKCOMMENTNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BLOCKCOMMENT;
+}
+export declare function isBLOCKCOMMENT(node: SyntaxNode | null | undefined): node is BLOCKCOMMENTNode;
+export namespace Cst {
+  export function kind(node: SyntaxNode | null | undefined): string;
+  export function normalize(token: string | null | undefined): string;
+  export const StepFile: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StepFileNode;
+  };
+  export const HeaderSection: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is HeaderSectionNode;
+    headerEntity(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    headerEntityList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const HeaderEntity: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is HeaderEntityNode;
+    keyword(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    keywordList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    parameters(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    parametersList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DataSection: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DataSectionNode;
+    scopeName(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    scopeNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    entity(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    entityList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const EntityInstance: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EntityInstanceNode;
+    id(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    idList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    record(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    recordList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const SimpleRecord: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SimpleRecordNode;
+    keyword(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    keywordList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    parameters(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    parametersList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ComplexRecord: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComplexRecordNode;
+  };
+  export const ParameterList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ParameterListNode;
+  };
+  export const EntityReference: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EntityReferenceNode;
+    target(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    targetList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const TypedParameter: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TypedParameterNode;
+    keyword(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    keywordList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    parameters(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    parametersList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ListValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ListValueNode;
+    parameters(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    parametersList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Trailer: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TrailerNode;
+  };
+  export const OMITTEDPARAMETER: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is OMITTEDPARAMETERNode;
+  };
+  export const DERIVEDPARAMETER: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DERIVEDPARAMETERNode;
+  };
+  export const ENTITYINSTANCENAME: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ENTITYINSTANCENAMENode;
+  };
+  export const KEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is KEYWORDNode;
+  };
+  export const INTEGER: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is INTEGERNode;
+  };
+  export const REAL: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is REALNode;
+  };
+  export const STRING: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is STRINGNode;
+  };
+  export const ENUMERATION: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ENUMERATIONNode;
+  };
+  export const BLOCKCOMMENT: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BLOCKCOMMENTNode;
+  };
+}

@@ -41,7 +41,7 @@
     }
   },
   "release": {
-    "projects": ["packages/language", "languages/modelica", "apps/cli"],
+    "projects": ["packages/dsl", "packages/runtime", "languages/modelica", "apps/cli"],
     "version": {
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",
