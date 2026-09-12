@@ -249,6 +249,104 @@ export class PolyglotTransformer {
     return current;
   }
 
+  /** Shadow complement store preserving unmapped fields during asymmetric projection */
+  private shadowComplements = new Map<string, Record<string, any>>();
+
+  /** Set of retracted node identifiers (DBSP negative deltas) */
+  private retractedNodes = new Set<string>();
+
+  /** N-Ary digital thread alignments: threadId -> domain projections */
+  private threads = new Map<string, Record<string, PolyglotNode>>();
+
+  /** CST source ranges for live bi-directional IDE spans */
+  private cstSpans = new Map<string, { startByte: number; endByte: number; line: number; column: number }>();
+
+  /**
+   * Stores unmapped shadow complement data for an asymmetric transformation.
+   */
+  storeComplement(id: string, data: Record<string, any>): void {
+    this.shadowComplements.set(id, data);
+  }
+
+  /**
+   * Retrieves shadow complement data for an asymmetric transformation.
+   */
+  getComplement(id: string): Record<string, any> | undefined {
+    return this.shadowComplements.get(id);
+  }
+
+  /**
+   * Marks a node as retracted (DBSP negative delta / deletion).
+   */
+  retract(id: string): boolean {
+    this.retractedNodes.add(id);
+    return true;
+  }
+
+  /**
+   * Checks if a node has been retracted.
+   */
+  isRetracted(id: string): boolean {
+    return this.retractedNodes.has(id);
+  }
+
+  /**
+   * Registers an N-ary digital thread alignment linking multiple domain nodes.
+   */
+  registerThread(threadId: string, domainNodes: Record<string, PolyglotNode>): void {
+    this.threads.set(threadId, domainNodes);
+  }
+
+  /**
+   * Retrieves an N-ary digital thread alignment.
+   */
+  getThread(threadId: string): Record<string, PolyglotNode> | undefined {
+    return this.threads.get(threadId);
+  }
+
+  /**
+   * Transforms an N-ary digital thread into source code for the specified target domain.
+   */
+  transformThread(threadId: string, targetLanguage: string): string {
+    const thread = this.threads.get(threadId);
+    if (!thread) {
+      throw new Error(`Digital thread '${threadId}' not found`);
+    }
+    const node = thread[targetLanguage.toLowerCase()];
+    if (!node) {
+      throw new Error(`No projection for domain '${targetLanguage}' in thread '${threadId}'`);
+    }
+    return this.transform(node, targetLanguage);
+  }
+
+  /**
+   * Associates an AST element with its concrete source byte spans.
+   */
+  setCstSpan(id: string, span: { startByte: number; endByte: number; line: number; column: number }): void {
+    this.cstSpans.set(id, span);
+  }
+
+  /**
+   * Retrieves the source byte span for an element.
+   */
+  getCstSpan(id: string): { startByte: number; endByte: number; line: number; column: number } | undefined {
+    return this.cstSpans.get(id);
+  }
+
+  /**
+   * Resolves a multi-master conflict using physical boundary constraints.
+   */
+  resolveConflictPhysics(id: string, physMin: number, physMax: number): void {
+    const item = this.conflicts.get(id);
+    if (!item) return;
+    const midpoint = (Number(item.sourceVal) + Number(item.targetVal)) * 0.5;
+    let candidate = midpoint;
+    if (candidate < physMin) candidate = physMin;
+    if (candidate > physMax) candidate = physMax;
+    item.resolved = candidate;
+    item.isResolved = true;
+  }
+
   /**
    * Transforms a generic polyglot node graph into source code for the specified target language.
    *
@@ -258,6 +356,9 @@ export class PolyglotTransformer {
    * @throws Error if no emitter is registered for `targetLanguage`.
    */
   transform(node: PolyglotNode, targetLanguage: string): string {
+    if (this.isRetracted(node.name)) {
+      return `/* Node '${node.name}' retracted */`;
+    }
     const emitter = this.emitters.get(targetLanguage.toLowerCase());
     if (!emitter) {
       throw new Error(`No polyglot emitter registered for target language '${targetLanguage}'`);

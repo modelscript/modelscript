@@ -81,8 +81,45 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
       if (r1.sourceNodeType === r2.sourceNodeType && r1.sourceNodeType !== "UnknownNode") {
         const overlappingSourceKeys = Object.keys(r1.sourceBindings).filter((k) => k in r2.sourceBindings);
 
-        // If priorities are equal and they match the same source type
-        if (r1.priority === r2.priority) {
+        // Check for semantic guard / literal disjointness
+        let hasDisjointBinding = false;
+        for (const k of overlappingSourceKeys) {
+          const val1 = r1.sourceBindings[k];
+          const val2 = r2.sourceBindings[k];
+          // If bindings are literal values (boolean, number, or literal string) and differ
+          if (
+            val1 !== undefined &&
+            val2 !== undefined &&
+            val1 !== val2 &&
+            !(typeof val1 === "string" && val1.startsWith("__var_")) &&
+            !(typeof val2 === "string" && val2.startsWith("__var_"))
+          ) {
+            hasDisjointBinding = true;
+            break;
+          }
+        }
+
+        // Check for mutually exclusive NACs
+        const r1Nacs = r1.constraints.filter((c) => c.kind === "not").map((c) => String(c.args[0]));
+        const r2Nacs = r2.constraints.filter((c) => c.kind === "not").map((c) => String(c.args[0]));
+        let hasDisjointNac = false;
+        for (const nac of r1Nacs) {
+          if (r2.sourceNodeType === nac || Object.values(r2.sourceBindings).some((v) => String(v) === nac)) {
+            hasDisjointNac = true;
+            break;
+          }
+        }
+        for (const nac of r2Nacs) {
+          if (r1.sourceNodeType === nac || Object.values(r1.sourceBindings).some((v) => String(v) === nac)) {
+            hasDisjointNac = true;
+            break;
+          }
+        }
+
+        // If guards or bindings are disjoint, rules are confluent and do not conflict
+        if (hasDisjointBinding || hasDisjointNac) {
+          // Confluent via semantic guard
+        } else if (r1.priority === r2.priority) {
           // Check if target outputs differ
           if (r1.targetNodeType !== r2.targetNodeType) {
             conflicts.push({

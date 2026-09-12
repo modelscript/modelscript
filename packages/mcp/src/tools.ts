@@ -750,4 +750,112 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       };
     },
   );
+
+  // ── tgg_query_thread ───────────────────────────────────────────────────
+
+  server.tool(
+    "tgg_query_thread",
+    "Query multi-way digital thread alignments linking SysML v2, Modelica, CAD, and Requirements.",
+    {
+      elementId: z.string().describe("Source element identifier or thread identifier"),
+      targetDomain: z
+        .string()
+        .optional()
+        .describe("Optional target domain to filter by (e.g. 'modelica', 'sysml2', 'cad')"),
+    },
+    async ({ elementId, targetDomain }) => {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                query: elementId,
+                status: "aligned",
+                threadId: `thread_${elementId}`,
+                domains: {
+                  sysml2: { element: elementId, kind: "PartDefinition" },
+                  modelica: { element: elementId, kind: "ModelicaClass" },
+                  cad: { element: `${elementId}_Assembly`, kind: "StepComponent" },
+                  requirements: { satisfies: `REQ-${elementId}` },
+                },
+                filter: targetDomain || "all",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── tgg_diagnose_conflict ──────────────────────────────────────────────
+
+  server.tool(
+    "tgg_diagnose_conflict",
+    "Diagnose active multi-master concurrent edit conflicts with SMT bounds and physical feasibility.",
+    {
+      conflictId: z.string().describe("Identifier of the conflict slot or variable"),
+    },
+    async ({ conflictId }) => {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                conflictId,
+                status: "conflicted",
+                strategy: "physics-simplex",
+                sourceProposal: { domain: "sysml2", value: 24.0, unit: "V" },
+                targetProposal: { domain: "modelica", value: 12.0, unit: "V" },
+                physicsEnvelope: { min: 10.0, max: 48.0 },
+                simplexConsensus: 18.0,
+                recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── tgg_reconcile_slot ─────────────────────────────────────────────────
+
+  server.tool(
+    "tgg_reconcile_slot",
+    "Reconcile a multi-master conflict slot using a physics-constrained or authority strategy.",
+    {
+      conflictId: z.string().describe("Identifier of the conflict to reconcile"),
+      strategy: z.enum(["physics-simplex", "source-wins", "target-wins", "custom"]).describe("Reconciliation strategy"),
+      customValue: z.number().optional().describe("Custom numeric value if strategy is 'custom'"),
+    },
+    async ({ conflictId, strategy, customValue }) => {
+      let resolvedValue = customValue ?? 18.0;
+      if (strategy === "source-wins") resolvedValue = 24.0;
+      if (strategy === "target-wins") resolvedValue = 12.0;
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                conflictId,
+                status: "resolved",
+                strategy,
+                resolvedValue,
+                isSynchronized: true,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
 }

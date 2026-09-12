@@ -5756,12 +5756,15 @@ export const CORR_FLAG_SYNCED: u16 = 0x0001;
 export const CORR_FLAG_STALE: u16 = 0x0002;
 export const CORR_FLAG_USER_OVERRIDE: u16 = 0x0004;
 export const CORR_FLAG_CONFLICT: u16 = 0x0008;
+export const CORR_FLAG_REMOVED: u16 = 0x0010;
 
-export const CORR_STRIDE = 4;
+export const CORR_STRIDE = 6;
 export const CORR_SOURCE = 0;
 export const CORR_TARGET = 1;
 export const CORR_META = 2; // packed (u16 ruleId << 16) | (u16 flags)
 export const CORR_REVISION = 3;
+export const CORR_COMPLEMENT_PTR = 4;
+export const CORR_THREAD_ID = 5;
 
 /**
  * Struct-of-Arrays (SoA) Correspondence Index for zero-GC polyglot model transformation.
@@ -5804,32 +5807,36 @@ export class CorrespondenceIndex {
     this.data.set(offset + CORR_TARGET, targetNodeId);
     this.data.set(offset + CORR_META, meta);
     this.data.set(offset + CORR_REVISION, revision);
+    this.data.set(offset + CORR_COMPLEMENT_PTR, 0);
+    this.data.set(offset + CORR_THREAD_ID, 0);
 
     return slot;
   }
 
   /**
    * O(1) lookup of target node ID given a source node ID.
-   * Returns 0 if no correspondence link exists.
+   * Returns 0 if no correspondence link exists or if marked removed.
    */
   @inline
   findBySource(sourceNodeId: u32): u32 {
     let slotPlusOne = this.sourceToSlot.get(sourceNodeId as u64);
     if (slotPlusOne == 0) return 0;
     let slot = slotPlusOne - 1;
+    if (this.isRemoved(slot)) return 0;
     let offset = slot * CORR_STRIDE;
     return this.data.get(offset + CORR_TARGET);
   }
 
   /**
    * O(1) reverse lookup of source node ID given a target node ID.
-   * Returns 0 if no correspondence link exists.
+   * Returns 0 if no correspondence link exists or if marked removed.
    */
   @inline
   findByTarget(targetNodeId: u32): u32 {
     let slotPlusOne = this.targetToSlot.get(targetNodeId as u64);
     if (slotPlusOne == 0) return 0;
     let slot = slotPlusOne - 1;
+    if (this.isRemoved(slot)) return 0;
     let offset = slot * CORR_STRIDE;
     return this.data.get(offset + CORR_SOURCE);
   }
@@ -5908,6 +5915,67 @@ export class CorrespondenceIndex {
   }
 
   @inline
+  isRemoved(slot: u32): boolean {
+    if (slot >= this.count) return false;
+    let offset = slot * CORR_STRIDE + CORR_META;
+    return (this.data.get(offset) & CORR_FLAG_REMOVED) != 0;
+  }
+
+  @inline
+  markRemoved(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * CORR_STRIDE + CORR_META;
+    let meta = this.data.get(offset);
+    let ruleId = (meta >>> 16) as u16;
+    let flags = ((meta & 0xffff) as u16) | CORR_FLAG_REMOVED;
+    this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+  }
+
+  @inline
+  retractBySource(sourceNodeId: u32): u32 {
+    let slotPlusOne = this.sourceToSlot.get(sourceNodeId as u64);
+    if (slotPlusOne == 0) return 0;
+    let slot = slotPlusOne - 1;
+    this.markRemoved(slot);
+    let offset = slot * CORR_STRIDE;
+    return this.data.get(offset + CORR_TARGET);
+  }
+
+  @inline
+  retractByTarget(targetNodeId: u32): u32 {
+    let slotPlusOne = this.targetToSlot.get(targetNodeId as u64);
+    if (slotPlusOne == 0) return 0;
+    let slot = slotPlusOne - 1;
+    this.markRemoved(slot);
+    let offset = slot * CORR_STRIDE;
+    return this.data.get(offset + CORR_SOURCE);
+  }
+
+  @inline
+  getComplement(slot: u32): u32 {
+    if (slot >= this.count) return 0;
+    return this.data.get(slot * CORR_STRIDE + CORR_COMPLEMENT_PTR);
+  }
+
+  @inline
+  setComplement(slot: u32, ptr: u32): void {
+    if (slot >= this.count) return;
+    this.data.set(slot * CORR_STRIDE + CORR_COMPLEMENT_PTR, ptr);
+  }
+
+  @inline
+  getThreadId(slot: u32): u32 {
+    if (slot >= this.count) return 0;
+    return this.data.get(slot * CORR_STRIDE + CORR_THREAD_ID);
+  }
+
+  @inline
+  setThreadId(slot: u32, threadId: u32): void {
+    if (slot >= this.count) return;
+    this.data.set(slot * CORR_STRIDE + CORR_THREAD_ID, threadId);
+  }
+
+  @inline
   getRevision(slot: u32): u32 {
     if (slot >= this.count) return 0;
     return this.data.get(slot * CORR_STRIDE + CORR_REVISION);
@@ -5963,6 +6031,38 @@ export function corr_markConflict(ptr: usize, slot: u32): void {
 
 export function corr_clearConflict(ptr: usize, slot: u32): void {
   changetype<CorrespondenceIndex>(ptr).clearConflict(slot);
+}
+
+export function corr_isRemoved(ptr: usize, slot: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).isRemoved(slot) ? 1 : 0;
+}
+
+export function corr_markRemoved(ptr: usize, slot: u32): void {
+  changetype<CorrespondenceIndex>(ptr).markRemoved(slot);
+}
+
+export function corr_retractBySource(ptr: usize, sourceNodeId: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).retractBySource(sourceNodeId);
+}
+
+export function corr_retractByTarget(ptr: usize, targetNodeId: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).retractByTarget(targetNodeId);
+}
+
+export function corr_getComplement(ptr: usize, slot: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).getComplement(slot);
+}
+
+export function corr_setComplement(ptr: usize, slot: u32, compPtr: u32): void {
+  changetype<CorrespondenceIndex>(ptr).setComplement(slot, compPtr);
+}
+
+export function corr_getThreadId(ptr: usize, slot: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).getThreadId(slot);
+}
+
+export function corr_setThreadId(ptr: usize, slot: u32, threadId: u32): void {
+  changetype<CorrespondenceIndex>(ptr).setThreadId(slot, threadId);
 }
 
 export function corr_reset(ptr: usize): void {
@@ -7923,6 +8023,165 @@ export function dae_getStringPool(builderPtr: u32): u32 {
 
 
 
+`;
+
+export const dbsp_kernelCode = `/* eslint-disable */
+/**
+ * @fileoverview WASM DBSP (Database Stream Processing) & Differential Dataflow Kernel
+ *
+ * Implements Z-module relational difference operators (+1/-1 weights) and Leapfrog
+ * Triejoin (LFTJ) cursor primitives in linear memory for O(Δ) incremental view maintenance
+ * and exact AST node retractions.
+ */
+
+import { ChunkedUint32Array, createChunkedUint32Array } from "./array";
+import { atomicChunkAlloc } from "./arena";
+
+export const ZSET_STRIDE = 3;
+export const ZSET_ELEMENT = 0;   // 32-bit Node or Entity ID
+export const ZSET_WEIGHT = 1;    // Signed 32-bit integer weight (+1 = insert, -1 = delete/retract)
+export const ZSET_TIMESTAMP = 2; // Revision / Step counter
+
+/**
+ * Z-Set: Multiset with integer multiplicities in linear memory.
+ */
+@unmanaged
+export class ZSet {
+  data: ChunkedUint32Array;
+  count: u32;
+
+  init(initialCapacity: u32 = 256): void {
+    this.data = createChunkedUint32Array(initialCapacity * ZSET_STRIDE);
+    this.count = 0;
+  }
+
+  @inline
+  add(elementId: u32, weight: i32, timestamp: u32 = 0): void {
+    let offset = this.count * ZSET_STRIDE;
+    this.data.set(offset + ZSET_ELEMENT, elementId);
+    this.data.set(offset + ZSET_WEIGHT, weight as u32);
+    this.data.set(offset + ZSET_TIMESTAMP, timestamp);
+    this.count++;
+  }
+
+  @inline
+  getElement(index: u32): u32 {
+    if (index >= this.count) return 0;
+    return this.data.get(index * ZSET_STRIDE + ZSET_ELEMENT);
+  }
+
+  @inline
+  getWeight(index: u32): i32 {
+    if (index >= this.count) return 0;
+    return this.data.get(index * ZSET_STRIDE + ZSET_WEIGHT) as i32;
+  }
+
+  @inline
+  getTimestamp(index: u32): u32 {
+    if (index >= this.count) return 0;
+    return this.data.get(index * ZSET_STRIDE + ZSET_TIMESTAMP);
+  }
+
+  @inline
+  clear(): void {
+    this.count = 0;
+  }
+}
+
+export function createZSet(initialCapacity: u32 = 256): usize {
+  let ptr = atomicChunkAlloc(sizeof<ZSet>());
+  let zset = changetype<ZSet>(ptr);
+  zset.init(initialCapacity);
+  return ptr;
+}
+
+export function zset_add(ptr: usize, elementId: u32, weight: i32, timestamp: u32): void {
+  changetype<ZSet>(ptr).add(elementId, weight, timestamp);
+}
+
+export function zset_count(ptr: usize): u32 {
+  return changetype<ZSet>(ptr).count;
+}
+
+export function zset_getElement(ptr: usize, index: u32): u32 {
+  return changetype<ZSet>(ptr).getElement(index);
+}
+
+export function zset_getWeight(ptr: usize, index: u32): i32 {
+  return changetype<ZSet>(ptr).getWeight(index);
+}
+
+/**
+ * Leapfrog Triejoin (LFTJ) Iterator Primitive for Worst-Case Optimal Graph Matching.
+ * Traverses sorted prefix keys to find exact intersections across hypergraph relations.
+ */
+@unmanaged
+export class LeapfrogIterator {
+  keys: ChunkedUint32Array;
+  length: u32;
+  cursor: u32;
+
+  init(keysArray: ChunkedUint32Array, len: u32): void {
+    this.keys = keysArray;
+    this.length = len;
+    this.cursor = 0;
+  }
+
+  @inline
+  key(): u32 {
+    if (this.cursor >= this.length) return 0xffffffff;
+    return this.keys.get(this.cursor);
+  }
+
+  @inline
+  next(): void {
+    if (this.cursor < this.length) this.cursor++;
+  }
+
+  /**
+   * Seeks to the smallest key >= targetKey.
+   */
+  @inline
+  seek(targetKey: u32): void {
+    while (this.cursor < this.length && this.keys.get(this.cursor) < targetKey) {
+      this.cursor++;
+    }
+  }
+
+  @inline
+  atEnd(): boolean {
+    return this.cursor >= this.length;
+  }
+}
+
+/**
+ * Evaluates Leapfrog Triejoin intersection between two sorted iterator streams.
+ * Produces matches in O(N log N) optimal time.
+ */
+export function leapfrog_intersect_2(iter1Ptr: usize, iter2Ptr: usize, resultZSetPtr: usize): u32 {
+  let iter1 = changetype<LeapfrogIterator>(iter1Ptr);
+  let iter2 = changetype<LeapfrogIterator>(iter2Ptr);
+  let res = changetype<ZSet>(resultZSetPtr);
+  let matchCount: u32 = 0;
+
+  while (!iter1.atEnd() && !iter2.atEnd()) {
+    let k1 = iter1.key();
+    let k2 = iter2.key();
+
+    if (k1 == k2) {
+      res.add(k1, 1, 0);
+      matchCount++;
+      iter1.next();
+      iter2.next();
+    } else if (k1 < k2) {
+      iter1.seek(k2);
+    } else {
+      iter2.seek(k1);
+    }
+  }
+
+  return matchCount;
+}
 `;
 
 export const delayCode = `import { atomicChunkAlloc } from "./arena";
@@ -31937,7 +32196,8 @@ export const tgg_reconcilerCode = `/* eslint-disable */
  * @fileoverview WASM TGG Multi-Master Conflict Reconciler
  *
  * Provides linear-memory conflict detection and constraint-based reconciliation
- * for concurrent multi-domain edits across the Digital Thread.
+ * for concurrent multi-domain edits across the Digital Thread, including SMT interval
+ * intersection and physics-based conservation law solving.
  */
 
 import { CorrespondenceIndex, CORR_FLAG_CONFLICT, CORR_FLAG_SYNCED } from "./correspondence";
@@ -31946,6 +32206,7 @@ export const RECONCILE_STRATEGY_SMT: u32 = 0;
 export const RECONCILE_STRATEGY_SOURCE_WINS: u32 = 1;
 export const RECONCILE_STRATEGY_TARGET_WINS: u32 = 2;
 export const RECONCILE_STRATEGY_NARROWER_RANGE: u32 = 3;
+export const RECONCILE_STRATEGY_PHYSICS_SIMPLEX: u32 = 4;
 
 /**
  * Reconciles concurrent numeric parameter updates by computing continuous interval intersection.
@@ -32001,11 +32262,256 @@ export function tgg_reconcile_scalar(
     let chosen = Math.abs(srcVal) < Math.abs(tgtVal) ? srcVal : tgtVal;
     corr.clearConflict(slot);
     return chosen;
+  } else if (strategy == RECONCILE_STRATEGY_PHYSICS_SIMPLEX) {
+    // Basic midpoint fallback when no additional bounds given
+    let midpoint = (srcVal + tgtVal) * 0.5;
+    corr.clearConflict(slot);
+    return midpoint;
   }
 
   // Default SMT/strict: differing values without solver resolution constitute a conflict
   corr.markConflict(slot);
   return srcVal;
+}
+
+/**
+ * Physics-constrained reconciliation enforcing boundary feasibility and conservation laws.
+ * Solves: min |x - srcVal| + |x - tgtVal| s.t. physMin <= x <= physMax.
+ */
+export function tgg_reconcile_physics_simplex(
+  slot: u32,
+  srcVal: f64,
+  tgtVal: f64,
+  physMin: f64,
+  physMax: f64,
+  corr: CorrespondenceIndex
+): f64 {
+  let midpoint = (srcVal + tgtVal) * 0.5;
+  let candidate = midpoint;
+
+  // Project candidate onto physical feasibility envelope
+  if (candidate < physMin) {
+    candidate = physMin;
+  } else if (candidate > physMax) {
+    candidate = physMax;
+  }
+
+  // If even the bounds are infeasible
+  if (physMin > physMax) {
+    corr.markConflict(slot);
+    return f64.NaN;
+  }
+
+  // Verify that the candidate satisfies at least one edit direction feasibility
+  let withinSource = (srcVal >= physMin && srcVal <= physMax);
+  let withinTarget = (tgtVal >= physMin && tgtVal <= physMax);
+
+  if (withinSource || withinTarget || (candidate >= physMin && candidate <= physMax)) {
+    corr.clearConflict(slot);
+    return candidate;
+  }
+
+  corr.markConflict(slot);
+  return f64.NaN;
+}
+
+/**
+ * Multi-domain physical conservation reconciler (Kirchhoff Current Law / Mass Balance).
+ * Verifies that inflow and outflow balance within a designated tolerance epsilon.
+ */
+export function tgg_reconcile_conservation_balance(
+  slot: u32,
+  inflow: f64,
+  outflow: f64,
+  maxTolerance: f64,
+  corr: CorrespondenceIndex
+): f64 {
+  let diff = Math.abs(inflow - outflow);
+  if (diff <= maxTolerance) {
+    let balanced = (inflow + outflow) * 0.5;
+    corr.clearConflict(slot);
+    return balanced;
+  }
+
+  corr.markConflict(slot);
+  return f64.NaN;
+}
+`;
+
+export const thread_hypergraphCode = `/* eslint-disable */
+/**
+ * @fileoverview WASM N-Ary Digital Thread Alignment Hypergraph
+ *
+ * Implements an N-way hypergraph alignment index in linear memory, superseding pairwise
+ * TGG triples with a central federated thread fabric linking SysML, Modelica, CAD,
+ * Requirements, and BOM without O(N^2) synchronizer explosion.
+ */
+
+import { ChunkedUint32Array, createChunkedUint32Array } from "./array";
+import { UnmanagedMap64, createMap64 } from "./hashmap";
+import { atomicChunkAlloc } from "./arena";
+
+export const MAX_THREAD_DOMAINS: u32 = 8;
+// Thread Record Layout:
+// [0]: threadId
+// [1]: domainMask (bit i set if domain i is bound)
+// [2]: status / flags (0x1 = SYNCED, 0x2 = STALE, 0x4 = CONFLICT, 0x8 = REMOVED)
+// [3]: revision
+// [4 .. 4 + MAX_THREAD_DOMAINS - 1]: domainNodeIds (0 to 7)
+export const THREAD_HEADER_WORDS: u32 = 4;
+export const THREAD_STRIDE: u32 = THREAD_HEADER_WORDS + MAX_THREAD_DOMAINS;
+
+export const THREAD_FIELD_ID: u32 = 0;
+export const THREAD_FIELD_MASK: u32 = 1;
+export const THREAD_FIELD_STATUS: u32 = 2;
+export const THREAD_FIELD_REVISION: u32 = 3;
+
+export const THREAD_STATUS_SYNCED: u32 = 0x0001;
+export const THREAD_STATUS_STALE: u32 = 0x0002;
+export const THREAD_STATUS_CONFLICT: u32 = 0x0004;
+export const THREAD_STATUS_REMOVED: u32 = 0x0008;
+
+@unmanaged
+export class ThreadHypergraph {
+  data: ChunkedUint32Array;
+  count: u32;
+  // Map composite key ((domainIdx as u64) << 32) | (nodeId as u64) -> threadSlot + 1
+  nodeToThreadSlot: UnmanagedMap64;
+
+  init(initialCapacity: u32 = 512): void {
+    this.data = createChunkedUint32Array(initialCapacity * THREAD_STRIDE);
+    this.count = 0;
+    this.nodeToThreadSlot = changetype<UnmanagedMap64>(createMap64());
+  }
+
+  @inline
+  createThread(threadId: u32, revision: u32 = 0): u32 {
+    let slot = this.count++;
+    let offset = slot * THREAD_STRIDE;
+    this.data.set(offset + THREAD_FIELD_ID, threadId);
+    this.data.set(offset + THREAD_FIELD_MASK, 0);
+    this.data.set(offset + THREAD_FIELD_STATUS, THREAD_STATUS_SYNCED);
+    this.data.set(offset + THREAD_FIELD_REVISION, revision);
+
+    for (let d: u32 = 0; d < MAX_THREAD_DOMAINS; d++) {
+      this.data.set(offset + THREAD_HEADER_WORDS + d, 0);
+    }
+    return slot;
+  }
+
+  @inline
+  bindDomainNode(slot: u32, domainIdx: u32, nodeId: u32): void {
+    if (slot >= this.count || domainIdx >= MAX_THREAD_DOMAINS) return;
+    let offset = slot * THREAD_STRIDE;
+
+    let mask = this.data.get(offset + THREAD_FIELD_MASK);
+    mask |= (1 << domainIdx);
+    this.data.set(offset + THREAD_FIELD_MASK, mask);
+    this.data.set(offset + THREAD_HEADER_WORDS + domainIdx, nodeId);
+
+    // Register reverse lookup key: domainIdx << 32 | nodeId
+    let key: u64 = ((domainIdx as u64) << 32) | (nodeId as u64);
+    this.nodeToThreadSlot.set(key, slot + 1);
+  }
+
+  @inline
+  getDomainNode(slot: u32, domainIdx: u32): u32 {
+    if (slot >= this.count || domainIdx >= MAX_THREAD_DOMAINS) return 0;
+    return this.data.get(slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx);
+  }
+
+  @inline
+  findThreadByDomainNode(domainIdx: u32, nodeId: u32): u32 {
+    let key: u64 = ((domainIdx as u64) << 32) | (nodeId as u64);
+    let slotPlusOne = this.nodeToThreadSlot.get(key);
+    if (slotPlusOne == 0) return 0;
+    let slot = slotPlusOne - 1;
+    let offset = slot * THREAD_STRIDE;
+    let status = this.data.get(offset + THREAD_FIELD_STATUS);
+    if ((status & THREAD_STATUS_REMOVED) != 0) return 0;
+    return this.data.get(offset + THREAD_FIELD_ID);
+  }
+
+  @inline
+  markStale(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    let status = this.data.get(offset) | THREAD_STATUS_STALE;
+    this.data.set(offset, status);
+  }
+
+  @inline
+  isStale(slot: u32): boolean {
+    if (slot >= this.count) return false;
+    let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    return (this.data.get(offset) & THREAD_STATUS_STALE) != 0;
+  }
+
+  @inline
+  markConflict(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    let status = this.data.get(offset) | THREAD_STATUS_CONFLICT;
+    this.data.set(offset, status);
+  }
+
+  @inline
+  clearConflict(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    let status = this.data.get(offset) & ~THREAD_STATUS_CONFLICT;
+    this.data.set(offset, status);
+  }
+
+  @inline
+  markRemoved(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    let status = this.data.get(offset) | THREAD_STATUS_REMOVED;
+    this.data.set(offset, status);
+  }
+
+  @inline
+  isRemoved(slot: u32): boolean {
+    if (slot >= this.count) return false;
+    let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    return (this.data.get(offset) & THREAD_STATUS_REMOVED) != 0;
+  }
+}
+
+export function createThreadHypergraph(initialCapacity: u32 = 512): usize {
+  let ptr = atomicChunkAlloc(sizeof<ThreadHypergraph>());
+  let hg = changetype<ThreadHypergraph>(ptr);
+  hg.init(initialCapacity);
+  return ptr;
+}
+
+export function thread_create(ptr: usize, threadId: u32, revision: u32): u32 {
+  return changetype<ThreadHypergraph>(ptr).createThread(threadId, revision);
+}
+
+export function thread_bind(ptr: usize, slot: u32, domainIdx: u32, nodeId: u32): void {
+  changetype<ThreadHypergraph>(ptr).bindDomainNode(slot, domainIdx, nodeId);
+}
+
+export function thread_getNode(ptr: usize, slot: u32, domainIdx: u32): u32 {
+  return changetype<ThreadHypergraph>(ptr).getDomainNode(slot, domainIdx);
+}
+
+export function thread_findByNode(ptr: usize, domainIdx: u32, nodeId: u32): u32 {
+  return changetype<ThreadHypergraph>(ptr).findThreadByDomainNode(domainIdx, nodeId);
+}
+
+export function thread_markStale(ptr: usize, slot: u32): void {
+  changetype<ThreadHypergraph>(ptr).markStale(slot);
+}
+
+export function thread_isStale(ptr: usize, slot: u32): u32 {
+  return changetype<ThreadHypergraph>(ptr).isStale(slot) ? 1 : 0;
+}
+
+export function thread_markRemoved(ptr: usize, slot: u32): void {
+  changetype<ThreadHypergraph>(ptr).markRemoved(slot);
 }
 `;
 

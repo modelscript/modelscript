@@ -130,6 +130,15 @@ export function compileTGGRules(
       } else if (c.kind === "reconcile") {
         const [sourceVar, targetVar, strategy] = c.args;
         code += `  // Conflict reconciliation policy: ${sourceVar} <-> ${targetVar} (${strategy})\n`;
+      } else if (c.kind === "reconcilePhysics") {
+        const [sourceVar, targetVar, bounds] = c.args;
+        code += `  // Physics reconciliation policy: ${sourceVar} <-> ${targetVar} bounds=[${bounds?.min ?? -1e9}, ${bounds?.max ?? 1e9}]\n`;
+      } else if (c.kind === "complement") {
+        const [fields] = c.args;
+        code += `  // Shadow complement preserved fields: [${(fields || []).join(", ")}]\n`;
+      } else if (c.kind === "invertible") {
+        const [fwd, bwd] = c.args;
+        code += `  // Invertible constraint: forward='${fwd}' backward='${bwd || "auto-derived"}'\n`;
       }
     }
 
@@ -150,6 +159,14 @@ export function compileTGGRules(
     code += `  return sourceNodeId;\n`;
     code += `}\n\n`;
 
+    // Retraction (DBSP negative delta)
+    code += `// --- Rule ${rIdx}: ${ruleName} (Retract) ---\n`;
+    code += `export function tgg_retract_${ruleName}(sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 {\n`;
+    code += `  if (sourceNodeId == 0) return 0;\n`;
+    code += `  let targetNodeId = corr.retractBySource(sourceNodeId);\n`;
+    code += `  return targetNodeId;\n`;
+    code += `}\n\n`;
+
     // Incremental propagation
     code += `// --- Rule ${rIdx}: ${ruleName} (Incremental Propagate) ---\n`;
     code += `export function tgg_propagate_${ruleName}(slot: u32, corr: CorrespondenceIndex): void {\n`;
@@ -157,13 +174,29 @@ export function compileTGGRules(
     code += `  let targetNodeId = corr.getTarget(slot);\n`;
     code += `  if (sourceNodeId == 0 || targetNodeId == 0) return;\n`;
     code += `  \n`;
+    code += `  // If slot is marked removed, do not propagate further\n`;
+    code += `  if (corr.isRemoved(slot)) return;\n`;
+    code += `  \n`;
     code += `  // If slot is conflicted, attempt reconciliation before propagating\n`;
     code += `  if (corr.isConflicted(slot)) {\n`;
+    const recPhysConstraint = constraints.find((c) => c.kind === "reconcilePhysics");
     const recConstraint = constraints.find((c) => c.kind === "reconcile");
-    if (recConstraint) {
+    if (recPhysConstraint) {
+      const bounds = recPhysConstraint.args[2] || { min: 0, max: 1000 };
+      code += `    tgg_reconcile_physics_simplex(slot, 0.0, 0.0, ${bounds.min}.0, ${bounds.max}.0, corr);\n`;
+      code += `    if (corr.isConflicted(slot)) return;\n`;
+    } else if (recConstraint) {
       const strat = recConstraint.args[2] || "smt-simplex";
       const stratNum =
-        strat === "source-wins" ? 1 : strat === "target-wins" ? 2 : strat === "prefer-narrower-range" ? 3 : 0;
+        strat === "source-wins"
+          ? 1
+          : strat === "target-wins"
+            ? 2
+            : strat === "prefer-narrower-range"
+              ? 3
+              : strat === "physics-simplex"
+                ? 4
+                : 0;
       code += `    tgg_reconcile_scalar(slot, 0.0, 0.0, ${stratNum}, corr);\n`;
       code += `    if (corr.isConflicted(slot)) return;\n`;
     } else {
@@ -210,10 +243,24 @@ export function compileTGGRules(
   code += `  }\n`;
   code += `}\n\n`;
 
+  code += `export function tgg_retract_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 {\n`;
+  code += `  switch (sourceNodeTypeHash) {\n`;
+  for (let rIdx = 0; rIdx < rules.length; rIdx++) {
+    const rule = rules[rIdx];
+    const ruleName = rule.name || `rule_${rIdx}`;
+    const evaluatedSource = typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source;
+    const sourceNodeType = evaluatedSource?.nodeType || "UnknownNode";
+    const sourceHash = getDJB2Hash(sourceNodeType);
+    code += `    case ${sourceHash}: return tgg_retract_${ruleName}(sourceNodeId, corr, arena);\n`;
+  }
+  code += `    default: return 0;\n`;
+  code += `  }\n`;
+  code += `}\n\n`;
+
   code += `export function tgg_propagate_all_stale(corr: CorrespondenceIndex): u32 {\n`;
   code += `  let updatedCount: u32 = 0;\n`;
   code += `  for (let slot: u32 = 0; slot < corr.count; slot++) {\n`;
-  code += `    if (corr.isStale(slot)) {\n`;
+  code += `    if (corr.isStale(slot) && !corr.isRemoved(slot)) {\n`;
   code += `      let ruleId = corr.getRule(slot);\n`;
   code += `      switch (ruleId) {\n`;
   for (let rIdx = 0; rIdx < rules.length; rIdx++) {
@@ -230,7 +277,7 @@ export function compileTGGRules(
   code += `export function tgg_reconcile_all_conflicts(corr: CorrespondenceIndex, strategy: u32 = 0): u32 {\n`;
   code += `  let resolvedCount: u32 = 0;\n`;
   code += `  for (let slot: u32 = 0; slot < corr.count; slot++) {\n`;
-  code += `    if (corr.isConflicted(slot)) {\n`;
+  code += `    if (corr.isConflicted(slot) && !corr.isRemoved(slot)) {\n`;
   code += `      tgg_reconcile_scalar(slot, 0.0, 0.0, strategy, corr);\n`;
   code += `      if (!corr.isConflicted(slot)) resolvedCount++;\n`;
   code += `    }\n`;

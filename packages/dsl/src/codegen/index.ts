@@ -16,6 +16,7 @@ export * from "./emit_wat.js";
 export * from "./emit_webgpu.js";
 export * from "./extension-generator.js";
 export * from "./graph.js";
+export * from "./inversion.js";
 export * from "./ir_layout.js";
 export * from "./isolation.js";
 export * from "./lexer.js";

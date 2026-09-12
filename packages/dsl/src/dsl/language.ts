@@ -1717,7 +1717,10 @@ export type TGGConstraintKind =
   | "not"
   | "path"
   | "forEach"
-  | "reconcile";
+  | "reconcile"
+  | "reconcilePhysics"
+  | "complement"
+  | "invertible";
 
 export interface TGGConstraint {
   kind: TGGConstraintKind;
@@ -1835,9 +1838,50 @@ export function tggForEach(collectionVar: any, itemVar: any, bodyConstraints: TG
 export function tggReconcile(
   sourceVar: any,
   targetVar: any,
-  strategy: "smt-simplex" | "source-wins" | "target-wins" | "prefer-narrower-range" = "smt-simplex",
+  strategy: "smt-simplex" | "source-wins" | "target-wins" | "prefer-narrower-range" | "physics-simplex" = "smt-simplex",
 ): TGGConstraint {
   return { kind: "reconcile", args: [sourceVar, targetVar, strategy] };
+}
+
+/**
+ * Physics-constrained reconciliation with boundary envelopes and conservation tolerance.
+ */
+export function tggReconcilePhysics(
+  sourceVar: any,
+  targetVar: any,
+  bounds: { min: number; max: number; tolerance?: number },
+): TGGConstraint {
+  return { kind: "reconcilePhysics", args: [sourceVar, targetVar, bounds] };
+}
+
+/**
+ * Shadow complement constraint preserving unmapped fields during asymmetric round-trips.
+ */
+export function tggComplement(fields: string[]): TGGConstraint {
+  return { kind: "complement", args: [fields] };
+}
+
+/**
+ * Bidirectional invertible affine or string constraint.
+ */
+export function tggInvertible(forwardExpr: string, backwardExpr?: string): TGGConstraint {
+  return { kind: "invertible", args: [forwardExpr, backwardExpr] };
+}
+
+export interface TGGThreadRuleOptions<DomainNames extends string = string> {
+  name?: string;
+  domains: Record<DomainNames, (patternBuilder: any, varProxy: (name: string) => string) => any>;
+  where?: (varProxy: (name: string) => string) => TGGConstraint[];
+  priority?: number;
+}
+
+/**
+ * Declares an N-Ary Digital Thread alignment rule across N >= 2 domain projections.
+ */
+export function tggThreadRule<DomainNames extends string = string>(
+  options: TGGThreadRuleOptions<DomainNames>,
+): TGGThreadRuleOptions<DomainNames> {
+  return options;
 }
 
 // ---------------------------------------------------------------------------
