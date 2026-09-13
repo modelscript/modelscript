@@ -504,6 +504,20 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             padding-right: 12px;
             font-size: 12px;
         }
+        .panel-content {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .panel-content::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .panel-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
     </style>
     <!-- Scripts: React, Babel, LZString before Monaco AMD loader to avoid define() conflicts -->
     <script src="/vendor/react.production.min.js"></script>
@@ -1712,7 +1726,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             });
 
             return (
-                <div className="panel-content" style={{ padding: '16px', overflowY: 'auto' }}>
+                <div className="panel-content" style={{ padding: '16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
                     {/* Header Card */}
                     <div className="equation-card" style={{ marginBottom: '16px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
@@ -2044,8 +2058,17 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 return () => window.removeEventListener('diagnosticsUpdated', handler);
             }, []);
 
+            const jumpToDiagnostic = (d) => {
+                if (!window.codeEditor || !window.codeEditor.getModel()) return;
+                const startLine = d.range ? d.range.start.line + 1 : 1;
+                const startCol = d.range ? d.range.start.character + 1 : 1;
+                window.codeEditor.revealLineInCenter(startLine);
+                window.codeEditor.setPosition({ lineNumber: startLine, column: startCol });
+                window.codeEditor.focus();
+            };
+
             return (
-                <div className="panel-content" style={{ padding: '15px' }}>
+                <div className="panel-content" style={{ padding: '15px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
                     <div className="equation-card">
                         <div className="title" style={{ marginBottom: '12px', fontSize: '15px', fontWeight: 'bold' }}>
                             🔍 Active Diagnostics & Lints ({diagnostics.length})
@@ -2061,13 +2084,14 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                                     const endLine = d.range ? d.range.end.line + 1 : startLine;
                                     const endCol = d.range ? d.range.end.character + 1 : startCol;
                                     return (
-                                        <div key={idx} style={{
+                                        <div key={idx} onClick={() => jumpToDiagnostic(d)} style={{
                                             padding: '8px 12px',
                                             borderRadius: '6px',
                                             background: isError ? 'rgba(207,34,46,0.1)' : 'rgba(154,103,0,0.1)',
                                             borderLeft: "4px solid " + (isError ? '#cf222e' : '#d97706'),
                                             fontSize: '13px',
-                                            lineHeight: '1.4'
+                                            lineHeight: '1.4',
+                                            cursor: 'pointer'
                                         }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                                                 <span style={{ fontWeight: 'bold', color: isError ? '#cf222e' : '#d97706' }}>
@@ -2077,7 +2101,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                                                     L{startLine}:{startCol} - L{endLine}:{endCol}
                                                 </span>
                                             </div>
-                                            <div style={{ color: 'var(--color-fg-default)' }}>{d.message}</div>
+                                            <div style={{ color: 'var(--text-color, inherit)' }}>{d.message}</div>
                                         </div>
                                     );
                                 })}
@@ -2279,7 +2303,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             };
 
             return (
-                <div className="panel-content" style={{ padding: '15px' }}>
+                <div className="panel-content" style={{ padding: '15px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
                     <div className="equation-card" style={{ marginBottom: '14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <div className="title" style={{ fontSize: '15px', fontWeight: 'bold' }}>
@@ -2433,7 +2457,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             const errCount = diagnostics.filter(d => d.severity === 'error' || d.severity === 1 || d.severity === 8).length;
 
             return (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0, overflow: 'hidden' }}>
                     <div id="panel-tabs">
                         <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => { setActiveTab('ast'); window['__activeTab'] = 'ast'; }}>
                             🌳 AST Tree
