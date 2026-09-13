@@ -13,7 +13,7 @@
 
 import {
     initGSS,
-    ParseHead, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
+    ParseHead, GssEdge, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
@@ -63,6 +63,7 @@ const ACCEPT_CACHE_MASK: u32 = 16383;
 const ACCEPT_CACHE_PROBE_LIMIT: u32 = 8;
 let t_acceptCache: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTarget } from "./recovery";
+import { MAX_PRODUCTION_LENGTH } from "./recovery-config";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 
 /**
@@ -627,9 +628,16 @@ function updateExpectedTokens(): void {
       addStateExpectedTokens(state, 0);
     }
   } else {
+    let hasErrorHead = false;
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
       let head = changetype<ParseHead>(t_activeHeads[i]);
+      if (head.inErrorState) {
+        hasErrorHead = true;
+      }
       addStateExpectedTokens(head.state, 0);
+    }
+    if (hasErrorHead) {
+      memory.fill(expected_tokens, 1, 2048);
     }
   }
 }
@@ -2201,6 +2209,38 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
         head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
         head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
       );
+      if (popCount == 1 && head.firstEdge != 0) {
+        let edgePtr = head.firstEdge;
+        while (edgePtr != 0) {
+          let edge = changetype<GssEdge>(edgePtr);
+          let altCurr = edge.targetHead;
+          if (altCurr != null && altCurr.state >= 0 && altCurr.state < goto_offsets.length) {
+            let altGOffset = goto_offsets[altCurr.state];
+            if (altGOffset >= 0 && altGOffset < goto_data.length) {
+              let altGCount = goto_data[altGOffset];
+              let altNextState = -1;
+              let altGIdx = altGOffset + 1;
+              for (let ak = 0; ak < altGCount; ak++) {
+                if (goto_data[altGIdx++] == lhsSym) {
+                  altNextState = goto_data[altGIdx++];
+                  break;
+                } else {
+                  altGIdx++;
+                }
+              }
+              if (altNextState != -1) {
+                let altHead = allocParseHead(
+                  altNextState, parentNode, altCurr, head.pos, 0, head.errorCost,
+                  head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+                  head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+                );
+                pushActiveHead(changetype<u32>(altHead));
+              }
+            }
+          }
+          edgePtr = edge.nextEdge;
+        }
+      }
       return newHead;
     } else {
       return null;
@@ -3194,7 +3234,7 @@ export function advanceGLR(): void {
           if (configEnableBranchB && head.consecutiveInsertions < 3) {
             didRecover = recoverMissingToken(head, tok, frontierPos);
           }
-          if (!didRecover && head.errorCost < 500 && head.prev != null) {
+          if (!didRecover && (head.prev != null || head.inErrorState)) {
             didRecover = recoverStackSummary(head, tok, frontierPos);
           }
           if (!didRecover && configEnableBranchA1) {
@@ -3235,15 +3275,23 @@ export function advanceGLR(): void {
     // 5. GLR-to-LR Transition: If a single deterministic head has recovered, resume fast-path LR parsing
     if (activeHeadsCount == 1) {
       let singleHead = changetype<ParseHead>(t_activeHeads[0]);
-      if (singleHead.successfulShifts >= 2 && singleHead.consecutiveInsertions == 0) {
+      if (!singleHead.inErrorState && singleHead.successfulShifts >= 2 && singleHead.consecutiveInsertions == 0) {
         let depth: u32 = 0;
         let curr: ParseHead | null = singleHead;
+        let isLinear: bool = true;
+        let checkDepth: u32 = 0;
         while (curr) {
           depth++;
+          if (checkDepth < MAX_PRODUCTION_LENGTH) {
+            if (curr.firstEdge != 0) {
+              isLinear = false;
+            }
+            checkDepth++;
+          }
           curr = curr.prev;
         }
 
-        if (depth > 0 && depth < 10000) {
+        if (isLinear && depth > 0 && depth < 10000) {
           curr = singleHead;
           let d: i32 = (depth as i32) - 1;
           while (curr && d >= 0) {

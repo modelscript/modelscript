@@ -50,7 +50,10 @@ import {
   FLAG_INVISIBLE,
   getNodeFlags,
   setNodeFlags,
+  allocGen0,
+  setNodeByteLength,
 } from "./arena";
+import { MAX_SUMMARY_DEPTH } from "./recovery-config";
 import {
   lexPos,
   lexLen,
@@ -152,30 +155,69 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
 }
 
 /**
- * Stack Summary Error Recovery (Branch S).
- * Evaluates earlier stack states along the GSS path to find an ancestor state that can
- * legally shift the current lookahead token without discarding the input stream.
- * Pops and groups the damaged subtrees into an ERROR node.
- * 
- * @param head The active parsing head in error.
- * @param token The invalid lookahead token triggering the recovery attempt.
- * @param pos The current byte offset in the input buffer.
- * @returns True if a valid ancestor recovery state was found and enqueued, false otherwise.
+ * Entry in a recorded StackSummary.
+ */
+@unmanaged
+export class StackSummaryEntry {
+  ancHead: ParseHead | null;
+  state: i32;
+  depth: u32;
+  pos: u32;
+}
+
+export const SIZEOF_STACK_SUMMARY_ENTRY: u32 = 16;
+
+/**
+ * Records a single-pass summary of ancestor stack states up to MAX_SUMMARY_DEPTH (16).
+ * Follows Tree-sitter's ts_stack_record_summary.
+ */
+export function recordStackSummary(head: ParseHead): void {
+  if (head.summaryCount > 0) return;
+  let summaryMem = allocGen0(MAX_SUMMARY_DEPTH * SIZEOF_STACK_SUMMARY_ENTRY);
+  let count: u32 = 0;
+  let curr = head.prev;
+  let d: u32 = 1;
+  while (curr != null && d <= MAX_SUMMARY_DEPTH) {
+    if (!(curr.pos == 0 && head.pos > 20 && d > 2)) {
+      let entryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
+      let entry = changetype<StackSummaryEntry>(entryPtr);
+      entry.ancHead = curr;
+      entry.state = curr.state;
+      entry.depth = d;
+      entry.pos = curr.pos;
+      count++;
+    }
+    curr = curr.prev;
+    d++;
+  }
+  head.summaryPtr = summaryMem;
+  head.summaryCount = count;
+}
+
+/**
+ * Stack Summary Error Recovery (Tree-sitter Strategy 1: Recover to State).
+ * Evaluates the recorded StackSummary to find an ancestor state that can
+ * legally shift or reduce with the lookahead token.
+ * Pops and groups the damaged subtrees into an ERROR node, and resumes normal parsing.
  */
 export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): boolean {
   if (token == TOKEN_EOF) return false;
-  let anc: ParseHead | null = head.prev;
-  let depth: u32 = 1;
+  if (head.summaryCount == 0) {
+    recordStackSummary(head);
+  }
+  if (head.summaryCount == 0) return false;
+
   let currentCost = head.errorCost;
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
 
-  while (anc != null && depth <= 20) {
-    let ancState = anc.state;
-    // Guard: Do not unwind all the way back to root position 0 when deep inside a class
-    if (anc.pos == 0 && pos > 20 && depth > 2) {
-      break;
-    }
+  for (let i: u32 = 0; i < head.summaryCount; i++) {
+    let entry = changetype<StackSummaryEntry>(head.summaryPtr + i * SIZEOF_STACK_SUMMARY_ENTRY);
+    let anc = entry.ancHead;
+    if (anc == null) continue;
+    let ancState = entry.state;
+    let depth = entry.depth;
+
     if (ancState >= 0 && ancState < action_offsets.length) {
       let canAccept = stateCanAccept(anc, ancState, token, 0, 0);
       if (canAccept > 0) {
@@ -248,35 +290,46 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
           0,
           anc.dynamicPrec,
           0,
-          nextTail
+          nextTail,
+          0,
+          false,
+          0,
+          0,
+          0,
+          0
         );
         pushActiveHead(changetype<u32>(errHead));
         return true;
       }
     }
-    anc = anc.prev;
-    depth++;
   }
   return false;
 }
 
 /**
  * Tree-sitter Strategy 2: Single-Token Error Shift.
- * Consumes the current invalid lookahead token into an ERROR leaf, advances the
- * byte position past the token, and pushes the head to the next frontier in t_nextHeads
- * with Tree-sitter's standard ERROR_COST_PER_SKIPPED_TREE penalty.
+ * Consumes the current invalid lookahead token, appends it into an active ERROR node container,
+ * advances byte position past the token, and pushes the head to t_nextHeads remaining in inErrorState.
  */
 export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
-  if (head.errorCost >= 200) return;
-  if (head.errorCost > 0 && head.successfulShifts == 0) return;
   if (token >= 0 && token < token_delete_costs.length && token_delete_costs[token] >= 1000) return;
+
+  if (head.summaryCount == 0) {
+    recordStackSummary(head);
+  }
 
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
   let pad = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
   
-  let tNode = allocNode(((token == TOKEN_UNKNOWN || token == -1 ? NODE_TYPE_ERROR : token) | 0x8000) as u16, pad, tLen, 0, false);
-  setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
+  let tNode = head.errorNode;
+  if (tNode == 0) {
+    tNode = allocNode(((token == TOKEN_UNKNOWN || token == -1 ? NODE_TYPE_ERROR : token) | 0x8000) as u16, pad, tLen, 0, false);
+    setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
+  } else {
+    let prevByteLen = getNodeByteLength(tNode);
+    setNodeByteLength(tNode, prevByteLen + pad + tLen);
+  }
 
   let nextPos = srcLexPos + tLen;
   let newPos = nextPos > pos ? nextPos : pos + 1;
@@ -310,7 +363,13 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     0,
     head.dynamicPrec,
     0,
-    nextTail
+    nextTail,
+    0,
+    true,
+    head.summaryPtr,
+    head.summaryCount,
+    0,
+    tNode
   );
   pushNextHead(changetype<u32>(skippedHead));
 }

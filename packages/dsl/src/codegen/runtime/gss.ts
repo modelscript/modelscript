@@ -70,6 +70,32 @@ export function pushCandidateHead(headPtr: u32): boolean {
 }
 
 /**
+ * Evaluates whether an existing version in the frontier is decisively superior to candidate.
+ * Implements Tree-sitter's (deltaCost) * (1 + progress) > MAX_COST_DIFFERENCE pruning.
+ */
+export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32Array, count: u32): boolean {
+  for (let i: u32 = 0; i < count; i++) {
+    let existing = changetype<ParseHead>(frontier[i]);
+    if (existing == candidate) continue;
+    // 1. Healthy head dominates an in-error candidate if at or ahead in the stream
+    if (!existing.inErrorState && candidate.inErrorState) {
+      if (existing.pos >= candidate.pos) return true;
+    }
+    // 2. Both in error: Tree-sitter relative cost comparison
+    if (candidate.inErrorState && existing.inErrorState) {
+      if (existing.errorCost < candidate.errorCost) {
+        let costDiff = candidate.errorCost - existing.errorCost;
+        let progress = 1 + (existing.pos > candidate.pos ? (existing.pos - candidate.pos) : 0);
+        if (costDiff * progress > 2000) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Pushes a new active parse head to the current GSS queue.
  * @param headPtr Pointer to the ParseHead instance.
  * @returns true if pushed successfully, false if the queue is full.
@@ -77,11 +103,18 @@ export function pushCandidateHead(headPtr: u32): boolean {
 export function pushActiveHead(headPtr: u32): boolean {
   if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
   let newHead = changetype<ParseHead>(headPtr);
+  if (betterVersionExists(newHead, t_activeHeads, activeHeadsCount)) {
+    return false;
+  }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_activeHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash && existingHead.prev == newHead.prev) {
-      if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
-        t_activeHeads[i] = headPtr;
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+      if (existingHead.prev == newHead.prev) {
+        if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
+          t_activeHeads[i] = headPtr;
+        }
+      } else {
+        gssMergeHeads(existingHead, newHead);
       }
       return true;
     }
@@ -97,11 +130,18 @@ export function pushActiveHead(headPtr: u32): boolean {
 export function pushNextHead(headPtr: u32): boolean {
   if (nextHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
   let newHead = changetype<ParseHead>(headPtr);
+  if (betterVersionExists(newHead, t_nextHeads, nextHeadsCount)) {
+    return false;
+  }
   for (let i: u32 = 0; i < nextHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_nextHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash && existingHead.prev == newHead.prev) {
-      if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
-        t_nextHeads[i] = headPtr;
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+      if (existingHead.prev == newHead.prev) {
+        if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
+          t_nextHeads[i] = headPtr;
+        }
+      } else {
+        gssMergeHeads(existingHead, newHead);
       }
       return true;
     }
@@ -136,6 +176,58 @@ export function getActiveHead(index: u32): u32 {
  */
 export function setActiveHeadsCount(count: u32): void {
   activeHeadsCount = count;
+}
+
+/**
+ * Represents a directed link/edge in the Graph-Structured Stack (GSS) DAG.
+ */
+@unmanaged
+export class GssEdge {
+  targetHead: ParseHead | null;
+  astNode: u32;
+  nextEdge: u32;
+}
+
+/**
+ * Adds an alternative predecessor link to a GSS head, turning it into a true DAG node.
+ */
+export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNode: u32): void {
+  if (pred == null) return;
+  if (head.prev == pred) return;
+  let curr = head.firstEdge;
+  while (curr != 0) {
+    let edge = changetype<GssEdge>(curr);
+    if (edge.targetHead == pred) return;
+    curr = edge.nextEdge;
+  }
+  let edgePtr = allocGen0(16);
+  let newEdge = changetype<GssEdge>(edgePtr);
+  newEdge.targetHead = pred;
+  newEdge.astNode = astNode;
+  newEdge.nextEdge = head.firstEdge;
+  head.firstEdge = edgePtr;
+}
+
+/**
+ * Merges two parse heads arriving at the same state and position into a unified DAG node.
+ */
+export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void {
+  gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
+  let curr = newHead.firstEdge;
+  while (curr != 0) {
+    let edge = changetype<GssEdge>(curr);
+    gssAddPredecessor(existingHead, edge.targetHead, edge.astNode);
+    curr = edge.nextEdge;
+  }
+  if (newHead.errorCost < existingHead.errorCost) {
+    existingHead.errorCost = newHead.errorCost;
+  }
+  if (newHead.dynamicPrec > existingHead.dynamicPrec) {
+    existingHead.dynamicPrec = newHead.dynamicPrec;
+  }
+  if (!newHead.inErrorState) {
+    existingHead.inErrorState = false;
+  }
 }
 
 /**
@@ -179,10 +271,28 @@ export class ParseHead {
   
   /** Pointer to the tail of the error recovery linked list. */
   errorTail: u32;
+
+  /** Pointer to the first alternative incoming GssEdge in linear memory (for DAG merging). */
+  firstEdge: u32;
+
+  /** True if this head is currently in a persistent error state (Strategy 1/2 recovery loop). */
+  inErrorState: bool;
+
+  /** Pointer to recorded StackSummary entries in Gen0 linear memory. */
+  summaryPtr: u32;
+
+  /** Number of ancestor entries in the recorded StackSummary. */
+  summaryCount: u32;
+
+  /** Count of valid nodes shifted since last error (for Tree-sitter relative version comparison). */
+  nodeCount: u32;
+
+  /** Pointer to the active open ERROR container node (if any). */
+  errorNode: u32;
 }
 
 /**
- * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (48 bytes).
+ * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (80 bytes).
  */
 export function allocParseHead(
   state: i32,
@@ -197,8 +307,14 @@ export function allocParseHead(
   dynamicPrec: i32 = 0,
   pendingPadding: u32 = 0,
   errorTail: u32 = 0,
+  firstEdge: u32 = 0,
+  inErrorState: bool = false,
+  summaryPtr: u32 = 0,
+  summaryCount: u32 = 0,
+  nodeCount: u32 = 0,
+  errorNode: u32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(48);
+  let ptr = allocGen0(80);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -212,6 +328,12 @@ export function allocParseHead(
   h.dynamicPrec = dynamicPrec;
   h.pendingPadding = pendingPadding;
   h.errorTail = errorTail;
+  h.firstEdge = firstEdge;
+  h.inErrorState = inErrorState;
+  h.summaryPtr = summaryPtr;
+  h.summaryCount = summaryCount;
+  h.nodeCount = nodeCount;
+  h.errorNode = errorNode;
   return h;
 }
 

@@ -33,16 +33,18 @@ async function run() {
   const parser = new TreeSitterParser();
   parser.setLanguage(facade);
 
-  const source = `model ElectricalCircuit
+  for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]) {
+    const errTokens = Array(n).fill("error").join(" ");
+    const source = `model ElectricalCircuit
   Pin p, n;
   parameter Real R = 9;
   parameter Real L = 0.001;
   Real v, i;
-  error
 equation
   v = p.v - n.v;
   0 = p.i + n.i;
   i = p.i;
+  ${errTokens}
   v = R * i;
 end ElectricalCircuit;
 
@@ -56,26 +58,30 @@ model ChuaCircuit
 end ChuaCircuit;
 `;
 
-  const tree = parser.parse(source);
-  console.log("Parsed root:", tree.rootNode.type);
-  console.log("Has error:", tree.rootNode.hasError());
-
-  const diags = parser.languageBinding.getDiagnostics(tree.rootPtr);
-  console.log("Diagnostics count:", diags.length);
-  for (const d of diags) {
-    const text = source.slice(d.startCharOffset, d.endCharOffset);
-    console.log(`- [${d.startCharOffset}-${d.endCharOffset}] "${text.replace(/\n/g, "\\n")}": ${d.message}`);
-  }
-
-  console.log("\nTop children of root:");
-  for (let c = tree.rootNode.firstChild; c; c = c.nextSibling) {
-    console.log(`- ${c.type} (${c.startIndex}-${c.endIndex}) hasError=${c.hasError()}`);
-    if (c.type === "stored_definition") {
-      for (let sc = c.firstChild; sc; sc = sc.nextSibling) {
-        console.log(`    - ${sc.type} (${sc.startIndex}-${sc.endIndex}) hasError=${sc.hasError()}`);
+    const tree = parser.parse(source);
+    let firstClassOk = false;
+    let secondClassOk = false;
+    let storedDef = tree.rootNode.firstChild;
+    if (storedDef && storedDef.type === "stored_definition") {
+      let class1 = storedDef.firstChild;
+      let semi1 = class1 ? class1.nextSibling : null;
+      let class2 = semi1 ? semi1.nextSibling : null;
+      if (class1 && class1.type === "class_definition") {
+        firstClassOk = true;
+      }
+      if (class2 && class2.type === "class_definition" && !class2.hasError()) {
+        secondClassOk = true;
       }
     }
+
+    console.log(
+      `[N=${n}] firstClassOk=${firstClassOk} secondClassOk(ChuaCircuit, noError)=${secondClassOk} rootHasError=${tree.rootNode.hasError()}`,
+    );
+    if (!firstClassOk || !secondClassOk) {
+      throw new Error(`Recovery failed for N=${n}`);
+    }
   }
+  console.log("\nAll error recovery tests (N=1..20) passed successfully!");
 }
 
 run().catch(console.error);

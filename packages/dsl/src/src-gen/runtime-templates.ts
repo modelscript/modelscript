@@ -14962,6 +14962,32 @@ export function pushCandidateHead(headPtr: u32): boolean {
 }
 
 /**
+ * Evaluates whether an existing version in the frontier is decisively superior to candidate.
+ * Implements Tree-sitter's (deltaCost) * (1 + progress) > MAX_COST_DIFFERENCE pruning.
+ */
+export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32Array, count: u32): boolean {
+  for (let i: u32 = 0; i < count; i++) {
+    let existing = changetype<ParseHead>(frontier[i]);
+    if (existing == candidate) continue;
+    // 1. Healthy head dominates an in-error candidate if at or ahead in the stream
+    if (!existing.inErrorState && candidate.inErrorState) {
+      if (existing.pos >= candidate.pos) return true;
+    }
+    // 2. Both in error: Tree-sitter relative cost comparison
+    if (candidate.inErrorState && existing.inErrorState) {
+      if (existing.errorCost < candidate.errorCost) {
+        let costDiff = candidate.errorCost - existing.errorCost;
+        let progress = 1 + (existing.pos > candidate.pos ? (existing.pos - candidate.pos) : 0);
+        if (costDiff * progress > 2000) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Pushes a new active parse head to the current GSS queue.
  * @param headPtr Pointer to the ParseHead instance.
  * @returns true if pushed successfully, false if the queue is full.
@@ -14969,11 +14995,18 @@ export function pushCandidateHead(headPtr: u32): boolean {
 export function pushActiveHead(headPtr: u32): boolean {
   if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
   let newHead = changetype<ParseHead>(headPtr);
+  if (betterVersionExists(newHead, t_activeHeads, activeHeadsCount)) {
+    return false;
+  }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_activeHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash && existingHead.prev == newHead.prev) {
-      if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
-        t_activeHeads[i] = headPtr;
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+      if (existingHead.prev == newHead.prev) {
+        if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
+          t_activeHeads[i] = headPtr;
+        }
+      } else {
+        gssMergeHeads(existingHead, newHead);
       }
       return true;
     }
@@ -14989,11 +15022,18 @@ export function pushActiveHead(headPtr: u32): boolean {
 export function pushNextHead(headPtr: u32): boolean {
   if (nextHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
   let newHead = changetype<ParseHead>(headPtr);
+  if (betterVersionExists(newHead, t_nextHeads, nextHeadsCount)) {
+    return false;
+  }
   for (let i: u32 = 0; i < nextHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_nextHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash && existingHead.prev == newHead.prev) {
-      if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
-        t_nextHeads[i] = headPtr;
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+      if (existingHead.prev == newHead.prev) {
+        if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
+          t_nextHeads[i] = headPtr;
+        }
+      } else {
+        gssMergeHeads(existingHead, newHead);
       }
       return true;
     }
@@ -15028,6 +15068,58 @@ export function getActiveHead(index: u32): u32 {
  */
 export function setActiveHeadsCount(count: u32): void {
   activeHeadsCount = count;
+}
+
+/**
+ * Represents a directed link/edge in the Graph-Structured Stack (GSS) DAG.
+ */
+@unmanaged
+export class GssEdge {
+  targetHead: ParseHead | null;
+  astNode: u32;
+  nextEdge: u32;
+}
+
+/**
+ * Adds an alternative predecessor link to a GSS head, turning it into a true DAG node.
+ */
+export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNode: u32): void {
+  if (pred == null) return;
+  if (head.prev == pred) return;
+  let curr = head.firstEdge;
+  while (curr != 0) {
+    let edge = changetype<GssEdge>(curr);
+    if (edge.targetHead == pred) return;
+    curr = edge.nextEdge;
+  }
+  let edgePtr = allocGen0(16);
+  let newEdge = changetype<GssEdge>(edgePtr);
+  newEdge.targetHead = pred;
+  newEdge.astNode = astNode;
+  newEdge.nextEdge = head.firstEdge;
+  head.firstEdge = edgePtr;
+}
+
+/**
+ * Merges two parse heads arriving at the same state and position into a unified DAG node.
+ */
+export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void {
+  gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
+  let curr = newHead.firstEdge;
+  while (curr != 0) {
+    let edge = changetype<GssEdge>(curr);
+    gssAddPredecessor(existingHead, edge.targetHead, edge.astNode);
+    curr = edge.nextEdge;
+  }
+  if (newHead.errorCost < existingHead.errorCost) {
+    existingHead.errorCost = newHead.errorCost;
+  }
+  if (newHead.dynamicPrec > existingHead.dynamicPrec) {
+    existingHead.dynamicPrec = newHead.dynamicPrec;
+  }
+  if (!newHead.inErrorState) {
+    existingHead.inErrorState = false;
+  }
 }
 
 /**
@@ -15071,10 +15163,28 @@ export class ParseHead {
   
   /** Pointer to the tail of the error recovery linked list. */
   errorTail: u32;
+
+  /** Pointer to the first alternative incoming GssEdge in linear memory (for DAG merging). */
+  firstEdge: u32;
+
+  /** True if this head is currently in a persistent error state (Strategy 1/2 recovery loop). */
+  inErrorState: bool;
+
+  /** Pointer to recorded StackSummary entries in Gen0 linear memory. */
+  summaryPtr: u32;
+
+  /** Number of ancestor entries in the recorded StackSummary. */
+  summaryCount: u32;
+
+  /** Count of valid nodes shifted since last error (for Tree-sitter relative version comparison). */
+  nodeCount: u32;
+
+  /** Pointer to the active open ERROR container node (if any). */
+  errorNode: u32;
 }
 
 /**
- * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (48 bytes).
+ * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (80 bytes).
  */
 export function allocParseHead(
   state: i32,
@@ -15089,8 +15199,14 @@ export function allocParseHead(
   dynamicPrec: i32 = 0,
   pendingPadding: u32 = 0,
   errorTail: u32 = 0,
+  firstEdge: u32 = 0,
+  inErrorState: bool = false,
+  summaryPtr: u32 = 0,
+  summaryCount: u32 = 0,
+  nodeCount: u32 = 0,
+  errorNode: u32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(48);
+  let ptr = allocGen0(80);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -15104,6 +15220,12 @@ export function allocParseHead(
   h.dynamicPrec = dynamicPrec;
   h.pendingPadding = pendingPadding;
   h.errorTail = errorTail;
+  h.firstEdge = firstEdge;
+  h.inErrorState = inErrorState;
+  h.summaryPtr = summaryPtr;
+  h.summaryCount = summaryCount;
+  h.nodeCount = nodeCount;
+  h.errorNode = errorNode;
   return h;
 }
 
@@ -24980,7 +25102,7 @@ export const parserLoopCode = `/**
 
 import {
     initGSS,
-    ParseHead, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
+    ParseHead, GssEdge, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
@@ -25030,6 +25152,7 @@ const ACCEPT_CACHE_MASK: u32 = 16383;
 const ACCEPT_CACHE_PROBE_LIMIT: u32 = 8;
 let t_acceptCache: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTarget } from "./recovery";
+import { MAX_PRODUCTION_LENGTH } from "./recovery-config";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 
 /**
@@ -25594,9 +25717,16 @@ function updateExpectedTokens(): void {
       addStateExpectedTokens(state, 0);
     }
   } else {
+    let hasErrorHead = false;
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
       let head = changetype<ParseHead>(t_activeHeads[i]);
+      if (head.inErrorState) {
+        hasErrorHead = true;
+      }
       addStateExpectedTokens(head.state, 0);
+    }
+    if (hasErrorHead) {
+      memory.fill(expected_tokens, 1, 2048);
     }
   }
 }
@@ -27168,6 +27298,38 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
         head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
         head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
       );
+      if (popCount == 1 && head.firstEdge != 0) {
+        let edgePtr = head.firstEdge;
+        while (edgePtr != 0) {
+          let edge = changetype<GssEdge>(edgePtr);
+          let altCurr = edge.targetHead;
+          if (altCurr != null && altCurr.state >= 0 && altCurr.state < goto_offsets.length) {
+            let altGOffset = goto_offsets[altCurr.state];
+            if (altGOffset >= 0 && altGOffset < goto_data.length) {
+              let altGCount = goto_data[altGOffset];
+              let altNextState = -1;
+              let altGIdx = altGOffset + 1;
+              for (let ak = 0; ak < altGCount; ak++) {
+                if (goto_data[altGIdx++] == lhsSym) {
+                  altNextState = goto_data[altGIdx++];
+                  break;
+                } else {
+                  altGIdx++;
+                }
+              }
+              if (altNextState != -1) {
+                let altHead = allocParseHead(
+                  altNextState, parentNode, altCurr, head.pos, 0, head.errorCost,
+                  head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+                  head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+                );
+                pushActiveHead(changetype<u32>(altHead));
+              }
+            }
+          }
+          edgePtr = edge.nextEdge;
+        }
+      }
       return newHead;
     } else {
       return null;
@@ -28161,7 +28323,7 @@ export function advanceGLR(): void {
           if (configEnableBranchB && head.consecutiveInsertions < 3) {
             didRecover = recoverMissingToken(head, tok, frontierPos);
           }
-          if (!didRecover && head.errorCost < 500 && head.prev != null) {
+          if (!didRecover && (head.prev != null || head.inErrorState)) {
             didRecover = recoverStackSummary(head, tok, frontierPos);
           }
           if (!didRecover && configEnableBranchA1) {
@@ -28202,15 +28364,23 @@ export function advanceGLR(): void {
     // 5. GLR-to-LR Transition: If a single deterministic head has recovered, resume fast-path LR parsing
     if (activeHeadsCount == 1) {
       let singleHead = changetype<ParseHead>(t_activeHeads[0]);
-      if (singleHead.successfulShifts >= 2 && singleHead.consecutiveInsertions == 0) {
+      if (!singleHead.inErrorState && singleHead.successfulShifts >= 2 && singleHead.consecutiveInsertions == 0) {
         let depth: u32 = 0;
         let curr: ParseHead | null = singleHead;
+        let isLinear: bool = true;
+        let checkDepth: u32 = 0;
         while (curr) {
           depth++;
+          if (checkDepth < MAX_PRODUCTION_LENGTH) {
+            if (curr.firstEdge != 0) {
+              isLinear = false;
+            }
+            checkDepth++;
+          }
           curr = curr.prev;
         }
 
-        if (depth > 0 && depth < 10000) {
+        if (isLinear && depth > 0 && depth < 10000) {
           curr = singleHead;
           let d: i32 = (depth as i32) - 1;
           while (curr && d >= 0) {
@@ -29118,6 +29288,19 @@ export const RECOVERY_BEAM_WIDTH: u32 = 4;
 /** Penalty added to composite score when lookahead simulation fails after 1 shift */
 export const PENALTY_WEAK_LOOKAHEAD: i32 = 150;
 
+// ----------------------------------------------------------------------------
+// Tree-sitter SOTA Alignment Constants (DAG GSS, Error State, Pruning)
+// ----------------------------------------------------------------------------
+
+/** Maximum stack depth recorded in StackSummary upon entering error state */
+export const MAX_SUMMARY_DEPTH: u32 = 16;
+
+/** Maximum relative cost delta before pruning competing parse heads */
+export const MAX_COST_DIFFERENCE: i32 = 2000;
+
+/** Minimum linear non-branching history required before GLR -> LR fast path switch */
+export const MAX_PRODUCTION_LENGTH: u32 = 8;
+
 
 `;
 
@@ -29173,7 +29356,10 @@ import {
   FLAG_INVISIBLE,
   getNodeFlags,
   setNodeFlags,
+  allocGen0,
+  setNodeByteLength,
 } from "./arena";
+import { MAX_SUMMARY_DEPTH } from "./recovery-config";
 import {
   lexPos,
   lexLen,
@@ -29275,30 +29461,69 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
 }
 
 /**
- * Stack Summary Error Recovery (Branch S).
- * Evaluates earlier stack states along the GSS path to find an ancestor state that can
- * legally shift the current lookahead token without discarding the input stream.
- * Pops and groups the damaged subtrees into an ERROR node.
- * 
- * @param head The active parsing head in error.
- * @param token The invalid lookahead token triggering the recovery attempt.
- * @param pos The current byte offset in the input buffer.
- * @returns True if a valid ancestor recovery state was found and enqueued, false otherwise.
+ * Entry in a recorded StackSummary.
+ */
+@unmanaged
+export class StackSummaryEntry {
+  ancHead: ParseHead | null;
+  state: i32;
+  depth: u32;
+  pos: u32;
+}
+
+export const SIZEOF_STACK_SUMMARY_ENTRY: u32 = 16;
+
+/**
+ * Records a single-pass summary of ancestor stack states up to MAX_SUMMARY_DEPTH (16).
+ * Follows Tree-sitter's ts_stack_record_summary.
+ */
+export function recordStackSummary(head: ParseHead): void {
+  if (head.summaryCount > 0) return;
+  let summaryMem = allocGen0(MAX_SUMMARY_DEPTH * SIZEOF_STACK_SUMMARY_ENTRY);
+  let count: u32 = 0;
+  let curr = head.prev;
+  let d: u32 = 1;
+  while (curr != null && d <= MAX_SUMMARY_DEPTH) {
+    if (!(curr.pos == 0 && head.pos > 20 && d > 2)) {
+      let entryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
+      let entry = changetype<StackSummaryEntry>(entryPtr);
+      entry.ancHead = curr;
+      entry.state = curr.state;
+      entry.depth = d;
+      entry.pos = curr.pos;
+      count++;
+    }
+    curr = curr.prev;
+    d++;
+  }
+  head.summaryPtr = summaryMem;
+  head.summaryCount = count;
+}
+
+/**
+ * Stack Summary Error Recovery (Tree-sitter Strategy 1: Recover to State).
+ * Evaluates the recorded StackSummary to find an ancestor state that can
+ * legally shift or reduce with the lookahead token.
+ * Pops and groups the damaged subtrees into an ERROR node, and resumes normal parsing.
  */
 export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): boolean {
   if (token == TOKEN_EOF) return false;
-  let anc: ParseHead | null = head.prev;
-  let depth: u32 = 1;
+  if (head.summaryCount == 0) {
+    recordStackSummary(head);
+  }
+  if (head.summaryCount == 0) return false;
+
   let currentCost = head.errorCost;
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
 
-  while (anc != null && depth <= 20) {
-    let ancState = anc.state;
-    // Guard: Do not unwind all the way back to root position 0 when deep inside a class
-    if (anc.pos == 0 && pos > 20 && depth > 2) {
-      break;
-    }
+  for (let i: u32 = 0; i < head.summaryCount; i++) {
+    let entry = changetype<StackSummaryEntry>(head.summaryPtr + i * SIZEOF_STACK_SUMMARY_ENTRY);
+    let anc = entry.ancHead;
+    if (anc == null) continue;
+    let ancState = entry.state;
+    let depth = entry.depth;
+
     if (ancState >= 0 && ancState < action_offsets.length) {
       let canAccept = stateCanAccept(anc, ancState, token, 0, 0);
       if (canAccept > 0) {
@@ -29371,35 +29596,46 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
           0,
           anc.dynamicPrec,
           0,
-          nextTail
+          nextTail,
+          0,
+          false,
+          0,
+          0,
+          0,
+          0
         );
         pushActiveHead(changetype<u32>(errHead));
         return true;
       }
     }
-    anc = anc.prev;
-    depth++;
   }
   return false;
 }
 
 /**
  * Tree-sitter Strategy 2: Single-Token Error Shift.
- * Consumes the current invalid lookahead token into an ERROR leaf, advances the
- * byte position past the token, and pushes the head to the next frontier in t_nextHeads
- * with Tree-sitter's standard ERROR_COST_PER_SKIPPED_TREE penalty.
+ * Consumes the current invalid lookahead token, appends it into an active ERROR node container,
+ * advances byte position past the token, and pushes the head to t_nextHeads remaining in inErrorState.
  */
 export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
-  if (head.errorCost >= 200) return;
-  if (head.errorCost > 0 && head.successfulShifts == 0) return;
   if (token >= 0 && token < token_delete_costs.length && token_delete_costs[token] >= 1000) return;
+
+  if (head.summaryCount == 0) {
+    recordStackSummary(head);
+  }
 
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
   let pad = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
   
-  let tNode = allocNode(((token == TOKEN_UNKNOWN || token == -1 ? NODE_TYPE_ERROR : token) | 0x8000) as u16, pad, tLen, 0, false);
-  setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
+  let tNode = head.errorNode;
+  if (tNode == 0) {
+    tNode = allocNode(((token == TOKEN_UNKNOWN || token == -1 ? NODE_TYPE_ERROR : token) | 0x8000) as u16, pad, tLen, 0, false);
+    setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
+  } else {
+    let prevByteLen = getNodeByteLength(tNode);
+    setNodeByteLength(tNode, prevByteLen + pad + tLen);
+  }
 
   let nextPos = srcLexPos + tLen;
   let newPos = nextPos > pos ? nextPos : pos + 1;
@@ -29433,7 +29669,13 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     0,
     head.dynamicPrec,
     0,
-    nextTail
+    nextTail,
+    0,
+    true,
+    head.summaryPtr,
+    head.summaryCount,
+    0,
+    tNode
   );
   pushNextHead(changetype<u32>(skippedHead));
 }
