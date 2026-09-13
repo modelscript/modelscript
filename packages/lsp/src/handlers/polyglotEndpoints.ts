@@ -110,6 +110,8 @@ export function registerPolyglotEndpoints(
         monarch,
         textmate,
         wasmBytes,
+        languageDef: params.languageDef,
+        handlers: params.languageDef?.lsp?.handlers,
         disposables: [],
       };
 
@@ -238,6 +240,10 @@ export function registerPolyglotEndpoints(
       existing.facade = facade;
       existing.monarch = monarch;
       existing.wasmBytes = wasmBytes;
+      if (params.languageDef) {
+        existing.languageDef = params.languageDef;
+        existing.handlers = params.languageDef.lsp?.handlers;
+      }
 
       // Invalidate tree caches in documentManager for this language's files
       for (const [uri] of documentManager.documentTrees) {

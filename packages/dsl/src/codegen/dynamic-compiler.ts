@@ -18,6 +18,7 @@ export interface CompiledLanguageBundle {
   textmate: any;
   jsWrapper: string;
   parserInfo: any;
+  languageDef?: LanguageOptions;
 }
 
 /**
@@ -125,5 +126,6 @@ export async function compileDslToWasm(
     textmate,
     jsWrapper: buildResult.javascriptWrapper.js,
     parserInfo: buildResult.parserInfo,
+    languageDef: langDef,
   };
 }

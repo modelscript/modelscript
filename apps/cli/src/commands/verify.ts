@@ -4,20 +4,21 @@ import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { UnifiedWorkspace, VerificationRunner } from "@modelscript/runtime";
 import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/simulate";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 
-// Remove createRequire and require
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface VerifyArgs {
   name: string; // The sysml verification case name
@@ -59,13 +60,10 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const profiler = new Profiler();
 
     // Load Modelica Parser
-    const modelicaParser = new Parser();
-    modelicaParser.setLanguage(Modelica);
-
+    const { parser: modelicaParser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", modelicaParser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
-    const { createWasmParser } = await import("@modelscript/dsl");
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
@@ -90,7 +88,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         await context.addLibrary(p);
         const text = fs.readFileSync(p, "utf-8");
 
-        mIdx.register(`file://${path.resolve(p)}`, () => modelicaParser.parse(text).rootNode as any);
+        mIdx.register(`file://${path.resolve(p)}`, () => modelicaParser.parse(text)?.rootNode as any);
       } else if (p.endsWith(".sysml")) {
         const text = fs.readFileSync(p, "utf-8");
         const tree = sysmlParser.parse(text);

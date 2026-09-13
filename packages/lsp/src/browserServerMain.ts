@@ -27,7 +27,7 @@ import { createDiagramDispatch } from "./diagramApi.js";
 
 import type { SyntaxNode, Tree as TreeSitterTree } from "./utils/tree-sitter.js";
 
-import { ArenaQueryFlattener } from "@modelscript/modelica";
+import { ArenaQueryFlattener, modelicaLanguage } from "@modelscript/modelica";
 import { DAEBuilder, QueryEngine, initBltWasm } from "@modelscript/runtime";
 import { LineIndex } from "./utils/line-index.js";
 
@@ -197,7 +197,7 @@ workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.ste
 
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { UnifiedWorkspace } from "@modelscript/runtime";
-import { StepWorkspaceIndex } from "@modelscript/step";
+import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
@@ -313,6 +313,8 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
           extensions: [".mo", ".mos", ".msim"],
           parser: parserService.parser,
           facade: (parserService as any).facade,
+          languageDef: modelicaLanguage,
+          handlers: modelicaLanguage.lsp?.handlers,
         });
         globalLanguageRegistry.register({
           id: "sysml2",
@@ -326,6 +328,8 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
           name: "STEP",
           extensions: [".step", ".stp", ".p21"],
           parser: parserService.stepParser,
+          languageDef: stepLanguage,
+          handlers: stepLanguage.lsp?.handlers,
         });
         globalLanguageRegistry.register({
           id: "owl2",

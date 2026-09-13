@@ -4,6 +4,7 @@ export * from "./analysisEndpoints.js";
 export * from "./classqueryEndpoints.js";
 export * from "./diagramHandler.js";
 export * from "./interopEndpoints.js";
+export * from "./languageProtocolRouter.js";
 export * from "./miscEndpoints.js";
 export * from "./modelscriptParticipant.js";
 export * from "./polyglotEndpoints.js";

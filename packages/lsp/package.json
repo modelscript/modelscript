@@ -14,6 +14,10 @@
       "types": "./dist/browserServerMain.d.ts",
       "default": "./dist/browserServerMain.js"
     },
+    "./node": {
+      "types": "./dist/nodeServerMain.d.ts",
+      "default": "./dist/nodeServerMain.js"
+    },
     "./context": {
       "types": "./dist/LspContext.d.ts",
       "default": "./dist/LspContext.js"

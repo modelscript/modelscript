@@ -13,6 +13,7 @@ export * from "./diagramProtocol.js";
 export * from "./handlers/index.js";
 export * from "./lsp-bridge.js";
 export * from "./LspContext.js";
+export { startNodeServer } from "./nodeServerMain.js";
 export * from "./providers/index.js";
 export * from "./registry/index.js";
 export * from "./requirements.js";

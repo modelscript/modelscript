@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Context } from "@modelscript/modelica/context";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { ModelicaOptimizer } from "@modelscript/simulate/optimizer";
-import Parser from "tree-sitter";
+import { createRequire } from "node:module";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface OptimizeArgs {
   name: string;
@@ -82,15 +85,12 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
       })
       .option("format", {
         description: "output format",
-        type: "string",
         choices: ["csv", "json"],
         default: "csv",
       });
   }) as CommandModule<{}, OptimizeArgs>["builder"],
   handler: async (args) => {
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-
+    const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

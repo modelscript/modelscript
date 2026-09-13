@@ -28188,7 +28188,7 @@ export function advanceGLR(): void {
     swapActiveAndNextHeads();
 
     // 5. GLR-to-LR Transition: If a single deterministic head has recovered, resume fast-path LR parsing
-    if (activeHeadsCount == 1 && g_oldTree != 0) {
+    if (activeHeadsCount == 1) {
       let singleHead = changetype<ParseHead>(t_activeHeads[0]);
       if (singleHead.successfulShifts >= 2 && singleHead.consecutiveInsertions == 0) {
         let depth: u32 = 0;
@@ -28211,7 +28211,9 @@ export function advanceGLR(): void {
           currentParserMode = MODE_LR;
 
 
-          initGlobalCursor(g_oldTree);
+          if (g_oldTree != 0) {
+            initGlobalCursor(g_oldTree);
+          }
 
           let resumePos = singleHead.pos;
           let resumePad = singleHead.pendingPadding;

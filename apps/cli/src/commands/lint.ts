@@ -3,15 +3,18 @@
 
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { UnifiedWorkspace } from "@modelscript/runtime";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface LintArgs {
   path: string;
@@ -80,10 +83,9 @@ export const Lint: CommandModule<{}, LintArgs> = {
 
     if (hasModelica) {
       mIdx = createModelicaWorkspaceIndex();
-      const parser = new Parser();
-      parser.setLanguage(Modelica);
+      const { parser } = await createWasmParser(modelicaWasmPath);
       for (const item of modelicaItems) {
-        const ast = parser.parse(item.text).rootNode as any;
+        const ast = parser.parse(item.text)?.rootNode as any;
         astMap.set(item.uri, ast);
         mIdx.register(item.uri, () => ast);
       }

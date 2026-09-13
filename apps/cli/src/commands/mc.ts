@@ -1,11 +1,14 @@
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { type Distribution, type RandomVariable, runMonteCarloArena, runWasmSimulation } from "@modelscript/simulate";
 import fs from "node:fs/promises";
-import Parser from "tree-sitter";
+import { createRequire } from "node:module";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface McArgs {
   name: string;
@@ -77,9 +80,7 @@ export const MC: CommandModule<{}, McArgs> = {
       });
   }) as CommandModule<{}, McArgs>["builder"],
   handler: async (args) => {
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-
+    const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

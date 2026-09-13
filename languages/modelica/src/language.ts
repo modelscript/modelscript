@@ -275,6 +275,57 @@ export const modelicaLanguage = language({
       "when_statement",
     ],
     outline: ["component_declaration", "short_class_specifier", "long_class_specifier", "der_class_specifier"],
+    handlers: {
+      "modelscript/getCadComponents": async (ctx: any, params: { uri: string }) => {
+        const sharedContext = ctx.parserService?.sharedContext;
+        if (!sharedContext) return [];
+
+        const unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+        if (!unifiedIndex) return [];
+
+        let targetClassName: string | undefined;
+        let targetSymbolId: number | undefined;
+
+        for (const [id, entry] of unifiedIndex.symbols.entries()) {
+          if (
+            entry.resourceId === params.uri &&
+            (entry.kind === "Class" || entry.kind === "Def") &&
+            entry.parentId === null
+          ) {
+            targetSymbolId = id;
+            targetClassName = entry.name;
+            break;
+          }
+        }
+
+        if (!targetClassName) return [];
+        const { extractModelicaCadComponents } = await import("./cad.js");
+        return extractModelicaCadComponents(sharedContext, targetClassName, targetSymbolId, params.uri);
+      },
+      "modelscript/exportShapeToStep": async (ctx: any, params: { uri: string; className: string }) => {
+        const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance(params.uri, params.className);
+        if (!classInstance) {
+          throw new Error(`Could not resolve Modelica class ${params.className}`);
+        }
+        const queryDB = ctx.workspaceManager.globalModelicaQueryEngine.toQueryDB();
+        const { ShapeFlattener } = await import("./shape-flattener.js");
+        const { compileAssemblyToStep } = await import("@modelscript/cad");
+        const flattener = new ShapeFlattener(queryDB);
+        const assembly = flattener.flatten(classInstance.symbolId);
+        const stepContent = compileAssemblyToStep(assembly);
+        return { step: stepContent, name: assembly.name };
+      },
+      "modelscript/flattenStudy": async (ctx: any, params: { uri: string; className: string }) => {
+        const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance(params.uri, params.className);
+        if (!classInstance) {
+          throw new Error(`Could not resolve Modelica class ${params.className}`);
+        }
+        const queryDB = ctx.workspaceManager.globalModelicaQueryEngine.toQueryDB();
+        const { StudyFlattener } = await import("./study-flattener.js");
+        const flattener = new StudyFlattener(queryDB);
+        return flattener.flatten(classInstance.symbolId);
+      },
+    },
   },
 
   symbols: {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./cad.js";
 export * from "./connections.js";
 export * from "./csg.js";
 export * from "./flattener-wasm.js";

@@ -2,14 +2,17 @@
 
 import { Context } from "@modelscript/modelica/context";
 import { renderDiagram, renderIcon } from "@modelscript/modelica/diagram";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { registerWindow } from "@svgdotjs/svg.js";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { createSVGWindow } from "svgdom";
-import Parser from "tree-sitter";
 import xmlFormat from "xml-formatter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface RenderArgs {
   name: string;
@@ -19,7 +22,7 @@ interface RenderArgs {
 
 export const Render: CommandModule<{}, RenderArgs> = {
   command: "render <name> <paths...>",
-  describe: "",
+  describe: "Render Modelica class diagram or icon to SVG",
   builder: (yargs) => {
     return yargs
       .positional("name", {
@@ -41,9 +44,7 @@ export const Render: CommandModule<{}, RenderArgs> = {
       });
   },
   handler: async (args) => {
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-
+    const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

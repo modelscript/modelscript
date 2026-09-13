@@ -40,6 +40,10 @@ export interface LanguagePlugin {
     symbols?: (tree: any) => any[];
     folding?: (tree: any) => any[];
   };
+  /** Full language definition options from @modelscript/dsl */
+  languageDef?: any;
+  /** Custom JSON-RPC request and notification handlers */
+  handlers?: Record<string, (context: any, params: any) => Promise<any> | any>;
 }
 
 /**
@@ -127,6 +131,14 @@ export class LanguageRegistry {
   getPluginForExtension(ext: string): LanguagePlugin | undefined {
     const normalized = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
     return this.extMap.get(normalized);
+  }
+
+  /**
+   * Retrieves a custom protocol handler for a given URI and method name.
+   */
+  getHandlerForUri(uri: string, method: string): ((context: any, params: any) => Promise<any> | any) | undefined {
+    const plugin = this.getPluginForUri(uri);
+    return plugin?.handlers?.[method] ?? plugin?.languageDef?.lsp?.handlers?.[method];
   }
 
   /**

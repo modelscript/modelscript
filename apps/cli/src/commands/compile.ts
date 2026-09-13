@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Context } from "@modelscript/modelica/context";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { printArenaDAE } from "@modelscript/runtime";
 import { snapshotMemory } from "@modelscript/simulate";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface CompileArgs {
   name: string;
@@ -59,9 +59,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;
     const modelicaLangFallback = (await import("@modelscript/modelica/language")).default;
 
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-
+    const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
@@ -97,7 +95,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         await context.addLibrary(p);
         const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
 
-        mIdx.register(`file://${path.resolve(p)}`, () => parser.parse(text).rootNode as any);
+        mIdx.register(`file://${path.resolve(p)}`, () => parser.parse(text)?.rootNode as any);
       } else {
         await context.addLibrary(p);
       }

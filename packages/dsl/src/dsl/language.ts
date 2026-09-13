@@ -676,7 +676,30 @@ export interface SymbolConfig<FieldName extends string = string> {
 }
 
 /**
- * Configuration options for defining a ModelScript language grammar.
+ * Context passed to language-defined LSP custom protocol handlers.
+ */
+export interface LanguageRequestContext {
+  uri: string;
+  workspaceManager?: any;
+  parserService?: any;
+  sharedContext?: any;
+  validationService?: any;
+  connection?: any;
+  plugin?: any;
+  queryDB?: any;
+  [key: string]: any;
+}
+
+/**
+ * Custom protocol handler for language-specific JSON-RPC requests.
+ */
+export type LanguageProtocolHandler<TParams = any, TResult = any> = (
+  context: LanguageRequestContext,
+  params: TParams,
+) => Promise<TResult> | TResult;
+
+/**
+ * Configuration options passed to the `language(...)` function.
  * Modeled after Tree-sitter's Grammar API.
  */
 export interface LanguageOptions<
@@ -822,6 +845,13 @@ export interface LanguageOptions<
     outline?: NoInfer<RuleName>[];
     /** AssemblyScript callback or function name for goto definition */
     definition?: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
+    /**
+     * Language-specific custom LSP protocol handlers.
+     * Handlers receive a `LanguageRequestContext` and request parameters,
+     * allowing language packages to implement custom JSON-RPC endpoints
+     * (e.g. CAD component extraction, geometry export, multi-body generation).
+     */
+    handlers?: Record<string, LanguageProtocolHandler>;
   };
 
   /** Zero-GC Code Formatter & Unparser Configuration */

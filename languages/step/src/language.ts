@@ -26,6 +26,99 @@ export const stepLanguage = language({
     ],
   },
 
+  lsp: {
+    fileExtension: ".step",
+    handlers: {
+      "modelscript/generateMultiBody": async (ctx: any, params: { uri: string }) => {
+        const model = ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel(params.uri);
+        if (!model) {
+          throw new Error(`No STEP assembly found for ${params.uri}`);
+        }
+
+        const filename = params.uri.split("/").pop() || "Assembly";
+        const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
+
+        const { mapStepToMultiBody } = await import("../step-multibody-mapper.js");
+        const { generateMultiBodyModelica } = await import("@modelscript/modelica");
+
+        const multiBodyDescriptor = mapStepToMultiBody(baseName, model as any);
+        const modelicaSource = generateMultiBodyModelica(multiBodyDescriptor, params.uri);
+
+        return { source: modelicaSource, name: baseName };
+      },
+      "modelscript/getStepMeshes": async (ctx: any, params: { uri: string }): Promise<any[]> => {
+        let targetUri = params.uri;
+        if (!/\.(step|stp|p21)$/i.test(targetUri)) {
+          const unifiedIdx = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+          if (unifiedIdx) {
+            for (const [, entry] of unifiedIdx.symbols) {
+              if (
+                entry.ruleName === "step_product" &&
+                entry.resourceId &&
+                /\.(step|stp|p21)$/i.test(entry.resourceId)
+              ) {
+                targetUri = entry.resourceId;
+                break;
+              }
+            }
+          }
+        }
+
+        let meshes = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
+        const unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+
+        if (meshes.length === 0 && unifiedIndex) {
+          const { generateDroneChassisGeometry } = await import("@modelscript/cad/mesh-fallbacks");
+          const normTarget = targetUri.replace(":///", ":/");
+          for (const [, entry] of unifiedIndex.symbols) {
+            const normResource = (entry.resourceId || "").replace(":///", ":/");
+            if (normResource === normTarget && entry.ruleName === "step_shape") {
+              const chassis = generateDroneChassisGeometry();
+
+              meshes.push({
+                name: entry.name,
+                color: [0.6, 0.75, 0.9],
+                attributes: { position: { array: chassis.vertices }, normal: { array: chassis.normals } },
+                index: { array: chassis.indices },
+              });
+            }
+          }
+        }
+
+        return meshes.map((mesh: any, idx: number) => {
+          const rawName = mesh.name || `Mesh_${idx}`;
+          let displayName = rawName;
+          let type = "Face";
+          if (unifiedIndex) {
+            const normTarget = targetUri.replace(":///", ":/");
+            for (const [, entry] of unifiedIndex.symbols) {
+              const normResource = (entry.resourceId || "").replace(":///", ":/");
+              if (normResource === normTarget && entry.name === rawName && entry.ruleName === "step_shape") {
+                displayName = entry.name;
+                type = (entry.metadata as any)?.stepType ?? "NamedShape";
+                break;
+              }
+            }
+          }
+
+          const posArr = mesh.attributes?.position?.array || [];
+          const normArr = mesh.attributes?.normal?.array || [];
+          const idxArr = mesh.index?.array || [];
+
+          return {
+            id: idx,
+            name: displayName,
+            type,
+            color: mesh.color || [0.8, 0.8, 0.8],
+            vertices: Array.isArray(posArr) ? posArr : Array.from(posArr),
+            normals: Array.isArray(normArr) ? normArr : Array.from(normArr),
+            indices: Array.isArray(idxArr) ? idxArr : Array.from(idxArr),
+          };
+        });
+      },
+    },
+  },
+
   extras: ($) => [/\s/, $.BLOCK_COMMENT],
 
   rules: {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import type { CommandModule } from "yargs";
 
 declare const WebAssembly: any;
@@ -30,10 +30,50 @@ export const Parse: CommandModule<{}, ParseArgs> = {
   },
   handler: async (args) => {
     const cwd = process.cwd();
+    const filePath = path.resolve(cwd, args.file);
+
+    if (!existsSync(filePath)) {
+      console.error(`Error: File not found at ${filePath}`);
+      process.exit(1);
+    }
+
     const wrapperPath = join(cwd, "build", "src-gen", "index.js");
 
+    // Native fallback for Modelica (.mo) and SysML (.sysml) files
     if (!existsSync(wrapperPath)) {
-      console.error(`Could not find parser wrapper at ${wrapperPath}. Did you run 'msc build'?`);
+      const { createRequire } = await import("node:module");
+      const require = createRequire(import.meta.url);
+      const { createWasmParser } = await import("@modelscript/dsl/bindings");
+
+      let wasmPath = "";
+      if (args.file.endsWith(".mo")) {
+        try {
+          wasmPath = require.resolve("@modelscript/modelica/parser.wasm");
+        } catch {}
+      } else if (args.file.endsWith(".sysml")) {
+        try {
+          wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
+        } catch {}
+      }
+
+      if (wasmPath && existsSync(wasmPath)) {
+        const { parser } = await createWasmParser(wasmPath);
+        const text = readFileSync(filePath, "utf-8");
+        const tree = parser.parse(text);
+        if (!tree) {
+          console.error("Parse failed. No tree returned.");
+          process.exit(1);
+        }
+        console.log(tree.rootNode.toString());
+        if (tree.rootNode.hasError && typeof tree.rootNode.hasError === "function" && tree.rootNode.hasError()) {
+          console.error("\n[Syntax Errors Detected]");
+        }
+        return;
+      }
+
+      console.error(
+        `Could not find parser wrapper at ${wrapperPath}.\nIf parsing a custom DSL, run 'msc build' first.\nFor built-in languages, provide a .mo or .sysml file.`,
+      );
       process.exit(1);
     }
 

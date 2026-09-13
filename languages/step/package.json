@@ -52,7 +52,9 @@
     "clean": "rimraf dist src-gen *.wasm"
   },
   "dependencies": {
+    "@modelscript/cad": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/runtime": "*"
   }
 }

@@ -3,11 +3,14 @@ import { I18nExtractor } from "@modelscript/dsl";
 import { extractI18nConfig } from "@modelscript/lsp";
 import { Context } from "@modelscript/modelica/context";
 import modelicaLang from "@modelscript/modelica/language";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import { writeFileSync } from "node:fs";
-import Parser from "tree-sitter";
+import { createRequire } from "node:module";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface I18nArgs {
   paths: string[];
@@ -16,7 +19,7 @@ interface I18nArgs {
 
 export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
   command: "i18n <paths..>",
-  describe: "",
+  describe: "Extract internationalization (.pot) translation templates from Modelica models",
   builder: (yargs) => {
     return yargs
       .positional("paths", {
@@ -32,9 +35,7 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
       }) as any;
   },
   handler: async (args) => {
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-
+    const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

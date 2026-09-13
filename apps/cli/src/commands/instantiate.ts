@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Context } from "@modelscript/modelica/context";
-import Modelica from "@modelscript/modelica/parser";
+import { createWasmParser } from "@modelscript/modelica/parser";
+import { createRequire } from "node:module";
 import path from "node:path";
-import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
+
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface InstantiateArgs {
   name: string;
@@ -14,7 +17,7 @@ interface InstantiateArgs {
 
 export const Instantiate: CommandModule<{}, InstantiateArgs> = {
   command: "instantiate <name> <paths...>",
-  describe: "",
+  describe: "Instantiate and query AST structure of a Modelica model",
   builder: (yargs) => {
     return yargs
       .positional("name", {
@@ -30,9 +33,7 @@ export const Instantiate: CommandModule<{}, InstantiateArgs> = {
       });
   },
   handler: async (args) => {
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-
+    const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
