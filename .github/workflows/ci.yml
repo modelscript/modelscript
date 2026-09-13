@@ -131,7 +131,7 @@ jobs:
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
       - name: Run Build
-        run: npx nx affected -t build --exclude=@modelscript/morsel --parallel=3
+        run: npx nx run-many -t build --exclude=@modelscript/morsel --parallel=3
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Package VS Code Extension
