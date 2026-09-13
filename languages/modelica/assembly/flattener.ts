@@ -58,10 +58,10 @@ export const FLAG_MOD_EACH: u32 = 0x02;
 export const FLAG_MOD_REDECLARE: u32 = 0x04;
 export const FLAG_MOD_REPLACEABLE: u32 = 0x08;
 
-export const SIZEOF_MOD_ENV: usize = 64;
-export const SIZEOF_SCOPE_STACK: usize = 64;
-export const SIZEOF_EXPR_VISITOR: usize = 64;
-export const SIZEOF_FLATTENER: usize = 128;
+export const SIZEOF_MOD_ENV: u32 = 64;
+export const SIZEOF_SCOPE_STACK: u32 = 64;
+export const SIZEOF_EXPR_VISITOR: u32 = 64;
+export const SIZEOF_FLATTENER: u32 = 128;
 
 export namespace SyntaxType {
   export const CLASS_DEFINITION: u16 = 106;

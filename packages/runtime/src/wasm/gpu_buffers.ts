@@ -80,7 +80,7 @@ export function gpu_serializeBuffers(
     let val: f64 = dae.getVarStartValue(i);
     let high: f32 = f32(val);
     let low: f32 = f32(val - f64(high));
-    let byteOffset = (i << 3) as usize;
+    let byteOffset: u32 = i << 3;
     store<f32>(stateBufPtr + byteOffset, high);
     store<f32>(stateBufPtr + byteOffset + 4, low);
   }
@@ -99,7 +99,7 @@ export function gpu_serializeBuffers(
     if (!dae.isVarRemoved(i)) {
       let nameId = dae.getVarNameId(i);
       if (nameId < nameCap) {
-        store<i32>(nameTablePtr + ((nameId as usize) << 2), i as i32);
+        store<i32>(nameTablePtr + (nameId << 2), i as i32);
       }
     }
   }
@@ -164,14 +164,14 @@ export function gpu_serializeBuffers(
       let varLen = load<u32>(cursor);
       cursor += 4;
 
-      store<u32>(blockStartsPtr + ((b as usize) << 2), eqOffset);
-      store<u32>(blockVarStartsPtr + ((b as usize) << 2), varOffset);
+      store<u32>(blockStartsPtr + (b << 2), eqOffset);
+      store<u32>(blockVarStartsPtr + (b << 2), varOffset);
 
       // Copy equations
       for (let k: u32 = 0; k < eqLen; k++) {
         let eqIdx = load<u32>(cursor);
         cursor += 4;
-        store<u32>(sortedEqsPtr + (((eqOffset + k) as usize) << 2), eqIdx);
+        store<u32>(sortedEqsPtr + ((eqOffset + k) << 2), eqIdx);
       }
       eqOffset += eqLen;
 
@@ -179,17 +179,17 @@ export function gpu_serializeBuffers(
       for (let k: u32 = 0; k < varLen; k++) {
         let vIdx = load<u32>(cursor);
         cursor += 4;
-        store<u32>(blockVarsPtr + (((varOffset + k) as usize) << 2), vIdx);
+        store<u32>(blockVarsPtr + ((varOffset + k) << 2), vIdx);
       }
       varOffset += varLen;
 
       // Set block flag: bit 0 = 1 if algebraic loop
-      store<u32>(blockFlagsPtr + ((b as usize) << 2), eqLen > 1 ? 1 : 0);
+      store<u32>(blockFlagsPtr + (b << 2), eqLen > 1 ? 1 : 0);
     }
   }
 
-  store<u32>(blockStartsPtr + ((numBlocks as usize) << 2), eqOffset);
-  store<u32>(blockVarStartsPtr + ((numBlocks as usize) << 2), varOffset);
+  store<u32>(blockStartsPtr + (numBlocks << 2), eqOffset);
+  store<u32>(blockVarStartsPtr + (numBlocks << 2), varOffset);
 
   pack.blockStartsPtr = blockStartsPtr as usize;
   pack.sortedEqsPtr = sortedEqsPtr as usize;

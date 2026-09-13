@@ -1125,7 +1125,7 @@ export function dae_getPointers(ptr: u32): u32 {
 export function dae_getOffsets(): u32 {
   let varOffset = offsetof<DaeBuilder>("varCount");
   let clockOffset = offsetof<DaeBuilder>("clockCount");
-  return (varOffset << 16) | (clockOffset & 0xffff);
+  return ((varOffset as u32) << 16) | ((clockOffset as u32) & 0xffff);
 }
 
 export function dae_getClockCount(ptr: u32): u32 {

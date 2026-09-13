@@ -574,7 +574,8 @@ export const modelicaFlatteningPasses = [
             const fullNameId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, nameStrId) : nameStrId;
 
             // Extract array subscripts from declaration (e.g. x[9]) or component_clause (e.g. Real[9] x)
-            const dims: i32[] = [];
+            const dims = [0];
+            dims.pop();
             let subNode: u32 = 0;
             for (const s of graph.ast.getDescendants(decl, $.array_subscripts)) {
               subNode = s;
@@ -599,7 +600,7 @@ export const modelicaFlatteningPasses = [
             if (varType >= 0) {
               const varIdx = graph.dae.addVariable(fullNameId, varType, variability, causality, 0.0, varFlags);
               for (let d = 0; d < dims.length; d++) {
-                graph.dae.setVarShapeDim(varIdx, d as u32, dims[d]);
+                graph.dae.setVarShapeDim(varIdx, d, dims[d]);
               }
             } else if (typeNode != 0) {
               for (const def of graph.ast.getDescendants(docRoot, $.class_definition)) {

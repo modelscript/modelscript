@@ -7,7 +7,7 @@
 
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
 import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
-import { LSPBridge, PositionIndex } from "@modelscript/lsp";
+import { LSPBridge, PositionIndex } from "@modelscript/lsp/bridge";
 import { QueryEngine, WorkspaceIndex, type VerificationResult } from "@modelscript/runtime";
 import { sysml2Language } from "./language.js";
 

@@ -141,15 +141,15 @@ function generateLatinHypercube(
       let randVal = rng.random();
       let k: i32 = (randVal * ((i + 1) as f64)) as i32;
       if (k > i) k = i;
-      let iOffset: usize = (i as usize) * 8;
-      let kOffset: usize = (k as usize) * 8;
+      let iOffset: u32 = (i as u32) * 8;
+      let kOffset: u32 = (k as u32) * 8;
       let tmp = load<f64>(strataPtr + iOffset);
       store<f64>(strataPtr + iOffset, load<f64>(strataPtr + kOffset));
       store<f64>(strataPtr + kOffset, tmp);
     }
 
     for (let s: u32 = 0; s < numSamples; s++) {
-      let u = load<f64>(strataPtr + (s as usize) * 8);
+      let u = load<f64>(strataPtr + s * 8);
       let val = minVal + u * span;
       store<f64>(outSamplesPtr + ((s * nInputs + d) as usize) * 8, val);
     }

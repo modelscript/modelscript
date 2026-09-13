@@ -51,8 +51,8 @@
     "transformers/**"
   ],
   "scripts": {
-    "build": "npm run clean && node build.js && tsc",
-    "clean": "rimraf dist src-gen *.wasm"
+    "build": "node build.js && tsc",
+    "clean": "rimraf dist *.wasm"
   },
   "dependencies": {
     "@modelscript/diagram": "*",
@@ -67,7 +67,8 @@
       "build": {
         "dependsOn": [
           "@modelscript/dsl:build",
-          "@modelscript/runtime:build"
+          "@modelscript/runtime:build",
+          "@modelscript/diagram:build"
         ]
       }
     }

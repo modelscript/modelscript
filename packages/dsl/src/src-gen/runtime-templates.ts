@@ -7738,7 +7738,7 @@ export function dae_getPointers(ptr: u32): u32 {
 export function dae_getOffsets(): u32 {
   let varOffset = offsetof<DaeBuilder>("varCount");
   let clockOffset = offsetof<DaeBuilder>("clockCount");
-  return (varOffset << 16) | (clockOffset & 0xffff);
+  return ((varOffset as u32) << 16) | ((clockOffset as u32) & 0xffff);
 }
 
 export function dae_getClockCount(ptr: u32): u32 {
@@ -8651,15 +8651,15 @@ function generateLatinHypercube(
       let randVal = rng.random();
       let k: i32 = (randVal * ((i + 1) as f64)) as i32;
       if (k > i) k = i;
-      let iOffset: usize = (i as usize) * 8;
-      let kOffset: usize = (k as usize) * 8;
+      let iOffset: u32 = (i as u32) * 8;
+      let kOffset: u32 = (k as u32) * 8;
       let tmp = load<f64>(strataPtr + iOffset);
       store<f64>(strataPtr + iOffset, load<f64>(strataPtr + kOffset));
       store<f64>(strataPtr + kOffset, tmp);
     }
 
     for (let s: u32 = 0; s < numSamples; s++) {
-      let u = load<f64>(strataPtr + (s as usize) * 8);
+      let u = load<f64>(strataPtr + s * 8);
       let val = minVal + u * span;
       store<f64>(outSamplesPtr + ((s * nInputs + d) as usize) * 8, val);
     }
@@ -12313,7 +12313,7 @@ export function gpu_serializeBuffers(
     let val: f64 = dae.getVarStartValue(i);
     let high: f32 = f32(val);
     let low: f32 = f32(val - f64(high));
-    let byteOffset = (i << 3) as usize;
+    let byteOffset: u32 = i << 3;
     store<f32>(stateBufPtr + byteOffset, high);
     store<f32>(stateBufPtr + byteOffset + 4, low);
   }
@@ -12332,7 +12332,7 @@ export function gpu_serializeBuffers(
     if (!dae.isVarRemoved(i)) {
       let nameId = dae.getVarNameId(i);
       if (nameId < nameCap) {
-        store<i32>(nameTablePtr + ((nameId as usize) << 2), i as i32);
+        store<i32>(nameTablePtr + (nameId << 2), i as i32);
       }
     }
   }
@@ -12397,14 +12397,14 @@ export function gpu_serializeBuffers(
       let varLen = load<u32>(cursor);
       cursor += 4;
 
-      store<u32>(blockStartsPtr + ((b as usize) << 2), eqOffset);
-      store<u32>(blockVarStartsPtr + ((b as usize) << 2), varOffset);
+      store<u32>(blockStartsPtr + (b << 2), eqOffset);
+      store<u32>(blockVarStartsPtr + (b << 2), varOffset);
 
       // Copy equations
       for (let k: u32 = 0; k < eqLen; k++) {
         let eqIdx = load<u32>(cursor);
         cursor += 4;
-        store<u32>(sortedEqsPtr + (((eqOffset + k) as usize) << 2), eqIdx);
+        store<u32>(sortedEqsPtr + ((eqOffset + k) << 2), eqIdx);
       }
       eqOffset += eqLen;
 
@@ -12412,17 +12412,17 @@ export function gpu_serializeBuffers(
       for (let k: u32 = 0; k < varLen; k++) {
         let vIdx = load<u32>(cursor);
         cursor += 4;
-        store<u32>(blockVarsPtr + (((varOffset + k) as usize) << 2), vIdx);
+        store<u32>(blockVarsPtr + ((varOffset + k) << 2), vIdx);
       }
       varOffset += varLen;
 
       // Set block flag: bit 0 = 1 if algebraic loop
-      store<u32>(blockFlagsPtr + ((b as usize) << 2), eqLen > 1 ? 1 : 0);
+      store<u32>(blockFlagsPtr + (b << 2), eqLen > 1 ? 1 : 0);
     }
   }
 
-  store<u32>(blockStartsPtr + ((numBlocks as usize) << 2), eqOffset);
-  store<u32>(blockVarStartsPtr + ((numBlocks as usize) << 2), varOffset);
+  store<u32>(blockStartsPtr + (numBlocks << 2), eqOffset);
+  store<u32>(blockVarStartsPtr + (numBlocks << 2), varOffset);
 
   pack.blockStartsPtr = blockStartsPtr as usize;
   pack.sortedEqsPtr = sortedEqsPtr as usize;

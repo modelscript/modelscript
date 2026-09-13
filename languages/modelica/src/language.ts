@@ -170,6 +170,7 @@ export const modelicaLanguage = language({
     [$.when_statement],
     [$.for_equation],
     [$.for_statement],
+    [$.element_list, $.annotation_clause],
   ],
 
   inline: ["element_list", "component_list", "statement_or_procedure"],

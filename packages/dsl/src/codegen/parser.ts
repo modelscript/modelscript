@@ -938,7 +938,7 @@ export function generateParserTables(
   const extractExports = (codeStr: string, moduleName: string) => {
     const exports: string[] = [];
     const regex =
-      /^export\s+(?:@(?:unmanaged|inline)\s+)?(?:abstract\s+)?(function|const|let|var|class|enum|type|interface)\s+([a-zA-Z0-9_]+)/gm;
+      /^export\s+(?:@(?:unmanaged|inline)\s+)?(?:abstract\s+)?(function|const|let|var|enum)\s+([a-zA-Z0-9_]+)/gm;
     let match;
     const ignoreList = new Set([
       "action_offsets",
