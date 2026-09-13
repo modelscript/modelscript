@@ -149,6 +149,7 @@
   },
   "scripts": {
     "build": "npm run clean && node build.js && tsc",
+    "build:flattener": "node scripts/bundle-flattener.js",
     "clean": "rimraf dist build src-gen *.wasm",
     "test": "npx tsx tests/testsuite-runner.ts",
     "test:latex": "npx tsx tests/ctrf-to-latex.ts",

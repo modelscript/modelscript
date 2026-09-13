@@ -13,5 +13,5 @@
     "moduleResolution": "nodenext"
   },
   "include": ["src/**/*.ts", "src-gen/**/*.ts", "transformers/**/*.ts", "ast/**/*.ts"],
-  "exclude": ["dist", "build", "node_modules", "tests", "testsuite"]
+  "exclude": ["dist", "build", "node_modules", "tests", "testsuite", "assembly"]
 }

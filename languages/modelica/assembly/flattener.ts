@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// AUTO-GENERATED FROM assembly/flattener.ts - DO NOT EDIT DIRECTLY
-
-export const modelicaFlattenerWasmCode = `/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 import {
   DaeBuilder,
@@ -2718,4 +2716,3 @@ export function flattener_flatten(flattenerPtr: u32, rootClassNodePtr: u32, prog
   if (flattenerPtr == 0) return 0;
   return changetype<ModelicaFlattener>(flattenerPtr).flatten(rootClassNodePtr, programRootNodePtr);
 }
-`;

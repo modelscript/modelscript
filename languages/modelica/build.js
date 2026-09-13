@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Step 0: Bundle assembly/flattener.ts -> src/flattener-wasm.ts
+const bundleScript = path.join(__dirname, "scripts", "bundle-flattener.js");
+execSync(`node "${bundleScript}"`, { stdio: "inherit", cwd: __dirname });
+
 // Step 1: Run builder via tsx to compile parser and WASM
 const buildScriptPath = path.join(__dirname, "build-parser.ts");
 const buildScriptContent = `import fs from "node:fs";
