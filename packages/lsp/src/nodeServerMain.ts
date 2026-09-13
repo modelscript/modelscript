@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParser } from "@modelscript/dsl/bindings";
+import { clearIconCache } from "@modelscript/modelica/diagram";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import owl2LangFallback from "@modelscript/owl2/language";
 import { StepWorkspaceIndex } from "@modelscript/step";
@@ -33,6 +34,8 @@ import { WorkspaceManager } from "./services/WorkspaceManager.js";
  * Starts a headless Language Server Protocol server over Node.js standard I/O or IPC.
  */
 export function startNodeServer() {
+  globalThis.clearIconCache = clearIconCache;
+
   const connection = createConnection(ProposedFeatures.all);
   const documents = new TextDocuments(TextDocument);
 

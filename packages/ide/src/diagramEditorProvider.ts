@@ -162,9 +162,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             case "connect":
               actions = [{ type: "connect", source: message.source, target: message.target, points: message.points }];
               break;
+            case "moveEdge":
             case "edgeMove":
               actions = [{ type: "moveEdge", edges: message.edges }];
               break;
+            case "disconnect":
             case "deleteEdge":
               actions = [{ type: "disconnect", source: message.source, target: message.target }];
               break;

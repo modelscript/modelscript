@@ -38,7 +38,8 @@
   "scripts": {
     "build": "tsc && node build-browser.js",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored"
+    "lint": "eslint src --no-warn-ignored",
+    "test": "npx tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
     "@antv/layout": "^0.3.25",

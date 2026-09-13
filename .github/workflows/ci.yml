@@ -80,17 +80,17 @@ jobs:
         id: cache-fmusim
         uses: actions/cache@v4
         with:
-          path: packages/fmi/validation/reference_fmus
+          path: packages/exchange/validation/fmi/reference_fmus
           key: ${{ runner.os }}-fmusim-v0.0.39
       - name: Fetch FMI Simulator
         if: steps.cache-fmusim.outputs.cache-hit != 'true'
-        run: npm run fetch:fmusim --workspace=@modelscript/fmi
+        run: npm run fetch:fmusim --workspace=@modelscript/exchange
       - name: Run Tests
         run: npx nx affected -t test --parallel=3
       - name: Validate FMI
         run: |
-          npm run validate --workspace=@modelscript/fmi
-          npm run test:fmusim --workspace=@modelscript/fmi
+          npm run validate --workspace=@modelscript/exchange
+          npm run test:fmusim --workspace=@modelscript/exchange
         if: always()
       - name: Publish Test Report
         uses: ctrf-io/github-test-reporter@v1
@@ -132,14 +132,16 @@ jobs:
         uses: nrwl/nx-set-shas@v4
       - name: Run Build
         run: npx nx affected -t build --exclude=@modelscript/morsel --parallel=3
+      - name: Build VS Code Extension
+        run: npm run build:extension
       - name: Package VS Code Extension
-        run: npx @vscode/vsce package --no-dependencies
-        working-directory: extensions/vscode
+        run: npx --yes @vscode/vsce package --no-dependencies
+        working-directory: dist/extension
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
           name: modelscript-vsix
-          path: extensions/vscode/*.vsix
+          path: dist/extension/*.vsix
       - name: SPA fallback for GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |

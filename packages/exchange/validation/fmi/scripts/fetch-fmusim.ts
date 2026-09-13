@@ -6,13 +6,17 @@
 import { exec } from "child_process";
 import fs from "fs/promises";
 import path from "path";
+import { fileURLToPath } from "url";
 import util from "util";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const execAsync = util.promisify(exec);
 
 const VERSION = "0.0.39";
 const URL = `https://github.com/modelica/Reference-FMUs/releases/download/v${VERSION}/Reference-FMUs-${VERSION}.zip`;
-const OUT_DIR = path.resolve("validation/reference_fmus");
+const OUT_DIR = path.resolve(__dirname, "../reference_fmus");
 const ZIP_PATH = path.join("/tmp", `Reference-FMUs-${VERSION}.zip`);
 
 async function main() {

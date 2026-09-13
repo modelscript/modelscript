@@ -42,7 +42,11 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored"
+    "fetch:fmusim": "tsx validation/fmi/scripts/fetch-fmusim.ts",
+    "lint": "eslint src --no-warn-ignored",
+    "test:fmusim": "tsx validation/fmi/scripts/fmusim-verify.ts",
+    "test:omc": "tsx validation/fmi/scripts/omc-verify.ts",
+    "validate": "tsx validation/fmi/scripts/validate.ts"
   },
   "dependencies": {
     "@modelscript/runtime": "*",

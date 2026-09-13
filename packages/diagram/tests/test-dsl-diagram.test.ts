@@ -1,5 +1,6 @@
-import { describe, expect, it } from "@jest/globals";
-import { buildDiagramFromDSL } from "../src/diagram/polyglot-diagram-builder.js";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { buildDiagramFromDSL } from "../src/polyglot-diagram-builder.js";
 
 describe("DSL to X6 Diagram Adapter", () => {
   it("should adapt raw AST diagram data with DSL diagram configuration", () => {
@@ -107,29 +108,29 @@ describe("DSL to X6 Diagram Adapter", () => {
 
     const result = buildDiagramFromDSL(rawData, diagramConfig, syntaxNames, "Schematic");
 
-    expect(result).toBeDefined();
-    expect(result.nodes.length).toBe(3); // 1 ModelDef container + 2 Decl components (Program and Equation are filtered/transformed)
-    expect(result.edges.length).toBe(1); // 1 Equation edge (voltage -> power)
+    assert.ok(result);
+    assert.strictEqual(result.nodes.length, 3); // 1 ModelDef container + 2 Decl components (Program and Equation are filtered/transformed)
+    assert.strictEqual(result.edges.length, 1); // 1 Equation edge (voltage -> power)
 
     const modelNode = result.nodes.find((n) => n.id === "node_100");
-    expect(modelNode).toBeDefined();
-    expect(modelNode?.zIndex).toBe(-1); // subsystem container zIndex
-    expect(modelNode?.width).toBe(200);
+    assert.ok(modelNode);
+    assert.strictEqual(modelNode?.zIndex, -1); // subsystem container zIndex
+    assert.strictEqual(modelNode?.width, 200);
 
     const voltageNode = result.nodes.find((n) => n.id === "node_200");
-    expect(voltageNode).toBeDefined();
-    expect(voltageNode?.parent).toBe("node_100");
-    expect(voltageNode?.ports?.items?.length).toBe(2); // in & out ports
+    assert.ok(voltageNode);
+    assert.strictEqual(voltageNode?.parent, "node_100");
+    assert.strictEqual(voltageNode?.ports?.items?.length, 2); // in & out ports
 
     const powerNode = result.nodes.find((n) => n.id === "node_201");
-    expect(powerNode).toBeDefined();
-    expect(powerNode?.parent).toBe("node_100");
+    assert.ok(powerNode);
+    assert.strictEqual(powerNode?.parent, "node_100");
 
     const edge = result.edges[0];
-    expect(edge.source).toEqual({ cell: "node_200", port: "port_out" });
-    expect(edge.target).toEqual({ cell: "node_201", port: "port_in" });
-    expect(edge.router).toEqual({ name: "manhattan" });
-    expect(edge.connector).toEqual({ name: "jumpover" });
-    expect(edge.attrs.line.stroke).toBe("#60a5fa");
+    assert.deepStrictEqual(edge.source, { cell: "node_200", port: "port_out" });
+    assert.deepStrictEqual(edge.target, { cell: "node_201", port: "port_in" });
+    assert.deepStrictEqual(edge.router, { name: "manhattan" });
+    assert.deepStrictEqual(edge.connector, { name: "jumpover" });
+    assert.strictEqual(edge.attrs.line.stroke, "#60a5fa");
   });
 });

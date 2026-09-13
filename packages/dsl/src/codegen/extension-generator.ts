@@ -201,6 +201,10 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     categories: ["Programming Languages", "Linters", "Formatters"],
     keywords: ["modelica", "sysml", "simulation", "dsl", "modeling", "wasm"],
     homepage: options?.homepage || "https://modelscript.org",
+    repository: {
+      type: "git",
+      url: options?.repository || "https://github.com/modelscript/modelscript.git",
+    },
     license: "AGPL-3.0-or-later",
     engines: {
       vscode: options?.vscodeEngine || "^1.80.0",
@@ -558,6 +562,16 @@ export function bundleExtension(
   files.push({
     path: "src/extension.ts",
     content: generateExtensionBootstrap(languages, options),
+  });
+
+  // 5. README.md & LICENSE.md
+  files.push({
+    path: "README.md",
+    content: `# ${packageJson.displayName || "ModelScript"}\n\n${packageJson.description || ""}\n`,
+  });
+  files.push({
+    path: "LICENSE.md",
+    content: `GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright (C) 2026 ModelScript Contributors\n`,
   });
 
   return files;

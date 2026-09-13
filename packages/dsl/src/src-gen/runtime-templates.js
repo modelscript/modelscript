@@ -27026,7 +27026,6 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
     curr = curr.prev;
   }
   if (curr == null && needed > 0) {
-    
     return null;
   }
 
@@ -27062,7 +27061,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
       let isListAppend = false;
       if (
         (popCount == 2 || popCount == 3) &&
-        (actualCount == 2 || actualCount == 3) &&
+        actualCount >= popCount &&
         t_globalChildNodes[0] != 0 &&
         prod_is_list[reduceProd] == 1
       ) {
@@ -28146,13 +28145,14 @@ export function advanceGLR(): void {
 
       if (!didAct) {
         if (tok != TOKEN_EOF) {
+          let didRecover = false;
           if (configEnableBranchB && head.consecutiveInsertions < 3) {
-            recoverMissingToken(head, tok, frontierPos);
+            didRecover = recoverMissingToken(head, tok, frontierPos);
           }
-          if (head.errorCost < 500 && head.prev != null) {
-            recoverStackSummary(head, tok, frontierPos);
+          if (!didRecover && head.errorCost < 500 && head.prev != null) {
+            didRecover = recoverStackSummary(head, tok, frontierPos);
           }
-          if (configEnableBranchA1) {
+          if (!didRecover && configEnableBranchA1) {
             recoverSkipToken(head, tok, frontierPos);
           }
         }
@@ -29216,22 +29216,10 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
   let count: u32 = 0;
   let curr: ParseHead | null = startHead;
   let totalBytes: u32 = 0;
-  let cleanBoundaryHead: ParseHead | null = null;
 
   while (curr != null && curr != endHead) {
     let node = curr.astNode;
     if (node != 0) {
-      let isCompletedNonTerminal =
-        getNodeFirstChild(node) != 0 &&
-        (getNodeFlags(node) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0 &&
-        getNodeType(node) != NODE_TYPE_ERROR &&
-        (getNodeType(node) & 0x8000) == 0;
-
-      if (isCompletedNonTerminal && count > 0) {
-        cleanBoundaryHead = curr;
-        break;
-      }
-
       if (count < (MAX_CHILD_NODES as u32)) {
         t_globalChildNodes[count] = node;
         count++;
@@ -29245,7 +29233,7 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
   if (count > 0) {
     pad = getNodePadding(t_globalChildNodes[count - 1]);
   }
-  let basePos = cleanBoundaryHead != null ? cleanBoundaryHead.pos : (endHead != null ? endHead.pos : 0);
+  let basePos = endHead != null ? endHead.pos : 0;
   if (currentPos > 0 && currentPos > basePos) {
     let span = currentPos - basePos;
     if (span > totalBytes) totalBytes = span;
@@ -29260,6 +29248,7 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
     if (child == 0) continue;
     let clone = cloneNodeShallow(child);
     if (lastChild == 0) {
+      setNodePadding(clone, 0); // Avoid double padding!
       setFirstChild(errNode, clone);
     } else {
       setNextSibling(lastChild, clone);
@@ -29296,52 +29285,16 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
       break;
     }
     if (ancState >= 0 && ancState < action_offsets.length) {
-      let canAccept = stateCanAccept(anc, ancState, token, 0, 1);
+      let canAccept = stateCanAccept(anc, ancState, token, 0, 0);
       if (canAccept > 0) {
-        // Scan backwards to find the boundary between clean completed subtrees and damaged tokens
-        let currScan: ParseHead | null = head;
-        let cleanHead: ParseHead | null = null;
-        let damagedCount = 0;
-
-        while (currScan != null && currScan != anc) {
-          let n = currScan.astNode;
-          if (n != 0) {
-            let isClean =
-              getNodeFirstChild(n) != 0 &&
-              (getNodeFlags(n) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0 &&
-              getNodeType(n) != NODE_TYPE_ERROR &&
-              (getNodeType(n) & 0x8000) == 0;
-            if (isClean && damagedCount > 0) {
-              cleanHead = currScan;
-              break;
-            }
-            damagedCount++;
-          }
-          currScan = currScan.prev;
-        }
-
         let errNode = wrapPoppedNodesInError(head, anc, pos);
         let firstPad: u32 = getNodePadding(errNode);
 
-        // Check if any of the popped nodes between head and anc were actual error nodes
-        let hasAnyPoppedError = false;
-        let scanP: ParseHead | null = head;
-        while (scanP != null && scanP != anc) {
-          let sn = scanP.astNode;
-          if (sn != 0 && (getNodeType(sn) == NODE_TYPE_ERROR || (getNodeFlags(sn) & FLAG_HAS_ERROR) != 0)) {
-            hasAnyPoppedError = true;
-            break;
-          }
-          scanP = scanP.prev;
-        }
-
         let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
-        let diagStart: u32 = pos;
-        let diagEnd: u32 = pos + (lexLen > 0 ? lexLen : peekCharLen(pos));
-        if (hasAnyPoppedError) {
-          let baseStart = cleanHead != null ? cleanHead.pos : anc.pos;
-          diagStart = baseStart + firstPad;
-          diagEnd = pos > diagStart ? pos : diagStart + (lexLen > 0 ? lexLen : step);
+        let diagStart: u32 = anc.pos + firstPad;
+        let diagEnd: u32 = pos;
+        if (diagEnd <= diagStart) {
+          diagEnd = diagStart + (lexLen > 0 ? lexLen : step);
         }
 
         while (diagStart < diagEnd) {
@@ -29366,7 +29319,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
         let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd);
 
-        let parentHead = cleanHead != null ? cleanHead : anc;
+        let parentHead = anc;
         let errHead = allocParseHead(
           ancState,
           errNode,
@@ -38294,17 +38247,29 @@ export class SyntaxNode {
     const t = this.type;
     return !t.startsWith('"') && !t.startsWith("/") && !t.startsWith("_");
   }
+  _cachedHasError = undefined;
   /** Returns true if the node or any of its descendants represents a syntax error. */
   hasError() {
-    if (this._cachedTypeId === 0) return true;
+    if (this._cachedHasError !== undefined) return this._cachedHasError;
+    if (this._cachedTypeId === 0) {
+      this._cachedHasError = true;
+      return true;
+    }
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      return (flags & 128) !== 0; // FLAG_HAS_ERROR
+      if ((flags & 128) !== 0) {
+        this._cachedHasError = true;
+        return true;
+      }
     }
     for (const kid of this.children) {
-      if (kid.hasError()) return true;
+      if (kid.hasError()) {
+        this._cachedHasError = true;
+        return true;
+      }
     }
+    this._cachedHasError = false;
     return false;
   }
   /** Finds the smallest syntax node covering the character range [start, end]. */
@@ -39899,6 +39864,7 @@ export declare class SyntaxNode {
   childText(name: string): string;
   /** Returns true if the node is a named (non-anonymous) node. */
   isNamed(): boolean;
+  private _cachedHasError;
   /** Returns true if the node or any of its descendants represents a syntax error. */
   hasError(): boolean;
   /** Finds the smallest syntax node covering the character range [start, end]. */

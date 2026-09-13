@@ -90,9 +90,11 @@ function getConnectedEdges(
       x: Math.round(p.x),
       y: Math.round(-p.y),
     }));
+    const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell ?? "");
+    const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell ?? "");
     return {
-      source: `${source.cell}.${source.port}`,
-      target: `${target.cell}.${target.port}`,
+      source: srcStr,
+      target: tgtStr,
       points,
     };
   });
@@ -148,7 +150,7 @@ export function initGraph(isDark: boolean): Graph {
     // Parent-child relationships are strictly defined by semantic children via addChild().
     embedding: { enabled: false },
     interacting: (cellView) => {
-      if (cellView.cell.id === "__diagram_background__") return false;
+      if (cellView.cell.id === "__diagram_background__" || cellView.cell.id.startsWith("__seq_stem_")) return false;
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
@@ -190,7 +192,7 @@ export function initGraph(isDark: boolean): Graph {
       modifiers: ["ctrl", "meta", "shift"],
       multipleSelectionModifiers: ["ctrl", "meta", "shift"],
       pointerEvents: "none",
-      filter: (cell) => cell.id !== "__diagram_background__",
+      filter: (cell) => cell.id !== "__diagram_background__" && !cell.id.startsWith("__seq_stem_"),
     }),
   );
 
@@ -475,7 +477,7 @@ export function initGraph(isDark: boolean): Graph {
     const source = edge.getSource() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const target = edge.getTarget() as any;
-    if (source.cell && source.port && target.cell && target.port) {
+    if (source.cell && target.cell && source.port !== undefined && target.port !== undefined) {
       const vertices = edge.getVertices();
       const sourcePoint = edge.getSourcePoint();
       const targetPoint = edge.getTargetPoint();
@@ -483,10 +485,12 @@ export function initGraph(isDark: boolean): Graph {
         x: Math.round(p.x),
         y: Math.round(-p.y),
       }));
+      const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell);
+      const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell);
       enqueueDiagramAction({
         type: "connect",
-        source: `${source.cell}.${source.port}`,
-        target: `${target.cell}.${target.port}`,
+        source: srcStr,
+        target: tgtStr,
         points,
       });
     }
@@ -501,7 +505,7 @@ export function initGraph(isDark: boolean): Graph {
       const source = edge.getSource() as any;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const target = edge.getTarget() as any;
-      if (source.cell && source.port && target.cell && target.port) {
+      if (source.cell && target.cell && source.port !== undefined && target.port !== undefined) {
         const vertices = edge.getVertices();
         const sourcePoint = edge.getSourcePoint();
         const targetPoint = edge.getTargetPoint();
@@ -509,12 +513,14 @@ export function initGraph(isDark: boolean): Graph {
           x: Math.round(p.x),
           y: Math.round(-p.y),
         }));
+        const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell);
+        const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell);
         enqueueDiagramAction({
           type: "moveEdge",
           edges: [
             {
-              source: `${source.cell}.${source.port}`,
-              target: `${target.cell}.${target.port}`,
+              source: srcStr,
+              target: tgtStr,
               points,
             },
           ],
@@ -1078,6 +1084,7 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       existingNodeIds.size !== newNodeIds.size ||
       existingEdgeIds.size !== newEdgeIds.size ||
       [...existingNodeIds].some((id) => !newNodeIds.has(id)) ||
+      [...newNodeIds].some((id) => !existingNodeIds.has(id)) ||
       [...existingEdgeIds].some((id) => !newEdgeIds.has(id));
 
     if (!topologyChanged) {

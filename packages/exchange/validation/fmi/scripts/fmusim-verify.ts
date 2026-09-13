@@ -7,12 +7,16 @@ import { exec } from "child_process";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { fileURLToPath } from "url";
 import util from "util";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const execAsync = util.promisify(exec);
 
-const VALIDATION_DIR = path.resolve("validation/exported_fmus");
-const REF_DIR = path.resolve("validation/reference_fmus");
+const VALIDATION_DIR = path.resolve(__dirname, "../exported_fmus");
+const REF_DIR = path.resolve(__dirname, "../reference_fmus");
 
 // Select the correct binary based on the OS
 const platform = os.platform();

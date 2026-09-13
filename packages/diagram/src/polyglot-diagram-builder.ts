@@ -115,6 +115,7 @@ export interface SymbolEntry {
   resourceId?: string;
   startByte?: number;
   endByte?: number;
+  language?: string;
 }
 export interface SymbolIndex {
   symbols: Map<SymbolId, SymbolEntry>;
@@ -220,107 +221,109 @@ export function buildPolyglotDiagram(
       if (activeProjection.includeRules && !activeProjection.includeRules.includes(sym.ruleName)) continue;
       if (activeProjection.excludeRules && activeProjection.excludeRules.includes(sym.ruleName)) continue;
       if (typeof activeProjection.filter === "function" && !activeProjection.filter(sym as any)) continue;
-    } else if (diagramType === "BDD") {
-      // Fallback built-in SysML2 BDD
-      if (sym.ruleName === "PartUsage" || sym.ruleName === "PortUsage") continue;
-      if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
-    } else if (diagramType === "IBD") {
-      // In IBD, we only want Parts, Ports, and their connections.
-      // Hide taxonomy and packages. (Wait, Parts need a parent container).
-      if (sym.ruleName === "Package" || sym.ruleName === "LibraryPackage") continue;
-      if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
-    } else if (diagramType === "StateMachine") {
-      // Only show state machine elements
-      if (
-        sym.ruleName !== "StateDefinition" &&
-        sym.ruleName !== "StateUsage" &&
-        sym.ruleName !== "ExhibitStateUsage" &&
-        sym.ruleName !== "TransitionUsage" &&
-        sym.ruleName !== "ActionUsage" &&
-        sym.ruleName !== "Package"
-      ) {
-        continue;
-      }
-    } else if (diagramType === "Activity") {
-      // Only show activity/action elements and control nodes
-      if (
-        sym.ruleName !== "ActionDefinition" &&
-        sym.ruleName !== "ActionUsage" &&
-        sym.ruleName !== "PerformActionUsage" &&
-        sym.ruleName !== "ForkNode" &&
-        sym.ruleName !== "JoinNode" &&
-        sym.ruleName !== "DecisionNode" &&
-        sym.ruleName !== "MergeNode" &&
-        sym.ruleName !== "AcceptActionNode" &&
-        sym.ruleName !== "SendActionNode" &&
-        sym.ruleName !== "AssignActionNode" &&
-        sym.ruleName !== "SuccessionAsUsage" &&
-        sym.ruleName !== "SuccessionFlowUsage" &&
-        sym.ruleName !== "Package"
-      ) {
-        continue;
-      }
-    } else if (diagramType === "UseCase") {
-      // Only show use case elements and actors
-      if (
-        sym.ruleName !== "UseCaseDefinition" &&
-        sym.ruleName !== "UseCaseUsage" &&
-        sym.ruleName !== "IncludeUseCaseUsage" &&
-        sym.ruleName !== "ActorUsage" &&
-        sym.ruleName !== "ActorDefinition" &&
-        sym.ruleName !== "SubjectUsage" &&
-        sym.ruleName !== "Package"
-      ) {
-        continue;
-      }
-    } else if (diagramType === "Requirement") {
-      // Only show requirement elements and satisfy/verify relationships
-      if (
-        sym.ruleName !== "RequirementDefinition" &&
-        sym.ruleName !== "RequirementUsage" &&
-        sym.ruleName !== "SatisfyRequirementUsage" &&
-        sym.ruleName !== "VerifyRequirementUsage" &&
-        sym.ruleName !== "ConcernDefinition" &&
-        sym.ruleName !== "ConcernUsage" &&
-        sym.ruleName !== "ConstraintDefinition" &&
-        sym.ruleName !== "ConstraintUsage" &&
-        sym.ruleName !== "Package"
-      ) {
-        continue;
-      }
-    } else if (diagramType === "Parametric") {
-      // Only show constraint/calculation blocks and bindings
-      if (
-        sym.ruleName !== "ConstraintDefinition" &&
-        sym.ruleName !== "ConstraintUsage" &&
-        sym.ruleName !== "CalculationDefinition" &&
-        sym.ruleName !== "CalculationUsage" &&
-        sym.ruleName !== "AttributeUsage" &&
-        sym.ruleName !== "BindingConnectorAsUsage" &&
-        sym.ruleName !== "Package"
-      ) {
-        continue;
-      }
-    } else if (diagramType === "Package") {
-      // Only show packages and their direct children (definitions)
-      if (sym.ruleName !== "Package" && sym.ruleName !== "LibraryPackage" && !sym.ruleName.endsWith("Definition")) {
-        continue;
-      }
-    } else if (diagramType === "Sequence") {
-      // Sequence: participants (parts/actions), messages (flows/successions/send/accept)
-      if (
-        sym.ruleName !== "PartDefinition" &&
-        sym.ruleName !== "PartUsage" &&
-        sym.ruleName !== "ActionDefinition" &&
-        sym.ruleName !== "ActionUsage" &&
-        sym.ruleName !== "FlowConnectionUsage" &&
-        sym.ruleName !== "SuccessionFlowUsage" &&
-        sym.ruleName !== "SuccessionAsUsage" &&
-        sym.ruleName !== "SendActionNode" &&
-        sym.ruleName !== "AcceptActionNode" &&
-        sym.ruleName !== "Package"
-      ) {
-        continue;
+    } else if (sym.language === "sysml2" || sym.ruleName?.endsWith("Usage") || sym.ruleName?.endsWith("Definition")) {
+      if (diagramType === "BDD") {
+        // Fallback built-in SysML2 BDD
+        if (sym.ruleName === "PartUsage" || sym.ruleName === "PortUsage") continue;
+        if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
+      } else if (diagramType === "IBD") {
+        // In IBD, we only want Parts, Ports, and their connections.
+        // Hide taxonomy and packages. (Wait, Parts need a parent container).
+        if (sym.ruleName === "Package" || sym.ruleName === "LibraryPackage") continue;
+        if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
+      } else if (diagramType === "StateMachine") {
+        // Only show state machine elements
+        if (
+          sym.ruleName !== "StateDefinition" &&
+          sym.ruleName !== "StateUsage" &&
+          sym.ruleName !== "ExhibitStateUsage" &&
+          sym.ruleName !== "TransitionUsage" &&
+          sym.ruleName !== "ActionUsage" &&
+          sym.ruleName !== "Package"
+        ) {
+          continue;
+        }
+      } else if (diagramType === "Activity") {
+        // Only show activity/action elements and control nodes
+        if (
+          sym.ruleName !== "ActionDefinition" &&
+          sym.ruleName !== "ActionUsage" &&
+          sym.ruleName !== "PerformActionUsage" &&
+          sym.ruleName !== "ForkNode" &&
+          sym.ruleName !== "JoinNode" &&
+          sym.ruleName !== "DecisionNode" &&
+          sym.ruleName !== "MergeNode" &&
+          sym.ruleName !== "AcceptActionNode" &&
+          sym.ruleName !== "SendActionNode" &&
+          sym.ruleName !== "AssignActionNode" &&
+          sym.ruleName !== "SuccessionAsUsage" &&
+          sym.ruleName !== "SuccessionFlowUsage" &&
+          sym.ruleName !== "Package"
+        ) {
+          continue;
+        }
+      } else if (diagramType === "UseCase") {
+        // Only show use case elements and actors
+        if (
+          sym.ruleName !== "UseCaseDefinition" &&
+          sym.ruleName !== "UseCaseUsage" &&
+          sym.ruleName !== "IncludeUseCaseUsage" &&
+          sym.ruleName !== "ActorUsage" &&
+          sym.ruleName !== "ActorDefinition" &&
+          sym.ruleName !== "SubjectUsage" &&
+          sym.ruleName !== "Package"
+        ) {
+          continue;
+        }
+      } else if (diagramType === "Requirement") {
+        // Only show requirement elements and satisfy/verify relationships
+        if (
+          sym.ruleName !== "RequirementDefinition" &&
+          sym.ruleName !== "RequirementUsage" &&
+          sym.ruleName !== "SatisfyRequirementUsage" &&
+          sym.ruleName !== "VerifyRequirementUsage" &&
+          sym.ruleName !== "ConcernDefinition" &&
+          sym.ruleName !== "ConcernUsage" &&
+          sym.ruleName !== "ConstraintDefinition" &&
+          sym.ruleName !== "ConstraintUsage" &&
+          sym.ruleName !== "Package"
+        ) {
+          continue;
+        }
+      } else if (diagramType === "Parametric") {
+        // Only show constraint/calculation blocks and bindings
+        if (
+          sym.ruleName !== "ConstraintDefinition" &&
+          sym.ruleName !== "ConstraintUsage" &&
+          sym.ruleName !== "CalculationDefinition" &&
+          sym.ruleName !== "CalculationUsage" &&
+          sym.ruleName !== "AttributeUsage" &&
+          sym.ruleName !== "BindingConnectorAsUsage" &&
+          sym.ruleName !== "Package"
+        ) {
+          continue;
+        }
+      } else if (diagramType === "Package") {
+        // Only show packages and their direct children (definitions)
+        if (sym.ruleName !== "Package" && sym.ruleName !== "LibraryPackage" && !sym.ruleName.endsWith("Definition")) {
+          continue;
+        }
+      } else if (diagramType === "Sequence") {
+        // Sequence: participants (parts/actions), messages (flows/successions/send/accept)
+        if (
+          sym.ruleName !== "PartDefinition" &&
+          sym.ruleName !== "PartUsage" &&
+          sym.ruleName !== "ActionDefinition" &&
+          sym.ruleName !== "ActionUsage" &&
+          sym.ruleName !== "FlowConnectionUsage" &&
+          sym.ruleName !== "SuccessionFlowUsage" &&
+          sym.ruleName !== "SuccessionAsUsage" &&
+          sym.ruleName !== "SendActionNode" &&
+          sym.ruleName !== "AcceptActionNode" &&
+          sym.ruleName !== "Package"
+        ) {
+          continue;
+        }
       }
     }
 
@@ -2126,7 +2129,7 @@ export function buildDiagramFromDSL(
 
   // Identify container rules (subsystem, group)
   const containerRules = new Set<string>();
-  for (const [rName, nCfg] of Object.entries(diagramConfig?.nodes || {})) {
+  for (const [rName, nCfg] of Object.entries(diagramConfig?.nodes || diagramConfig?.entities || {})) {
     if ((nCfg as any)?.shape === "subsystem" || (nCfg as any)?.role === "group") {
       containerRules.add(rName);
     }
@@ -2245,12 +2248,14 @@ export function buildDiagramFromDSL(
 
     let compType = "";
     let compName: string;
-    const declMatch = text.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+    // Clean leading modifiers (parameter, input, output, flow, discrete, constant)
+    const cleanedText = text.replace(/\b(?:parameter|constant|input|output|flow|discrete)\b/g, "").trim();
+    const declMatch = cleanedText.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
     if (declMatch) {
       compType = declMatch[1];
       compName = declMatch[2];
     } else {
-      const singleMatch = text.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
+      const singleMatch = cleanedText.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
       compName = singleMatch
         ? singleMatch[1]
         : rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
@@ -2311,8 +2316,8 @@ export function buildDiagramFromDSL(
       parent: parentId,
       x: rawNode.x || 0,
       y: rawNode.y || 0,
-      width: style.width || 150,
-      height: style.height || 42,
+      width: rawNode.width || style.width || 150,
+      height: rawNode.height || style.height || 42,
       angle: rawNode.rotation || 0,
       opacity: style.opacity !== undefined ? style.opacity : 1,
       zIndex: 10,
@@ -2483,8 +2488,18 @@ export function buildDiagramFromDSL(
       id: rawEdge.id,
       shape: "edge",
       zIndex: 50,
-      source: typeof rawEdge.source === "string" ? rawEdge.source : rawEdge.source?.cell,
-      target: typeof rawEdge.target === "string" ? rawEdge.target : rawEdge.target?.cell,
+      source:
+        typeof rawEdge.source === "string"
+          ? rawEdge.source
+          : rawEdge.source?.port
+            ? { cell: rawEdge.source.cell, port: rawEdge.source.port }
+            : rawEdge.source?.cell,
+      target:
+        typeof rawEdge.target === "string"
+          ? rawEdge.target
+          : rawEdge.target?.port
+            ? { cell: rawEdge.target.cell, port: rawEdge.target.port }
+            : rawEdge.target?.cell,
       router: { name: routerName },
       connector: { name: connectorName },
       attrs: {

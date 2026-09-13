@@ -307,10 +307,11 @@ export function computeConnectRemove(
 
   if (!connectEq || !connectEq.ast?.sourceRange) return [];
 
-  const startLine = connectEq.ast.sourceRange.startRow;
-  const startCol = connectEq.ast.sourceRange.startCol;
-  const endLine = connectEq.ast.sourceRange.endRow;
-  const endCol = connectEq.ast.sourceRange.endCol;
+  const sr = connectEq.ast.sourceRange;
+  const startLine = sr.startPosition?.row ?? sr.startRow;
+  const startCol = sr.startPosition?.column ?? sr.startCol;
+  const endLine = sr.endPosition?.row ?? sr.endRow;
+  const endCol = sr.endPosition?.column ?? sr.endCol;
 
   return [makeDeleteRange(lines, startLine, startCol, endLine, endCol)];
 }
@@ -339,13 +340,14 @@ export function computeComponentsDelete(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
     );
     if (involvesComponent && ce.ast?.sourceRange) {
+      const sr = ce.ast.sourceRange;
       edits.push(
         makeDeleteRange(
           lines,
-          ce.ast.sourceRange.startRow,
-          ce.ast.sourceRange.startCol,
-          ce.ast.sourceRange.endRow,
-          ce.ast.sourceRange.endCol,
+          sr.startPosition?.row ?? sr.startRow,
+          sr.startPosition?.column ?? sr.startCol,
+          sr.endPosition?.row ?? sr.endRow,
+          sr.endPosition?.column ?? sr.endCol,
         ),
       );
     }
@@ -396,14 +398,15 @@ export function computeEdgePointEdits(
 
     if (!connectEq?.ast?.sourceRange) continue;
 
-    const key = `${connectEq.ast.sourceRange.startRow}:${connectEq.ast.sourceRange.startCol}`;
+    const sr = connectEq.ast.sourceRange;
+    const startLine = sr.startPosition?.row ?? sr.startRow;
+    const startCol = sr.startPosition?.column ?? sr.startCol;
+    const endLine = sr.endPosition?.row ?? sr.endRow;
+    const endCol = sr.endPosition?.column ?? sr.endCol;
+
+    const key = `${startLine}:${startCol}`;
     if (seen.has(key)) continue;
     seen.add(key);
-
-    const startLine = connectEq.ast.sourceRange.startRow;
-    const startCol = connectEq.ast.sourceRange.startCol;
-    const endLine = connectEq.ast.sourceRange.endRow;
-    const endCol = connectEq.ast.sourceRange.endCol;
 
     const range = Range.create(startLine, startCol, endLine, endCol);
     const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
@@ -656,7 +659,7 @@ export function computeDescriptionEdit(
 
   const abstractNode = (component as any).abstractSyntaxNode;
   const descriptionNode = abstractNode?.description;
-  const escapedDescription = newDescription.replace(/"/g, '""');
+  const escapedDescription = newDescription.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
   if (descriptionNode?.sourceRange) {
     if (newDescription === "") {
@@ -879,10 +882,10 @@ export function computeComponentInsert(
   } else {
     // Fallback: find the last "end" within this model's range
     const modelLines = lines.slice(modelStartLine, modelEndLine + 1);
-    const modelText = modelLines.join("\\n");
+    const modelText = modelLines.join("\n");
     const lastEndIndex = modelText.lastIndexOf("end");
     if (lastEndIndex !== -1) {
-      const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\\n").length - 1;
+      const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
       const endLineNumber = modelStartLine + linesBeforeEnd;
       const endLineContent = lines[endLineNumber];
       const endCol = endLineContent.lastIndexOf("end");
@@ -890,13 +893,9 @@ export function computeComponentInsert(
 
       if (beforeEnd !== "") {
         // Single-line model: insert at the "end" keyword column with newlines
-        return [TextEdit.insert({ line: endLineNumber, character: endCol }, "\\n" + componentDecl)];
+        return [TextEdit.insert({ line: endLineNumber, character: endCol }, "\n" + componentDecl)];
       } else {
-        if (endLineNumber > 0 && lines[endLineNumber - 1].trim() === "") {
-          return [TextEdit.replace(Range.create(endLineNumber - 1, 0, endLineNumber, 0), componentDecl)];
-        } else {
-          return [TextEdit.insert({ line: endLineNumber, character: 0 }, componentDecl)];
-        }
+        return [TextEdit.insert({ line: endLineNumber, character: 0 }, componentDecl)];
       }
     }
   }

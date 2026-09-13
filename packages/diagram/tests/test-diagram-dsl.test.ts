@@ -1,5 +1,6 @@
-import { describe, expect, it } from "@jest/globals";
-import { grammar } from "@modelscript/dsl";
+import { choice, grammar } from "@modelscript/dsl";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 
 describe("Declarative 2D Diagram DSL Schema", () => {
   it("should allow declaring rich diagram configuration on grammar definition", () => {
@@ -72,13 +73,13 @@ describe("Declarative 2D Diagram DSL Schema", () => {
       },
     });
 
-    expect(testGrammar.name).toBe("CircuitFlow");
-    expect(testGrammar.diagram).toBeDefined();
-    expect(testGrammar.diagram?.views?.Schematic.label).toBe("Schematic Diagram");
-    expect(testGrammar.diagram?.nodes?.Block?.shape).toBe("rect");
-    expect(testGrammar.diagram?.nodes?.Block?.placement?.schema).toBe("modelica");
-    expect(testGrammar.diagram?.edges?.Wire?.style?.connector).toBe("jumpover");
-    expect(testGrammar.diagram?.mutations?.createEdge?.("A.p", "B.n")).toBe("wire A.p -> B.n;\n");
+    assert.strictEqual(testGrammar.name, "CircuitFlow");
+    assert.ok(testGrammar.diagram !== undefined);
+    assert.strictEqual(testGrammar.diagram?.views?.Schematic.label, "Schematic Diagram");
+    assert.strictEqual(testGrammar.diagram?.nodes?.Block?.shape, "rect");
+    assert.strictEqual(testGrammar.diagram?.nodes?.Block?.placement?.schema, "modelica");
+    assert.strictEqual(testGrammar.diagram?.edges?.Wire?.style?.connector, "jumpover");
+    assert.strictEqual(testGrammar.diagram?.mutations?.createEdge?.("A.p", "B.n"), "wire A.p -> B.n;\n");
   });
 
   it("should support SysML2 viewpoints, Modelica property value bindings, and DynamicSelect animation channels", () => {
@@ -183,40 +184,41 @@ describe("Declarative 2D Diagram DSL Schema", () => {
     });
 
     const d = cyberPhysicalGrammar.diagram;
-    expect(d).toBeDefined();
+    assert.ok(d !== undefined);
 
     // Verify SysML2 Views & Viewpoints
-    expect(d?.views?.StructuralView.viewpoint).toBe("StructuralViewpoint");
-    expect(d?.views?.StructuralView.expose).toEqual(["VehiclePkg::*"]);
-    expect(d?.views?.InternalInterconnectView.defaultLayout).toBe("manual");
+    assert.strictEqual(d?.views?.StructuralView.viewpoint, "StructuralViewpoint");
+    assert.deepStrictEqual(d?.views?.StructuralView.expose, ["VehiclePkg::*"]);
+    assert.strictEqual(d?.views?.InternalInterconnectView.defaultLayout, "manual");
 
     // Verify Modelica Property Bindings
     const compNode = d?.nodes?.Component;
-    expect(compNode?.propertyBindings?.label).toBe("%name: %R Ω");
-    expect(compNode?.propertyBindings?.tooltip).toContain("%name (%class)");
+    assert.strictEqual(compNode?.propertyBindings?.label, "%name: %R Ω");
+    assert.ok(compNode?.propertyBindings?.tooltip?.includes("%name (%class)"));
 
     // Verify DynamicSelect Animation Channels
     const anim = compNode?.animation;
-    expect(anim?.selectFunction).toBe("DynamicSelect");
-    expect(anim?.channels).toHaveLength(4);
+    assert.strictEqual(anim?.selectFunction, "DynamicSelect");
+    assert.strictEqual(anim?.channels?.length, 4);
 
     const rotChannel = anim?.channels?.find((c) => c.attribute === "rotation");
-    expect(rotChannel?.signal).toBe("phi");
-    expect(rotChannel?.transform?.({} as any, 0, Math.PI)).toBeCloseTo(180);
+    assert.strictEqual(rotChannel?.signal, "phi");
+    const rotVal = rotChannel?.transform?.({} as any, 0, Math.PI) as number;
+    assert.ok(Math.abs(rotVal - 180) < 1e-4);
 
     const fillChannel = anim?.channels?.find((c) => c.attribute === "fill");
-    expect(fillChannel?.signal).toBe("active");
-    expect(fillChannel?.transform?.({} as any, 0, 1.0)).toBe("#22c55e");
-    expect(fillChannel?.transform?.({} as any, 0, 0.0)).toBe("#ef4444");
+    assert.strictEqual(fillChannel?.signal, "active");
+    assert.strictEqual(fillChannel?.transform?.({} as any, 0, 1.0), "#22c55e");
+    assert.strictEqual(fillChannel?.transform?.({} as any, 0, 0.0), "#ef4444");
 
     const textChannel = anim?.channels?.find((c) => c.attribute === "text");
-    expect(textChannel?.signal).toBe("voltage");
-    expect(textChannel?.transform?.({} as any, 0, 12.3456)).toBe("12.35 V");
+    assert.strictEqual(textChannel?.signal, "voltage");
+    assert.strictEqual(textChannel?.transform?.({} as any, 0, 12.3456), "12.35 V");
 
     const edgeAnim = d?.edges?.Connection?.animation;
-    expect(edgeAnim?.channels?.[0].signal).toBe("current");
-    expect(edgeAnim?.channels?.[0].transform?.({} as any, 0, 1.5)).toBe("#3b82f6");
-    expect(edgeAnim?.channels?.[0].transform?.({} as any, 0, 0.0)).toBe("#9ca3af");
+    assert.strictEqual(edgeAnim?.channels?.[0].signal, "current");
+    assert.strictEqual(edgeAnim?.channels?.[0].transform?.({} as any, 0, 1.5), "#3b82f6");
+    assert.strictEqual(edgeAnim?.channels?.[0].transform?.({} as any, 0, 0.0), "#9ca3af");
   });
 
   it("should support dynamic in-model view discovery, graphic item annotations, and DynamicSelect AST evaluation", () => {
@@ -265,19 +267,25 @@ describe("Declarative 2D Diagram DSL Schema", () => {
     });
 
     const d = dynamicModelLang.diagram;
-    expect(d?.inModelViews).toBeDefined();
-    expect(d?.inModelViews?.viewRule).toBe("ViewUsage");
-    expect(d?.inModelViews?.nameField).toBe("name");
+    assert.ok(d?.inModelViews !== undefined);
+    assert.strictEqual(d?.inModelViews?.viewRule, "ViewUsage");
+    assert.strictEqual(d?.inModelViews?.nameField, "name");
 
-    expect(d?.annotations).toBeDefined();
-    expect(d?.annotations?.iconSection).toBe("Icon");
-    expect(d?.annotations?.primitives?.Rectangle?.extent).toBe("extent");
-    expect(d?.annotations?.resolveTemplate?.({} as any, "%name", 1)).toBe("Resistor1");
+    assert.ok(d?.annotations !== undefined);
+    assert.strictEqual(d?.annotations?.iconSection, "Icon");
+    assert.strictEqual(d?.annotations?.primitives?.Rectangle?.extent, "extent");
+    assert.strictEqual(d?.annotations?.resolveTemplate?.({} as any, "%name", 1), "Resistor1");
 
-    expect(d?.dynamicSelect).toBeDefined();
-    expect(d?.dynamicSelect?.functionName).toBe("DynamicSelect");
-    expect(d?.dynamicSelect?.evaluateDynamic?.({} as any, 20, (v) => (v === "temp" ? 150 : 0))).toBe("#ff0000");
-    expect(d?.dynamicSelect?.evaluateDynamic?.({} as any, 20, (v) => (v === "temp" ? 50 : 0))).toBe("#00ff00");
+    assert.ok(d?.dynamicSelect !== undefined);
+    assert.strictEqual(d?.dynamicSelect?.functionName, "DynamicSelect");
+    assert.strictEqual(
+      d?.dynamicSelect?.evaluateDynamic?.({} as any, 20, (v) => (v === "temp" ? 150 : 0)),
+      "#ff0000",
+    );
+    assert.strictEqual(
+      d?.dynamicSelect?.evaluateDynamic?.({} as any, 20, (v) => (v === "temp" ? 50 : 0)),
+      "#00ff00",
+    );
   });
 
   it("should support universal in-language expression evaluation without hardcoded functions or signal names", () => {
@@ -317,7 +325,7 @@ describe("Declarative 2D Diagram DSL Schema", () => {
     });
 
     const d = universalLang.diagram;
-    expect(d?.evaluator).toBeDefined();
+    assert.ok(d?.evaluator !== undefined);
 
     // Design-time environment (static defaults / parameters)
     const staticEnv = {
@@ -326,7 +334,7 @@ describe("Declarative 2D Diagram DSL Schema", () => {
       getString: () => "",
       getBoolean: () => false,
     };
-    expect(d?.evaluator?.evaluate?.({} as any, 101, staticEnv)).toBe("#22c55e");
+    assert.strictEqual(d?.evaluator?.evaluate?.({} as any, 101, staticEnv), "#22c55e");
 
     // Simulation runtime environment (live state stream)
     const liveSimEnv = {
@@ -336,7 +344,7 @@ describe("Declarative 2D Diagram DSL Schema", () => {
       getBoolean: () => false,
       time: 4.5,
     };
-    expect(d?.evaluator?.evaluate?.({} as any, 101, liveSimEnv)).toBe("#ef4444");
+    assert.strictEqual(d?.evaluator?.evaluate?.({} as any, 101, liveSimEnv), "#ef4444");
   });
 
   it("should support dynamic node render functions and custom vector glyphs without hardcoded annotation structures", () => {
@@ -361,15 +369,15 @@ describe("Declarative 2D Diagram DSL Schema", () => {
     });
 
     const d = vectorLang.diagram;
-    expect(d?.entities?.CustomGlyph?.render).toBeDefined();
+    assert.ok(d?.entities?.CustomGlyph?.render !== undefined);
 
     const elements = d?.entities?.CustomGlyph?.render?.({} as any, 1, {} as any);
-    expect(elements).toHaveLength(3);
-    expect(elements?.[0].type).toBe("circle");
-    expect(elements?.[0].r).toBe(40);
-    expect(elements?.[1].type).toBe("path");
-    expect(elements?.[2].type).toBe("text");
-    expect(elements?.[2].text).toBe("Plus Gate");
+    assert.strictEqual(elements?.length, 3);
+    assert.strictEqual(elements?.[0].type, "circle");
+    assert.strictEqual((elements?.[0] as any).r, 40);
+    assert.strictEqual(elements?.[1].type, "path");
+    assert.strictEqual(elements?.[2].type, "text");
+    assert.strictEqual((elements?.[2] as any).text, "Plus Gate");
   });
 
   it("should maintain 100% parity with X6/SVG nested container hierarchy (svg, defs, g, linearGradient)", () => {
@@ -442,22 +450,22 @@ describe("Declarative 2D Diagram DSL Schema", () => {
 
     const d = modelicaStyleLang.diagram;
     const rendered = d?.entities?.Resistor?.render?.({} as any, 1, {} as any);
-    expect(rendered).toHaveLength(1);
+    assert.strictEqual(rendered?.length, 1);
 
     const svgRoot = rendered?.[0];
-    expect(svgRoot?.tagName).toBe("svg");
-    expect(svgRoot?.attrs?.viewBox).toBe("-100 -100 200 200");
-    expect(svgRoot?.children).toHaveLength(2);
+    assert.strictEqual(svgRoot?.tagName, "svg");
+    assert.strictEqual(svgRoot?.attrs?.viewBox, "-100 -100 200 200");
+    assert.strictEqual(svgRoot?.children?.length, 2);
 
     const defs = svgRoot?.children?.[0];
-    expect(defs?.tagName).toBe("defs");
-    expect(defs?.children?.[0].tagName).toBe("linearGradient");
+    assert.strictEqual(defs?.tagName, "defs");
+    assert.strictEqual(defs?.children?.[0].tagName, "linearGradient");
 
     const group = svgRoot?.children?.[1];
-    expect(group?.tagName).toBe("g");
-    expect(group?.children).toHaveLength(4);
-    expect(group?.children?.[0].tagName).toBe("rect");
-    expect(group?.children?.[3].textContent).toBe("%name");
+    assert.strictEqual(group?.tagName, "g");
+    assert.strictEqual(group?.children?.length, 4);
+    assert.strictEqual(group?.children?.[0].tagName, "rect");
+    assert.strictEqual(group?.children?.[3].textContent, "%name");
   });
 
   it("should validate SysModel demo DSL diagram configuration with views, nodes, edges, ports, and mutations", () => {
@@ -552,18 +560,18 @@ describe("Declarative 2D Diagram DSL Schema", () => {
     });
 
     const d = sysModelGrammar.diagram;
-    expect(d).toBeDefined();
-    expect(d?.views?.Schematic.label).toBe("Schematic Diagram");
-    expect(d?.views?.InternalBlockDiagram.defaultLayout).toBe("dagre");
-    expect(d?.nodes?.ModelDef?.shape).toBe("subsystem");
-    expect(d?.nodes?.Decl?.stereotype).toBe("«component»");
-    expect(d?.nodes?.Decl?.ports?.group).toBe("auto");
-    expect(d?.nodes?.Decl?.propertyBindings?.label).toBe("%name: %type");
-    expect(d?.nodes?.Decl?.animation?.channels?.[0].transform?.({} as any, 1, 1.0)).toBe("#22c55e");
-    expect(d?.nodes?.Decl?.animation?.channels?.[0].transform?.({} as any, 1, 0.0)).toBe("#1e293b");
-    expect(d?.edges?.Equation?.style?.router).toBe("manhattan");
-    expect(d?.edges?.Equation?.style?.connector).toBe("jumpover");
-    expect(d?.mutations?.createNode?.("Real", "voltage", 10, 20)).toBe("  Real voltage;\n");
-    expect(d?.mutations?.createEdge?.("power", "voltage * current")).toBe("  power = voltage * current;\n");
+    assert.ok(d !== undefined);
+    assert.strictEqual(d?.views?.Schematic.label, "Schematic Diagram");
+    assert.strictEqual(d?.views?.InternalBlockDiagram.defaultLayout, "dagre");
+    assert.strictEqual(d?.nodes?.ModelDef?.shape, "subsystem");
+    assert.strictEqual(d?.nodes?.Decl?.stereotype, "«component»");
+    assert.strictEqual(d?.nodes?.Decl?.ports?.group, "auto");
+    assert.strictEqual(d?.nodes?.Decl?.propertyBindings?.label, "%name: %type");
+    assert.strictEqual(d?.nodes?.Decl?.animation?.channels?.[0].transform?.({} as any, 1, 1.0), "#22c55e");
+    assert.strictEqual(d?.nodes?.Decl?.animation?.channels?.[0].transform?.({} as any, 1, 0.0), "#1e293b");
+    assert.strictEqual(d?.edges?.Equation?.style?.router, "manhattan");
+    assert.strictEqual(d?.edges?.Equation?.style?.connector, "jumpover");
+    assert.strictEqual(d?.mutations?.createNode?.("Real", "voltage", 10, 20), "  Real voltage;\n");
+    assert.strictEqual(d?.mutations?.createEdge?.("power", "voltage * current"), "  power = voltage * current;\n");
   });
 });

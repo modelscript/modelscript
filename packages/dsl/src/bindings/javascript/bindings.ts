@@ -4282,17 +4282,30 @@ export class SyntaxNode {
     return !t.startsWith('"') && !t.startsWith("/") && !t.startsWith("_");
   }
 
+  private _cachedHasError: boolean | undefined = undefined;
+
   /** Returns true if the node or any of its descendants represents a syntax error. */
   hasError(): boolean {
-    if (this._cachedTypeId === 0) return true;
+    if (this._cachedHasError !== undefined) return this._cachedHasError;
+    if (this._cachedTypeId === 0) {
+      this._cachedHasError = true;
+      return true;
+    }
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
       const flags = (typeFlags >>> 10) & 0x0fff;
-      return (flags & 128) !== 0; // FLAG_HAS_ERROR
+      if ((flags & 128) !== 0) {
+        this._cachedHasError = true;
+        return true;
+      }
     }
     for (const kid of this.children) {
-      if (kid.hasError()) return true;
+      if (kid.hasError()) {
+        this._cachedHasError = true;
+        return true;
+      }
     }
+    this._cachedHasError = false;
     return false;
   }
 

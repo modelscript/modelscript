@@ -196,10 +196,8 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       const portHeight = connectorTransform.height * absScaleY;
       const desiredCenterX = absWidth / 2 + connCenterX * componentTransform.scaleX;
       const desiredCenterY = absHeight / 2 + connCenterY * componentTransform.scaleY;
-      const cosA = Math.cos(a);
-      const sinA = Math.sin(a);
-      const portX = desiredCenterX - (portWidth / 2) * cosA + (portHeight / 2) * sinA;
-      const portY = desiredCenterY - (portWidth / 2) * sinA - (portHeight / 2) * cosA;
+      const portX = desiredCenterX - portWidth / 2;
+      const portY = desiredCenterY - portHeight / 2;
 
       ports.push({
         id: connector.name ?? "",
@@ -425,9 +423,18 @@ export function renderIconX6(
   const isRoot = !defs;
   const localDefs = defs ?? [];
   const isTopLevel = !ports;
-  const cacheKey = classInstance.name
-    ? classInstance.name + (componentInstance && componentInstance.name ? `|${componentInstance.name}` : "")
-    : null;
+  let modKey = "";
+  if (componentInstance) {
+    if (componentInstance.name) modKey += `|${componentInstance.name}`;
+    if (componentInstance.modification) {
+      try {
+        modKey += `|${JSON.stringify(componentInstance.modification)}`;
+      } catch {
+        modKey += `|${String(componentInstance.modification)}`;
+      }
+    }
+  }
+  const cacheKey = classInstance.name ? classInstance.name + modKey : null;
   const canCache = isTopLevel && cacheKey;
 
   if (canCache && cacheKey) {
@@ -765,10 +772,14 @@ function renderTextX6(
     return name;
   };
   const ESCAPED_PERCENT = "__PERCENT__";
+  const nameText = componentInstance?.name ?? classInstance?.name ?? "";
+  const classText = classInstance?.name ?? "";
+  const commentText = componentInstance?.description ?? classInstance?.description ?? "";
   const textContent = rawText
     .replace(/%%/g, ESCAPED_PERCENT)
-    .replace(/%name\b/g, componentInstance?.name ?? "%name")
-    .replace(/%class\b/g, classInstance?.name ?? "%class")
+    .replace(/%name\b/g, nameText)
+    .replace(/%class\b/g, classText)
+    .replace(/%comment\b/g, commentText)
     .replace(/%\{([^}]*)\}/g, replacer)
     .replace(/%(\w+)\b/g, replacer)
     .replace(new RegExp(ESCAPED_PERCENT, "g"), "%");

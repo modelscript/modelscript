@@ -2059,7 +2059,6 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
     curr = curr.prev;
   }
   if (curr == null && needed > 0) {
-    
     return null;
   }
 
@@ -2095,7 +2094,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
       let isListAppend = false;
       if (
         (popCount == 2 || popCount == 3) &&
-        (actualCount == 2 || actualCount == 3) &&
+        actualCount >= popCount &&
         t_globalChildNodes[0] != 0 &&
         prod_is_list[reduceProd] == 1
       ) {
@@ -3179,13 +3178,14 @@ export function advanceGLR(): void {
 
       if (!didAct) {
         if (tok != TOKEN_EOF) {
+          let didRecover = false;
           if (configEnableBranchB && head.consecutiveInsertions < 3) {
-            recoverMissingToken(head, tok, frontierPos);
+            didRecover = recoverMissingToken(head, tok, frontierPos);
           }
-          if (head.errorCost < 500 && head.prev != null) {
-            recoverStackSummary(head, tok, frontierPos);
+          if (!didRecover && head.errorCost < 500 && head.prev != null) {
+            didRecover = recoverStackSummary(head, tok, frontierPos);
           }
-          if (configEnableBranchA1) {
+          if (!didRecover && configEnableBranchA1) {
             recoverSkipToken(head, tok, frontierPos);
           }
         }

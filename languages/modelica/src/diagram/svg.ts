@@ -524,6 +524,7 @@ export function applyTextString(
   let str = graphicItem.string ?? "";
   if (str.includes("%")) {
     str = str.replace(/%name/g, classInstance?.name ?? "");
+    str = str.replace(/%comment/g, classInstance?.description ?? "");
     if (classInstance?.isComponentInstance || classInstance?.kind === "Component") {
       str = str.replace(/%class/g, classInstance.typeSpecifier || classInstance.name || "");
     }
