@@ -23,7 +23,6 @@ export default defineConfig([
       "**/scratch*/**",
       "packages/dsl/src/codegen/typescript.mjs",
       "packages/simulate/src/wasm/**",
-      "packages/ide/**",
       "languages/**/src-gen/**",
       "**/src-gen/**",
       "languages/**/bindings/**",
