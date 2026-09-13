@@ -23,6 +23,7 @@ import {
   prod_lhs,
   inputLength,
   token_insert_costs,
+  token_delete_costs,
   token_is_word,
   precomputed_repairs,
   reachability_matrix,
@@ -64,6 +65,7 @@ import {
 export const ERROR_COST_PER_SKIPPED_TREE: i32 = 100;
 export const ERROR_COST_PER_MISSING_TREE: i32 = 110;
 export const ERROR_COST_PER_SKIPPED_CHAR: i32 = 1;
+export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 5000;
 
 /**
  * Searches the action table for a SHIFT transition for the given state and terminal token.
@@ -158,10 +160,15 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
 }
 
 /**
- * Tree-sitter Strategy 1: StackSummary Unwind with Completed Subtree Retention.
- * Walks the GSS ancestor chain within local scope to find a previous state where
- * the current lookahead token is valid. If found, wraps damaged uncommitted nodes
- * into an ERROR node, preserving preceding completed subtrees.
+ * Stack Summary Error Recovery (Branch S).
+ * Evaluates earlier stack states along the GSS path to find an ancestor state that can
+ * legally shift the current lookahead token without discarding the input stream.
+ * Pops and groups the damaged subtrees into an ERROR node.
+ * 
+ * @param head The active parsing head in error.
+ * @param token The invalid lookahead token triggering the recovery attempt.
+ * @param pos The current byte offset in the input buffer.
+ * @returns True if a valid ancestor recovery state was found and enqueued, false otherwise.
  */
 export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): boolean {
   if (token == TOKEN_EOF) return false;
@@ -282,6 +289,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
 export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   if (head.errorCost >= 200) return;
   if (head.errorCost > 0 && head.successfulShifts == 0) return;
+  if (token >= 0 && token < token_delete_costs.length && token_delete_costs[token] >= 1000) return;
 
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
@@ -296,6 +304,19 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let diagEnd = srcLexPos + tLen;
   let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
 
+  let hasNl = false;
+  let pNl = nextPos;
+  while (pNl < inputLength) {
+    let ch = peekChar(pNl);
+    if (ch == 10 || ch == 13) {
+      hasNl = true;
+      break;
+    }
+    if (ch != 32 && ch != 9) break;
+    pNl += peekCharLen(pNl);
+  }
+  let nlPenalty: i32 = hasNl ? PENALTY_DELETE_NEWLINE_CROSS : 0;
+
   let unconfirmedPenalty: i32 = head.successfulShifts < 2 ? 60 : 0;
   let skippedHead = allocParseHead(
     head.state,
@@ -303,7 +324,7 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     head,
     newPos,
     head.scannerState,
-    head.errorCost + ERROR_COST_PER_SKIPPED_TREE + unconfirmedPenalty + (tLen as i32) * ERROR_COST_PER_SKIPPED_CHAR,
+    head.errorCost + ERROR_COST_PER_SKIPPED_TREE + unconfirmedPenalty + nlPenalty + (tLen as i32) * ERROR_COST_PER_SKIPPED_CHAR,
     0,
     head.balanceHash,
     0,
@@ -467,7 +488,8 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
     let bestRep = precomputed_repairs[state * (MAX_TERMINAL_ID + 1) + token];
     if (bestRep > 0 && bestRep <= MAX_TERMINAL_ID) {
       let insCost = token_insert_costs.length > bestRep ? (token_insert_costs[bestRep] as i32) : 1;
-      if (insCost < 50 || bestRep == 1) {
+      let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] == 1;
+      if (insCost < 50 || (isDelimLookahead && insCost <= 50) || bestRep == 1) {
         let aTarget = findShiftTarget(state, bestRep as u16);
         if (aTarget != -1 && stateCanAccept(head, aTarget, token, 0, 1) > 0) {
           let insNode = allocNode((bestRep | 0x8000) as u16, 0, 0, 0, false);
@@ -477,18 +499,19 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
           let diagEnd = srcLexPos + (lexLen > 0 ? lexLen : 1);
           let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
 
+          let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
           let insHead = allocParseHead(
             aTarget,
             insNode,
             head,
             pos,
             head.scannerState,
-            head.errorCost + (insCost * ERROR_COST_PER_MISSING_TREE),
+            head.errorCost + repairCost,
             0,
             head.balanceHash,
             head.consecutiveInsertions + 1,
             head.dynamicPrec,
-            0,
+            head.pendingPadding,
             nextTail
           );
           pushNextHead(changetype<u32>(insHead));
@@ -578,7 +601,8 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
         // Strategy B: Missing Token Insertion (0-width sym, keeping current token in stream)
         let insCost: i32 = token_insert_costs.length > sym ? (token_insert_costs[sym] as i32) : 1;
-        if (insCost < 50 || sym == 1 || pos == 0) {
+        let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] == 1;
+        if (insCost < 50 || (isDelimLookahead && insCost <= 50) || sym == 1 || pos == 0) {
           let canAcceptNext = stateCanAccept(head, aTarget, token, 0, 1);
           if (canAcceptNext > 0) {
             let insNode = allocNode((sym | 0x8000) as u16, 0, 0, 0, false);
@@ -588,18 +612,19 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
             let diagEnd = curSrcLexPos + curTLen;
             let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
 
+            let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
             let insHead = allocParseHead(
               aTarget,
               insNode,
               head,
               pos,
               head.scannerState,
-              head.errorCost + (insCost * ERROR_COST_PER_MISSING_TREE),
+              head.errorCost + repairCost,
               0,
               head.balanceHash,
               head.consecutiveInsertions + 1,
               head.dynamicPrec,
-              0,
+              head.pendingPadding,
               nextTail
             );
 

@@ -705,7 +705,7 @@ const t_virtualStates = new StaticArray<i32>(64);
  * @returns 1 if reachable, 2 if infinitely reachable, 0 if not reachable.
  */
 export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0, virtualDepth: i32 = 0): i32 {
-  if (depth > 8) return 0;
+  if (depth > 40) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
   if (head == null && !computingReachability && depth == 0 && virtualDepth == 0) {
     if (!isEpsilonReachable(state, tok)) return 0;
@@ -1989,25 +1989,28 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
     else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) newBalance--;
   }
 
-  let paddingLength = head.pendingPadding;
+  let paddingLength: u32 = 0;
+  let leafLen: u32 = 0;
   if (!isVirtual) {
-    paddingLength += (srcLexPos > pos ? srcLexPos - pos : 0);
+    paddingLength = head.pendingPadding + (srcLexPos > pos ? srcLexPos - pos : 0);
+    leafLen = lexLen;
   }
 
-  let leaf = allocNode(token as u16, paddingLength, lexLen, newBalance & 0xff, false, head.state as u32);
+  let leaf = allocNode(token as u16, paddingLength, leafLen, newBalance & 0xff, false, head.state as u32);
   if (isVirtual) {
-    setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_IS_INSERTED);
+    setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_IS_INSERTED | FLAG_HAS_ERROR);
   }
 
   let nextPos = isVirtual ? pos : srcLexPos + lexLen;
-  let nPos = nextPos > pos ? nextPos : pos + 1;
+  let nPos = isVirtual ? pos : (nextPos > pos ? nextPos : pos + 1);
   currentScannerState = 0;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
   let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
+  let nextPendingPad = isVirtual ? head.pendingPadding : 0;
 
   let newHead = allocParseHead(
-    target, leaf, head, nPos, currentScannerState, newCost, newShifts, newBalance, nextConsecutive, head.dynamicPrec, 0, head.errorTail
+    target, leaf, head, nPos, currentScannerState, newCost, newShifts, newBalance, nextConsecutive, head.dynamicPrec, nextPendingPad, head.errorTail
   );
 
   pushNextHead(changetype<u32>(newHead));
@@ -2967,7 +2970,7 @@ export function advanceGLR(): void {
       if (head != null && head.astNode != 0) headSym = getNodeType(head.astNode) as u32;
 
       let reusedNode: u32 = 0;
-      let expectedPadding: u32 = srcLexPos > frontierPos ? srcLexPos - frontierPos : 0;
+      let expectedPadding: u32 = (srcLexPos > frontierPos ? srcLexPos - frontierPos : 0) + head.pendingPadding;
       if (oldSrcLexPos != 0xffffffff) {
         reusedNode = findReusableNode(
           oldPos,
