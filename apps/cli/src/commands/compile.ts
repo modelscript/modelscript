@@ -110,43 +110,34 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
       const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
       const sysmlFactory = await import("@modelscript/sysml2/factory");
-      const fileCache = new Map<string, string>();
+      u.registerParser(".mo", parser as any);
+      u.registerParser(".sysml", sysmlParser as any);
 
-      const treeCache = new Map<string, any>();
+      const ensureDocument = (resId: string) => {
+        const p = pathMap.get(resId.replace("file://", "")) || resId.replace("file://", "");
+        if (!u.getDocumentText(resId) && !u.getDocumentText(p)) {
+          try {
+            const text = require("fs").readFileSync(p, "utf-8");
+            u.setDocument(resId, text);
+            u.setDocument(p, text);
+          } catch {
+            // ignore
+          }
+        }
+      };
+
       const engine = createModelicaQueryEngine(
         unifiedDb,
         {
           getText: (startByte: number, endByte: number, entry?: any) => {
-            if (!entry || !entry.resourceId) return null;
-            const p = pathMap.get(entry.resourceId.replace("file://", ""));
-            if (!p) return null;
-            let text = fileCache.get(p);
-            if (text === undefined) {
-              text = require("fs").readFileSync(p, "utf-8");
-              fileCache.set(p, text as string);
-            }
-            return (text as string).substring(startByte, endByte);
+            if (!entry?.resourceId) return null;
+            ensureDocument(entry.resourceId);
+            return u.cstTextProvider ? u.cstTextProvider(startByte, endByte, entry) : null;
           },
-
           getNode: (startByte: number, endByte: number, entry?: any) => {
-            if (!entry || !entry.resourceId) return null;
-            const p = pathMap.get(entry.resourceId.replace("file://", ""));
-            if (!p) return null;
-            let text = fileCache.get(p);
-            if (text === undefined) {
-              text = require("fs").readFileSync(p, "utf-8");
-              fileCache.set(p, text as string);
-            }
-            let tree = treeCache.get(p);
-            if (!tree) {
-              if (entry.resourceId.endsWith(".sysml")) {
-                tree = sysmlParser.parse(text as string);
-              } else {
-                tree = parser.parse(text as string);
-              }
-              treeCache.set(p, tree);
-            }
-            return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+            if (!entry?.resourceId) return null;
+            ensureDocument(entry.resourceId);
+            return u.cstNodeProvider ? u.cstNodeProvider(entry.id) : null;
           },
         },
         undefined,

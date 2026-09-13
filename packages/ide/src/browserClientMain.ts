@@ -25,6 +25,7 @@ import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
 import { registerScmIntegration } from "./scmIntegration";
 import { registerScmTreeView } from "./scmTreeView";
 import { registerSemanticDiffComments } from "./semanticDiffComments";
+import { ThreadExplorerPanel } from "./threadExplorerPanel";
 import { VerificationPanel } from "./verificationPanel";
 
 import { OWL2ClassHierarchyProvider } from "./owl2ClassHierarchyProvider";
@@ -1510,6 +1511,10 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.openVerificationDashboard", () => {
       if (!client) return;
       VerificationPanel.createOrShow(context.extensionUri, client);
+    }),
+    commands.registerCommand("modelscript.openThreadExplorer", () => {
+      if (!client) return;
+      ThreadExplorerPanel.createOrShow(context.extensionUri, client);
     }),
     // ── Physics Simulation Commands ──
     commands.registerCommand("modelscript.openSimulationView", async (uri?: vscode.Uri, className?: string) => {

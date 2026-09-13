@@ -1,15 +1,17 @@
+import { computeEditRanges, type EditRange } from "./diff.js";
 import { PolyglotTransformer, type PolyglotNode } from "./polyglot-transformer.js";
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 import { WasmOntologyStore } from "./wasm_ontology.js";
 
 export interface IWorkspaceIndex {
-  version: number;
-  structuralRevision?: number;
-  fileCount?: number;
-  toUnified?(): any;
-  toUnifiedAsync?(): Promise<any>;
-  toUnifiedPartial?(): any;
-  getSkeletonIndex?(): any;
+  readonly version: number;
+  readonly structuralRevision?: number;
+  readonly fileCount?: number;
+  toSymbolIndex?(): SymbolIndex;
+  toUnified?(): SymbolIndex;
+  toUnifiedAsync?(): Promise<SymbolIndex>;
+  toUnifiedPartial?(): SymbolIndex;
+  getSkeletonIndex?(): SymbolIndex;
 }
 
 export interface WasmStubSymbol {
@@ -145,7 +147,7 @@ function extractStringList(node: any, paths?: string[]): string[] {
   return results;
 }
 
-export class WasmWorkspaceIndex {
+export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   private instance: WasmLanguageInstance;
   private uriToId = new Map<string, number>();
   private idToUri = new Map<number, string>();
@@ -233,7 +235,10 @@ export class WasmWorkspaceIndex {
     return fileId;
   }
 
-  register(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any): number {
+  /**
+   * Indexes a document's CST into the symbol table.
+   */
+  indexDocument(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any): number {
     const fileId = this.registerFile(uri, parentFQN);
     if (editRanges && Array.isArray(editRanges)) {
       this.fileDirtyRanges.set(uri, editRanges);
@@ -245,6 +250,13 @@ export class WasmWorkspaceIndex {
       }
     }
     return fileId;
+  }
+
+  /**
+   * Backwards-compatible alias for indexDocument.
+   */
+  register(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any): number {
+    return this.indexDocument(uri, loader, parentFQN, editRanges);
   }
 
   has(uri: string): boolean {
@@ -261,7 +273,10 @@ export class WasmWorkspaceIndex {
     this.fileDirtyRanges.delete(uri);
   }
 
-  markDirty(uri: string, loader?: () => any, editRanges?: any, _totalDelta?: number): void {
+  /**
+   * Re-indexes a document or marks it dirty upon edit.
+   */
+  reindexDocument(uri: string, loader?: () => any, editRanges?: any, _totalDelta?: number): void {
     if (editRanges && Array.isArray(editRanges)) {
       this.fileDirtyRanges.set(uri, editRanges);
     }
@@ -275,6 +290,13 @@ export class WasmWorkspaceIndex {
       this._structuralRevision++;
       this.bumpFileStructuralRevision(uri);
     }
+  }
+
+  /**
+   * Backwards-compatible alias for reindexDocument.
+   */
+  markDirty(uri: string, loader?: () => any, editRanges?: any, totalDelta?: number): void {
+    this.reindexDocument(uri, loader, editRanges, totalDelta);
   }
 
   private globalChangedIds = new Set<number>();
@@ -601,7 +623,7 @@ export class WasmWorkspaceIndex {
   }
 
   getFileIndex(_uri: string): SymbolIndex {
-    return this.toUnified();
+    return this.toSymbolIndex();
   }
 
   hydrate(_uri: string, _index: any, _parentFQN?: string, _mapResourceId?: any): void {
@@ -609,20 +631,24 @@ export class WasmWorkspaceIndex {
     this._structuralRevision++;
   }
 
-  toUnified(): SymbolIndex {
+  toSymbolIndex(): SymbolIndex {
     return this.unifiedIndex;
   }
 
+  toUnified(): SymbolIndex {
+    return this.toSymbolIndex();
+  }
+
   async toUnifiedAsync(): Promise<SymbolIndex> {
-    return this.toUnified();
+    return this.toSymbolIndex();
   }
 
   toUnifiedPartial(): SymbolIndex {
-    return this.toUnified();
+    return this.toSymbolIndex();
   }
 
   getSkeletonIndex(): SymbolIndex {
-    return this.toUnified();
+    return this.toSymbolIndex();
   }
 
   /**
@@ -687,19 +713,45 @@ export class WasmWorkspaceIndex {
   }
 
   /**
-   * Clears stubs for a single file, or all files if uri is omitted.
+   * Clears stubs and indexed symbols for a single file, or all files if uri is omitted.
    */
   clear(uri?: string): void {
     if (uri) {
       const fileId = this.uriToId.get(uri);
       if (fileId) {
-        this.instance.clearFileStubs(fileId);
+        if (this.instance && typeof this.instance.clearFileStubs === "function") {
+          this.instance.clearFileStubs(fileId);
+        }
+        this.uriToId.delete(uri);
+        this.idToUri.delete(fileId);
+      }
+      const symIds = this.fileSymbols.get(uri);
+      if (symIds) {
+        for (const id of symIds) {
+          const entry = this.unifiedIndex.symbols.get(id);
+          if (entry) {
+            const byNameList = this.unifiedIndex.byName.get(entry.name);
+            if (byNameList) {
+              const filtered = byNameList.filter((x) => x !== id);
+              if (filtered.length > 0) this.unifiedIndex.byName.set(entry.name, filtered);
+              else this.unifiedIndex.byName.delete(entry.name);
+            }
+          }
+          this.unifiedIndex.symbols.delete(id);
+        }
+        this.fileSymbols.delete(uri);
       }
     } else {
-      this.instance.clearFileStubs(0);
+      if (this.instance && typeof this.instance.clearFileStubs === "function") {
+        this.instance.clearFileStubs(0);
+      }
       this.uriToId.clear();
       this.idToUri.clear();
       this.nextFileId = 1;
+      this.fileSymbols.clear();
+      this.unifiedIndex.symbols.clear();
+      this.unifiedIndex.byName.clear();
+      this.unifiedIndex.childrenOf.clear();
     }
     this._version++;
     this._structuralRevision++;
@@ -737,12 +789,23 @@ export class WasmWorkspaceIndex {
   }
 }
 
-export class UnifiedWorkspace {
+export interface DocumentRecord {
+  uri: string;
+  text: string;
+  version: number;
+  tree?: any;
+}
+
+export class UnifiedWorkspace implements IWorkspaceIndex {
   public owl2Store: WasmOntologyStore;
   private workspaces = new Map<string, any>();
   private queryEngines = new Map<string, any>();
   private configs = new Map<string, any>();
   private _version = 0;
+
+  private static globalParsers = new Map<string, any>();
+  private parsers = new Map<string, any>();
+  private documents = new Map<string, DocumentRecord>();
 
   public cstNodeProvider?: (id: SymbolId) => unknown | null;
   public cstTextProvider?: (startByte: number, endByte: number, entry: SymbolEntry) => string | null;
@@ -750,6 +813,256 @@ export class UnifiedWorkspace {
 
   constructor() {
     this.owl2Store = new WasmOntologyStore();
+
+    this.cstNodeProvider = (id: SymbolId): unknown | null => {
+      const idx = this.toUnifiedPartial();
+      const entry = idx.symbols.get(id);
+      if (!entry || !entry.resourceId) return null;
+      const tree = this.getDocumentTree(entry.resourceId);
+      if (!tree || !tree.rootNode) return null;
+      const start = entry.startByte;
+      const end = Math.max(start, entry.endByte);
+      return typeof tree.rootNode.descendantForIndex === "function"
+        ? tree.rootNode.descendantForIndex(start, end)
+        : null;
+    };
+
+    this.cstTextProvider = (startByte: number, endByte: number, entry: SymbolEntry): string | null => {
+      if (!entry || !entry.resourceId) return null;
+      const text = this.getDocumentText(entry.resourceId);
+      if (text === undefined) return null;
+      return text.substring(startByte, endByte);
+    };
+
+    this.queryProvider = (queryName: string, id: SymbolId): unknown | null => {
+      const idx = this.toUnifiedPartial();
+      const entry = idx.symbols.get(id);
+      if (!entry || !entry.resourceId) return null;
+      const lang = this.detectLanguage(entry.resourceId);
+      const engine = lang ? this.queryEngines.get(lang) : this.queryEngines.values().next().value;
+      return engine?.query ? engine.query(queryName, id) : null;
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // CST & Semantic Query Methods
+  // ---------------------------------------------------------------------------
+
+  getCstNode(id: SymbolId): any | null {
+    if (this.cstNodeProvider) return this.cstNodeProvider(id);
+    return null;
+  }
+
+  getCstText(startByte: number, endByte: number, entry: SymbolEntry): string | null {
+    if (this.cstTextProvider) return this.cstTextProvider(startByte, endByte, entry);
+    return null;
+  }
+
+  query(queryName: string, id: SymbolId): unknown | null {
+    if (this.queryProvider) return this.queryProvider(queryName, id);
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Parser Registry
+  // ---------------------------------------------------------------------------
+
+  static registerGlobalParser(extname: string, parser: any): void {
+    const ext = extname.startsWith(".") ? extname : `.${extname}`;
+    UnifiedWorkspace.globalParsers.set(ext, parser);
+  }
+
+  static getGlobalParser(extname: string): any | undefined {
+    const ext = extname.startsWith(".") ? extname : `.${extname}`;
+    return UnifiedWorkspace.globalParsers.get(ext);
+  }
+
+  registerParser(extname: string, parser: any): void {
+    const ext = extname.startsWith(".") ? extname : `.${extname}`;
+    this.parsers.set(ext, parser);
+    UnifiedWorkspace.registerGlobalParser(ext, parser);
+  }
+
+  getParser(extname: string): any | undefined {
+    const ext = extname.startsWith(".") ? extname : `.${extname}`;
+    return this.parsers.get(ext) ?? UnifiedWorkspace.getGlobalParser(ext);
+  }
+
+  parse(uriOrExt: string, input: string, oldTree?: any, editBounds?: any): any {
+    const ext = uriOrExt.includes(".") ? `.${uriOrExt.split(".").pop()}` : uriOrExt;
+    const parser = this.getParser(ext);
+    if (!parser) {
+      throw new Error(`[UnifiedWorkspace] No parser registered for extension '${ext}'`);
+    }
+    if (typeof parser.parse === "function") {
+      return parser.parse(
+        input,
+        oldTree,
+        editBounds?.editStart ?? 0,
+        editBounds?.editOldEnd ?? 0,
+        editBounds?.editNewEnd ?? 0,
+        editBounds?.uri ?? "",
+      );
+    }
+    throw new Error(`[UnifiedWorkspace] Registered parser for '${ext}' does not have a parse() method`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Document & CST Tree Store
+  // ---------------------------------------------------------------------------
+
+  setDocument(
+    uri: string,
+    text: string,
+    options?: { parse?: boolean; oldTree?: any; editBounds?: any; editRanges?: EditRange[]; index?: boolean },
+  ): { editRanges: EditRange[]; delta: number; tree?: any } {
+    const prev = this.documents.get(uri);
+    let editRanges: EditRange[] = options?.editRanges ?? [];
+    let delta = 0;
+
+    if (prev && prev.text !== text && editRanges.length === 0) {
+      editRanges = computeEditRanges(prev.text, text);
+      delta = text.length - prev.text.length;
+    }
+
+    let tree = prev?.tree;
+    if (options?.parse !== false) {
+      const ext = uri.includes(".") ? `.${uri.split(".").pop()}` : "";
+      const parser = this.getParser(ext);
+      if (parser) {
+        try {
+          tree = this.parse(uri, text, options?.oldTree ?? prev?.tree, options?.editBounds);
+        } catch {
+          // ignore or keep previous
+        }
+      }
+    }
+
+    const version = (prev?.version ?? 0) + 1;
+    this.documents.set(uri, { uri, text, version, tree });
+    this._version++;
+
+    // Automated ingestion: update language workspace index if registered
+    if (tree && options?.index !== false) {
+      const lang = this.detectLanguage(uri);
+      const ws = lang ? this.workspaces.get(lang) : undefined;
+      if (ws) {
+        if (typeof ws.indexDocument === "function") {
+          ws.indexDocument(uri, () => tree.rootNode, undefined, editRanges);
+        } else if (typeof ws.register === "function") {
+          ws.register(uri, () => tree.rootNode, undefined, editRanges);
+        }
+      }
+    }
+
+    return { editRanges, delta, tree };
+  }
+
+  getDocument(uri: string): DocumentRecord | undefined {
+    return this.documents.get(uri);
+  }
+
+  getDocumentText(uri: string): string | undefined {
+    return this.documents.get(uri)?.text;
+  }
+
+  getDocumentTree(uri: string): any | undefined {
+    const doc = this.documents.get(uri);
+    if (!doc) return undefined;
+    if (doc.tree) return doc.tree;
+    const ext = uri.includes(".") ? `.${uri.split(".").pop()}` : "";
+    const parser = this.getParser(ext);
+    if (parser && doc.text !== undefined) {
+      try {
+        doc.tree = this.parse(uri, doc.text);
+      } catch {
+        // ignore
+      }
+    }
+    return doc.tree;
+  }
+
+  setDocumentTree(uri: string, tree: any): void {
+    const doc = this.documents.get(uri);
+    if (doc) {
+      doc.tree = tree;
+    } else {
+      this.documents.set(uri, { uri, text: "", version: 1, tree });
+    }
+  }
+
+  deleteDocument(uri: string): boolean {
+    const existed = this.documents.delete(uri);
+    const lang = this.detectLanguage(uri);
+    const ws = lang ? this.workspaces.get(lang) : undefined;
+    if (ws && typeof ws.clear === "function") {
+      ws.clear(uri);
+    }
+    if (existed) {
+      this._version++;
+    }
+    return existed;
+  }
+
+  detectLanguage(uri: string): string | undefined {
+    if (uri.endsWith(".sysml")) return "sysml2";
+    if (uri.endsWith(".mo") || uri.endsWith(".msim")) return "modelica";
+    if (uri.endsWith(".step") || uri.endsWith(".stp")) return "step";
+    if (uri.endsWith(".owl") || uri.endsWith(".ttl") || uri.endsWith(".rdf")) return "owl2";
+    if (uri.endsWith(".csv")) return "csv";
+    return undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Polyglot Directory Ingestion
+  // ---------------------------------------------------------------------------
+
+  async loadDirectory(
+    dirPath: string,
+    fs: {
+      stat: (p: string) => any;
+      readdir: (p: string) => { name: string }[];
+      read: (p: string) => string;
+      join: (...p: string[]) => string;
+    },
+    options?: { ignore?: string[] },
+  ): Promise<string[]> {
+    const loadedUris: string[] = [];
+    const ignoreList = new Set(options?.ignore ?? ["node_modules", "dist", ".git", "testsuite"]);
+
+    const crawl = (dir: string) => {
+      const stat = fs.stat(dir);
+      if (!stat) return;
+      if (stat.isFile()) {
+        const ext = dir.includes(".") ? `.${dir.split(".").pop()}` : "";
+        if (this.getParser(ext)) {
+          const content = fs.read(dir);
+          this.setDocument(dir, content);
+          const lang = this.detectLanguage(dir);
+          const ws = lang ? this.workspaces.get(lang) : undefined;
+          if (ws && typeof ws.register === "function") {
+            ws.register(dir, () => this.getDocumentTree(dir)?.rootNode);
+          }
+          loadedUris.push(dir);
+        }
+      } else if (stat.isDirectory()) {
+        for (const entry of fs.readdir(dir)) {
+          if (ignoreList.has(entry.name)) continue;
+          crawl(fs.join(dir, entry.name));
+        }
+      }
+    };
+
+    crawl(dirPath);
+    return loadedUris;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Workspace & Query Engine Management
+  // ---------------------------------------------------------------------------
+
+  get fileCount(): number {
+    return this.documents.size;
   }
 
   get version(): number {
@@ -826,49 +1139,118 @@ export class UnifiedWorkspace {
     return this.queryEngines.get(language);
   }
 
-  toUnified(): SymbolIndex {
-    for (const ws of this.workspaces.values()) {
-      if (ws && typeof ws.toUnified === "function") {
-        return ws.toUnified();
+  toSymbolIndex(): SymbolIndex {
+    if (this.workspaces.size === 0) {
+      return {
+        symbols: new Map<SymbolId, SymbolEntry>(),
+        byName: new Map<string, SymbolId[]>(),
+        childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+      };
+    }
+    if (this.workspaces.size === 1) {
+      for (const ws of this.workspaces.values()) {
+        if (ws && typeof ws.toSymbolIndex === "function") {
+          return ws.toSymbolIndex();
+        }
+        if (ws && typeof ws.toUnified === "function") {
+          return ws.toUnified();
+        }
       }
     }
-    return {
+    const merged: SymbolIndex = {
       symbols: new Map<SymbolId, SymbolEntry>(),
       byName: new Map<string, SymbolId[]>(),
       childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
+    for (const [lang, ws] of this.workspaces.entries()) {
+      const idx =
+        typeof ws.toSymbolIndex === "function"
+          ? ws.toSymbolIndex()
+          : typeof ws.toUnified === "function"
+            ? ws.toUnified()
+            : null;
+      if (!idx) continue;
+      for (const [id, entry] of idx.symbols.entries()) {
+        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
+      }
+      for (const [name, ids] of idx.byName.entries()) {
+        const existing = merged.byName.get(name) || [];
+        merged.byName.set(name, existing.concat(ids));
+      }
+      for (const [parentId, childIds] of idx.childrenOf.entries()) {
+        const existing = merged.childrenOf.get(parentId) || [];
+        merged.childrenOf.set(parentId, existing.concat(childIds));
+      }
+    }
+    return merged;
+  }
+
+  toUnified(): SymbolIndex {
+    return this.toSymbolIndex();
+  }
+
+  async toSymbolIndexAsync(): Promise<SymbolIndex> {
+    if (this.workspaces.size === 0) {
+      return {
+        symbols: new Map<SymbolId, SymbolEntry>(),
+        byName: new Map<string, SymbolId[]>(),
+        childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+      };
+    }
+    if (this.workspaces.size === 1) {
+      for (const ws of this.workspaces.values()) {
+        if (ws && typeof ws.toSymbolIndexAsync === "function") {
+          return await ws.toSymbolIndexAsync();
+        }
+        if (ws && typeof ws.toUnifiedAsync === "function") {
+          return await ws.toUnifiedAsync();
+        }
+        if (ws && typeof ws.toSymbolIndex === "function") {
+          return ws.toSymbolIndex();
+        }
+        if (ws && typeof ws.toUnified === "function") {
+          return ws.toUnified();
+        }
+      }
+    }
+    const merged: SymbolIndex = {
+      symbols: new Map<SymbolId, SymbolEntry>(),
+      byName: new Map<string, SymbolId[]>(),
+      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+    };
+    for (const [lang, ws] of this.workspaces.entries()) {
+      let idx: SymbolIndex | null = null;
+      if (typeof ws.toSymbolIndexAsync === "function") {
+        idx = await ws.toSymbolIndexAsync();
+      } else if (typeof ws.toUnifiedAsync === "function") {
+        idx = await ws.toUnifiedAsync();
+      } else if (typeof ws.toSymbolIndex === "function") {
+        idx = ws.toSymbolIndex();
+      } else if (typeof ws.toUnified === "function") {
+        idx = ws.toUnified();
+      }
+      if (!idx) continue;
+      for (const [id, entry] of idx.symbols.entries()) {
+        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
+      }
+      for (const [name, ids] of idx.byName.entries()) {
+        const existing = merged.byName.get(name) || [];
+        merged.byName.set(name, existing.concat(ids));
+      }
+      for (const [parentId, childIds] of idx.childrenOf.entries()) {
+        const existing = merged.childrenOf.get(parentId) || [];
+        merged.childrenOf.set(parentId, existing.concat(childIds));
+      }
+    }
+    return merged;
   }
 
   async toUnifiedAsync(): Promise<SymbolIndex> {
-    for (const ws of this.workspaces.values()) {
-      if (ws && typeof ws.toUnifiedAsync === "function") {
-        return await ws.toUnifiedAsync();
-      }
-      if (ws && typeof ws.toUnified === "function") {
-        return ws.toUnified();
-      }
-    }
-    return {
-      symbols: new Map<SymbolId, SymbolEntry>(),
-      byName: new Map<string, SymbolId[]>(),
-      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
-    };
+    return this.toSymbolIndexAsync();
   }
 
   toUnifiedPartial(): SymbolIndex {
-    for (const ws of this.workspaces.values()) {
-      if (ws && typeof ws.toUnifiedPartial === "function") {
-        return ws.toUnifiedPartial();
-      }
-      if (ws && typeof ws.toUnified === "function") {
-        return ws.toUnified();
-      }
-    }
-    return {
-      symbols: new Map<SymbolId, SymbolEntry>(),
-      byName: new Map<string, SymbolId[]>(),
-      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
-    };
+    return this.toSymbolIndex();
   }
 
   getSkeletonIndex(): SymbolIndex {
@@ -880,3 +1262,5 @@ export class UnifiedWorkspace {
     return this.toUnifiedPartial();
   }
 }
+
+export { LanguageWorkspaceIndex as WasmWorkspaceIndex, LanguageWorkspaceIndex as WorkspaceIndex };

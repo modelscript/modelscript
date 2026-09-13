@@ -29,8 +29,9 @@ import {
   reachability_matrix,
   token_string_offsets,
   token_string_bytes,
+  prod_is_list,
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength } from "./parser-loop";
 import {
   getNodePadding,
   setNodePadding,
@@ -39,6 +40,8 @@ import {
   setFirstChild,
   setNextSibling,
   getNodeFirstChild,
+  getNodeNextSibling,
+  ast_appendChild,
   getNodeType,
   allocNode,
   FLAG_IS_INSERTED,
@@ -208,10 +211,34 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
         let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd);
 
-        let parentHead = anc;
+        let targetNode = errNode;
+        let parentHead: ParseHead | null = anc;
+        if (anc.astNode != 0) {
+          let aFlags = getNodeFlags(anc.astNode);
+          let aType = getNodeType(anc.astNode);
+          let isList = (aFlags & FLAG_IS_LIST) != 0 || ((prod_is_list.length as u32) > (aType as u32) && prod_is_list[aType] == 1);
+          if (isList) {
+            let fc = getNodeFirstChild(anc.astNode);
+            if (fc == 0) {
+              setNodePadding(errNode, 0);
+              setFirstChild(anc.astNode, errNode);
+            } else {
+              let curC = fc;
+              while (getNodeNextSibling(curC) != 0) {
+                curC = getNodeNextSibling(curC);
+              }
+              setNextSibling(curC, errNode);
+            }
+            setNodeFlags(anc.astNode, aFlags | FLAG_HAS_ERROR);
+            fixNodeLength(anc.astNode);
+            targetNode = anc.astNode;
+            parentHead = anc.prev;
+          }
+        }
+
         let errHead = allocParseHead(
           ancState,
-          errNode,
+          targetNode,
           parentHead,
           pos,
           anc.scannerState,

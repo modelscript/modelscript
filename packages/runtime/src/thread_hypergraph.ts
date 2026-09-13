@@ -46,13 +46,30 @@ export interface ThreadRecord {
   isRemoved: boolean;
 }
 
+export interface BlastRadiusNode {
+  domain: ThreadDomain;
+  nodeId: number;
+  threadId: number;
+  slot: number;
+  distance: number;
+  status: "synced" | "stale" | "conflict" | "removed";
+}
+
+export interface BlastRadiusResult {
+  root: { domain: ThreadDomain; nodeId: number };
+  impactedNodes: BlastRadiusNode[];
+  impactedThreads: number[];
+  staleCount: number;
+  conflictCount: number;
+}
+
 export class DigitalThreadHypergraph {
   private data: Uint32Array;
   private count: number = 0;
   private capacity: number;
   private threadIdToSlot: Map<number, number> = new Map();
-  // Map composite key `(domainIdx << 32) | nodeId` to slot
-  private nodeToThreadSlot: Map<bigint, number> = new Map();
+  // Map composite key `(domainIdx << 32) | nodeId` to array of slots
+  private nodeToThreadSlots: Map<bigint, number[]> = new Map();
 
   constructor(initialCapacity: number = 512) {
     this.capacity = initialCapacity;
@@ -103,7 +120,11 @@ export class DigitalThreadHypergraph {
     this.data[offset + THREAD_HEADER_WORDS + domainIdx] = nodeId;
 
     const key = (BigInt(domainIdx) << 32n) | BigInt(nodeId >>> 0);
-    this.nodeToThreadSlot.set(key, slot);
+    const slots = this.nodeToThreadSlots.get(key) || [];
+    if (!slots.includes(slot)) {
+      slots.push(slot);
+      this.nodeToThreadSlots.set(key, slots);
+    }
   }
 
   getDomainNode(slot: number, domainIdx: ThreadDomain | number): number {
@@ -111,11 +132,20 @@ export class DigitalThreadHypergraph {
     return this.data[slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx];
   }
 
-  findThreadByDomainNode(domainIdx: ThreadDomain | number, nodeId: number): number | undefined {
+  findSlotsByDomainNode(domainIdx: ThreadDomain | number, nodeId: number): number[] {
     const key = (BigInt(domainIdx) << 32n) | BigInt(nodeId >>> 0);
-    const slot = this.nodeToThreadSlot.get(key);
+    const slots = this.nodeToThreadSlots.get(key) || [];
+    return slots.filter((s) => !this.isRemoved(s));
+  }
+
+  findSlotByDomainNode(domainIdx: ThreadDomain | number, nodeId: number): number | undefined {
+    const active = this.findSlotsByDomainNode(domainIdx, nodeId);
+    return active.length > 0 ? active[0] : undefined;
+  }
+
+  findThreadByDomainNode(domainIdx: ThreadDomain | number, nodeId: number): number | undefined {
+    const slot = this.findSlotByDomainNode(domainIdx, nodeId);
     if (slot === undefined) return undefined;
-    if (this.isRemoved(slot)) return undefined;
     return this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
   }
 
@@ -204,5 +234,95 @@ export class DigitalThreadHypergraph {
       if (rec && !rec.isRemoved) list.push(rec);
     }
     return list;
+  }
+
+  computeBlastRadius(startDomain: ThreadDomain | number, startNodeId: number): BlastRadiusResult {
+    const root = { domain: startDomain as ThreadDomain, nodeId: startNodeId };
+    const initialSlots = this.findSlotsByDomainNode(startDomain, startNodeId);
+
+    if (initialSlots.length === 0) {
+      return {
+        root,
+        impactedNodes: [],
+        impactedThreads: [],
+        staleCount: 0,
+        conflictCount: 0,
+      };
+    }
+
+    const visitedSlots = new Set<number>();
+    const visitedNodes = new Set<string>();
+    const impactedNodes: BlastRadiusNode[] = [];
+    const impactedThreads = new Set<number>();
+
+    // BFS Queue: start from all slots containing the start node
+    const queue: { slot: number; distance: number }[] = [];
+    for (const s of initialSlots) {
+      visitedSlots.add(s);
+      queue.push({ slot: s, distance: 1 });
+    }
+
+    while (queue.length > 0) {
+      const { slot, distance } = queue.shift()!;
+      const rec = this.getRecord(slot);
+      if (!rec || rec.isRemoved) continue;
+
+      impactedThreads.add(rec.threadId);
+
+      let statusStr: "synced" | "stale" | "conflict" | "removed" = "synced";
+      if (rec.isRemoved) statusStr = "removed";
+      else if (rec.isConflicted) statusStr = "conflict";
+      else if (rec.isStale) statusStr = "stale";
+
+      for (const [domStr, nId] of Object.entries(rec.domainNodes)) {
+        const dom = Number(domStr) as ThreadDomain;
+        const nodeKey = `${dom}:${nId}`;
+
+        if (!visitedNodes.has(nodeKey)) {
+          visitedNodes.add(nodeKey);
+          impactedNodes.push({
+            domain: dom,
+            nodeId: nId,
+            threadId: rec.threadId,
+            slot,
+            distance,
+            status: statusStr,
+          });
+
+          // Traverse any other slots that also link this domain node
+          const otherSlots = this.findSlotsByDomainNode(dom, nId);
+          for (const otherSlot of otherSlots) {
+            if (!visitedSlots.has(otherSlot)) {
+              visitedSlots.add(otherSlot);
+              queue.push({ slot: otherSlot, distance: distance + 1 });
+            }
+          }
+        }
+      }
+    }
+
+    const staleCount = impactedNodes.filter((n) => n.status === "stale").length;
+    const conflictCount = impactedNodes.filter((n) => n.status === "conflict").length;
+
+    return {
+      root,
+      impactedNodes,
+      impactedThreads: Array.from(impactedThreads),
+      staleCount,
+      conflictCount,
+    };
+  }
+
+  markBlastRadiusStale(startDomain: ThreadDomain | number, startNodeId: number): number {
+    const radius = this.computeBlastRadius(startDomain, startNodeId);
+    let marked = 0;
+    for (const threadId of radius.impactedThreads) {
+      const slot = this.findSlotByThreadId(threadId);
+      if (slot !== undefined) {
+        this.markStale(slot);
+        marked++;
+      }
+    }
+    return marked;
   }
 }

@@ -327,6 +327,10 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     return { symbols, byName, childrenOf };
   }
 
+  toSymbolIndex(): SymbolIndex {
+    return this.mergeIndices();
+  }
+
   toUnified(): SymbolIndex {
     return this.mergeIndices();
   }

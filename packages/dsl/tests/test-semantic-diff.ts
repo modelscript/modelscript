@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import type { QueryDB, SpecializationArgs, SymbolEntry, SymbolId } from "@modelscript/runtime/runtime.js";
 import assert from "node:assert";
-import { computeSemanticDiff } from "../src/compiler/semantic-diff.js";
+import { computeSemanticDiff } from "../src/tools/semantic-diff.js";
 
 function createMockDB(entries: SymbolEntry[]): QueryDB {
   const map = new Map<SymbolId, SymbolEntry>();
@@ -112,13 +111,14 @@ assert.throws(() => {
   assert.strictEqual(diff.action, "none");
 }
 
-// Test 5: Metadata update
+// Test 5: Metadata update (granular variability detection)
 {
   const oldDb = createMockDB([makeEntry(1, "Class", "Resistor", null, { variability: "discrete" })]);
   const newDb = createMockDB([makeEntry(1, "Class", "Resistor", null, { variability: "continuous" })]);
   const diff = computeSemanticDiff({ id: 1, db: oldDb }, { id: 1, db: newDb });
   assert.strictEqual(diff.action, "update");
-  assert.strictEqual(diff.description, "Metadata updated");
+  assert.strictEqual(diff.description, "Variability changed from 'discrete' to 'continuous'");
+  assert.strictEqual(diff.children?.[0]?.category, "variability");
 }
 
 // Test 6: Replacement (kind change)
@@ -128,6 +128,7 @@ assert.throws(() => {
   const diff = computeSemanticDiff({ id: 1, db: oldDb }, { id: 1, db: newDb });
   assert.strictEqual(diff.action, "update");
   assert.strictEqual(diff.description, "Replaced Class with Package");
+  assert.strictEqual(diff.isBreaking, true);
 }
 
 // Test 7: Nested child addition (order agnostic)
@@ -145,6 +146,7 @@ assert.throws(() => {
   assert.strictEqual(diff.children.length, 1);
   assert.strictEqual(diff.children[0]!.action, "insert");
   assert.strictEqual(diff.children[0]!.newEntry?.name, "R2");
+  assert.strictEqual(diff.children[0]!.isBreaking, false);
 }
 
 // Test 8: Nested child deletion (order agnostic)
@@ -164,4 +166,40 @@ assert.throws(() => {
   assert.strictEqual(diff.children[0]!.oldEntry?.name, "R2");
 }
 
-console.log("All 8 SemanticDiff tests passed successfully!");
+// Test 9: Causality change is detected and flagged as breaking
+{
+  const oldDb = createMockDB([makeEntry(1, "Port", "inlet", null, { causality: "input" })]);
+  const newDb = createMockDB([makeEntry(1, "Port", "inlet", null, { causality: "output" })]);
+  const diff = computeSemanticDiff({ id: 1, db: oldDb }, { id: 1, db: newDb });
+  assert.strictEqual(diff.action, "update");
+  assert.strictEqual(diff.isBreaking, true);
+  assert.strictEqual(diff.children?.[0]?.category, "causality");
+  assert.strictEqual(diff.children?.[0]?.description, "Causality changed from 'input' to 'output'");
+}
+
+// Test 10: Breaking only filter
+{
+  const oldDb = createMockDB([
+    makeEntry(1, "Class", "Circuit"),
+    makeEntry(2, "Port", "p", 1),
+    makeEntry(3, "Component", "R1", 1, { binding: 10 }),
+  ]);
+  const newDb = createMockDB([
+    makeEntry(1, "Class", "Circuit"),
+    // Port p deleted (breaking)
+    makeEntry(3, "Component", "R1", 1, { binding: 20 }), // value updated (non-breaking)
+  ]);
+
+  const diff = computeSemanticDiff(
+    { id: 1, db: oldDb },
+    { id: 1, db: newDb },
+    { orderAgnostic: true, breakingOnly: true },
+  );
+  assert.strictEqual(diff.action, "update");
+  assert.strictEqual(diff.isBreaking, true);
+  assert.ok(diff.children);
+  assert.strictEqual(diff.children.length, 1);
+  assert.strictEqual(diff.children[0]?.oldEntry?.name, "p");
+}
+
+console.log("All 10 SemanticDiff tests passed successfully!");

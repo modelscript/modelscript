@@ -9,6 +9,7 @@ import { Build } from "./commands/build.js";
 import { Compile } from "./commands/compile.js";
 import { Cosim } from "./commands/cosim.js";
 import { BuildCSG } from "./commands/csg.js";
+import { Diff } from "./commands/diff.js";
 import { Fmu } from "./commands/fmu.js";
 import { Generate } from "./commands/generate.js";
 import { I18n } from "./commands/i18n.js";
@@ -49,6 +50,7 @@ yargs(process.argv.slice(2))
   .command(Cosim)
   // Verification, Linting & Translation
   .command(Lint)
+  .command(Diff)
   .command(Render)
   .command(I18n)
   // Language Engineering & DSL Tooling

@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
+import { DigitalThreadHypergraph, ThreadDomain } from "@modelscript/runtime";
 import { LspContext } from "../LspContext.js";
+import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
 import { loadDependencyFromRegistry } from "../vfs/library-loader.js";
 
 export function registerMiscEndpoints(context: LspContext) {
@@ -295,6 +297,64 @@ export function registerMiscEndpoints(context: LspContext) {
 
   context.connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
     return runVerificationForUri(params.uri);
+  });
+
+  // ── Digital Thread Hypergraph Explorer Endpoints ────────────────────
+  const sharedHypergraph = new DigitalThreadHypergraph();
+  const sharedMetadataMap = new Map<
+    string,
+    { name?: string; uri?: string; line?: number; column?: number; properties?: Record<string, any> }
+  >();
+
+  // Seed with representative multi-domain threads if empty
+  const s0 = sharedHypergraph.createThread(101, 1);
+  sharedHypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
+  sharedHypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
+  sharedHypergraph.bindDomainNode(s0, ThreadDomain.Modelica, 3001);
+  sharedHypergraph.bindDomainNode(s0, ThreadDomain.CAD, 4001);
+  sharedHypergraph.bindDomainNode(s0, ThreadDomain.FEA, 5001);
+  sharedHypergraph.bindDomainNode(s0, ThreadDomain.BOM, 6001);
+
+  sharedMetadataMap.set("requirements:1001", {
+    name: "REQ-TORQUE-01 (Peak Torque >= 350Nm)",
+    line: 12,
+    column: 1,
+    properties: { status: "Verified" },
+  });
+  sharedMetadataMap.set("sysml2:2001", { name: "part def PowertrainInverter", line: 45, column: 5 });
+  sharedMetadataMap.set("modelica:3001", {
+    name: "model InverterDrive",
+    line: 14,
+    column: 1,
+    properties: { mass: 1.0 },
+  });
+  sharedMetadataMap.set("cad:4001", { name: "Inverter_Chassis.step", line: 1, column: 1, properties: { mass: 1.02 } });
+  sharedMetadataMap.set("fea:5001", { name: "InverterMount_CalculiX.inp", line: 1, column: 1 });
+  sharedMetadataMap.set("bom:6001", { name: "P/N 840-0219 (Inverter Assy)", line: 1, column: 1 });
+
+  const s1 = sharedHypergraph.createThread(102, 2);
+  sharedHypergraph.bindDomainNode(s1, ThreadDomain.Requirements, 1002);
+  sharedHypergraph.bindDomainNode(s1, ThreadDomain.SysML2, 2002);
+  sharedHypergraph.bindDomainNode(s1, ThreadDomain.Modelica, 3002);
+  sharedHypergraph.bindDomainNode(s1, ThreadDomain.CAD, 4002);
+  sharedHypergraph.markStale(s1);
+
+  sharedMetadataMap.set("requirements:1002", { name: "REQ-THERMAL-02 (Junction Temp <= 85C)", line: 28, column: 1 });
+  sharedMetadataMap.set("sysml2:2002", { name: "part def CoolingPlate", line: 88, column: 5 });
+  sharedMetadataMap.set("modelica:3002", {
+    name: "model CoolingCircuit",
+    line: 32,
+    column: 1,
+    properties: { mass: 0.8 },
+  });
+  sharedMetadataMap.set("cad:4002", { name: "CoolingPlate.step", line: 1, column: 1, properties: { mass: 1.15 } });
+
+  context.connection.onRequest("modelscript/getThreadGraph", async () => {
+    return ThreadExplorerProvider.buildThreadGraph(sharedHypergraph, sharedMetadataMap);
+  });
+
+  context.connection.onRequest("modelscript/getBlastRadius", async (params: { domain: string; nodeId: number }) => {
+    return ThreadExplorerProvider.getBlastRadius(sharedHypergraph, params.domain, params.nodeId);
   });
 }
 

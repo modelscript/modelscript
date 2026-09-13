@@ -7,6 +7,7 @@
  */
 
 export * from "./config_client.js";
+export * from "./diff.js";
 export * from "./indexeddb_snapshot.js";
 export * from "./pipeline.js";
 export * from "./polyglot-transformer.js";
@@ -55,5 +56,9 @@ export {
   type SimulationResult as VerifierSimulationResult,
 } from "./wasm_verifier.js";
 export * from "./wasm_workspace.js";
-export { WasmWorkspaceIndex as WorkspaceIndex } from "./wasm_workspace.js";
+export {
+  LanguageWorkspaceIndex,
+  LanguageWorkspaceIndex as WasmWorkspaceIndex,
+  LanguageWorkspaceIndex as WorkspaceIndex,
+} from "./wasm_workspace.js";
 export type CSTNode = any;

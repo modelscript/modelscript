@@ -7,7 +7,6 @@ build/
 .build/
 as-gen/
 build-parser.ts
-packages/dsl/src/src-gen/
 packages/runtime/build/
 prebuilds/
 coverage/

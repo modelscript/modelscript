@@ -337,7 +337,11 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         type = ACTION_REDUCE;
         target = defaultReduce;
       } else {
-        transitionToGlr(pos, pendingPadding, currentScannerState);
+        if (startToken == -1) {
+          transitionToGlr(pos, pendingPadding, currentScannerState);
+        } else {
+          currentParserMode = MODE_GLR;
+        }
         return 0;
       }
 
@@ -373,7 +377,11 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       
     } else if (type == ACTION_REDUCE) {
       if (++consecutiveReductions > 5000) {
-        transitionToGlr(pos, pendingPadding, currentScannerState);
+        if (startToken == -1) {
+          transitionToGlr(pos, pendingPadding, currentScannerState);
+        } else {
+          currentParserMode = MODE_GLR;
+        }
         return 0;
       }
       let reduceProd = target;
@@ -498,7 +506,11 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       }
       
       if (nextState == -1) {
-        transitionToGlr(pos, pendingPadding, currentScannerState);
+        if (startToken == -1) {
+          transitionToGlr(pos, pendingPadding, currentScannerState);
+        } else {
+          currentParserMode = MODE_GLR;
+        }
         return 0;
       }
       
@@ -3243,7 +3255,6 @@ export function advanceGLR(): void {
           lrStackDepth = depth;
           currentParserMode = MODE_LR;
 
-
           if (g_oldTree != 0) {
             initGlobalCursor(g_oldTree);
           }
@@ -3269,6 +3280,7 @@ export function advanceGLR(): void {
             bestAcceptingHead = changetype<u32>(singleHead);
             return;
           }
+          currentParserMode = MODE_GLR;
         }
       }
     }

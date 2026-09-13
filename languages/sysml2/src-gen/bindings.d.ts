@@ -980,6 +980,7 @@ export declare class SyntaxNode {
   childText(name: string): string;
   /** Returns true if the node is a named (non-anonymous) node. */
   isNamed(): boolean;
+  private _cachedHasError;
   /** Returns true if the node or any of its descendants represents a syntax error. */
   hasError(): boolean;
   /** Finds the smallest syntax node covering the character range [start, end]. */

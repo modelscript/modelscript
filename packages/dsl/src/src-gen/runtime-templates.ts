@@ -25304,7 +25304,11 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         type = ACTION_REDUCE;
         target = defaultReduce;
       } else {
-        transitionToGlr(pos, pendingPadding, currentScannerState);
+        if (startToken == -1) {
+          transitionToGlr(pos, pendingPadding, currentScannerState);
+        } else {
+          currentParserMode = MODE_GLR;
+        }
         return 0;
       }
 
@@ -25340,7 +25344,11 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       
     } else if (type == ACTION_REDUCE) {
       if (++consecutiveReductions > 5000) {
-        transitionToGlr(pos, pendingPadding, currentScannerState);
+        if (startToken == -1) {
+          transitionToGlr(pos, pendingPadding, currentScannerState);
+        } else {
+          currentParserMode = MODE_GLR;
+        }
         return 0;
       }
       let reduceProd = target;
@@ -25465,7 +25473,11 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       }
       
       if (nextState == -1) {
-        transitionToGlr(pos, pendingPadding, currentScannerState);
+        if (startToken == -1) {
+          transitionToGlr(pos, pendingPadding, currentScannerState);
+        } else {
+          currentParserMode = MODE_GLR;
+        }
         return 0;
       }
       
@@ -28210,7 +28222,6 @@ export function advanceGLR(): void {
           lrStackDepth = depth;
           currentParserMode = MODE_LR;
 
-
           if (g_oldTree != 0) {
             initGlobalCursor(g_oldTree);
           }
@@ -28236,6 +28247,7 @@ export function advanceGLR(): void {
             bestAcceptingHead = changetype<u32>(singleHead);
             return;
           }
+          currentParserMode = MODE_GLR;
         }
       }
     }
@@ -29140,8 +29152,9 @@ import {
   reachability_matrix,
   token_string_offsets,
   token_string_bytes,
+  prod_is_list,
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength } from "./parser-loop";
 import {
   getNodePadding,
   setNodePadding,
@@ -29150,6 +29163,8 @@ import {
   setFirstChild,
   setNextSibling,
   getNodeFirstChild,
+  getNodeNextSibling,
+  ast_appendChild,
   getNodeType,
   allocNode,
   FLAG_IS_INSERTED,
@@ -29319,10 +29334,34 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
         let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd);
 
-        let parentHead = anc;
+        let targetNode = errNode;
+        let parentHead: ParseHead | null = anc;
+        if (anc.astNode != 0) {
+          let aFlags = getNodeFlags(anc.astNode);
+          let aType = getNodeType(anc.astNode);
+          let isList = (aFlags & FLAG_IS_LIST) != 0 || ((prod_is_list.length as u32) > (aType as u32) && prod_is_list[aType] == 1);
+          if (isList) {
+            let fc = getNodeFirstChild(anc.astNode);
+            if (fc == 0) {
+              setNodePadding(errNode, 0);
+              setFirstChild(anc.astNode, errNode);
+            } else {
+              let curC = fc;
+              while (getNodeNextSibling(curC) != 0) {
+                curC = getNodeNextSibling(curC);
+              }
+              setNextSibling(curC, errNode);
+            }
+            setNodeFlags(anc.astNode, aFlags | FLAG_HAS_ERROR);
+            fixNodeLength(anc.astNode);
+            targetNode = anc.astNode;
+            parentHead = anc.prev;
+          }
+        }
+
         let errHead = allocParseHead(
           ancState,
-          errNode,
+          targetNode,
           parentHead,
           pos,
           anc.scannerState,
