@@ -126,7 +126,11 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
         const candidates = [targetPath + ".ts", targetPath + ".js", targetPath + "/index.ts", targetPath];
         for (const testPath of candidates) {
           const normalized = path.resolve(testPath);
-          if (normalized.includes("/packages/language/src/") || normalized.includes("/node_modules/")) {
+          if (
+            normalized.includes("/packages/dsl/src/") ||
+            normalized.includes("/packages/language/src/") ||
+            normalized.includes("/node_modules/")
+          ) {
             continue;
           }
           if (fs.existsSync(normalized)) {

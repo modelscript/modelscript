@@ -786,6 +786,17 @@ export class UnifiedWorkspace {
     this._version++;
   }
 
+  unregisterWorkspace(language: string): boolean {
+    const existed = this.workspaces.has(language);
+    this.workspaces.delete(language);
+    this.configs.delete(language);
+    this.queryEngines.delete(language);
+    if (existed) {
+      this._version++;
+    }
+    return existed;
+  }
+
   getWorkspace(language: string): any {
     return this.workspaces.get(language);
   }

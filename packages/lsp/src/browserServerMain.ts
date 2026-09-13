@@ -204,11 +204,13 @@ import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
 import { registerDiagramHandlers } from "./handlers/diagramHandler.js";
 import { registerInteropEndpoints } from "./handlers/interopEndpoints.js";
 import { registerMiscEndpoints } from "./handlers/miscEndpoints.js";
+import { registerPolyglotEndpoints } from "./handlers/polyglotEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
 import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerInlayHintProvider } from "./providers/inlayHintProvider.js";
 import { registerSignatureHelpProvider } from "./providers/signatureHelpProvider.js";
+import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
 import { DiagramService } from "./services/DiagramService.js";
 import { HierarchyService } from "./services/HierarchyService.js";
 import { ParserService } from "./services/ParserService.js";
@@ -302,9 +304,46 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
 
   if (extensionUri) {
     connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
-    parserService.initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl).catch((e) => {
-      connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);
-    });
+    parserService
+      .initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl)
+      .then(() => {
+        globalLanguageRegistry.register({
+          id: "modelica",
+          name: "Modelica",
+          extensions: [".mo", ".mos", ".msim"],
+          parser: parserService.parser,
+          facade: (parserService as any).facade,
+        });
+        globalLanguageRegistry.register({
+          id: "sysml2",
+          name: "SysML v2",
+          extensions: [".sysml"],
+          parser: parserService.sysml2Parser,
+          facade: (parserService as any).sysml2Facade,
+        });
+        globalLanguageRegistry.register({
+          id: "step",
+          name: "STEP",
+          extensions: [".step", ".stp", ".p21"],
+          parser: parserService.stepParser,
+        });
+        globalLanguageRegistry.register({
+          id: "owl2",
+          name: "OWL2",
+          extensions: [".owl", ".ttl"],
+          parser: parserService.owl2Parser,
+        });
+        globalLanguageRegistry.register({
+          id: "csv",
+          name: "CSV",
+          extensions: [".csv"],
+          parser: parserService.csvParser,
+        });
+        connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
+      })
+      .catch((e) => {
+        connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);
+      });
   } else {
     connection.console.warn("No extensionUri provided — tree-sitter disabled");
   }
@@ -499,6 +538,34 @@ documents.onDidChangeContent((change) => {
       }
     } catch (e: any) {
       connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
+    }
+  } else {
+    const plugin = globalLanguageRegistry.getPluginForUri(uri);
+    if (plugin?.parser) {
+      try {
+        const text = change.document.getText();
+        const oldCached = documentManager.documentTrees.get(uri);
+        let tree: any;
+        if (oldCached && oldCached.text !== text) {
+          const edit = computeTreeEdit(oldCached.text, text);
+          oldCached.tree.edit(edit as never);
+          tree = plugin.parser.parse(text, oldCached.tree);
+        } else if (oldCached) {
+          tree = oldCached.tree;
+        } else {
+          tree = plugin.parser.parse(text);
+        }
+        if (tree) {
+          documentManager.documentTrees.set(uri, { text, tree, classCache: new Map() });
+          const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document);
+          const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
+          const allDiags = [...syntaxDiags, ...cachedSemantic];
+          if (allDiags.length > 1000) allDiags.length = 1000;
+          connection.sendDiagnostics({ uri, diagnostics: allDiags });
+        }
+      } catch (e: any) {
+        connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
+      }
     }
   }
 
@@ -895,6 +962,7 @@ registerAnalysisEndpoints(lspContext);
 registerInteropEndpoints(lspContext);
 registerClassQueryEndpoints(lspContext);
 registerMiscEndpoints(lspContext);
+registerPolyglotEndpoints(connection, documents, validationService, documentManager, workspaceManager);
 
 registerSignatureHelpProvider(
   connection,

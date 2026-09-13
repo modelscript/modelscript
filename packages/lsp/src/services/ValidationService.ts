@@ -6,7 +6,6 @@ import { DocumentManager } from "./DocumentManager.js";
 import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
-import { createModelicaLSPBridge } from "@modelscript/modelica/factory";
 import { QueryEngine, VerificationRunner } from "@modelscript/runtime";
 import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { simulateArena } from "@modelscript/simulate";
@@ -1086,7 +1085,7 @@ export class ValidationService {
 
       const currentDoc = this.documentManager.documents.get(uri);
       const currentText = currentDoc ? currentDoc.getText() : text;
-      const bridge = createModelicaLSPBridge(unifiedIndex, engine, undefined, currentText, uri);
+      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(currentText), uri);
       this.documentLSPBridges.set(uri, bridge as any);
       this.connection.console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
 

@@ -3,6 +3,7 @@
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
@@ -80,7 +81,25 @@ export function registerHoverProvider(
 
     // ── Standard polyglot hover (Modelica/SysML/OWL2 — requires bridge) ──
     const bridge = documentLSPBridges.get(params.textDocument.uri);
-    if (!bridge) return null;
+    if (!bridge) {
+      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+      if (plugin) {
+        if (plugin.customHandlers?.hover) {
+          return plugin.customHandlers.hover(offset, text);
+        }
+        if (plugin.facade?.getHover) {
+          try {
+            const hoverText = plugin.facade.getHover(0, offset);
+            if (hoverText) {
+              return {
+                contents: { kind: "markdown", value: hoverText },
+              };
+            }
+          } catch {}
+        }
+      }
+      return null;
+    }
 
     const hoverDef = bridge.hover(offset, text);
     if (!hoverDef) return null;

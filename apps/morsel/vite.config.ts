@@ -31,11 +31,11 @@ export default defineConfig(({ isSsrBuild }) => {
             // The LSP server resolves paths as ${extensionUri}/server/dist/...
             // With extensionUri = origin + "/lsp", files are served at /lsp/server/dist/...
             {
-              src: "../../packages/language/dist/lsp/browserServerMain.js",
+              src: "../../packages/lsp/dist/browserServerMain.js",
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/language/dist/lsp/workers/indexer.worker.js",
+              src: "../../packages/lsp/dist/workers/indexer.worker.js",
               dest: "lsp/server/dist/workers",
             },
             {
@@ -59,7 +59,7 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/language/build/release.wasm",
+              src: "../../packages/runtime/build/release.wasm",
               dest: "lsp/server/dist",
             },
             {

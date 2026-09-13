@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import {
   computeHeight,
   computeIconPlacement,
@@ -26,6 +25,7 @@ import {
   type IRectangle,
   type IText,
 } from "@modelscript/modelica/diagram";
+import { ModelicaClassKind } from "@modelscript/modelica/types";
 import { Marker, Svg } from "@svgdotjs/svg.js";
 export type ModelicaClassInstance = any;
 export type ModelicaComponentInstance = any;

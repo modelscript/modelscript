@@ -28,13 +28,13 @@ globalThis.WeakRef = class WeakRefMock {
 import { simulateArena } from "@modelscript/simulate";
 
 import { StringWriter } from "@modelscript/dsl/utils";
-import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { ArenaDAEPrinter } from "@modelscript/runtime";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Context } from "../src/context.js";
+import { ModelicaClassKind } from "../src/types.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 const __filename = fileURLToPath(import.meta.url);

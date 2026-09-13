@@ -21,6 +21,9 @@ function collectTokens(rule: Rule<any>, acc: Record<string, Set<string>>, curren
   if (rule.type === "SYNTAX_TOKEN") {
     currentClass = rule.value as TokenClass;
   }
+  if (rule.type === "SEMANTIC" && (rule.value as any)?.type) {
+    currentClass = (rule.value as any).type as TokenClass;
+  }
   if (rule.type === "TOKEN" && typeof rule.value === "string") {
     const cls = currentClass || "other";
     acc[cls] = acc[cls] || new Set();

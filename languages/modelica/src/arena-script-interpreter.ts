@@ -2,17 +2,6 @@ import type { SyntaxNode } from "@modelscript/dsl/utils";
 import type { QueryEngine } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, type ArenaSimulateOptions } from "@modelscript/simulate";
 import { ModelicaCalibrator } from "@modelscript/simulate/optimizer";
-import {
-  ModelicaComponentReferenceSyntaxNode,
-  ModelicaExpressionSyntaxNode,
-  ModelicaForStatementSyntaxNode,
-  ModelicaFunctionCallSyntaxNode,
-  ModelicaIfStatementSyntaxNode,
-  ModelicaProcedureCallStatementSyntaxNode,
-  ModelicaSimpleAssignmentStatementSyntaxNode,
-  ModelicaStoredDefinitionSyntaxNode,
-  ModelicaSyntaxNode,
-} from "./ast.js";
 import { evaluateCSTExpression } from "./diagram/annotation-evaluator.js";
 import { ModelicaFlattener } from "./flattener.js";
 
@@ -39,27 +28,50 @@ export class ArenaScriptInterpreter {
 
   execute(treeRoot: SyntaxNode): { output: string; error?: string } {
     this.output = [];
-    const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, treeRoot);
-    if (!storedDef) return { output: "" };
+    const root =
+      (treeRoot as any).type === "program" && (treeRoot as any).children?.length > 0
+        ? (treeRoot as any).children[0]
+        : (treeRoot as any);
+    if (!root) return { output: "" };
 
     try {
-      for (const classDef of storedDef.classDefinitions) {
-        const name = classDef.identifier?.text;
+      const classDefs =
+        root.classDefinitions ??
+        root.children?.filter((c: any) => c.type === "class_definition" || c.type === "ClassDefinition") ??
+        [];
+      for (const classDef of classDefs) {
+        const name =
+          classDef.identifier?.text ??
+          classDef.childForFieldName?.("identifier")?.text ??
+          classDef.name?.text ??
+          classDef.name;
         if (name) {
           this.scope.classDefinitions.set(name, classDef);
         }
       }
 
-      for (const componentClause of storedDef.componentClauses) {
-        for (const decl of componentClause.componentDeclarations) {
-          const name = decl.declaration?.identifier?.text;
+      const componentClauses =
+        root.componentClauses ??
+        root.children?.filter((c: any) => c.type === "component_clause" || c.type === "ComponentClause") ??
+        [];
+      for (const componentClause of componentClauses) {
+        const decls =
+          componentClause.componentDeclarations ??
+          componentClause.children?.filter(
+            (c: any) => c.type === "component_declaration" || c.type === "ComponentDeclaration",
+          ) ??
+          [];
+        for (const decl of decls) {
+          const d = decl.declaration ?? decl.childForFieldName?.("declaration") ?? decl;
+          const name = d.identifier?.text ?? d.childForFieldName?.("identifier")?.text ?? d.name?.text ?? d.name;
           if (!name) continue;
           let initialValue: unknown = null;
-          if (decl.declaration?.modification?.modificationExpression?.expression) {
-            initialValue = evaluateCSTExpression(
-              decl.declaration.modification.modificationExpression.expression,
-              this.scope,
-            );
+          const expr =
+            d.modification?.modificationExpression?.expression ??
+            d.modification?.expression ??
+            d.childForFieldName?.("modification")?.childForFieldName?.("expression");
+          if (expr) {
+            initialValue = evaluateCSTExpression(expr, this.scope);
           }
           this.scope.variables.set(name, {
             name,
@@ -70,7 +82,13 @@ export class ArenaScriptInterpreter {
         }
       }
 
-      for (const stmt of storedDef.statements) {
+      const statements =
+        root.statements ??
+        root.children?.filter(
+          (c: any) => c.type?.includes("statement") || c.childForFieldName?.("statement") != null,
+        ) ??
+        [];
+      for (const stmt of statements) {
         this.executeStatement(stmt, this.scope);
       }
       return { output: this.output.join("\n") };
@@ -83,11 +101,13 @@ export class ArenaScriptInterpreter {
     this.output.push(msg);
   }
 
-  private executeStatement(stmt: ModelicaSyntaxNode, scope: ScriptScope): void {
-    if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
-      const targetName = stmt.target?.parts?.[0]?.identifier?.text;
+  private executeStatement(stmt: any, scope: ScriptScope): void {
+    if (stmt.target || stmt.type === "simple_assignment_statement" || stmt.type === "SimpleAssignmentStatement") {
+      const target = stmt.target ?? stmt.childForFieldName?.("target");
+      const targetName = target?.parts?.[0]?.identifier?.text ?? target?.parts?.[0]?.text ?? target?.text;
       if (!targetName) return;
-      const value = stmt.source ? evaluateCSTExpression(stmt.source, scope) : null;
+      const source = stmt.source ?? stmt.childForFieldName?.("source");
+      const value = source ? evaluateCSTExpression(source, scope) : null;
 
       const existing = scope.variables.get(targetName) as { modification?: unknown; value?: unknown } | undefined;
       if (existing) {
@@ -104,15 +124,15 @@ export class ArenaScriptInterpreter {
       return;
     }
 
-    if (stmt instanceof ModelicaProcedureCallStatementSyntaxNode || stmt instanceof ModelicaFunctionCallSyntaxNode) {
-      const funcName = (stmt as { functionReference?: { parts?: { identifier?: { text?: string } }[] } })
-        .functionReference?.parts?.[0]?.identifier?.text;
+    const funcRef = stmt.functionReference ?? stmt.childForFieldName?.("functionReference");
+    if (funcRef || stmt.type === "procedure_call_statement" || stmt.type === "function_call") {
+      const funcName = funcRef?.parts?.[0]?.identifier?.text ?? funcRef?.parts?.[0]?.text ?? funcRef?.text ?? stmt.name;
       if (!funcName) return;
 
       if (funcName === "print") {
         const callNode = stmt as {
-          functionCallArguments?: { arguments?: { expression?: ModelicaExpressionSyntaxNode }[] };
-          arguments?: { expression?: ModelicaExpressionSyntaxNode }[];
+          functionCallArguments?: { arguments?: { expression?: any }[] };
+          arguments?: { expression?: any }[];
         };
         const args = callNode.functionCallArguments?.arguments ?? callNode.arguments ?? [];
         if (args.length > 0 && args[0]?.expression) {
@@ -125,14 +145,14 @@ export class ArenaScriptInterpreter {
       }
 
       if (funcName === "simulate") {
-        this.handleSimulate(stmt as ModelicaFunctionCallSyntaxNode, scope);
+        this.handleSimulate(stmt, scope);
         return;
       }
 
       if (funcName === "loadModel") {
         const callNode = stmt as {
-          functionCallArguments?: { arguments?: { expression?: ModelicaExpressionSyntaxNode }[] };
-          arguments?: { expression?: ModelicaExpressionSyntaxNode }[];
+          functionCallArguments?: { arguments?: { expression?: any }[] };
+          arguments?: { expression?: any }[];
         };
         const args = callNode.functionCallArguments?.arguments ?? callNode.arguments ?? [];
         if (args.length > 0 && args[0]?.expression) {
@@ -152,7 +172,7 @@ export class ArenaScriptInterpreter {
       }
 
       if (funcName === "calibrate") {
-        this.handleCalibrate(stmt as ModelicaFunctionCallSyntaxNode, scope);
+        this.handleCalibrate(stmt, scope);
         return;
       }
 
@@ -165,26 +185,27 @@ export class ArenaScriptInterpreter {
       }
     }
 
-    if (stmt instanceof ModelicaIfStatementSyntaxNode) {
-      const cond = stmt.condition ? evaluateCSTExpression(stmt.condition, scope) : null;
+    if (stmt.condition || stmt.type === "if_statement" || stmt.type === "IfStatement") {
+      const condNode = stmt.condition ?? stmt.childForFieldName?.("condition");
+      const cond = condNode ? evaluateCSTExpression(condNode, scope) : null;
       if (cond === true || (cond && (cond as { value?: unknown }).value === true)) {
-        for (const s of stmt.statements) this.executeStatement(s, scope);
+        for (const s of stmt.statements ?? []) this.executeStatement(s, scope);
         return;
       }
-      for (const clause of stmt.elseIfStatementClauses) {
+      for (const clause of stmt.elseIfStatementClauses ?? []) {
         const elseIfCond = clause.condition ? evaluateCSTExpression(clause.condition, scope) : null;
         if (elseIfCond === true || (elseIfCond && (elseIfCond as { value?: unknown }).value === true)) {
-          for (const s of clause.statements) this.executeStatement(s, scope);
+          for (const s of clause.statements ?? []) this.executeStatement(s, scope);
           return;
         }
       }
-      for (const s of stmt.elseStatements) this.executeStatement(s, scope);
+      for (const s of stmt.elseStatements ?? []) this.executeStatement(s, scope);
       return;
     }
 
-    if (stmt instanceof ModelicaForStatementSyntaxNode) {
-      for (const forIndex of stmt.forIndexes) {
-        const iterName = forIndex.identifier?.text;
+    if (stmt.forIndexes || stmt.type === "for_statement" || stmt.type === "ForStatement") {
+      for (const forIndex of stmt.forIndexes ?? []) {
+        const iterName = forIndex.identifier?.text ?? forIndex.name;
         const iterExpr = forIndex.expression ? evaluateCSTExpression(forIndex.expression, scope) : null;
         if (!iterName || !Array.isArray((iterExpr as { elements?: unknown[] })?.elements ?? iterExpr)) continue;
         const elements = (iterExpr as { elements?: unknown[] }).elements ?? iterExpr;
@@ -195,7 +216,7 @@ export class ArenaScriptInterpreter {
             modification: { evaluatedExpression: val },
             value: val,
           });
-          for (const s of stmt.statements) this.executeStatement(s, scope);
+          for (const s of stmt.statements ?? []) this.executeStatement(s, scope);
         }
         scope.variables.delete(iterName);
       }
@@ -203,19 +224,17 @@ export class ArenaScriptInterpreter {
     }
   }
 
-  private handleSimulate(node: ModelicaFunctionCallSyntaxNode, scope: ScriptScope) {
-    const args = node.functionCallArguments?.arguments ?? [];
-    const namedArgs = node.functionCallArguments?.namedArguments ?? [];
+  private handleSimulate(node: any, scope: ScriptScope) {
+    const args = node.functionCallArguments?.arguments ?? node.arguments ?? [];
+    const namedArgs = node.functionCallArguments?.namedArguments ?? node.namedArguments ?? [];
     const firstArg = args[0];
     if (!firstArg?.expression) throw new Error("simulate() requires a model name");
 
     let modelName = "";
-    if (firstArg.expression instanceof ModelicaComponentReferenceSyntaxNode) {
-      modelName = (firstArg.expression as ModelicaComponentReferenceSyntaxNode).parts
-        .map((p) => p.identifier?.text)
-        .join(".");
-    } else if ((firstArg.expression as ModelicaExpressionSyntaxNode & { text?: string }).text) {
-      modelName = (firstArg.expression as ModelicaExpressionSyntaxNode & { text?: string }).text || "";
+    if (firstArg.expression.parts) {
+      modelName = firstArg.expression.parts.map((p: any) => p.identifier?.text ?? p.text ?? p).join(".");
+    } else if (firstArg.expression.text) {
+      modelName = firstArg.expression.text || "";
     }
 
     // Evaluate arguments
@@ -263,19 +282,17 @@ export class ArenaScriptInterpreter {
     this.print(`States: ${result.states.join(", ")}`);
   }
 
-  private handleCalibrate(node: ModelicaFunctionCallSyntaxNode, scope: ScriptScope) {
-    const args = node.functionCallArguments?.arguments ?? [];
-    const namedArgs = node.functionCallArguments?.namedArguments ?? [];
+  private handleCalibrate(node: any, scope: ScriptScope) {
+    const args = node.functionCallArguments?.arguments ?? node.arguments ?? [];
+    const namedArgs = node.functionCallArguments?.namedArguments ?? node.namedArguments ?? [];
     const firstArg = args[0];
     if (!firstArg?.expression) throw new Error("calibrate() requires a model name");
 
     let modelName = "";
-    if (firstArg.expression instanceof ModelicaComponentReferenceSyntaxNode) {
-      modelName = (firstArg.expression as ModelicaComponentReferenceSyntaxNode).parts
-        .map((p) => p.identifier?.text)
-        .join(".");
-    } else if ((firstArg.expression as ModelicaExpressionSyntaxNode & { text?: string }).text) {
-      modelName = (firstArg.expression as ModelicaExpressionSyntaxNode & { text?: string }).text || "";
+    if (firstArg.expression.parts) {
+      modelName = firstArg.expression.parts.map((p: any) => p.identifier?.text ?? p.text ?? p).join(".");
+    } else if (firstArg.expression.text) {
+      modelName = firstArg.expression.text || "";
     }
 
     // Evaluate named arguments

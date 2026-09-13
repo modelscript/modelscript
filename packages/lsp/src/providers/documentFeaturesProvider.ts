@@ -1,5 +1,6 @@
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { nodeRange } from "../utils/astUtils.js";
 import type { SyntaxNode } from "../utils/tree-sitter.js";
 
@@ -17,7 +18,21 @@ export function registerDocumentFeaturesProvider(
   connection.onDocumentSymbol((params) => {
     try {
       const bridge = documentLSPBridges.get(params.textDocument.uri);
-      if (!bridge) return [];
+      if (!bridge) {
+        const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+        if (plugin) {
+          if (plugin.customHandlers?.symbols) {
+            return plugin.customHandlers.symbols(getDocumentTree(params.textDocument.uri));
+          }
+          if (plugin.facade?.getDocumentSymbols) {
+            try {
+              const symbols = plugin.facade.getDocumentSymbols(0);
+              if (symbols && symbols.length > 0) return symbols;
+            } catch {}
+          }
+        }
+        return [];
+      }
       return bridge.documentSymbols() as any[];
     } catch (e: any) {
       connection.console.error(`[documentSymbol] ${e.message}`);
@@ -29,6 +44,14 @@ export function registerDocumentFeaturesProvider(
   connection.onFoldingRanges((params) => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
+
+    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+    if (plugin?.facade?.getFoldingRanges) {
+      try {
+        const folds = plugin.facade.getFoldingRanges(0);
+        if (folds && folds.length > 0) return folds;
+      } catch {}
+    }
 
     // SysML2 folding ranges
     if (params.textDocument.uri.endsWith(".sysml")) {

@@ -2,7 +2,6 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
-import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import {
@@ -92,37 +91,59 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       };
       walk(tree.rootNode);
 
-      // Build AST
-      const storedDef = ModelicaStoredDefinitionSyntaxNode.new(
-        null,
+      // Walk CST to find class definitions, components, and equations
+      function findDescendants(n: any, predicate: (node: any) => boolean, out: any[] = []): any[] {
+        if (!n) return out;
+        if (predicate(n)) out.push(n);
+        for (const child of n.children || []) findDescendants(child, predicate, out);
+        return out;
+      }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tree.rootNode as any,
-      );
+      const classNodes = findDescendants(tree.rootNode, (n) => n.type === "class_definition");
       const classes: { name: string; kind: string; components: string[]; equations: string[] }[] = [];
 
-      if (storedDef) {
-        for (const classDef of storedDef.classDefinitions) {
-          const name = classDef.identifier?.text ?? "<anonymous>";
-          const kind = classDef.classPrefixes?.classKind ?? "class";
-          const components: string[] = [];
-          const equations: string[] = [];
+      for (const classNode of classNodes) {
+        const prefixesNode =
+          classNode.childForFieldName?.("class_prefixes") ??
+          classNode.children?.find((c: any) => c.type === "class_prefixes");
+        const specifierNode =
+          classNode.childForFieldName?.("class_specifier") ??
+          classNode.children?.find(
+            (c: any) =>
+              c.type === "class_specifier" || c.type === "long_class_specifier" || c.type === "short_class_specifier",
+          );
 
-          for (const element of classDef.elements) {
-            if (element.sourceRange) {
-              const text = code.slice(element.sourceRange.startIndex, element.sourceRange.endIndex).trim();
-              if (text) components.push(text);
-            }
-          }
-          for (const eq of classDef.equations) {
-            if (eq.sourceRange) {
-              const text = code.slice(eq.sourceRange.startIndex, eq.sourceRange.endIndex).trim();
-              if (text) equations.push(text);
-            }
-          }
-
-          classes.push({ name, kind: String(kind), components, equations });
+        let name = "<anonymous>";
+        if (specifierNode) {
+          const nameNode =
+            specifierNode.childForFieldName?.("name") ??
+            findDescendants(specifierNode, (n) => n.type === "identifier")[0];
+          if (nameNode?.text) name = nameNode.text;
         }
+
+        const kind = prefixesNode?.text?.trim() ?? "class";
+        const components: string[] = [];
+        const equations: string[] = [];
+
+        const compNodes = findDescendants(
+          classNode,
+          (n) => n.type === "component_clause" || n.type === "component_declaration",
+        );
+        for (const comp of compNodes) {
+          const text = code.slice(comp.startIndex, comp.endIndex).trim();
+          if (text) components.push(text);
+        }
+
+        const eqNodes = findDescendants(
+          classNode,
+          (n) => n.type === "equation" || n.type === "simple_equation" || n.type === "connect_equation",
+        );
+        for (const eq of eqNodes) {
+          const text = code.slice(eq.startIndex, eq.endIndex).trim();
+          if (text) equations.push(text);
+        }
+
+        classes.push({ name, kind, components, equations });
       }
 
       const result = {

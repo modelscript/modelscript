@@ -745,14 +745,14 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     [path.join(repoRoot, "languages/step/dist/parser.wasm"), "server/dist/tree-sitter-step.wasm"],
     [path.join(repoRoot, "languages/owl2/dist/parser.wasm"), "server/dist/tree-sitter-owl2.wasm"],
     [path.join(repoRoot, "languages/csv/tree-sitter-csv.wasm"), "server/dist/tree-sitter-csv.wasm"],
-    [path.join(repoRoot, "packages/language/build/release.wasm"), "server/dist/release.wasm"],
+    [path.join(repoRoot, "packages/runtime/build/release.wasm"), "server/dist/release.wasm"],
     [path.join(repoRoot, "node_modules/occt-import-js/dist/occt-import-js.wasm"), "server/dist/occt-import-js.wasm"],
     [
       path.join(repoRoot, "scripts/ModelicaStandardLibrary_v4.1.0.zip"),
       "server/dist/ModelicaStandardLibrary_v4.1.0.zip",
     ],
     [path.join(repoRoot, "scripts/SysML-v2-Release-2026-03.zip"), "server/dist/SysML-v2-Release-2026-03.zip"],
-    [path.join(repoRoot, "packages/language/dist/lsp"), "server/dist"],
+    [path.join(repoRoot, "packages/lsp/dist"), "server/dist"],
   ];
 
   for (const [src, dest] of candidateAssets) {

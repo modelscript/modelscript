@@ -7,13 +7,17 @@ build/
 .build/
 as-gen/
 build-parser.ts
-packages/language/src/src-gen/
-packages/language/build/
+packages/dsl/src/src-gen/
+packages/runtime/build/
 prebuilds/
 coverage/
 ctrf/
 scratch_build*/
 scratch_*
+scratch_test_playground/
+test_lang/
+tests/scratch_playground/
+languages/build/
 scripts/msl/
 .cache/
 msl_report*.html
@@ -31,6 +35,7 @@ msl_report*.html
 *.lib
 *.obj
 *.o
+*_records.o
 
 # Archives
 *.tar.gz
@@ -75,24 +80,17 @@ project-graph.json
 # API data (published libraries and sqlite databases)
 /data/
 /results/
-packages/api/data/
 apps/api/data/
 apps/api/public/thumbnails
 
 # React Router (morsel)
-packages/morsel/.react-router/
-
-# Tree-sitter generated (src + wasm committed per upstream convention, rebuilt via `npm run build`)
-!packages/tree-sitter-modelica/src/
-!packages/tree-sitter-modelica/tree-sitter-modelica.wasm
-packages/tree-sitter-modelica/examples/*/
-packages/ide/vscode-web/
+apps/morsel/.react-router/
+apps/ide/vscode-web/
 
 # COIN-OR build artifacts
 Couenne/
 ThirdParty/
 f2ctmp/
-packages/language/tests/wasm/src-gen/
 
 # FMI / OpenModelica build artifacts
 *.fmu
@@ -103,7 +101,7 @@ packages/language/tests/wasm/src-gen/
 *_res.mat
 *_res.csv
 *.opt
-packages/fmi/validation/exported_fmus/
-packages/fmi/validation/reference_fmus/
-packages/fmi/validation/reference_fmus_repo/
+packages/exchange/validation/fmi/exported_fmus/
+packages/exchange/validation/fmi/reference_fmus/
+packages/exchange/validation/fmi/reference_fmus_repo/
 

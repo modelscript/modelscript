@@ -77,10 +77,10 @@ export const Playground: CommandModule = {
         headers["Content-Type"] = "text/html";
         res.writeHead(200, headers);
 
-        const dslPathCandidate = join(__dirname, "../../../../packages/language/src/dsl/language.ts");
+        const dslPathCandidate = join(__dirname, "../../../../packages/dsl/src/dsl/language.ts");
         const dslPath = existsSync(dslPathCandidate)
           ? dslPathCandidate
-          : join(__dirname, "../../../../packages/language/src/dsl/dsl.ts");
+          : join(__dirname, "../../../../packages/dsl/src/dsl/dsl.ts");
         let dslLibStr = "";
         let dslLibModuleStr = "";
         if (existsSync(dslPath)) {
@@ -131,9 +131,7 @@ end ChuaCircuit;`;
       } else if (urlPath === "/browser.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const browserJsPath = existsSync(join(__dirname, "../../../../packages/dsl/dist/browser.js"))
-          ? join(__dirname, "../../../../packages/dsl/dist/browser.js")
-          : join(__dirname, "../../../../packages/language/dist/browser.js");
+        const browserJsPath = join(__dirname, "../../../../packages/dsl/dist/browser.js");
         if (existsSync(browserJsPath)) {
           let content = readFileSync(browserJsPath, "utf-8");
           content = content.replace(
@@ -149,16 +147,12 @@ end ChuaCircuit;`;
       } else if (urlPath === "/typescript.mjs") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const tsJsPath = existsSync(join(__dirname, "../../../../packages/dsl/dist/typescript.mjs"))
-          ? join(__dirname, "../../../../packages/dsl/dist/typescript.mjs")
-          : join(__dirname, "../../../../packages/language/dist/typescript.mjs");
+        const tsJsPath = join(__dirname, "../../../../packages/dsl/dist/typescript.mjs");
         res.end(existsSync(tsJsPath) ? readFileSync(tsJsPath) : "");
       } else if (urlPath === "/diagram.browser.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const diagramJsPath = existsSync(join(__dirname, "../../../../packages/diagram/dist/diagram.browser.js"))
-          ? join(__dirname, "../../../../packages/diagram/dist/diagram.browser.js")
-          : join(__dirname, "../../../../packages/language/dist/diagram.browser.js");
+        const diagramJsPath = join(__dirname, "../../../../packages/diagram/dist/diagram.browser.js");
         res.end(existsSync(diagramJsPath) ? readFileSync(diagramJsPath) : "");
       } else if (urlPath?.startsWith("/vendor/")) {
         headers["Content-Type"] = "application/javascript";
@@ -815,6 +809,33 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         const pos = window.codeEditor.getPosition();
                         window.codeEditor.setValue(cleanText);
                         if (pos) window.codeEditor.setPosition(pos);
+                    }
+                }
+                if (msg && msg.method === 'modelscript/languageRegistered' && msg.params) {
+                    const { id, extensions, monarch } = msg.params;
+                    console.log('[Playground] Dynamic language registered:', id, extensions);
+                    try {
+                        monaco.languages.register({ id, extensions });
+                        if (monarch) {
+                            monaco.languages.setMonarchTokensProvider(id, monarch);
+                        }
+                        const model = window.codeEditor ? window.codeEditor.getModel() : null;
+                        if (model && extensions && extensions.some((ext) => model.uri.path.endsWith(ext))) {
+                            monaco.editor.setModelLanguage(model, id);
+                            if (model.tokenization && typeof model.tokenization.resetTokenization === 'function') {
+                                model.tokenization.resetTokenization();
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[Playground] Failed to register dynamic language with Monaco:', err);
+                    }
+                }
+                if (msg && msg.method === 'modelscript/languageUnregistered' && msg.params) {
+                    const { id, extensions } = msg.params;
+                    console.log('[Playground] Dynamic language unregistered:', id);
+                    const model = window.codeEditor ? window.codeEditor.getModel() : null;
+                    if (model && extensions && extensions.some((ext) => model.uri.path.endsWith(ext))) {
+                        monaco.editor.setModelLanguage(model, 'plaintext');
                     }
                 }
             });

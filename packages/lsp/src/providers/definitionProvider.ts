@@ -2,6 +2,7 @@
 import { Connection, Definition, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge } from "../lsp-bridge.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { symbolEntryToLocation } from "../utils/lspUtils.js";
 
 function isStepDocument(document: TextDocument): boolean {
@@ -47,7 +48,31 @@ export function registerDefinitionProvider(
 
     // ── Standard polyglot go-to-definition (requires bridge) ──
     const bridge = documentLSPBridges.get(params.textDocument.uri);
-    if (!bridge) return null;
+    if (!bridge) {
+      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+      if (plugin) {
+        if (plugin.customHandlers?.definition) {
+          return plugin.customHandlers.definition(offset, document.getText());
+        }
+        if (plugin.facade?.getDefinition) {
+          try {
+            const def = plugin.facade.getDefinition(0, offset);
+            if (def) {
+              const start = def.startByte ?? def.startIndex ?? 0;
+              const end = def.endByte ?? def.endIndex ?? start;
+              return {
+                uri: document.uri,
+                range: {
+                  start: document.positionAt(start),
+                  end: document.positionAt(end),
+                },
+              };
+            }
+          } catch {}
+        }
+      }
+      return null;
+    }
 
     const rawTarget = (bridge as any).definitionRaw(offset);
     if (!rawTarget) return null;

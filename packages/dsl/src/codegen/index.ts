@@ -12,6 +12,7 @@ export * from "./compile_wcoj.js";
 export * from "./config.js";
 export * from "./cpa.js";
 export * from "./dataflow.js";
+export * from "./dynamic-compiler.js";
 export * from "./egraph.js";
 export * from "./emit_wat.js";
 export * from "./emit_webgpu.js";

@@ -2,16 +2,12 @@
 
 export * from "./connections.js";
 export * from "./csg.js";
-export * from "./equations.js";
 export * from "./flattener-wasm.js";
 export { modelicaLanguage } from "./language.js";
 export * from "./modifications.js";
 export * from "./scope-helpers.js";
-export * from "./visitor.js";
 
 export * from "./annotation.js";
-export * from "./ast-visitor.js";
-export * from "./ast.js";
 export * from "./context.js";
 export * from "./errors.js";
 export * from "./factory.js";

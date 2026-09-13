@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 
 const URL = "https://github.com/modelica/Reference-FMUs/releases/download/v0.0.39/Reference-FMUs-0.0.39.zip";
-const OUT_DIR = path.resolve("packages/fmi/validation/reference_fmus");
+const OUT_DIR = path.resolve("packages/exchange/validation/fmi/reference_fmus");
 
 async function main() {
   await fs.mkdir(OUT_DIR, { recursive: true });

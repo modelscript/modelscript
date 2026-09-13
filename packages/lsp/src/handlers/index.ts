@@ -6,6 +6,7 @@ export * from "./diagramHandler.js";
 export * from "./interopEndpoints.js";
 export * from "./miscEndpoints.js";
 export * from "./modelscriptParticipant.js";
+export * from "./polyglotEndpoints.js";
 export * from "./replEndpoints.js";
 export * from "./simulationEndpoints.js";
 export * from "./treeHandler.js";

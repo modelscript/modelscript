@@ -14,6 +14,7 @@ export * from "./handlers/index.js";
 export * from "./lsp-bridge.js";
 export * from "./LspContext.js";
 export * from "./providers/index.js";
+export * from "./registry/index.js";
 export * from "./requirements.js";
 export * from "./services/index.js";
 export * from "./utils/hook-extractor.js";

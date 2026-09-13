@@ -19,14 +19,6 @@
       "types": "./dist/src/connections.d.ts",
       "default": "./dist/src/connections.js"
     },
-    "./equations": {
-      "types": "./dist/src/equations.d.ts",
-      "default": "./dist/src/equations.js"
-    },
-    "./visitor": {
-      "types": "./dist/src/visitor.d.ts",
-      "default": "./dist/src/visitor.js"
-    },
     "./context": {
       "types": "./dist/src/context.d.ts",
       "default": "./dist/src/context.js"
@@ -111,10 +103,6 @@
       "types": "./dist/src/study-flattener.d.ts",
       "default": "./dist/src/study-flattener.js"
     },
-    "./ast": {
-      "types": "./dist/src/ast.d.ts",
-      "default": "./dist/src/ast.js"
-    },
     "./expression-evaluator": {
       "types": "./dist/src/expression-evaluator.d.ts",
       "default": "./dist/src/expression-evaluator.js"
@@ -137,10 +125,6 @@
     },
     "./parser.wasm": "./dist/parser.wasm",
     "./dist/parser.wasm": "./dist/parser.wasm",
-    "./ast-visitor": {
-      "types": "./dist/src/ast-visitor.d.ts",
-      "default": "./dist/src/ast-visitor.js"
-    },
     "./studies": {
       "types": "./dist/src/studies.d.ts",
       "default": "./dist/src/studies.js"
@@ -159,7 +143,6 @@
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
-    "@modelscript/lsp": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
     "@svgdotjs/svg.js": "^3.2.4",

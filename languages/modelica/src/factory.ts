@@ -11,7 +11,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
-import { LSPBridge, PositionIndex } from "@modelscript/lsp";
 import { QueryEngine, WorkspaceIndex } from "@modelscript/runtime";
 
 import csvLangDef from "@modelscript/csv/language";
@@ -231,19 +230,6 @@ export function createModelicaQueryEngine(
   });
 }
 
-/**
- * Creates an LSPBridge for a specific document.
- */
-export function createModelicaLSPBridge(index: any, engine: any, arg3: any, arg4?: any, arg5?: any): LSPBridge {
-  if (arg5 !== undefined) {
-    return new LSPBridge(index, engine, new PositionIndex(arg4), arg5);
-  }
-  if (arg4 !== undefined) {
-    return new LSPBridge(index, engine, new PositionIndex(arg3), arg4);
-  }
-  return new LSPBridge(index, engine, new PositionIndex(""), "");
-}
-
 import { MsimParser } from "./msim-parser.js";
 export { Context } from "./context.js";
-export { injectPredefinedTypes, LSPBridge, MsimParser, PositionIndex, QueryEngine, WorkspaceIndex };
+export { injectPredefinedTypes, MsimParser, QueryEngine, WorkspaceIndex };
