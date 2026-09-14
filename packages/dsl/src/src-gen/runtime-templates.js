@@ -1557,9 +1557,14 @@ export const FLAG_HAS_ERROR: u16 = 128;
 export const FLAG_IS_INSERTED: u16 = 256;
 export const FLAG_IS_SHARED: u16 = 512;
 export const FLAG_IS_SYNTHETIC: u16 = 1024;
+export const FLAG_FRAGILE: u16 = 4096;
 
 export function getNodeFlags(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).flags;
+}
+
+export function isNodeFragile(ptr: u32): boolean {
+  return (changetype<ASTNode>(ptr).flags & FLAG_FRAGILE) != 0;
 }
 
 export function setNodeFlags(ptr: u32, flags: u16): void {
@@ -14905,6 +14910,7 @@ import {
   FLAG_HAS_ERROR,
   getNodeFlags,
   FLAG_IS_INSERTED,
+  FLAG_FRAGILE,
 } from "./arena";
 
 import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "./array";
@@ -14920,6 +14926,8 @@ export let t_candidateHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUi
 export let activeHeadsCount: u32 = 0;
 export let nextHeadsCount: u32 = 0;
 export let candidateHeadsCount: u32 = 0;
+export let t_pausedHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let pausedHeadsCount: u32 = 0;
 
 /**
  * Initializes the Graph-Structured Stack (GSS) active and next heads buffer memory.
@@ -14937,9 +14945,17 @@ export function initGSS(): void {
   if (changetype<usize>(t_candidateHeadsBuffer) == 0) {
     t_candidateHeadsBuffer = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
   }
+  if (changetype<usize>(t_pausedHeads) == 0) {
+    t_pausedHeads = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
+  }
   activeHeadsCount = 0;
   nextHeadsCount = 0;
   candidateHeadsCount = 0;
+  pausedHeadsCount = 0;
+}
+
+export function resetPausedHeads(): void {
+  pausedHeadsCount = 0;
 }
 
 /**
@@ -14961,6 +14977,8 @@ export function pushCandidateHead(headPtr: u32): boolean {
   return true;
 }
 
+export const MAX_COST_DIFFERENCE: i32 = 7000;
+
 /**
  * Evaluates whether an existing version in the frontier is decisively superior to candidate.
  * Implements Tree-sitter's (deltaCost) * (1 + progress) > MAX_COST_DIFFERENCE pruning.
@@ -14969,16 +14987,41 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
   for (let i: u32 = 0; i < count; i++) {
     let existing = changetype<ParseHead>(frontier[i]);
     if (existing == candidate) continue;
-    // 1. Healthy head dominates an in-error candidate if at or ahead in the stream
+
+    // 1. Healthy head dominates an in-error candidate ONLY if existing has strictly lower error cost
+    // and is at or ahead in the stream (Tree-sitter parser.c:252-257).
+    // If existing.errorCost >= candidate.errorCost, the candidate's repair is cheaper and must survive.
     if (!existing.inErrorState && candidate.inErrorState) {
-      if (existing.pos >= candidate.pos) return true;
+      if (existing.errorCost < candidate.errorCost && existing.pos >= candidate.pos) {
+        return true;
+      }
     }
+
+    // 1b. Active head dominates paused head if equal or lower cost
+    if (!existing.isPaused && candidate.isPaused) {
+      if (existing.errorCost <= candidate.errorCost && existing.pos >= candidate.pos) {
+        return true;
+      }
+    }
+
     // 2. Both in error: Tree-sitter relative cost comparison
+    // (candidate.cost - existing.cost) * (1 + existing.node_count) > MAX_COST_DIFFERENCE (7000)
     if (candidate.inErrorState && existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.pos > candidate.pos ? (existing.pos - candidate.pos) : 0);
-        if (costDiff * progress > 2000) {
+        let progress = 1 + (existing.successfulShifts as i32);
+        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+          return true;
+        }
+      }
+    }
+
+    // 3. Both healthy: relative error cost pruning
+    if (!candidate.inErrorState && !existing.inErrorState) {
+      if (existing.errorCost < candidate.errorCost) {
+        let costDiff = candidate.errorCost - existing.errorCost;
+        let progress = 1 + (existing.successfulShifts as i32);
+        if (costDiff * progress > MAX_COST_DIFFERENCE) {
           return true;
         }
       }
@@ -15120,6 +15163,9 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
   if (!newHead.inErrorState) {
     existingHead.inErrorState = false;
   }
+  if (existingHead.astNode != 0) {
+    setNodeFlags(existingHead.astNode, getNodeFlags(existingHead.astNode) | FLAG_FRAGILE);
+  }
 }
 
 /**
@@ -15181,10 +15227,16 @@ export class ParseHead {
 
   /** Pointer to the active open ERROR container node (if any). */
   errorNode: u32;
+
+  /** True if this head is temporarily paused waiting for parallel heads to advance. */
+  isPaused: bool;
+
+  /** The lookahead token that caused this head to pause. */
+  pausedLookahead: i32;
 }
 
 /**
- * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (80 bytes).
+ * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (88 bytes).
  */
 export function allocParseHead(
   state: i32,
@@ -15205,8 +15257,10 @@ export function allocParseHead(
   summaryCount: u32 = 0,
   nodeCount: u32 = 0,
   errorNode: u32 = 0,
+  isPaused: bool = false,
+  pausedLookahead: i32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(80);
+  let ptr = allocGen0(88);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -15226,6 +15280,8 @@ export function allocParseHead(
   h.summaryCount = summaryCount;
   h.nodeCount = nodeCount;
   h.errorNode = errorNode;
+  h.isPaused = isPaused;
+  h.pausedLookahead = pausedLookahead;
   return h;
 }
 
@@ -25103,12 +25159,13 @@ export const parserLoopCode = `/**
 import {
     initGSS,
     ParseHead, GssEdge, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
+    t_pausedHeads, pausedHeadsCount, resetPausedHeads,
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding, propagateFirstChildPadding,
-    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED,
+    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED, FLAG_FRAGILE,
     getNodeEnvHash, getNodeStartState, setNodeStartState, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks, isNodeGen2
 } from "./arena";
@@ -25378,6 +25435,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (canAccept) {
               let clone = cloneNodeShallow(reusedNode);
               setNodePadding(clone, totalPadding);
+              setNodeFlags(clone, getNodeFlags(clone) | FLAG_EXTRACTED);
               t_lrStateStack[lrStackDepth] = nextState;
               t_lrNodeStack[lrStackDepth] = clone;
               lrStackDepth++;
@@ -25717,15 +25775,16 @@ function updateExpectedTokens(): void {
       addStateExpectedTokens(state, 0);
     }
   } else {
-    let hasErrorHead = false;
+    let healthyCount: u32 = 0;
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
       let head = changetype<ParseHead>(t_activeHeads[i]);
-      if (head.inErrorState) {
-        hasErrorHead = true;
+      if (!head.inErrorState) {
+        healthyCount++;
+        addStateExpectedTokens(head.state, 0);
       }
-      addStateExpectedTokens(head.state, 0);
     }
-    if (hasErrorHead) {
+    // Only unmask all tokens when ALL active heads are in an error state
+    if (healthyCount == 0) {
       memory.fill(expected_tokens, 1, 2048);
     }
   }
@@ -27137,6 +27196,224 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
  * @param pos The current byte offset in the input stream.
  * @returns True if a valid GOTO transition was found, false if the path is dead.
  */
+function constructReducedParentNode(
+  lhsSym: i32,
+  reduceProd: i32,
+  childNodes: UnmanagedInt32Array,
+  childOffset: i32,
+  actualCount: i32,
+  bottomState: i32,
+  balanceHash: u32,
+  isFragile: bool
+): u32 {
+  let totalByteLength: u32 = 0;
+  let firstChildPadding: u32 = 0;
+  if (actualCount > 0) {
+    firstChildPadding = getNodeLeadingPad(childNodes[childOffset]);
+    for (let k = 0; k < actualCount; k++) {
+      let cPadding = getNodeLeadingPad(childNodes[childOffset + k]);
+      let cLen = getNodeByteLength(childNodes[childOffset + k]);
+      if (k == 0) totalByteLength += cLen;
+      else totalByteLength += cPadding + cLen;
+    }
+  }
+  let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, balanceHash & 0xff, false, bottomState as u32);
+
+  if (prod_is_list[reduceProd] == 1) {
+    let flags = getNodeFlags(parentNode);
+    setNodeFlags(parentNode, flags | FLAG_IS_LIST);
+  }
+  if (prod_is_invisible[reduceProd] == 1) {
+    let flags = getNodeFlags(parentNode);
+    setNodeFlags(parentNode, flags | FLAG_INVISIBLE);
+  }
+  if (isFragile) {
+    let flags = getNodeFlags(parentNode);
+    setNodeFlags(parentNode, flags | FLAG_FRAGILE);
+  }
+
+  if (actualCount > 0) {
+    let isListAppend = false;
+    let popCount = prod_lengths[reduceProd];
+    if (
+      (popCount == 2 || popCount == 3) &&
+      actualCount >= popCount &&
+      childNodes[childOffset] != 0 &&
+      prod_is_list[reduceProd] == 1
+    ) {
+      let leftSym = getNodeType(childNodes[childOffset]);
+      if (leftSym == lhsSym) isListAppend = true;
+    }
+
+    if (isListAppend) {
+      parentNode = childNodes[childOffset];
+      for (let i = 1; i < actualCount; i++) {
+        parentNode = appendToList(
+          parentNode,
+          childNodes[childOffset + i],
+          lhsSym as u16,
+          currentScannerState,
+          i == actualCount - 1
+        );
+      }
+      setNodeStartState(parentNode, bottomState as u32);
+      if (isFragile) {
+        setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_FRAGILE);
+      }
+    } else {
+      let lastChild = 0;
+      let logicalChildIndex = 0;
+
+      let aliasPtr = prod_aliases[reduceProd];
+      let aliasCount = 0;
+      if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
+
+      for (let k = 0; k < actualCount; k++) {
+        let child = childNodes[childOffset + k];
+        if (child == 0) continue;
+
+        let clone = cloneNodeShallow(child);
+        if (k == 0) {
+          setNodePadding(clone, 0);
+        }
+
+        let isError = getNodeType(child) == NODE_TYPE_ERROR || (getNodeType(child) & 0x8000) != 0;
+        if (!isError && aliasPtr >= 0) {
+          for (let a = 0; a < aliasCount; a++) {
+            let aIndex = alias_data[aliasPtr + 1 + a * 2];
+            let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
+            if (aIndex == logicalChildIndex) {
+              let node = changetype<ASTNode>(clone);
+              node.type = aSym as u16;
+              break;
+            }
+          }
+          logicalChildIndex++;
+        } else if (!isError) {
+          logicalChildIndex++;
+        }
+
+        if (lastChild == 0) setFirstChild(parentNode, clone);
+        else setNextSibling(lastChild, clone);
+        lastChild = clone;
+        if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
+          setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
+        }
+      }
+      let pFlags = getNodeFlags(parentNode);
+      setNodeFlags(parentNode, pFlags);
+    }
+  }
+  return parentNode;
+}
+
+const MAX_POP_PATHS: i32 = 8;
+const MAX_POP_DEPTH: i32 = 32;
+
+let t_popPathNodes: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+let t_popPathBottomHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let t_popPathNodeCounts: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+let t_popDfsNodes: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+let t_breakdownChildren: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let g_popPathCount: i32 = 0;
+
+function initPopPathBuffers(): void {
+  if (changetype<usize>(t_popPathNodes) == 0) {
+    t_popPathNodes = changetype<UnmanagedInt32Array>(heap.alloc(MAX_POP_PATHS * MAX_POP_DEPTH * 4));
+    t_popPathBottomHeads = changetype<UnmanagedUint32Array>(heap.alloc(MAX_POP_PATHS * 4));
+    t_popPathNodeCounts = changetype<UnmanagedInt32Array>(heap.alloc(MAX_POP_PATHS * 4));
+    t_popDfsNodes = changetype<UnmanagedInt32Array>(heap.alloc(MAX_POP_DEPTH * 4));
+    t_breakdownChildren = changetype<UnmanagedUint32Array>(heap.alloc(128 * 4));
+  }
+}
+
+function recordPopPath(bottomHead: ParseHead, depth: i32): void {
+  if (g_popPathCount >= MAX_POP_PATHS) return;
+  let bPtr = changetype<u32>(bottomHead);
+  for (let p = 0; p < g_popPathCount; p++) {
+    if (t_popPathBottomHeads[p] == bPtr && t_popPathNodeCounts[p] == depth) {
+      let same = true;
+      let off = p * MAX_POP_DEPTH;
+      for (let d = 0; d < depth; d++) {
+        if (t_popPathNodes[off + d] != t_popDfsNodes[depth - 1 - d]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+  }
+  let idx = g_popPathCount++;
+  t_popPathBottomHeads[idx] = bPtr;
+  t_popPathNodeCounts[idx] = depth;
+  let off = idx * MAX_POP_DEPTH;
+  for (let d = 0; d < depth; d++) {
+    t_popPathNodes[off + d] = t_popDfsNodes[depth - 1 - d];
+  }
+}
+
+function dfsPopPaths(
+  curr: ParseHead | null,
+  needed: i32,
+  isList: bool,
+  depth: i32
+): void {
+  if (g_popPathCount >= MAX_POP_PATHS) return;
+  if (curr == null) return;
+  if (depth >= MAX_POP_DEPTH) return;
+
+  let astNode = curr.astNode;
+  let isPure = astNode != 0 && isPureErrorNode(astNode);
+  let nextNeeded = needed;
+  if (!isPure && nextNeeded > 0) {
+    nextNeeded--;
+  }
+  t_popDfsNodes[depth] = astNode as i32;
+  let nextDepth = depth + 1;
+
+  let currPrev = curr.prev;
+  if (nextNeeded == 0 && (!isList || currPrev == null || currPrev.astNode == 0 || !isPureErrorNode(currPrev.astNode))) {
+    if (currPrev != null) {
+      recordPopPath(currPrev, nextDepth);
+    }
+    let edgePtr = curr.firstEdge;
+    while (edgePtr != 0 && g_popPathCount < MAX_POP_PATHS) {
+      let edge = changetype<GssEdge>(edgePtr);
+      let target = edge.targetHead;
+      if (target != null) {
+        recordPopPath(target, nextDepth);
+      }
+      edgePtr = edge.nextEdge;
+    }
+    return;
+  }
+
+  // Traverse primary predecessor curr.prev
+  if (currPrev != null) {
+    dfsPopPaths(currPrev, nextNeeded, isList, nextDepth);
+  }
+
+  // Traverse alternative predecessors curr.firstEdge
+  let edgePtr = curr.firstEdge;
+  while (edgePtr != 0 && g_popPathCount < MAX_POP_PATHS) {
+    let edge = changetype<GssEdge>(edgePtr);
+    let target = edge.targetHead;
+    if (target != null) {
+      let savedNode = t_popDfsNodes[depth];
+      if (edge.astNode != 0) {
+        t_popDfsNodes[depth] = edge.astNode as i32;
+      }
+      dfsPopPaths(target, nextNeeded, isList, nextDepth);
+      t_popDfsNodes[depth] = savedNode;
+    }
+    edgePtr = edge.nextEdge;
+  }
+}
+
+/**
+ * Executes a REDUCE action on the given head for the specified production rule.
+ * Operates across single linear chains as well as branched GSS DAG diamonds for any popCount.
+ */
 function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseHead | null {
   if (reduceProd < 0 || reduceProd >= prod_lengths.length) {
     throw new Error("BAD reduceProd: " + reduceProd.toString());
@@ -27144,24 +27421,48 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
 
   let popCount = prod_lengths[reduceProd];
   let lhsSym = prod_lhs[reduceProd];
-  
+  let isList = prod_is_list[reduceProd] == 1;
+
+  if (popCount == 0) {
+    let curr = head;
+    if (curr.state < 0 || curr.state >= goto_offsets.length) return null;
+    let gOffset = goto_offsets[curr.state];
+    if (gOffset < 0 || gOffset >= goto_data.length) return null;
+    let gCount = goto_data[gOffset];
+    let nextState = -1;
+    let gIdx = gOffset + 1;
+    for (let k = 0; k < gCount; k++) {
+      if (goto_data[gIdx++] == lhsSym) {
+        nextState = goto_data[gIdx++];
+        break;
+      } else {
+        gIdx++;
+      }
+    }
+    if (nextState == -1) return null;
+    let isFragile = activeHeadsCount > 1;
+    let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_globalChildNodes, 0, 0, curr.state, head.balanceHash, isFragile);
+    return allocParseHead(
+      nextState, parentNode, curr, head.pos, 0, head.errorCost,
+      head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+    );
+  }
+
+  // Fast-path: traverse linear chain and check if any node has firstEdge != 0
   let curr: ParseHead | null = head;
-
-
   let c_idx = 99999;
   let needed = popCount;
-  let foundFirstGrammar = false;
-  let isList = prod_is_list[reduceProd] == 1;
+  let hasMultiLink = false;
 
   while ((needed > 0 || (isList && curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
     if (c_idx <= 0) break;
+    if (curr.firstEdge != 0) hasMultiLink = true;
     let astNode = curr.astNode;
     let isPure = astNode != 0 && isPureErrorNode(astNode);
-    
     if (isPure) {
       t_globalReduceCollected[c_idx--] = astNode;
     } else {
-      foundFirstGrammar = true;
       t_globalReduceCollected[c_idx--] = astNode;
       if (needed > 0) needed--;
     }
@@ -27176,110 +27477,11 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
     t_globalChildNodes[k] = t_globalReduceCollected[c_idx + 1 + k];
   }
 
-  if (curr) {
-    let totalByteLength: u32 = 0;
-    let firstChildPadding: u32 = 0;
-    if (actualCount > 0) {
-      firstChildPadding = getNodeLeadingPad(t_globalChildNodes[0]);
-      for (let k = 0; k < actualCount; k++) {
-        let cPadding = getNodeLeadingPad(t_globalChildNodes[k]);
-        let cLen = getNodeByteLength(t_globalChildNodes[k]);
-        if (k == 0) totalByteLength += cLen;
-        else totalByteLength += cPadding + cLen;
-      }
-    }
-    let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, head.balanceHash & 0xff, false, curr.state as u32);
-
-    if (prod_is_list[reduceProd] == 1) {
-      let flags = getNodeFlags(parentNode);
-      setNodeFlags(parentNode, flags | FLAG_IS_LIST);
-    }
-    if (prod_is_invisible[reduceProd] == 1) {
-      let flags = getNodeFlags(parentNode);
-      setNodeFlags(parentNode, flags | FLAG_INVISIBLE);
-    }
-
-    if (actualCount > 0) {
-      let isListAppend = false;
-      if (
-        (popCount == 2 || popCount == 3) &&
-        actualCount >= popCount &&
-        t_globalChildNodes[0] != 0 &&
-        prod_is_list[reduceProd] == 1
-      ) {
-        let leftSym = getNodeType(t_globalChildNodes[0]);
-        if (leftSym == lhsSym) isListAppend = true;
-      }
-      
-
-      if (isListAppend) {
-        parentNode = t_globalChildNodes[0];
-        for (let i = 1; i < actualCount; i++) {
-          parentNode = appendToList(
-            parentNode,
-            t_globalChildNodes[i],
-            lhsSym as u16,
-            currentScannerState,
-            i == actualCount - 1
-          );
-        }
-        setNodeStartState(parentNode, curr.state as u32);
-      } else {
-
-        let lastChild = 0;
-        let logicalChildIndex = 0;
-
-        let aliasPtr = prod_aliases[reduceProd];
-        let aliasCount = 0;
-        if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
-
-        for (let k = 0; k < actualCount; k++) {
-          let child = t_globalChildNodes[k];
-          if (child == 0) continue;
-
-          let clone = cloneNodeShallow(child);
-          if (k == 0) {
-            setNodePadding(clone, 0);
-
-          }
-
-          let isError = getNodeType(child) == NODE_TYPE_ERROR || (getNodeType(child) & 0x8000) != 0;
-          if (!isError && aliasPtr >= 0) {
-            for (let a = 0; a < aliasCount; a++) {
-              let aIndex = alias_data[aliasPtr + 1 + a * 2];
-              let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
-              if (aIndex == logicalChildIndex) {
-                let node = changetype<ASTNode>(clone);
-                node.type = aSym as u16;
-                break;
-              }
-            }
-            logicalChildIndex++;
-          } else if (!isError) {
-            logicalChildIndex++;
-          }
-
-          if (lastChild == 0) setFirstChild(parentNode, clone);
-          else setNextSibling(lastChild, clone);
-          lastChild = clone;
-          if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
-            setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
-          }
-        }
-        let pFlags = getNodeFlags(parentNode);
-        setNodeFlags(parentNode, pFlags);
-      }
-    }
-
-    if (curr.state < 0 || curr.state >= goto_offsets.length) {
-      throw new Error("BAD curr.state in REDUCE: " + curr.state.toString());
-    }
-
+  // Case A: Linear path (no DAG diamonds along the pop chain)
+  if (!hasMultiLink && curr != null) {
+    if (curr.state < 0 || curr.state >= goto_offsets.length) return null;
     let gOffset = goto_offsets[curr.state];
-    if (gOffset < 0 || gOffset >= goto_data.length) {
-      throw new Error("BAD gOffset: " + gOffset.toString());
-    }
-
+    if (gOffset < 0 || gOffset >= goto_data.length) return null;
     let gCount = goto_data[gOffset];
     let nextState = -1;
     let gIdx = gOffset + 1;
@@ -27291,51 +27493,229 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseH
         gIdx++;
       }
     }
+    if (nextState == -1) return null;
 
-    if (nextState != -1) {
-      let newHead = allocParseHead(
-        nextState, parentNode, curr, head.pos, 0, head.errorCost,
-        head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-        head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
-      );
-      if (popCount == 1 && head.firstEdge != 0) {
-        let edgePtr = head.firstEdge;
-        while (edgePtr != 0) {
-          let edge = changetype<GssEdge>(edgePtr);
-          let altCurr = edge.targetHead;
-          if (altCurr != null && altCurr.state >= 0 && altCurr.state < goto_offsets.length) {
-            let altGOffset = goto_offsets[altCurr.state];
-            if (altGOffset >= 0 && altGOffset < goto_data.length) {
-              let altGCount = goto_data[altGOffset];
-              let altNextState = -1;
-              let altGIdx = altGOffset + 1;
-              for (let ak = 0; ak < altGCount; ak++) {
-                if (goto_data[altGIdx++] == lhsSym) {
-                  altNextState = goto_data[altGIdx++];
-                  break;
-                } else {
-                  altGIdx++;
-                }
-              }
-              if (altNextState != -1) {
-                let altHead = allocParseHead(
-                  altNextState, parentNode, altCurr, head.pos, 0, head.errorCost,
-                  head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-                  head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
-                );
-                pushActiveHead(changetype<u32>(altHead));
-              }
-            }
-          }
-          edgePtr = edge.nextEdge;
-        }
+    let isFragile = activeHeadsCount > 1;
+    let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_globalChildNodes, 0, actualCount, curr.state, head.balanceHash, isFragile);
+    return allocParseHead(
+      nextState, parentNode, curr, head.pos, 0, head.errorCost,
+      head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+    );
+  }
+
+  // Case B: Multi-link path pop across GSS diamonds (Tree-sitter ts_stack_pop_count)
+  initPopPathBuffers();
+  g_popPathCount = 0;
+  dfsPopPaths(head, popCount, isList, 0);
+
+  if (g_popPathCount == 0) return null;
+
+  let primaryHead: ParseHead | null = null;
+  let isFragile = true;
+
+  for (let p = 0; p < g_popPathCount; p++) {
+    let bHead = changetype<ParseHead>(t_popPathBottomHeads[p]);
+    let pCount = t_popPathNodeCounts[p];
+    if (bHead == null || bHead.state < 0 || bHead.state >= goto_offsets.length) continue;
+    let gOffset = goto_offsets[bHead.state];
+    if (gOffset < 0 || gOffset >= goto_data.length) continue;
+    let gCount = goto_data[gOffset];
+    let pNextState = -1;
+    let gIdx = gOffset + 1;
+    for (let k = 0; k < gCount; k++) {
+      if (goto_data[gIdx++] == lhsSym) {
+        pNextState = goto_data[gIdx++];
+        break;
+      } else {
+        gIdx++;
       }
-      return newHead;
+    }
+    if (pNextState == -1) continue;
+
+    let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_popPathNodes, p * MAX_POP_DEPTH, pCount, bHead.state, head.balanceHash, isFragile);
+    let newHead = allocParseHead(
+      pNextState, parentNode, bHead, head.pos, 0, head.errorCost,
+      head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+    );
+
+    if (primaryHead == null) {
+      primaryHead = newHead;
     } else {
-      return null;
+      pushActiveHead(changetype<u32>(newHead));
     }
   }
-  return null;
+
+  return primaryHead;
+}
+
+/**
+ * Decomposes a reused composite node on top of stack into its constituent children.
+ * Mirrors Tree-sitter's ts_parser__breakdown_top_of_stack.
+ * If the current lookahead token cannot be accepted and head.astNode was reused from
+ * a previous AST, unpacks the immediate children and pushes their stack frames.
+ */
+function breakdownTopOfStack(head: ParseHead): ParseHead | null {
+  let topNode = head.astNode;
+  if (topNode == 0) return null;
+  let flags = getNodeFlags(topNode);
+  if ((flags & FLAG_EXTRACTED) == 0) return null;
+  let firstC = getNodeFirstChild(topNode);
+  if (firstC == 0) return null;
+
+  initPopPathBuffers();
+
+  let childCount: i32 = 0;
+  let c = firstC;
+  while (c != 0 && childCount < 128) {
+    t_breakdownChildren[childCount++] = c;
+    c = getNodeNextSibling(c);
+  }
+  if (childCount == 0) return null;
+
+  let baseHead = head.prev;
+  if (baseHead == null) return null;
+
+  let currHead: ParseHead = baseHead;
+  let currState: i32 = baseHead.state;
+  let currPos: u32 = baseHead.pos;
+
+  for (let i = 0; i < childCount; i++) {
+    let childPtr = t_breakdownChildren[i];
+    let childType = getNodeType(childPtr);
+    let childByteLen = getNodeByteLength(childPtr);
+    let childPad = getNodeLeadingPad(childPtr);
+    let nextState = -1;
+
+    if (childType > (MAX_TERMINAL_ID as u16)) {
+      if (currState >= 0 && currState < goto_offsets.length) {
+        let gOffset = goto_offsets[currState];
+        if (gOffset >= 0 && gOffset < goto_data.length) {
+          let gCount = goto_data[gOffset];
+          let gIdx = gOffset + 1;
+          for (let k = 0; k < gCount; k++) {
+            if (goto_data[gIdx++] == (childType as i32)) {
+              nextState = goto_data[gIdx++];
+              break;
+            } else {
+              gIdx++;
+            }
+          }
+        }
+      }
+    } else {
+      if (currState >= 0 && currState < action_offsets.length) {
+        let actOffset = action_offsets[currState];
+        if (actOffset >= 0 && actOffset < action_data.length) {
+          let actCount = action_data[actOffset];
+          let idx = actOffset + 1;
+          for (let a = 0; a < actCount; a++) {
+            let sym = action_data[idx++];
+            let numActions = action_data[idx++];
+            if (sym == (childType as i32)) {
+              for (let na = 0; na < numActions; na++) {
+                let aType = action_data[idx++];
+                let aTarget = action_data[idx++];
+                if (aType == ACTION_SHIFT) {
+                  nextState = aTarget;
+                  break;
+                }
+              }
+              break;
+            }
+            idx += numActions * 2;
+          }
+        }
+      }
+    }
+
+    if (nextState == -1) {
+      let childStartState = getNodeStartState(childPtr);
+      if (childStartState != 0) {
+        nextState = childStartState as i32;
+      } else {
+        return null;
+      }
+    }
+
+    currPos += childPad + childByteLen;
+    if (getNodeFirstChild(childPtr) != 0) {
+      setNodeFlags(childPtr, getNodeFlags(childPtr) | FLAG_EXTRACTED);
+    }
+    let newHead = allocParseHead(
+      nextState,
+      childPtr,
+      currHead,
+      currPos,
+      currHead.scannerState,
+      currHead.errorCost,
+      currHead.successfulShifts + 1,
+      currHead.balanceHash,
+      0,
+      currHead.dynamicPrec,
+      0,
+      currHead.errorTail
+    );
+    currHead = newHead;
+    currState = nextState;
+  }
+
+  return currHead;
+}
+
+/**
+ * Performs all lookahead-independent reductions on head before error recovery.
+ * Mirrors Tree-sitter's ts_parser__do_all_potential_reductions.
+ * Returns the reduced head (or original head if no reductions possible).
+ */
+function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): ParseHead {
+  let curr = head;
+  let iters = 0;
+  while (iters++ < 8) {
+    let state = curr.state;
+    if (state < 0 || state >= action_offsets.length) break;
+    let actionOffset = action_offsets[state];
+    if (actionOffset < 0 || actionOffset >= action_data.length) break;
+
+    let actCount = action_data[actionOffset];
+    let idx = actionOffset + 1;
+    let bestReduce = -1;
+    let bestLhs = -1;
+
+    for (let a = 0; a < actCount; a++) {
+      let sym = action_data[idx++];
+      let numActions = action_data[idx++];
+      for (let na = 0; na < numActions; na++) {
+        let aType = action_data[idx++];
+        let aTarget = action_data[idx++];
+        if (aType == ACTION_REDUCE) {
+          if (aTarget >= 0 && aTarget < prod_lhs.length) {
+            let lhs = prod_lhs[aTarget];
+            if (lhs > bestLhs || (lhs == bestLhs && aTarget > bestReduce)) {
+              bestLhs = lhs;
+              bestReduce = aTarget;
+            }
+          }
+        }
+      }
+    }
+
+    if (bestReduce == -1) break;
+
+    if (curr.state == 0 && prod_lengths[bestReduce] == 0 && tok != TOKEN_EOF) {
+      break;
+    }
+
+    let reduced = processReduceAction(curr, bestReduce, frontierPos);
+    if (reduced == null || reduced == curr) break;
+    curr = reduced;
+
+    if (lookupActions(curr.state, tok) > 0) {
+      break;
+    }
+  }
+  return curr;
 }
 
 @inline
@@ -28050,6 +28430,23 @@ export let g_editOldEnd: u32 = 0;
 export let g_editNewEnd: u32 = 0;
 
 /**
+ * Graceful EOF Error Acceptance (Tree-sitter Strategy):
+ * When parsing reaches TOKEN_EOF with unclosed blocks or unreduced constructs,
+ * do not panic or flatten the CST. Instead, record an error diagnostic for the unclosed construct,
+ * wrap the stack in an accepted root via processAcceptAction, and terminate cleanly.
+ */
+function recoverEofAccept(head: ParseHead, pos: u32): void {
+  let diagStart = pos > 0 ? pos - 1 : 0;
+  let diagEnd = pos > diagStart ? pos : diagStart + 1;
+  head.errorTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
+  head.errorCost += 500;
+  processAcceptAction(head);
+  if (acceptedNode != 0) {
+    setNodeFlags(acceptedNode, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
+  }
+}
+
+/**
  * The main GLR parsing engine loop.
  * Operates in lockstep token-by-token rounds synchronized at the current byte position frontier.
  * Prunes and condenses heads in O(H) time without arbitrary iteration bounds.
@@ -28067,6 +28464,7 @@ export function advanceGLR(): void {
     if (frontierPos == 0xffffffff) break;
 
     updateExpectedTokens();
+    resetPausedHeads();
 
     // 2. Process all heads at frontierPos
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
@@ -28204,6 +28602,8 @@ export function advanceGLR(): void {
       // Standard LR action loop: exact match -> wildcard fallback -> SHIFT/ACCEPT/REDUCE
       let didAct = false;
       let reductionGuard: u32 = 0;
+      let breakdownAttempted = false;
+      let preReduceAttempted = false;
 
       while (reductionGuard++ < 100 && !didAct) {
         let actionOffset = action_offsets[head.state];
@@ -28266,6 +28666,27 @@ export function advanceGLR(): void {
               continue;
             }
           }
+
+          // Step 3b: Decompose top-of-stack reused composite node (Tree-sitter breakdown_top_of_stack)
+          if (!breakdownAttempted) {
+            breakdownAttempted = true;
+            let brokenHead = breakdownTopOfStack(head);
+            if (brokenHead != null) {
+              head = brokenHead;
+              continue;
+            }
+          }
+
+          // Step 3c: Pre-error lookahead-independent reductions (Tree-sitter do_all_potential_reductions)
+          if (!preReduceAttempted) {
+            preReduceAttempted = true;
+            let preReducedHead = doAllPotentialReductions(head, frontierPos, tok);
+            if (preReducedHead != head) {
+              head = preReducedHead;
+              continue;
+            }
+          }
+
           break;
         }
 
@@ -28319,18 +28740,65 @@ export function advanceGLR(): void {
 
       if (!didAct) {
         if (tok != TOKEN_EOF) {
-          let didRecover = false;
-          if (configEnableBranchB && head.consecutiveInsertions < 3) {
-            didRecover = recoverMissingToken(head, tok, frontierPos);
+          // Tree-sitter Version Pausing:
+          // If other heads are alive or have already shifted this token, pause this failing head.
+          if ((activeHeadsCount > 1 || nextHeadsCount > 0) && pausedHeadsCount < 64) {
+            head.isPaused = true;
+            head.pausedLookahead = tok;
+            t_pausedHeads[pausedHeadsCount++] = changetype<u32>(head);
+          } else {
+            let didRecover = false;
+            if (configEnableBranchB && head.consecutiveInsertions < 3) {
+              didRecover = recoverMissingToken(head, tok, frontierPos);
+            }
+            if (!didRecover && (head.prev != null || head.inErrorState)) {
+              didRecover = recoverStackSummary(head, tok, frontierPos);
+            }
+            if (!didRecover && configEnableBranchA1) {
+              recoverSkipToken(head, tok, frontierPos);
+            }
           }
-          if (!didRecover && (head.prev != null || head.inErrorState)) {
-            didRecover = recoverStackSummary(head, tok, frontierPos);
-          }
-          if (!didRecover && configEnableBranchA1) {
-            recoverSkipToken(head, tok, frontierPos);
-          }
+        } else {
+          // Graceful EOF Error Acceptance (Tree-sitter Strategy):
+          // If the parser reached EOF with an unclosed construct, do not drop into catastrophic panic.
+          // Instead, record an error diagnostic for the unclosed construct and accept the tree.
+          recoverEofAccept(head, frontierPos);
         }
       }
+    }
+
+    // Resume best paused head if all heads stalled; otherwise discard paused heads.
+    if (nextHeadsCount > 0) {
+      pausedHeadsCount = 0;
+    } else if (pausedHeadsCount > 0) {
+      let bestHead = changetype<ParseHead>(t_pausedHeads[0]);
+      let bestCost = bestHead.errorCost;
+      let bestPrec = bestHead.dynamicPrec;
+      for (let p: u32 = 1; p < pausedHeadsCount; p++) {
+        let cand = changetype<ParseHead>(t_pausedHeads[p]);
+        if (cand.errorCost < bestCost || (cand.errorCost == bestCost && cand.dynamicPrec > bestPrec)) {
+          bestHead = cand;
+          bestCost = cand.errorCost;
+          bestPrec = cand.dynamicPrec;
+        }
+      }
+      bestHead.isPaused = false;
+      let resumeTok = bestHead.pausedLookahead;
+      if (resumeTok != TOKEN_EOF) {
+        let didRecover = false;
+        if (configEnableBranchB && bestHead.consecutiveInsertions < 3) {
+          didRecover = recoverMissingToken(bestHead, resumeTok, bestHead.pos);
+        }
+        if (!didRecover && (bestHead.prev != null || bestHead.inErrorState)) {
+          didRecover = recoverStackSummary(bestHead, resumeTok, bestHead.pos);
+        }
+        if (!didRecover && configEnableBranchA1) {
+          recoverSkipToken(bestHead, resumeTok, bestHead.pos);
+        }
+      } else {
+        recoverEofAccept(bestHead, bestHead.pos);
+      }
+      pausedHeadsCount = 0;
     }
 
     // 3. Condense and prune next heads
@@ -28777,7 +29245,7 @@ export function findReusableNode(
         }
         if (canTransition) {
           let typeFlags = getNodeFlags(cPtr);
-          let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
+          let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) != 0;
           let isCleanGen1 = (g_oldTree != 0 && !isNodeGen2(cPtr));
           if (!hasErrorFlags && (isCleanGen1 || !nodeHasAnyErrors(cPtr))) {
             debugLog(9008, cPtr, start, end);
@@ -29311,6 +29779,7 @@ export const recoveryCode = `import {
   pushNextHead,
   t_activeHeads,
   activeHeadsCount,
+  GssEdge,
 } from "./gss";
 import { logInt } from "./parser";
 import {
@@ -29492,6 +29961,23 @@ export function recordStackSummary(head: ParseHead): void {
       entry.depth = d;
       entry.pos = curr.pos;
       count++;
+
+      // Also record alternative predecessors along firstEdge at this depth
+      let edgePtr = curr.firstEdge;
+      while (edgePtr != 0 && count < MAX_SUMMARY_DEPTH) {
+        let edge = changetype<GssEdge>(edgePtr);
+        let altCurr = edge.targetHead;
+        if (altCurr != null) {
+          let altEntryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
+          let altEntry = changetype<StackSummaryEntry>(altEntryPtr);
+          altEntry.ancHead = altCurr;
+          altEntry.state = altCurr.state;
+          altEntry.depth = d;
+          altEntry.pos = altCurr.pos;
+          count++;
+        }
+        edgePtr = edge.nextEdge;
+      }
     }
     curr = curr.prev;
     d++;

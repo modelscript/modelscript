@@ -5,6 +5,7 @@ import {
   pushNextHead,
   t_activeHeads,
   activeHeadsCount,
+  GssEdge,
 } from "./gss";
 import { logInt } from "./parser";
 import {
@@ -186,6 +187,23 @@ export function recordStackSummary(head: ParseHead): void {
       entry.depth = d;
       entry.pos = curr.pos;
       count++;
+
+      // Also record alternative predecessors along firstEdge at this depth
+      let edgePtr = curr.firstEdge;
+      while (edgePtr != 0 && count < MAX_SUMMARY_DEPTH) {
+        let edge = changetype<GssEdge>(edgePtr);
+        let altCurr = edge.targetHead;
+        if (altCurr != null) {
+          let altEntryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
+          let altEntry = changetype<StackSummaryEntry>(altEntryPtr);
+          altEntry.ancHead = altCurr;
+          altEntry.state = altCurr.state;
+          altEntry.depth = d;
+          altEntry.pos = altCurr.pos;
+          count++;
+        }
+        edgePtr = edge.nextEdge;
+      }
     }
     curr = curr.prev;
     d++;

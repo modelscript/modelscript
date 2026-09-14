@@ -13,6 +13,7 @@ import {
   FLAG_HAS_ERROR,
   getNodeFlags,
   FLAG_IS_INSERTED,
+  FLAG_FRAGILE,
 } from "./arena";
 
 import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "./array";
@@ -28,6 +29,8 @@ export let t_candidateHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUi
 export let activeHeadsCount: u32 = 0;
 export let nextHeadsCount: u32 = 0;
 export let candidateHeadsCount: u32 = 0;
+export let t_pausedHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let pausedHeadsCount: u32 = 0;
 
 /**
  * Initializes the Graph-Structured Stack (GSS) active and next heads buffer memory.
@@ -45,9 +48,17 @@ export function initGSS(): void {
   if (changetype<usize>(t_candidateHeadsBuffer) == 0) {
     t_candidateHeadsBuffer = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
   }
+  if (changetype<usize>(t_pausedHeads) == 0) {
+    t_pausedHeads = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
+  }
   activeHeadsCount = 0;
   nextHeadsCount = 0;
   candidateHeadsCount = 0;
+  pausedHeadsCount = 0;
+}
+
+export function resetPausedHeads(): void {
+  pausedHeadsCount = 0;
 }
 
 /**
@@ -69,6 +80,8 @@ export function pushCandidateHead(headPtr: u32): boolean {
   return true;
 }
 
+export const MAX_COST_DIFFERENCE: i32 = 7000;
+
 /**
  * Evaluates whether an existing version in the frontier is decisively superior to candidate.
  * Implements Tree-sitter's (deltaCost) * (1 + progress) > MAX_COST_DIFFERENCE pruning.
@@ -77,16 +90,41 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
   for (let i: u32 = 0; i < count; i++) {
     let existing = changetype<ParseHead>(frontier[i]);
     if (existing == candidate) continue;
-    // 1. Healthy head dominates an in-error candidate if at or ahead in the stream
+
+    // 1. Healthy head dominates an in-error candidate ONLY if existing has strictly lower error cost
+    // and is at or ahead in the stream (Tree-sitter parser.c:252-257).
+    // If existing.errorCost >= candidate.errorCost, the candidate's repair is cheaper and must survive.
     if (!existing.inErrorState && candidate.inErrorState) {
-      if (existing.pos >= candidate.pos) return true;
+      if (existing.errorCost < candidate.errorCost && existing.pos >= candidate.pos) {
+        return true;
+      }
     }
+
+    // 1b. Active head dominates paused head if equal or lower cost
+    if (!existing.isPaused && candidate.isPaused) {
+      if (existing.errorCost <= candidate.errorCost && existing.pos >= candidate.pos) {
+        return true;
+      }
+    }
+
     // 2. Both in error: Tree-sitter relative cost comparison
+    // (candidate.cost - existing.cost) * (1 + existing.node_count) > MAX_COST_DIFFERENCE (7000)
     if (candidate.inErrorState && existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.pos > candidate.pos ? (existing.pos - candidate.pos) : 0);
-        if (costDiff * progress > 2000) {
+        let progress = 1 + (existing.successfulShifts as i32);
+        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+          return true;
+        }
+      }
+    }
+
+    // 3. Both healthy: relative error cost pruning
+    if (!candidate.inErrorState && !existing.inErrorState) {
+      if (existing.errorCost < candidate.errorCost) {
+        let costDiff = candidate.errorCost - existing.errorCost;
+        let progress = 1 + (existing.successfulShifts as i32);
+        if (costDiff * progress > MAX_COST_DIFFERENCE) {
           return true;
         }
       }
@@ -228,6 +266,9 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
   if (!newHead.inErrorState) {
     existingHead.inErrorState = false;
   }
+  if (existingHead.astNode != 0) {
+    setNodeFlags(existingHead.astNode, getNodeFlags(existingHead.astNode) | FLAG_FRAGILE);
+  }
 }
 
 /**
@@ -289,10 +330,16 @@ export class ParseHead {
 
   /** Pointer to the active open ERROR container node (if any). */
   errorNode: u32;
+
+  /** True if this head is temporarily paused waiting for parallel heads to advance. */
+  isPaused: bool;
+
+  /** The lookahead token that caused this head to pause. */
+  pausedLookahead: i32;
 }
 
 /**
- * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (80 bytes).
+ * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (88 bytes).
  */
 export function allocParseHead(
   state: i32,
@@ -313,8 +360,10 @@ export function allocParseHead(
   summaryCount: u32 = 0,
   nodeCount: u32 = 0,
   errorNode: u32 = 0,
+  isPaused: bool = false,
+  pausedLookahead: i32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(80);
+  let ptr = allocGen0(88);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -334,6 +383,8 @@ export function allocParseHead(
   h.summaryCount = summaryCount;
   h.nodeCount = nodeCount;
   h.errorNode = errorNode;
+  h.isPaused = isPaused;
+  h.pausedLookahead = pausedLookahead;
   return h;
 }
 

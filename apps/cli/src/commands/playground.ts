@@ -1197,26 +1197,37 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         if (msg.error) reject(msg.error);
                         else resolve(msg.result);
                     } else if (msg.method === 'textDocument/publishDiagnostics') {
-                        const markers = msg.params.diagnostics.map(d => {
+                        const currentModel = this.editor.getModel() || this.model;
+                        if (!currentModel) return;
+                        if (msg.params.version !== undefined && currentModel.getVersionId() !== msg.params.version) {
+                            return;
+                        }
+
+                        const lineCount = currentModel.getLineCount();
+                        const markers = (msg.params.diagnostics || []).map(d => {
                             let startLine = d.range ? d.range.start.line + 1 : 1;
                             let startCol = d.range ? d.range.start.character + 1 : 1;
                             let endLine = d.range ? d.range.end.line + 1 : startLine;
                             let endCol = d.range ? d.range.end.character + 1 : startCol;
 
-                            const currentModel = this.editor.getModel() || this.model;
+                            startLine = Math.min(Math.max(1, startLine), lineCount);
+                            endLine = Math.min(Math.max(startLine, endLine), lineCount);
+
+                            const maxStartCol = currentModel.getLineMaxColumn(startLine);
+                            const maxEndCol = currentModel.getLineMaxColumn(endLine);
+
                             if (startLine === endLine && startCol === endCol) {
-                                if (currentModel) {
-                                    const maxCol = currentModel.getLineMaxColumn(startLine);
-                                    if (startCol >= maxCol) {
-                                        startCol = Math.max(1, maxCol - 1);
-                                        endCol = maxCol;
-                                    } else {
-                                        endCol = startCol + 1;
-                                    }
+                                if (startCol >= maxStartCol) {
+                                    startCol = Math.max(1, maxStartCol - 1);
+                                    endCol = maxStartCol;
                                 } else {
-                                    endCol = startCol + 1;
+                                    endCol = Math.min(maxStartCol, startCol + 1);
                                 }
+                            } else {
+                                startCol = Math.min(Math.max(1, startCol), maxStartCol);
+                                endCol = Math.min(Math.max(startCol, endCol), maxEndCol);
                             }
+
                             return {
                                 severity: d.severity === 1 ? monaco.MarkerSeverity.Error 
                                         : d.severity === 2 ? monaco.MarkerSeverity.Warning
@@ -1231,13 +1242,9 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                                 source: d.source
                             };
                         });
-                        const currentModel = this.editor.getModel() || this.model;
                         monaco.editor.setModelMarkers(currentModel, 'dsl-lsp', markers);
                         window['__latestDiagnostics'] = msg.params.diagnostics || [];
                         window.dispatchEvent(new Event('diagnosticsUpdated'));
-                        if (window['__semanticTokensEmitter']) {
-                            window['__semanticTokensEmitter'].fire();
-                        }
                     } else if (msg.type === 'statusUpdate') {
                         document.getElementById('status').innerText = msg.message;
                     } else if (msg.type === 'worker_log') {
@@ -2829,16 +2836,15 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, flags, children) {
     }
 }
 
-// Each entry is one Monaco event's changes array — must be processed sequentially
+// Each entry is one Monaco event's changes array with version — must be processed sequentially
 // because changes from different events use different document coordinate spaces.
 let pendingEventGroups = [];
 let isParsing = false;
 let parseDebounceTimer = null;
 
-function triggerDiagnostics(changes = null) {
+function triggerDiagnostics(changes = null, version = undefined) {
     if (changes && changes.length > 0) {
-        // Push as a single event group to preserve coordinate-space boundaries
-        pendingEventGroups.push(changes);
+        pendingEventGroups.push({ changes, version });
     }
     
     if (parseDebounceTimer) clearTimeout(parseDebounceTimer);
@@ -2846,17 +2852,15 @@ function triggerDiagnostics(changes = null) {
         if (!isParsing && pendingEventGroups.length > 0) {
             runDiagnosticsNow();
         }
-    }, 40);
+    }, 50);
 }
 
 async function runDiagnosticsNow() {
     if (!lspFacade || pendingEventGroups.length === 0) return;
     
     isParsing = true;
-    // Drain all currently queued event groups
-    const eventGroups = pendingEventGroups.splice(0, pendingEventGroups.length);
-    console.log("[LSP Worker] runDiagnosticsNow START: " + eventGroups.length + " event group(s), currentTextLength=" + currentTextLength);
-    
+    let latestProcessedVersion = undefined;
+
     try {
         const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
         patchOffset = 0;
@@ -2865,75 +2869,83 @@ async function runDiagnosticsNow() {
         let lastUpdatedLineStarts = null;
         let hadAnyEdit = false;
 
-        for (let gIdx = 0; gIdx < eventGroups.length; gIdx++) {
-            const group = eventGroups[gIdx];
-            const lineStarts = lspFacade.getLineStarts();
+        while (pendingEventGroups.length > 0) {
+            const eventGroups = pendingEventGroups.splice(0, pendingEventGroups.length);
 
-            let groupEdits = [];
-            let isGroupFullReplacement = false;
-            let groupFullText = null;
+            for (let gIdx = 0; gIdx < eventGroups.length; gIdx++) {
+                const groupEntry = eventGroups[gIdx];
+                const group = groupEntry.changes || groupEntry;
+                if (groupEntry.version !== undefined) {
+                    latestProcessedVersion = groupEntry.version;
+                }
+                const lineStarts = lspFacade.getLineStarts();
 
-            for (const change of group) {
-                if (change.text !== undefined && change.range === undefined && change.rangeOffset === undefined) {
-                    isGroupFullReplacement = true;
-                    isFullResetNeeded = true;
-                    groupFullText = change.text;
-                    groupEdits = [];
-                } else if (!isGroupFullReplacement) {
-                    let rangeOffset = change.rangeOffset;
-                    let rangeLength = change.rangeLength;
-                    if (rangeOffset === undefined && change.range) {
-                        const startLine = change.range.startLineNumber !== undefined ? change.range.startLineNumber - 1 : change.range.start.line;
-                        const startCol = change.range.startColumn !== undefined ? change.range.startColumn - 1 : change.range.start.character;
-                        const endLine = change.range.endLineNumber !== undefined ? change.range.endLineNumber - 1 : change.range.end.line;
-                        const endCol = change.range.endColumn !== undefined ? change.range.endColumn - 1 : change.range.end.character;
-                        
-                        const maxLineIdx = lineStarts && lineStarts.length > 0 ? lineStarts.length - 1 : 0;
-                        const validStartLine = Math.min(Math.max(0, startLine), maxLineIdx);
-                        const validEndLine = Math.min(Math.max(0, endLine), maxLineIdx);
+                let groupEdits = [];
+                let isGroupFullReplacement = false;
+                let groupFullText = null;
 
-                        const startByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validStartLine] : 0) + (startCol * charMult);
-                        const endByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validEndLine] : 0) + (endCol * charMult);
-                        
-                        rangeOffset = Math.floor(startByte / charMult);
-                        rangeLength = Math.max(0, Math.floor((endByte - startByte) / charMult));
+                for (const change of group) {
+                    if (change.text !== undefined && change.range === undefined && change.rangeOffset === undefined) {
+                        isGroupFullReplacement = true;
+                        isFullResetNeeded = true;
+                        groupFullText = change.text;
+                        groupEdits = [];
+                    } else if (!isGroupFullReplacement) {
+                        let rangeOffset = change.rangeOffset;
+                        let rangeLength = change.rangeLength;
+                        if (rangeOffset === undefined && change.range) {
+                            const startLine = change.range.startLineNumber !== undefined ? change.range.startLineNumber - 1 : change.range.start.line;
+                            const startCol = change.range.startColumn !== undefined ? change.range.startColumn - 1 : change.range.start.character;
+                            const endLine = change.range.endLineNumber !== undefined ? change.range.endLineNumber - 1 : change.range.end.line;
+                            const endCol = change.range.endColumn !== undefined ? change.range.endColumn - 1 : change.range.end.character;
+                            
+                            const maxLineIdx = lineStarts && lineStarts.length > 0 ? lineStarts.length - 1 : 0;
+                            const validStartLine = Math.min(Math.max(0, startLine), maxLineIdx);
+                            const validEndLine = Math.min(Math.max(0, endLine), maxLineIdx);
+
+                            const startByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validStartLine] : 0) + (startCol * charMult);
+                            const endByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validEndLine] : 0) + (endCol * charMult);
+                            
+                            rangeOffset = Math.floor(startByte / charMult);
+                            rangeLength = Math.max(0, Math.floor((endByte - startByte) / charMult));
+                        }
+                        if (rangeOffset !== undefined) {
+                            groupEdits.push({
+                                rangeOffset: rangeOffset,
+                                rangeLength: rangeLength || 0,
+                                text: change.text || ""
+                            });
+                        }
                     }
-                    if (rangeOffset !== undefined) {
-                        groupEdits.push({
-                            rangeOffset: rangeOffset,
-                            rangeLength: rangeLength || 0,
-                            text: change.text || ""
-                        });
-                    }
                 }
-            }
 
-            if (isGroupFullReplacement && groupFullText !== null) {
-                const oldLen = currentTextLength;
-                currentTextLength = groupFullText.length;
-                lspFacade.lastAstRoot = 0;
-                globalAstRoot = lspFacade.parseIncremental(groupFullText, 0, oldLen, groupFullText.length, latestUri);
-                hadAnyEdit = true;
-            } else if (groupEdits.length > 0) {
-                let newTotalLen = currentTextLength;
-                for (const edit of groupEdits) {
-                    newTotalLen = newTotalLen - edit.rangeLength + edit.text.length;
+                if (isGroupFullReplacement && groupFullText !== null) {
+                    const oldLen = currentTextLength;
+                    currentTextLength = groupFullText.length;
+                    lspFacade.lastAstRoot = 0;
+                    globalAstRoot = lspFacade.parseIncremental(groupFullText, 0, oldLen, groupFullText.length, latestUri);
+                    hadAnyEdit = true;
+                } else if (groupEdits.length > 0) {
+                    let newTotalLen = currentTextLength;
+                    for (const edit of groupEdits) {
+                        newTotalLen = newTotalLen - edit.rangeLength + edit.text.length;
+                    }
+                    currentTextLength = newTotalLen;
+                    if (groupEdits.length === 1) {
+                        const edit = groupEdits[0];
+                        globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen, latestUri);
+                    } else {
+                        groupEdits.sort((a, b) => b.rangeOffset - a.rangeOffset);
+                        globalAstRoot = lspFacade.parseIncrementalBatch(groupEdits, newTotalLen, latestUri);
+                    }
+                    hadAnyEdit = true;
                 }
-                currentTextLength = newTotalLen;
-                if (groupEdits.length === 1) {
-                    const edit = groupEdits[0];
-                    globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen, latestUri);
-                } else {
-                    groupEdits.sort((a, b) => b.rangeOffset - a.rangeOffset);
-                    globalAstRoot = lspFacade.parseIncrementalBatch(groupEdits, newTotalLen, latestUri);
-                }
-                hadAnyEdit = true;
             }
         }
+
         lastUpdatedLineStarts = lspFacade.getLineStarts();
 
         if (!hadAnyEdit) {
-            console.log("[LSP Worker] No edits applied in runDiagnosticsNow");
             return;
         }
 
@@ -2947,7 +2959,6 @@ async function runDiagnosticsNow() {
             startCharOffset: d.startCharOffset,
             endCharOffset: d.endCharOffset
         }));
-        console.log("[LSP Worker] getDiagnostics returned " + lastDiags.length + " diagnostic(s)");
         
         let patchBufToTransfer = patchBuffer.slice(0, patchOffset * 4);
         patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
@@ -2970,13 +2981,12 @@ async function runDiagnosticsNow() {
             charMult: charMult
         };
         
-        console.log("[LSP Worker] Posting astPatchBinary: rootId=" + globalAstRoot + ", patchBytes=" + patchBufToTransfer.byteLength + ", isFullReset=" + isFullResetNeeded);
         const transferables = lineStartsBuf ? [patchBufToTransfer, lineStartsBuf] : [patchBufToTransfer];
         self.postMessage(patchMsg, transferables);
         self.postMessage({
             jsonrpc: '2.0',
             method: 'textDocument/publishDiagnostics',
-            params: { uri: latestUri, diagnostics: lastDiags }
+            params: { uri: latestUri, version: latestProcessedVersion, diagnostics: lastDiags }
         });
     } catch(err) {
         console.error("[LSP Worker] ERROR in runDiagnosticsNow:", err);
@@ -2988,7 +2998,7 @@ async function runDiagnosticsNow() {
                 if (!isParsing && pendingEventGroups.length > 0) {
                     runDiagnosticsNow();
                 }
-            }, 20);
+            }, 50);
         }
     }
 }
@@ -3172,11 +3182,11 @@ self.onmessage = async (e) => {
             } else {
                 if (lspFacade.resetParser) lspFacade.resetParser();
                 currentTextLength = 0;
-                triggerDiagnostics([{ text: fullText }]);
+                triggerDiagnostics([{ text: fullText }], params.textDocument?.version);
             }
         } else {
             console.log("[LSP Worker] textDocument/didChange: uri=" + uri + ", contentChanges count=" + (params.contentChanges ? params.contentChanges.length : 0));
-            triggerDiagnostics(params.contentChanges);
+            triggerDiagnostics(params.contentChanges, params.textDocument?.version);
         }
     } else if (e.data.method === 'textDocument/didClose') {
         const uri = e.data.params?.textDocument?.uri;
@@ -3335,8 +3345,9 @@ self.onmessage = async (e) => {
                     const nextLineByte = (pos.line + 1 < lineStarts.length) ? lineStarts[pos.line + 1] : (currentTextLength * charMult);
                     const lineByteLen = Math.max(0, nextLineByte - lineStartByte);
                     const decoder = isUtf16 ? new TextDecoder('utf-16le') : new TextDecoder('utf-8');
-                    const rawBytes = new Uint8Array(lspFacade.wasmMemory.buffer, inputBuf + lineStartByte, lineByteLen);
-                    lineText = decoder.decode(rawBytes).replace(/\\r?\\n$/, '');
+                    const copyBytes = new Uint8Array(lineByteLen);
+                    copyBytes.set(new Uint8Array(lspFacade.wasmMemory.buffer, inputBuf + lineStartByte, lineByteLen));
+                    lineText = decoder.decode(copyBytes).replace(/\\r?\\n$/, '');
                 }
             }
             const textBeforeCursor = lineText.slice(0, pos.character);

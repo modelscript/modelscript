@@ -782,9 +782,14 @@ export const FLAG_HAS_ERROR: u16 = 128;
 export const FLAG_IS_INSERTED: u16 = 256;
 export const FLAG_IS_SHARED: u16 = 512;
 export const FLAG_IS_SYNTHETIC: u16 = 1024;
+export const FLAG_FRAGILE: u16 = 4096;
 
 export function getNodeFlags(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).flags;
+}
+
+export function isNodeFragile(ptr: u32): boolean {
+  return (changetype<ASTNode>(ptr).flags & FLAG_FRAGILE) != 0;
 }
 
 export function setNodeFlags(ptr: u32, flags: u16): void {
