@@ -10,7 +10,6 @@ import { QueryEngine, VerificationRunner } from "@modelscript/runtime";
 import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { simulateArena } from "@modelscript/simulate";
 import { parseStepReferences, STEP_SCHEMA } from "@modelscript/step";
-import { createSysML2LSPBridge } from "@modelscript/sysml2/factory";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
@@ -682,7 +681,7 @@ export class ValidationService {
           this.workspaceManager.globalSysML2QueryEngine = createSysML2QueryEngine(unifiedIndex) as any;
         }
         const engine = this.workspaceManager.globalSysML2QueryEngine;
-        const bridge = createSysML2LSPBridge(unifiedIndex, engine, undefined, text, textDocument.uri);
+        const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
         this.documentLSPBridges.set(textDocument.uri, bridge as any);
 
         // Collect parse errors from the tree

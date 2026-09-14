@@ -58,5 +58,15 @@
     "@types/node": "^25.3.2",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
+  },
+  "nx": {
+    "targets": {
+      "build": {
+        "dependsOn": [
+          "@modelscript/dsl:build",
+          "@modelscript/runtime:build"
+        ]
+      }
+    }
   }
 }

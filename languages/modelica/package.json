@@ -140,6 +140,7 @@
     "test:msl": "npx tsx tests/msl-comparison-runner.ts"
   },
   "dependencies": {
+    "@modelscript/cad": "*",
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
@@ -155,7 +156,9 @@
           "@modelscript/dsl:build",
           "@modelscript/runtime:build",
           "@modelscript/diagram:build",
-          "@modelscript/csv:build"
+          "@modelscript/csv:build",
+          "@modelscript/simulate:build",
+          "@modelscript/cad:build"
         ]
       }
     }

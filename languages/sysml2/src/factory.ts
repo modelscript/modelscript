@@ -7,7 +7,6 @@
 
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
 import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
-import { LSPBridge, PositionIndex } from "@modelscript/lsp/bridge";
 import { QueryEngine, WorkspaceIndex, type VerificationResult } from "@modelscript/runtime";
 import { sysml2Language } from "./language.js";
 
@@ -47,19 +46,6 @@ export function createSysML2QueryEngine(index: any, tree?: any, cacheStore?: any
 }
 
 /**
- * Creates an LSPBridge for a specific SysML2 document.
- */
-export function createSysML2LSPBridge(index: any, engine: any, arg3: any, arg4?: any, arg5?: any): LSPBridge {
-  if (arg5 !== undefined) {
-    return new LSPBridge(index, engine, new PositionIndex(arg4), arg5);
-  }
-  if (arg4 !== undefined) {
-    return new LSPBridge(index, engine, new PositionIndex(arg3), arg4);
-  }
-  return new LSPBridge(index, engine, new PositionIndex(""), "");
-}
-
-/**
  * Builds X6-compatible diagram data for a SysML2 document.
  * Uses the generic polyglot diagram builder with SysML2's graphics config.
  *
@@ -95,7 +81,7 @@ export function emitVerificationDiagnostics(
   results: VerificationResult[],
   db: any,
   documentUri: string,
-  positions: PositionIndex,
+  positions: { offsetToPosition(offset: number): { line: number; character: number } },
 ): any[] {
   const diagnostics = [];
 
