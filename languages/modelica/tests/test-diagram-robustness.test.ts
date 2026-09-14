@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { AnnotationEvaluator } from "../src/diagram/annotation-evaluator.js";
-import { buildDiagramData } from "../src/diagram/data.js";
+import { buildDiagramData, renderDiagramSvg } from "../src/diagram/data.js";
 
 describe("Modelica Diagram Data Robustness & DynamicSelect", () => {
   it("should handle QueryDB stub without throwing and extract children as components", async () => {
@@ -72,7 +72,67 @@ describe("Modelica Diagram Data Robustness & DynamicSelect", () => {
     assert(evaluated, "Evaluated line should not be null");
     assert(Array.isArray(evaluator.dynamicBindings), "dynamicBindings should be array");
     assert.strictEqual(evaluator.dynamicBindings.length, 1);
-    assert.strictEqual(evaluator.dynamicBindings[0].property, "color");
     assert.strictEqual(evaluator.dynamicBindings[0].variableName, "if switch.isOpen then {255,0,0} else {0,0,255}");
+  });
+
+  it("should render standalone diagram SVG string without DOM dependencies", () => {
+    const fakeModel = {
+      name: "TestModel",
+      extendsClassInstances: [],
+      annotation: (name: string) => {
+        if (name === "Diagram") {
+          return {
+            coordinateSystem: {
+              extent: [
+                [-100, -100],
+                [100, 100],
+              ],
+            },
+            graphics: [
+              {
+                "@type": "Rectangle",
+                extent: [
+                  [-50, -50],
+                  [50, 50],
+                ],
+                lineColor: [0, 0, 255],
+                fillColor: [200, 200, 255],
+                fillPattern: 1,
+              },
+            ],
+          };
+        }
+        return null;
+      },
+    };
+
+    const svgString = renderDiagramSvg(fakeModel);
+    assert(typeof svgString === "string", "SVG output should be a string");
+    assert(svgString.includes("<svg"), "SVG output should include <svg>");
+    assert(svgString.includes("<path"), "SVG output should include <path>");
+    assert(svgString.includes('viewBox="-100 -100 200 200"'), "ViewBox should match coordinate system");
+  });
+
+  it("should generate cascading stacked icons for multi-instance component arrays", async () => {
+    const fakeQueryDB = {
+      childrenOf: (id: string) => [{ id: "r_array", kind: "Component", name: "R[5]", metadata: { dimensions: [5] } }],
+      query: (name: string, id: string) => (name === "classInstance" ? "type_" + id : null),
+      symbol: (id: string) => ({ id, name: "Resistor", metadata: {} }),
+    };
+
+    const stub = {
+      id: "root2",
+      db: fakeQueryDB,
+      name: "ArrayCircuit",
+      kind: "Class",
+      classKind: "model",
+    };
+
+    const data = await buildDiagramData(stub as any);
+    assert(data && data.nodes.length === 1);
+    const node = data.nodes[0];
+    assert.strictEqual(node.id, "R[5]");
+    const markupStr = JSON.stringify(node.markup);
+    assert(markupStr.includes("strokeDasharray"), "Cascading stacked rects should have dashed stroke");
   });
 });

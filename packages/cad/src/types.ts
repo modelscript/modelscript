@@ -43,6 +43,7 @@ export enum SolidKind {
   Union = "union",
   Subtract = "subtract",
   Intersect = "intersect",
+  TaggedPatch = "tagged_patch",
 }
 
 // ── Primitive option bags ────────────────────────────────────────────────
@@ -142,8 +143,37 @@ export interface BooleanSolid {
   readonly right: Solid;
 }
 
+export type BoundaryPatchType =
+  | "fixed_support"
+  | "mechanical_flange"
+  | "fluid_inlet"
+  | "fluid_outlet"
+  | "aerodynamic_surface"
+  | "thermal_interface";
+
+export interface BoundaryPatchTag {
+  readonly portName: string;
+  readonly portType: BoundaryPatchType;
+  readonly normal?: Vec3;
+  readonly surfaceArea?: number;
+}
+
+export interface TaggedPatchSolid {
+  readonly kind: SolidKind.TaggedPatch;
+  readonly name: string;
+  readonly child: Solid;
+  readonly tag: BoundaryPatchTag;
+}
+
 /** A node in the constructive solid geometry tree. */
-export type Solid = BoxSolid | CylinderSolid | SphereSolid | TorusSolid | TransformSolid | BooleanSolid;
+export type Solid =
+  | BoxSolid
+  | CylinderSolid
+  | SphereSolid
+  | TorusSolid
+  | TransformSolid
+  | BooleanSolid
+  | TaggedPatchSolid;
 
 // ── Assembly ─────────────────────────────────────────────────────────────
 

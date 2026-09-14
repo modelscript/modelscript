@@ -187,6 +187,48 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       };
     }
 
+    // Multi-instance array cascading stacked icons (e.g. Resistor R[5])
+    const isArrayComponent =
+      (component.dimensions && component.dimensions.length > 0) ||
+      (Array.isArray(component.arraySubscripts) && component.arraySubscripts.length > 0) ||
+      /\[\s*\d+\s*\]$/.test(component.name ?? "");
+    if (isArrayComponent) {
+      componentMarkup = {
+        tagName: "g",
+        children: [
+          {
+            tagName: "rect",
+            attrs: {
+              x: 4,
+              y: -4,
+              width: absWidth,
+              height: absHeight,
+              fill: "none",
+              stroke: "#94a3b8",
+              strokeWidth: 1,
+              strokeDasharray: "2 2",
+              rx: 2,
+            },
+          },
+          {
+            tagName: "rect",
+            attrs: {
+              x: 8,
+              y: -8,
+              width: absWidth,
+              height: absHeight,
+              fill: "none",
+              stroke: "#94a3b8",
+              strokeWidth: 1,
+              strokeDasharray: "2 2",
+              rx: 2,
+            },
+          },
+          componentMarkup,
+        ],
+      };
+    }
+
     // Build ports
     const ports: DiagramPort[] = [];
     const tpr0 = performance.now();
@@ -926,7 +968,26 @@ function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICoordinat
 
 function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[]) {
   if (!shape.attrs) shape.attrs = {};
-  const pattern = (filledShape.fillPattern ?? "None").toLowerCase();
+  const rawPattern = filledShape.fillPattern;
+  let pattern = "none";
+  if (typeof rawPattern === "string") {
+    pattern = rawPattern.toLowerCase();
+  } else if (typeof rawPattern === "number") {
+    const enumMap = [
+      "none",
+      "solid",
+      "horizontal",
+      "vertical",
+      "cross",
+      "forward",
+      "backward",
+      "crossdiag",
+      "horizontalcylinder",
+      "verticalcylinder",
+      "sphere",
+    ];
+    pattern = enumMap[rawPattern] ?? "none";
+  }
   let fillValue;
 
   switch (pattern) {
@@ -987,7 +1048,14 @@ function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): v
 
   const strokeColor = convertColor(color, "rgb(0,0,0)");
   const strokeWidth = (thickness ?? 0.25) * 2;
-  const linePattern = (pattern ?? "Solid").toLowerCase();
+  const rawLinePattern = pattern;
+  let linePattern = "solid";
+  if (typeof rawLinePattern === "string") {
+    linePattern = rawLinePattern.toLowerCase();
+  } else if (typeof rawLinePattern === "number") {
+    const enumMap = ["none", "solid", "dash", "dot", "dashdot", "dashdotdot"];
+    linePattern = enumMap[rawLinePattern] ?? "solid";
+  }
 
   let strokeDasharray = "none";
   switch (linePattern) {
@@ -1428,4 +1496,14 @@ export function buildComponentProperties(
     docRevisions,
     iconSvg,
   };
+}
+
+/**
+ * Renders the Diagram view of a Modelica class as a pure DOM-free SVG string.
+ * Safe for headless LSP workers, CLI tools, and servers.
+ */
+export function renderDiagramSvg(classInstance: ModelicaClassInstance): string {
+  const bg = renderDiagramX6(classInstance);
+  if (!bg) return "";
+  return x6MarkupToSvg(bg);
 }

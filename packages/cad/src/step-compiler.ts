@@ -297,6 +297,10 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       const right = flattenSolid(ctx, solid.right, parentMatrix);
       return [...left, ...right];
     }
+
+    case SolidKind.TaggedPatch: {
+      return flattenSolid(ctx, solid.child, parentMatrix);
+    }
   }
 }
 

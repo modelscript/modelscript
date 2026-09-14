@@ -7,14 +7,18 @@
  */
 
 import type {
+  BoundaryPatchType,
   BoxOptions,
   BoxSolid,
   CylinderOptions,
   CylinderSolid,
+  Solid,
   SphereOptions,
   SphereSolid,
+  TaggedPatchSolid,
   TorusOptions,
   TorusSolid,
+  Vec3,
 } from "./types.js";
 import { SolidKind } from "./types.js";
 
@@ -100,5 +104,40 @@ export function torus(opts: TorusOptions): TorusSolid {
     minor: opts.minor,
     majorSegments: opts.majorSegments ?? 24,
     minorSegments: opts.minorSegments ?? 8,
+  });
+}
+
+/**
+ * Attach a semantic physical boundary patch / connector port to a solid geometry.
+ *
+ * @example
+ * ```ts
+ * const motorFlange = tagPatch(cylinder({ radius: 1.5, height: 2 }), {
+ *   portName: "motor_flange",
+ *   portType: "mechanical_flange",
+ *   normal: [0, 1, 0]
+ * });
+ * ```
+ */
+export function tagPatch(
+  child: Solid,
+  tag: {
+    portName: string;
+    portType: BoundaryPatchType;
+    normal?: Vec3;
+    surfaceArea?: number;
+    name?: string;
+  },
+): TaggedPatchSolid {
+  return Object.freeze({
+    kind: SolidKind.TaggedPatch,
+    name: tag.name ?? autoName(`Port_${tag.portName}`),
+    child,
+    tag: {
+      portName: tag.portName,
+      portType: tag.portType,
+      normal: tag.normal,
+      surfaceArea: tag.surfaceArea,
+    },
   });
 }

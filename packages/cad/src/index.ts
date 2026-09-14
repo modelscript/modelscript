@@ -6,6 +6,8 @@
 export type {
   Assembly,
   BooleanSolid,
+  BoundaryPatchTag,
+  BoundaryPatchType,
   BoxOptions,
   BoxSolid,
   CylinderOptions,
@@ -17,6 +19,7 @@ export type {
   Solid,
   SphereOptions,
   SphereSolid,
+  TaggedPatchSolid,
   TorusOptions,
   TorusSolid,
   TransformSolid,
@@ -26,7 +29,7 @@ export type {
 export { SolidKind } from "./types.js";
 
 // Primitives
-export { box, cylinder, resetNameCounter, sphere, torus } from "./primitives.js";
+export { box, cylinder, resetNameCounter, sphere, tagPatch, torus } from "./primitives.js";
 
 // Transforms
 export {
@@ -53,6 +56,9 @@ export { compileAssemblyToStep, compileToStep } from "./step-compiler.js";
 
 // CSG OpenCascade Worker
 export { CSGWorker, type CSGExecutionGraph, type CSGNode } from "./worker.js";
+
+// Manifold CSG Worker
+export { ManifoldWorker, type ManifoldSurfaceMesh } from "./manifold-worker.js";
 
 // Parameter Inversion & ROM Load Pipeline
 export {

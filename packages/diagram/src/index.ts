@@ -151,7 +151,13 @@ export function initGraph(isDark: boolean): Graph {
     // Parent-child relationships are strictly defined by semantic children via addChild().
     embedding: { enabled: false },
     interacting: (cellView) => {
-      if (cellView.cell.id === "__diagram_background__" || cellView.cell.id.startsWith("__seq_stem_")) return false;
+      if (
+        cellView.cell.id === "__diagram_background__" ||
+        cellView.cell.id.startsWith("__seq_stem_") ||
+        cellView.cell.id.startsWith("solder_dot_")
+      ) {
+        return false;
+      }
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
@@ -193,7 +199,10 @@ export function initGraph(isDark: boolean): Graph {
       modifiers: ["ctrl", "meta", "shift"],
       multipleSelectionModifiers: ["ctrl", "meta", "shift"],
       pointerEvents: "none",
-      filter: (cell) => cell.id !== "__diagram_background__" && !cell.id.startsWith("__seq_stem_"),
+      filter: (cell) =>
+        cell.id !== "__diagram_background__" &&
+        !cell.id.startsWith("__seq_stem_") &&
+        !cell.id.startsWith("solder_dot_"),
     }),
   );
 
@@ -203,6 +212,7 @@ export function initGraph(isDark: boolean): Graph {
   g.on("selection:changed", ({ added, removed }: { added: Cell[]; removed: Cell[] }) => {
     added.forEach((cell: Cell) => {
       if (cell.isEdge()) {
+        cell.removeTools();
         cell.addTools([
           {
             name: "vertices",
@@ -1070,15 +1080,26 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   const isFirstRender = existingCells.length === 0;
 
   if (!isFirstRender) {
+    const isEphemeral = (id: string) =>
+      id === "__diagram_background__" ||
+      id.startsWith("solder_dot_") ||
+      id.startsWith("__seq_stem_") ||
+      id === "placement-ghost";
+
     const existingNodeIds = new Set<string>();
     const existingEdgeIds = new Set<string>();
     for (const cell of existingCells) {
+      if (isEphemeral(cell.id)) continue;
       if (cell.isNode()) existingNodeIds.add(cell.id);
       else if (cell.isEdge()) existingEdgeIds.add(cell.id);
     }
 
-    const newNodeIds = new Set(nodes.map((n: { id: string }) => n.id));
-    const newEdgeIds = new Set(edges.map((e: { id: string }) => e.id));
+    const newNodeIds = new Set(
+      nodes.filter((n: { id: string }) => !isEphemeral(n.id)).map((n: { id: string }) => n.id),
+    );
+    const newEdgeIds = new Set(
+      edges.filter((e: { id: string }) => !isEphemeral(e.id)).map((e: { id: string }) => e.id),
+    );
 
     // Check if topology changed (different node/edge sets)
     const topologyChanged =
@@ -1126,6 +1147,12 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
 
           if (edgeData.vertices) {
             cell.setVertices(edgeData.vertices);
+          }
+          if (edgeData.source && typeof edgeData.source === "object") {
+            cell.setSource(edgeData.source as any);
+          }
+          if (edgeData.target && typeof edgeData.target === "object") {
+            cell.setTarget(edgeData.target as any);
           }
         }
       });

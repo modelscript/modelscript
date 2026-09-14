@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./gpu-buffers.js";
+export * from "./live-cosim-orchestrator.js";
 export * from "./simulate-arena.js";
 export * from "./simulation.js";
 export * from "./solver-options.js";

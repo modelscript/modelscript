@@ -9,11 +9,15 @@ import {
   computeSysML2ParameterEdit,
   createEmptyLayout,
   generateUniqueName,
+  parseLayout,
   removeElements,
+  serializeLayout,
   updateConnectionVertices,
   updateElementPositions,
 } from "@modelscript/sysml2/diagram";
 import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
+import * as fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Connection } from "vscode-languageserver";
 import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "../diagramApi.js";
 import { DocumentManager } from "./DocumentManager.js";
@@ -140,8 +144,33 @@ export class DiagramService {
 
       const sysml2Backend = new SysML2DiagramBackend({
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
-        getLayout: (uri) => this.sysml2Layouts.get(uri),
-        setLayout: (uri, layout) => this.sysml2Layouts.set(uri, layout),
+        getLayout: (uri) => {
+          let layout = this.sysml2Layouts.get(uri);
+          if (!layout && typeof uri === "string" && uri.startsWith("file://")) {
+            try {
+              const layoutPath = fileURLToPath(`${uri}.layout`);
+              if (fs.existsSync(layoutPath)) {
+                const content = fs.readFileSync(layoutPath, "utf-8");
+                layout = parseLayout(content);
+                if (layout) this.sysml2Layouts.set(uri, layout);
+              }
+            } catch {
+              // ignore
+            }
+          }
+          return layout;
+        },
+        setLayout: (uri, layout) => {
+          this.sysml2Layouts.set(uri, layout);
+          if (typeof uri === "string" && uri.startsWith("file://") && layout) {
+            try {
+              const layoutPath = fileURLToPath(`${uri}.layout`);
+              fs.writeFileSync(layoutPath, serializeLayout(layout), "utf-8");
+            } catch {
+              // ignore
+            }
+          }
+        },
         createEmptyLayout,
         updateElementPositions,
         updateConnectionVertices,
