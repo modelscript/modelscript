@@ -5,6 +5,7 @@
 import PackageJson from "@npmcli/package-json";
 import path from "node:path";
 import yargs from "yargs/yargs";
+import { Align } from "./commands/align.js";
 import { Build } from "./commands/build.js";
 import { Compile } from "./commands/compile.js";
 import { Cosim } from "./commands/cosim.js";
@@ -21,10 +22,12 @@ import { Logout } from "./commands/logout.js";
 import { Lsp } from "./commands/lsp.js";
 import { MC } from "./commands/mc.js";
 import { Optimize } from "./commands/optimize.js";
+import { Oslc } from "./commands/oslc.js";
 import { Parse } from "./commands/parse.js";
 import { Playground } from "./commands/playground.js";
 import { Publish } from "./commands/publish.js";
 import { Render } from "./commands/render.js";
+import { ReqIf } from "./commands/reqif.js";
 import { Sandbox } from "./commands/sandbox.js";
 import { Simulate } from "./commands/simulate.js";
 import { Surrogate } from "./commands/surrogate.js";
@@ -53,6 +56,10 @@ yargs(process.argv.slice(2))
   .command(Diff)
   .command(Render)
   .command(I18n)
+  // Digital Thread, Enterprise Coexistence & Brownfield Alignment
+  .command(Align)
+  .command(Oslc)
+  .command(ReqIf)
   // Language Engineering & DSL Tooling
   .command(Build)
   .command(Generate)

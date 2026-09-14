@@ -20,7 +20,7 @@ interface CsvMetadata {
   csvValue?: unknown;
 }
 
-export default language({
+export const csvLanguage = language({
   name: "csv",
 
   rules: {
@@ -143,3 +143,5 @@ export default language({
     ],
   },
 });
+
+export default csvLanguage;

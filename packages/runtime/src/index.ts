@@ -6,9 +6,12 @@
  * structural analysis, numerical integrators, and symbolic solvers.
  */
 
+export * from "./brownfield_alignment.js";
 export * from "./config_client.js";
+export * from "./ctrf_reporter.js";
 export * from "./diff.js";
 export * from "./indexeddb_snapshot.js";
+export * from "./oslc_gateway.js";
 export * from "./pipeline.js";
 export * from "./polyglot-transformer.js";
 export * from "./provenance.js";
@@ -17,6 +20,7 @@ export * from "./runtime.js";
 export * from "./solvers_bridge.js";
 export * from "./thread_hypergraph.js";
 export * from "./thread_serializer.js";
+export * from "./type_registry.js";
 export * from "./vcycle_verifier.js";
 export * from "./wasm_bdf.js";
 export * from "./wasm_blt.js";
@@ -48,6 +52,10 @@ export * from "./wasm_tape.js";
 export {
   VerificationRunner,
   VerifyOp,
+  computeIntegral,
+  computeOvershoot,
+  computeSettlingTime,
+  computeSteadyState,
   parseComparisonOp,
   verifyTrajectoryDirect,
   type ComparisonOp,

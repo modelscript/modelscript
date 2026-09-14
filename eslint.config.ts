@@ -79,6 +79,8 @@ export default defineConfig([
             "apps/cli/tests/test-playground-worker-syntax.test.ts",
             "apps/cli/jest.config.ts",
             "languages/ssp/tests/*.ts",
+            "languages/step/tests/*.ts",
+            "languages/modelica/src/multibody-generator.d.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

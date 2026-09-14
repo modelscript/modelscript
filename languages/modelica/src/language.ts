@@ -1001,7 +1001,27 @@ export const modelicaLanguage = language({
   extras: () => [/\s+/],
 
   polyglot: {
-    languages: ["sysml2", "owl2"],
+    languages: ["sysml2", "owl2", "csv"],
+    typeMaps: {
+      sysml2: {
+        Real: "ISQ::Real",
+        Integer: "KerML::Integer",
+        Boolean: "KerML::Boolean",
+        String: "KerML::String",
+      },
+      owl2: {
+        Real: "xsd:double",
+        Integer: "xsd:integer",
+        Boolean: "xsd:boolean",
+        String: "xsd:string",
+      },
+      csv: {
+        Real: "number",
+        Integer: "number",
+        Boolean: "boolean",
+        String: "string",
+      },
+    },
     rules: [
       tggRule({
         name: "ModelicaModelToSysmlBlock",
@@ -1032,6 +1052,12 @@ export const modelicaLanguage = language({
         source: ($, v) => $.ClassDefinition({ name: v("className") }),
         target: ($, v) => $.ClassDeclaration({ iri: v("iri") }),
         where: (v) => [tggFormatUri(v("className"), "mo:", v("iri"))],
+      }),
+      tggRule({
+        name: "ModelicaVariableToCsvChannel",
+        source: ($, v) => $.ComponentClause({ name: v("varName") }),
+        target: ($, v) => $.CsvColumnHeader({ headerName: v("varName") }),
+        where: (v) => [tggEq(v("varName"), v("varName"))],
       }),
     ],
   },

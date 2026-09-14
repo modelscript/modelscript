@@ -112,8 +112,9 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
   let count: u32 = 0;
   let curr: ParseHead | null = startHead;
   let totalBytes: u32 = 0;
+  let maxHops: u32 = MAX_SUMMARY_DEPTH * 2;
 
-  while (curr != null && curr != endHead) {
+  while (curr != null && curr != endHead && maxHops-- > 0) {
     let node = curr.astNode;
     if (node != 0) {
       if (count < (MAX_CHILD_NODES as u32)) {
@@ -122,7 +123,22 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
       }
       totalBytes += getNodePadding(node) + getNodeByteLength(node);
     }
-    curr = curr.prev;
+    // If an alternative edge directly reaches endHead, take it
+    let edgePtr = curr.firstEdge;
+    let foundEdgeTarget: ParseHead | null = null;
+    while (edgePtr != 0) {
+      let edge = changetype<GssEdge>(edgePtr);
+      if (edge.targetHead == endHead) {
+        foundEdgeTarget = edge.targetHead;
+        break;
+      }
+      edgePtr = edge.nextEdge;
+    }
+    if (foundEdgeTarget != null) {
+      curr = foundEdgeTarget;
+    } else {
+      curr = curr.prev;
+    }
   }
 
   let pad: u32 = 0;
@@ -273,28 +289,6 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
 
         let targetNode = errNode;
         let parentHead: ParseHead | null = anc;
-        if (anc.astNode != 0) {
-          let aFlags = getNodeFlags(anc.astNode);
-          let aType = getNodeType(anc.astNode);
-          let isList = (aFlags & FLAG_IS_LIST) != 0 || ((prod_is_list.length as u32) > (aType as u32) && prod_is_list[aType] == 1);
-          if (isList) {
-            let fc = getNodeFirstChild(anc.astNode);
-            if (fc == 0) {
-              setNodePadding(errNode, 0);
-              setFirstChild(anc.astNode, errNode);
-            } else {
-              let curC = fc;
-              while (getNodeNextSibling(curC) != 0) {
-                curC = getNodeNextSibling(curC);
-              }
-              setNextSibling(curC, errNode);
-            }
-            setNodeFlags(anc.astNode, aFlags | FLAG_HAS_ERROR);
-            fixNodeLength(anc.astNode);
-            targetNode = anc.astNode;
-            parentHead = anc.prev;
-          }
-        }
 
         let errHead = allocParseHead(
           ancState,
@@ -369,10 +363,11 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let nlPenalty: i32 = hasNl ? PENALTY_DELETE_NEWLINE_CROSS : 0;
 
   let unconfirmedPenalty: i32 = head.successfulShifts < 2 ? 60 : 0;
+  let parentHead: ParseHead | null = head.errorNode != 0 ? head.prev : head;
   let skippedHead = allocParseHead(
     head.state,
     tNode,
-    head,
+    parentHead,
     newPos,
     head.scannerState,
     head.errorCost + ERROR_COST_PER_SKIPPED_TREE + unconfirmedPenalty + nlPenalty + (tLen as i32) * ERROR_COST_PER_SKIPPED_CHAR,

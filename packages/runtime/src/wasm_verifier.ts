@@ -8,6 +8,7 @@
  */
 
 import type { QueryDB, SymbolEntry } from "./runtime.js";
+import { DigitalThreadHypergraph, ThreadDomain } from "./thread_hypergraph.js";
 
 export interface SimulationResult {
   t: number[];
@@ -31,6 +32,12 @@ export interface VerificationResult {
   violationTime?: number;
   /** Name of the LHS operand (e.g., "motor.T", "circuit.C.v"). */
   lhsName?: string;
+  /** Temporal metric evaluated (e.g., "max", "min", "settlingTime", "overshoot", "steadyState", "integral", "pointwise"). */
+  metricName?: "max" | "min" | "settlingTime" | "overshoot" | "steadyState" | "integral" | "pointwise";
+  /** Computed scalar value of the temporal metric. */
+  metricValue?: number;
+  /** Blast radius: number of impacted downstream artifacts in the digital thread on verification failure. */
+  blastRadius?: number;
 }
 
 export type ComparisonOp = "<" | "<=" | "==" | ">=" | ">" | "!=";
@@ -69,6 +76,73 @@ export function parseComparisonOp(opStr: string): VerifyOp {
     default:
       return VerifyOp.LTE;
   }
+}
+
+/**
+ * Computes the settling time of a signal trajectory x(t).
+ * Settling time is the earliest time t_s such that for all t >= t_s,
+ * |x(t) - x_final| <= band * |x_final| (or band if x_final is 0).
+ */
+export function computeSettlingTime(t: number[], x: number[], band: number = 0.02): number {
+  if (t.length === 0 || x.length === 0) return 0;
+  const n = x.length;
+  const finalVal = x[n - 1] ?? 0;
+  const tolerance = Math.max(Math.abs(finalVal) * band, band);
+
+  let lastOutOfBandIndex = -1;
+  for (let i = 0; i < n; i++) {
+    if (Math.abs((x[i] ?? 0) - finalVal) > tolerance) {
+      lastOutOfBandIndex = i;
+    }
+  }
+
+  if (lastOutOfBandIndex === -1) {
+    return t[0] ?? 0;
+  }
+  if (lastOutOfBandIndex >= n - 1) {
+    return t[n - 1] ?? 0;
+  }
+  return t[lastOutOfBandIndex + 1] ?? t[n - 1] ?? 0;
+}
+
+/**
+ * Computes percentage overshoot of signal trajectory relative to target/steady-state value.
+ */
+export function computeOvershoot(x: number[], targetVal?: number): number {
+  if (x.length === 0) return 0;
+  const finalVal = targetVal !== undefined ? targetVal : (x[x.length - 1] ?? 0);
+  const maxVal = Math.max(...x);
+  if (finalVal === 0) {
+    return maxVal;
+  }
+  const diff = maxVal - finalVal;
+  if (diff <= 0) return 0;
+  return (diff / Math.abs(finalVal)) * 100;
+}
+
+/**
+ * Computes the steady-state value of a signal (mean of the final windowFrac of simulation).
+ */
+export function computeSteadyState(x: number[], windowFrac = 0.1): number {
+  if (x.length === 0) return 0;
+  const windowCount = Math.max(1, Math.floor(x.length * windowFrac));
+  const slice = x.slice(x.length - windowCount);
+  const sum = slice.reduce((acc, val) => acc + val, 0);
+  return sum / slice.length;
+}
+
+/**
+ * Computes trapezoidal numerical integration of signal x(t).
+ */
+export function computeIntegral(t: number[], x: number[]): number {
+  if (t.length < 2 || x.length < 2) return 0;
+  let sum = 0;
+  for (let i = 0; i < t.length - 1; i++) {
+    const dt = (t[i + 1] ?? 0) - (t[i] ?? 0);
+    const avgX = ((x[i] ?? 0) + (x[i + 1] ?? 0)) * 0.5;
+    sum += avgX * dt;
+  }
+  return sum;
 }
 
 /**
@@ -394,15 +468,98 @@ export class VerificationRunner {
     requirementId: number,
     simResult: SimulationResult,
   ): VerificationResult {
+    const cst = constraint.id ? (this.db.cstNode(constraint.id) as unknown) : null;
+    const comp = cst ? this.extractComparison(cst) : null;
+
+    if (comp) {
+      const metricMatch = comp.lhs.match(/^(max|min|peak|settlingTime|overshoot|steadyState|integral)\s*\((.+)\)$/);
+      if (metricMatch) {
+        const rawMetricName = metricMatch[1]!;
+        const innerVar = metricMatch[2]!.trim();
+        const metricName: "max" | "min" | "settlingTime" | "overshoot" | "steadyState" | "integral" =
+          rawMetricName === "peak" ? "max" : (rawMetricName as any);
+
+        const xVals: number[] = [];
+        for (let i = 0; i < simResult.t.length; i++) {
+          const val = this.resolveOperand(innerVar, constraint, simResult, i);
+          xVals.push(val ?? 0);
+        }
+
+        const rhsVal = this.resolveOperand(comp.rhs, constraint, simResult, simResult.t.length - 1) ?? 0;
+
+        let computedMetric = 0;
+        switch (metricName) {
+          case "max":
+            computedMetric = Math.max(...xVals);
+            break;
+          case "min":
+            computedMetric = Math.min(...xVals);
+            break;
+          case "settlingTime":
+            computedMetric = computeSettlingTime(simResult.t, xVals);
+            break;
+          case "overshoot":
+            computedMetric = computeOvershoot(xVals);
+            break;
+          case "steadyState":
+            computedMetric = computeSteadyState(xVals);
+            break;
+          case "integral":
+            computedMetric = computeIntegral(simResult.t, xVals);
+            break;
+        }
+
+        let passed = false;
+        switch (comp.op) {
+          case "<=":
+            passed = computedMetric <= rhsVal + 1e-6;
+            break;
+          case ">=":
+            passed = computedMetric >= rhsVal - 1e-6;
+            break;
+          case "<":
+            passed = computedMetric < rhsVal;
+            break;
+          case ">":
+            passed = computedMetric > rhsVal;
+            break;
+          case "==":
+            passed = Math.abs(computedMetric - rhsVal) <= 1e-6;
+            break;
+          case "!=":
+            passed = Math.abs(computedMetric - rhsVal) > 1e-6;
+            break;
+          default:
+            passed = true;
+            break;
+        }
+
+        let message: string | undefined;
+        if (!passed) {
+          message = `Requirement violated: ${comp.lhs} was ${computedMetric.toFixed(2)} (limit: ${comp.op} ${rhsVal.toFixed(2)})`;
+        }
+
+        return {
+          requirementId,
+          constraintId: constraint.id,
+          isSatisfied: passed,
+          timeSeriesResult: simResult.t.map(() => passed),
+          message,
+          peakValue: Math.max(...xVals),
+          limitValue: rhsVal,
+          lhsName: comp.lhs,
+          metricName,
+          metricValue: computedMetric,
+        };
+      }
+    }
+
     let allMet = true;
     const timeSeriesResult: boolean[] = [];
 
     let peakLhs = -Infinity;
     let limitRhs: number | undefined;
     let firstViolationTime: number | undefined;
-
-    const cst = constraint.id ? (this.db.cstNode(constraint.id) as unknown) : null;
-    const comp = cst ? this.extractComparison(cst) : null;
 
     for (let i = 0; i < simResult.t.length; i++) {
       const res = this.evaluateConstraintAtTime(constraint, simResult, i);
@@ -443,13 +600,18 @@ export class VerificationRunner {
       limitValue: limitRhs,
       violationTime: firstViolationTime,
       lhsName: lhsName ?? undefined,
+      metricName: "pointwise",
     };
   }
 
   /**
    * Run a full verification suite against a VerificationCase/AnalysisCase symbol.
    */
-  public verifyCase(verifyCaseId: number, simResult: SimulationResult): VerificationResult[] {
+  public verifyCase(
+    verifyCaseId: number,
+    simResult: SimulationResult,
+    hypergraph?: DigitalThreadHypergraph,
+  ): VerificationResult[] {
     const results: VerificationResult[] = [];
     const db = this.db;
 
@@ -490,6 +652,26 @@ export class VerificationRunner {
 
       for (const constraint of reqConstraints) {
         results.push(this.evaluateConstraintOverTime(constraint, reqTarget.id, simResult));
+      }
+    }
+
+    if (hypergraph) {
+      for (const res of results) {
+        const reqId = res.requirementId;
+        let slot = hypergraph.findSlotByDomainNode(ThreadDomain.Requirements, reqId);
+        if (slot === undefined) {
+          slot = hypergraph.createThread(reqId);
+          hypergraph.bindDomainNode(slot, ThreadDomain.Requirements, reqId);
+        }
+
+        if (res.isSatisfied) {
+          hypergraph.clearConflict(slot);
+          hypergraph.clearStale(slot);
+        } else {
+          hypergraph.markConflict(slot);
+          const blast = hypergraph.computeBlastRadius(ThreadDomain.Requirements, reqId);
+          res.blastRadius = blast.impactedNodes.length;
+        }
       }
     }
 

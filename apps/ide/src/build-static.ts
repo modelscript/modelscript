@@ -49,16 +49,19 @@ if (!existsSync(join(extDestDir, "package.nls.json"))) {
   writeFileSync(join(extDestDir, "package.nls.json"), "{}");
 }
 
-// Ensure tree-sitter-modelica.wasm is explicitly present and copied
-const modelicaWasmSrc = resolve(__dirname, "..", "..", "..", "languages", "modelica", "tree-sitter-modelica.wasm");
-const modelicaWasmDest = join(extDestDir, "server", "dist", "tree-sitter-modelica.wasm");
-if (!existsSync(modelicaWasmSrc)) {
-  console.error("FATAL: tree-sitter-modelica.wasm is missing from languages/modelica/");
+// Ensure Modelica parser wasm is explicitly present and copied
+const modelicaWasmSrc = [
+  resolve(__dirname, "..", "..", "..", "languages", "modelica", "dist", "parser.wasm"),
+  resolve(__dirname, "..", "..", "..", "languages", "modelica", "tree-sitter-modelica.wasm"),
+].find(existsSync);
+if (!modelicaWasmSrc) {
+  console.error("FATAL: parser.wasm is missing from languages/modelica/dist/");
   process.exit(1);
 }
+const modelicaWasmDest = join(extDestDir, "server", "dist", "tree-sitter-modelica.wasm");
 mkdirSync(join(extDestDir, "server", "dist"), { recursive: true });
 cpSync(modelicaWasmSrc, modelicaWasmDest);
-console.log(`  Copied tree-sitter-modelica.wasm to ${modelicaWasmDest}`);
+console.log(`  Copied ${modelicaWasmSrc} to ${modelicaWasmDest}`);
 
 // Ensure tree-sitter-sysml2.wasm is also copied
 const sysml2WasmSrc = [

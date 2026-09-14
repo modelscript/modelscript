@@ -151,10 +151,11 @@ export function pushActiveHead(headPtr: u32): boolean {
         if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
           t_activeHeads[i] = headPtr;
         }
-      } else {
+        return true;
+      } else if (existingHead.errorCost == newHead.errorCost) {
         gssMergeHeads(existingHead, newHead);
+        return true;
       }
-      return true;
     }
   }
   t_activeHeads[activeHeadsCount] = headPtr;
@@ -178,10 +179,11 @@ export function pushNextHead(headPtr: u32): boolean {
         if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
           t_nextHeads[i] = headPtr;
         }
-      } else {
+        return true;
+      } else if (existingHead.errorCost == newHead.errorCost) {
         gssMergeHeads(existingHead, newHead);
+        return true;
       }
-      return true;
     }
   }
   t_nextHeads[nextHeadsCount] = headPtr;
@@ -250,18 +252,33 @@ export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNo
  * Merges two parse heads arriving at the same state and position into a unified DAG node.
  */
 export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void {
-  gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
+  // Primary link inversion fix:
+  // If newHead has higher dynamic precedence (or lower errorCost), swap existingHead's primary link
+  // (prev, astNode) with newHead's so the primary link always points to the superior derivation.
+  let swapPrimary = false;
+  if (newHead.errorCost < existingHead.errorCost) {
+    swapPrimary = true;
+  } else if (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec) {
+    swapPrimary = true;
+  }
+
+  if (swapPrimary) {
+    let oldPrev = existingHead.prev;
+    let oldNode = existingHead.astNode;
+    existingHead.prev = newHead.prev;
+    existingHead.astNode = newHead.astNode;
+    existingHead.dynamicPrec = newHead.dynamicPrec;
+    existingHead.errorCost = newHead.errorCost;
+    gssAddPredecessor(existingHead, oldPrev, oldNode);
+  } else {
+    gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
+  }
+
   let curr = newHead.firstEdge;
   while (curr != 0) {
     let edge = changetype<GssEdge>(curr);
     gssAddPredecessor(existingHead, edge.targetHead, edge.astNode);
     curr = edge.nextEdge;
-  }
-  if (newHead.errorCost < existingHead.errorCost) {
-    existingHead.errorCost = newHead.errorCost;
-  }
-  if (newHead.dynamicPrec > existingHead.dynamicPrec) {
-    existingHead.dynamicPrec = newHead.dynamicPrec;
   }
   if (!newHead.inErrorState) {
     existingHead.inErrorState = false;

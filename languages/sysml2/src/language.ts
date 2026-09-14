@@ -4668,7 +4668,7 @@ export const sysml2Language = language({
   },
 
   polyglot: {
-    languages: ["modelica", "owl2"],
+    languages: ["modelica", "owl2", "step"],
     typeMaps: {
       modelica: {
         "KerML::Real": "Real",
@@ -4676,6 +4676,20 @@ export const sysml2Language = language({
         "KerML::Integer": "Integer",
         "KerML::Boolean": "Boolean",
         "KerML::String": "String",
+      },
+      step: {
+        "KerML::Real": "REAL",
+        "ISQ::Real": "REAL",
+        "KerML::Integer": "INTEGER",
+        "KerML::Boolean": "BOOLEAN",
+        "KerML::String": "STRING",
+      },
+      owl2: {
+        "KerML::Real": "xsd:double",
+        "ISQ::Real": "xsd:double",
+        "KerML::Integer": "xsd:integer",
+        "KerML::Boolean": "xsd:boolean",
+        "KerML::String": "xsd:string",
       },
     },
     rules: [
@@ -4742,6 +4756,54 @@ export const sysml2Language = language({
         source: ($, v) => $.PartDefinition({ declaredName: v("className") }),
         target: ($, v) => $.ClassDeclaration({ iri: v("iri") }),
         where: (v) => [tggFormatUri(v("className"), "sysml:", v("iri"))],
+      }),
+      tggRule({
+        name: "SysML2ToOWL2SubClassOf",
+        source: ($, v) => $.Specialization({ specificType: v("subClass"), generalType: v("superClass") }),
+        target: ($, v) => $.SubClassOfAxiom({ subClassIri: v("subIri"), superClassIri: v("superIri") }),
+        where: (v) => [
+          tggFormatUri(v("subClass"), "sysml:", v("subIri")),
+          tggFormatUri(v("superClass"), "sysml:", v("superIri")),
+        ],
+      }),
+      tggRule({
+        name: "SysML2ToOWL2ObjectProperty",
+        source: ($, v) => $.PortDefinition({ declaredName: v("propName") }),
+        target: ($, v) => $.ObjectPropertyDeclaration({ iri: v("iri") }),
+        where: (v) => [tggFormatUri(v("propName"), "sysml:", v("iri"))],
+      }),
+      tggRule({
+        name: "SysML2ToOWL2DataProperty",
+        source: ($, v) => $.AttributeDefinition({ declaredName: v("attrName") }),
+        target: ($, v) => $.DataPropertyDeclaration({ iri: v("iri") }),
+        where: (v) => [tggFormatUri(v("attrName"), "sysml:", v("iri"))],
+      }),
+      tggRule({
+        name: "SysML2ToOWL2Individual",
+        source: ($, v) => $.PartUsage({ declaredName: v("indivName"), declaredType: v("className") }),
+        target: ($, v) => $.NamedIndividualDeclaration({ iri: v("indivIri"), classIri: v("classIri") }),
+        where: (v) => [
+          tggFormatUri(v("indivName"), "sysml:", v("indivIri")),
+          tggFormatUri(v("className"), "sysml:", v("classIri")),
+        ],
+      }),
+      tggRule({
+        name: "SysML2ToStepProduct",
+        source: ($, v) => $.PartDefinition({ declaredName: v("partName") }),
+        target: ($, v) => $.ProductDefinition({ name: v("partName"), description: v("desc") }),
+        where: (v) => [tggEq(v("partName"), v("partName")), tggDefaultVal(v("desc"), "SysML Part")],
+      }),
+      tggRule({
+        name: "SysML2ToStepMeasure",
+        source: ($, v) => $.AttributeUsage({ declaredName: v("attrName"), declaredType: v("attrType") }),
+        target: ($, v) => $.PropertyDefinition({ propertyName: v("attrName"), valueType: v("valType") }),
+        where: (v) => [tggEq(v("attrName"), v("attrName")), tggTypeMap(v("attrType"), v("valType"), "step")],
+      }),
+      tggRule({
+        name: "SysML2ToStepPlacement",
+        source: ($, v) => $.PortUsage({ declaredName: v("portName") }),
+        target: ($, v) => $.Axis2Placement3D({ placementName: v("portName") }),
+        where: (v) => [tggEq(v("portName"), v("portName"))],
       }),
     ],
   },

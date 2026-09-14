@@ -5,18 +5,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Context } from "@modelscript/modelica/context";
-import Modelica from "@modelscript/modelica/parser";
-import Parser from "tree-sitter";
+import { createWasmParser } from "@modelscript/modelica/parser";
+import { createRequire } from "node:module";
 import { PolyglotMcpHost } from "./polyglot-server.js";
 import { registerResources } from "./resources.js";
 import { registerTools } from "./tools.js";
 import type { ServerContext } from "./types.js";
 
-// Initialize tree-sitter parser
-const parser = new Parser();
-parser.setLanguage(Modelica);
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Initialize WASM GLR parser
+const require = createRequire(import.meta.url);
+const modelicaWasmPath = require.resolve("@modelscript/modelica/dist/parser.wasm");
+const { parser } = await createWasmParser(modelicaWasmPath);
 Context.registerParser(".mo", parser as any);
 
 // Shared mutable context — populated by modelica_load tool

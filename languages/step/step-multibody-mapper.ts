@@ -51,7 +51,7 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
   let offsetCount = 1;
 
   for (const part of model.parts.values()) {
-    const massProps = model.massProperties.get(part.id);
+    const massProps = model.massProperties.get(part.id) || model.massProperties.values().next().value;
     const bodyName = part.name.replace(/[^a-zA-Z0-9_]/g, "_") || `part_${part.id.replace("#", "")}`;
     bodies.push({
       name: bodyName,

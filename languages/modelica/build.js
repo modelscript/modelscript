@@ -60,8 +60,6 @@ execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable thre
 });
 console.log("[modelica] WebAssembly parser built successfully -> " + outWasm);
 
-// Copy parser.wasm to tree-sitter-modelica.wasm in the package root for backwards-compat if referenced
-fs.copyFileSync(outWasm, path.join(__dirname, "tree-sitter-modelica.wasm"));
 
 // Cleanup as-gen after WASM compilation
 // fs.rmSync(asGenDir, { recursive: true, force: true });

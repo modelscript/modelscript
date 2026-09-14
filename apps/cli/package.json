@@ -46,6 +46,7 @@
     "@modelscript/modelica": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
+    "@modelscript/step": "*",
     "@modelscript/sysml2": "*",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",

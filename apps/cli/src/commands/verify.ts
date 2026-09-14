@@ -5,7 +5,13 @@ import { Context } from "@modelscript/modelica/context";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { UnifiedWorkspace, VerificationRunner } from "@modelscript/runtime";
+import {
+  DigitalThreadHypergraph,
+  generateCtrfReport,
+  generateJUnitReport,
+  UnifiedWorkspace,
+  VerificationRunner,
+} from "@modelscript/runtime";
 import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/simulate";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -25,6 +31,9 @@ interface VerifyArgs {
   paths: string[];
   engine: string;
   timing?: boolean;
+  format?: "terminal" | "json" | "ctrf" | "junit";
+  report?: string;
+  updateHypergraph?: boolean;
 }
 
 export const Verify: CommandModule<{}, VerifyArgs> = {
@@ -52,6 +61,21 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       })
       .option("timing", {
         description: "output timing JSON to stderr",
+        type: "boolean",
+        default: false,
+      })
+      .option("format", {
+        description: "output report format: terminal, json, ctrf, or junit",
+        type: "string",
+        choices: ["terminal", "json", "ctrf", "junit"],
+        default: "terminal",
+      })
+      .option("report", {
+        description: "write test report to specified file path",
+        type: "string",
+      })
+      .option("update-hypergraph", {
+        description: "synchronize verification verdicts directly into digital thread hypergraph",
         type: "boolean",
         default: false,
       });
@@ -287,27 +311,62 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     profiler.start("verification");
     const runner = new VerificationRunner(db, topo.variableMap);
-    const vResults = runner.verifyCase(verifyEntry.id, simResult);
+    let hypergraph: DigitalThreadHypergraph | undefined;
+    if (args.updateHypergraph) {
+      hypergraph = new DigitalThreadHypergraph();
+    }
+    const vResults = runner.verifyCase(verifyEntry.id, simResult, hypergraph);
     profiler.end("verification");
-    console.error("DEBUG VRESULTS: ", JSON.stringify(vResults, null, 2));
-
-    // Use the bridge to get formatted LSP-like diagnostics, then print them
-    // Note: emitVerificationDiagnostics requires a position index. Since this is CLI,
-    // we can create a dummy one or mock the LSP behavior.
 
     let hasFailures = false;
     for (const res of vResults) {
       if (!res.isSatisfied) {
         hasFailures = true;
-        let diagMsg = "Requirement Violated";
-        if (res.requirementName && res.message) {
-          diagMsg = `Requirement '${res.requirementName}' violated: ${res.message.replace(/^Requirement violated: /, "")}`;
-        } else if (res.message) {
-          diagMsg = res.message;
+      }
+    }
+
+    // Format output
+    if (args.format === "json") {
+      console.log(JSON.stringify(vResults, null, 2));
+    } else if (args.format === "ctrf") {
+      console.log(JSON.stringify(generateCtrfReport(vResults), null, 2));
+    } else if (args.format === "junit") {
+      console.log(generateJUnitReport(args.name, vResults));
+    } else {
+      // Default: terminal
+      for (const res of vResults) {
+        if (!res.isSatisfied) {
+          let diagMsg = "Requirement Violated";
+          if (res.requirementName && res.message) {
+            diagMsg = `Requirement '${res.requirementName}' violated: ${res.message.replace(/^Requirement violated: /, "")}`;
+          } else if (res.message) {
+            diagMsg = res.message;
+          }
+          if (res.blastRadius !== undefined) {
+            diagMsg += ` [Blast Radius: ${res.blastRadius} downstream nodes]`;
+          }
+          console.error(`[VERIFICATION FAILED] ${diagMsg}`);
+        } else {
+          let passMsg = `Requirement '${res.requirementName || res.requirementId}' satisfied.`;
+          if (res.metricName && res.metricValue !== undefined) {
+            passMsg += ` (${res.metricName} = ${res.metricValue.toFixed(2)})`;
+          }
+          console.log(`[VERIFICATION PASSED] ${passMsg}`);
         }
-        console.error(`[VERIFICATION FAILED] ${diagMsg}`);
-      } else {
-        console.log(`[VERIFICATION PASSED] Requirement '${res.requirementName || res.requirementId}' satisfied.`);
+      }
+    }
+
+    // Save report file if requested
+    if (args.report) {
+      try {
+        if (args.report.endsWith(".xml") || args.format === "junit") {
+          fs.writeFileSync(args.report, generateJUnitReport(args.name, vResults));
+        } else {
+          fs.writeFileSync(args.report, JSON.stringify(generateCtrfReport(vResults), null, 2));
+        }
+        console.log(`Verification report written to: ${args.report}`);
+      } catch (err) {
+        console.error(`Failed to write report to ${args.report}:`, err);
       }
     }
 

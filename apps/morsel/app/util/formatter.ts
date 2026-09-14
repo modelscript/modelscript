@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Node as SyntaxNode, Tree } from "web-tree-sitter";
+import type { SyntaxNode, Tree } from "@modelscript/dsl/utils";
 
 const INDENT_STRING = "  ";
 

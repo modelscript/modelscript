@@ -251,27 +251,45 @@ export function setupMonacoLspAdapter(
 
   // ── Diagnostics ──
   connection.onNotification("textDocument/publishDiagnostics", (params: any) => {
-    const markers: monacoTypes.editor.IMarkerData[] = (params.diagnostics ?? []).map((d: any) => ({
-      message: d.message,
-      severity: lspSeverityToMonaco(d.severity, monaco),
-      startLineNumber: d.range.start.line + 1,
-      startColumn: d.range.start.character + 1,
-      endLineNumber: d.range.end.line + 1,
-      endColumn: d.range.end.character + 1,
-      code: d.code?.toString(),
-      source: d.source,
-    }));
-
-    // Set markers on the matching model
+    // Find matching model
+    let targetModel: monacoTypes.editor.ITextModel | null = null;
     for (const model of monaco.editor.getModels()) {
       const modelUri = model.uri.toString();
       const modelPath = model.uri.path;
       if (modelUri === params.uri || modelPath === params.uri || modelPath === "/" + params.uri) {
-        monaco.editor.setModelMarkers(model, "lsp", markers);
+        targetModel = model;
         break;
       }
     }
 
+    if (!targetModel) return;
+
+    // Document Version Fencing: If the document has moved past the version of these
+    // diagnostics, discard them so markers from slower intermediate parses never
+    // overwrite Monaco's live coordinates.
+    if (params.version !== undefined && targetModel.getVersionId() !== params.version) {
+      return;
+    }
+
+    const lineCount = targetModel.getLineCount();
+    const markers: monacoTypes.editor.IMarkerData[] = (params.diagnostics ?? []).map((d: any) => {
+      const startLine = Math.min(Math.max(1, d.range.start.line + 1), lineCount);
+      const endLine = Math.min(Math.max(1, d.range.end.line + 1), lineCount);
+      const maxStartCol = targetModel!.getLineMaxColumn(startLine);
+      const maxEndCol = targetModel!.getLineMaxColumn(endLine);
+      return {
+        message: d.message,
+        severity: lspSeverityToMonaco(d.severity, monaco),
+        startLineNumber: startLine,
+        startColumn: Math.min(Math.max(1, d.range.start.character + 1), maxStartCol),
+        endLineNumber: endLine,
+        endColumn: Math.min(Math.max(1, d.range.end.character + 1), maxEndCol),
+        code: d.code?.toString(),
+        source: d.source,
+      };
+    });
+
+    monaco.editor.setModelMarkers(targetModel, "lsp", markers);
     callbacks?.onDiagnostics?.(params.uri, markers);
   });
 

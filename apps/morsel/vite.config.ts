@@ -39,24 +39,33 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist/workers",
             },
             {
-              src: "../../node_modules/web-tree-sitter/web-tree-sitter.wasm",
+              src: "../../languages/modelica/dist/parser.wasm",
+              dest: "lsp/server/dist",
+              rename: "tree-sitter-modelica.wasm",
+            },
+            {
+              src: "../../languages/modelica/dist/parser.wasm",
               dest: "lsp/server/dist",
             },
             {
-              src: "../../languages/modelica/tree-sitter-modelica.wasm",
+              src: "../../languages/sysml2/dist/parser.wasm",
               dest: "lsp/server/dist",
+              rename: "tree-sitter-sysml2.wasm",
             },
             {
-              src: "../../languages/sysml2/tree-sitter-sysml2.wasm",
+              src: "../../languages/step/dist/parser.wasm",
               dest: "lsp/server/dist",
+              rename: "tree-sitter-step.wasm",
             },
             {
-              src: "../../languages/step/tree-sitter-step.wasm",
+              src: "../../languages/owl2/dist/parser.wasm",
               dest: "lsp/server/dist",
+              rename: "tree-sitter-owl2.wasm",
             },
             {
-              src: "../../languages/owl2/tree-sitter-owl2.wasm",
+              src: "../../languages/csv/dist/parser.wasm",
               dest: "lsp/server/dist",
+              rename: "tree-sitter-csv.wasm",
             },
             {
               src: "../../packages/runtime/build/release.wasm",
@@ -83,12 +92,6 @@ export default defineConfig(({ isSsrBuild }) => {
     },
     resolve: {
       dedupe: ["react", "react-dom", "react-router", "styled-components", "@primer/react", "three"],
-      alias: {
-        // web-tree-sitter 0.26.x imports "fs/promises" dynamically;
-        // vite-plugin-node-polyfills maps "fs" → empty.js but not
-        // "fs/promises", which Vite resolves as empty.js/promises (ENOTDIR).
-        "fs/promises": "node-stdlib-browser/mock/empty",
-      },
     },
     optimizeDeps: {
       include: [

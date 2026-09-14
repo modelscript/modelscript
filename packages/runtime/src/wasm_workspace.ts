@@ -1,6 +1,7 @@
 import { computeEditRanges, type EditRange } from "./diff.js";
 import { PolyglotTransformer, type PolyglotNode } from "./polyglot-transformer.js";
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
+import { WorkspaceTypeRegistry } from "./type_registry.js";
 import { WasmOntologyStore } from "./wasm_ontology.js";
 
 export interface IWorkspaceIndex {
@@ -798,6 +799,7 @@ export interface DocumentRecord {
 
 export class UnifiedWorkspace implements IWorkspaceIndex {
   public owl2Store: WasmOntologyStore;
+  public typeRegistry = new WorkspaceTypeRegistry();
   private workspaces = new Map<string, any>();
   private queryEngines = new Map<string, any>();
   private configs = new Map<string, any>();
@@ -1121,7 +1123,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   createPolyglotTransformer(language: string): PolyglotTransformer | null {
     const config = this.configs.get(language);
     if (!config?.polyglot) return null;
-    return new PolyglotTransformer(config.polyglot);
+    return new PolyglotTransformer(config.polyglot, this.typeRegistry);
   }
 
   projectPolyglot(sourceLang: string, targetLang: string, node: PolyglotNode): string | null {
@@ -1263,4 +1265,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 }
 
-export { LanguageWorkspaceIndex as WasmWorkspaceIndex, LanguageWorkspaceIndex as WorkspaceIndex };
+/** @deprecated Use `LanguageWorkspaceIndex` instead. */
+export { LanguageWorkspaceIndex as WasmWorkspaceIndex };
+/** @deprecated Use `LanguageWorkspaceIndex` for single-language index or `UnifiedWorkspace` for multi-language workspace. */
+export { LanguageWorkspaceIndex as WorkspaceIndex };

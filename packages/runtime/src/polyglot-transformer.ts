@@ -8,6 +8,7 @@
 import type { PolyglotConfig, TGGDpoRuleOptions, TGGRuleOptions } from "@modelscript/dsl/dsl/language.js";
 import { DigitalThreadHypergraph } from "./thread_hypergraph.js";
 import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
+import { WorkspaceTypeRegistry } from "./type_registry.js";
 
 /**
  * Generic, schema-agnostic node model for polyglot cross-language graph transformation.
@@ -79,17 +80,39 @@ export class PolyglotTransformer {
   private reasonerFacts = new Map<string, { subject: string; object: string }[]>();
   /** Dynamic registry of target language code emitters. */
   private emitters = new Map<string, PolyglotEmitter>();
+  /** Dynamic workspace type mapping registry. */
+  public typeRegistry: WorkspaceTypeRegistry;
 
   /**
    * Initializes a new PolyglotTransformer instance.
    *
    * @param config - Optional configuration declaring TGG rules, type mappings, and reasoner bindings.
+   * @param typeRegistry - Optional custom WorkspaceTypeRegistry instance.
    */
-  constructor(config?: PolyglotConfig) {
+  constructor(config?: PolyglotConfig, typeRegistry?: WorkspaceTypeRegistry) {
+    this.typeRegistry = typeRegistry || new WorkspaceTypeRegistry();
     if (config) {
       this.rules = config.rules || [];
       this.typeMaps = config.typeMaps || {};
+      if (config.typeMaps) {
+        for (const [targetLang, mappings] of Object.entries(config.typeMaps)) {
+          for (const [srcType, tgtType] of Object.entries(mappings)) {
+            this.typeRegistry.registerTypeMapping("", targetLang, srcType, tgtType);
+          }
+        }
+      }
     }
+  }
+
+  /**
+   * Dynamically resolves a type name between domains using static type maps and the workspace type registry.
+   */
+  resolveType(sourceLang: string, targetLang: string, typeName: string, workspace?: any): string {
+    const localTargetMap = this.typeMaps[targetLang.toLowerCase()];
+    if (localTargetMap && localTargetMap[typeName]) {
+      return localTargetMap[typeName];
+    }
+    return this.typeRegistry.resolveTypeMapping(sourceLang, targetLang, typeName, workspace);
   }
 
   /**

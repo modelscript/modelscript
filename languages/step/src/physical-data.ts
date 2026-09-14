@@ -43,9 +43,46 @@ export interface StepKinematicJoint {
   limits?: { lower: number; upper: number };
 }
 
+export type StepToleranceType =
+  | "flatness"
+  | "roundness"
+  | "cylindricity"
+  | "perpendicularity"
+  | "parallelism"
+  | "position"
+  | "surface_profile"
+  | "concentricity"
+  | "runout";
+
+export interface StepGeometricTolerance {
+  id: string; // Entity ID (e.g. #105)
+  name?: string;
+  type: StepToleranceType;
+  magnitude: number; // Tolerance magnitude (e.g. 0.05)
+  datumReferences: string[]; // Ordered datum identifiers (e.g. ["A", "B", "C"])
+  appliedShapeAspect?: string; // Target shape aspect / face reference
+}
+
+export interface StepDatum {
+  id: string; // Entity ID
+  name: string; // Datum label (e.g. "A")
+  featureRef?: string; // Associated feature/shape reference
+}
+
+export interface StepDatumSystem {
+  id: string;
+  name?: string;
+  primaryDatum: string;
+  secondaryDatum?: string;
+  tertiaryDatum?: string;
+}
+
 export interface StepAssemblyModel {
   parts: Map<string, StepPart>;
   edges: StepAssemblyEdge[];
   joints: StepKinematicJoint[];
   massProperties: Map<string, StepMassProperties>; // partId → properties
+  tolerances?: StepGeometricTolerance[];
+  datums?: Map<string, StepDatum>;
+  datumSystems?: StepDatumSystem[];
 }

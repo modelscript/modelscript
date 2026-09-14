@@ -758,7 +758,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     [path.join(repoRoot, "languages/sysml2/dist/parser.wasm"), "server/dist/tree-sitter-sysml2.wasm"],
     [path.join(repoRoot, "languages/step/dist/parser.wasm"), "server/dist/tree-sitter-step.wasm"],
     [path.join(repoRoot, "languages/owl2/dist/parser.wasm"), "server/dist/tree-sitter-owl2.wasm"],
-    [path.join(repoRoot, "languages/csv/tree-sitter-csv.wasm"), "server/dist/tree-sitter-csv.wasm"],
+    [path.join(repoRoot, "languages/csv/dist/parser.wasm"), "server/dist/tree-sitter-csv.wasm"],
     [path.join(repoRoot, "packages/runtime/build/release.wasm"), "server/dist/release.wasm"],
     [path.join(repoRoot, "node_modules/occt-import-js/dist/occt-import-js.wasm"), "server/dist/occt-import-js.wasm"],
     [

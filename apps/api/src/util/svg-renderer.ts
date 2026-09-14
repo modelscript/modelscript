@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Context } from "@modelscript/modelica/context";
-import Modelica from "@modelscript/modelica/parser";
 import { registerWindow } from "@svgdotjs/svg.js";
 import { createSVGWindow } from "svgdom";
-import Parser from "tree-sitter";
 import xmlFormat from "xml-formatter";
 
 import type { ClassMetadata, ComponentMetadata } from "../database.js";
@@ -19,16 +17,20 @@ function ensureSvgWindow(): void {
   svgWindowInitialized = true;
 }
 
-/** Initialize the tree-sitter parser once. */
-let parserRegistered = false;
-function ensureParser(): void {
-  if (parserRegistered) return;
-  const parser = new Parser();
-  parser.setLanguage(Modelica);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Context.registerParser(".mo", parser as any);
-  parserRegistered = true;
+/** Initialize the WASM GLR parser once. */
+let parserPromise: Promise<void> | null = null;
+async function ensureParser(): Promise<void> {
+  if (parserPromise) return parserPromise;
+  parserPromise = (async () => {
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    const modelicaWasmPath = require.resolve("@modelscript/modelica/dist/parser.wasm");
+    const { createWasmParser } = await import("@modelscript/modelica/parser");
+    const { parser } = await createWasmParser(modelicaWasmPath);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Context.registerParser(".mo", parser as any);
+  })();
+  return parserPromise;
 }
 
 export interface SvgResult {
@@ -109,7 +111,7 @@ export async function processLibrary(
   onReady?: (context: Context) => Promise<void>,
 ): Promise<Context> {
   ensureSvgWindow();
-  ensureParser();
+  await ensureParser();
 
   const { renderIcon, renderDiagram } = await import("@modelscript/modelica/diagram");
 
