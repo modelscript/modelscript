@@ -59,6 +59,53 @@ export class WorkspaceManager {
   }
 
   public resolveModelicaClassInstance(uri: string, className?: string): any | null {
+    // 1. Check documentInstances first for rich AST models
+    const docInsts = this.documentInstances.get(uri);
+    if (docInsts && docInsts.length > 0) {
+      if (className) {
+        const found = docInsts.find(
+          (ci: any) =>
+            ci.name === className || ci.compositeName === className || ci.compositeName?.endsWith(`.${className}`),
+        );
+        if (found) return found;
+      } else {
+        return docInsts[docInsts.length - 1];
+      }
+    }
+
+    const buildAdapter = (entry: any, db: any, compositeName: string): any => {
+      const children = db.childrenOf ? (db.childrenOf(entry.id) ?? []) : [];
+      const components: any[] = [];
+      for (const child of children) {
+        if (child.kind === "Component" || child.kind === "Variable") {
+          const childClassId = db.query ? db.query("classInstance", child.id) : null;
+          const childClassEntry = childClassId ? db.symbol(childClassId) : null;
+          components.push({
+            name: child.name,
+            classInstance: childClassEntry ? buildAdapter(childClassEntry, db, childClassEntry.name) : null,
+            annotations: [],
+            declaration: child,
+          });
+        }
+      }
+
+      return {
+        id: entry.id,
+        db,
+        entry,
+        name: entry.name ?? "",
+        kind: entry.kind ?? "Class",
+        classKind: (entry.metadata as any)?.classKind ?? "class",
+        compositeName,
+        description: (entry.metadata as any)?.description ?? null,
+        isClassInstance: true,
+        components,
+        connectEquations: [],
+        extendsClassInstances: [],
+        annotation: (_name: string, _ctx?: any) => null,
+      };
+    };
+
     if (className) {
       const idx = this.unifiedWorkspace.toUnifiedPartial();
       let symbolIds = idx.byName.get(className) || [];
@@ -94,17 +141,7 @@ export class WorkspaceManager {
         if (!engine) engine = this.globalModelicaQueryEngine;
         if (engine) {
           const db = engine.toQueryDB() as any;
-          return {
-            id: entry.id,
-            db,
-            entry,
-            name: entry.name ?? "",
-            kind: entry.kind ?? "Class",
-            classKind: (entry.metadata as any)?.classKind ?? "class",
-            compositeName: className,
-            description: (entry.metadata as any)?.description ?? null,
-            isClassInstance: true,
-          };
+          return buildAdapter(entry, db, className);
         }
       }
       return null;
@@ -119,22 +156,11 @@ export class WorkspaceManager {
         if (!engine) engine = this.globalModelicaQueryEngine;
         if (engine) {
           const db = engine.toQueryDB() as any;
-          return {
-            id: entry.id,
-            db,
-            entry,
-            name: entry.name ?? "",
-            kind: entry.kind ?? "Class",
-            classKind: (entry.metadata as any)?.classKind ?? "class",
-            compositeName: entry.name ?? "",
-            description: (entry.metadata as any)?.description ?? null,
-            isClassInstance: true,
-          };
+          return buildAdapter(entry, db, entry.name ?? "");
         }
       }
     }
 
-    const instances = this.documentInstances.get(uri);
-    return instances && instances.length > 0 ? instances[instances.length - 1] : null;
+    return null;
   }
 }

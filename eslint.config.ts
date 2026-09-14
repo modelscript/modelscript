@@ -80,6 +80,7 @@ export default defineConfig([
             "apps/cli/jest.config.ts",
             "languages/ssp/tests/*.ts",
             "languages/step/tests/*.ts",
+            "languages/sysml2/tests/*.ts",
             "languages/modelica/src/multibody-generator.d.ts",
           ],
         },

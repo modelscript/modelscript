@@ -25,6 +25,7 @@ import * as Spinner from "./spinner.js";
 export interface DiagramRendererOptions {
   container: HTMLElement;
   isDark?: boolean;
+  allowNodeConnection?: boolean;
   onAction?: (action: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void;
   onSelect?: (id: string | null) => void;
   onShowProperties?: (
@@ -157,7 +158,7 @@ export function initGraph(isDark: boolean): Graph {
       allowBlank: false,
       allowMulti: () => true,
       allowLoop: false,
-      allowNode: false,
+      allowNode: currentOptions?.allowNodeConnection ?? true,
       allowEdge: false,
       allowPort: true,
       highlight: true,
@@ -1441,24 +1442,58 @@ export function updateSolderDots(g: Graph) {
     }
   }
 
+  // Spatial hash index for path segments to achieve O(V) junction queries
+  const CELL_SIZE = 40;
+  const grid = new Map<string, { pathId: string; p1: { x: number; y: number }; p2: { x: number; y: number } }[]>();
+
+  for (const path of allPaths) {
+    for (let k = 0; k < path.points.length - 1; k++) {
+      const p1 = path.points[k];
+      const p2 = path.points[k + 1];
+      const minX = Math.floor(Math.min(p1.x, p2.x) / CELL_SIZE);
+      const maxX = Math.floor(Math.max(p1.x, p2.x) / CELL_SIZE);
+      const minY = Math.floor(Math.min(p1.y, p2.y) / CELL_SIZE);
+      const maxY = Math.floor(Math.max(p1.y, p2.y) / CELL_SIZE);
+
+      const segment = { pathId: path.id, p1, p2 };
+      for (let gx = minX; gx <= maxX; gx++) {
+        for (let gy = minY; gy <= maxY; gy++) {
+          const key = `${gx}:${gy}`;
+          let bucket = grid.get(key);
+          if (!bucket) {
+            bucket = [];
+            grid.set(key, bucket);
+          }
+          bucket.push(segment);
+        }
+      }
+    }
+  }
+
   const solderDots: { x: number; y: number; color: string; path1: string; path2: string }[] = [];
 
   for (const candidate of candidateVertices.values()) {
     let isJunction = false;
     let intersectingPathId = "";
-    for (const path of allPaths) {
-      if (path.id === candidate.pathId) continue;
-      for (let k = 0; k < path.points.length - 1; k++) {
-        const p1 = path.points[k];
-        const p2 = path.points[k + 1];
-        if (distToSegmentSquared(candidate.x, candidate.y, p1.x, p1.y, p2.x, p2.y) < 1.0) {
-          isJunction = true;
-          intersectingPathId = path.id;
-          break;
+
+    const gx = Math.floor(candidate.x / CELL_SIZE);
+    const gy = Math.floor(candidate.y / CELL_SIZE);
+
+    outer: for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bucket = grid.get(`${gx + dx}:${gy + dy}`);
+        if (!bucket) continue;
+        for (const seg of bucket) {
+          if (seg.pathId === candidate.pathId) continue;
+          if (distToSegmentSquared(candidate.x, candidate.y, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y) < 1.0) {
+            isJunction = true;
+            intersectingPathId = seg.pathId;
+            break outer;
+          }
         }
       }
-      if (isJunction) break;
     }
+
     if (isJunction) {
       solderDots.push({ ...candidate, path1: candidate.pathId, path2: intersectingPathId });
     }
@@ -1622,14 +1657,27 @@ export function getGraph(): Graph | null {
   return graph;
 }
 
-export function disposeGraph(): void {
-  if (graph) {
-    try {
-      graph.dispose();
-    } catch {
-      // ignore
+/**
+ * Applies a live numerical simulation state vector to graph cells without full re-rendering.
+ * Updates SVG attributes (fill, stroke, rotation, visibility) in-place at 60 FPS.
+ */
+export function applySimulationFrame(stateVector: Record<string, number>): void {
+  if (!graph) return;
+  const nodes = graph.getNodes();
+  for (const node of nodes) {
+    const anims = node.getData()?.animations as { property: string; variableName: string }[] | undefined;
+    if (!anims || anims.length === 0) continue;
+    for (const anim of anims) {
+      const val = stateVector[anim.variableName];
+      if (val === undefined) continue;
+      if (anim.property === "rotation") {
+        node.rotate(val, { absolute: true });
+      } else if (anim.property === "fill" || anim.property === "stroke") {
+        node.attr(`body/${anim.property}`, String(val));
+      } else if (anim.property === "visibility") {
+        node.setVisible(Boolean(val));
+      }
     }
-    graph = null;
   }
 }
 

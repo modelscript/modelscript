@@ -93,10 +93,41 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   let tPlacement = 0;
   let componentCount = 0;
 
+  // Guard classInstance and extract components from Salsa if not already present
+  const components: any[] = classInstance?.components ? [...classInstance.components] : [];
+  if (components.length === 0 && classInstance?.db && classInstance.id !== undefined) {
+    const db = classInstance.db;
+    const children = db.childrenOf ? (db.childrenOf(classInstance.id) ?? []) : [];
+    for (const child of children) {
+      if (child.kind === "Component" || child.kind === "Variable") {
+        const childClassId = db.query ? db.query("classInstance", child.id) : null;
+        const childClassEntry = childClassId ? db.symbol(childClassId) : null;
+        components.push({
+          name: child.name,
+          annotation: () => null,
+          classInstance: childClassEntry
+            ? {
+                id: childClassId,
+                db,
+                entry: childClassEntry,
+                name: childClassEntry.name,
+                annotation: () => null,
+                components: [],
+                extendsClassInstances: [],
+              }
+            : null,
+          annotations: [],
+          declaration: child,
+        });
+      }
+    }
+  }
+
   // Build nodes for each component
-  for (let _ci = 0; _ci < classInstance.components.length; _ci++) {
-    const component = classInstance.components[_ci];
+  for (let _ci = 0; _ci < components.length; _ci++) {
+    const component = components[_ci];
     if (!component.name) continue;
+
     // Yield to the event loop periodically so the LSP worker can process
     // keystrokes and other messages while we build the diagram.
     if (_ci % 5 === 0) await yieldToEventLoop();
@@ -159,7 +190,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     // Build ports
     const ports: DiagramPort[] = [];
     const tpr0 = performance.now();
-    for (const connector of componentClassInstance.components) {
+    for (const connector of componentClassInstance.components ?? []) {
       const connectorCondition = evaluateCondition(connector, component);
       if (connectorCondition === false) continue;
 
@@ -269,7 +300,8 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   const nodeIds = new Set(nodes.map((n) => n.id));
   const allConnectionPaths: ({ points: { x: number; y: number }[] } | null)[] = [];
 
-  for (const connectEquation of classInstance.connectEquations) {
+  const connectEquations = classInstance?.connectEquations ?? [];
+  for (const connectEquation of connectEquations) {
     const c1 = connectEquation.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "");
 
     const c2 = connectEquation.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "");
@@ -278,7 +310,21 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
 
     const line: ILine | null =
       typeof connectEquation.annotation === "function" ? connectEquation.annotation("Line") : null;
-    const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
+    let strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
+    if (!line?.color) {
+      const portName = (c1?.[1] ?? "").toLowerCase();
+      if (portName.includes("pin") || portName === "p" || portName === "n") {
+        strokeColor = "#0000ff"; // Electrical
+      } else if (portName.includes("flange_b") || portName.includes("flange") || portName.includes("rotational")) {
+        strokeColor = "#808080"; // Rotational
+      } else if (portName.includes("translational")) {
+        strokeColor = "#008000"; // Translational
+      } else if (portName.includes("heat") || portName.includes("port_a") || portName.includes("port_b")) {
+        strokeColor = "#ff0000"; // Thermal
+      } else if (portName.includes("fluid") || portName.includes("flow")) {
+        strokeColor = "#008080"; // Fluid
+      }
+    }
     const strokeWidth = (line?.thickness ?? 0.25) * 2;
     const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
 
@@ -335,7 +381,8 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   }
 
   // Coordinate system
-  const diagram: IDiagram | null = classInstance.annotation("Diagram");
+  const diagram: IDiagram | null =
+    typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
   const ext0 = diagram?.coordinateSystem?.extent?.[0] ?? [-100, -100];
   const ext1 = diagram?.coordinateSystem?.extent?.[1] ?? [100, 100];
   const bgWidth = computeWidth(diagram?.coordinateSystem?.extent);
@@ -364,12 +411,13 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   const graphicItems: X6Markup[] = [];
 
   function collectGraphics(ci: ModelicaClassInstance) {
-    for (const extendsClassInstance of ci.extendsClassInstances) {
-      if (extendsClassInstance.classInstance) {
+    const extendsList = ci?.extendsClassInstances ?? [];
+    for (const extendsClassInstance of extendsList) {
+      if (extendsClassInstance?.classInstance) {
         collectGraphics(extendsClassInstance.classInstance);
       }
     }
-    const diagram: IDiagram | null = ci.annotation("Diagram", ci);
+    const diagram: IDiagram | null = typeof ci?.annotation === "function" ? ci.annotation("Diagram", ci) : null;
     if (diagram?.graphics) {
       for (const graphicItem of diagram.graphics) {
         graphicItems.push(renderGraphicItemX6(graphicItem, defs, ci));
@@ -380,7 +428,8 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   collectGraphics(classInstance);
   if (graphicItems.length === 0 && defs.length === 0) return null;
 
-  const diagram: IDiagram | null = classInstance.annotation("Diagram", classInstance);
+  const diagram: IDiagram | null =
+    typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram", classInstance) : null;
   const [x1, y1] = convertPoint(diagram?.coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(diagram?.coordinateSystem?.extent?.[1], [100, 100]);
   const vbX = Math.min(x1, x2);
@@ -486,7 +535,7 @@ export function renderIconX6(
   }
 
   if (ports && group.children) {
-    for (const component of classInstance.components) {
+    for (const component of classInstance?.components ?? []) {
       const condition = evaluateCondition(component, componentInstance);
       if (condition === false) continue;
 
@@ -1323,7 +1372,7 @@ export function buildComponentProperties(
   classInstance: ModelicaClassInstance,
   componentName: string,
 ): ComponentPropertyData | null {
-  const component = classInstance.components.find((c) => c.name === componentName);
+  const component = classInstance?.components?.find((c: any) => c.name === componentName);
   if (!component) return null;
 
   const componentClassInstance = component.classInstance;

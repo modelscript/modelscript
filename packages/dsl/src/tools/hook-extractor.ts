@@ -329,3 +329,45 @@ export function extractI18nConfig(langConfig: any, $?: Record<string, any>): Rec
 
   return configs;
 }
+
+/**
+ * Extracts GraphicsConfig mappings from language definition.
+ */
+export function extractGraphicsConfig(langConfig: any, $?: Record<string, any>): Record<string, any> {
+  const configs: Record<string, any> = {};
+  if (!langConfig) return configs;
+
+  // 1. Check top-level langConfig.graphics or langConfig.visual
+  if (langConfig.graphics && typeof langConfig.graphics === "object") {
+    Object.assign(configs, langConfig.graphics);
+  }
+  if (langConfig.visual?.entities && typeof langConfig.visual.entities === "object") {
+    Object.assign(configs, langConfig.visual.entities);
+  }
+  if (langConfig.visual?.connections && typeof langConfig.visual.connections === "object") {
+    Object.assign(configs, langConfig.visual.connections);
+  }
+
+  if (!langConfig.rules) return configs;
+
+  const proxy = $ ?? createSymbolProxy();
+
+  for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
+    if (typeof ruleFn !== "function") continue;
+    try {
+      const ruleAST = ruleFn(proxy);
+      if (!ruleAST) continue;
+      const t = (ruleAST.type || "").toUpperCase();
+      if (t !== "DEF") continue;
+      const options = ruleAST.options || ruleAST.value;
+      const gfx = options?.graphics ?? options?.visual;
+      if (gfx) {
+        configs[ruleName] = typeof gfx === "function" ? gfx() : gfx;
+      }
+    } catch {
+      // ignore rules that throw on proxy evaluation
+    }
+  }
+
+  return configs;
+}

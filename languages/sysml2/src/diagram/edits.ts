@@ -178,6 +178,43 @@ export function computeSysML2ElementDelete(docText: string, elementNames: string
   return deduplicateAndSort(edits);
 }
 
+// ── Helper: find enclosing block's closing brace ──
+
+function findEnclosingBlockBrace(lines: string[], elementName?: string): number {
+  if (elementName) {
+    let declLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (new RegExp(`\\b${elementName}\\b`).test(lines[i])) {
+        declLine = i;
+        break;
+      }
+    }
+    if (declLine !== -1) {
+      let depth = 0;
+      for (let i = declLine; i < lines.length; i++) {
+        const line = lines[i];
+        for (const ch of line) {
+          if (ch === "{") depth++;
+          else if (ch === "}") {
+            depth--;
+            if (depth < 0) {
+              return i;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: search backwards for the last closing brace
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trim() === "}") {
+      return i;
+    }
+  }
+  return lines.length;
+}
+
 // ── Insert connection ──
 
 /**
@@ -193,16 +230,7 @@ export function computeSysML2ConnectionInsert(docText: string, source: string, t
   }
 
   const lines = docText.split("\n");
-
-  // Find insertion point — before the last `}` of the enclosing body
-  let targetLine = -1;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].trim() === "}") {
-      targetLine = i;
-      break;
-    }
-  }
-  if (targetLine === -1) targetLine = lines.length;
+  const targetLine = findEnclosingBlockBrace(lines, source);
 
   const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
   const indent = braceIndent + INDENT;
@@ -222,17 +250,7 @@ export function computeSysML2ConnectionInsert(docText: string, source: string, t
  */
 export function computeSysML2TransitionInsert(docText: string, source: string, target: string): TextEdit[] {
   const lines = docText.split("\n");
-
-  // Find the enclosing state body — look for the innermost `}` that follows a state definition
-  // containing the source state
-  let targetLine = -1;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].trim() === "}") {
-      targetLine = i;
-      break;
-    }
-  }
-  if (targetLine === -1) targetLine = lines.length;
+  const targetLine = findEnclosingBlockBrace(lines, source);
 
   const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
   const indent = braceIndent + INDENT;
@@ -250,14 +268,8 @@ export function computeSysML2TransitionInsert(docText: string, source: string, t
  */
 export function computeSysML2SuccessionInsert(docText: string, source: string, target: string): TextEdit[] {
   const lines = docText.split("\n");
+  let targetLine = findEnclosingBlockBrace(lines, source);
 
-  let targetLine = -1;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].trim() === "}") {
-      targetLine = i;
-      break;
-    }
-  }
   if (targetLine === -1) targetLine = lines.length;
 
   const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";

@@ -551,18 +551,26 @@ export function computeHeight(extent?: IExtent, defaultValue = 200): number {
 }
 
 export function computeIconPlacement(component: ModelicaComponentInstance): TransformData | null {
-  const placement: IPlacement | null = component.annotation("Placement");
+  const placement: IPlacement | null =
+    typeof component?.annotation === "function" ? component.annotation("Placement") : null;
   if (!placement) return null;
-  const icon = component.classInstance?.annotation("Icon") as IIcon;
+  const icon =
+    typeof component.classInstance?.annotation === "function"
+      ? (component.classInstance.annotation("Icon") as IIcon)
+      : null;
   return computeTransform(placement.transformation, icon?.coordinateSystem);
 }
 
 export function computePortPlacement(component: ModelicaComponentInstance): TransformData | null {
-  const placement: IPlacement | null = component.annotation("Placement");
+  const placement: IPlacement | null =
+    typeof component?.annotation === "function" ? component.annotation("Placement") : null;
   if (!placement) return null;
   const iconTransformation = placement.transformation;
   if (placement.visible === false) return null;
-  const icon = component.classInstance?.annotation("Icon") as IIcon;
+  const icon =
+    typeof component.classInstance?.annotation === "function"
+      ? (component.classInstance.annotation("Icon") as IIcon)
+      : null;
   return computeTransform(iconTransformation, icon?.coordinateSystem);
 }
 

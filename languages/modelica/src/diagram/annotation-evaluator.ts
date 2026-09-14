@@ -300,6 +300,7 @@ export function evaluateCondition(component: any, parentContext?: any): boolean 
 
 export class AnnotationEvaluator {
   private scope: any;
+  public dynamicBindings: { property?: string; staticExpr: any; dynamicExpr: any; variableName?: string }[] = [];
 
   constructor(
     private evalScope?: any | null,
@@ -350,7 +351,7 @@ export class AnnotationEvaluator {
       if (name === "graphics") {
         return this.parseGraphicsArray(expr);
       } else if (expr && "functionReference" in expr) {
-        return this.parseFunctionCall(expr);
+        return this.parseFunctionCall(expr, name);
       }
       return this.toJSON(evaluateCSTExpression(expr, this.scope));
     }
@@ -372,20 +373,31 @@ export class AnnotationEvaluator {
     }
 
     if (expr && "functionReference" in expr) {
-      return this.parseFunctionCall(expr);
+      return this.parseFunctionCall(expr, argName ?? fallbackName);
     }
 
     return this.toJSON(evaluateCSTExpression(expr, this.scope));
   }
 
-  private parseFunctionCall(node: any): any {
+  private parseFunctionCall(node: any, propertyName?: string): any {
     const funcNameParts = node.functionReference?.parts?.map((p: any) => p.identifier?.text ?? p.name ?? p.text ?? p);
     const funcName = funcNameParts ? funcNameParts[funcNameParts.length - 1] : "Unknown";
 
     if (funcName === "DynamicSelect") {
       const posArgs = node.functionCallArguments?.arguments ?? [];
       if (posArgs.length > 0 && posArgs[0]?.expression) {
-        return this.parseValueForExpr(posArgs[0].expression);
+        const staticVal = this.parseValueForExpr(posArgs[0].expression);
+        if (posArgs.length > 1 && posArgs[1]?.expression) {
+          const dynExpr = posArgs[1].expression;
+          const varName = dynExpr.text ?? dynExpr.identifier?.text ?? dynExpr.name ?? "";
+          this.dynamicBindings.push({
+            property: propertyName,
+            staticExpr: staticVal,
+            dynamicExpr: dynExpr,
+            variableName: varName,
+          });
+        }
+        return staticVal;
       }
       return null;
     }

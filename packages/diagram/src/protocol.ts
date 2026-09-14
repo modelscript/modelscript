@@ -88,6 +88,13 @@ export interface DiagramPort {
   markup: X6Markup;
 }
 
+export interface ReactiveAnimationBinding {
+  componentName: string;
+  property: string;
+  variableName: string;
+  transform?: string;
+}
+
 export interface DiagramNode {
   id: string;
   x: number;
@@ -104,6 +111,11 @@ export interface DiagramNode {
   };
   properties?: ComponentPropertyData;
   autoLayout?: boolean;
+  animations?: ReactiveAnimationBinding[];
+  compartments?: {
+    header: string;
+    entries: string[];
+  }[];
 }
 
 export interface DiagramEdge {
@@ -113,6 +125,7 @@ export interface DiagramEdge {
   vertices?: { x: number; y: number }[];
   connector?: string;
   zIndex: number;
+  animations?: ReactiveAnimationBinding[];
   attrs: {
     line: {
       stroke: string;

@@ -6,7 +6,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
-import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
+import { extractGraphicsConfig, extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
 import { QueryEngine, WorkspaceIndex, type VerificationResult } from "@modelscript/runtime";
 import { sysml2Language } from "./language.js";
 
@@ -14,7 +14,7 @@ const indexerHooks = extractIndexerHooks(sysml2Language) ?? (globalThis as any).
 export const queryHooks =
   extractQueryHooksMap(sysml2Language) ?? (globalThis as any).__sysml2QueryHooksFallback ?? new Map();
 const refHooks = extractRefHooks(sysml2Language) ?? (globalThis as any).__sysml2RefHooksFallback ?? [];
-const gfxConfig = (sysml2Language as any).graphicsConfig ?? {};
+export const gfxConfig = extractGraphicsConfig(sysml2Language) ?? {};
 
 // Convert refHooks into indexerHooks so reference nodes get indexed too.
 // The resolver needs reference entries in the index to detect unresolved refs.
