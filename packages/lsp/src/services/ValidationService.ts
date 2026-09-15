@@ -6,6 +6,7 @@ import { DocumentManager } from "./DocumentManager.js";
 import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
+import { lowerCstToAxioms } from "@modelscript/owl2/cst-lowering";
 import { QueryEngine, VerificationRunner } from "@modelscript/runtime";
 import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { simulateArena } from "@modelscript/simulate";
@@ -518,7 +519,10 @@ export class ValidationService {
 
           // Run tableau reasoner check
           try {
+            const axioms = lowerCstToAxioms(tree.rootNode, text);
             const store = this.workspaceManager.unifiedWorkspace.owl2Store;
+            store.setAxioms(textDocument.uri, axioms);
+
             const reasoner = new TableauReasoner();
             await reasoner.init();
             reasoner.loadOntology(store.axioms);

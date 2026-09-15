@@ -9,6 +9,13 @@ import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/dia
 import { extractGraphicsConfig, extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
 import { QueryEngine, WorkspaceIndex, type VerificationResult } from "@modelscript/runtime";
 import { sysml2Language } from "./language.js";
+import {
+  sysml2DefinitionKinds,
+  sysml2StandaloneChildKinds,
+  sysml2StructuralKinds,
+  sysml2UsageKinds,
+  sysml2Views,
+} from "./views.js";
 
 const indexerHooks = extractIndexerHooks(sysml2Language) ?? (globalThis as any).__sysml2IndexerHooksFallback ?? [];
 export const queryHooks =
@@ -67,9 +74,20 @@ export function buildSysML2DiagramData(
     | "Requirement"
     | "Parametric"
     | "Sequence"
-    | "Package" = "All",
+    | "Package"
+    | string = "All",
 ): PolyglotDiagramData {
-  return buildPolyglotDiagram(index, gfxConfig, documentUri, resolver, diagramType);
+  return buildPolyglotDiagram(index, gfxConfig, documentUri, resolver, diagramType, {
+    customProjections: sysml2Views,
+    structuralKinds: sysml2StructuralKinds,
+    standaloneKinds: sysml2StandaloneChildKinds,
+    usageKinds: sysml2UsageKinds,
+    definitionKinds: sysml2DefinitionKinds,
+    inModelDiscovery: {
+      rule: "ViewDefinition",
+      nameField: "name",
+    },
+  });
 }
 
 /**

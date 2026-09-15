@@ -14,6 +14,14 @@
     "./language": {
       "types": "./dist/src/language.d.ts",
       "default": "./dist/src/language.js"
+    },
+    "./factory": {
+      "types": "./dist/src/factory.d.ts",
+      "default": "./dist/src/factory.js"
+    },
+    "./cst-lowering": {
+      "types": "./dist/src/cst-lowering.d.ts",
+      "default": "./dist/src/cst-lowering.js"
     }
   },
   "files": [
@@ -27,6 +35,7 @@
     "clean": "rimraf dist src-gen *.wasm"
   },
   "dependencies": {
-    "@modelscript/dsl": "*"
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
   }
 }

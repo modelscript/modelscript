@@ -1150,117 +1150,106 @@ export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export enum SyntaxKind {
   ERROR = 0,
-  IDENT = 126,
-  INTEGER = 127,
-  FullIRI = 129,
-  StringLiteral = 132,
-  OntologyDocument = 65,
-  PrefixDeclaration = 66,
-  PrefixName = 67,
-  AbbreviatedIRI = 68,
-  IRI = 69,
-  Ontology = 70,
-  ImportDeclaration = 71,
-  Axiom = 72,
-  _Axiom = 72,
-  Declaration = 73,
-  Entity = 74,
-  _Entity = 74,
-  ClassEntity = 75,
-  ObjectPropertyEntity = 76,
-  DataPropertyEntity = 77,
-  NamedIndividualEntity = 78,
-  ClassExpression = 79,
-  _ClassExpression = 79,
-  ObjectIntersectionOf = 80,
-  ObjectUnionOf = 81,
-  ObjectComplementOf = 82,
-  ObjectSomeValuesFrom = 83,
-  ObjectAllValuesFrom = 84,
-  ObjectHasSelf = 85,
-  ObjectHasValue = 86,
-  ObjectOneOf = 87,
-  ObjectMinCardinality = 88,
-  ObjectMaxCardinality = 89,
-  ObjectExactCardinality = 90,
-  DataSomeValuesFrom = 91,
-  DataAllValuesFrom = 92,
-  DataMinCardinality = 93,
-  DataMaxCardinality = 94,
-  DataExactCardinality = 95,
-  DataRange = 96,
-  SubClassOfAxiom = 97,
-  EquivalentClassesAxiom = 98,
-  DisjointClassesAxiom = 99,
-  SubObjectPropertyOfAxiom = 100,
-  SubDataPropertyOfAxiom = 101,
-  InverseObjectPropertiesAxiom = 102,
-  DisjointObjectPropertiesAxiom = 103,
-  ObjectPropertyDomainAxiom = 104,
-  ObjectPropertyRangeAxiom = 105,
-  DataPropertyDomainAxiom = 106,
-  DataPropertyRangeAxiom = 107,
-  FunctionalObjectPropertyAxiom = 108,
-  InverseFunctionalObjectPropertyAxiom = 109,
-  ReflexiveObjectPropertyAxiom = 110,
-  IrreflexiveObjectPropertyAxiom = 111,
-  SymmetricObjectPropertyAxiom = 112,
-  AsymmetricObjectPropertyAxiom = 113,
-  TransitiveObjectPropertyAxiom = 114,
-  FunctionalDataPropertyAxiom = 115,
-  ObjectPropertyAssertionAxiom = 116,
-  DataPropertyAssertionAxiom = 117,
-  NegativeObjectPropertyAssertionAxiom = 118,
-  NegativeDataPropertyAssertionAxiom = 119,
-  ClassAssertionAxiom = 120,
-  SameIndividualAxiom = 121,
-  DifferentIndividualsAxiom = 122,
-  START = 123,
-  _START = 123,
+  EmptyStatement = 99,
+  _EmptyStatement = 99,
+  IDENTIFIER = 138,
+  NUMBER = 139,
+  STRING = 140,
+  UNDEF = 142,
+  SourceFile = 60,
+  Statement = 61,
+  BlockStatement = 62,
+  VariableDeclaration = 63,
+  ModuleDeclaration = 64,
+  FunctionDeclaration = 65,
+  IfStatement = 66,
+  ForStatement = 67,
+  ParameterList = 68,
+  Parameter = 69,
+  ArgumentList = 70,
+  Argument = 71,
+  PrefixSolid = 72,
+  TransformOp = 73,
+  BooleanOp = 74,
+  TagPortOp = 75,
+  ChainedSolidStatement = 76,
+  ChainedSolid = 77,
+  MethodCall = 78,
+  MethodName = 79,
+  PrimarySolid = 80,
+  CubePrimitive = 81,
+  CylinderPrimitive = 82,
+  SpherePrimitive = 83,
+  PolyhedronPrimitive = 84,
+  ModuleInstantiation = 85,
+  Expression = 86,
+  ConditionalExpression = 87,
+  BinaryExpression = 88,
+  UnaryExpression = 89,
+  PostfixExpression = 90,
+  PrimaryExpression = 91,
+  ParenthesizedExpression = 92,
+  VectorLiteral = 93,
+  RangeLiteral = 94,
+  BOOLEAN = 95,
+  START = 96,
+  _START = 96,
   EOF = 1023,
 }
 
 export enum FieldId {
   Name = 1,
   name = 1,
-  Iri = 2,
-  iri = 2,
-  Import = 3,
-  import = 3,
-  Axiom = 4,
-  axiom = 4,
-  Entity = 5,
-  entity = 5,
-  Property = 6,
-  property = 6,
-  Individual = 7,
-  individual = 7,
-  Cardinality = 8,
-  cardinality = 8,
-  Filler = 9,
-  filler = 9,
-  Range = 10,
-  range = 10,
-  SubClass = 11,
-  subClass = 11,
-  SuperClass = 12,
-  superClass = 12,
-  ClassExpr = 13,
-  classExpr = 13,
-  SubProperty = 14,
-  subProperty = 14,
-  SuperProperty = 15,
-  superProperty = 15,
-  InverseProperty = 16,
-  inverseProperty = 16,
-  Domain = 17,
-  domain = 17,
-  Subject = 18,
-  subject = 18,
-  ObjectNode = 19,
-  object = 19,
-  Value = 20,
-  value = 20,
+  Value = 2,
+  value = 2,
+  Parameters = 3,
+  parameters = 3,
+  Body = 4,
+  body = 4,
+  Condition = 5,
+  condition = 5,
+  Consequence = 6,
+  consequence = 6,
+  Alternative = 7,
+  alternative = 7,
+  Var = 8,
+  var = 8,
+  Range = 9,
+  range = 9,
+  Default = 10,
+  default = 10,
+  Operator = 11,
+  operator = 11,
+  Child = 12,
+  child = 12,
+  Args = 13,
+  args = 13,
+  Solid = 14,
+  solid = 14,
+  Receiver = 15,
+  receiver = 15,
+  Method = 16,
+  method = 16,
+  Left = 17,
+  left = 17,
+  Right = 18,
+  right = 18,
+  Operand = 19,
+  operand = 19,
+  Index = 20,
+  index = 20,
+  FunctionNode = 21,
+  function = 21,
+  Arguments = 22,
+  arguments = 22,
+  Expression = 23,
+  expression = 23,
+  Start = 24,
+  start = 24,
+  Step = 25,
+  step = 25,
+  End = 26,
+  end = 26,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1268,686 +1257,465 @@ export declare function normalizeToken(token: string | null | undefined): string
 
 /** Returns the normalized type of a CST node (stripped of quotes). */
 export declare function cstKind(node: SyntaxNode | null | undefined): string;
-export interface OntologyDocumentNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.OntologyDocument;
+export interface SourceFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SourceFile;
 }
-export declare function isOntologyDocument(node: SyntaxNode | null | undefined): node is OntologyDocumentNode;
-export interface PrefixDeclarationNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.PrefixDeclaration;
+export declare function isSourceFile(node: SyntaxNode | null | undefined): node is SourceFileNode;
+export interface StatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Statement;
 }
-export declare function isPrefixDeclaration(node: SyntaxNode | null | undefined): node is PrefixDeclarationNode;
-export interface PrefixNameNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.PrefixName;
+export declare function isStatement(node: SyntaxNode | null | undefined): node is StatementNode;
+export interface BlockStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BlockStatement;
 }
-export declare function isPrefixName(node: SyntaxNode | null | undefined): node is PrefixNameNode;
-export interface AbbreviatedIRINode extends SyntaxNode {
-  readonly typeId: SyntaxKind.AbbreviatedIRI;
+export declare function isBlockStatement(node: SyntaxNode | null | undefined): node is BlockStatementNode;
+export interface VariableDeclarationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.VariableDeclaration;
 }
-export declare function isAbbreviatedIRI(node: SyntaxNode | null | undefined): node is AbbreviatedIRINode;
-export interface IRINode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IRI;
+export declare function isVariableDeclaration(node: SyntaxNode | null | undefined): node is VariableDeclarationNode;
+export interface ModuleDeclarationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ModuleDeclaration;
 }
-export declare function isIRI(node: SyntaxNode | null | undefined): node is IRINode;
-export interface OntologyNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Ontology;
+export declare function isModuleDeclaration(node: SyntaxNode | null | undefined): node is ModuleDeclarationNode;
+export interface FunctionDeclarationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FunctionDeclaration;
 }
-export declare function isOntology(node: SyntaxNode | null | undefined): node is OntologyNode;
-export interface ImportDeclarationNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ImportDeclaration;
+export declare function isFunctionDeclaration(node: SyntaxNode | null | undefined): node is FunctionDeclarationNode;
+export interface IfStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IfStatement;
 }
-export declare function isImportDeclaration(node: SyntaxNode | null | undefined): node is ImportDeclarationNode;
-export interface DeclarationNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Declaration;
+export declare function isIfStatement(node: SyntaxNode | null | undefined): node is IfStatementNode;
+export interface ForStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ForStatement;
 }
-export declare function isDeclaration(node: SyntaxNode | null | undefined): node is DeclarationNode;
-export interface ClassEntityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ClassEntity;
+export declare function isForStatement(node: SyntaxNode | null | undefined): node is ForStatementNode;
+export interface ParameterListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ParameterList;
 }
-export declare function isClassEntity(node: SyntaxNode | null | undefined): node is ClassEntityNode;
-export interface ObjectPropertyEntityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectPropertyEntity;
+export declare function isParameterList(node: SyntaxNode | null | undefined): node is ParameterListNode;
+export interface ParameterNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Parameter;
 }
-export declare function isObjectPropertyEntity(node: SyntaxNode | null | undefined): node is ObjectPropertyEntityNode;
-export interface DataPropertyEntityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataPropertyEntity;
+export declare function isParameter(node: SyntaxNode | null | undefined): node is ParameterNode;
+export interface ArgumentListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ArgumentList;
 }
-export declare function isDataPropertyEntity(node: SyntaxNode | null | undefined): node is DataPropertyEntityNode;
-export interface NamedIndividualEntityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.NamedIndividualEntity;
+export declare function isArgumentList(node: SyntaxNode | null | undefined): node is ArgumentListNode;
+export interface ArgumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Argument;
 }
-export declare function isNamedIndividualEntity(node: SyntaxNode | null | undefined): node is NamedIndividualEntityNode;
-export interface ObjectIntersectionOfNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectIntersectionOf;
+export declare function isArgument(node: SyntaxNode | null | undefined): node is ArgumentNode;
+export interface PrefixSolidNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PrefixSolid;
 }
-export declare function isObjectIntersectionOf(node: SyntaxNode | null | undefined): node is ObjectIntersectionOfNode;
-export interface ObjectUnionOfNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectUnionOf;
+export declare function isPrefixSolid(node: SyntaxNode | null | undefined): node is PrefixSolidNode;
+export interface TransformOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TransformOp;
 }
-export declare function isObjectUnionOf(node: SyntaxNode | null | undefined): node is ObjectUnionOfNode;
-export interface ObjectComplementOfNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectComplementOf;
+export declare function isTransformOp(node: SyntaxNode | null | undefined): node is TransformOpNode;
+export interface BooleanOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BooleanOp;
 }
-export declare function isObjectComplementOf(node: SyntaxNode | null | undefined): node is ObjectComplementOfNode;
-export interface ObjectSomeValuesFromNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectSomeValuesFrom;
+export declare function isBooleanOp(node: SyntaxNode | null | undefined): node is BooleanOpNode;
+export interface TagPortOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TagPortOp;
 }
-export declare function isObjectSomeValuesFrom(node: SyntaxNode | null | undefined): node is ObjectSomeValuesFromNode;
-export interface ObjectAllValuesFromNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectAllValuesFrom;
+export declare function isTagPortOp(node: SyntaxNode | null | undefined): node is TagPortOpNode;
+export interface ChainedSolidStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ChainedSolidStatement;
 }
-export declare function isObjectAllValuesFrom(node: SyntaxNode | null | undefined): node is ObjectAllValuesFromNode;
-export interface ObjectHasSelfNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectHasSelf;
+export declare function isChainedSolidStatement(node: SyntaxNode | null | undefined): node is ChainedSolidStatementNode;
+export interface ChainedSolidNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ChainedSolid;
 }
-export declare function isObjectHasSelf(node: SyntaxNode | null | undefined): node is ObjectHasSelfNode;
-export interface ObjectHasValueNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectHasValue;
+export declare function isChainedSolid(node: SyntaxNode | null | undefined): node is ChainedSolidNode;
+export interface MethodCallNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.MethodCall;
 }
-export declare function isObjectHasValue(node: SyntaxNode | null | undefined): node is ObjectHasValueNode;
-export interface ObjectOneOfNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectOneOf;
+export declare function isMethodCall(node: SyntaxNode | null | undefined): node is MethodCallNode;
+export interface MethodNameNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.MethodName;
 }
-export declare function isObjectOneOf(node: SyntaxNode | null | undefined): node is ObjectOneOfNode;
-export interface ObjectMinCardinalityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectMinCardinality;
+export declare function isMethodName(node: SyntaxNode | null | undefined): node is MethodNameNode;
+export interface PrimarySolidNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PrimarySolid;
 }
-export declare function isObjectMinCardinality(node: SyntaxNode | null | undefined): node is ObjectMinCardinalityNode;
-export interface ObjectMaxCardinalityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectMaxCardinality;
+export declare function isPrimarySolid(node: SyntaxNode | null | undefined): node is PrimarySolidNode;
+export interface CubePrimitiveNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CubePrimitive;
 }
-export declare function isObjectMaxCardinality(node: SyntaxNode | null | undefined): node is ObjectMaxCardinalityNode;
-export interface ObjectExactCardinalityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectExactCardinality;
+export declare function isCubePrimitive(node: SyntaxNode | null | undefined): node is CubePrimitiveNode;
+export interface CylinderPrimitiveNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CylinderPrimitive;
 }
-export declare function isObjectExactCardinality(node: SyntaxNode | null | undefined): node is ObjectExactCardinalityNode;
-export interface DataSomeValuesFromNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataSomeValuesFrom;
+export declare function isCylinderPrimitive(node: SyntaxNode | null | undefined): node is CylinderPrimitiveNode;
+export interface SpherePrimitiveNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SpherePrimitive;
 }
-export declare function isDataSomeValuesFrom(node: SyntaxNode | null | undefined): node is DataSomeValuesFromNode;
-export interface DataAllValuesFromNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataAllValuesFrom;
+export declare function isSpherePrimitive(node: SyntaxNode | null | undefined): node is SpherePrimitiveNode;
+export interface PolyhedronPrimitiveNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PolyhedronPrimitive;
 }
-export declare function isDataAllValuesFrom(node: SyntaxNode | null | undefined): node is DataAllValuesFromNode;
-export interface DataMinCardinalityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataMinCardinality;
+export declare function isPolyhedronPrimitive(node: SyntaxNode | null | undefined): node is PolyhedronPrimitiveNode;
+export interface ModuleInstantiationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ModuleInstantiation;
 }
-export declare function isDataMinCardinality(node: SyntaxNode | null | undefined): node is DataMinCardinalityNode;
-export interface DataMaxCardinalityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataMaxCardinality;
+export declare function isModuleInstantiation(node: SyntaxNode | null | undefined): node is ModuleInstantiationNode;
+export interface ExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Expression;
 }
-export declare function isDataMaxCardinality(node: SyntaxNode | null | undefined): node is DataMaxCardinalityNode;
-export interface DataExactCardinalityNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataExactCardinality;
+export declare function isExpression(node: SyntaxNode | null | undefined): node is ExpressionNode;
+export interface ConditionalExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ConditionalExpression;
 }
-export declare function isDataExactCardinality(node: SyntaxNode | null | undefined): node is DataExactCardinalityNode;
-export interface DataRangeNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataRange;
+export declare function isConditionalExpression(node: SyntaxNode | null | undefined): node is ConditionalExpressionNode;
+export interface BinaryExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BinaryExpression;
 }
-export declare function isDataRange(node: SyntaxNode | null | undefined): node is DataRangeNode;
-export interface SubClassOfAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.SubClassOfAxiom;
+export declare function isBinaryExpression(node: SyntaxNode | null | undefined): node is BinaryExpressionNode;
+export interface UnaryExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UnaryExpression;
 }
-export declare function isSubClassOfAxiom(node: SyntaxNode | null | undefined): node is SubClassOfAxiomNode;
-export interface EquivalentClassesAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.EquivalentClassesAxiom;
+export declare function isUnaryExpression(node: SyntaxNode | null | undefined): node is UnaryExpressionNode;
+export interface PostfixExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PostfixExpression;
 }
-export declare function isEquivalentClassesAxiom(node: SyntaxNode | null | undefined): node is EquivalentClassesAxiomNode;
-export interface DisjointClassesAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DisjointClassesAxiom;
+export declare function isPostfixExpression(node: SyntaxNode | null | undefined): node is PostfixExpressionNode;
+export interface PrimaryExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PrimaryExpression;
 }
-export declare function isDisjointClassesAxiom(node: SyntaxNode | null | undefined): node is DisjointClassesAxiomNode;
-export interface SubObjectPropertyOfAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.SubObjectPropertyOfAxiom;
+export declare function isPrimaryExpression(node: SyntaxNode | null | undefined): node is PrimaryExpressionNode;
+export interface ParenthesizedExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ParenthesizedExpression;
 }
-export declare function isSubObjectPropertyOfAxiom(node: SyntaxNode | null | undefined): node is SubObjectPropertyOfAxiomNode;
-export interface SubDataPropertyOfAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.SubDataPropertyOfAxiom;
+export declare function isParenthesizedExpression(node: SyntaxNode | null | undefined): node is ParenthesizedExpressionNode;
+export interface VectorLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.VectorLiteral;
 }
-export declare function isSubDataPropertyOfAxiom(node: SyntaxNode | null | undefined): node is SubDataPropertyOfAxiomNode;
-export interface InverseObjectPropertiesAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.InverseObjectPropertiesAxiom;
+export declare function isVectorLiteral(node: SyntaxNode | null | undefined): node is VectorLiteralNode;
+export interface RangeLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RangeLiteral;
 }
-export declare function isInverseObjectPropertiesAxiom(node: SyntaxNode | null | undefined): node is InverseObjectPropertiesAxiomNode;
-export interface DisjointObjectPropertiesAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DisjointObjectPropertiesAxiom;
+export declare function isRangeLiteral(node: SyntaxNode | null | undefined): node is RangeLiteralNode;
+export interface BOOLEANNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BOOLEAN;
 }
-export declare function isDisjointObjectPropertiesAxiom(node: SyntaxNode | null | undefined): node is DisjointObjectPropertiesAxiomNode;
-export interface ObjectPropertyDomainAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectPropertyDomainAxiom;
+export declare function isBOOLEAN(node: SyntaxNode | null | undefined): node is BOOLEANNode;
+export interface IDENTIFIERNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IDENTIFIER;
 }
-export declare function isObjectPropertyDomainAxiom(node: SyntaxNode | null | undefined): node is ObjectPropertyDomainAxiomNode;
-export interface ObjectPropertyRangeAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectPropertyRangeAxiom;
+export declare function isIDENTIFIER(node: SyntaxNode | null | undefined): node is IDENTIFIERNode;
+export interface NUMBERNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NUMBER;
 }
-export declare function isObjectPropertyRangeAxiom(node: SyntaxNode | null | undefined): node is ObjectPropertyRangeAxiomNode;
-export interface DataPropertyDomainAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataPropertyDomainAxiom;
+export declare function isNUMBER(node: SyntaxNode | null | undefined): node is NUMBERNode;
+export interface STRINGNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.STRING;
 }
-export declare function isDataPropertyDomainAxiom(node: SyntaxNode | null | undefined): node is DataPropertyDomainAxiomNode;
-export interface DataPropertyRangeAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataPropertyRangeAxiom;
+export declare function isSTRING(node: SyntaxNode | null | undefined): node is STRINGNode;
+export interface UNDEFNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UNDEF;
 }
-export declare function isDataPropertyRangeAxiom(node: SyntaxNode | null | undefined): node is DataPropertyRangeAxiomNode;
-export interface FunctionalObjectPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.FunctionalObjectPropertyAxiom;
-}
-export declare function isFunctionalObjectPropertyAxiom(node: SyntaxNode | null | undefined): node is FunctionalObjectPropertyAxiomNode;
-export interface InverseFunctionalObjectPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.InverseFunctionalObjectPropertyAxiom;
-}
-export declare function isInverseFunctionalObjectPropertyAxiom(node: SyntaxNode | null | undefined): node is InverseFunctionalObjectPropertyAxiomNode;
-export interface ReflexiveObjectPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ReflexiveObjectPropertyAxiom;
-}
-export declare function isReflexiveObjectPropertyAxiom(node: SyntaxNode | null | undefined): node is ReflexiveObjectPropertyAxiomNode;
-export interface IrreflexiveObjectPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IrreflexiveObjectPropertyAxiom;
-}
-export declare function isIrreflexiveObjectPropertyAxiom(node: SyntaxNode | null | undefined): node is IrreflexiveObjectPropertyAxiomNode;
-export interface SymmetricObjectPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.SymmetricObjectPropertyAxiom;
-}
-export declare function isSymmetricObjectPropertyAxiom(node: SyntaxNode | null | undefined): node is SymmetricObjectPropertyAxiomNode;
-export interface AsymmetricObjectPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.AsymmetricObjectPropertyAxiom;
-}
-export declare function isAsymmetricObjectPropertyAxiom(node: SyntaxNode | null | undefined): node is AsymmetricObjectPropertyAxiomNode;
-export interface TransitiveObjectPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.TransitiveObjectPropertyAxiom;
-}
-export declare function isTransitiveObjectPropertyAxiom(node: SyntaxNode | null | undefined): node is TransitiveObjectPropertyAxiomNode;
-export interface FunctionalDataPropertyAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.FunctionalDataPropertyAxiom;
-}
-export declare function isFunctionalDataPropertyAxiom(node: SyntaxNode | null | undefined): node is FunctionalDataPropertyAxiomNode;
-export interface ObjectPropertyAssertionAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ObjectPropertyAssertionAxiom;
-}
-export declare function isObjectPropertyAssertionAxiom(node: SyntaxNode | null | undefined): node is ObjectPropertyAssertionAxiomNode;
-export interface DataPropertyAssertionAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataPropertyAssertionAxiom;
-}
-export declare function isDataPropertyAssertionAxiom(node: SyntaxNode | null | undefined): node is DataPropertyAssertionAxiomNode;
-export interface NegativeObjectPropertyAssertionAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.NegativeObjectPropertyAssertionAxiom;
-}
-export declare function isNegativeObjectPropertyAssertionAxiom(node: SyntaxNode | null | undefined): node is NegativeObjectPropertyAssertionAxiomNode;
-export interface NegativeDataPropertyAssertionAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.NegativeDataPropertyAssertionAxiom;
-}
-export declare function isNegativeDataPropertyAssertionAxiom(node: SyntaxNode | null | undefined): node is NegativeDataPropertyAssertionAxiomNode;
-export interface ClassAssertionAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ClassAssertionAxiom;
-}
-export declare function isClassAssertionAxiom(node: SyntaxNode | null | undefined): node is ClassAssertionAxiomNode;
-export interface SameIndividualAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.SameIndividualAxiom;
-}
-export declare function isSameIndividualAxiom(node: SyntaxNode | null | undefined): node is SameIndividualAxiomNode;
-export interface DifferentIndividualsAxiomNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DifferentIndividualsAxiom;
-}
-export declare function isDifferentIndividualsAxiom(node: SyntaxNode | null | undefined): node is DifferentIndividualsAxiomNode;
-export interface IDENTNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IDENT;
-}
-export declare function isIDENT(node: SyntaxNode | null | undefined): node is IDENTNode;
-export interface INTEGERNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.INTEGER;
-}
-export declare function isINTEGER(node: SyntaxNode | null | undefined): node is INTEGERNode;
-export interface FullIRINode extends SyntaxNode {
-  readonly typeId: SyntaxKind.FullIRI;
-}
-export declare function isFullIRI(node: SyntaxNode | null | undefined): node is FullIRINode;
-export interface StringLiteralNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.StringLiteral;
-}
-export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+export declare function isUNDEF(node: SyntaxNode | null | undefined): node is UNDEFNode;
 export namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
-  export const OntologyDocument: {
+  export const SourceFile: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is OntologyDocumentNode;
+    is(node: SyntaxNode | null | undefined): node is SourceFileNode;
   };
-  export const PrefixDeclaration: {
+  export const Statement: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is PrefixDeclarationNode;
+    is(node: SyntaxNode | null | undefined): node is StatementNode;
+  };
+  export const BlockStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BlockStatementNode;
+  };
+  export const VariableDeclaration: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is VariableDeclarationNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    iri(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    iriList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const PrefixName: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is PrefixNameNode;
-  };
-  export const AbbreviatedIRI: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is AbbreviatedIRINode;
-  };
-  export const IRI: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IRINode;
-  };
-  export const Ontology: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is OntologyNode;
-    iri(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    iriList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    import(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    importList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    axiom(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    axiomList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ImportDeclaration: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ImportDeclarationNode;
-    iri(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    iriList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const Declaration: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeclarationNode;
-    entity(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    entityList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ClassEntity: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ClassEntityNode;
-    iri(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    iriList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectPropertyEntity: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectPropertyEntityNode;
-    iri(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    iriList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataPropertyEntity: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataPropertyEntityNode;
-    iri(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    iriList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const NamedIndividualEntity: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is NamedIndividualEntityNode;
-    iri(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    iriList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectIntersectionOf: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectIntersectionOfNode;
-  };
-  export const ObjectUnionOf: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectUnionOfNode;
-  };
-  export const ObjectComplementOf: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectComplementOfNode;
-  };
-  export const ObjectSomeValuesFrom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectSomeValuesFromNode;
-  };
-  export const ObjectAllValuesFrom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectAllValuesFromNode;
-  };
-  export const ObjectHasSelf: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectHasSelfNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectHasValue: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectHasValueNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    individual(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    individualList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectOneOf: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectOneOfNode;
-    individual(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    individualList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectMinCardinality: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectMinCardinalityNode;
-    cardinality(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    cardinalityList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    filler(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    fillerList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectMaxCardinality: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectMaxCardinalityNode;
-    cardinality(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    cardinalityList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    filler(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    fillerList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectExactCardinality: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectExactCardinalityNode;
-    cardinality(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    cardinalityList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    filler(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    fillerList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataSomeValuesFrom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataSomeValuesFromNode;
-  };
-  export const DataAllValuesFrom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataAllValuesFromNode;
-  };
-  export const DataMinCardinality: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataMinCardinalityNode;
-    cardinality(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    cardinalityList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataMaxCardinality: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataMaxCardinalityNode;
-    cardinality(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    cardinalityList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataExactCardinality: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataExactCardinalityNode;
-    cardinality(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    cardinalityList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataRange: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataRangeNode;
-  };
-  export const SubClassOfAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is SubClassOfAxiomNode;
-    subClass(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    subClassList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    superClass(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    superClassList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const EquivalentClassesAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is EquivalentClassesAxiomNode;
-  };
-  export const DisjointClassesAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DisjointClassesAxiomNode;
-  };
-  export const SubObjectPropertyOfAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is SubObjectPropertyOfAxiomNode;
-    subProperty(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    subPropertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    superProperty(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    superPropertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const SubDataPropertyOfAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is SubDataPropertyOfAxiomNode;
-    subProperty(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    subPropertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    superProperty(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    superPropertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const InverseObjectPropertiesAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is InverseObjectPropertiesAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    inverseProperty(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    inversePropertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DisjointObjectPropertiesAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DisjointObjectPropertiesAxiomNode;
-    individual(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    individualList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectPropertyDomainAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectPropertyDomainAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    domain(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    domainList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectPropertyRangeAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectPropertyRangeAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataPropertyDomainAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataPropertyDomainAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    domain(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    domainList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataPropertyRangeAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataPropertyRangeAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const FunctionalObjectPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is FunctionalObjectPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const InverseFunctionalObjectPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is InverseFunctionalObjectPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ReflexiveObjectPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ReflexiveObjectPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const IrreflexiveObjectPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IrreflexiveObjectPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const SymmetricObjectPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is SymmetricObjectPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const AsymmetricObjectPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is AsymmetricObjectPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const TransitiveObjectPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is TransitiveObjectPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const FunctionalDataPropertyAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is FunctionalDataPropertyAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const ObjectPropertyAssertionAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ObjectPropertyAssertionAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    subject(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    subjectList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    object(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    objectList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataPropertyAssertionAxiom: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataPropertyAssertionAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    subject(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    subjectList(node: SyntaxNode | null | undefined): SyntaxNode[];
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const NegativeObjectPropertyAssertionAxiom: {
+  export const ModuleDeclaration: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is NegativeObjectPropertyAssertionAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    subject(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    subjectList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    object(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    objectList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is ModuleDeclarationNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    parameters(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    parametersList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const NegativeDataPropertyAssertionAxiom: {
+  export const FunctionDeclaration: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is NegativeDataPropertyAssertionAxiomNode;
-    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    subject(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    subjectList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is FunctionDeclarationNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    parameters(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    parametersList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const IfStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IfStatementNode;
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    consequence(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    consequenceList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    alternative(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    alternativeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ForStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ForStatementNode;
+    var(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    varList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ParameterList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ParameterListNode;
+  };
+  export const Parameter: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ParameterNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    default(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    defaultList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ArgumentList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArgumentListNode;
+  };
+  export const Argument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ArgumentNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const ClassAssertionAxiom: {
+  export const PrefixSolid: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ClassAssertionAxiomNode;
-    classExpr(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    classExprList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    individual(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    individualList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is PrefixSolidNode;
+    operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    child(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    childList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const SameIndividualAxiom: {
+  export const TransformOp: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is SameIndividualAxiomNode;
-    individual(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    individualList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is TransformOpNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const DifferentIndividualsAxiom: {
+  export const BooleanOp: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DifferentIndividualsAxiomNode;
-    individual(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    individualList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is BooleanOpNode;
   };
-  export const IDENT: {
+  export const TagPortOp: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IDENTNode;
+    is(node: SyntaxNode | null | undefined): node is TagPortOpNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const INTEGER: {
+  export const ChainedSolidStatement: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is INTEGERNode;
+    is(node: SyntaxNode | null | undefined): node is ChainedSolidStatementNode;
+    solid(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    solidList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const FullIRI: {
+  export const ChainedSolid: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is FullIRINode;
+    is(node: SyntaxNode | null | undefined): node is ChainedSolidNode;
+    receiver(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    receiverList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    method(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    methodList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const StringLiteral: {
+  export const MethodCall: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+    is(node: SyntaxNode | null | undefined): node is MethodCallNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const MethodName: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is MethodNameNode;
+  };
+  export const PrimarySolid: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PrimarySolidNode;
+  };
+  export const CubePrimitive: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CubePrimitiveNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const CylinderPrimitive: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CylinderPrimitiveNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const SpherePrimitive: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SpherePrimitiveNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const PolyhedronPrimitive: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PolyhedronPrimitiveNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ModuleInstantiation: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ModuleInstantiationNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Expression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ExpressionNode;
+  };
+  export const ConditionalExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ConditionalExpressionNode;
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    consequence(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    consequenceList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    alternative(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    alternativeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const BinaryExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BinaryExpressionNode;
+    left(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    leftList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    right(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rightList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const UnaryExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UnaryExpressionNode;
+    operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    operand(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operandList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const PostfixExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PostfixExpressionNode;
+    operand(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operandList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    index(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    indexList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    function(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    functionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    arguments(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argumentsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const PrimaryExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PrimaryExpressionNode;
+  };
+  export const ParenthesizedExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ParenthesizedExpressionNode;
+    expression(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    expressionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const VectorLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is VectorLiteralNode;
+  };
+  export const RangeLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is RangeLiteralNode;
+    start(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    startList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    step(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    stepList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    end(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    endList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const BOOLEAN: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BOOLEANNode;
+  };
+  export const IDENTIFIER: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IDENTIFIERNode;
+  };
+  export const NUMBER: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NUMBERNode;
+  };
+  export const STRING: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is STRINGNode;
+  };
+  export const UNDEF: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UNDEFNode;
   };
 }

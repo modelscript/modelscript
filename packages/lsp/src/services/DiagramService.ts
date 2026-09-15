@@ -19,7 +19,12 @@ import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Connection } from "vscode-languageserver";
-import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "../diagramApi.js";
+import {
+  GenericDSLDiagramBackend,
+  ModelicaDiagramBackend,
+  SysML2DiagramBackend,
+  createDiagramDispatch,
+} from "../diagramApi.js";
 import { DocumentManager } from "./DocumentManager.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
@@ -54,8 +59,8 @@ export class DiagramService {
     // text editor of diagnostic updates. Instead, build the diagram from the
     // most recently indexed AST (at worst ~300ms stale).
 
-    // SysML2 — delegate directly to dispatch (no caching needed, layout is in-memory)
-    if (params.uri.endsWith(".sysml")) {
+    // Non-Modelica (SysML2 or generic DSL) — delegate directly to dispatch
+    if (!params.uri.endsWith(".mo")) {
       return this.getDiagramDispatch().getData(params);
     }
 
@@ -293,9 +298,14 @@ export class DiagramService {
         },
       });
 
+      const genericBackend = new GenericDSLDiagramBackend({
+        getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
+      });
+
       this.diagramDispatch = createDiagramDispatch({
         modelica: modelicaBackend,
         sysml2: sysml2Backend,
+        generic: genericBackend,
       });
     }
     return this.diagramDispatch;

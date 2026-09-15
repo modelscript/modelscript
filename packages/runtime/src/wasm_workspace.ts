@@ -814,7 +814,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   public queryProvider?: (queryName: string, id: SymbolId) => unknown | null;
 
   constructor() {
-    this.owl2Store = new WasmOntologyStore();
+    this.owl2Store = new WasmOntologyStore(null, this);
 
     this.cstNodeProvider = (id: SymbolId): unknown | null => {
       const idx = this.toUnifiedPartial();

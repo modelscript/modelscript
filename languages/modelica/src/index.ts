@@ -3,7 +3,6 @@
 export * from "./cad.js";
 export * from "./connections.js";
 export * from "./csg.js";
-export * from "./flattener-wasm.js";
 export { modelicaLanguage } from "./language.js";
 export * from "./modifications.js";
 export * from "./scope-helpers.js";

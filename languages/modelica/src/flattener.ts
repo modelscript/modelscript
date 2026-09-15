@@ -4,7 +4,7 @@
  * Modelica Query Flattener (TypeScript Host Bridge).
  *
  * Coordinates host-side Salsa QueryDB / SymbolIndex data with the high-performance
- * native WebAssembly Semantic Flattening Kernel (`src/flattener-wasm.ts`).
+ * native WebAssembly Semantic Flattening Kernel (`assembly/flattener.ts`).
  */
 
 import type { TopologyGraph } from "@modelscript/diagram";

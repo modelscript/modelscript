@@ -1,3 +1,5 @@
+import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
+
 /** X6 SVG Markup element — defines the DOM structure of a node/port. */
 export interface X6Markup {
   tagName: string;
@@ -187,6 +189,22 @@ export interface PolyglotDiagramData {
   diagramType?: string;
   /** Layout strategy (dagre, sequence, manual, grid, etc.) */
   layout?: string;
+  /** Available views / projections discovered dynamically or configured statically */
+  availableViews?: { id: string; label: string; description?: string }[];
+}
+
+export interface PolyglotDiagramOptions {
+  customProjections?: Record<string, any>;
+  structuralKinds?: Set<string> | string[];
+  standaloneKinds?: Set<string> | string[];
+  usageKinds?: Set<string> | string[];
+  definitionKinds?: Set<string> | string[];
+  inModelDiscovery?: {
+    rule?: string;
+    nameField?: string;
+    exposeField?: string;
+  };
+  solderDots?: boolean;
 }
 
 // ── Builder ──
@@ -199,7 +217,7 @@ export interface PolyglotDiagramData {
  * @param resourceId   Optional resource URI to limit scope to symbols from one document.
  * @param resolver     Optional ScopeResolver for resolving edge source/target via the scope graph.
  * @param diagramType  Optional projection/diagram type name (default: "All").
- * @param customProjections Optional map of custom DSL projection configs.
+ * @param customProjectionsOrOptions Optional map of custom DSL projection configs or PolyglotDiagramOptions.
  */
 export function buildPolyglotDiagram(
   index: SymbolIndex,
@@ -207,11 +225,41 @@ export function buildPolyglotDiagram(
   resourceId?: string,
   resolver?: ScopeResolver,
   diagramType = "All",
-  customProjections?: Record<string, any>,
+  customProjectionsOrOptions?: Record<string, any> | PolyglotDiagramOptions,
 ): PolyglotDiagramData {
+  const opts: PolyglotDiagramOptions =
+    customProjectionsOrOptions && "customProjections" in customProjectionsOrOptions
+      ? (customProjectionsOrOptions as PolyglotDiagramOptions)
+      : { customProjections: customProjectionsOrOptions };
+
+  const projectionsMap: Record<string, any> = { ...opts.customProjections };
+
+  // In-Model Projection Discovery: scan for view def / view models
+  if (opts.inModelDiscovery) {
+    const viewRule = opts.inModelDiscovery.rule ?? "ViewDefinition";
+    for (const sym of index.symbols.values()) {
+      if (sym.ruleName === viewRule && sym.name) {
+        if (!projectionsMap[sym.name]) {
+          const childIds = index.childrenOf.get(sym.id) ?? [];
+          const exposedNames = new Set<string>();
+          for (const cid of childIds) {
+            const csym = index.symbols.get(cid);
+            if (csym && csym.name) exposedNames.add(csym.name);
+          }
+          projectionsMap[sym.name] = {
+            label: sym.name,
+            description: `In-model view: ${sym.name}`,
+            filter: (s: any) =>
+              exposedNames.size === 0 || exposedNames.has(s.name) || s.id === sym.id || s.parentId === sym.id,
+          };
+        }
+      }
+    }
+  }
+
   const nodes: PolyglotDiagramNode[] = [];
   const edges: PolyglotDiagramEdge[] = [];
-  const activeProjection = customProjections?.[diagramType];
+  const activeProjection = projectionsMap[diagramType];
 
   // Collect all symbols, optionally filtered to one document
   const allSymbols: SymbolEntry[] = [];
@@ -336,48 +384,50 @@ export function buildPolyglotDiagram(
   const symbolIdToNodeId = new Map<SymbolId, string>();
 
   // ── Structural parent kinds whose children get absorbed as compartment text ──
-  const STRUCTURAL_KINDS = new Set([
-    "PartUsage",
-    "PartDefinition",
-    "ActionDefinition",
-    "ActionUsage",
-    "ItemDefinition",
-    "ItemUsage",
-    "RequirementDefinition",
-    "RequirementUsage",
-    "ConstraintDefinition",
-    "ConstraintUsage",
-    "CalculationDefinition",
-    "CalculationUsage",
-    "VerificationCaseDefinition",
-    "VerificationCaseUsage",
-    "StateDefinition",
-    "StateUsage",
-    "UseCaseDefinition",
-    "UseCaseUsage",
-    "CaseDefinition",
-    "CaseUsage",
-    "AnalysisCaseDefinition",
-    "AnalysisCaseUsage",
-    "ConcernDefinition",
-    "ConcernUsage",
-    "PortDefinition",
-    "PortUsage",
-    "ActorDefinition",
-    "ActorUsage",
-    "InterfaceDefinition",
-    "FlowDefinition",
-    "AllocationDefinition",
-    "OccurrenceDefinition",
-    "OccurrenceUsage",
-    "ViewDefinition",
-    "ViewUsage",
-    "ViewpointDefinition",
-    "ViewpointUsage",
-    "RenderingDefinition",
-    "RenderingUsage",
-    "EnumerationDefinition",
-  ]);
+  const STRUCTURAL_KINDS = opts.structuralKinds
+    ? new Set(opts.structuralKinds)
+    : new Set([
+        "PartUsage",
+        "PartDefinition",
+        "ActionDefinition",
+        "ActionUsage",
+        "ItemDefinition",
+        "ItemUsage",
+        "RequirementDefinition",
+        "RequirementUsage",
+        "ConstraintDefinition",
+        "ConstraintUsage",
+        "CalculationDefinition",
+        "CalculationUsage",
+        "VerificationCaseDefinition",
+        "VerificationCaseUsage",
+        "StateDefinition",
+        "StateUsage",
+        "UseCaseDefinition",
+        "UseCaseUsage",
+        "CaseDefinition",
+        "CaseUsage",
+        "AnalysisCaseDefinition",
+        "AnalysisCaseUsage",
+        "ConcernDefinition",
+        "ConcernUsage",
+        "PortDefinition",
+        "PortUsage",
+        "ActorDefinition",
+        "ActorUsage",
+        "InterfaceDefinition",
+        "FlowDefinition",
+        "AllocationDefinition",
+        "OccurrenceDefinition",
+        "OccurrenceUsage",
+        "ViewDefinition",
+        "ViewUsage",
+        "ViewpointDefinition",
+        "ViewpointUsage",
+        "RenderingDefinition",
+        "RenderingUsage",
+        "EnumerationDefinition",
+      ]);
 
   // Pre-pass: collect ALL children of structural parents as compartment entries.
   // Every child of a structural parent is fully absorbed as text — no child gets
@@ -391,16 +441,14 @@ export function buildPolyglotDiagram(
     if (cfg.role === "group") groupKinds.add(kind);
   }
 
-  // If we're building a StateMachine diagram, treat states as groups so they can nest children
-  if (diagramType === "StateMachine") {
+  // Projection-driven group rules
+  if ((activeProjection as any)?.groupRules) {
+    for (const r of (activeProjection as any).groupRules) groupKinds.add(r);
+  } else if (diagramType === "StateMachine") {
     groupKinds.add("StateDefinition");
     groupKinds.add("StateUsage");
     groupKinds.add("ExhibitStateUsage");
-  }
-
-  // If we're building an Activity diagram, treat structural allocations (actors, parts)
-  // as groups so they act as swimlane partitions.
-  if (diagramType === "Activity") {
+  } else if (diagramType === "Activity") {
     groupKinds.add("ActorUsage");
     groupKinds.add("SubjectUsage");
     groupKinds.add("PartUsage");
@@ -409,17 +457,14 @@ export function buildPolyglotDiagram(
 
   // Kinds that should NOT be absorbed into compartment text — they get their own
   // diagram nodes (PartUsage/PartDefinition) or become X6 ports (PortUsage).
-  const STANDALONE_CHILD_KINDS = new Set([
-    "PartUsage",
-    "PartDefinition",
-    "PortUsage",
-    "PortDefinition",
-    "ActorUsage",
-    "StakeholderUsage",
-  ]);
+  const STANDALONE_CHILD_KINDS = opts.standaloneKinds
+    ? new Set(opts.standaloneKinds)
+    : new Set(["PartUsage", "PartDefinition", "PortUsage", "PortDefinition", "ActorUsage", "StakeholderUsage"]);
 
-  // In StateMachine diagrams, nested states get their own nodes (for composite states)
-  if (diagramType === "StateMachine") {
+  // Projection-driven standalone child rules
+  if ((activeProjection as any)?.standaloneRules) {
+    for (const r of (activeProjection as any).standaloneRules) STANDALONE_CHILD_KINDS.add(r);
+  } else if (diagramType === "StateMachine") {
     STANDALONE_CHILD_KINDS.add("StateDefinition");
     STANDALONE_CHILD_KINDS.add("StateUsage");
     STANDALONE_CHILD_KINDS.add("ExhibitStateUsage");
@@ -1641,41 +1686,45 @@ export function buildPolyglotDiagram(
   // parented to each usage (OwnedFeatureTyping isn't in the indexer config,
   // so it can't be found via childrenOf — we must scan symbols directly,
   // mirroring ScopeResolver.findRefChildren).
-  const USAGE_KINDS = new Set([
-    "PartUsage",
-    "ItemUsage",
-    "PortUsage",
-    "ActionUsage",
-    "StateUsage",
-    "ConstraintUsage",
-    "RequirementUsage",
-    "CalculationUsage",
-    "AttributeUsage",
-    "ConnectionUsage",
-    "OccurrenceUsage",
-    "ReferenceUsage",
-  ]);
-  const DEFINITION_KINDS = new Set([
-    "PartDefinition",
-    "ItemDefinition",
-    "PortDefinition",
-    "ActionDefinition",
-    "StateDefinition",
-    "ConstraintDefinition",
-    "RequirementDefinition",
-    "CalculationDefinition",
-    "AttributeDefinition",
-    "ConnectionDefinition",
-    "OccurrenceDefinition",
-    "InterfaceDefinition",
-    "AllocationDefinition",
-    "FlowDefinition",
-    "UseCaseDefinition",
-    "AnalysisCaseDefinition",
-    "VerificationCaseDefinition",
-    "ViewDefinition",
-    "ViewpointDefinition",
-  ]);
+  const USAGE_KINDS = opts.usageKinds
+    ? new Set(opts.usageKinds)
+    : new Set([
+        "PartUsage",
+        "ItemUsage",
+        "PortUsage",
+        "ActionUsage",
+        "StateUsage",
+        "ConstraintUsage",
+        "RequirementUsage",
+        "CalculationUsage",
+        "AttributeUsage",
+        "ConnectionUsage",
+        "OccurrenceUsage",
+        "ReferenceUsage",
+      ]);
+  const DEFINITION_KINDS = opts.definitionKinds
+    ? new Set(opts.definitionKinds)
+    : new Set([
+        "PartDefinition",
+        "ItemDefinition",
+        "PortDefinition",
+        "ActionDefinition",
+        "StateDefinition",
+        "ConstraintDefinition",
+        "RequirementDefinition",
+        "CalculationDefinition",
+        "AttributeDefinition",
+        "ConnectionDefinition",
+        "OccurrenceDefinition",
+        "InterfaceDefinition",
+        "AllocationDefinition",
+        "FlowDefinition",
+        "UseCaseDefinition",
+        "AnalysisCaseDefinition",
+        "VerificationCaseDefinition",
+        "ViewDefinition",
+        "ViewpointDefinition",
+      ]);
   const addedTypingEdges = new Set<string>();
 
   // Build a parentId → ref-entry children map by scanning ALL symbols
@@ -2039,6 +2088,27 @@ export function buildPolyglotDiagram(
     }
   }
 
+  const availableViews = Object.entries(projectionsMap).map(([id, p]) => ({
+    id,
+    label: p.label || id,
+    description: p.description,
+  }));
+
+  // Topological solder dots for multi-connection junctions
+  if (opts.solderDots) {
+    const edgePaths = edges
+      .filter((e) => e.vertices && e.vertices.length > 0)
+      .map((e) => ({
+        id: e.id,
+        points: e.vertices!,
+        color: (e.attrs?.line as any)?.stroke as string,
+      }));
+    const dots = computeSolderDots(edgePaths);
+    for (const dot of dots) {
+      nodes.push(solderDotToDiagramNode(dot));
+    }
+  }
+
   return {
     nodes,
     edges,
@@ -2051,6 +2121,7 @@ export function buildPolyglotDiagram(
     diagramBackground: null,
     diagramType,
     layout: activeProjection?.defaultLayout,
+    availableViews,
   };
 }
 

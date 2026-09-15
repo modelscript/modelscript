@@ -5,6 +5,8 @@
 // based on the document URI. This replaces the per-method if-branching that
 // was previously scattered across 12 handlers in browserServerMain.ts.
 
+import { buildDiagramFromDSL } from "@modelscript/diagram/builder";
+import { SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
 import {
   buildComponentProperties,
   buildDiagramData,
@@ -293,11 +295,260 @@ export class SysML2DiagramBackend implements DiagramBackend {
   }
 }
 
+// ── Generic DSL Diagram Backend ──
+
+export interface GenericDSLBackendDeps {
+  getDocumentText: (uri: string) => string | undefined;
+  getDiagramConfig?: (uri: string) => any;
+  getSyntaxNames?: (uri: string) => Record<number, string> | string[] | undefined;
+  getRawAstData?: (uri: string) => { nodes: any[]; edges: any[] } | null;
+  layoutStorage?: SidecarLayoutStorage;
+}
+
+/**
+ * Generic diagram backend for any DSL defined via @modelscript/dsl.
+ * Uses declarative grammar diagram configuration and SidecarLayoutStorage.
+ */
+export class GenericDSLDiagramBackend implements DiagramBackend {
+  private readonly layoutStorage: SidecarLayoutStorage;
+
+  constructor(private readonly deps: GenericDSLBackendDeps) {
+    this.layoutStorage = deps.layoutStorage ?? new SidecarLayoutStorage();
+  }
+
+  async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+    const docText = this.deps.getDocumentText(params.uri);
+    const config = this.deps.getDiagramConfig?.(params.uri);
+    const syntaxNames = this.deps.getSyntaxNames?.(params.uri);
+    const rawData = this.deps.getRawAstData?.(params.uri) ?? { nodes: [], edges: [] };
+
+    if (!docText && rawData.nodes.length === 0) return null;
+
+    const diagramData = buildDiagramFromDSL(rawData, config, syntaxNames, params.diagramType, docText);
+
+    // Merge persisted layout if available
+    const layout = await this.layoutStorage.loadLayout(params.uri);
+    if (layout && diagramData) {
+      for (const node of diagramData.nodes) {
+        const nodeName = (node as any).name || node.properties?.description;
+        const el = layout.elements[node.id] || (nodeName && layout.elements[nodeName]);
+        if (el) {
+          node.x = el.x;
+          node.y = el.y;
+          if (el.width) node.width = el.width;
+          if (el.height) node.height = el.height;
+          node.autoLayout = false;
+        }
+      }
+    }
+
+    return diagramData as any;
+  }
+
+  getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
+    return {
+      className: "Component",
+      name: params.componentName,
+      description: "",
+      parameters: [],
+    };
+  }
+
+  async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+    const allEdits: TextEdit[] = [];
+    const itemsToSave: any[] = [];
+    const docText = this.deps.getDocumentText(params.uri);
+    const config = this.deps.getDiagramConfig?.(params.uri);
+    const mutations = config?.mutations;
+
+    for (const action of params.actions) {
+      switch (action.type) {
+        case "move":
+          itemsToSave.push(...action.items);
+          break;
+        case "resize":
+        case "rotate":
+          itemsToSave.push(action.item);
+          break;
+        case "connect": {
+          let edgeText = "";
+          if (typeof mutations?.createEdge === "function") {
+            edgeText = mutations.createEdge(action.source, action.target);
+          } else if (typeof mutations?.edgeTemplate === "function") {
+            edgeText = mutations.edgeTemplate(action.source, action.target);
+          } else if (typeof mutations?.edgeTemplate === "string") {
+            edgeText = mutations.edgeTemplate
+              .replace(/\$\{source\}/g, action.source)
+              .replace(/\$\{target\}/g, action.target);
+          } else {
+            edgeText = `connect(${action.source}, ${action.target});\n`;
+          }
+
+          if (docText !== undefined && edgeText) {
+            const lines = docText.split("\n");
+            let insertLine = lines.length;
+            for (let i = lines.length - 1; i >= 0; i--) {
+              if (lines[i].trim() === "}") {
+                insertLine = i;
+                break;
+              }
+            }
+            allEdits.push({
+              range: {
+                start: { line: insertLine, character: 0 },
+                end: { line: insertLine, character: 0 },
+              },
+              newText: (insertLine < lines.length ? "  " : "") + edgeText,
+            });
+          }
+
+          if (action.points && action.points.length > 0) {
+            await this.layoutStorage.updatePositions(params.uri, [
+              {
+                name: action.source,
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                rotation: 0,
+                edges: [{ source: action.source, target: action.target, points: action.points }],
+                connectedOnly: true,
+              },
+            ]);
+          }
+          break;
+        }
+        case "disconnect": {
+          if (docText !== undefined) {
+            const lines = docText.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (line.includes(action.source) && line.includes(action.target)) {
+                allEdits.push({
+                  range: {
+                    start: { line: i, character: 0 },
+                    end: { line: i + 1, character: 0 },
+                  },
+                  newText: "",
+                });
+                break;
+              }
+            }
+          }
+          break;
+        }
+        case "addComponent": {
+          const baseName = action.className.charAt(0).toLowerCase() + action.className.slice(1);
+          let uniqueName = `${baseName}1`;
+          if (docText) {
+            let idx = 1;
+            while (new RegExp(`\\b${baseName}${idx}\\b`).test(docText)) {
+              idx++;
+            }
+            uniqueName = `${baseName}${idx}`;
+          }
+
+          let nodeText = "";
+          if (typeof mutations?.createNode === "function") {
+            nodeText = mutations.createNode(action.className, uniqueName, action.x, action.y);
+          } else if (typeof mutations?.nodeTemplate === "function") {
+            nodeText = mutations.nodeTemplate(action.className, uniqueName);
+          } else if (typeof mutations?.nodeTemplate === "string") {
+            nodeText = mutations.nodeTemplate
+              .replace(/\$\{className\}/g, action.className)
+              .replace(/\$\{name\}/g, uniqueName);
+          } else {
+            nodeText = `${action.className} ${uniqueName};\n`;
+          }
+
+          if (docText !== undefined && nodeText) {
+            const lines = docText.split("\n");
+            let insertLine = lines.length;
+            for (let i = lines.length - 1; i >= 0; i--) {
+              if (lines[i].trim() === "}") {
+                insertLine = i;
+                break;
+              }
+            }
+            allEdits.push({
+              range: {
+                start: { line: insertLine, character: 0 },
+                end: { line: insertLine, character: 0 },
+              },
+              newText: (insertLine < lines.length ? "  " : "") + nodeText,
+            });
+          }
+
+          itemsToSave.push({
+            name: uniqueName,
+            x: Math.round(action.x),
+            y: Math.round(action.y),
+            width: 120,
+            height: 60,
+            rotation: 0,
+          });
+          break;
+        }
+        case "deleteComponents": {
+          if (docText !== undefined) {
+            const lines = docText.split("\n");
+            for (const name of action.names) {
+              const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const declRegex = new RegExp(`\\b${escName}\\b`);
+              for (let i = 0; i < lines.length; i++) {
+                if (declRegex.test(lines[i])) {
+                  allEdits.push({
+                    range: {
+                      start: { line: i, character: 0 },
+                      end: { line: i + 1, character: 0 },
+                    },
+                    newText: "",
+                  });
+                  break;
+                }
+              }
+            }
+          }
+          break;
+        }
+        case "moveEdge": {
+          for (const e of action.edges) {
+            await this.layoutStorage.updatePositions(params.uri, [
+              {
+                name: e.source,
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                rotation: 0,
+                edges: [{ source: e.source, target: e.target, points: e.points }],
+                connectedOnly: true,
+              },
+            ]);
+          }
+          break;
+        }
+      }
+    }
+
+    if (itemsToSave.length > 0) {
+      await this.layoutStorage.updatePositions(params.uri, itemsToSave);
+    }
+
+    return {
+      seq: params.seq,
+      edits: allEdits,
+      renderHint: allEdits.length > 0 ? "immediate" : itemsToSave.length > 0 ? "none" : "immediate",
+    };
+  }
+}
+
 // ── Dispatch Factory ──
 
 export interface DiagramDispatchDeps {
   modelica: DiagramBackend;
   sysml2: DiagramBackend;
+  generic?: DiagramBackend;
   customBackends?: Map<string | RegExp, DiagramBackend>;
 }
 
@@ -313,7 +564,9 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       if (typeof matcher === "string" && uri.endsWith(matcher)) return backend;
       if (matcher instanceof RegExp && matcher.test(uri)) return backend;
     }
-    return uri.endsWith(".sysml") ? backends.sysml2 : backends.modelica;
+    if (uri.endsWith(".sysml")) return backends.sysml2;
+    if (uri.endsWith(".mo")) return backends.modelica;
+    return backends.generic ?? backends.modelica;
   }
 
   return {

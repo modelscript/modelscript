@@ -53,6 +53,13 @@ export class WebGPULbmRunner {
   public vy: Float32Array;
   public vz: Float32Array;
 
+  // Moving wall boundary velocity for 2-way dynamic aeroelastic FSI
+  public movingWallVelocity: [number, number, number] = [0, 0, 0];
+
+  public setMovingWallVelocity(vel: [number, number, number]): void {
+    this.movingWallVelocity = [vel[0], vel[1], vel[2]];
+  }
+
   constructor(config: LbmGridConfig, cellTypes: Uint8Array) {
     this.config = config;
     this.cellTypes = cellTypes;
@@ -272,6 +279,21 @@ export class WebGPULbmRunner {
                     const oppI = OPP[i];
                     fRefl = (1 / (2 * delta)) * fPost[i] + ((2 * delta - 1) / (2 * delta)) * fPost[oppI];
                   }
+                }
+
+                // Moving wall momentum injection: deltaF = 6 * W[i] * rho * (c_i . u_wall_lattice)
+                if (
+                  targetType === LbmCellType.ObstacleSolid &&
+                  (this.movingWallVelocity[0] !== 0 ||
+                    this.movingWallVelocity[1] !== 0 ||
+                    this.movingWallVelocity[2] !== 0)
+                ) {
+                  const uwx = this.movingWallVelocity[0] * (dt / dx);
+                  const uwy = this.movingWallVelocity[1] * (dt / dx);
+                  const uwz = this.movingWallVelocity[2] * (dt / dx);
+                  const cuW = CX[i] * uwx + CY[i] * uwy + CZ[i] * uwz;
+                  const deltaF = 6.0 * W[i] * rho * cuW;
+                  fRefl -= deltaF;
                 }
 
                 dst[baseSrc + OPP[i]] = fRefl;

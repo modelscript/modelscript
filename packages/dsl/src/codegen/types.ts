@@ -61,6 +61,53 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
     emittedNames.add(finalName);
   }
 
+  // Common operator mapping for literal tokens
+  const OP_MAP: Record<string, string> = {
+    "+": "OP_ADD",
+    "-": "OP_SUB",
+    "*": "OP_MUL",
+    "/": "OP_DIV",
+    "^": "OP_POW",
+    "<": "OP_LT",
+    "<=": "OP_LE",
+    ">": "OP_GT",
+    ">=": "OP_GE",
+    "==": "OP_EQ",
+    "<>": "OP_NEQ",
+    "!=": "OP_NEQ",
+    ":=": "OP_COLON_ASSIGN",
+    "=": "OP_ASSIGN",
+    and: "OP_AND",
+    or: "OP_OR",
+    not: "OP_NOT",
+  };
+
+  // Generate friendly named constants for literal terminals (keywords and operators)
+  for (const [sym, i] of normalized.symToInt.entries()) {
+    if (sym.startsWith('"') && sym.endsWith('"') && sym.length >= 2) {
+      const lit = sym.slice(1, -1);
+      if (OP_MAP[lit]) {
+        const opName = OP_MAP[lit];
+        if (!emittedNames.has(opName)) {
+          typeCode += `  ${opName} = ${i},\n`;
+          emittedNames.add(opName);
+        }
+      }
+      if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(lit)) {
+        const tokenName = `TOKEN_${lit.toUpperCase()}`;
+        if (!emittedNames.has(tokenName)) {
+          typeCode += `  ${tokenName} = ${i},\n`;
+          emittedNames.add(tokenName);
+        }
+        const plainName = lit.toUpperCase();
+        if (["TRUE", "FALSE", "TIME", "DER", "CONNECT"].includes(plainName) && !emittedNames.has(plainName)) {
+          typeCode += `  ${plainName} = ${i},\n`;
+          emittedNames.add(plainName);
+        }
+      }
+    }
+  }
+
   // Ensure all named rules in symToInt are also present as enum values
   for (const [sym, i] of normalized.symToInt.entries()) {
     if (!sym.startsWith('"') && !sym.startsWith("/")) {
@@ -69,6 +116,15 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
       if (!emittedNames.has(safeName)) {
         typeCode += `  ${safeName} = ${i},\n`;
         emittedNames.add(safeName);
+      }
+      // Common rule aliases
+      if (sym === "identifier" && !emittedNames.has("TOKEN_IDENTIFIER_ALT")) {
+        typeCode += `  TOKEN_IDENTIFIER_ALT = ${i},\n`;
+        emittedNames.add("TOKEN_IDENTIFIER_ALT");
+      }
+      if (sym === "unsigned_integer" && !emittedNames.has("TOKEN_UNSIGNED_INT_ALT")) {
+        typeCode += `  TOKEN_UNSIGNED_INT_ALT = ${i},\n`;
+        emittedNames.add("TOKEN_UNSIGNED_INT_ALT");
       }
     }
   }

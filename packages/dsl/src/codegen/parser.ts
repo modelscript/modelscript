@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { GLRTable, LRAutomaton } from "../dsl/automata.js";
 import { NormalizedGrammar } from "../dsl/grammar.js";
 import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl/language.js";
@@ -157,7 +159,8 @@ export function generateParserTables(
 }\n\nexport let expected_tokens: usize = 0;\n\n`;
 
   // Types & SyntaxType enum
-  code += generateTypes(originalGrammar, grammar);
+  const typesContent = generateTypes(originalGrammar, grammar);
+  code += `\nexport * from "./types";\n`;
 
   code += `\n// GLR Parser Tables\n`;
   code += `// Generated for ${grammar.productions.length} productions and ${table.actionTable.size} states\n\n`;
@@ -1064,6 +1067,7 @@ export function generateParserTables(
 
   const outFiles: GeneratedFile[] = [
     { filename: "parser.ts", content: code },
+    { filename: "types.ts", content: typesContent },
     { filename: "array.ts", content: arrayCode },
     { filename: "arena.ts", content: arenaCode },
     { filename: "cursor.ts", content: cursorCode },
@@ -1122,10 +1126,61 @@ export function generateParserTables(
     { filename: "verifier.ts", content: verifierCode },
   ];
 
+  const sourcePath = (originalGrammar as any).sourcePath || (originalGrammar as any)[SOURCE_PATH_SYMBOL];
+  const sourceDir = sourcePath ? path.dirname(sourcePath) : process.cwd();
+
+  const loadRuntimeFile = (rf: any): { filename: string; content: string } | null => {
+    if (typeof rf === "string") {
+      const resolvedPath = path.isAbsolute(rf) ? rf : path.resolve(sourceDir, rf);
+      if (fs.existsSync(resolvedPath)) {
+        return {
+          filename: path.basename(resolvedPath),
+          content: fs.readFileSync(resolvedPath, "utf-8"),
+        };
+      }
+      throw new Error(`Runtime file path not found: ${rf} (resolved to ${resolvedPath})`);
+    } else if (rf && typeof rf === "object") {
+      let content = rf.content;
+      let filename = rf.filename;
+      if (!content && rf.path) {
+        const resolvedPath = path.isAbsolute(rf.path) ? rf.path : path.resolve(sourceDir, rf.path);
+        if (fs.existsSync(resolvedPath)) {
+          content = fs.readFileSync(resolvedPath, "utf-8");
+          if (!filename) filename = path.basename(resolvedPath);
+        } else {
+          throw new Error(`Runtime file path not found: ${rf.path} (resolved to ${resolvedPath})`);
+        }
+      }
+      if (filename && content !== undefined) {
+        return { filename, content };
+      }
+    }
+    return null;
+  };
+
   if (originalGrammar.runtimeFiles) {
     for (const rf of originalGrammar.runtimeFiles) {
-      outFiles.push({ filename: rf.filename, content: rf.content });
-      code += "\n" + extractExports(rf.content, `./${rf.filename.replace(/\.ts$/, "")}`);
+      const loaded = loadRuntimeFile(rf);
+      if (loaded) {
+        outFiles.push(loaded);
+        code += "\n" + extractExports(loaded.content, `./${loaded.filename.replace(/\.ts$/, "")}`);
+      }
+    }
+  }
+
+  if (originalGrammar.runtimeDir) {
+    const resolvedDir = path.isAbsolute(originalGrammar.runtimeDir)
+      ? originalGrammar.runtimeDir
+      : path.resolve(sourceDir, originalGrammar.runtimeDir);
+    if (fs.existsSync(resolvedDir)) {
+      const dirEntries = fs.readdirSync(resolvedDir).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"));
+      for (const entry of dirEntries) {
+        if (!outFiles.some((f) => f.filename === entry)) {
+          const content = fs.readFileSync(path.join(resolvedDir, entry), "utf-8");
+          outFiles.push({ filename: entry, content });
+          code += "\n" + extractExports(content, `./${entry.replace(/\.ts$/, "")}`);
+        }
+      }
     }
   }
 
@@ -1233,7 +1288,6 @@ import { AdTape } from "./tape";
 
 `;
 
-    const sourcePath = (originalGrammar as any).sourcePath || (originalGrammar as any)[SOURCE_PATH_SYMBOL];
     const sourceText = (originalGrammar as any).sourceText || (originalGrammar as any)[SOURCE_TEXT_SYMBOL];
     const ast = sourceText ? extractLanguageAST(sourceText) : sourcePath ? extractLanguageAST(sourcePath) : null;
 

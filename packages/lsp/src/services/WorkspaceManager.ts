@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
+import { createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
 import owl2Lang from "@modelscript/owl2/language";
 import { QueryEngine, UnifiedWorkspace } from "@modelscript/runtime";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
@@ -11,7 +12,7 @@ const owl2IndexerHooks = extractIndexerHooks(owl2Lang);
 export class WorkspaceManager {
   public globalWorkspaceIndex = createModelicaWorkspaceIndex();
   public sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
-  public owl2WorkspaceIndex: any = { version: 0, fileCount: 0 };
+  public owl2WorkspaceIndex = createOWL2WorkspaceIndex();
   public stepWorkspaceIndex: any; // Requires step-workspace-index
   public unifiedWorkspace = new UnifiedWorkspace();
   public allWorkspaceIndices = new Map<string, any>();
@@ -30,30 +31,31 @@ export class WorkspaceManager {
     this.documentManager = documentManager;
     // Step integration is handled in browserServerMain or by a setter
 
+    const getEngine = (resourceId?: string) => {
+      if (!resourceId) return null;
+      if (resourceId.endsWith(".sysml")) return this.globalSysML2QueryEngine;
+      if (resourceId.endsWith(".owl") || resourceId.endsWith(".ofn")) return this.globalOWL2QueryEngine;
+      return this.globalModelicaQueryEngine;
+    };
+
     // Wire up CST providers for cross-language polyglot queries
     this.unifiedWorkspace.cstNodeProvider = (id) => {
       const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
-      const engine = entry.resourceId.endsWith(".sysml")
-        ? this.globalSysML2QueryEngine
-        : this.globalModelicaQueryEngine;
+      const engine = getEngine(entry.resourceId);
       return engine?.toQueryDB().cstNode(id) ?? null;
     };
 
     this.unifiedWorkspace.cstTextProvider = (startByte, endByte, entry) => {
       if (!entry.resourceId) return null;
-      const engine = entry.resourceId.endsWith(".sysml")
-        ? this.globalSysML2QueryEngine
-        : this.globalModelicaQueryEngine;
+      const engine = getEngine(entry.resourceId);
       return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
     };
 
     this.unifiedWorkspace.queryProvider = (queryName, id) => {
       const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
-      const engine = entry.resourceId.endsWith(".sysml")
-        ? this.globalSysML2QueryEngine
-        : this.globalModelicaQueryEngine;
+      const engine = getEngine(entry.resourceId);
       return engine?.query(queryName, id) ?? null;
     };
   }

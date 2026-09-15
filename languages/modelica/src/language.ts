@@ -16,7 +16,6 @@ import {
   tggTypeMap,
   token,
 } from "@modelscript/dsl";
-import { modelicaFlattenerWasmCode } from "./flattener-wasm.js";
 import { getDottedVariableType, getVariableTypeInClass } from "./lints/helpers.js";
 import { allModelicaLints } from "./lints/index.js";
 import { modelicaFlatteningPasses } from "./pipelines/flatten.js";
@@ -151,7 +150,12 @@ export const modelicaLanguage = language({
     ],
   },
 
-  runtimeFiles: [{ filename: "flattener.ts", content: modelicaFlattenerWasmCode }],
+  runtimeFiles: [
+    {
+      filename: "flattener.ts",
+      path: new URL("../assembly/flattener.ts", import.meta.url).pathname,
+    },
+  ],
 
   word: ($) => $.identifier,
 

@@ -1,0 +1,47 @@
+{
+  "name": "@modelscript/scad",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    },
+    "./evaluator": {
+      "types": "./dist/src/evaluator.d.ts",
+      "default": "./dist/src/evaluator.js"
+    },
+    "./patcher": {
+      "types": "./dist/src/patcher.d.ts",
+      "default": "./dist/src/patcher.js"
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dist/parser.wasm": "./dist/parser.wasm"
+  },
+  "files": [
+    "src/**",
+    "src-gen/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "node build.js && tsc",
+    "clean": "rimraf dist src-gen as-gen *.wasm"
+  },
+  "dependencies": {
+    "@modelscript/cad": "*",
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

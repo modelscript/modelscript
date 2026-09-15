@@ -1746,6 +1746,7 @@ export function applySimulationFrame(
 }
 
 export * from "./color-inversion.js";
+export * from "./glyphs.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-router.js";
 export * from "./swimlane-layout.js";

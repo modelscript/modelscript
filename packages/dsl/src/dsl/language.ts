@@ -699,6 +699,11 @@ export type LanguageProtocolHandler<TParams = any, TResult = any> = (
 ) => Promise<TResult> | TResult;
 
 /**
+ * Input definition for custom language AssemblyScript runtime files.
+ */
+export type RuntimeFileInput = { filename?: string; content?: string; path?: string } | string;
+
+/**
  * Configuration options passed to the `language(...)` function.
  * Modeled after Tree-sitter's Grammar API.
  */
@@ -824,8 +829,15 @@ export interface LanguageOptions<
   /**
    * Supplemental language-specific AssemblyScript runtime files
    * (e.g. Modelica-specific flattener, connection managers, or custom solvers).
+   * Can be file objects with content, file objects with path, or direct file paths.
    */
-  runtimeFiles?: { filename: string; content: string }[];
+  runtimeFiles?: RuntimeFileInput[];
+
+  /**
+   * Optional directory containing supplemental AssemblyScript (.ts) runtime files
+   * to automatically bundle into the WASM module.
+   */
+  runtimeDir?: string;
 
   /** Dedicated Declaration & Stub Symbol Schema for Tier 1 Workspace Indexing and fast F12 */
   symbols?: Partial<Record<RuleName, SymbolConfig<FieldName>>>;
@@ -2374,6 +2386,12 @@ export interface VisualNodeConfig<
     FieldName | string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => any)
   >;
 
+  /** Dual view definition (Icon schematic vs internal Diagram architecture) */
+  views?: {
+    icon?: VisualElement[] | ((db: CodeGraph, node: u32) => VisualElement[]);
+    diagram?: VisualElement[] | ((db: CodeGraph, node: u32) => VisualElement[]);
+  };
+
   /** Reactive simulation animation & dynamic expression evaluation */
   dynamics?: ReactiveDynamicsConfig;
   animation?: ReactiveDynamicsConfig; // Alias for backward-compat
@@ -2410,6 +2428,10 @@ export interface DiagramProjectionConfig<RuleName extends string = string, Field
   includeRules?: (RuleName | string)[];
   /** Explicit list of grammar rules excluded from this projection */
   excludeRules?: (RuleName | string)[];
+  /** Explicit list of grammar rules that act as visual group/container boundaries */
+  groupRules?: (RuleName | string)[];
+  /** Explicit list of grammar rules rendered as standalone nodes */
+  standaloneRules?: (RuleName | string)[];
   /** Scope query: which AST nodes are candidate entities */
   scope?: (db: CodeGraph, root: u32) => Cursor;
   expose?: string[] | ((db: CodeGraph, root: u32) => Cursor);
@@ -2461,6 +2483,12 @@ export interface VisualMutationConfig {
   updatePlacement?: (db: CodeGraph, node: u32, x: number, y: number, w: number, h: number, rot: number) => void;
   deleteEntity?: (db: CodeGraph, node: u32) => void;
   renameEntity?: (db: CodeGraph, node: u32, newName: string) => void;
+
+  /** Declarative string templates or builders */
+  nodeTemplate?: string | ((className: string, name: string) => string);
+  edgeTemplate?: string | ((source: string, target: string) => string);
+  edgeRule?: string;
+  insertionSection?: string;
 }
 
 /**
@@ -2534,6 +2562,20 @@ export interface DiagramConfig<
 
   /** Visual mutations (Unparser-backed AST transformations) */
   mutations?: VisualMutationConfig;
+
+  /** Spatial placement storage strategy */
+  placement?: {
+    persistence?: "inline" | "sidecar";
+    rule?: string;
+    formatPlacement?: (x: number, y: number, w?: number, h?: number, r?: number) => string;
+    parsePlacement?: (node: any) => { x: number; y: number; width?: number; height?: number };
+  };
+
+  /** Grammar rule classification sets for structural parent & standalone children */
+  structuralRules?: (RuleName | string)[];
+  standaloneRules?: (RuleName | string)[];
+  usageRules?: (RuleName | string)[];
+  definitionRules?: (RuleName | string)[];
 }
 
 // Backward-compatible type aliases

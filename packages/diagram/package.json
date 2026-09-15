@@ -28,6 +28,18 @@
       "types": "./dist/port-router.d.ts",
       "default": "./dist/port-router.js"
     },
+    "./glyphs": {
+      "types": "./dist/glyphs.d.ts",
+      "default": "./dist/glyphs.js"
+    },
+    "./layout-storage": {
+      "types": "./dist/layout-storage.d.ts",
+      "default": "./dist/layout-storage.js"
+    },
+    "./solder-dots": {
+      "types": "./dist/solder-dots.d.ts",
+      "default": "./dist/solder-dots.js"
+    },
     "./spinner": {
       "types": "./dist/spinner.d.ts",
       "default": "./dist/spinner.js"

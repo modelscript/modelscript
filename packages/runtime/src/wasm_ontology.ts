@@ -2096,9 +2096,19 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   private _lastDelta: OWL2AxiomDelta = { retractions: [], assertions: [] };
   private _sourceLanguages: string[] = [];
   private _wasmInstance: WasmOntologyInstance | null = null;
+  private _workspace: any = null;
 
-  constructor(wasmInstance?: WasmOntologyInstance | null) {
+  constructor(wasmInstance?: WasmOntologyInstance | null, workspace?: any) {
     this._wasmInstance = wasmInstance ?? null;
+    this._workspace = workspace ?? null;
+  }
+
+  public setWorkspace(workspace: any): void {
+    this._workspace = workspace;
+  }
+
+  public get workspace(): any {
+    return this._workspace;
   }
 
   public setWasmInstance(wasmInstance: WasmOntologyInstance): void {
@@ -2186,11 +2196,122 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   }
 
   fullProjection(): void {
+    if (this._workspace) {
+      if (this._sourceLanguages.length === 0) {
+        this.registerSourceLanguage("modelica");
+        this.registerSourceLanguage("sysml2");
+      }
+      for (const lang of this._sourceLanguages) {
+        this.projectLanguage(lang);
+      }
+    }
     this._revision++;
   }
 
   projectLanguage(language: string): OWL2AxiomDelta {
-    return { assertions: [], retractions: [] };
+    if (!this._workspace) return { assertions: [], retractions: [] };
+
+    const unified = typeof this._workspace.toUnifiedPartial === "function" ? this._workspace.toUnifiedPartial() : null;
+    if (!unified || !unified.symbols) return { assertions: [], retractions: [] };
+
+    const projected: OWL2Axiom[] = [];
+    const prefix = language === "sysml2" ? "sysml:" : language === "modelica" ? "mo:" : `${language}:`;
+
+    for (const [id, entry] of unified.symbols.entries()) {
+      if (entry.language !== language && (!entry.resourceId || !entry.resourceId.includes(`.${language}`))) {
+        continue;
+      }
+
+      const iri = `${prefix}${entry.name || `anon_${id}`}`;
+
+      if (language === "sysml2") {
+        if (entry.kind === "Definition") {
+          projected.push({
+            type: "ClassDeclaration",
+            iri,
+            sourceLang: "sysml2",
+            sourceQualifiedName: entry.name || "",
+          });
+          const children = unified.childrenOf?.get(id) ?? [];
+          for (const childId of children) {
+            const child = unified.symbols.get(childId);
+            if (
+              child &&
+              (child.ruleName === "OwnedSubsetting" || child.ruleName === "OwnedRedefinition") &&
+              child.name
+            ) {
+              projected.push({
+                type: "SubClassOf",
+                subClassIri: iri,
+                superClassIri: `${prefix}${child.name}`,
+                sourceLang: "sysml2",
+              });
+            }
+          }
+        } else if (entry.kind === "Usage") {
+          projected.push({
+            type: "ClassDeclaration",
+            iri,
+            sourceLang: "sysml2",
+            sourceQualifiedName: entry.name || "",
+          });
+          if (entry.parentId !== null) {
+            const parent = unified.symbols.get(entry.parentId);
+            if (parent) {
+              projected.push({
+                type: "ObjectPropertyAssertion",
+                propertyIri: "sysml:hasPart",
+                subjectIri: `${prefix}${parent.name}`,
+                objectIri: iri,
+                sourceLang: "sysml2",
+              });
+            }
+          }
+        }
+      } else if (language === "modelica") {
+        if (entry.kind === "Class" || entry.kind === "model" || entry.kind === "block") {
+          projected.push({
+            type: "ClassDeclaration",
+            iri,
+            sourceLang: "modelica",
+            sourceQualifiedName: entry.name || "",
+          });
+          if (Array.isArray(entry.inherits)) {
+            for (const sup of entry.inherits) {
+              if (sup) {
+                projected.push({
+                  type: "SubClassOf",
+                  subClassIri: iri,
+                  superClassIri: `${prefix}${sup}`,
+                  sourceLang: "modelica",
+                });
+              }
+            }
+          }
+          const children = unified.childrenOf?.get(id) ?? [];
+          for (const childId of children) {
+            const child = unified.symbols.get(childId);
+            if (child && (child.kind === "Component" || child.kind === "Variable")) {
+              const compIri = `${prefix}${entry.name}.${child.name}`;
+              projected.push({
+                type: "ClassDeclaration",
+                iri: compIri,
+                sourceLang: "modelica",
+              });
+              projected.push({
+                type: "ObjectPropertyAssertion",
+                propertyIri: "mo:hasPart",
+                subjectIri: iri,
+                objectIri: compIri,
+                sourceLang: "modelica",
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return this.setAxioms(language, projected);
   }
 
   update(workspaceVersions: Map<string, number>): OWL2AxiomDelta | null {

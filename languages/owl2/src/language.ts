@@ -92,9 +92,10 @@ export const owl2Language = language({
       seq("Prefix", "(", field("name", optional($.PrefixName)), "=", field("iri", $.FullIRI), ")"),
 
     IDENT: () => semanticToken("identifier", /[a-zA-Z_][a-zA-Z0-9_]*/),
-    PrefixName: ($) => seq($.IDENT, ":"),
+    INTEGER: () => semanticToken("number", /[0-9]+/),
+    PrefixName: ($) => choice(seq($.IDENT, ":"), ":"),
     FullIRI: () => /<[^>]*>/,
-    AbbreviatedIRI: ($) => seq($.IDENT, ":", $.IDENT),
+    AbbreviatedIRI: ($) => choice(seq($.IDENT, ":", $.IDENT), seq(":", $.IDENT)),
     IRI: ($) => choice($.FullIRI, $.AbbreviatedIRI),
     StringLiteral: () => /"[^"]*"/,
 
@@ -116,10 +117,29 @@ export const owl2Language = language({
         $.SubClassOfAxiom,
         $.EquivalentClassesAxiom,
         $.DisjointClassesAxiom,
+        $.SubObjectPropertyOfAxiom,
+        $.SubDataPropertyOfAxiom,
+        $.InverseObjectPropertiesAxiom,
+        $.DisjointObjectPropertiesAxiom,
+        $.ObjectPropertyDomainAxiom,
+        $.ObjectPropertyRangeAxiom,
+        $.DataPropertyDomainAxiom,
+        $.DataPropertyRangeAxiom,
+        $.FunctionalObjectPropertyAxiom,
+        $.InverseFunctionalObjectPropertyAxiom,
+        $.ReflexiveObjectPropertyAxiom,
+        $.IrreflexiveObjectPropertyAxiom,
+        $.SymmetricObjectPropertyAxiom,
+        $.AsymmetricObjectPropertyAxiom,
+        $.TransitiveObjectPropertyAxiom,
+        $.FunctionalDataPropertyAxiom,
         $.ObjectPropertyAssertionAxiom,
         $.DataPropertyAssertionAxiom,
+        $.NegativeObjectPropertyAssertionAxiom,
+        $.NegativeDataPropertyAssertionAxiom,
         $.ClassAssertionAxiom,
-        $.TransitiveObjectPropertyAxiom,
+        $.SameIndividualAxiom,
+        $.DifferentIndividualsAxiom,
       ),
 
     Declaration: ($) => seq("Declaration", "(", field("entity", $._Entity), ")"),
@@ -142,8 +162,17 @@ export const owl2Language = language({
         $.ObjectComplementOf,
         $.ObjectSomeValuesFrom,
         $.ObjectAllValuesFrom,
+        $.ObjectHasSelf,
+        $.ObjectHasValue,
+        $.ObjectOneOf,
+        $.ObjectMinCardinality,
+        $.ObjectMaxCardinality,
+        $.ObjectExactCardinality,
         $.DataSomeValuesFrom,
         $.DataAllValuesFrom,
+        $.DataMinCardinality,
+        $.DataMaxCardinality,
+        $.DataExactCardinality,
       ),
 
     ObjectIntersectionOf: ($) => seq("ObjectIntersectionOf", "(", repeat($._ClassExpression), ")"),
@@ -151,8 +180,68 @@ export const owl2Language = language({
     ObjectComplementOf: ($) => seq("ObjectComplementOf", "(", $._ClassExpression, ")"),
     ObjectSomeValuesFrom: ($) => seq("ObjectSomeValuesFrom", "(", $.IRI, $._ClassExpression, ")"),
     ObjectAllValuesFrom: ($) => seq("ObjectAllValuesFrom", "(", $.IRI, $._ClassExpression, ")"),
+    ObjectHasSelf: ($) => seq("ObjectHasSelf", "(", field("property", $.IRI), ")"),
+    ObjectHasValue: ($) => seq("ObjectHasValue", "(", field("property", $.IRI), field("individual", $.IRI), ")"),
+    ObjectOneOf: ($) => seq("ObjectOneOf", "(", repeat(field("individual", $.IRI)), ")"),
+
+    ObjectMinCardinality: ($) =>
+      seq(
+        "ObjectMinCardinality",
+        "(",
+        field("cardinality", $.INTEGER),
+        field("property", $.IRI),
+        optional(field("filler", $._ClassExpression)),
+        ")",
+      ),
+    ObjectMaxCardinality: ($) =>
+      seq(
+        "ObjectMaxCardinality",
+        "(",
+        field("cardinality", $.INTEGER),
+        field("property", $.IRI),
+        optional(field("filler", $._ClassExpression)),
+        ")",
+      ),
+    ObjectExactCardinality: ($) =>
+      seq(
+        "ObjectExactCardinality",
+        "(",
+        field("cardinality", $.INTEGER),
+        field("property", $.IRI),
+        optional(field("filler", $._ClassExpression)),
+        ")",
+      ),
+
     DataSomeValuesFrom: ($) => seq("DataSomeValuesFrom", "(", $.IRI, $.DataRange, ")"),
     DataAllValuesFrom: ($) => seq("DataAllValuesFrom", "(", $.IRI, $.DataRange, ")"),
+    DataMinCardinality: ($) =>
+      seq(
+        "DataMinCardinality",
+        "(",
+        field("cardinality", $.INTEGER),
+        field("property", $.IRI),
+        optional(field("range", $.DataRange)),
+        ")",
+      ),
+    DataMaxCardinality: ($) =>
+      seq(
+        "DataMaxCardinality",
+        "(",
+        field("cardinality", $.INTEGER),
+        field("property", $.IRI),
+        optional(field("range", $.DataRange)),
+        ")",
+      ),
+    DataExactCardinality: ($) =>
+      seq(
+        "DataExactCardinality",
+        "(",
+        field("cardinality", $.INTEGER),
+        field("property", $.IRI),
+        optional(field("range", $.DataRange)),
+        ")",
+      ),
+
     DataRange: ($) => choice($.IRI),
 
     SubClassOfAxiom: ($) =>
@@ -161,6 +250,46 @@ export const owl2Language = language({
     EquivalentClassesAxiom: ($) => seq("EquivalentClasses", "(", repeat(field("classExpr", $._ClassExpression)), ")"),
 
     DisjointClassesAxiom: ($) => seq("DisjointClasses", "(", repeat(field("classExpr", $._ClassExpression)), ")"),
+
+    SubObjectPropertyOfAxiom: ($) =>
+      seq("SubObjectPropertyOf", "(", field("subProperty", $.IRI), field("superProperty", $.IRI), ")"),
+
+    SubDataPropertyOfAxiom: ($) =>
+      seq("SubDataPropertyOf", "(", field("subProperty", $.IRI), field("superProperty", $.IRI), ")"),
+
+    InverseObjectPropertiesAxiom: ($) =>
+      seq("InverseObjectProperties", "(", field("property", $.IRI), field("inverseProperty", $.IRI), ")"),
+
+    DisjointObjectPropertiesAxiom: ($) => seq("DisjointObjectProperties", "(", repeat(field("property", $.IRI)), ")"),
+
+    ObjectPropertyDomainAxiom: ($) =>
+      seq("ObjectPropertyDomain", "(", field("property", $.IRI), field("domain", $._ClassExpression), ")"),
+
+    ObjectPropertyRangeAxiom: ($) =>
+      seq("ObjectPropertyRange", "(", field("property", $.IRI), field("range", $._ClassExpression), ")"),
+
+    DataPropertyDomainAxiom: ($) =>
+      seq("DataPropertyDomain", "(", field("property", $.IRI), field("domain", $._ClassExpression), ")"),
+
+    DataPropertyRangeAxiom: ($) =>
+      seq("DataPropertyRange", "(", field("property", $.IRI), field("range", $.DataRange), ")"),
+
+    FunctionalObjectPropertyAxiom: ($) => seq("FunctionalObjectProperty", "(", field("property", $.IRI), ")"),
+
+    InverseFunctionalObjectPropertyAxiom: ($) =>
+      seq("InverseFunctionalObjectProperty", "(", field("property", $.IRI), ")"),
+
+    ReflexiveObjectPropertyAxiom: ($) => seq("ReflexiveObjectProperty", "(", field("property", $.IRI), ")"),
+
+    IrreflexiveObjectPropertyAxiom: ($) => seq("IrreflexiveObjectProperty", "(", field("property", $.IRI), ")"),
+
+    SymmetricObjectPropertyAxiom: ($) => seq("SymmetricObjectProperty", "(", field("property", $.IRI), ")"),
+
+    AsymmetricObjectPropertyAxiom: ($) => seq("AsymmetricObjectProperty", "(", field("property", $.IRI), ")"),
+
+    TransitiveObjectPropertyAxiom: ($) => seq("TransitiveObjectProperty", "(", field("property", $.IRI), ")"),
+
+    FunctionalDataPropertyAxiom: ($) => seq("FunctionalDataProperty", "(", field("property", $.IRI), ")"),
 
     ObjectPropertyAssertionAxiom: ($) =>
       seq(
@@ -182,10 +311,39 @@ export const owl2Language = language({
         ")",
       ),
 
+    NegativeObjectPropertyAssertionAxiom: ($) =>
+      seq(
+        "NegativeObjectPropertyAssertion",
+        "(",
+        field("property", $.IRI),
+        field("subject", $.IRI),
+        field("object", $.IRI),
+        ")",
+      ),
+
+    NegativeDataPropertyAssertionAxiom: ($) =>
+      seq(
+        "NegativeDataPropertyAssertion",
+        "(",
+        field("property", $.IRI),
+        field("subject", $.IRI),
+        field("value", $.StringLiteral),
+        ")",
+      ),
+
     ClassAssertionAxiom: ($) =>
       seq("ClassAssertion", "(", field("classExpr", $._ClassExpression), field("individual", $.IRI), ")"),
 
-    TransitiveObjectPropertyAxiom: ($) => seq("TransitiveObjectProperty", "(", field("property", $.IRI), ")"),
+    SameIndividualAxiom: ($) => seq("SameIndividual", "(", repeat(field("individual", $.IRI)), ")"),
+
+    DifferentIndividualsAxiom: ($) => seq("DifferentIndividuals", "(", repeat(field("individual", $.IRI)), ")"),
+  },
+
+  symbols: {
+    ClassEntity: { name: "iri", kind: "Class", scope: true },
+    ObjectPropertyEntity: { name: "iri", kind: "ObjectProperty", scope: false },
+    DataPropertyEntity: { name: "iri", kind: "DataProperty", scope: false },
+    NamedIndividualEntity: { name: "iri", kind: "Individual", scope: false },
   },
 });
 

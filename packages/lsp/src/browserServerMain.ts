@@ -204,6 +204,7 @@ import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
 import { registerDiagramHandlers } from "./handlers/diagramHandler.js";
 import { registerInteropEndpoints } from "./handlers/interopEndpoints.js";
 import { registerMiscEndpoints } from "./handlers/miscEndpoints.js";
+import { registerOwl2Endpoints } from "./handlers/owl2Endpoints.js";
 import { registerPolyglotEndpoints } from "./handlers/polyglotEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
@@ -965,6 +966,7 @@ registerSimulationEndpoints(lspContext);
 registerAnalysisEndpoints(lspContext);
 registerInteropEndpoints(lspContext);
 registerClassQueryEndpoints(lspContext);
+registerOwl2Endpoints(lspContext);
 registerMiscEndpoints(lspContext);
 registerPolyglotEndpoints(connection, documents, validationService, documentManager, workspaceManager);
 

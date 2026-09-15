@@ -52,6 +52,7 @@ import {
 } from "./array";
 import { UnmanagedMap64, createMap64, UnmanagedSet64, createSet64 } from "./hashmap";
 import { ArenaStringPool } from "./string_pool";
+import { SyntaxType, FieldId } from "./types";
 
 export const FLAG_MOD_FINAL: u32 = 0x01;
 export const FLAG_MOD_EACH: u32 = 0x02;
@@ -62,87 +63,6 @@ export const SIZEOF_MOD_ENV: u32 = 64;
 export const SIZEOF_SCOPE_STACK: u32 = 64;
 export const SIZEOF_EXPR_VISITOR: u32 = 64;
 export const SIZEOF_FLATTENER: u32 = 128;
-
-export namespace SyntaxType {
-  export const CLASS_DEFINITION: u16 = 106;
-  export const CLASS_PREFIXES: u16 = 107;
-  export const CLASS_SPECIFIER: u16 = 108;
-  export const LONG_CLASS_SPECIFIER: u16 = 109;
-  export const SHORT_CLASS_SPECIFIER: u16 = 110;
-  export const COMPOSITION: u16 = 115;
-  export const ELEMENT_LIST: u16 = 119;
-  export const ELEMENT: u16 = 120;
-  export const EXTENDS_CLAUSE: u16 = 123;
-  export const COMPONENT_CLAUSE: u16 = 128;
-  export const TYPE_PREFIX: u16 = 129;
-  export const COMPONENT_LIST: u16 = 130;
-  export const COMPONENT_DECLARATION: u16 = 131;
-  export const DECLARATION: u16 = 133;
-  export const MODIFICATION: u16 = 134;
-  export const MODIFICATION_EXPRESSION: u16 = 135;
-  export const CLASS_MODIFICATION: u16 = 136;
-  export const ARGUMENT_LIST: u16 = 137;
-  export const ARGUMENT: u16 = 138;
-  export const ELEMENT_MODIFICATION_OR_REPLACEABLE: u16 = 139;
-  export const ELEMENT_MODIFICATION: u16 = 140;
-  export const ELEMENT_REDECLARATION: u16 = 141;
-  export const COMPONENT_CLAUSE1: u16 = 143;
-  export const COMPONENT_DECLARATION1: u16 = 144;
-  export const EQUATION_SECTION: u16 = 146;
-  export const ALGORITHM_SECTION: u16 = 147;
-  export const SOME_EQUATION: u16 = 148;
-  export const EQUATION_OR_PROCEDURE: u16 = 149;
-  export const SIMPLE_EQUATION: u16 = 150;
-  export const CONNECT_EQUATION: u16 = 164;
-  export const EXPRESSION: u16 = 165;
-  export const PRIMARY: u16 = 166;
-  export const UNSIGNED_NUMBER: u16 = 167;
-  export const TYPE_SPECIFIER: u16 = 168;
-  export const NAME: u16 = 169;
-  export const COMPONENT_REFERENCE: u16 = 170;
-  export const ARRAY_SUBSCRIPTS: u16 = 183;
-  export const SUBSCRIPT: u16 = 184;
-  export const TOKEN_FINAL: u16 = 10;
-  export const TOKEN_INPUT: u16 = 36;
-  export const TOKEN_OUTPUT: u16 = 37;
-  export const TOKEN_FLOW: u16 = 38;
-  export const TOKEN_STREAM: u16 = 39;
-  export const TOKEN_PUBLIC: u16 = 40;
-  export const TOKEN_PROTECTED: u16 = 41;
-  export const TOKEN_DISCRETE: u16 = 55;
-  export const TOKEN_PARAMETER: u16 = 56;
-  export const TOKEN_CONSTANT: u16 = 57;
-  export const DER: u16 = 34;
-  export const CONNECT: u16 = 74;
-  export const OP_OR: u16 = 75;
-  export const OP_AND: u16 = 76;
-  export const OP_NOT: u16 = 77;
-  export const OP_LT: u16 = 78;
-  export const OP_LE: u16 = 79;
-  export const OP_GT: u16 = 80;
-  export const OP_GE: u16 = 81;
-  export const OP_EQ: u16 = 82;
-  export const OP_NEQ: u16 = 83;
-  export const OP_ADD: u16 = 84;
-  export const OP_SUB: u16 = 85;
-  export const OP_DIV: u16 = 88;
-  export const OP_POW: u16 = 90;
-  export const OP_MUL: u16 = 50;
-  export const FALSE: u16 = 93;
-  export const TRUE: u16 = 94;
-  export const TIME: u16 = 95;
-  export const IDENTIFIER: u16 = 99;
-  export const STRING_LITERAL: u16 = 100;
-  export const UNSIGNED_INTEGER: u16 = 101;
-  export const UNSIGNED_REAL: u16 = 102;
-  export const TOKEN_IDENTIFIER_ALT: u16 = 327;
-  export const TOKEN_UNSIGNED_INT_ALT: u16 = 329;
-}
-
-export namespace FieldId {
-  export const LHS: u16 = 24;
-  export const RHS: u16 = 25;
-}
 
 function parseIntBytes(src: usize, len: u32): i32 {
   if (len == 0 || src == 0) return 0;
@@ -395,19 +315,19 @@ export function locFirstNonEmptyChild(loc: u64): u64 {
   return 0;
 }
 
-export function locFindChild(loc: u64, type: u16): u64 {
+export function locFindChild(loc: u64, type: u32): u64 {
   let ch = locFirstChild(loc);
   while (!locIsNull(ch)) {
-    if (locType(ch) == type) return ch;
+    if ((locType(ch) as u32) == type) return ch;
     ch = locNextSibling(ch);
   }
   return 0;
 }
 
-export function locFindDescendant(loc: u64, type: u16): u64 {
+export function locFindDescendant(loc: u64, type: u32): u64 {
   let ch = locFirstChild(loc);
   while (!locIsNull(ch)) {
-    if (locType(ch) == type) return ch;
+    if ((locType(ch) as u32) == type) return ch;
     let found = locFindDescendant(ch, type);
     if (!locIsNull(found)) return found;
     ch = locNextSibling(ch);
