@@ -259,6 +259,81 @@ export class NeuralNetFmuSubsystem implements FmuSubsystem {
 }
 
 /**
+ * Generic inference function for external neural networks / ONNX models:
+ * Maps an input vector [in_0, ..., in_{m-1}] to output vector [out_0, ..., out_{n-1}].
+ */
+export type NeuralInferenceFn = (inputs: Float64Array) => Float64Array | number[];
+
+/**
+ * An FmuSubsystem backed by an external ONNX inference session or neural network function.
+ * Enables zero-overhead evaluation of external PyTorch/JAX/ONNX models directly inside ModelScript simulations.
+ */
+export class OnnxFmuSubsystem implements FmuSubsystem {
+  readonly modelName: string;
+  readonly inputNames: string[];
+  readonly outputNames: string[];
+  readonly parameterNames: string[] = [];
+
+  private inferenceFn: NeuralInferenceFn;
+  private currentInputs = new Map<string, number>();
+  private currentOutputs = new Map<string, number>();
+  private inputBuffer: Float64Array;
+
+  constructor(modelName: string, inputNames: string[], outputNames: string[], inferenceFn: NeuralInferenceFn) {
+    this.modelName = modelName;
+    this.inputNames = inputNames;
+    this.outputNames = outputNames;
+    this.inferenceFn = inferenceFn;
+    this.inputBuffer = new Float64Array(inputNames.length);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  initialize(_startTime: number, _stopTime: number, _stepSize: number): void {
+    this.currentInputs.clear();
+    this.currentOutputs.clear();
+    for (const name of this.inputNames) this.currentInputs.set(name, 0);
+    for (const name of this.outputNames) this.currentOutputs.set(name, 0);
+  }
+
+  setInputs(inputs: Map<string, number>): void {
+    for (const [name, value] of inputs) {
+      if (this.currentInputs.has(name)) {
+        this.currentInputs.set(name, value);
+      }
+    }
+    this.evaluate();
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  doStep(_currentTime: number, _stepSize: number): void {
+    this.evaluate();
+  }
+
+  getOutputs(): Map<string, number> {
+    return new Map(this.currentOutputs);
+  }
+
+  terminate(): void {
+    this.currentInputs.clear();
+    this.currentOutputs.clear();
+  }
+
+  setInferenceFn(fn: NeuralInferenceFn): void {
+    this.inferenceFn = fn;
+  }
+
+  private evaluate(): void {
+    for (let i = 0; i < this.inputNames.length; i++) {
+      this.inputBuffer[i] = this.currentInputs.get(this.inputNames[i]!) ?? 0;
+    }
+    const out = this.inferenceFn(this.inputBuffer);
+    for (let i = 0; i < this.outputNames.length; i++) {
+      this.currentOutputs.set(this.outputNames[i] as string, out[i] ?? 0);
+    }
+  }
+}
+
+/**
  * Registry of FMU subsystems available to the simulator.
  */
 export class FmuSubsystemRegistry {

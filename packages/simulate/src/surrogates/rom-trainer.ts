@@ -41,6 +41,12 @@ export interface ROMTrainConfig {
   seed?: number;
   /** Progress callback. */
   onProgress?: (epoch: number, trainLoss: number, valLoss: number) => void;
+  /**
+   * Transient handling mode for transient DoE datasets:
+   * - "final": Use only final steady-state / terminal values (default).
+   * - "trajectory": Train on full dynamic trajectories across time (inputs augmented with 'time' dimension).
+   */
+  transientMode?: "final" | "trajectory";
 }
 
 export interface ScalingParams {
@@ -485,11 +491,36 @@ function trainMLP(
 export function trainROM(config: ROMTrainConfig): TrainedROM {
   const { data, architecture } = config;
 
-  // Extract steady-state data (no transient support yet)
-  const rawInputs = data.inputs;
-  const rawOutputs = data.isTransient
-    ? (data.outputs as number[][][]).map((traj) => traj[traj.length - 1]!)
-    : (data.outputs as number[][]);
+  // Extract inputs and outputs
+  let rawInputs: number[][];
+  let rawOutputs: number[][];
+  const inputNames = [...data.inputNames];
+
+  if (
+    config.transientMode === "trajectory" &&
+    data.isTransient &&
+    data.snapshotTimes &&
+    data.snapshotTimes.length > 0
+  ) {
+    rawInputs = [];
+    rawOutputs = [];
+    inputNames.push("time");
+    const times = data.snapshotTimes;
+    const trajectories = data.outputs as number[][][];
+    for (let i = 0; i < data.inputs.length; i++) {
+      const p = data.inputs[i]!;
+      const traj = trajectories[i]!;
+      for (let k = 0; k < times.length && k < traj.length; k++) {
+        rawInputs.push([...p, times[k]!]);
+        rawOutputs.push(traj[k]!);
+      }
+    }
+  } else {
+    rawInputs = data.inputs;
+    rawOutputs = data.isTransient
+      ? (data.outputs as number[][][]).map((traj) => traj[traj.length - 1]!)
+      : (data.outputs as number[][]);
+  }
 
   // Compute normalization
   const inputScaling = computeScaling(rawInputs);
@@ -508,7 +539,7 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
   switch (architecture) {
     case "polynomial": {
       const degree = config.polynomialDegree ?? 2;
-      const nInputs = data.inputNames.length;
+      const nInputs = inputNames.length;
       const { coefficients } = trainPolynomial(trainIn, trainOut, degree, nInputs);
       weights = { type: "polynomial", coefficients, degree, nInputs };
       break;
@@ -543,11 +574,20 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
   }
 
   // Compute final metrics
-  const { trainMSE, valMSE, r2 } = computeMetrics(weights, trainIn, trainOut, valIn, valOut, architecture, config);
+  const { trainMSE, valMSE, r2 } = computeMetrics(
+    weights,
+    trainIn,
+    trainOut,
+    valIn,
+    valOut,
+    architecture,
+    config,
+    inputNames,
+  );
 
   const result: TrainedROM = {
     architecture,
-    inputNames: data.inputNames,
+    inputNames,
     outputNames: data.outputNames,
     inputScaling,
     outputScaling,
@@ -627,13 +667,14 @@ function computeMetrics(
   valOut: number[][],
   architecture: string,
   config: ROMTrainConfig,
+  inputNames: string[],
 ): { trainMSE: number; valMSE: number; r2: number } {
   // Build a temporary ROM for evaluation
   const tempROM: TrainedROM = {
     architecture: architecture as TrainedROM["architecture"],
-    inputNames: config.data.inputNames,
+    inputNames,
     outputNames: config.data.outputNames,
-    inputScaling: config.data.inputNames.map(() => ({ mean: 0, std: 1 })),
+    inputScaling: inputNames.map(() => ({ mean: 0, std: 1 })),
     outputScaling: config.data.outputNames.map(() => ({ mean: 0, std: 1 })),
     weights,
     metrics: { trainMSE: 0, valMSE: 0, r2: 0 },
@@ -667,4 +708,251 @@ function computeMetrics(
   const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
 
   return { trainMSE, valMSE, r2 };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Interoperability & Export (ONNX, PyTorch, Serialization)
+// ─────────────────────────────────────────────────────────────────────
+
+export interface OnnxTensorProto {
+  name: string;
+  dims: number[];
+  dataType: "FLOAT32" | "FLOAT64";
+  data: number[];
+}
+
+export interface OnnxNodeProto {
+  opType: "Gemm" | "Relu" | "Tanh" | "Sigmoid" | "Add" | "Sub" | "Mul" | "Div";
+  inputs: string[];
+  outputs: string[];
+  name?: string;
+}
+
+export interface OnnxGraphExport {
+  producerName: string;
+  modelFormat: "ONNX-v1.14";
+  graph: {
+    name: string;
+    inputs: { name: string; dims: (number | string)[] }[];
+    outputs: { name: string; dims: (number | string)[] }[];
+    nodes: OnnxNodeProto[];
+    initializers: OnnxTensorProto[];
+  };
+}
+
+/**
+ * Export a trained ROM (MLP) to an ONNX graph structure with embedded weights and normalization.
+ */
+export function exportROMToONNX(rom: TrainedROM, modelName = "ROM_Surrogate"): OnnxGraphExport {
+  const nodes: OnnxNodeProto[] = [];
+  const initializers: OnnxTensorProto[] = [];
+
+  const nIn = rom.inputNames.length;
+  const nOut = rom.outputNames.length;
+
+  if (rom.weights.type !== "mlp") {
+    throw new Error(`ONNX graph export currently supports 'mlp' architecture, received '${rom.weights.type}'`);
+  }
+
+  const mlp = rom.weights;
+
+  // Add initializers for input mean and std
+  initializers.push({
+    name: "input_mean",
+    dims: [1, nIn],
+    dataType: "FLOAT64",
+    data: rom.inputScaling.map((s) => s.mean),
+  });
+  initializers.push({
+    name: "input_std",
+    dims: [1, nIn],
+    dataType: "FLOAT64",
+    data: rom.inputScaling.map((s) => s.std),
+  });
+
+  // Node: sub mean -> div std
+  nodes.push({
+    opType: "Sub",
+    inputs: ["input", "input_mean"],
+    outputs: ["norm_sub"],
+    name: "norm_sub",
+  });
+  nodes.push({
+    opType: "Div",
+    inputs: ["norm_sub", "input_std"],
+    outputs: ["norm_in"],
+    name: "norm_div",
+  });
+
+  let currentActivation = "norm_in";
+
+  for (let l = 0; l < mlp.layers.length; l++) {
+    const layer = mlp.layers[l]!;
+    const wName = `W_${l}`;
+    const bName = `b_${l}`;
+    const fanOut = layer.W.length;
+    const fanIn = layer.W[0]!.length;
+
+    // Flatten W row-major
+    const wFlat: number[] = [];
+    for (let i = 0; i < fanOut; i++) {
+      for (let j = 0; j < fanIn; j++) {
+        wFlat.push(layer.W[i]![j]!);
+      }
+    }
+
+    initializers.push({
+      name: wName,
+      dims: [fanOut, fanIn],
+      dataType: "FLOAT64",
+      data: wFlat,
+    });
+    initializers.push({
+      name: bName,
+      dims: [fanOut],
+      dataType: "FLOAT64",
+      data: [...layer.b],
+    });
+
+    const gemmOut = `gemm_${l}`;
+    nodes.push({
+      opType: "Gemm",
+      inputs: [currentActivation, wName, bName],
+      outputs: [gemmOut],
+      name: `Gemm_${l}`,
+    });
+
+    if (l < mlp.layers.length - 1) {
+      const actOut = `act_${l}`;
+      let opType: OnnxNodeProto["opType"] = "Tanh";
+      if (mlp.activation === "relu") opType = "Relu";
+      else if (mlp.activation === "sigmoid") opType = "Sigmoid";
+
+      nodes.push({
+        opType,
+        inputs: [gemmOut],
+        outputs: [actOut],
+        name: `${opType}_${l}`,
+      });
+      currentActivation = actOut;
+    } else {
+      currentActivation = gemmOut;
+    }
+  }
+
+  // Denormalization
+  initializers.push({
+    name: "output_mean",
+    dims: [1, nOut],
+    dataType: "FLOAT64",
+    data: rom.outputScaling.map((s) => s.mean),
+  });
+  initializers.push({
+    name: "output_std",
+    dims: [1, nOut],
+    dataType: "FLOAT64",
+    data: rom.outputScaling.map((s) => s.std),
+  });
+
+  nodes.push({
+    opType: "Mul",
+    inputs: [currentActivation, "output_std"],
+    outputs: ["unnorm_mul"],
+    name: "unnorm_mul",
+  });
+  nodes.push({
+    opType: "Add",
+    inputs: ["unnorm_mul", "output_mean"],
+    outputs: ["output"],
+    name: "unnorm_add",
+  });
+
+  return {
+    producerName: "ModelScript",
+    modelFormat: "ONNX-v1.14",
+    graph: {
+      name: modelName,
+      inputs: [{ name: "input", dims: ["batch_size", nIn] }],
+      outputs: [{ name: "output", dims: ["batch_size", nOut] }],
+      nodes,
+      initializers,
+    },
+  };
+}
+
+/**
+ * Export a trained ROM to a self-contained PyTorch Python script.
+ */
+export function exportROMToPyTorch(rom: TrainedROM, className = "SurrogateModel"): string {
+  if (rom.weights.type !== "mlp") {
+    throw new Error(`PyTorch export currently supports 'mlp' architecture, received '${rom.weights.type}'`);
+  }
+  const mlp = rom.weights;
+  const inMeans = rom.inputScaling.map((s) => s.mean);
+  const inStds = rom.inputScaling.map((s) => s.std);
+  const outMeans = rom.outputScaling.map((s) => s.mean);
+  const outStds = rom.outputScaling.map((s) => s.std);
+
+  const actMap: Record<string, string> = {
+    tanh: "nn.Tanh()",
+    relu: "nn.ReLU()",
+    sigmoid: "nn.Sigmoid()",
+  };
+  const actModule = actMap[mlp.activation] ?? "nn.Tanh()";
+
+  const lines: string[] = [
+    `# Auto-generated by ModelScript Surrogate Pipeline`,
+    `import torch`,
+    `import torch.nn as nn`,
+    ``,
+    `class ${className}(nn.Module):`,
+    `    def __init__(self):`,
+    `        super().__init__()`,
+    `        self.register_buffer("in_mean", torch.tensor(${JSON.stringify(inMeans)}, dtype=torch.float64))`,
+    `        self.register_buffer("in_std", torch.tensor(${JSON.stringify(inStds)}, dtype=torch.float64))`,
+    `        self.register_buffer("out_mean", torch.tensor(${JSON.stringify(outMeans)}, dtype=torch.float64))`,
+    `        self.register_buffer("out_std", torch.tensor(${JSON.stringify(outStds)}, dtype=torch.float64))`,
+    ``,
+  ];
+
+  for (let l = 0; l < mlp.layers.length; l++) {
+    const layer = mlp.layers[l]!;
+    const fanOut = layer.W.length;
+    const fanIn = layer.W[0]!.length;
+    lines.push(`        self.fc${l} = nn.Linear(${fanIn}, ${fanOut}, dtype=torch.float64)`);
+    lines.push(`        with torch.no_grad():`);
+    lines.push(`            self.fc${l}.weight.copy_(torch.tensor(${JSON.stringify(layer.W)}, dtype=torch.float64))`);
+    lines.push(`            self.fc${l}.bias.copy_(torch.tensor(${JSON.stringify(layer.b)}, dtype=torch.float64))`);
+    if (l < mlp.layers.length - 1) {
+      lines.push(`        self.act${l} = ${actModule}`);
+    }
+  }
+
+  lines.push(``);
+  lines.push(`    def forward(self, x: torch.Tensor) -> torch.Tensor:`);
+  lines.push(`        x = (x - self.in_mean) / self.in_std`);
+  for (let l = 0; l < mlp.layers.length; l++) {
+    lines.push(`        x = self.fc${l}(x)`);
+    if (l < mlp.layers.length - 1) {
+      lines.push(`        x = self.act${l}(x)`);
+    }
+  }
+  lines.push(`        return x * self.out_std + self.out_mean`);
+  lines.push(``);
+
+  return lines.join("\n");
+}
+
+/**
+ * Serialize a trained ROM to JSON.
+ */
+export function saveROM(rom: TrainedROM): string {
+  return JSON.stringify(rom, null, 2);
+}
+
+/**
+ * Deserialize a trained ROM from JSON.
+ */
+export function loadROM(json: string): TrainedROM {
+  return JSON.parse(json) as TrainedROM;
 }

@@ -322,13 +322,17 @@ export class DiagnosticNode {
   next: u32;
   start: u32;
   end: u32;
+  tokenType: u32;
+  arg0: u32;
 }
 
-export function pushDiagnostic(tailPtr: u32, start: u32, end: u32): u32 {
+export function pushDiagnostic(tailPtr: u32, start: u32, end: u32, tokenType: u32 = 0, arg0: u32 = 0): u32 {
   let node = changetype<DiagnosticNode>(allocGen0(offsetof<DiagnosticNode>()));
   node.next = tailPtr;
   node.start = start;
   node.end = end;
+  node.tokenType = tokenType;
+  node.arg0 = arg0;
   return changetype<u32>(node);
 }
 

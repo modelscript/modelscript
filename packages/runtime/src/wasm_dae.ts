@@ -674,6 +674,10 @@ export class WasmDaeBridge implements IDaeBuilder {
     return (this.getVarFlags(varIdx) & FLAG_VAR_STATE_DER) !== 0;
   }
 
+  isVarDerivative(varIdx: number): boolean {
+    return this.isVarStateDer(varIdx);
+  }
+
   setVarStateDer(varIdx: number, isDer = true): void {
     const flags = this.getVarFlags(varIdx);
     this.setVarFlags(varIdx, isDer ? flags | FLAG_VAR_STATE_DER : flags & ~FLAG_VAR_STATE_DER);
@@ -790,6 +794,38 @@ export class WasmDaeBridge implements IDaeBuilder {
     if (this.exports?.dae_setVarShapeDim) {
       this.exports.dae_setVarShapeDim(this.ptr, varIdx, dimIdx, size);
     }
+  }
+
+  getVarShapeElementCount(varIdx: number): number {
+    const shape = this.getVarShape(varIdx);
+    if (!shape || shape.length === 0) return 1;
+    let total = 1;
+    for (const d of shape) {
+      if (d > 0) total *= d;
+    }
+    return total;
+  }
+
+  getVarTotalScalarElements(): number {
+    let total = 0;
+    for (let i = 0; i < this.varCount; i++) {
+      if (!this.isVarRemoved(i)) {
+        total += this.getVarShapeElementCount(i);
+      }
+    }
+    return total;
+  }
+
+  getVarOffsets(): Int32Array {
+    const offsets = new Int32Array(this.varCount);
+    let curr = 0;
+    for (let i = 0; i < this.varCount; i++) {
+      offsets[i] = curr;
+      if (!this.isVarRemoved(i)) {
+        curr += this.getVarShapeElementCount(i);
+      }
+    }
+    return offsets;
   }
 
   getVarAttrExpr(varIdx: number, attrKind: VarAttrKind): number {

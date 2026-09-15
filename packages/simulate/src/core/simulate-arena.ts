@@ -7,6 +7,7 @@ import {
   EqKind,
   ExprKind,
   UnaryOp,
+  VarAttrKind,
   Variability,
   evaluateArenaExpression,
   isolateSymbolicallyArena,
@@ -302,7 +303,7 @@ export class ArenaSimulator {
 
   // extractDerivativeEquations removed
 
-  private evaluateDerivativeEquations(valuesByStringId: Float64Array): void {
+  public evaluateDerivativeEquations(valuesByStringId: Float64Array): void {
     // Handled by BLT
   }
 
@@ -934,7 +935,7 @@ export class ArenaSimulator {
     }
   }
 
-  private evaluateBlocks(valuesByStringId: Float64Array): void {
+  public evaluateBlocks(valuesByStringId: Float64Array): void {
     if (this.compiledBlocks) {
       this.compiledBlocks(valuesByStringId);
       return;
@@ -1462,7 +1463,7 @@ export class ArenaSimulator {
    * Classical 4th-order Runge-Kutta step.
    * Updates state variables in valuesByStringId in-place.
    */
-  private rk4Step(
+  public rk4Step(
     h: number,
     vals: Float64Array,
     stateIds: number[],
@@ -2073,10 +2074,24 @@ export function initializeArenaEnvironment(
       valuesByStringId[nameId] = startVal;
     }
 
-    // Evaluate start expression if present
+    // Evaluate start expression or start attribute if present
     const exprId = arena.getVarExpression(i) as number | undefined;
     if (typeof exprId === "number" && exprId !== -1) {
       const val = evaluateArenaExpression(arena, exprId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+    const startAttrId = arena.getVarAttrExprId(i, "start");
+    if (typeof startAttrId === "number" && startAttrId !== -1) {
+      const val = evaluateArenaExpression(arena, startAttrId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+    const startWasmExprId = arena.getVarAttrExpr(i, VarAttrKind.Start);
+    if (typeof startWasmExprId === "number" && startWasmExprId > 0) {
+      const val = evaluateArenaExpression(arena, startWasmExprId, sim.parameters);
       if (val !== null && typeof val === "number" && isFinite(val)) {
         valuesByStringId[nameId] = val;
       }
@@ -2219,10 +2234,24 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
       valuesByStringId[nameId] = startVal;
     }
 
-    // Evaluate start expression if present
+    // Evaluate start expression or start attribute if present
     const exprId = arena.getVarExpression(i) as number | undefined;
     if (typeof exprId === "number" && exprId !== -1) {
       const val = evaluateArenaExpression(arena, exprId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+    const startAttrId = arena.getVarAttrExprId(i, "start");
+    if (typeof startAttrId === "number" && startAttrId !== -1) {
+      const val = evaluateArenaExpression(arena, startAttrId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+    const startWasmExprId = arena.getVarAttrExpr(i, VarAttrKind.Start);
+    if (typeof startWasmExprId === "number" && startWasmExprId > 0) {
+      const val = evaluateArenaExpression(arena, startWasmExprId, sim.parameters);
       if (val !== null && typeof val === "number" && isFinite(val)) {
         valuesByStringId[nameId] = val;
       }

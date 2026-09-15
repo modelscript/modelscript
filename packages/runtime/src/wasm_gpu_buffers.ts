@@ -14,6 +14,8 @@ export interface GPUArenaBuffers {
   blockPlan: GPUBlockPlan;
   stateVarIndices: Uint32Array;
   derivVarIndices: Uint32Array;
+  varOffsets?: Int32Array;
+  totalScalarElements?: number;
 }
 
 /** BLT block execution plan, packed for GPU consumption. */

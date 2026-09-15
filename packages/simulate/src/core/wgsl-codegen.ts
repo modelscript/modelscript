@@ -64,7 +64,10 @@ export function emitExprWGSL(arena: DAEBuilder, exprId: number): string {
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
       const varIdx = resolveVarIdx(arena, nameId);
-      if (varIdx >= 0) return `state[${varIdx}u]`;
+      if (varIdx >= 0) {
+        const offset = arena.getVarOffsets?.()[varIdx] ?? varIdx;
+        return `state[${offset}u]`;
+      }
       // Unresolved name — could be loop variable or time
       const name = arena.interner.resolve(nameId);
       if (name === "time") return "sim_params.time";
@@ -78,7 +81,10 @@ export function emitExprWGSL(arena: DAEBuilder, exprId: number): string {
         const innerName = arena.interner.resolve(arena.getExprData1(argId));
         if (innerName) {
           const derIdx = arena.getVarIdxByName(`der(${innerName})`);
-          if (derIdx >= 0) return `state[${derIdx}u]`;
+          if (derIdx >= 0) {
+            const offset = arena.getVarOffsets?.()[derIdx] ?? derIdx;
+            return `state[${offset}u]`;
+          }
         }
       }
       return "vec2<f32>(0.0, 0.0)";
@@ -400,6 +406,9 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
 
     const varStart = plan.blockVarStarts[b] ?? 0;
     const varIdx = plan.blockVars[varStart] ?? 0;
+    const varOffsets = arena.getVarOffsets?.() ?? new Int32Array(arena.varCount);
+    const offset = varOffsets[varIdx] ?? varIdx;
+    const elemCount = arena.getVarShapeElementCount?.(varIdx) ?? 1;
 
     const lhsId = arena.getEqLhs(eqIdx);
     const rhsId = arena.getEqRhs(eqIdx);
@@ -413,10 +422,18 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
     } else if (rhsKind === ExprKind.Name || rhsKind === ExprKind.Der) {
       assignExpr = emitExprWGSL(arena, lhsId);
     } else {
-      assignExpr = `ds_sub(state[${varIdx}u], residual_${eqIdx}(time))`;
+      assignExpr = `ds_sub(state[${offset}u], residual_${eqIdx}(time))`;
     }
 
-    lines.push(`    case ${b}u { state[${varIdx}u] = ${assignExpr}; }`);
+    if (elemCount <= 1) {
+      lines.push(`    case ${b}u { state[${offset}u] = ${assignExpr}; }`);
+    } else {
+      lines.push(`    case ${b}u {`);
+      lines.push(`      for (var k = 0u; k < ${elemCount}u; k = k + 1u) {`);
+      lines.push(`        state[${offset}u + k] = ${assignExpr};`);
+      lines.push(`      }`);
+      lines.push(`    }`);
+    }
   }
 
   lines.push("    default { }");

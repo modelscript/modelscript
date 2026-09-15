@@ -890,6 +890,10 @@ export function getNodeType(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).type;
 }
 
+export function setNodeType(ptr: u32, t: u16): void {
+  changetype<ASTNode>(ptr).type = t;
+}
+
 export function getNodePadding(ptr: u32): u32 {
   let node = changetype<ASTNode>(ptr);
   if (node.isFatPadding) return node.fatPadding;

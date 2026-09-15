@@ -13,6 +13,7 @@ import { BuildCSG } from "./commands/csg.js";
 import { Diff } from "./commands/diff.js";
 import { Fmu } from "./commands/fmu.js";
 import { Generate } from "./commands/generate.js";
+import { Grad } from "./commands/grad.js";
 import { I18n } from "./commands/i18n.js";
 import { Init } from "./commands/init.js";
 import { Instantiate } from "./commands/instantiate.js";
@@ -48,6 +49,7 @@ yargs(process.argv.slice(2))
   .command(BuildCSG)
   .command(MC)
   .command(Optimize)
+  .command(Grad)
   .command(Surrogate)
   .command(Verify)
   .command(Cosim)

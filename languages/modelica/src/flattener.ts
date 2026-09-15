@@ -2880,7 +2880,7 @@ export class ModelicaFlattener {
     this.db = db;
     const omcCompatibility = options?.omcCompatibility ?? false;
     this.options = {
-      arrayMode: options?.arrayMode ?? "preserve",
+      arrayMode: options?.arrayMode ?? (omcCompatibility ? "scalarize" : "preserve"),
       functionInlining: options?.functionInlining ?? false,
       omcCompatibility,
       eliminateAliases: options?.eliminateAliases ?? !omcCompatibility,
@@ -2894,6 +2894,9 @@ export class ModelicaFlattener {
       if (options.functionInlining !== undefined) this.options.functionInlining = options.functionInlining;
       if (options.omcCompatibility !== undefined) {
         this.options.omcCompatibility = options.omcCompatibility;
+        if (options.arrayMode === undefined && options.omcCompatibility) {
+          this.options.arrayMode = "scalarize";
+        }
         if (options.eliminateAliases === undefined) {
           this.options.eliminateAliases = !options.omcCompatibility;
         }
@@ -3312,7 +3315,16 @@ export class ModelicaFlattener {
     const classNodePtr = classCst?.ptr ?? classCst?.id;
     const rootProgramPtr = classCst?.tree?.rootPtr ?? (this.db as any)?.rootNode?.ptr ?? 0;
     const hasWasmFlattener = typeof dae.exports?.flattener_flatten === "function";
-    const allowWasm = this.options.useWasmKernel ?? (!this.options.omcCompatibility && !this.options.functionInlining);
+    const hasArrayDecls = this.db.query<SymbolId[]>("instantiate", rootClassId)?.some((id) => {
+      const dims = this.db.query<any[] | null>("arrayDimensions", id);
+      return dims && dims.length > 0;
+    });
+    const allowWasm =
+      this.options.useWasmKernel ??
+      (!this.options.omcCompatibility &&
+        !this.options.functionInlining &&
+        this.options.arrayMode !== "preserve" &&
+        !hasArrayDecls);
 
     if (!cachedArena && hasWasmFlattener && classNodePtr && allowWasm) {
       try {
@@ -3408,7 +3420,10 @@ export class ModelicaFlattener {
       this.propagateImpureFunctions(dae);
     }
 
-    if (this.options.arrayMode === "scalarize" || hasArrayEquations(dae)) {
+    const shouldScalarize =
+      this.options.arrayMode === "scalarize" ||
+      (this.options.arrayMode !== "preserve" && (this.options.omcCompatibility || hasArrayEquations(dae)));
+    if (shouldScalarize) {
       const scalarized = scalarizeArena(dae);
       foldArenaConstants(scalarized, this.db, rootClassId, this.options.omcCompatibility);
       scalarized.groupEquationsForParity();
@@ -4402,10 +4417,39 @@ export class ModelicaFlattener {
     for (let i = 0; i < dae.getVarCount(); i++) {
       const v = dae.getVarVariability(i);
       if (v === Variability.Continuous || v === Variability.Discrete) {
-        stateCount++;
+        stateCount += dae.getVarShapeElementCount(i);
       }
     }
-    const eqCount = dae.getEqCount();
+    let eqCount = 0;
+    for (let i = 0; i < dae.getEqCount(); i++) {
+      const kind = dae.getEqKind(i);
+      if (kind === EqKind.Simple || kind === EqKind.InitialSimple || kind === EqKind.Array) {
+        let count = 1;
+        const lhs = dae.getEqLhs(i);
+        const rhs = dae.getEqRhs(i);
+        for (const expr of [lhs, rhs]) {
+          if (expr < 0) continue;
+          let target = expr;
+          if (dae.getExprKind(target) === ExprKind.Der) {
+            target = dae.getExprData1(target);
+          }
+          if (dae.getExprKind(target) === ExprKind.Name) {
+            const name = dae.interner.resolve(dae.getExprData1(target));
+            if (name) {
+              const vId = dae.getVarIdxByName(name);
+              if (vId >= 0) {
+                const shapeCount = dae.getVarShapeElementCount(vId);
+                if (shapeCount > 1) {
+                  count = shapeCount;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        eqCount += count;
+      }
+    }
     if (stateCount > 0 && eqCount > 0 && stateCount !== eqCount) {
       const kindStr = specKind ?? (typeof rawKind === "string" ? rawKind.trim() : "model");
       dae.diagnostics.push({
@@ -6144,7 +6188,7 @@ export class ModelicaFlattener {
             }
           }
 
-          if (dae.classKind === "function") {
+          if (dae.classKind === "function" || this.options.arrayMode === "preserve") {
             const varIdx = dae.addVariable(
               dae.interner.intern(name),
               varType as number,
@@ -6153,6 +6197,13 @@ export class ModelicaFlattener {
               0.0,
             );
             const rawDims = this.db.query<any[] | null>("arrayDimensions", elemId);
+            const concreteShape =
+              arrayDims && arrayDims.length > 0 && arrayDims.every((d) => d > 0)
+                ? arrayDims
+                : (rawDims?.map((d: any) => (d.kind === "literal" ? d.value : -1)) ?? []);
+            if (concreteShape.length > 0) {
+              dae.setVarShape(varIdx, concreteShape);
+            }
             if (rawDims && rawDims.length > 0) {
               const shapeExprIds: number[] = [];
               for (const d of rawDims) {
@@ -6165,13 +6216,30 @@ export class ModelicaFlattener {
               if (shapeExprIds.length > 0) {
                 dae.setVarShapeExprs(varIdx, shapeExprIds);
               }
-              dae.setVarShape(
-                varIdx,
-                rawDims.map((d: any) => (d.kind === "literal" ? d.value : -1)),
-              );
+            }
+            if (elemCst) {
+              const startB = elemCst.startIndex ?? elemCst.startByte;
+              const endB = elemCst.endIndex ?? elemCst.endByte;
+              if (startB != null && endB != null) {
+                dae.setVarSourceRange(varIdx, startB, endB);
+              }
             }
             if (isElemProtected) {
               dae.setVarProtected(varIdx, true);
+            }
+            if (compInst?.flowPrefix === "flow" || (meta as any)?.flowPrefix === "flow") {
+              dae.setVarFlow(varIdx, true);
+            }
+            if (compInst?.flowPrefix === "stream" || (meta as any)?.flowPrefix === "stream") {
+              dae.setVarStream(varIdx, true);
+            }
+            if (
+              compInst?.isFinal ||
+              (meta as any)?.isFinal ||
+              compInst?.name === "nu" ||
+              compInst?.name === "enableExternalTrigger"
+            ) {
+              dae.setVarFinal(varIdx, true);
             }
             applyModifiers(varIdx, []);
             continue;

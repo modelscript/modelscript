@@ -535,19 +535,37 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
         if (dEnd > step) dStart = dEnd - step;
         else dStart = 0;
       }
+      let tokType = (type != 0 && type <= (MAX_TERMINAL_ID as u16) ? type : 0);
+      if (tokType == 0 && firstChild != 0) {
+        let chk = firstChild;
+        while (chk != 0) {
+          let chkType = getNodeType(chk) & 0x7fff;
+          let chkLen = getNodeByteLength(chk);
+          let chkFlags = getNodeFlags(chk);
+          if (chkType <= (MAX_TERMINAL_ID as u16) && chkLen > 0 && (chkFlags & FLAG_INVISIBLE) == 0) {
+            tokType = chkType;
+            break;
+          }
+          chk = getNodeNextSibling(chk);
+        }
+      }
+      if ((tokType == 0 || tokType > (MAX_TERMINAL_ID as u16)) && dStart < totalInputBytes) {
+        let ch = peekChar(dStart);
+        tokType = ch as u16;
+      }
       if (dEnd > dStart) {
         if ((flags & FLAG_IS_INSERTED) != 0) {
-          lsp_allocDiagnostic(dStart, dEnd, 0, 1, type as u32);
+          lsp_allocDiagnostic(dStart, dEnd, 0, 1, (type & 0x7fff) as u32);
           allocatedDiag = true;
         } else {
-          lsp_allocDiagnostic(dStart, dEnd, 0, 0, 0);
+          lsp_allocDiagnostic(dStart, dEnd, 0, 2, tokType as u32);
           allocatedDiag = true;
         }
       } else if (isLeaf && (type == 0 || isMutated || ((flags & FLAG_HAS_ERROR) != 0))) {
         let fallbackStart = nodeStart < totalInputBytes ? nodeStart : (totalInputBytes >= step ? totalInputBytes - step : 0);
         let fallbackEnd = fallbackStart + step <= totalInputBytes ? fallbackStart + step : totalInputBytes;
         if (fallbackEnd > fallbackStart) {
-          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 0, 0);
+          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 2, tokType as u32);
           allocatedDiag = true;
         }
       }

@@ -43,10 +43,13 @@ export function serializeArenaForGPU(
   bltResult: ArenaBltResult,
   stateVars: Set<number>,
 ): GPUArenaBuffers {
-  // 0. Fast-path: WASM-native linear-memory serialization
-  const wasmResult = serializeArenaForGPUWasm(arena, bltResult, stateVars);
-  if (wasmResult) {
-    return wasmResult;
+  const hasTensorVars = (arena.getVarTotalScalarElements?.() ?? arena.varCount) > arena.varCount;
+  if (!hasTensorVars) {
+    // 0. Fast-path: WASM-native linear-memory serialization for purely scalar models
+    const wasmResult = serializeArenaForGPUWasm(arena, bltResult, stateVars);
+    if (wasmResult) {
+      return wasmResult;
+    }
   }
 
   // 1. Direct copy of arena struct-of-arrays views
@@ -55,13 +58,19 @@ export function serializeArenaForGPU(
   const exprBuffer = new Int32Array(arena.exprView());
 
   // 2. Build state buffer from start values (Emulated f64 via Double-Single vec2<f32>)
-  const stateBuffer = new Float32Array(arena.varCount * 2);
+  const totalScalarElements = arena.getVarTotalScalarElements?.() ?? arena.varCount;
+  const varOffsets = arena.getVarOffsets?.() ?? new Int32Array(arena.varCount);
+  const stateBuffer = new Float32Array(totalScalarElements * 2);
   for (let i = 0; i < arena.varCount; i++) {
+    const offset = varOffsets[i] ?? i;
+    const elemCount = arena.getVarShapeElementCount?.(i) ?? 1;
     const val = arena.getVarStartValue(i);
     const high = Math.fround(val);
     const low = Math.fround(val - high);
-    stateBuffer[i * 2] = high;
-    stateBuffer[i * 2 + 1] = low;
+    for (let k = 0; k < elemCount; k++) {
+      stateBuffer[(offset + k) * 2] = high;
+      stateBuffer[(offset + k) * 2 + 1] = low;
+    }
   }
 
   // 3. Build nameId → varIdx lookup table
@@ -72,18 +81,21 @@ export function serializeArenaForGPU(
     }
   }
 
-  // 4. Identify state variables and their derivatives
+  // 4. Identify state variables and their derivatives (expanding multi-element tensors)
   const stateIdxList: number[] = [];
   const derivIdList: number[] = [];
   for (const varIdx of stateVars) {
     if (arena.isVarRemoved(varIdx)) continue;
     const name = arena.getVarName(varIdx);
     const derName = `der(${name})`;
-    // const derNameId = arena.interner.intern(derName);
     const derVarIdx = arena.getVarIdxByName(derName);
-    stateIdxList.push(varIdx);
-    if (derVarIdx >= 0) derivIdList.push(derVarIdx);
-    else derivIdList.push(0); // Should theoretically not happen for valid states
+    const offset = varOffsets[varIdx] ?? varIdx;
+    const derOffset = derVarIdx >= 0 ? (varOffsets[derVarIdx] ?? derVarIdx) : 0;
+    const elemCount = arena.getVarShapeElementCount?.(varIdx) ?? 1;
+    for (let k = 0; k < elemCount; k++) {
+      stateIdxList.push(offset + k);
+      derivIdList.push(derVarIdx >= 0 ? derOffset + k : 0);
+    }
   }
 
   // 5. Pack BLT blocks
@@ -101,6 +113,8 @@ export function serializeArenaForGPU(
     blockPlan,
     stateVarIndices: new Uint32Array(stateIdxList),
     derivVarIndices: new Uint32Array(derivIdList),
+    varOffsets,
+    totalScalarElements,
   };
 }
 

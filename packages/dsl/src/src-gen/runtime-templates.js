@@ -1665,6 +1665,10 @@ export function getNodeType(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).type;
 }
 
+export function setNodeType(ptr: u32, t: u16): void {
+  changetype<ASTNode>(ptr).type = t;
+}
+
 export function getNodePadding(ptr: u32): u32 {
   let node = changetype<ASTNode>(ptr);
   if (node.isFatPadding) return node.fatPadding;
@@ -9994,13 +9998,17 @@ export class DiagnosticNode {
   next: u32;
   start: u32;
   end: u32;
+  tokenType: u32;
+  arg0: u32;
 }
 
-export function pushDiagnostic(tailPtr: u32, start: u32, end: u32): u32 {
+export function pushDiagnostic(tailPtr: u32, start: u32, end: u32, tokenType: u32 = 0, arg0: u32 = 0): u32 {
   let node = changetype<DiagnosticNode>(allocGen0(offsetof<DiagnosticNode>()));
   node.next = tailPtr;
   node.start = start;
   node.end = end;
+  node.tokenType = tokenType;
+  node.arg0 = arg0;
   return changetype<u32>(node);
 }
 
@@ -19410,19 +19418,37 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
         if (dEnd > step) dStart = dEnd - step;
         else dStart = 0;
       }
+      let tokType = (type != 0 && type <= (MAX_TERMINAL_ID as u16) ? type : 0);
+      if (tokType == 0 && firstChild != 0) {
+        let chk = firstChild;
+        while (chk != 0) {
+          let chkType = getNodeType(chk) & 0x7fff;
+          let chkLen = getNodeByteLength(chk);
+          let chkFlags = getNodeFlags(chk);
+          if (chkType <= (MAX_TERMINAL_ID as u16) && chkLen > 0 && (chkFlags & FLAG_INVISIBLE) == 0) {
+            tokType = chkType;
+            break;
+          }
+          chk = getNodeNextSibling(chk);
+        }
+      }
+      if ((tokType == 0 || tokType > (MAX_TERMINAL_ID as u16)) && dStart < totalInputBytes) {
+        let ch = peekChar(dStart);
+        tokType = ch as u16;
+      }
       if (dEnd > dStart) {
         if ((flags & FLAG_IS_INSERTED) != 0) {
-          lsp_allocDiagnostic(dStart, dEnd, 0, 1, type as u32);
+          lsp_allocDiagnostic(dStart, dEnd, 0, 1, (type & 0x7fff) as u32);
           allocatedDiag = true;
         } else {
-          lsp_allocDiagnostic(dStart, dEnd, 0, 0, 0);
+          lsp_allocDiagnostic(dStart, dEnd, 0, 2, tokType as u32);
           allocatedDiag = true;
         }
       } else if (isLeaf && (type == 0 || isMutated || ((flags & FLAG_HAS_ERROR) != 0))) {
         let fallbackStart = nodeStart < totalInputBytes ? nodeStart : (totalInputBytes >= step ? totalInputBytes - step : 0);
         let fallbackEnd = fallbackStart + step <= totalInputBytes ? fallbackStart + step : totalInputBytes;
         if (fallbackEnd > fallbackStart) {
-          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 0, 0);
+          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 2, tokType as u32);
           allocatedDiag = true;
         }
       }
@@ -25518,14 +25544,32 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         if (reusedNode != 0) {
           let nodeType = getNodeType(reusedNode);
           let nextState = -1;
-          if (currentState < goto_offsets.length) {
-            let gOffset = goto_offsets[currentState];
-            if (gOffset >= 0 && gOffset < goto_data.length) {
-              let gCount = goto_data[gOffset];
-              for (let gi = 0; gi < gCount; gi++) {
-                if (goto_data[gOffset + 1 + gi * 2] == nodeType) {
-                  nextState = goto_data[gOffset + 1 + gi * 2 + 1];
-                  break;
+          if (nodeType > (MAX_TERMINAL_ID as u16)) {
+            if (currentState < goto_offsets.length) {
+              let gOffset = goto_offsets[currentState];
+              if (gOffset >= 0 && gOffset < goto_data.length) {
+                let gCount = goto_data[gOffset];
+                for (let gi = 0; gi < gCount; gi++) {
+                  if (goto_data[gOffset + 1 + gi * 2] == nodeType) {
+                    nextState = goto_data[gOffset + 1 + gi * 2 + 1];
+                    break;
+                  }
+                }
+              }
+            }
+          } else {
+            if (currentState < action_offsets.length) {
+              let aOffset = action_offsets[currentState];
+              if (aOffset >= 0 && aOffset < action_data.length) {
+                let count = action_data[aOffset];
+                let aIdx = aOffset + 1;
+                for (let ai = 0; ai < count; ai++) {
+                  let aTok = action_data[aIdx++];
+                  let aTarget = action_data[aIdx++];
+                  if ((aTok & 0x7fff) == nodeType && (aTok & 0x8000) == 0) {
+                    nextState = aTarget;
+                    break;
+                  }
                 }
               }
             }
@@ -27022,8 +27066,10 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
   let lDepth = getListDepth(leftNode, listSym);
   let directChildCount: i32 = 0;
   let ldTemp = getNodeFirstChild(leftNode);
+  let lastDirectChild: u32 = 0;
   while (ldTemp != 0) {
     directChildCount++;
+    lastDirectChild = ldTemp;
     ldTemp = getNodeNextSibling(ldTemp);
   }
 
@@ -27033,16 +27079,12 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
     if (directChildCount < LIST_MAX_CHILDREN || !isBoundary) {
       if (isMutable(leftNode)) {
-        let curr = getNodeFirstChild(leftNode);
-        if (curr == 0) {
+        if (lastDirectChild == 0) {
           setNodePadding(leftNode, getNodePadding(leftNode) + getNodePadding(leaf));
           setNodePadding(leaf, 0);
           setFirstChild(leftNode, leaf);
         } else {
-          while (getNodeNextSibling(curr) != 0) {
-            curr = getNodeNextSibling(curr);
-          }
-          setNextSibling(curr, leaf);
+          setNextSibling(lastDirectChild, leaf);
         }
         setNextSibling(leaf, 0);
         setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
@@ -27317,7 +27359,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
 
   let nextPos = isVirtual ? pos : srcLexPos + lexLen;
   let nPos = isVirtual ? pos : (nextPos > pos ? nextPos : pos + 1);
-  currentScannerState = 0;
+  currentScannerState = head.scannerState;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
   let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
@@ -28121,6 +28163,26 @@ function symbolMatchesUnit(expected: i32, actual: i32): boolean {
   return isDerivableUnit(expected, actual, 0);
 }
 
+let t_unitProds: Int32Array | null = null;
+let t_unitProdsCount: i32 = -1;
+
+function initUnitProds(): void {
+  if (t_unitProdsCount >= 0) return;
+  let totalProds = prod_lengths.length;
+  let count = 0;
+  for (let p = 0; p < totalProds; p++) {
+    if (prod_lengths[p] == 1) count++;
+  }
+  t_unitProds = new Int32Array(count);
+  let idx = 0;
+  for (let p = 0; p < totalProds; p++) {
+    if (prod_lengths[p] == 1) {
+      t_unitProds![idx++] = p;
+    }
+  }
+  t_unitProdsCount = count;
+}
+
 /**
  * Checks if an \`actual\` token can be derived from an \`expected\` non-terminal
  * exclusively through invisible (wrapper) productions.
@@ -28133,9 +28195,12 @@ function symbolMatchesUnit(expected: i32, actual: i32): boolean {
  */
 function isDerivableInvisible(expected: i32, actual: i32, depth: i32): boolean {
   if (depth > 3) return false;
-  let totalProds = prod_lengths.length;
-  for (let p = 0; p < totalProds; p++) {
-    if (prod_lhs[p] == expected && prod_lengths[p] == 1 && prod_is_invisible[p] == 1) {
+  initUnitProds();
+  let count = t_unitProdsCount;
+  let uProds = t_unitProds!;
+  for (let i = 0; i < count; i++) {
+    let p = uProds[i];
+    if (prod_lhs[p] == expected && prod_is_invisible[p] == 1) {
       let rOffset = prod_right_offsets[p];
       let rhsSym = prod_right_symbols[rOffset];
       if (rhsSym == actual) return true;
@@ -28147,9 +28212,12 @@ function isDerivableInvisible(expected: i32, actual: i32, depth: i32): boolean {
 
 function isDerivableUnit(expected: i32, actual: i32, depth: i32): boolean {
   if (depth > 3) return false;
-  let totalProds = prod_lengths.length;
-  for (let p = 0; p < totalProds; p++) {
-    if (prod_lhs[p] == expected && prod_lengths[p] == 1) {
+  initUnitProds();
+  let count = t_unitProdsCount;
+  let uProds = t_unitProds!;
+  for (let i = 0; i < count; i++) {
+    let p = uProds[i];
+    if (prod_lhs[p] == expected) {
       let rOffset = prod_right_offsets[p];
       let rhsSym = prod_right_symbols[rOffset];
       if (rhsSym == actual) return true;
@@ -28684,15 +28752,33 @@ export function advanceGLR(): void {
 
         let nextState = -1;
         let nodeType = getNodeType(reusedNode);
-        if ((head.state as i32) < goto_offsets.length) {
-          let gOffset = goto_offsets[head.state];
-          if (gOffset >= 0 && gOffset < goto_data.length) {
-            let gCount = goto_data[gOffset];
-            for (let gi = 0; gi < gCount; gi++) {
-              let gSym = goto_data[gOffset + 1 + gi * 2];
-              if (gSym == nodeType) {
-                nextState = goto_data[gOffset + 1 + gi * 2 + 1];
-                break;
+        if (nodeType > (MAX_TERMINAL_ID as u16)) {
+          if ((head.state as i32) < goto_offsets.length) {
+            let gOffset = goto_offsets[head.state];
+            if (gOffset >= 0 && gOffset < goto_data.length) {
+              let gCount = goto_data[gOffset];
+              for (let gi = 0; gi < gCount; gi++) {
+                let gSym = goto_data[gOffset + 1 + gi * 2];
+                if (gSym == nodeType) {
+                  nextState = goto_data[gOffset + 1 + gi * 2 + 1];
+                  break;
+                }
+              }
+            }
+          }
+        } else {
+          if ((head.state as i32) < action_offsets.length) {
+            let aOffset = action_offsets[head.state];
+            if (aOffset >= 0 && aOffset < action_data.length) {
+              let count = action_data[aOffset];
+              let aIdx = aOffset + 1;
+              for (let ai = 0; ai < count; ai++) {
+                let aTok = action_data[aIdx++];
+                let aTarget = action_data[aIdx++];
+                if ((aTok & 0x7fff) == nodeType && (aTok & 0x8000) == 0) {
+                  nextState = aTarget;
+                  break;
+                }
               }
             }
           }
@@ -28898,7 +28984,7 @@ export function advanceGLR(): void {
             t_pausedHeads[pausedHeadsCount++] = changetype<u32>(head);
           } else {
             let didRecover = false;
-            if (configEnableBranchB && head.consecutiveInsertions < 3) {
+            if (configEnableBranchB && head.consecutiveInsertions < 6) {
               didRecover = recoverMissingToken(head, tok, frontierPos);
             }
             if (!didRecover && (head.prev != null || head.inErrorState)) {
@@ -28943,7 +29029,7 @@ export function advanceGLR(): void {
       let resumeTok = bestPausedHead.pausedLookahead;
       if (resumeTok != TOKEN_EOF) {
         let didRecover = false;
-        if (configEnableBranchB && bestPausedHead.consecutiveInsertions < 3) {
+        if (configEnableBranchB && bestPausedHead.consecutiveInsertions < 6) {
           didRecover = recoverMissingToken(bestPausedHead, resumeTok, bestPausedHead.pos);
         }
         if (!didRecover && (bestPausedHead.prev != null || bestPausedHead.inErrorState)) {
@@ -28955,12 +29041,50 @@ export function advanceGLR(): void {
       } else {
         recoverEofAccept(bestPausedHead, bestPausedHead.pos);
       }
+
+      // If all active heads stalled, also resume up to 2 other viable paused heads
+      if (nextHeadsCount == 0 && pausedHeadsCount > 1) {
+        let resumedCount: u32 = 1;
+        for (let p: u32 = 0; p < pausedHeadsCount && resumedCount < 3; p++) {
+          let cand = changetype<ParseHead>(t_pausedHeads[p]);
+          if (cand != bestPausedHead && cand.errorCost <= bestPausedCost + 500) {
+            cand.isPaused = false;
+            let cTok = cand.pausedLookahead;
+            if (cTok != TOKEN_EOF) {
+              let didRec = false;
+              if (configEnableBranchB && cand.consecutiveInsertions < 6) {
+                didRec = recoverMissingToken(cand, cTok, cand.pos);
+              }
+              if (!didRec && (cand.prev != null || cand.inErrorState)) {
+                didRec = recoverStackSummary(cand, cTok, cand.pos);
+              }
+              if (!didRec && configEnableBranchA1) {
+                recoverSkipToken(cand, cTok, cand.pos);
+              }
+            } else {
+              recoverEofAccept(cand, cand.pos);
+            }
+            resumedCount++;
+          }
+        }
+      }
+    } else if (bestPausedHead != null && nextHeadsCount > 0) {
+      // Healthy heads advanced, but preserve top paused heads into nextHeads as fallback
+      let preservedCount: u32 = 0;
+      for (let p: u32 = 0; p < pausedHeadsCount && preservedCount < 2 && nextHeadsCount < MAX_PARALLEL_HEADS * 2; p++) {
+        let cand = changetype<ParseHead>(t_pausedHeads[p]);
+        if (cand.errorCost <= minNextCost + 1000) {
+          cand.isPaused = false;
+          pushNextHead(changetype<u32>(cand));
+          preservedCount++;
+        }
+      }
     }
     pausedHeadsCount = 0;
 
-    // 3. Condense and prune next heads
+    // 3. Condense and prune next heads (Top-K partial selection)
     if (nextHeadsCount > MAX_PARALLEL_HEADS) {
-      for (let i: u32 = 0; i < nextHeadsCount - 1; i++) {
+      for (let i: u32 = 0; i < MAX_PARALLEL_HEADS; i++) {
         let bestIdx = i;
         let hi = changetype<ParseHead>(t_nextHeads[i]);
         let bestCost = hi.errorCost > (hi.successfulShifts * 15) ? hi.errorCost - (hi.successfulShifts * 15) : 0;
@@ -29399,17 +29523,37 @@ export function findReusableNode(
     let nodeStartState = getNodeStartState(cPtr);
     let canReuse = (!isError && !isMissing && nodeEnvHash == envHash);
 
-    if (canReuse && nodeType > (MAX_TERMINAL_ID as u16)) {
+    if (canReuse) {
       if (end <= editStart || start >= editOldEnd) {
-        let canTransition = (nodeStartState == (currentState as u32));
-        if (!canTransition && (currentState as i32) >= 0 && (currentState as i32) < goto_offsets.length) {
-          let gOffset = goto_offsets[currentState];
-          if (gOffset >= 0 && gOffset < goto_data.length) {
-            let gCount = goto_data[gOffset];
-            for (let gi = 0; gi < gCount; gi++) {
-              if (goto_data[gOffset + 1 + gi * 2] == (nodeType as i32)) {
-                canTransition = true;
-                break;
+        let canTransition = false;
+        if (nodeType > (MAX_TERMINAL_ID as u16)) {
+          canTransition = (nodeStartState == (currentState as u32));
+          if (!canTransition && (currentState as i32) >= 0 && (currentState as i32) < goto_offsets.length) {
+            let gOffset = goto_offsets[currentState];
+            if (gOffset >= 0 && gOffset < goto_data.length) {
+              let gCount = goto_data[gOffset];
+              for (let gi = 0; gi < gCount; gi++) {
+                if (goto_data[gOffset + 1 + gi * 2] == (nodeType as i32)) {
+                  canTransition = true;
+                  break;
+                }
+              }
+            }
+          }
+        } else {
+          // Terminal leaf reuse: verify currentState has a valid shift action for this token
+          if ((currentState as i32) >= 0 && (currentState as i32) < action_offsets.length) {
+            let aOffset = action_offsets[currentState];
+            if (aOffset >= 0 && aOffset < action_data.length) {
+              let count = action_data[aOffset];
+              let aIdx = aOffset + 1;
+              for (let ai = 0; ai < count; ai++) {
+                let aTok = action_data[aIdx++];
+                let aTarget = action_data[aIdx++];
+                if ((aTok & 0x7fff) == (nodeType as i32) && (aTok & 0x8000) == 0) {
+                  canTransition = true;
+                  break;
+                }
               }
             }
           }
@@ -29423,7 +29567,6 @@ export function findReusableNode(
             return cPtr;
           }
         }
-
       }
     }
 
@@ -30235,7 +30378,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         }
         let errLen = diagEnd > diagStart ? diagEnd - diagStart : 1;
         let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
-        let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd);
+        let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd, token as u32, 2);
 
         let targetNode = errNode;
         let parentHead: ParseHead | null = anc;
@@ -30285,20 +30428,35 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   if (tLen == 0) tLen = 1;
   let pad = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
   
+  let childTokType = (token == TOKEN_UNKNOWN || token == -1 ? NODE_TYPE_ERROR : token) as u16;
   let tNode = head.errorNode;
   if (tNode == 0) {
-    tNode = allocNode(((token == TOKEN_UNKNOWN || token == -1 ? NODE_TYPE_ERROR : token) | 0x8000) as u16, pad, tLen, 0, false);
+    tNode = allocNode(NODE_TYPE_ERROR, pad, tLen, 0, false);
     setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
+    let childLeaf = allocNode(childTokType, 0, tLen, 0, false);
+    setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
+    setFirstChild(tNode, childLeaf);
   } else {
     let prevByteLen = getNodeByteLength(tNode);
     setNodeByteLength(tNode, prevByteLen + pad + tLen);
+    let childLeaf = allocNode(childTokType, pad, tLen, 0, false);
+    setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
+    let curr = getNodeFirstChild(tNode);
+    if (curr == 0) {
+      setFirstChild(tNode, childLeaf);
+    } else {
+      while (getNodeNextSibling(curr) != 0) {
+        curr = getNodeNextSibling(curr);
+      }
+      setNextSibling(curr, childLeaf);
+    }
   }
 
   let nextPos = srcLexPos + tLen;
   let newPos = nextPos > pos ? nextPos : pos + 1;
   let diagStart = srcLexPos;
   let diagEnd = srcLexPos + tLen;
-  let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
+  let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, childTokType as u32, 2);
 
   let hasNl = false;
   let pNl = nextPos;
@@ -30500,7 +30658,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
           let diagStart = srcLexPos;
           let diagEnd = srcLexPos + (lexLen > 0 ? lexLen : 1);
-          let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
+          let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestRep as u32, 1);
 
           let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
           let insHead = allocParseHead(
@@ -30581,7 +30739,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
             let diagStart = curSrcLexPos;
             let diagEnd = curSrcLexPos + curTLen;
-            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
+            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 2);
 
             let substHead = allocParseHead(
               aTarget,
@@ -30613,7 +30771,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
             let diagStart = curSrcLexPos;
             let diagEnd = curSrcLexPos + curTLen;
-            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
+            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 1);
 
             let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
             let insHead = allocParseHead(
@@ -30679,7 +30837,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
     let diagStart = curSrcLexPos;
     let diagEnd = curSrcLexPos + bestSubstSpan;
-    let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd);
+    let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestSubstSym as u32, 2);
 
     let substHead = allocParseHead(
       bestSubstResolvedHead.state,
@@ -35908,6 +36066,43 @@ export class LspFacade {
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
+    const extractTokenText = (start, end) => {
+      const lenBytes = this.exports.inputLength
+        ? typeof this.exports.inputLength.value === "number"
+          ? this.exports.inputLength.value
+          : Number(this.exports.inputLength) || 0
+        : 0;
+      const inputBufPtr = this.exports.getInputBuffer
+        ? this.exports.getInputBuffer()
+        : this.exports.lsp_getInputBuffer
+          ? this.exports.lsp_getInputBuffer()
+          : 0;
+      if (inputBufPtr > 0 && start < lenBytes) {
+        const actualEnd =
+          end > start
+            ? Math.min(end, lenBytes)
+            : Math.min(start + encStep * 32, lenBytes);
+        const sliceLen = actualEnd - start;
+        if (sliceLen > 0) {
+          const slice = new Uint8Array(
+            this.wasmMemory.buffer,
+            inputBufPtr + start,
+            sliceLen,
+          );
+          let text =
+            encoding === 1
+              ? new TextDecoder("utf-16le").decode(slice)
+              : new TextDecoder("utf-8").decode(slice);
+          text = text.trim();
+          if (text.length > 0) {
+            const m = text.match(/^[a-zA-Z_][a-zA-Z0-9_]*|[^\\s\\w]/);
+            if (m) return m[0];
+            return text.split(/\\s+/)[0];
+          }
+        }
+      }
+      return "";
+    };
     // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges.
     // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
     const requiredNodePtrs = new Set();
@@ -36029,14 +36224,47 @@ export class LspFacade {
         msg = "Too many diagnostics; remaining diagnostics omitted";
         severity = 2; // Warning
       } else if (rawLintId === 0) {
-        if (arg0 === 1 && arg1 > 0) {
+        let rawArg1 = arg1 & 0x7fff;
+        if (arg0 === 1 && rawArg1 > 0) {
           let symName =
-            (this.syntaxNames && this.syntaxNames[arg1]) || \`token_\${arg1}\`;
+            (this.syntaxNames && this.syntaxNames[rawArg1]) ||
+            (rawArg1 >= 32 && rawArg1 <= 126
+              ? String.fromCharCode(rawArg1)
+              : \`token_\${rawArg1}\`);
           if (symName.startsWith("T_")) symName = symName.substring(2);
           if (symName.startsWith('"') && symName.endsWith('"')) {
             symName = symName.substring(1, symName.length - 1);
           }
           msg = \`Syntax Error: Missing '\${symName}'\`;
+        } else if (arg0 === 2) {
+          let symName =
+            (this.syntaxNames && this.syntaxNames[rawArg1]) ||
+            (rawArg1 >= 32 && rawArg1 <= 126
+              ? String.fromCharCode(rawArg1)
+              : rawArg1 > 0
+                ? \`token_\${rawArg1}\`
+                : "");
+          if (symName.startsWith("T_")) symName = symName.substring(2);
+          if (symName.startsWith('"') && symName.endsWith('"')) {
+            symName = symName.substring(1, symName.length - 1);
+          }
+          if (
+            !symName ||
+            symName.startsWith("_") ||
+            symName.startsWith("(") ||
+            rawArg1 > 102
+          ) {
+            const extracted = extractTokenText(startByte, endByte);
+            if (extracted) symName = extracted;
+          }
+          msg = symName
+            ? \`Syntax Error: Unexpected '\${symName}'\`
+            : "Syntax Error";
+        } else if (arg0 === 0) {
+          let symName = extractTokenText(startByte, endByte);
+          if (symName) {
+            msg = \`Syntax Error: Unexpected '\${symName}'\`;
+          }
         }
       }
       if (rawLintId > 0) {

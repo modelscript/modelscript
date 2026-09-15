@@ -1075,6 +1075,35 @@ export class LspFacade {
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
 
+    const extractTokenText = (start: number, end: number): string => {
+      const lenBytes = this.exports.inputLength
+        ? typeof this.exports.inputLength.value === "number"
+          ? this.exports.inputLength.value
+          : Number(this.exports.inputLength) || 0
+        : 0;
+      const inputBufPtr = this.exports.getInputBuffer
+        ? this.exports.getInputBuffer()
+        : this.exports.lsp_getInputBuffer
+          ? this.exports.lsp_getInputBuffer()
+          : 0;
+      if (inputBufPtr > 0 && start < lenBytes) {
+        const actualEnd = end > start ? Math.min(end, lenBytes) : Math.min(start + encStep * 32, lenBytes);
+        const sliceLen = actualEnd - start;
+        if (sliceLen > 0) {
+          const slice = new Uint8Array(this.wasmMemory.buffer, inputBufPtr + start, sliceLen);
+          let text =
+            encoding === 1 ? new TextDecoder("utf-16le").decode(slice) : new TextDecoder("utf-8").decode(slice);
+          text = text.trim();
+          if (text.length > 0) {
+            const m = text.match(/^[a-zA-Z_][a-zA-Z0-9_]*|[^\s\w]/);
+            if (m) return m[0];
+            return text.split(/\s+/)[0];
+          }
+        }
+      }
+      return "";
+    };
+
     // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges.
     // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
     const requiredNodePtrs = new Set<number>();
@@ -1194,13 +1223,34 @@ export class LspFacade {
         msg = "Too many diagnostics; remaining diagnostics omitted";
         severity = 2; // Warning
       } else if (rawLintId === 0) {
-        if (arg0 === 1 && arg1 > 0) {
-          let symName = (this.syntaxNames && this.syntaxNames[arg1]) || `token_${arg1}`;
+        let rawArg1 = (arg1 & 0x7fff) as number;
+        if (arg0 === 1 && rawArg1 > 0) {
+          let symName =
+            (this.syntaxNames && this.syntaxNames[rawArg1]) ||
+            (rawArg1 >= 32 && rawArg1 <= 126 ? String.fromCharCode(rawArg1) : `token_${rawArg1}`);
           if (symName.startsWith("T_")) symName = symName.substring(2);
           if (symName.startsWith('"') && symName.endsWith('"')) {
             symName = symName.substring(1, symName.length - 1);
           }
           msg = `Syntax Error: Missing '${symName}'`;
+        } else if (arg0 === 2) {
+          let symName =
+            (this.syntaxNames && this.syntaxNames[rawArg1]) ||
+            (rawArg1 >= 32 && rawArg1 <= 126 ? String.fromCharCode(rawArg1) : rawArg1 > 0 ? `token_${rawArg1}` : "");
+          if (symName.startsWith("T_")) symName = symName.substring(2);
+          if (symName.startsWith('"') && symName.endsWith('"')) {
+            symName = symName.substring(1, symName.length - 1);
+          }
+          if (!symName || symName.startsWith("_") || symName.startsWith("(") || rawArg1 > 102) {
+            const extracted = extractTokenText(startByte, endByte);
+            if (extracted) symName = extracted;
+          }
+          msg = symName ? `Syntax Error: Unexpected '${symName}'` : "Syntax Error";
+        } else if (arg0 === 0) {
+          let symName = extractTokenText(startByte, endByte);
+          if (symName) {
+            msg = `Syntax Error: Unexpected '${symName}'`;
+          }
         }
       }
 
