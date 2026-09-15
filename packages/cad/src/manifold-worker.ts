@@ -102,6 +102,38 @@ class SurfaceMeshBuilder {
         this.processSolid(solid.right, parentMat, activeTag);
         break;
       }
+
+      case SolidKind.Fillet: {
+        if (solid.child.kind === SolidKind.Box) {
+          this.emitChamferedBox(
+            solid.child.width,
+            solid.child.height,
+            solid.child.depth,
+            solid.radius,
+            parentMat,
+            activeTag,
+          );
+        } else {
+          this.processSolid(solid.child, parentMat, activeTag);
+        }
+        break;
+      }
+
+      case SolidKind.Chamfer: {
+        if (solid.child.kind === SolidKind.Box) {
+          this.emitChamferedBox(
+            solid.child.width,
+            solid.child.height,
+            solid.child.depth,
+            solid.distance,
+            parentMat,
+            activeTag,
+          );
+        } else {
+          this.processSolid(solid.child, parentMat, activeTag);
+        }
+        break;
+      }
     }
   }
 
@@ -205,6 +237,88 @@ class SurfaceMeshBuilder {
 
       this.addTriangle(p0, p1, p2, tNorm, tag);
       this.addTriangle(p0, p2, p3, tNorm, tag);
+    }
+  }
+
+  private emitChamferedBox(w: number, h: number, d: number, dist: number, mat: Mat4, tag?: BoundaryPatchTag): void {
+    const hw = w / 2;
+    const hh = h / 2;
+    const hd = d / 2;
+    const c = Math.min(dist, hw * 0.45, hh * 0.45, hd * 0.45);
+    if (c <= 1e-6) {
+      this.emitBox(w, h, d, mat, tag);
+      return;
+    }
+    const x1 = hw - c,
+      y1 = hh - c,
+      z1 = hd - c;
+
+    // Helper for quad emission
+    const addQuad = (v0: Vec3, v1: Vec3, v2: Vec3, v3: Vec3, norm: Vec3) => {
+      const tNorm = this.transformNormal(mat, norm[0], norm[1], norm[2]);
+      const p0 = this.transformPoint(mat, v0[0], v0[1], v0[2]);
+      const p1 = this.transformPoint(mat, v1[0], v1[1], v1[2]);
+      const p2 = this.transformPoint(mat, v2[0], v2[1], v2[2]);
+      const p3 = this.transformPoint(mat, v3[0], v3[1], v3[2]);
+      this.addTriangle(p0, p1, p2, tNorm, tag);
+      this.addTriangle(p0, p2, p3, tNorm, tag);
+    };
+
+    // 1. 6 Center planar faces (quads)
+    addQuad([-x1, -y1, hd], [x1, -y1, hd], [x1, y1, hd], [-x1, y1, hd], [0, 0, 1]);
+    addQuad([x1, -y1, -hd], [-x1, -y1, -hd], [-x1, y1, -hd], [x1, y1, -hd], [0, 0, -1]);
+    addQuad([hw, -y1, hd], [hw, -y1, -hd], [hw, y1, -hd], [hw, y1, hd], [1, 0, 0]);
+    addQuad([-hw, -y1, -hd], [-hw, -y1, hd], [-hw, y1, hd], [-hw, y1, -hd], [-1, 0, 0]);
+    addQuad([-x1, hh, hd], [x1, hh, hd], [x1, hh, -hd], [-x1, hh, -hd], [0, 1, 0]);
+    addQuad([-x1, -hh, -hd], [x1, -hh, -hd], [x1, -hh, hd], [-x1, -hh, hd], [0, -1, 0]);
+
+    // 2. 12 Beveled Edge Quads
+    const invSqrt2 = 1.0 / Math.SQRT2;
+    // Edges parallel to Z (4)
+    addQuad([x1, hh, z1], [hw, y1, z1], [hw, y1, -z1], [x1, hh, -z1], [invSqrt2, invSqrt2, 0]);
+    addQuad([-hw, y1, z1], [-x1, hh, z1], [-x1, hh, -z1], [-hw, y1, -z1], [-invSqrt2, invSqrt2, 0]);
+    addQuad([-x1, -hh, z1], [-hw, -y1, z1], [-hw, -y1, -z1], [-x1, -hh, -z1], [-invSqrt2, -invSqrt2, 0]);
+    addQuad([hw, -y1, z1], [x1, -hh, z1], [x1, -hh, -z1], [hw, -y1, -z1], [invSqrt2, -invSqrt2, 0]);
+
+    // Edges parallel to X (4)
+    addQuad([x1, hh, z1], [-x1, hh, z1], [-x1, y1, hd], [x1, y1, hd], [0, invSqrt2, invSqrt2]);
+    addQuad([-x1, hh, -z1], [x1, hh, -z1], [x1, y1, -hd], [-x1, y1, -hd], [0, invSqrt2, -invSqrt2]);
+    addQuad([-x1, -hh, z1], [x1, -hh, z1], [x1, -y1, hd], [-x1, -y1, hd], [0, -invSqrt2, invSqrt2]);
+    addQuad([x1, -hh, -z1], [-x1, -hh, -z1], [-x1, -y1, -hd], [x1, -y1, -hd], [0, -invSqrt2, -invSqrt2]);
+
+    // Edges parallel to Y (4)
+    addQuad([hw, y1, z1], [x1, y1, hd], [x1, -y1, hd], [hw, -y1, z1], [invSqrt2, 0, invSqrt2]);
+    addQuad([x1, y1, -hd], [hw, y1, -z1], [hw, -y1, -z1], [x1, -y1, -hd], [invSqrt2, 0, -invSqrt2]);
+    addQuad([-x1, y1, hd], [-hw, y1, z1], [-hw, -y1, z1], [-x1, -y1, hd], [-invSqrt2, 0, invSqrt2]);
+    addQuad([-hw, y1, -z1], [-x1, y1, -hd], [-x1, -y1, -hd], [-hw, -y1, -z1], [-invSqrt2, 0, -invSqrt2]);
+
+    // 3. 8 Corner Triangles
+    const invSqrt3 = 1.0 / Math.sqrt(3);
+    const signs: readonly (readonly [number, number, number])[] = [
+      [1, 1, 1],
+      [-1, 1, 1],
+      [-1, -1, 1],
+      [1, -1, 1],
+      [1, 1, -1],
+      [-1, 1, -1],
+      [-1, -1, -1],
+      [1, -1, -1],
+    ];
+
+    for (const [sx, sy, sz] of signs) {
+      const pA: Vec3 = [sx * hw, sy * y1, sz * z1];
+      const pB: Vec3 = [sx * x1, sy * hh, sz * z1];
+      const pC: Vec3 = [sx * x1, sy * y1, sz * hd];
+      const norm: Vec3 = [sx * invSqrt3, sy * invSqrt3, sz * invSqrt3];
+      const tNorm = this.transformNormal(mat, norm[0], norm[1], norm[2]);
+      const tpA = this.transformPoint(mat, pA[0], pA[1], pA[2]);
+      const tpB = this.transformPoint(mat, pB[0], pB[1], pB[2]);
+      const tpC = this.transformPoint(mat, pC[0], pC[1], pC[2]);
+      if (sx * sy * sz > 0) {
+        this.addTriangle(tpA, tpB, tpC, tNorm, tag);
+      } else {
+        this.addTriangle(tpA, tpC, tpB, tNorm, tag);
+      }
     }
   }
 

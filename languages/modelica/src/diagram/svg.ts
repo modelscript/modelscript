@@ -641,13 +641,40 @@ export function convertPoint(point?: IPoint, defaultValue?: [number, number]): A
 export function convertSmoothPath(points?: IPoint[]): PathCommand[] {
   const pathArray: PathCommand[] = [];
   if (!points || points.length === 0) return pathArray;
-  if (points != null) {
+
+  if (points.length === 1) {
     pathArray.push(["M", ...convertPoint(points[0])]);
-    pathArray.push(["L", ...convertMidpoint(points[0], points[1])]);
-    for (let i = 1; i < points.length - 1; i++)
-      pathArray.push(["Q", ...convertPoint(points[i]), ...convertMidpoint(points[i], points[i + 1])]);
-    pathArray.push(["L", ...convertPoint(points[points.length - 1])]);
+    return pathArray;
   }
+
+  if (points.length === 2) {
+    pathArray.push(["M", ...convertPoint(points[0])]);
+    pathArray.push(["L", ...convertPoint(points[1])]);
+    return pathArray;
+  }
+
+  const pts: [number, number][] = points.map((p) => convertPoint(p));
+  const n = pts.length;
+
+  pathArray.push(["M", pts[0][0], pts[0][1]]);
+
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = i > 0 ? pts[i - 1] : [2 * pts[0][0] - pts[1][0], 2 * pts[0][1] - pts[1][1]];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = i + 2 < n ? pts[i + 2] : [2 * pts[n - 1][0] - pts[n - 2][0], 2 * pts[n - 1][1] - pts[n - 2][1]];
+
+    // Catmull-Rom to Cubic Bezier control points (C1 continuity everywhere):
+    // C1 = P1 + (P2 - P0) / 6
+    // C2 = P2 - (P3 - P1) / 6
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+
+    pathArray.push(["C", c1x, c1y, c2x, c2y, p2[0], p2[1]]);
+  }
+
   return pathArray;
 }
 

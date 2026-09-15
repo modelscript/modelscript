@@ -2084,9 +2084,9 @@ const sysmlEdgeGraphics = (opts: {
   label?: string;
   stroke?: string;
   strokeDasharray?: string;
-  targetMarker?: string;
-  router?: string;
-  connector?: string;
+  targetMarker?: any;
+  router?: string | { name: string; args?: Record<string, unknown> };
+  connector?: string | { name: string; args?: Record<string, unknown> };
 }): GraphicsConfig => ({
   role: "edge",
   edge: {
@@ -2110,7 +2110,7 @@ const sysmlEdgeGraphics = (opts: {
           },
         ]
       : undefined,
-    router: opts.router ?? "manhattan",
+    router: opts.router ?? "port-orthogonal-astar",
     connector: opts.connector ?? "rounded",
   },
 });

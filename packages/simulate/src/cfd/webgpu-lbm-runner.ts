@@ -113,11 +113,17 @@ export class WebGPULbmRunner {
 
   /**
    * Steps the LBM simulation forward by numSteps iterations.
-   * Performs collision, streaming, halfway bounce-back, and momentum-exchange force integration.
+   * Performs collision, streaming, Bouzidi curved boundary interpolation, and momentum-exchange force integration.
    */
   public step(numSteps: number = 1): LbmStepResult {
     const { nx, ny, nz, dx, dt, tau, density } = this.config;
-    const omega = 1.0 / tau;
+    const omega0 = 1.0 / tau;
+    const useLES = this.config.turbulenceModel === "smagorinsky_les";
+    const Cs = this.config.smagorinskyConstant ?? 0.14;
+    const CsSq = Cs * Cs;
+    const deltaWall = this.config.deltaWall;
+    const useCurved = this.config.curvedBoundary !== false && deltaWall !== undefined;
+
     const inletV = this.config.inletVelocity ?? [1.0, 0, 0];
     const uInletX = inletV[0] * (dt / dx);
     const uInletY = inletV[1] * (dt / dx);
@@ -126,6 +132,9 @@ export class WebGPULbmRunner {
     let dragLatX = 0.0;
     let dragLatY = 0.0;
     let dragLatZ = 0.0;
+
+    const feqs = new Float64Array(19);
+    const fPost = new Float64Array(19);
 
     for (let step = 0; step < numSteps; step++) {
       const src = this.currentPing ? this.f0 : this.f1;
@@ -180,21 +189,55 @@ export class WebGPULbmRunner {
 
             const uSq = ux * ux + uy * uy + uz * uz;
 
-            // 2. Collision & Streaming
+            // 2. Equilibrium distribution & Non-equilibrium momentum flux for Smagorinsky LES
+            let piXX = 0,
+              piYY = 0,
+              piZZ = 0,
+              piXY = 0,
+              piYZ = 0,
+              piZX = 0;
+
             for (let i = 0; i < 19; i++) {
               const cu = CX[i] * ux + CY[i] * uy + CZ[i] * uz;
               const feq = W[i] * rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * uSq);
-              const fPost = src[baseSrc + i] - omega * (src[baseSrc + i] - feq);
+              feqs[i] = feq;
 
-              // Streaming target cell
+              if (useLES) {
+                const fneq = src[baseSrc + i] - feq;
+                piXX += CX[i] * CX[i] * fneq;
+                piYY += CY[i] * CY[i] * fneq;
+                piZZ += CZ[i] * CZ[i] * fneq;
+                piXY += CX[i] * CY[i] * fneq;
+                piYZ += CY[i] * CZ[i] * fneq;
+                piZX += CZ[i] * CX[i] * fneq;
+              }
+            }
+
+            let omegaLoc = omega0;
+            if (useLES) {
+              const piMag = Math.sqrt(
+                2 * (piXX * piXX + piYY * piYY + piZZ * piZZ + 2 * (piXY * piXY + piYZ * piYZ + piZX * piZX)),
+              );
+              const tau0 = tau;
+              const deltaTau =
+                0.5 * (Math.sqrt(tau0 * tau0 + 18.0 * Math.SQRT2 * CsSq * (piMag / Math.max(1e-6, rho))) - tau0);
+              omegaLoc = 1.0 / (tau0 + deltaTau);
+            }
+
+            // Compute post-collision distributions for this cell
+            for (let i = 0; i < 19; i++) {
+              fPost[i] = src[baseSrc + i] - omegaLoc * (src[baseSrc + i] - feqs[i]);
+            }
+
+            // 3. Streaming & Boundary conditions
+            for (let i = 0; i < 19; i++) {
               const nxCoord = x + CX[i];
               const nyCoord = y + CY[i];
               const nzCoord = z + CZ[i];
 
               // Handle domain boundary wrap or bounce
               if (nxCoord < 0 || nxCoord >= nx || nyCoord < 0 || nyCoord >= ny || nzCoord < 0 || nzCoord >= nz) {
-                // Outer wall bounce-back
-                dst[baseSrc + OPP[i]] = fPost;
+                dst[baseSrc + OPP[i]] = fPost[i];
                 continue;
               }
 
@@ -202,19 +245,47 @@ export class WebGPULbmRunner {
               const targetType = this.cellTypes[targetIdx];
 
               if (targetType === LbmCellType.ObstacleSolid || targetType === LbmCellType.ChannelWall) {
-                // Half-way bounce-back on solid surface
-                dst[baseSrc + OPP[i]] = fPost;
+                let fRefl = fPost[i];
+
+                // Bouzidi curved boundary interpolation
+                if (useCurved && targetType === LbmCellType.ObstacleSolid && deltaWall) {
+                  const delta = deltaWall[cellIdx * 19 + i];
+                  if (delta < 0.5) {
+                    const bx = x - CX[i];
+                    const by = y - CY[i];
+                    const bz = z - CZ[i];
+                    if (bx >= 0 && bx < nx && by >= 0 && by < ny && bz >= 0 && bz < nz) {
+                      const bIdx = bx + by * nx + bz * nx * ny;
+                      if (
+                        this.cellTypes[bIdx] !== LbmCellType.ObstacleSolid &&
+                        this.cellTypes[bIdx] !== LbmCellType.ChannelWall
+                      ) {
+                        const fBPost = src[bIdx * 19 + i]; // post-collision approximation from upstream neighbor
+                        fRefl = 2 * delta * fPost[i] + (1 - 2 * delta) * fBPost;
+                      } else {
+                        fRefl = fPost[i];
+                      }
+                    } else {
+                      fRefl = fPost[i];
+                    }
+                  } else {
+                    const oppI = OPP[i];
+                    fRefl = (1 / (2 * delta)) * fPost[i] + ((2 * delta - 1) / (2 * delta)) * fPost[oppI];
+                  }
+                }
+
+                dst[baseSrc + OPP[i]] = fRefl;
 
                 // Momentum exchange integration for aerodynamic drag on obstacle
                 if (targetType === LbmCellType.ObstacleSolid) {
-                  const dP = fPost + fPost; // momentum imparted to obstacle
+                  const dP = fPost[i] + fRefl;
                   dragLatX += dP * CX[i];
                   dragLatY += dP * CY[i];
                   dragLatZ += dP * CZ[i];
                 }
               } else {
                 // Stream into neighbor fluid cell
-                dst[targetIdx * 19 + i] = fPost;
+                dst[targetIdx * 19 + i] = fPost[i];
               }
             }
           }

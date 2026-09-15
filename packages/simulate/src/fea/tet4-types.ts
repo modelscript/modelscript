@@ -3,12 +3,16 @@
 export interface Tet4Mesh {
   /** Node coordinates [x0, y0, z0, x1, y1, z1, ...]. */
   nodeCoords: Float32Array;
-  /** Tetrahedral element vertex indices [e0_0, e0_1, e0_2, e0_3, ...]. */
+  /** Tetrahedral element vertex indices [e0_0, ... e0_3, ...]. */
   elements: Uint32Array;
   /** Total number of nodes. */
   numNodes: number;
   /** Total number of elements. */
   numElements: number;
+  /** Element formulation order: 'linear' (Tet4, 4 nodes) or 'quadratic' (Tet10, 10 nodes). Default: 'linear'. */
+  elementOrder?: "linear" | "quadratic";
+  /** Number of nodes per element (4 for Tet4, 10 for Tet10). Default: 4. */
+  nodesPerElement?: number;
   /** Mapping from boundary patch / port name to node indices on that boundary. */
   boundaryNodes: Map<string, number[]>;
   /** Mapping from boundary patch / port name to surface triangular face node triples. */
@@ -31,6 +35,8 @@ export interface FeaBoundaryConditions {
   fixedNodes: Set<number>;
   /** Applied point loads: nodeIndex -> [Fx, Fy, Fz] in Newtons. */
   nodalLoads: Map<number, [number, number, number]>;
+  /** Enable geometrically non-linear corotational kinematics to eliminate artificial stress under rigid rotations. */
+  corotational?: boolean;
 }
 
 export interface FeaStepResult {

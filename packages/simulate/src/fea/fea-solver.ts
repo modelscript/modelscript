@@ -1,19 +1,20 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
+import { Tet10Element } from "./tet10-stiffness.js";
 import { Tet4Element } from "./tet4-stiffness.js";
 import type { FeaBoundaryConditions, FeaStepResult, MaterialProperties, Tet4Mesh } from "./tet4-types.js";
 
 /**
- * High-Performance Sparse Linear Tet4 Finite Element Solver.
- * Designed for sub-5ms live co-simulation time steps in the browser.
+ * High-Performance Sparse Linear & Quadratic (Tet4 / Tet10) Finite Element Solver.
+ * Supports corotational kinematics for large-rotation invariance and sub-5ms interactive time steps.
  */
 export class FeaSolver {
   public readonly mesh: Tet4Mesh;
   public readonly material: MaterialProperties;
   public readonly numDofs: number;
+  public readonly isQuadratic: boolean;
+  public readonly nodesPerElement: number;
 
   private D: Float64Array;
-  private elementB: Float64Array[];
+  private elementB: (Float64Array | Float64Array[])[];
   private elementKe: Float64Array[];
 
   // Sparse matrix in Compressed Sparse Row / Coordinate format for fast SpMV
@@ -28,6 +29,8 @@ export class FeaSolver {
   constructor(mesh: Tet4Mesh, material: MaterialProperties) {
     this.mesh = mesh;
     this.material = material;
+    this.isQuadratic = mesh.elementOrder === "quadratic" || mesh.nodesPerElement === 10;
+    this.nodesPerElement = this.isQuadratic ? 10 : 4;
     this.numDofs = mesh.numNodes * 3;
     this.lastDisplacements = new Float64Array(this.numDofs);
 
@@ -41,27 +44,40 @@ export class FeaSolver {
 
   private precomputeElementMatrices(): void {
     const { nodeCoords, elements, numElements } = this.mesh;
+    const npe = this.nodesPerElement;
 
     for (let e = 0; e < numElements; e++) {
-      const n0 = elements[e * 4 + 0];
-      const n1 = elements[e * 4 + 1];
-      const n2 = elements[e * 4 + 2];
-      const n3 = elements[e * 4 + 3];
+      if (this.isQuadratic) {
+        const pts: [number, number, number][] = [];
+        for (let i = 0; i < 10; i++) {
+          const n = elements[e * 10 + i];
+          pts.push([nodeCoords[n * 3], nodeCoords[n * 3 + 1], nodeCoords[n * 3 + 2]]);
+        }
+        const { Ke, B_gauss } = Tet10Element.computeElementStiffness(pts, this.D);
+        this.elementKe[e] = Ke;
+        this.elementB[e] = B_gauss;
+      } else {
+        const n0 = elements[e * 4 + 0];
+        const n1 = elements[e * 4 + 1];
+        const n2 = elements[e * 4 + 2];
+        const n3 = elements[e * 4 + 3];
 
-      const p0: [number, number, number] = [nodeCoords[n0 * 3], nodeCoords[n0 * 3 + 1], nodeCoords[n0 * 3 + 2]];
-      const p1: [number, number, number] = [nodeCoords[n1 * 3], nodeCoords[n1 * 3 + 1], nodeCoords[n1 * 3 + 2]];
-      const p2: [number, number, number] = [nodeCoords[n2 * 3], nodeCoords[n2 * 3 + 1], nodeCoords[n2 * 3 + 2]];
-      const p3: [number, number, number] = [nodeCoords[n3 * 3], nodeCoords[n3 * 3 + 1], nodeCoords[n3 * 3 + 2]];
+        const p0: [number, number, number] = [nodeCoords[n0 * 3], nodeCoords[n0 * 3 + 1], nodeCoords[n0 * 3 + 2]];
+        const p1: [number, number, number] = [nodeCoords[n1 * 3], nodeCoords[n1 * 3 + 1], nodeCoords[n1 * 3 + 2]];
+        const p2: [number, number, number] = [nodeCoords[n2 * 3], nodeCoords[n2 * 3 + 1], nodeCoords[n2 * 3 + 2]];
+        const p3: [number, number, number] = [nodeCoords[n3 * 3], nodeCoords[n3 * 3 + 1], nodeCoords[n3 * 3 + 2]];
 
-      const { Ke, B } = Tet4Element.computeElementStiffness(p0, p1, p2, p3, this.D);
-      this.elementKe[e] = Ke;
-      this.elementB[e] = B;
+        const { Ke, B } = Tet4Element.computeElementStiffness(p0, p1, p2, p3, this.D);
+        this.elementKe[e] = Ke;
+        this.elementB[e] = B;
+      }
     }
   }
 
   private assembleSparsityPattern(): void {
     const { elements, numElements } = this.mesh;
     const numDofs = this.numDofs;
+    const npe = this.nodesPerElement;
 
     // Build adjacency list for each DOF
     const adj = new Array<Set<number>>(numDofs);
@@ -70,12 +86,15 @@ export class FeaSolver {
     }
 
     for (let e = 0; e < numElements; e++) {
-      const nodes = [elements[e * 4 + 0], elements[e * 4 + 1], elements[e * 4 + 2], elements[e * 4 + 3]];
+      const elNodes: number[] = [];
+      for (let i = 0; i < npe; i++) {
+        elNodes.push(elements[e * npe + i]);
+      }
 
-      for (let i = 0; i < 4; i++) {
-        const ni = nodes[i];
-        for (let j = 0; j < 4; j++) {
-          const nj = nodes[j];
+      for (let i = 0; i < npe; i++) {
+        const ni = elNodes[i];
+        for (let j = 0; j < npe; j++) {
+          const nj = elNodes[j];
           for (let di = 0; di < 3; di++) {
             const row = ni * 3 + di;
             for (let dj = 0; dj < 3; dj++) {
@@ -110,11 +129,121 @@ export class FeaSolver {
   }
 
   /**
+   * Computes the 3x3 rotation matrix R_e via polar decomposition of element deformation.
+   */
+  private computeElementRotation(e: number, u: Float64Array): Float64Array {
+    const { nodeCoords, elements } = this.mesh;
+    const npe = this.nodesPerElement;
+
+    const n0 = elements[e * npe + 0];
+    const n1 = elements[e * npe + 1];
+    const n2 = elements[e * npe + 2];
+    const n3 = elements[e * npe + 3];
+
+    // Undeformed edges
+    const X0 = [nodeCoords[n0 * 3], nodeCoords[n0 * 3 + 1], nodeCoords[n0 * 3 + 2]];
+    const E0 = [
+      nodeCoords[n1 * 3] - X0[0],
+      nodeCoords[n2 * 3] - X0[0],
+      nodeCoords[n3 * 3] - X0[0],
+      nodeCoords[n1 * 3 + 1] - X0[1],
+      nodeCoords[n2 * 3 + 1] - X0[1],
+      nodeCoords[n3 * 3 + 1] - X0[1],
+      nodeCoords[n1 * 3 + 2] - X0[2],
+      nodeCoords[n2 * 3 + 2] - X0[2],
+      nodeCoords[n3 * 3 + 2] - X0[2],
+    ];
+
+    // Deformed edges
+    const x0 = [X0[0] + u[n0 * 3], X0[1] + u[n0 * 3 + 1], X0[2] + u[n0 * 3 + 2]];
+    const e0 = [
+      nodeCoords[n1 * 3] + u[n1 * 3] - x0[0],
+      nodeCoords[n2 * 3] + u[n2 * 3] - x0[0],
+      nodeCoords[n3 * 3] + u[n3 * 3] - x0[0],
+
+      nodeCoords[n1 * 3 + 1] + u[n1 * 3 + 1] - x0[1],
+      nodeCoords[n2 * 3 + 1] + u[n2 * 3 + 1] - x0[1],
+      nodeCoords[n3 * 3 + 1] + u[n3 * 3 + 1] - x0[1],
+
+      nodeCoords[n1 * 3 + 2] + u[n1 * 3 + 2] - x0[2],
+      nodeCoords[n2 * 3 + 2] + u[n2 * 3 + 2] - x0[2],
+      nodeCoords[n3 * 3 + 2] + u[n3 * 3 + 2] - x0[2],
+    ];
+
+    // Invert E0
+    const detE0 =
+      E0[0] * (E0[4] * E0[8] - E0[5] * E0[7]) -
+      E0[1] * (E0[3] * E0[8] - E0[5] * E0[6]) +
+      E0[2] * (E0[3] * E0[7] - E0[4] * E0[6]);
+
+    if (Math.abs(detE0) < 1e-15) {
+      return new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    }
+
+    const invDet = 1.0 / detE0;
+    const invE0 = [
+      (E0[4] * E0[8] - E0[5] * E0[7]) * invDet,
+      (E0[2] * E0[7] - E0[1] * E0[8]) * invDet,
+      (E0[1] * E0[5] - E0[2] * E0[4]) * invDet,
+      (E0[5] * E0[6] - E0[3] * E0[8]) * invDet,
+      (E0[0] * E0[8] - E0[2] * E0[6]) * invDet,
+      (E0[2] * E0[3] - E0[0] * E0[5]) * invDet,
+      (E0[3] * E0[7] - E0[4] * E0[6]) * invDet,
+      (E0[1] * E0[6] - E0[0] * E0[7]) * invDet,
+      (E0[0] * E0[4] - E0[1] * E0[3]) * invDet,
+    ];
+
+    // Deformation gradient F = e0 * invE0 (3x3)
+    const F = new Float64Array(9);
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        let sum = 0.0;
+        for (let k = 0; k < 3; k++) {
+          sum += e0[r * 3 + k] * invE0[k * 3 + c];
+        }
+        F[r * 3 + c] = sum;
+      }
+    }
+
+    // Polar decomposition via Higham iterations: R_{k+1} = 0.5 * (R_k + R_k^-T)
+    const R = new Float64Array(F);
+    for (let iter = 0; iter < 8; iter++) {
+      const detR =
+        R[0] * (R[4] * R[8] - R[5] * R[7]) - R[1] * (R[3] * R[8] - R[5] * R[6]) + R[2] * (R[3] * R[7] - R[4] * R[6]);
+      if (Math.abs(detR) < 1e-15) break;
+
+      const iDet = 1.0 / detR;
+      // Transpose of inverse of R
+      const invR_T = [
+        (R[4] * R[8] - R[5] * R[7]) * iDet,
+        (R[5] * R[6] - R[3] * R[8]) * iDet,
+        (R[3] * R[7] - R[4] * R[6]) * iDet,
+
+        (R[2] * R[7] - R[1] * R[8]) * iDet,
+        (R[0] * R[8] - R[2] * R[6]) * iDet,
+        (R[1] * R[6] - R[0] * R[7]) * iDet,
+
+        (R[1] * R[5] - R[2] * R[4]) * iDet,
+        (R[2] * R[3] - R[0] * R[5]) * iDet,
+        (R[0] * R[4] - R[1] * R[3]) * iDet,
+      ];
+
+      for (let i = 0; i < 9; i++) {
+        R[i] = 0.5 * (R[i] + invR_T[i]);
+      }
+    }
+
+    return R;
+  }
+
+  /**
    * Assembles the global stiffness values and enforces Dirichlet boundary constraints.
    */
-  private assembleGlobalStiffness(fixedDofs: Set<number>): void {
+  private assembleGlobalStiffness(fixedDofs: Set<number>, corotational: boolean = false): void {
     this.values.fill(0);
     const { elements, numElements } = this.mesh;
+    const npe = this.nodesPerElement;
+    const edof = npe * 3;
 
     // Helper to find index in CSR row
     const findColIndex = (row: number, col: number): number => {
@@ -127,22 +256,60 @@ export class FeaSolver {
     };
 
     for (let e = 0; e < numElements; e++) {
-      const Ke = this.elementKe[e];
-      const nodes = [elements[e * 4 + 0], elements[e * 4 + 1], elements[e * 4 + 2], elements[e * 4 + 3]];
+      const KeBase = this.elementKe[e];
+      let Ke = KeBase;
 
-      for (let i = 0; i < 4; i++) {
-        const ni = nodes[i];
+      if (corotational) {
+        const R = this.computeElementRotation(e, this.lastDisplacements);
+        // Rotate Ke: K_rot = T * Ke * T^T
+        Ke = new Float64Array(edof * edof);
+        for (let i = 0; i < npe; i++) {
+          for (let j = 0; j < npe; j++) {
+            // Extract 3x3 block M = Ke[i, j]
+            const M = new Float64Array(9);
+            for (let r = 0; r < 3; r++) {
+              for (let c = 0; c < 3; c++) {
+                M[r * 3 + c] = KeBase[(i * 3 + r) * edof + (j * 3 + c)];
+              }
+            }
+            // Compute R * M * R^T
+            const RM = new Float64Array(9);
+            for (let r = 0; r < 3; r++) {
+              for (let c = 0; c < 3; c++) {
+                let sum = 0.0;
+                for (let k = 0; k < 3; k++) sum += R[r * 3 + k] * M[k * 3 + c];
+                RM[r * 3 + c] = sum;
+              }
+            }
+            for (let r = 0; r < 3; r++) {
+              for (let c = 0; c < 3; c++) {
+                let sum = 0.0;
+                for (let k = 0; k < 3; k++) sum += RM[r * 3 + k] * R[c * 3 + k];
+                Ke[(i * 3 + r) * edof + (j * 3 + c)] = sum;
+              }
+            }
+          }
+        }
+      }
+
+      const elNodes: number[] = [];
+      for (let i = 0; i < npe; i++) {
+        elNodes.push(elements[e * npe + i]);
+      }
+
+      for (let i = 0; i < npe; i++) {
+        const ni = elNodes[i];
         for (let di = 0; di < 3; di++) {
           const row = ni * 3 + di;
           const isRowFixed = fixedDofs.has(row);
 
-          for (let j = 0; j < 4; j++) {
-            const nj = nodes[j];
+          for (let j = 0; j < npe; j++) {
+            const nj = elNodes[j];
             for (let dj = 0; dj < 3; dj++) {
               const col = nj * 3 + dj;
               const isColFixed = fixedDofs.has(col);
 
-              const keVal = Ke[(i * 3 + di) * 12 + (j * 3 + dj)];
+              const keVal = Ke[(i * 3 + di) * edof + (j * 3 + dj)];
               const p = findColIndex(row, col);
 
               if (p !== -1) {
@@ -189,7 +356,8 @@ export class FeaSolver {
     }
 
     // 2. Assemble matrix with boundary conditions
-    this.assembleGlobalStiffness(fixedDofs);
+    const corotational = bcs.corotational ?? false;
+    this.assembleGlobalStiffness(fixedDofs, corotational);
 
     // 3. Assemble RHS load vector f
     const rhs = new Float64Array(this.numDofs);
@@ -215,7 +383,7 @@ export class FeaSolver {
     this.lastDisplacements.set(u);
 
     // 5. Post-process: Compute element and nodal von Mises stresses
-    return this.postProcess(u);
+    return this.postProcess(u, corotational);
   }
 
   private solvePcg(b: Float64Array, x: Float64Array, tol: number, maxIters: number): void {
@@ -285,8 +453,13 @@ export class FeaSolver {
     return sum;
   }
 
-  private postProcess(u: Float64Array): FeaStepResult {
-    const { elements, numNodes, numElements } = this.mesh;
+  /**
+   * Post-processes displacements to calculate element and nodal von Mises stresses.
+   */
+  public postProcess(u: Float64Array, corotational: boolean = false): FeaStepResult {
+    const { nodeCoords, elements, numNodes, numElements } = this.mesh;
+    const npe = this.nodesPerElement;
+    const edof = npe * 3;
     const elementVonMises = new Float32Array(numElements);
     const nodalVonMises = new Float32Array(numNodes);
     const nodeCounts = new Uint32Array(numNodes);
@@ -301,33 +474,70 @@ export class FeaSolver {
     }
 
     let maxStress = 0.0;
-    const ue = new Float64Array(12);
+    const ue = new Float64Array(edof);
 
     for (let e = 0; e < numElements; e++) {
-      const n0 = elements[e * 4 + 0];
-      const n1 = elements[e * 4 + 1];
-      const n2 = elements[e * 4 + 2];
-      const n3 = elements[e * 4 + 3];
-
-      for (let d = 0; d < 3; d++) {
-        ue[0 * 3 + d] = u[n0 * 3 + d];
-        ue[1 * 3 + d] = u[n1 * 3 + d];
-        ue[2 * 3 + d] = u[n2 * 3 + d];
-        ue[3 * 3 + d] = u[n3 * 3 + d];
+      const elNodes: number[] = [];
+      for (let i = 0; i < npe; i++) {
+        elNodes.push(elements[e * npe + i]);
       }
 
-      const { vonMises } = Tet4Element.computeElementStress(this.elementB[e], this.D, ue);
+      if (corotational) {
+        const R = this.computeElementRotation(e, u);
+        // Compute element centroid in undeformed and deformed states
+        let Xc = [0, 0, 0];
+        let xc = [0, 0, 0];
+        for (let i = 0; i < 4; i++) {
+          const ni = elNodes[i];
+          Xc[0] += nodeCoords[ni * 3 + 0] / 4;
+          Xc[1] += nodeCoords[ni * 3 + 1] / 4;
+          Xc[2] += nodeCoords[ni * 3 + 2] / 4;
+          xc[0] += (nodeCoords[ni * 3 + 0] + u[ni * 3 + 0]) / 4;
+          xc[1] += (nodeCoords[ni * 3 + 1] + u[ni * 3 + 1]) / 4;
+          xc[2] += (nodeCoords[ni * 3 + 2] + u[ni * 3 + 2]) / 4;
+        }
+
+        // Local displacement u_local = R^T * (x - xc) + Xc - X
+        for (let i = 0; i < npe; i++) {
+          const ni = elNodes[i];
+          const dx = nodeCoords[ni * 3 + 0] + u[ni * 3 + 0] - xc[0];
+          const dy = nodeCoords[ni * 3 + 1] + u[ni * 3 + 1] - xc[1];
+          const dz = nodeCoords[ni * 3 + 2] + u[ni * 3 + 2] - xc[2];
+
+          const rx = R[0] * dx + R[3] * dy + R[6] * dz;
+          const ry = R[1] * dx + R[4] * dy + R[7] * dz;
+          const rz = R[2] * dx + R[5] * dy + R[8] * dz;
+
+          ue[i * 3 + 0] = rx + Xc[0] - nodeCoords[ni * 3 + 0];
+          ue[i * 3 + 1] = ry + Xc[1] - nodeCoords[ni * 3 + 1];
+          ue[i * 3 + 2] = rz + Xc[2] - nodeCoords[ni * 3 + 2];
+        }
+      } else {
+        for (let i = 0; i < npe; i++) {
+          const ni = elNodes[i];
+          for (let d = 0; d < 3; d++) {
+            ue[i * 3 + d] = u[ni * 3 + d];
+          }
+        }
+      }
+
+      let vonMises = 0.0;
+      if (this.isQuadratic) {
+        const res = Tet10Element.computeElementStress(this.elementB[e] as Float64Array[], this.D, ue);
+        vonMises = res.vonMises;
+      } else {
+        const res = Tet4Element.computeElementStress(this.elementB[e] as Float64Array, this.D, ue);
+        vonMises = res.vonMises;
+      }
+
       elementVonMises[e] = vonMises;
       if (vonMises > maxStress) maxStress = vonMises;
 
-      nodalVonMises[n0] += vonMises;
-      nodalVonMises[n1] += vonMises;
-      nodalVonMises[n2] += vonMises;
-      nodalVonMises[n3] += vonMises;
-      nodeCounts[n0]++;
-      nodeCounts[n1]++;
-      nodeCounts[n2]++;
-      nodeCounts[n3]++;
+      for (let i = 0; i < npe; i++) {
+        const ni = elNodes[i];
+        nodalVonMises[ni] += vonMises;
+        nodeCounts[ni]++;
+      }
     }
 
     for (let i = 0; i < numNodes; i++) {

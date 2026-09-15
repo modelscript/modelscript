@@ -44,6 +44,8 @@ export enum SolidKind {
   Subtract = "subtract",
   Intersect = "intersect",
   TaggedPatch = "tagged_patch",
+  Fillet = "fillet",
+  Chamfer = "chamfer",
 }
 
 // ── Primitive option bags ────────────────────────────────────────────────
@@ -165,6 +167,22 @@ export interface TaggedPatchSolid {
   readonly tag: BoundaryPatchTag;
 }
 
+export interface FilletSolid {
+  readonly kind: SolidKind.Fillet;
+  readonly name: string;
+  readonly child: Solid;
+  readonly radius: number;
+  readonly edges?: readonly string[];
+}
+
+export interface ChamferSolid {
+  readonly kind: SolidKind.Chamfer;
+  readonly name: string;
+  readonly child: Solid;
+  readonly distance: number;
+  readonly edges?: readonly string[];
+}
+
 /** A node in the constructive solid geometry tree. */
 export type Solid =
   | BoxSolid
@@ -173,7 +191,9 @@ export type Solid =
   | TorusSolid
   | TransformSolid
   | BooleanSolid
-  | TaggedPatchSolid;
+  | TaggedPatchSolid
+  | FilletSolid
+  | ChamferSolid;
 
 // ── Assembly ─────────────────────────────────────────────────────────────
 

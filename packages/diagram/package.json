@@ -20,6 +20,14 @@
       "types": "./dist/sequence-layout.d.ts",
       "default": "./dist/sequence-layout.js"
     },
+    "./swimlane-layout": {
+      "types": "./dist/swimlane-layout.d.ts",
+      "default": "./dist/swimlane-layout.js"
+    },
+    "./port-router": {
+      "types": "./dist/port-router.d.ts",
+      "default": "./dist/port-router.js"
+    },
     "./spinner": {
       "types": "./dist/spinner.d.ts",
       "default": "./dist/spinner.js"

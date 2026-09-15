@@ -10,8 +10,10 @@ import type {
   BoundaryPatchType,
   BoxOptions,
   BoxSolid,
+  ChamferSolid,
   CylinderOptions,
   CylinderSolid,
+  FilletSolid,
   Solid,
   SphereOptions,
   SphereSolid,
@@ -139,5 +141,42 @@ export function tagPatch(
       normal: tag.normal,
       surfaceArea: tag.surfaceArea,
     },
+  });
+}
+
+/**
+ * Apply a geometric fillet (rounded blend radius) to a solid geometry.
+ * Eliminates infinite stress singularities at sharp internal re-entrant corners in FEA.
+ *
+ * @example
+ * ```ts
+ * const roundedBracket = fillet(box({ width: 10, height: 10, depth: 2 }), 1.0);
+ * ```
+ */
+export function fillet(child: Solid, radius: number, edges?: string[], name?: string): FilletSolid {
+  return Object.freeze({
+    kind: SolidKind.Fillet,
+    name: name ?? autoName("Fillet"),
+    child,
+    radius,
+    edges,
+  });
+}
+
+/**
+ * Apply a geometric chamfer (beveled corner blend) to a solid geometry.
+ *
+ * @example
+ * ```ts
+ * const beveledPlate = chamfer(box({ width: 10, height: 10, depth: 2 }), 0.5);
+ * ```
+ */
+export function chamfer(child: Solid, distance: number, edges?: string[], name?: string): ChamferSolid {
+  return Object.freeze({
+    kind: SolidKind.Chamfer,
+    name: name ?? autoName("Chamfer"),
+    child,
+    distance,
+    edges,
   });
 }

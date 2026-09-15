@@ -18,6 +18,10 @@ export interface LiveCoSimConfig {
     fixedTag: string;
     /** Boundary tag name where motor thrust/flange load is applied (e.g., "tip_load"). */
     loadTag: string;
+    /** PCG convergence tolerance (default 1e-6). */
+    tol?: number;
+    /** PCG maximum iterations (default 500). */
+    maxIters?: number;
   };
   /** CFD lattice configuration and obstacle occupancy mask. */
   cfd: {
@@ -125,7 +129,7 @@ export class LiveCoSimOrchestrator {
       nodalLoads.set(node, [dragPerNodeX, forcePerNodeY, 0]);
     }
 
-    const feaRes = this.feaSolver.step({ fixedNodes, nodalLoads });
+    const feaRes = this.feaSolver.step({ fixedNodes, nodalLoads }, this.config.fea.tol, this.config.fea.maxIters);
 
     // 4. Package synchronized state
     this.state = {

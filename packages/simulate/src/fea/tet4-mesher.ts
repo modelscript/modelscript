@@ -12,6 +12,8 @@ export interface BoxMeshOptions {
   /** Optional origin offset [ox, oy, oz] (default: [0, 0, 0] at box corner or centered). */
   origin?: [number, number, number];
   centered?: boolean;
+  /** Element formulation order: 'linear' (default) or 'quadratic' (Tet10). */
+  order?: "linear" | "quadratic";
   /** Tag names for the 6 outer faces. */
   faceTags?: {
     minX?: string;
@@ -136,12 +138,104 @@ export class Tet4Mesher {
       }
     }
 
-    return {
+    const linearMesh: Tet4Mesh = {
       nodeCoords,
       elements,
       numNodes: totalNodes,
       numElements: totalHexCells * 6,
+      elementOrder: "linear",
+      nodesPerElement: 4,
       boundaryNodes,
+    };
+
+    if (opts.order === "quadratic") {
+      return Tet4Mesher.convertToQuadratic(linearMesh);
+    }
+
+    return linearMesh;
+  }
+
+  /**
+   * Converts a linear 4-node tetrahedral mesh (Tet4) into a quadratic 10-node mesh (Tet10).
+   * Inserts mid-edge nodes on all unique element edges and updates boundary classifications.
+   */
+  public static convertToQuadratic(linear: Tet4Mesh): Tet4Mesh {
+    const { nodeCoords, elements, numNodes, numElements, boundaryNodes } = linear;
+    const edgeMap = new Map<string, number>();
+    const midCoords: number[] = [];
+
+    const getMidEdgeNode = (n0: number, n1: number): number => {
+      const minN = Math.min(n0, n1);
+      const maxN = Math.max(n0, n1);
+      const key = `${minN}_${maxN}`;
+      let midIdx = edgeMap.get(key);
+      if (midIdx === undefined) {
+        midIdx = numNodes + edgeMap.size;
+        edgeMap.set(key, midIdx);
+        midCoords.push(
+          (nodeCoords[minN * 3 + 0] + nodeCoords[maxN * 3 + 0]) / 2.0,
+          (nodeCoords[minN * 3 + 1] + nodeCoords[maxN * 3 + 1]) / 2.0,
+          (nodeCoords[minN * 3 + 2] + nodeCoords[maxN * 3 + 2]) / 2.0,
+        );
+      }
+      return midIdx;
+    };
+
+    const quadElements = new Uint32Array(numElements * 10);
+    for (let e = 0; e < numElements; e++) {
+      const n0 = elements[e * 4 + 0];
+      const n1 = elements[e * 4 + 1];
+      const n2 = elements[e * 4 + 2];
+      const n3 = elements[e * 4 + 3];
+
+      const n4 = getMidEdgeNode(n0, n1);
+      const n5 = getMidEdgeNode(n1, n2);
+      const n6 = getMidEdgeNode(n2, n0);
+      const n7 = getMidEdgeNode(n0, n3);
+      const n8 = getMidEdgeNode(n1, n3);
+      const n9 = getMidEdgeNode(n2, n3);
+
+      quadElements[e * 10 + 0] = n0;
+      quadElements[e * 10 + 1] = n1;
+      quadElements[e * 10 + 2] = n2;
+      quadElements[e * 10 + 3] = n3;
+      quadElements[e * 10 + 4] = n4;
+      quadElements[e * 10 + 5] = n5;
+      quadElements[e * 10 + 6] = n6;
+      quadElements[e * 10 + 7] = n7;
+      quadElements[e * 10 + 8] = n8;
+      quadElements[e * 10 + 9] = n9;
+    }
+
+    const totalNodes = numNodes + edgeMap.size;
+    const quadCoords = new Float32Array(totalNodes * 3);
+    quadCoords.set(nodeCoords, 0);
+    quadCoords.set(midCoords, numNodes * 3);
+
+    // Update boundary nodes: mid-nodes whose endpoints both belong to a boundary tag also belong to it
+    const quadBoundaryNodes = new Map<string, number[]>();
+    for (const [tag, nodes] of boundaryNodes.entries()) {
+      const nodeSet = new Set(nodes);
+      const quadList = [...nodes];
+      for (const [key, midIdx] of edgeMap.entries()) {
+        const [aStr, bStr] = key.split("_");
+        const a = parseInt(aStr, 10);
+        const b = parseInt(bStr, 10);
+        if (nodeSet.has(a) && nodeSet.has(b)) {
+          quadList.push(midIdx);
+        }
+      }
+      quadBoundaryNodes.set(tag, quadList);
+    }
+
+    return {
+      nodeCoords: quadCoords,
+      elements: quadElements,
+      numNodes: totalNodes,
+      numElements,
+      elementOrder: "quadratic",
+      nodesPerElement: 10,
+      boundaryNodes: quadBoundaryNodes,
     };
   }
 }

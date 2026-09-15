@@ -19,8 +19,14 @@ type Selection = any;
 type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+import { portOrthogonalRouter } from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import * as Spinner from "./spinner.js";
+import { applySwimlaneLayout } from "./swimlane-layout.js";
+
+if (typeof Graph.registerRouter === "function") {
+  Graph.registerRouter("port-orthogonal-astar", portOrthogonalRouter);
+}
 
 export interface DiagramRendererOptions {
   container: HTMLElement;
@@ -251,6 +257,21 @@ export function initGraph(isDark: boolean): Graph {
         cell.removeTools();
       }
     });
+  });
+
+  // ── Viewport Level-of-Detail (LOD) ──
+  g.on("scale", ({ sx }: { sx: number }) => {
+    if (!container) return;
+    if (sx < 0.25) {
+      container.classList.add("x6-lod-minimal");
+      container.classList.add("x6-lod-low");
+    } else if (sx < 0.5) {
+      container.classList.remove("x6-lod-minimal");
+      container.classList.add("x6-lod-low");
+    } else {
+      container.classList.remove("x6-lod-minimal");
+      container.classList.remove("x6-lod-low");
+    }
   });
 
   // ── Placement Mode (Drag and Drop in VS Code) ──
@@ -850,6 +871,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   // ── Sequence Diagram: use custom layout instead of Dagre ──
   if (data.diagramType === "Sequence") {
     applySequenceLayout(nodes, edges, isDark);
+  } else if ((data as any).partitions && (data as any).partitions.length > 0) {
+    applySwimlaneLayout({ nodes, edges }, (data as any).partitions);
   } else {
     // ── Layout Strategy ──
     // The layout runs in 3 phases:
@@ -1687,15 +1710,29 @@ export function getGraph(): Graph | null {
 /**
  * Applies a live numerical simulation state vector to graph cells without full re-rendering.
  * Updates SVG attributes (fill, stroke, rotation, visibility) in-place at 60 FPS.
+ * Supports both Record<string, number> and zero-copy Float64Array / SharedArrayBuffer streams.
  */
-export function applySimulationFrame(stateVector: Record<string, number>): void {
+export function applySimulationFrame(
+  stateVector: Record<string, number> | Float64Array,
+  varIndexMap?: Map<string, number> | Record<string, number>,
+): void {
   if (!graph) return;
+  const isBuffer = stateVector instanceof Float64Array;
   const nodes = graph.getNodes();
   for (const node of nodes) {
     const anims = node.getData()?.animations as { property: string; variableName: string }[] | undefined;
     if (!anims || anims.length === 0) continue;
     for (const anim of anims) {
-      const val = stateVector[anim.variableName];
+      let val: number | undefined;
+      if (isBuffer) {
+        if (!varIndexMap) continue;
+        const idx = varIndexMap instanceof Map ? varIndexMap.get(anim.variableName) : varIndexMap[anim.variableName];
+        if (idx !== undefined && idx >= 0 && idx < stateVector.length) {
+          val = stateVector[idx];
+        }
+      } else {
+        val = stateVector[anim.variableName];
+      }
       if (val === undefined) continue;
       if (anim.property === "rotation") {
         node.rotate(val, { absolute: true });
@@ -1710,4 +1747,6 @@ export function applySimulationFrame(stateVector: Record<string, number>): void 
 
 export * from "./color-inversion.js";
 export * from "./polyglot-diagram-builder.js";
+export * from "./port-router.js";
+export * from "./swimlane-layout.js";
 export type { TopologyEdge, TopologyGraph, TopologyNode } from "./topology.js";

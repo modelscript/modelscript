@@ -111,4 +111,100 @@ console.log("=== Testing Phase 4: Live Multi-Physics Co-Simulation Master ===");
   console.log("  ✓ Co-simulation loop executed stably with high frame-rate performance.");
 }
 
-console.log("All Live Multi-Physics Co-Simulation tests passed successfully!");
+// 2. High-Fidelity Scenario: Quadratic Tet10 FEA + Smagorinsky LES + Bouzidi curved boundaries
+{
+  console.log("\n  --- Scenario 2: SOTA Quadratic Tet10 FEA + Smagorinsky LES CFD ---");
+
+  // 1. Quadratic Tet10 FEA Mesh
+  const feaMesh = Tet4Mesher.createBoxMesh({
+    width: 0.3,
+    height: 0.02,
+    depth: 0.02,
+    nx: 6,
+    ny: 2,
+    nz: 2,
+    order: "quadratic",
+    faceTags: {
+      minX: "fixed_hub",
+      maxX: "motor_mount",
+    },
+  });
+  assert.strictEqual(feaMesh.elementOrder, "quadratic");
+
+  // 2. CFD with Smagorinsky LES & Bouzidi curved wall boundaries
+  const cfdConfig = {
+    nx: 24,
+    ny: 12,
+    nz: 12,
+    dx: 0.01,
+    dt: 2e-4,
+    tau: 0.52, // higher Re
+    density: 1.225,
+    inletVelocity: [3.0, 0, 0] as [number, number, number],
+    turbulenceModel: "smagorinsky_les" as const,
+    smagorinskyConstant: 0.14,
+    curvedBoundary: true,
+  };
+
+  const obstacles = {
+    cylinders: [
+      {
+        center: [0.4, 0.5, 0.5] as [number, number, number],
+        radius: 0.2,
+        axis: "z" as const,
+        length: 1.0,
+      },
+    ],
+  };
+
+  const cfdGrid = LbmVoxelizer.voxelize(cfdConfig, obstacles);
+  const deltaWall = LbmVoxelizer.computeWallDistances(cfdConfig, obstacles, cfdGrid);
+  (cfdConfig as any).deltaWall = deltaWall;
+
+  const orchestrator = new LiveCoSimOrchestrator({
+    macroDt: 0.01,
+    lbmSubSteps: 2,
+    fea: {
+      mesh: feaMesh,
+      material: { E: 70e9, nu: 0.33, yieldStrength: 270e6 },
+      fixedTag: "fixed_hub",
+      loadTag: "motor_mount",
+      tol: 1e-4,
+      maxIters: 150,
+    },
+    cfd: {
+      config: cfdConfig,
+      cellTypes: cfdGrid,
+    },
+    system: {
+      mass: 0.5,
+      stiffness: 200.0,
+      baseDamping: 2.0,
+    },
+  });
+
+  const numSteps = 20;
+  const t0 = performance.now();
+
+  for (let s = 1; s <= numSteps; s++) {
+    const time = s * 0.01;
+    const thrustN = 15.0 + 10.0 * Math.sin(2 * Math.PI * 2.5 * time);
+    const state = orchestrator.step(thrustN);
+
+    assert(!isNaN(state.position), `Position NaN at step ${s}`);
+    assert(!isNaN(state.velocity), `Velocity NaN at step ${s}`);
+    assert(state.feaResult.maxDisplacement >= 0);
+  }
+
+  const duration = performance.now() - t0;
+  const msPerStep = duration / numSteps;
+  const fps = 1000.0 / msPerStep;
+
+  console.log(
+    `  Completed ${numSteps} Tet10+LES co-sim steps in ${duration.toFixed(2)}ms (${msPerStep.toFixed(2)}ms/step -> ${fps.toFixed(1)} FPS equivalent).`,
+  );
+  assert(fps > 20, `FPS ${fps} below interactive real-time threshold`);
+  console.log("  ✓ High-fidelity Tet10 FEA + Smagorinsky LES co-simulation executed stably in real time!");
+}
+
+console.log("\nAll Live Multi-Physics Co-Simulation tests passed successfully!");

@@ -159,6 +159,8 @@ export interface PolyglotDiagramNode {
     /** Grammar rule name, used for cross-diagram navigation. */
     ruleName?: string;
   };
+  /** Compartments for BDD blocks / structural definitions. */
+  compartments?: { header: string; entries: string[] }[];
   /** Whether this node should be auto-laid-out by Dagre. */
   autoLayout: boolean;
 }
@@ -214,7 +216,7 @@ export function buildPolyglotDiagram(
   // Collect all symbols, optionally filtered to one document
   const allSymbols: SymbolEntry[] = [];
   for (const sym of index.symbols.values()) {
-    if (resourceId && sym.resourceId !== resourceId) continue;
+    if (resourceId && sym.resourceId && sym.resourceId !== resourceId) continue;
 
     // DSL-Declared Custom Projection Filtering
     if (activeProjection) {
@@ -1274,6 +1276,7 @@ export function buildPolyglotDiagram(
           description: sym.name ?? "",
           parameters,
         },
+        compartments: sections,
         autoLayout: true,
       };
 
@@ -1378,6 +1381,71 @@ export function buildPolyglotDiagram(
     nodes.push(node);
   }
 
+  // ── Create X6 port items for PortUsage children ──
+  // Ports are shown on the border of their parent node, not as compartment text.
+  // Must run before edge creation so port endpoints can be resolved.
+  for (const sym of allSymbols) {
+    if (sym.parentId === null) continue;
+    if (sym.ruleName !== "PortUsage" && sym.ruleName !== "PortDefinition") continue;
+
+    const parentSym = index.symbols.get(sym.parentId);
+    if (!parentSym || !STRUCTURAL_KINDS.has(parentSym.ruleName)) continue;
+
+    const parentNodeId = symbolIdToNodeId.get(sym.parentId);
+    if (!parentNodeId) continue;
+
+    const parentNode = nodes.find((n) => n.id === parentNodeId);
+    if (!parentNode) continue;
+
+    // Ensure port groups exist
+    if (!parentNode.ports) {
+      parentNode.ports = { groups: {}, items: [] };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const groups = parentNode.ports.groups!;
+    if (!groups.in) {
+      groups.in = {
+        position: "left",
+        attrs: {
+          circle: { r: 6, fill: "#ef6c00", stroke: "#fff", strokeWidth: 1.5 },
+          text: { fontSize: 9, fill: "#333" },
+        },
+        label: {
+          position: { name: "outside" },
+        },
+      };
+    }
+    if (!groups.out) {
+      groups.out = {
+        position: "right",
+        attrs: {
+          circle: { r: 6, fill: "#ef6c00", stroke: "#fff", strokeWidth: 1.5 },
+          text: { fontSize: 9, fill: "#333" },
+        },
+        label: {
+          position: { name: "outside" },
+        },
+      };
+    }
+
+    const portName = sym.name ?? `port_${sym.id}`;
+    // Alternate sides: odd index → 'in' (left), even index → 'out' (right)
+    const portItems = parentNode.ports.items ?? [];
+    const group = portItems.length % 2 === 0 ? "out" : "in";
+
+    portItems.push({
+      id: portName,
+      group,
+      attrs: {
+        text: { text: portName },
+      },
+    });
+    parentNode.ports.items = portItems;
+
+    // Also register in the symbol→node mapping for edge resolution
+    symbolIdToNodeId.set(sym.id, `${parentNodeId}.${portName}`);
+  }
+
   // Second pass: create edges
   for (const sym of allSymbols) {
     const config = gfxConfig[sym.ruleName];
@@ -1466,6 +1534,20 @@ export function buildPolyglotDiagram(
       edgeVertices = undefined; // Dagre will handle, but we mark it for the renderer
     }
 
+    const resolvedAttrs = resolveTemplates(edgeConfig.attrs, sym) ?? {};
+    if (sym.ruleName === "ConnectionUsage" || sym.ruleName === "BindingConnectorAsUsage") {
+      // In IBD: Check delegation (boundary port of enclosing parent to internal port) vs assembly (internal to internal)
+      const parentNodeId = sym.parentId ? symbolIdToNodeId.get(sym.parentId) : undefined;
+      const srcCell = typeof finalSource === "string" ? finalSource : finalSource.cell;
+      const tgtCell = typeof finalTarget === "string" ? finalTarget : finalTarget.cell;
+      const srcIsBoundary = parentNodeId ? srcCell === parentNodeId : !srcCell?.includes(".");
+      const tgtIsBoundary = parentNodeId ? tgtCell === parentNodeId : !tgtCell?.includes(".");
+      const isDelegation = srcIsBoundary !== tgtIsBoundary;
+      if (isDelegation && resolvedAttrs.line) {
+        resolvedAttrs.line.strokeDasharray = "4 2";
+      }
+    }
+
     edges.push({
       id: `${sym.ruleName}_${sym.id}`,
       shape: edgeConfig.shape ?? "edge",
@@ -1474,7 +1556,7 @@ export function buildPolyglotDiagram(
       target: finalTarget,
       router: isSelfLoop ? "normal" : edgeRouter,
       connector: edgeConfig.connector,
-      attrs: resolveTemplates(edgeConfig.attrs, sym) ?? {},
+      attrs: resolvedAttrs,
       labels: resolvedLabels,
       vertices: edgeVertices,
     });
@@ -1553,70 +1635,6 @@ export function buildPolyglotDiagram(
     });
   }
 
-  // ── Create X6 port items for PortUsage children ──
-  // Ports are shown on the border of their parent node, not as compartment text.
-  for (const sym of allSymbols) {
-    if (sym.parentId === null) continue;
-    if (sym.ruleName !== "PortUsage" && sym.ruleName !== "PortDefinition") continue;
-
-    const parentSym = index.symbols.get(sym.parentId);
-    if (!parentSym || !STRUCTURAL_KINDS.has(parentSym.ruleName)) continue;
-
-    const parentNodeId = symbolIdToNodeId.get(sym.parentId);
-    if (!parentNodeId) continue;
-
-    const parentNode = nodes.find((n) => n.id === parentNodeId);
-    if (!parentNode) continue;
-
-    // Ensure port groups exist
-    if (!parentNode.ports) {
-      parentNode.ports = { groups: {}, items: [] };
-    }
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const groups = parentNode.ports.groups!;
-    if (!groups.in) {
-      groups.in = {
-        position: "left",
-        attrs: {
-          circle: { r: 6, fill: "#ef6c00", stroke: "#fff", strokeWidth: 1.5 },
-          text: { fontSize: 9, fill: "#333" },
-        },
-        label: {
-          position: { name: "outside" },
-        },
-      };
-    }
-    if (!groups.out) {
-      groups.out = {
-        position: "right",
-        attrs: {
-          circle: { r: 6, fill: "#ef6c00", stroke: "#fff", strokeWidth: 1.5 },
-          text: { fontSize: 9, fill: "#333" },
-        },
-        label: {
-          position: { name: "outside" },
-        },
-      };
-    }
-
-    const portName = sym.name ?? `port_${sym.id}`;
-    // Alternate sides: odd index → 'in' (left), even index → 'out' (right)
-    const portItems = parentNode.ports.items ?? [];
-    const group = portItems.length % 2 === 0 ? "out" : "in";
-
-    portItems.push({
-      id: portName,
-      group,
-      attrs: {
-        text: { text: portName },
-      },
-    });
-    parentNode.ports.items = portItems;
-
-    // Also register in the symbol→node mapping for edge resolution
-    symbolIdToNodeId.set(sym.id, `${parentNodeId}.${portName}`);
-  }
-
   // ── Create "typed-by" edges from Usages to their Definitions ──
   // In SysML2, `part engine : Engine` means PartUsage "engine" is typed by
   // PartDefinition "Engine". We scan ALL index entries for ref entries
@@ -1637,89 +1655,222 @@ export function buildPolyglotDiagram(
     "OccurrenceUsage",
     "ReferenceUsage",
   ]);
+  const DEFINITION_KINDS = new Set([
+    "PartDefinition",
+    "ItemDefinition",
+    "PortDefinition",
+    "ActionDefinition",
+    "StateDefinition",
+    "ConstraintDefinition",
+    "RequirementDefinition",
+    "CalculationDefinition",
+    "AttributeDefinition",
+    "ConnectionDefinition",
+    "OccurrenceDefinition",
+    "InterfaceDefinition",
+    "AllocationDefinition",
+    "FlowDefinition",
+    "UseCaseDefinition",
+    "AnalysisCaseDefinition",
+    "VerificationCaseDefinition",
+    "ViewDefinition",
+    "ViewpointDefinition",
+  ]);
   const addedTypingEdges = new Set<string>();
 
-  if (resolver) {
-    // Build a parentId → ref-entry children map by scanning ALL symbols
-    const refChildrenByParent = new Map<SymbolId, SymbolEntry[]>();
-    for (const entry of index.symbols.values()) {
-      if (entry.parentId === null) continue;
-      if (resolver.isDeclaration(entry)) continue; // skip declarations
-      const list = refChildrenByParent.get(entry.parentId) ?? [];
-      list.push(entry);
-      refChildrenByParent.set(entry.parentId, list);
+  // Build a parentId → ref-entry children map by scanning ALL symbols
+  const refChildrenByParent = new Map<SymbolId, SymbolEntry[]>();
+  for (const entry of index.symbols.values()) {
+    if (entry.parentId === null) continue;
+    if (resolver && resolver.isDeclaration(entry)) continue;
+    const list = refChildrenByParent.get(entry.parentId) ?? [];
+    list.push(entry);
+    refChildrenByParent.set(entry.parentId, list);
+  }
+
+  const resolveEntryTargets = (refEntry: SymbolEntry): SymbolEntry[] => {
+    if (resolver) return resolver.resolve(refEntry);
+    if (!refEntry.name) return [];
+    const res: SymbolEntry[] = [];
+    for (const s of index.symbols.values()) {
+      if ((s.name === refEntry.name || s.id === refEntry.name) && s.id !== refEntry.id) {
+        res.push(s);
+      }
     }
+    return res;
+  };
 
-    for (const sym of allSymbols) {
-      if (!USAGE_KINDS.has(sym.ruleName)) continue;
+  for (const sym of allSymbols) {
+    if (!USAGE_KINDS.has(sym.ruleName)) continue;
 
-      const usageNodeId = symbolIdToNodeId.get(sym.id);
-      if (!usageNodeId) continue;
+    const usageNodeId = symbolIdToNodeId.get(sym.id);
+    if (!usageNodeId) continue;
 
-      // Find ref-entry children of this usage (e.g., OwnedFeatureTyping)
-      const refChildren = refChildrenByParent.get(sym.id) ?? [];
-      for (const refEntry of refChildren) {
-        const resolved = resolver.resolve(refEntry);
-        for (const target of resolved) {
-          const defNodeId = symbolIdToNodeId.get(target.id);
-          if (!defNodeId || defNodeId === usageNodeId) continue;
+    // Find ref-entry children of this usage (e.g., OwnedFeatureTyping)
+    const refChildren = refChildrenByParent.get(sym.id) ?? [];
+    for (const refEntry of refChildren) {
+      const resolved = resolveEntryTargets(refEntry);
+      for (const target of resolved) {
+        const defNodeId = symbolIdToNodeId.get(target.id);
+        if (!defNodeId || defNodeId === usageNodeId) continue;
 
-          // Skip if the target is a sibling usage (not a definition)
-          if (USAGE_KINDS.has(target.ruleName)) continue;
+        // Skip if the target is a sibling usage (not a definition)
+        if (USAGE_KINDS.has(target.ruleName)) continue;
 
-          const edgeKey = `${usageNodeId}->${defNodeId}`;
+        const edgeKey = `${usageNodeId}->${defNodeId}`;
+        if (addedTypingEdges.has(edgeKey)) continue;
+        addedTypingEdges.add(edgeKey);
+
+        let finalSource: string | { cell: string; port: string } = usageNodeId;
+        if (usageNodeId.includes(".")) {
+          const parts = usageNodeId.split(".");
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          const port = parts.pop()!;
+          finalSource = { cell: parts.join("."), port };
+        }
+
+        let finalTarget: string | { cell: string; port: string } = defNodeId;
+        if (defNodeId.includes(".")) {
+          const parts = defNodeId.split(".");
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          const port = parts.pop()!;
+          finalTarget = { cell: parts.join("."), port };
+        }
+
+        edges.push({
+          id: `typing_${sym.id}_${target.id}`,
+          shape: "edge",
+          zIndex: 1,
+          source: finalSource,
+          target: finalTarget,
+          router: "manhattan",
+          connector: "rounded",
+          attrs: {
+            line: {
+              stroke: "#546e7a",
+              strokeWidth: 1.5,
+              strokeDasharray: "8 4",
+              targetMarker: {
+                name: "block",
+                width: 12,
+                height: 8,
+              },
+            },
+          },
+          labels: [],
+        });
+
+        // Also update the usage node's label to show "name : TypeName"
+        const usageNode = nodes.find((n) => n.id === usageNodeId);
+        if (usageNode && target.name && sym.name) {
+          const typedLabel = `${sym.name} : ${target.name}`;
+          if (usageNode.attrs) {
+            if (usageNode.attrs.label) {
+              (usageNode.attrs.label as any).text = typedLabel;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ── Specialization edges (subclass -> superclass with UML |> hollow triangle) ──
+  for (const sym of allSymbols) {
+    if (!DEFINITION_KINDS.has(sym.ruleName)) continue;
+    const subNodeId = symbolIdToNodeId.get(sym.id);
+    if (!subNodeId) continue;
+
+    const refChildren = refChildrenByParent.get(sym.id) ?? [];
+    for (const refEntry of refChildren) {
+      if (refEntry.ruleName === "OwnedSubclassification") {
+        const resolved = resolveEntryTargets(refEntry);
+        for (const superDef of resolved) {
+          const superNodeId = symbolIdToNodeId.get(superDef.id);
+          if (!superNodeId || superNodeId === subNodeId) continue;
+
+          const edgeKey = `specialization_${subNodeId}->${superNodeId}`;
           if (addedTypingEdges.has(edgeKey)) continue;
           addedTypingEdges.add(edgeKey);
 
-          let finalSource: string | { cell: string; port: string } = usageNodeId;
-          if (usageNodeId.includes(".")) {
-            const parts = usageNodeId.split(".");
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            const port = parts.pop()!;
-            finalSource = { cell: parts.join("."), port };
-          }
-
-          let finalTarget: string | { cell: string; port: string } = defNodeId;
-          if (defNodeId.includes(".")) {
-            const parts = defNodeId.split(".");
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            const port = parts.pop()!;
-            finalTarget = { cell: parts.join("."), port };
-          }
-
           edges.push({
-            id: `typing_${sym.id}_${target.id}`,
+            id: `specialization_${sym.id}_${superDef.id}`,
             shape: "edge",
             zIndex: 1,
-            source: finalSource,
-            target: finalTarget,
-            router: "manhattan",
+            source: subNodeId,
+            target: superNodeId,
+            router: "port-orthogonal-astar",
             connector: "rounded",
             attrs: {
               line: {
-                stroke: "#546e7a",
+                stroke: "#333333",
                 strokeWidth: 1.5,
-                strokeDasharray: "8 4",
                 targetMarker: {
-                  name: "block",
-                  width: 12,
-                  height: 8,
+                  name: "path",
+                  d: "M 0 -8 L 14 0 L 0 8 Z",
+                  fill: "#ffffff",
+                  stroke: "#333333",
                 },
               },
             },
             labels: [],
           });
+        }
+      }
+    }
+  }
 
-          // Also update the usage node's label to show "name : TypeName"
-          const usageNode = nodes.find((n) => n.id === usageNodeId);
-          if (usageNode && target.name && sym.name) {
-            const typedLabel = `${sym.name} : ${target.name}`;
-            if (usageNode.attrs) {
-              if (usageNode.attrs.label) {
-                (usageNode.attrs.label as any).text = typedLabel;
-              }
-            }
-          }
+  // ── Subsetting & Redefinition edges (:> and :>>) ──
+  for (const sym of allSymbols) {
+    if (!USAGE_KINDS.has(sym.ruleName)) continue;
+    const usageNodeId = symbolIdToNodeId.get(sym.id);
+    if (!usageNodeId) continue;
+
+    const refChildren = refChildrenByParent.get(sym.id) ?? [];
+    for (const refEntry of refChildren) {
+      if (refEntry.ruleName === "OwnedSubsetting" || refEntry.ruleName === "OwnedRedefinition") {
+        const isRedef = refEntry.ruleName === "OwnedRedefinition";
+        const resolved = resolveEntryTargets(refEntry);
+        for (const target of resolved) {
+          const targetNodeId = symbolIdToNodeId.get(target.id);
+          if (!targetNodeId || targetNodeId === usageNodeId) continue;
+
+          const edgeKey = `${isRedef ? "redefines" : "subsets"}_${usageNodeId}->${targetNodeId}`;
+          if (addedTypingEdges.has(edgeKey)) continue;
+          addedTypingEdges.add(edgeKey);
+
+          edges.push({
+            id: `${isRedef ? "redefines" : "subsets"}_${sym.id}_${target.id}`,
+            shape: "edge",
+            zIndex: 1,
+            source: usageNodeId,
+            target: targetNodeId,
+            router: "port-orthogonal-astar",
+            connector: "rounded",
+            attrs: {
+              line: {
+                stroke: "#546e7a",
+                strokeWidth: 1.5,
+                strokeDasharray: "6 3",
+                targetMarker: {
+                  name: "classic",
+                  size: 8,
+                },
+              },
+            },
+            labels: [
+              {
+                attrs: {
+                  text: {
+                    text: isRedef ? "«redefines»" : "«subsets»",
+                    fill: "#546e7a",
+                    fontSize: 10,
+                  },
+                  rect: { fill: "#f5f5f5", stroke: "none", rx: 2, ry: 2 },
+                },
+                position: { distance: 0.5, offset: 0 },
+              },
+            ],
+          });
         }
       }
     }
@@ -1905,10 +2056,50 @@ export function buildPolyglotDiagram(
 
 // ── Edge Endpoint Resolution ──
 
+function findNodeIdByPathOrName(
+  ref: string,
+  index: SymbolIndex,
+  symbolIdToNodeId: Map<SymbolId, string>,
+  scopeParentId: SymbolId | null,
+): string | undefined {
+  if (!ref) return undefined;
+
+  // 1. Direct ID match in symbolIdToNodeId
+  if (symbolIdToNodeId.has(ref)) return symbolIdToNodeId.get(ref);
+
+  // 2. Direct name match in symbolIdToNodeId
+  for (const [symId, nodeId] of symbolIdToNodeId.entries()) {
+    const sym = index.symbols.get(symId);
+    if (sym && sym.name === ref) return nodeId;
+  }
+
+  // 3. Dot-separated path match (e.g. "engine.power")
+  if (ref.includes(".")) {
+    const [partName, portName] = ref.split(".");
+    for (const [symId, nodeId] of symbolIdToNodeId.entries()) {
+      const sym = index.symbols.get(symId);
+      if (sym && sym.name === partName) {
+        return `${nodeId}.${portName}`;
+      }
+    }
+  }
+
+  // 4. Port on parent node
+  if (scopeParentId) {
+    const parentNodeId = symbolIdToNodeId.get(scopeParentId);
+    if (parentNodeId) {
+      return `${parentNodeId}.${ref}`;
+    }
+  }
+
+  return ref;
+}
+
 /**
  * Resolves the source and target node IDs for an edge symbol.
  *
  * Strategy (in priority order):
+ * 0. **Metadata endpoints**: Use edgeSym.metadata.source / target.
  * 1. **Scope graph** (preferred): Walk all descendants of the edge symbol,
  *    find ref-entry children, resolve each via the ScopeResolver to its
  *    target declaration, and map that declaration's ID to a diagram node ID.
@@ -1924,6 +2115,15 @@ function resolveEdgeEndpoints(
 ): { sourceId: string | undefined; targetId: string | undefined } {
   let sourceId: string | undefined;
   let targetId: string | undefined;
+
+  // Strategy 0: Direct metadata endpoints (e.g. from TransitionUsage or ConnectionUsage)
+  if (edgeSym.metadata?.source && edgeSym.metadata?.target) {
+    const rawSrc = String(edgeSym.metadata.source);
+    const rawTgt = String(edgeSym.metadata.target);
+    sourceId = findNodeIdByPathOrName(rawSrc, index, symbolIdToNodeId, edgeSym.parentId);
+    targetId = findNodeIdByPathOrName(rawTgt, index, symbolIdToNodeId, edgeSym.parentId);
+    if (sourceId && targetId) return { sourceId, targetId };
+  }
 
   // Strategy 1: Scope graph resolution
   if (resolver) {

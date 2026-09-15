@@ -10,8 +10,10 @@ export type {
   BoundaryPatchType,
   BoxOptions,
   BoxSolid,
+  ChamferSolid,
   CylinderOptions,
   CylinderSolid,
+  FilletSolid,
   Mat4,
   ParamMeta,
   ParamOptions,
@@ -29,7 +31,7 @@ export type {
 export { SolidKind } from "./types.js";
 
 // Primitives
-export { box, cylinder, resetNameCounter, sphere, tagPatch, torus } from "./primitives.js";
+export { box, chamfer, cylinder, fillet, resetNameCounter, sphere, tagPatch, torus } from "./primitives.js";
 
 // Transforms
 export {

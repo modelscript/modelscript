@@ -14,6 +14,9 @@ struct LbmUniforms {
   inletVx: f32,
   inletVy: f32,
   inletVz: f32,
+  csSq: f32, // Smagorinsky Cs^2
+  useLES: u32,
+  useBouzidi: u32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: LbmUniforms;
@@ -21,6 +24,8 @@ struct LbmUniforms {
 @group(0) @binding(2) var<storage, read> f_ping: array<f32>;
 @group(0) @binding(3) var<storage, read_write> f_pong: array<f32>;
 @group(0) @binding(4) var<storage, read_write> dragOutput: array<f32>; // [Fx, Fy, Fz, maxVel]
+@group(0) @binding(5) var<storage, read> deltaWall: array<f32>; // Bouzidi sub-grid distance fractions
+
 
 const D3Q19_WEIGHTS = array<f32, 19>(
   0.333333333, // i = 0

@@ -68,16 +68,21 @@ const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
 
 function formatPropertyValue(expr: any): string | undefined {
   if (expr == null) return undefined;
-  if ("text" in expr && typeof expr.text === "string") return expr.text;
-  if (
-    "value" in expr &&
-    (typeof expr.value === "string" || typeof expr.value === "number" || typeof expr.value === "boolean")
-  ) {
-    return String(expr.value);
+  if (typeof expr === "string" || typeof expr === "number" || typeof expr === "boolean") {
+    return String(expr);
   }
-  const json = typeof expr.toJSON === "function" ? expr.toJSON() : expr.toJSON;
-  if (json != null && typeof json !== "object") {
-    return String(json);
+  if (typeof expr === "object") {
+    if ("text" in expr && typeof expr.text === "string") return expr.text;
+    if (
+      "value" in expr &&
+      (typeof expr.value === "string" || typeof expr.value === "number" || typeof expr.value === "boolean")
+    ) {
+      return String(expr.value);
+    }
+    const json = typeof expr.toJSON === "function" ? expr.toJSON() : expr.toJSON;
+    if (json != null && typeof json !== "object") {
+      return String(json);
+    }
   }
   return undefined;
 }
@@ -815,6 +820,101 @@ function renderRectangleX6(graphicItem: IRectangle, defs: X6Markup[]): X6Markup 
   return shape;
 }
 
+export function stripQuotes(val: string): string {
+  if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+    return val.slice(1, -1);
+  }
+  return val;
+}
+
+export function evalMacroCondition(
+  cond: string,
+  classInstance?: ModelicaClassInstance,
+  componentInstance?: ModelicaComponentInstance,
+): boolean {
+  let c = cond.trim();
+  let negate = false;
+  if (c.startsWith("not ")) {
+    negate = true;
+    c = c.slice(4).trim();
+  }
+
+  // Equality or comparison operator: ==, !=, <=, >=, <, >
+  const comparisonOps = ["==", "!=", "<=", ">=", "<", ">"];
+  for (const op of comparisonOps) {
+    if (c.includes(op)) {
+      const parts = c.split(op).map((s) => s.trim());
+      if (parts.length === 2) {
+        const lhs = evaluateMacroExpression(parts[0], classInstance, componentInstance);
+        const rhs = evaluateMacroExpression(parts[1], classInstance, componentInstance);
+        let res = false;
+        if (op === "==") res = lhs === rhs;
+        else if (op === "!=") res = lhs !== rhs;
+        else if (op === "<=") res = parseFloat(lhs) <= parseFloat(rhs);
+        else if (op === ">=") res = parseFloat(lhs) >= parseFloat(rhs);
+        else if (op === "<") res = parseFloat(lhs) < parseFloat(rhs);
+        else if (op === ">") res = parseFloat(lhs) > parseFloat(rhs);
+        return negate ? !res : res;
+      }
+    }
+  }
+
+  // Single identifier or literal
+  const val = evaluateMacroExpression(c, classInstance, componentInstance);
+  const normalized = val.trim().toLowerCase();
+  const truthy = normalized === "true" || normalized === "1" || normalized === "yes";
+  return negate ? !truthy : truthy;
+}
+
+export function evaluateMacroExpression(
+  expr: string,
+  classInstance?: ModelicaClassInstance,
+  componentInstance?: ModelicaComponentInstance,
+): string {
+  const trimmed = expr.trim();
+  const ifMatch = /^if\s+(.+?)\s+then\s+(.+?)\s+else\s+(.+)$/is.exec(trimmed);
+  if (ifMatch) {
+    const condStr = ifMatch[1].trim();
+    const thenVal = ifMatch[2].trim();
+    const elseVal = ifMatch[3].trim();
+
+    const isTrue = evalMacroCondition(condStr, classInstance, componentInstance);
+    const chosen = isTrue ? thenVal : elseVal;
+    return stripQuotes(evaluateMacroExpression(chosen, classInstance, componentInstance));
+  }
+
+  const name = trimmed;
+  // 1. Check if the specific component instance overrides this parameter
+  const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument(name)?.expression;
+  const compVal = formatPropertyValue(compArgExpr);
+
+  const namedElement = classInstance?.resolveName(name.split("."));
+
+  // 2. Check if the class provides a default value for this parameter
+  const elemExpr = (namedElement as any)?.modification?.expression;
+  const elemVal = formatPropertyValue(elemExpr);
+
+  const finalVal = compVal ?? elemVal;
+
+  let unitString = "";
+  if (namedElement && "classInstance" in namedElement) {
+    const mod = (namedElement as ModelicaComponentInstance).classInstance?.modification as any;
+    const unitExpr = mod?.getModificationArgument("unit")?.expression;
+    const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
+    if (rawUnit) unitString = " " + formatUnit(rawUnit);
+  }
+
+  if (finalVal !== undefined && finalVal !== "") {
+    return finalVal + unitString;
+  }
+
+  if ((name.startsWith('"') && name.endsWith('"')) || (name.startsWith("'") && name.endsWith("'"))) {
+    return name.slice(1, -1);
+  }
+
+  return name;
+}
+
 /**
  * DOM-free text rendering — generates X6Markup directly without using
  * document.createElementNS or @svgdotjs/svg.js (unavailable in Web Worker).
@@ -831,36 +931,10 @@ function renderTextX6(
   const width = computeWidth(graphicItem.extent);
   const height = computeHeight(graphicItem.extent);
 
-  // Text substitution — matches core svg.ts renderText() exactly
+  // Text substitution — matches core svg.ts renderText() with advanced conditional macro evaluation
   const rawText = graphicItem.string ?? (graphicItem as any).textString ?? "";
-  const replacer = (_match: string, name: string): string => {
-    // 1. Check if the specific component instance overrides this parameter
-
-    const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument(name)?.expression;
-    const compVal = formatPropertyValue(compArgExpr);
-
-    const namedElement = classInstance?.resolveName(name.split("."));
-
-    // 2. Check if the class provides a default value for this parameter
-
-    const elemExpr = (namedElement as any)?.modification?.expression;
-    const elemVal = formatPropertyValue(elemExpr);
-
-    const finalVal = compVal ?? elemVal;
-
-    let unitString = "";
-    if (namedElement && "classInstance" in namedElement) {
-      const mod = (namedElement as ModelicaComponentInstance).classInstance?.modification as any;
-      const unitExpr = mod?.getModificationArgument("unit")?.expression;
-      const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
-      if (rawUnit) unitString = " " + formatUnit(rawUnit);
-    }
-
-    if (finalVal !== undefined && finalVal !== "") {
-      return finalVal + unitString;
-    }
-
-    return name;
+  const replacer = (_match: string, expr: string): string => {
+    return evaluateMacroExpression(expr, classInstance, componentInstance);
   };
   const ESCAPED_PERCENT = "__PERCENT__";
   const nameText = componentInstance?.name ?? classInstance?.name ?? "";

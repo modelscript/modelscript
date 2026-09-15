@@ -25,6 +25,14 @@ export interface LbmGridConfig {
   density: number;
   /** Prescribed inlet velocity vector [vx, vy, vz] in m/s. */
   inletVelocity?: [number, number, number];
+  /** Turbulence modeling option: 'laminar' (default) or 'smagorinsky_les' for high-Re subgrid eddy viscosity. */
+  turbulenceModel?: "laminar" | "smagorinsky_les";
+  /** Smagorinsky constant Cs (default: 0.14). */
+  smagorinskyConstant?: number;
+  /** Whether to use Bouzidi curved wall boundary interpolation (default: true if deltaWall is present). */
+  curvedBoundary?: boolean;
+  /** Sub-grid distance fractions delta in (0, 1) to obstacle boundary along each discrete velocity direction (nx * ny * nz * 19). */
+  deltaWall?: Float32Array;
 }
 
 export interface LbmStepResult {
