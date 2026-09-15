@@ -249,6 +249,11 @@ export class SysML2DiagramBackend implements DiagramBackend {
             allEdits.push(...this.deps.computeConnectionDelete(docText, action.source, action.target));
             needsRender = "immediate";
             break;
+          case "reconnect":
+            allEdits.push(...this.deps.computeConnectionDelete(docText, action.oldSource, action.oldTarget));
+            allEdits.push(...this.deps.computeConnectionInsert(docText, action.newSource, action.newTarget));
+            needsRender = "immediate";
+            break;
           case "moveEdge":
             layout = this.deps.updateConnectionVertices(
               layout,
@@ -459,6 +464,62 @@ function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content:
 }
 
 /**
+ * Replaces comment content (// line comments and /* block comments * /) with whitespace,
+ * preserving exact string lengths, line numbers, and character column indices.
+ */
+export function maskComments(text: string): string {
+  let inBlockComment = false;
+  let inLineComment = false;
+  let inString: string | null = null;
+  const chars = text.split("");
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    const next = i + 1 < chars.length ? chars[i + 1] : "";
+
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+      } else if (ch !== "\r") {
+        chars[i] = " ";
+      }
+    } else if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        chars[i] = " ";
+        chars[i + 1] = " ";
+        i++;
+        inBlockComment = false;
+      } else if (ch !== "\n" && ch !== "\r") {
+        chars[i] = " ";
+      }
+    } else if (inString) {
+      if (ch === "\\") {
+        // Escape next character inside string
+        i++;
+      } else if (ch === inString) {
+        inString = null;
+      }
+    } else {
+      if (ch === '"' || ch === "'") {
+        inString = ch;
+      } else if (ch === "/" && next === "/") {
+        inLineComment = true;
+        chars[i] = " ";
+        chars[i + 1] = " ";
+        i++;
+      } else if (ch === "/" && next === "*") {
+        inBlockComment = true;
+        chars[i] = " ";
+        chars[i + 1] = " ";
+        i++;
+      }
+    }
+  }
+
+  return chars.join("");
+}
+
+/**
  * Generic diagram backend for any DSL defined via @modelscript/dsl.
  * Uses declarative grammar diagram configuration and SidecarLayoutStorage.
  */
@@ -571,18 +632,109 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     const allEdits: TextEdit[] = [];
     const itemsToSave: any[] = [];
     const docText = this.deps.getDocumentText(params.uri);
+    const maskedText = docText !== undefined ? maskComments(docText) : undefined;
+    const lines = docText !== undefined ? docText.split("\n") : [];
+    const maskedLines = maskedText !== undefined ? maskedText.split("\n") : [];
     const config = this.deps.getDiagramConfig?.(params.uri);
     const mutations = config?.mutations;
 
     for (const action of params.actions) {
       switch (action.type) {
-        case "move":
-          itemsToSave.push(...action.items);
+        case "move": {
+          if (config?.placement?.persistence === "inline" && docText !== undefined) {
+            for (const item of action.items) {
+              const name = item.name;
+              const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const nameRegex = new RegExp(`\\b${escName}\\b`);
+              for (let i = 0; i < lines.length; i++) {
+                if (nameRegex.test(maskedLines[i])) {
+                  const line = lines[i];
+                  const placementStr = config.placement.formatPlacement
+                    ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
+                    : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
+
+                  const layoutRegex = /(@layout\([^)]*\)|annotation\(Placement\([^)]*\)\))/;
+                  const match = layoutRegex.exec(line);
+                  if (match) {
+                    allEdits.push({
+                      range: {
+                        start: { line: i, character: match.index },
+                        end: { line: i, character: match.index + match[0].length },
+                      },
+                      newText: placementStr,
+                    });
+                  } else {
+                    const semiIdx = line.lastIndexOf(";");
+                    if (semiIdx !== -1) {
+                      allEdits.push({
+                        range: {
+                          start: { line: i, character: semiIdx },
+                          end: { line: i, character: semiIdx },
+                        },
+                        newText: ` ${placementStr}`,
+                      });
+                    } else {
+                      allEdits.push({
+                        range: {
+                          start: { line: i, character: line.length },
+                          end: { line: i, character: line.length },
+                        },
+                        newText: ` ${placementStr}`,
+                      });
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+          } else {
+            itemsToSave.push(...action.items);
+          }
           break;
+        }
         case "resize":
-        case "rotate":
-          itemsToSave.push(action.item);
+        case "rotate": {
+          if (config?.placement?.persistence === "inline" && docText !== undefined) {
+            const item = action.item;
+            const escName = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const nameRegex = new RegExp(`\\b${escName}\\b`);
+            for (let i = 0; i < lines.length; i++) {
+              if (nameRegex.test(maskedLines[i])) {
+                const line = lines[i];
+                const placementStr = config.placement.formatPlacement
+                  ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
+                  : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
+
+                const layoutRegex = /(@layout\([^)]*\)|annotation\(Placement\([^)]*\)\))/;
+                const match = layoutRegex.exec(line);
+                if (match) {
+                  allEdits.push({
+                    range: {
+                      start: { line: i, character: match.index },
+                      end: { line: i, character: match.index + match[0].length },
+                    },
+                    newText: placementStr,
+                  });
+                } else {
+                  const semiIdx = line.lastIndexOf(";");
+                  if (semiIdx !== -1) {
+                    allEdits.push({
+                      range: {
+                        start: { line: i, character: semiIdx },
+                        end: { line: i, character: semiIdx },
+                      },
+                      newText: ` ${placementStr}`,
+                    });
+                  }
+                }
+                break;
+              }
+            }
+          } else {
+            itemsToSave.push(action.item);
+          }
           break;
+        }
         case "connect": {
           let edgeText = "";
           const edgeTemplates = mutations?.edgeTemplates;
@@ -604,7 +756,6 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           }
 
           if (docText !== undefined && edgeText) {
-            const lines = docText.split("\n");
             const targetSection =
               action.section || mutations?.sections?.edge || mutations?.insertionSection || mutations?.defaultSection;
             insertIntoSectionOrRoot(lines, allEdits, edgeText, targetSection);
@@ -628,10 +779,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "disconnect": {
           if (docText !== undefined) {
-            const lines = docText.split("\n");
             for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
-              if (line.includes(action.source) && line.includes(action.target)) {
+              if (maskedLines[i].includes(action.source) && maskedLines[i].includes(action.target)) {
                 allEdits.push({
                   range: {
                     start: { line: i, character: 0 },
@@ -645,12 +794,77 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           }
           break;
         }
+        case "reconnect": {
+          if (docText !== undefined) {
+            let replaced = false;
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (maskedLines[i].includes(action.oldSource) && maskedLines[i].includes(action.oldTarget)) {
+                let newEdgeText = "";
+                const edgeTemplates = mutations?.edgeTemplates;
+                const edgeTemplate =
+                  (action.edgeType && edgeTemplates?.[action.edgeType]) ||
+                  mutations?.edgeTemplate ||
+                  mutations?.createEdge;
+
+                if (typeof edgeTemplate === "function") {
+                  newEdgeText = edgeTemplate(
+                    action.newSource,
+                    action.newTarget,
+                    action.newSourcePort,
+                    action.newTargetPort,
+                  );
+                } else if (typeof edgeTemplate === "string") {
+                  newEdgeText = edgeTemplate
+                    .replace(/\$\{source\}/g, action.newSource)
+                    .replace(/\$\{target\}/g, action.newTarget)
+                    .replace(/\$\{sourcePort\}/g, action.newSourcePort ?? "")
+                    .replace(/\$\{targetPort\}/g, action.newTargetPort ?? "");
+                } else {
+                  const src = action.newSourcePort ? `${action.newSource}.${action.newSourcePort}` : action.newSource;
+                  const tgt = action.newTargetPort ? `${action.newTarget}.${action.newTargetPort}` : action.newTarget;
+                  newEdgeText = `connect(${src}, ${tgt});`;
+                }
+
+                const indent = line.match(/^\s*/)?.[0] ?? "";
+                allEdits.push({
+                  range: {
+                    start: { line: i, character: 0 },
+                    end: { line: i, character: line.length },
+                  },
+                  newText: indent + newEdgeText.trim(),
+                });
+                replaced = true;
+                break;
+              }
+            }
+            if (!replaced) {
+              let edgeText = "";
+              const edgeTemplates = mutations?.edgeTemplates;
+              const edgeTemplate =
+                (action.edgeType && edgeTemplates?.[action.edgeType]) ||
+                mutations?.edgeTemplate ||
+                mutations?.createEdge;
+              if (typeof edgeTemplate === "function") {
+                edgeText = edgeTemplate(action.newSource, action.newTarget, action.newSourcePort, action.newTargetPort);
+              } else {
+                const src = action.newSourcePort ? `${action.newSource}.${action.newSourcePort}` : action.newSource;
+                const tgt = action.newTargetPort ? `${action.newTarget}.${action.newTargetPort}` : action.newTarget;
+                edgeText = `connect(${src}, ${tgt});\n`;
+              }
+              const targetSection =
+                action.section || mutations?.sections?.edge || mutations?.insertionSection || mutations?.defaultSection;
+              insertIntoSectionOrRoot(lines, allEdits, edgeText, targetSection);
+            }
+          }
+          break;
+        }
         case "addComponent": {
           const baseName = action.name || action.className.charAt(0).toLowerCase() + action.className.slice(1);
           let uniqueName = action.name || `${baseName}1`;
-          if (!action.name && docText) {
+          if (!action.name && maskedText) {
             let idx = 1;
-            while (new RegExp(`\\b${baseName}${idx}\\b`).test(docText)) {
+            while (new RegExp(`\\b${baseName}${idx}\\b`).test(maskedText)) {
               idx++;
             }
             uniqueName = `${baseName}${idx}`;
@@ -670,7 +884,6 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           }
 
           if (docText !== undefined && nodeText) {
-            const lines = docText.split("\n");
             const targetSection = action.section || mutations?.sections?.node || mutations?.defaultSection;
             insertIntoSectionOrRoot(lines, allEdits, nodeText, targetSection);
           }
@@ -687,12 +900,11 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "deleteComponents": {
           if (docText !== undefined) {
-            const lines = docText.split("\n");
             for (const name of action.names) {
               const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const declRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (declRegex.test(lines[i])) {
+                if (declRegex.test(maskedLines[i])) {
                   allEdits.push({
                     range: {
                       start: { line: i, character: 0 },
@@ -728,10 +940,9 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           if (docText !== undefined && action.oldName && action.newName) {
             const escOld = action.oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const regex = new RegExp(`\\b${escOld}\\b`, "g");
-            const lines = docText.split("\n");
             for (let i = 0; i < lines.length; i++) {
               let match: RegExpExecArray | null;
-              while ((match = regex.exec(lines[i])) !== null) {
+              while ((match = regex.exec(maskedLines[i])) !== null) {
                 allEdits.push({
                   range: {
                     start: { line: i, character: match.index },
@@ -746,7 +957,6 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "updateParameter": {
           if (docText !== undefined && action.parameter && action.value !== undefined) {
-            const lines = docText.split("\n");
             const escParam = action.parameter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const paramRegex = new RegExp(`\\b(${escParam}\\s*=\\s*)([^,;\\)\\}\\n]+)`);
             let matched = false;
@@ -755,9 +965,9 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               const escName = action.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const nameRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (nameRegex.test(lines[i])) {
+                if (nameRegex.test(maskedLines[i])) {
                   for (let j = i; j < Math.min(lines.length, i + 6); j++) {
-                    const m = paramRegex.exec(lines[j]);
+                    const m = paramRegex.exec(maskedLines[j]);
                     if (m) {
                       const startCol = m.index + m[1].length;
                       const endCol = startCol + m[2].trimEnd().length;
@@ -779,7 +989,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
             if (!matched) {
               for (let i = 0; i < lines.length; i++) {
-                const m = paramRegex.exec(lines[i]);
+                const m = paramRegex.exec(maskedLines[i]);
                 if (m) {
                   const startCol = m.index + m[1].length;
                   const endCol = startCol + m[2].trimEnd().length;
@@ -903,6 +1113,11 @@ export function processDiagramEditBatch(
         break;
       case "disconnect":
         allEdits.push(...computeConnectRemove(docText, classInstance, action.source, action.target));
+        needsRender = "immediate";
+        break;
+      case "reconnect":
+        allEdits.push(...computeConnectRemove(docText, classInstance, action.oldSource, action.oldTarget));
+        allEdits.push(...computeConnectInsert(docText, classInstance, action.newSource, action.newTarget));
         needsRender = "immediate";
         break;
       case "addComponent": {

@@ -69,8 +69,9 @@ import {
   inputEncoding,
 } from "./parser";
 
-export const ERROR_COST_PER_SKIPPED_TREE: i32 = 100;
-export const ERROR_COST_PER_MISSING_TREE: i32 = 110;
+// Recovery fix: swapped costs so insertion (less destructive) is cheaper than deletion
+export const ERROR_COST_PER_SKIPPED_TREE: i32 = 110;
+export const ERROR_COST_PER_MISSING_TREE: i32 = 100;
 export const ERROR_COST_PER_SKIPPED_CHAR: i32 = 1;
 export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 5000;
 
@@ -245,6 +246,10 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
 
+  // Recovery fix: fork up to 3 recovery candidates instead of returning on the first match
+  let forkCount: u32 = 0;
+  const MAX_FORKS: u32 = 3;
+
   for (let i: u32 = 0; i < head.summaryCount; i++) {
     let entry = changetype<StackSummaryEntry>(head.summaryPtr + i * SIZEOF_STACK_SUMMARY_ENTRY);
     let anc = entry.ancHead;
@@ -311,11 +316,12 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
           0
         );
         pushActiveHead(changetype<u32>(errHead));
-        return true;
+        forkCount++;
+        if (forkCount >= MAX_FORKS) return true;
       }
     }
   }
-  return false;
+  return forkCount > 0;
 }
 
 /**
@@ -757,6 +763,8 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
  * the upcoming lookahead token. If so, inserts a zero-width MISSING leaf and retries.
  */
 export function recoverMissingToken(head: ParseHead, token: i32, pos: u32): boolean {
-  if (head.consecutiveInsertions >= 3 || token == TOKEN_EOF) return false;
+  // Recovery fix: exponential cost instead of hard cutoff at 3
+  // Allow up to 6 consecutive insertions but with escalating cost
+  if (head.consecutiveInsertions >= 6 || token == TOKEN_EOF) return false;
   return tryRecoverMissingInState(head, head.state, token, pos, 0);
 }

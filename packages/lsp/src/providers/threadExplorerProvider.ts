@@ -89,7 +89,7 @@ export class ThreadExplorerProvider {
         nodes.push({
           domain: domName,
           domainIndex: domIdx,
-          nodeId: nId,
+          nodeId: Number(nId),
           name: nodeName,
           status: nodeStatus,
           uri: meta?.uri,

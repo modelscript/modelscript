@@ -1104,7 +1104,10 @@ export class LspFacade {
           : "Syntax Error";
       let severity = lintId > 0 && lintId < 0x8000 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
       let codeStr = lintId > 0 && lintId < 0x8000 ? lintId : undefined;
-      if (rawLintId === 0) {
+      if (rawLintId === 0x7ffe) {
+        msg = "Too many diagnostics; remaining diagnostics omitted";
+        severity = 2; // Warning
+      } else if (rawLintId === 0) {
         if (arg0 === 1 && arg1 > 0) {
           let symName =
             (this.syntaxNames && this.syntaxNames[arg1]) || `token_${arg1}`;

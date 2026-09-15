@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   computeOrthogonalRoute,
+  computeSmoothBezierPath,
   computeStemLines,
   segmentIntersectsRect,
   type PointLike,
@@ -116,5 +117,30 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     assert.strictEqual(rightStem.side, "right");
     assert.strictEqual(rightStem.end.x, 300);
     assert.strictEqual(rightStem.end.y, 150);
+  });
+
+  it("should compute smooth Catmull-Rom cubic Bezier SVG spline path", () => {
+    // 0 or 1 point returns empty string or initial move
+    assert.strictEqual(computeSmoothBezierPath([]), "");
+    assert.strictEqual(computeSmoothBezierPath([{ x: 10, y: 10 }]), "M 10 10");
+
+    // 2 points returns smooth cubic bezier S-curve with port-tangent control points
+    const linePath = computeSmoothBezierPath([
+      { x: 10, y: 10 },
+      { x: 100, y: 50 },
+    ]);
+    assert.strictEqual(linePath, "M 10 10 C 55 10, 55 50, 100 50");
+
+    // 4 points returns cubic Bezier with control points
+    const splinePath = computeSmoothBezierPath([
+      { x: 0, y: 0 },
+      { x: 50, y: 100 },
+      { x: 100, y: 50 },
+      { x: 200, y: 150 },
+    ]);
+    assert.ok(splinePath.startsWith("M 0 0"), "Path must start at first point");
+    assert.ok(splinePath.includes(" C "), "Spline must contain cubic Bezier command");
+    const segments = splinePath.split(" C ");
+    assert.strictEqual(segments.length, 4, "Must contain 3 cubic Bezier segments");
   });
 });

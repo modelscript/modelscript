@@ -44,9 +44,19 @@ export class FeaSolver {
     this.elementKe = new Array(mesh.numElements);
     this.elementMe = new Array(mesh.numElements);
 
+    const edof = this.nodesPerElement * 3;
+    this.scratchKeRot = new Float64Array(edof * edof);
+    this.scratchKeEff = new Float64Array(edof * edof);
+
     this.precomputeElementMatrices();
     this.assembleSparsityPattern();
   }
+
+  // Pre-allocated scratch buffers to eliminate per-element GC allocations
+  private scratchM = new Float64Array(9);
+  private scratchRM = new Float64Array(9);
+  private scratchKeRot: Float64Array;
+  private scratchKeEff: Float64Array;
 
   private precomputeElementMatrices(): void {
     const { nodeCoords, elements, numElements } = this.mesh;
@@ -276,18 +286,19 @@ export class FeaSolver {
       if (corotational) {
         const R = this.computeElementRotation(e, this.lastDisplacements);
         // Rotate Ke: K_rot = T * Ke * T^T
-        Ke = new Float64Array(edof * edof);
+        Ke = this.scratchKeRot;
+        const M = this.scratchM;
+        const RM = this.scratchRM;
+
         for (let i = 0; i < npe; i++) {
           for (let j = 0; j < npe; j++) {
             // Extract 3x3 block M = Ke[i, j]
-            const M = new Float64Array(9);
             for (let r = 0; r < 3; r++) {
               for (let c = 0; c < 3; c++) {
                 M[r * 3 + c] = KeBase[(i * 3 + r) * edof + (j * 3 + c)];
               }
             }
             // Compute R * M * R^T
-            const RM = new Float64Array(9);
             for (let r = 0; r < 3; r++) {
               for (let c = 0; c < 3; c++) {
                 let sum = 0.0;
@@ -309,25 +320,21 @@ export class FeaSolver {
       let KeEff = Ke;
       if (kFactor !== 1.0 || mFactor !== 0.0) {
         const Me = this.elementMe[e];
-        KeEff = new Float64Array(edof * edof);
+        KeEff = this.scratchKeEff;
         for (let i = 0; i < edof * edof; i++) {
           KeEff[i] = kFactor * Ke[i] + mFactor * Me[i];
         }
       }
 
-      const elNodes: number[] = [];
+      const eBase = e * npe;
       for (let i = 0; i < npe; i++) {
-        elNodes.push(elements[e * npe + i]);
-      }
-
-      for (let i = 0; i < npe; i++) {
-        const ni = elNodes[i];
+        const ni = elements[eBase + i];
         for (let di = 0; di < 3; di++) {
           const row = ni * 3 + di;
           const isRowFixed = fixedDofs.has(row);
 
           for (let j = 0; j < npe; j++) {
-            const nj = elNodes[j];
+            const nj = elements[eBase + j];
             for (let dj = 0; dj < 3; dj++) {
               const col = nj * 3 + dj;
               const isColFixed = fixedDofs.has(col);
@@ -370,6 +377,10 @@ export class FeaSolver {
    * Solves the static equilibrium Ku = f or dynamic equations of motion Mu'' + Cu' + Ku = f
    * using Preconditioned Conjugate Gradient (PCG) with optional Newmark-beta implicit time integration.
    */
+  public solve(bcs: FeaBoundaryConditions, tol: number = 1e-6, maxIters: number = 500): FeaStepResult {
+    return this.step(bcs, tol, maxIters);
+  }
+
   public step(bcs: FeaBoundaryConditions, tol: number = 1e-6, maxIters: number = 500): FeaStepResult {
     if (bcs.resetDynamics) {
       this.lastDisplacements.fill(0);

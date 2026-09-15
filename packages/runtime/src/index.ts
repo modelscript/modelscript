@@ -12,6 +12,7 @@ export * from "./ctrf_reporter.js";
 export * from "./diff.js";
 export * from "./indexeddb_snapshot.js";
 export * from "./oslc_gateway.js";
+export * from "./parallel_reasoner.js";
 export * from "./pipeline.js";
 export * from "./polyglot-transformer.js";
 export * from "./provenance.js";

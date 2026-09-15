@@ -108,11 +108,11 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
     }
 
     // 2. Both in error: Tree-sitter relative cost comparison
-    // (candidate.cost - existing.cost) * (1 + existing.node_count) > MAX_COST_DIFFERENCE (7000)
+    // D3 fix: use nodeCount instead of successfulShifts for progress metric
     if (candidate.inErrorState && existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.successfulShifts as i32);
+        let progress = 1 + (existing.nodeCount as i32);
         if (costDiff * progress > MAX_COST_DIFFERENCE) {
           return true;
         }
@@ -123,7 +123,7 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
     if (!candidate.inErrorState && !existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.successfulShifts as i32);
+        let progress = 1 + (existing.nodeCount as i32);
         if (costDiff * progress > MAX_COST_DIFFERENCE) {
           return true;
         }
@@ -146,7 +146,8 @@ export function pushActiveHead(headPtr: u32): boolean {
   }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_activeHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+    // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos) {
       if (existingHead.prev == newHead.prev) {
         if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
           t_activeHeads[i] = headPtr;
@@ -174,7 +175,8 @@ export function pushNextHead(headPtr: u32): boolean {
   }
   for (let i: u32 = 0; i < nextHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_nextHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+    // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos) {
       if (existingHead.prev == newHead.prev) {
         if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
           t_nextHeads[i] = headPtr;
@@ -282,6 +284,14 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
   }
   if (!newHead.inErrorState) {
     existingHead.inErrorState = false;
+  }
+  // D9 fix: propagate successfulShifts during merge (take max)
+  if (newHead.successfulShifts > existingHead.successfulShifts) {
+    existingHead.successfulShifts = newHead.successfulShifts;
+  }
+  // D9 fix: propagate nodeCount during merge (take max)
+  if (newHead.nodeCount > existingHead.nodeCount) {
+    existingHead.nodeCount = newHead.nodeCount;
   }
   if (existingHead.astNode != 0) {
     setNodeFlags(existingHead.astNode, getNodeFlags(existingHead.astNode) | FLAG_FRAGILE);

@@ -2217,9 +2217,37 @@ export interface VisualStyle {
   fontSize?: number;
   fontStyle?: string;
   icon?: string;
+  fillPattern?:
+    | "cylinder-horizontal"
+    | "cylinder-vertical"
+    | "sphere"
+    | "HorizontalCylinder"
+    | "VerticalCylinder"
+    | "Sphere"
+    | string;
   router?: "manhattan" | "orth" | "metro" | "normal" | "bezier" | string;
   connector?: "rounded" | "smooth" | "jumpover" | "normal" | string;
   arrowHead?: "classic" | "block" | "diamond" | "cross" | "none" | string;
+  sourceArrow?:
+    | "classic"
+    | "block"
+    | "diamond"
+    | "hollow-diamond"
+    | "hollow-triangle"
+    | "open"
+    | "half"
+    | "none"
+    | string;
+  targetArrow?:
+    | "classic"
+    | "block"
+    | "diamond"
+    | "hollow-diamond"
+    | "hollow-triangle"
+    | "open"
+    | "half"
+    | "none"
+    | string;
 }
 
 /** Spatial mapping & coordinate system configuration */
@@ -2619,6 +2647,8 @@ export interface DiagramConfig<
   standaloneRules?: (RuleName | string)[];
   usageRules?: (RuleName | string)[];
   definitionRules?: (RuleName | string)[];
+  portRules?: (RuleName | string)[];
+  reactiveDynamics?: boolean;
 }
 
 /**
@@ -2634,10 +2664,13 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
     standaloneKinds?: string[];
     usageKinds?: string[];
     definitionKinds?: string[];
+    portKinds?: string[];
+    reactiveDynamics?: boolean;
     inModelDiscovery?: any;
     solderDots?: boolean;
     mutations?: VisualMutationConfig;
     palette?: DiagramPaletteConfig;
+    placement?: any;
   };
 } {
   const gfxConfig: Record<string, any> = {};
@@ -2670,25 +2703,50 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
       }
     }
 
+    const compartments = nodeCfg.compartments
+      ? nodeCfg.compartments.map((c) => ({
+          header: c.header,
+          query: typeof c.query === "string" ? c.query : undefined,
+        }))
+      : undefined;
+
+    let bodyFill = nodeCfg.style?.fill;
+    if (nodeCfg.style?.fillPattern) {
+      const p = nodeCfg.style.fillPattern;
+      if (p === "cylinder-horizontal" || p === "HorizontalCylinder") {
+        bodyFill = "url(#grad-cylinder-horizontal)";
+      } else if (p === "cylinder-vertical" || p === "VerticalCylinder") {
+        bodyFill = "url(#grad-cylinder-vertical)";
+      } else if (p === "sphere" || p === "Sphere") {
+        bodyFill = "url(#grad-sphere)";
+      }
+    }
+
+    const nodeAttrs = nodeCfg.style
+      ? {
+          body: {
+            fill: bodyFill,
+            stroke: nodeCfg.style.stroke,
+            strokeWidth: nodeCfg.style.strokeWidth,
+            rx: nodeCfg.style.rx,
+            ry: nodeCfg.style.ry,
+          },
+          ...(nodeCfg.style.icon ? { icon: nodeCfg.style.icon } : {}),
+        }
+      : undefined;
+
     const portsObj = Object.keys(ports).length > 0 ? ports : undefined;
     gfxConfig[ruleName] = {
       role,
       ports: portsObj,
+      compartments,
       node: {
         shape,
         size,
         ports: portsObj,
-        attrs: nodeCfg.style
-          ? {
-              body: {
-                fill: nodeCfg.style.fill,
-                stroke: nodeCfg.style.stroke,
-                strokeWidth: nodeCfg.style.strokeWidth,
-                rx: nodeCfg.style.rx,
-                ry: nodeCfg.style.ry,
-              },
-            }
-          : undefined,
+        compartments,
+        attrs: nodeAttrs,
+        animation: (nodeCfg as any).animation || (nodeCfg as any).animations,
       },
     };
   }
@@ -2697,6 +2755,23 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
   const edges = diagramConfig.edges || diagramConfig.connections || {};
   for (const [ruleName, edgeCfg] of Object.entries(edges)) {
     if (!edgeCfg) continue;
+
+    const formatMarker = (marker?: string) => {
+      if (!marker || marker === "none") return undefined;
+      if (marker === "classic" || marker === "block") return { name: marker };
+      const stroke = edgeCfg.style?.stroke || "#38bdf8";
+      if (marker === "diamond") return { name: "path", d: "M 0 0 L 5 -4 L 10 0 L 5 4 Z", fill: stroke };
+      if (marker === "hollow-diamond")
+        return { name: "path", d: "M 0 0 L 5 -4 L 10 0 L 5 4 Z", fill: "#ffffff", stroke };
+      if (marker === "hollow-triangle") return { name: "path", d: "M 0 -6 L 10 0 L 0 6 Z", fill: "#ffffff", stroke };
+      if (marker === "open") return { name: "path", d: "M 0 -5 L 10 0 L 0 5", fill: "none", stroke };
+      if (marker === "half") return { name: "path", d: "M 0 0 L 10 0 L 0 5 Z", fill: stroke };
+      return { name: marker };
+    };
+
+    const targetMarker = formatMarker(edgeCfg.style?.targetArrow || edgeCfg.style?.arrowHead);
+    const sourceMarker = formatMarker(edgeCfg.style?.sourceArrow);
+
     gfxConfig[ruleName] = {
       role: "edge",
       edge: {
@@ -2713,9 +2788,19 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
                 stroke: edgeCfg.style.stroke,
                 strokeWidth: edgeCfg.style.strokeWidth,
                 strokeDasharray: edgeCfg.style.strokeDasharray,
+                targetMarker,
+                sourceMarker,
               },
             }
-          : undefined,
+          : targetMarker || sourceMarker
+            ? {
+                line: {
+                  targetMarker,
+                  sourceMarker,
+                },
+              }
+            : undefined,
+        animation: (edgeCfg as any).animation || (edgeCfg as any).animations,
       },
     };
   }
@@ -2726,10 +2811,13 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
     standaloneKinds: diagramConfig.standaloneRules ? [...diagramConfig.standaloneRules] : undefined,
     usageKinds: diagramConfig.usageRules ? [...diagramConfig.usageRules] : undefined,
     definitionKinds: diagramConfig.definitionRules ? [...diagramConfig.definitionRules] : undefined,
+    portKinds: diagramConfig.portRules ? [...diagramConfig.portRules] : undefined,
+    reactiveDynamics: diagramConfig.reactiveDynamics,
     inModelDiscovery: diagramConfig.inModelProjections || diagramConfig.inModelViews,
     solderDots: true,
     mutations: diagramConfig.mutations,
     palette: diagramConfig.palette,
+    placement: diagramConfig.placement,
   };
 
   return { gfxConfig, graphicsConfig: gfxConfig, options };

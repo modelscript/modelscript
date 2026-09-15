@@ -148,16 +148,29 @@ export function lsp_getBinaryLength(): u32 {
  * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
  */
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
-  if (t_lspBinaryBuffer.length >= 10000 * 7) return;
-
-
-
   let bufLen = t_lspBinaryBuffer.length;
-  if (bufLen >= 7) {
-    let lastStart = t_lspBinaryBuffer[bufLen - 7];
-    let lastEnd = t_lspBinaryBuffer[bufLen - 6];
-    let lastLintId = t_lspBinaryBuffer[bufLen - 5];
-    if (lastStart == start && lastEnd == end && lastLintId == lintId) return;
+  if (bufLen >= 10000 * 7) {
+    // LSP2 fix: emit a meta-diagnostic once when limit is reached
+    if (bufLen == 10000 * 7) {
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0x7ffe); // Meta lint ID: diagnostics truncated
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+    }
+    return;
+  }
+
+  // LSP1 fix: check last 4 entries for deduplication
+  let entriesToCheck: u32 = (bufLen / 7) > 4 ? 4 : (bufLen / 7);
+  for (let i: u32 = 1; i <= entriesToCheck; i++) {
+    let offset = bufLen - i * 7;
+    let prevStart = t_lspBinaryBuffer[offset];
+    let prevEnd = t_lspBinaryBuffer[offset + 1];
+    let prevLintId = t_lspBinaryBuffer[offset + 2];
+    if (prevStart == start && prevEnd == end && prevLintId == lintId) return;
   }
 
   t_lspBinaryBuffer.push(start);
@@ -764,23 +777,38 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
               cLen = inputLength - childOffset;
             }
             
-            let maxLen = cLen;
             let step: u32 = getEncodingStep();
-            for (let i: u32 = 0; i < cLen; i += step) {
-               let c = peekChar(childOffset + i);
-               if (c == 10 || c == 13) {
-                  maxLen = i;
-                  break;
-               }
+            // LSP4 fix: split multi-line tokens into line-by-line segments instead of truncating/skipping
+            let segStart: u32 = childOffset;
+            let segLen: u32 = 0;
+            let i: u32 = 0;
+            while (i < cLen) {
+              let c = peekChar(childOffset + i);
+              if (c == 10 || c == 13) {
+                if (segLen > 0) {
+                  t_lspBinaryBuffer.push(segStart);
+                  t_lspBinaryBuffer.push(segLen);
+                  t_lspBinaryBuffer.push(tokenTypeId);
+                  t_lspBinaryBuffer.push(bitmask);
+                }
+                if (c == 13 && i + step < cLen && peekChar(childOffset + i + step) == 10) {
+                  i += step * 2;
+                } else {
+                  i += step;
+                }
+                segStart = childOffset + i;
+                segLen = 0;
+              } else {
+                segLen += step;
+                i += step;
+              }
             }
-            cLen = maxLen;
-            if (cLen == 0) continue;
-
-            let tokenModifiers = 0;
-            t_lspBinaryBuffer.push(childOffset);
-            t_lspBinaryBuffer.push(cLen);
-            t_lspBinaryBuffer.push(tokenTypeId);
-            t_lspBinaryBuffer.push(bitmask);
+            if (segLen > 0) {
+              t_lspBinaryBuffer.push(segStart);
+              t_lspBinaryBuffer.push(segLen);
+              t_lspBinaryBuffer.push(tokenTypeId);
+              t_lspBinaryBuffer.push(bitmask);
+            }
           }
         }
       }
@@ -1082,17 +1110,20 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
     let tokenEnd = tokenStart + len;
     
     if (targetOffset >= tokenStart && targetOffset <= tokenEnd) {
-       let update = true;
-       if (bestMatch != 0) {
+       let update = false;
+       if (bestMatch == 0) {
+          update = true;
+       } else {
           let bestLen = getNodeByteLength(bestMatch);
-          if (tokenStart == lspLastNodeOffset && len == bestLen) {
+          if (len < bestLen) {
+             // LSP3 fix: narrower (more specific) span wins
+             update = true;
+          } else if (len == bestLen) {
              let bestType = getNodeType(bestMatch);
              let nodeType = getNodeType(node);
-              if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
-                 update = true;
-              } else if (bestType <= (MAX_TERMINAL_ID as u16) && nodeType > (MAX_TERMINAL_ID as u16)) {
-                 update = false;
-              }
+             if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
+                update = true;
+             }
           }
        }
        if (update) {

@@ -19,7 +19,7 @@ type Selection = any;
 type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-import { portOrthogonalRouter } from "./port-router.js";
+import { computeJumpoverPath, computeSmoothBezierPath, portOrthogonalRouter } from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout } from "./swimlane-layout.js";
@@ -27,6 +27,21 @@ import { animateCells } from "./telemetry.js";
 
 if (typeof Graph.registerRouter === "function") {
   Graph.registerRouter("port-orthogonal-astar", portOrthogonalRouter);
+}
+
+if (typeof Graph.registerConnector === "function") {
+  Graph.registerConnector("jumpover", (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
+    const points = [sourcePoint, ...routePoints, targetPoint];
+    return computeJumpoverPath(points, [], { radius: args.radius ?? 5 });
+  });
+  Graph.registerConnector("smooth", (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
+    const points = [sourcePoint, ...routePoints, targetPoint];
+    return computeSmoothBezierPath(points);
+  });
+  Graph.registerConnector("bezier", (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
+    const points = [sourcePoint, ...routePoints, targetPoint];
+    return computeSmoothBezierPath(points);
+  });
 }
 
 export interface DiagramRendererOptions {
@@ -502,10 +517,18 @@ export function initGraph(isDark: boolean): Graph {
     });
   });
 
-  // Edge connected (new edge created)
+  // Cache prior endpoints on edge mousedown, selection, or hover
+  const edgePriorEndpoints = new Map<string, { source: any; target: any }>();
+  g.on("edge:mouseenter", ({ edge }: any) => {
+    if (edge?.id) edgePriorEndpoints.set(edge.id, { source: edge.getSource(), target: edge.getTarget() });
+  });
+  g.on("edge:selected", ({ edge }: any) => {
+    if (edge?.id) edgePriorEndpoints.set(edge.id, { source: edge.getSource(), target: edge.getTarget() });
+  });
+
+  // Edge connected (handles both new edge creation and terminal dragging reconnection)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   g.on("edge:connected", ({ isNew, edge }: any) => {
-    if (!isNew) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const source = edge.getSource() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -520,12 +543,36 @@ export function initGraph(isDark: boolean): Graph {
       }));
       const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell);
       const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell);
-      enqueueDiagramAction({
-        type: "connect",
-        source: srcStr,
-        target: tgtStr,
-        points,
-      });
+
+      if (isNew) {
+        enqueueDiagramAction({
+          type: "connect",
+          source: srcStr,
+          target: tgtStr,
+          points,
+        });
+      } else {
+        const prev = edgePriorEndpoints.get(edge.id);
+        const oldSrcStr = prev?.source?.port
+          ? `${prev.source.cell}.${prev.source.port}`
+          : String(prev?.source?.cell ?? srcStr);
+        const oldTgtStr = prev?.target?.port
+          ? `${prev.target.cell}.${prev.target.port}`
+          : String(prev?.target?.cell ?? tgtStr);
+
+        enqueueDiagramAction({
+          type: "reconnect",
+          edgeId: edge.id,
+          oldSource: oldSrcStr,
+          oldTarget: oldTgtStr,
+          newSource: srcStr,
+          newTarget: tgtStr,
+          oldSourcePort: prev?.source?.port,
+          oldTargetPort: prev?.target?.port,
+          newSourcePort: source.port,
+          newTargetPort: target.port,
+        });
+      }
     }
   });
 
@@ -1725,10 +1772,63 @@ export function applySimulationFrame(
   animateCells({ nodes: graph.getNodes(), edges: graph.getEdges() }, stateVector, varIndexMap);
 }
 
+export function toggleGroupNodeCollapse(node: any): void {
+  if (!node) return;
+  const data = node.getData?.() || {};
+  const isCollapsed = Boolean(data.collapsed);
+  const children = node.getChildren?.() || [];
+
+  if (!isCollapsed) {
+    const currentSize = typeof node.size === "function" ? node.size() : { width: 240, height: 180 };
+    node.setData?.({ ...data, collapsed: true, origWidth: currentSize.width, origHeight: currentSize.height });
+    children.forEach((c: any) => c.setVisible?.(false));
+    node.resize?.(Math.max(180, currentSize.width), 40);
+  } else {
+    node.setData?.({ ...data, collapsed: false });
+    node.resize?.(data.origWidth || 240, data.origHeight || 180);
+    children.forEach((c: any) => c.setVisible?.(true));
+  }
+}
+
+export function exportDiagramSvg(): string {
+  if (!graph) return "";
+  const svgElem = graph.container?.querySelector("svg");
+  return svgElem ? new XMLSerializer().serializeToString(svgElem) : "";
+}
+
+export async function exportDiagramPng(scale = 2): Promise<string> {
+  const svgString = exportDiagramSvg();
+  if (!svgString || typeof document === "undefined") return "";
+  return new Promise((resolve) => {
+    const img = new Image();
+    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = (img.width || 800) * scale;
+      canvas.height = (img.height || 600) * scale;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+      }
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve("");
+    };
+    img.src = url;
+  });
+}
+
+export * from "./affine-matrix.js";
 export * from "./color-inversion.js";
 export * from "./glyphs.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-router.js";
+export * from "./svg-renderer.js";
 export * from "./swimlane-layout.js";
 export * from "./telemetry.js";
 export type { TopologyEdge, TopologyGraph, TopologyNode } from "./topology.js";

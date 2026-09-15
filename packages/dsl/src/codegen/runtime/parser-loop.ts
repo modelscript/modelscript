@@ -592,8 +592,11 @@ export let lastPeekedTokenEnd: u32 = 0;
 export function peekNextTokenInState(pos: u32, state: i32): i32 {
   if (expected_tokens == 0) expected_tokens = atomicChunkAlloc(65536);
   if (savedExpectedTokensPtr == 0) savedExpectedTokensPtr = atomicChunkAlloc(65536);
-  memory.copy(savedExpectedTokensPtr, expected_tokens, 65536);
-  memory.fill(expected_tokens, 0, 65536);
+  // P5 fix: Only copy the used range (MAX_TERMINAL_ID+1 bytes) instead of full 64KB
+  let copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
+  if (copyLen > 65536) copyLen = 65536;
+  memory.copy(savedExpectedTokensPtr, expected_tokens, copyLen);
+  memory.fill(expected_tokens, 0, copyLen);
   addStateExpectedTokens(state, 0);
 
   let savedLexPos = lexPos;
@@ -610,7 +613,7 @@ export function peekNextTokenInState(pos: u32, state: i32): i32 {
   srcLexPos = savedSrcLexPos;
   currentScannerState = savedScannerState;
 
-  memory.copy(expected_tokens, savedExpectedTokensPtr, 65536);
+  memory.copy(expected_tokens, savedExpectedTokensPtr, copyLen);
   return tok;
 }
 
@@ -956,7 +959,8 @@ function sanitizeTree(root: u32): void {
               t_sanitizeVisited.push(freshClone);
               t_sanitizeStack.push(freshClone);
             } else {
-              // Clone failed (too deep); unlink to prevent cycle
+              // Clone failed (too deep); unlink to prevent cycle (B2 fix: log warning diagnostic)
+              debugLog(9009, child, node, 0);
               if (prevChild == 0) setFirstChild(node, nextSib);
               else setNextSibling(prevChild, nextSib);
               modified = true;
@@ -995,18 +999,34 @@ function sanitizeTree(root: u32): void {
  */
 function nodeHasAnyErrors(node: u32): boolean {
   if (node == 0) return false;
-  let flags = getNodeFlags(node);
-  if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0) return true;
-  let type = getNodeType(node);
-  if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0) return true;
-  let child = getNodeFirstChild(node);
-  let depth = 0;
-  while (child != 0 && depth < 50) {
-    if (nodeHasAnyErrors(child)) return true;
-    child = getNodeNextSibling(child);
-    depth++;
+  // Iterative traversal with explicit stack to avoid unbounded recursion (B1 fix)
+  if (changetype<usize>(t_sanitizeStack) == 0) {
+    t_sanitizeStack = createChunkedUint32Array(50000);
+    t_sanitizeVisited = createChunkedUint32Array(50000);
   }
-  return false;
+  let savedLen = t_sanitizeStack.length;
+  t_sanitizeStack.push(node);
+  let found = false;
+  let iterations: u32 = 0;
+  while (t_sanitizeStack.length > savedLen && iterations < 500000) {
+    iterations++;
+    let curr = t_sanitizeStack.pop();
+    if (curr == 0) continue;
+    let flags = getNodeFlags(curr);
+    if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0) { found = true; break; }
+    let type = getNodeType(curr);
+    if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0) { found = true; break; }
+    let child = getNodeFirstChild(curr);
+    let sibCount: u32 = 0;
+    while (child != 0 && sibCount < 50) {
+      t_sanitizeStack.push(child);
+      child = getNodeNextSibling(child);
+      sibCount++;
+    }
+  }
+  // Restore stack to saved length
+  while (t_sanitizeStack.length > savedLen) t_sanitizeStack.pop();
+  return found;
 }
 
 /**
@@ -1026,10 +1046,15 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
   let c_idx: u32 = 0;
     let acceptBase = acceptedNode;
     // Follow clones back to their origin
-    while ((getNodeFlags(acceptBase) & FLAG_EXTRACTED) != 0 && getNodeFirstChild(acceptBase) != 0) {
+    // Follow clones back to their origin with depth limit to avoid O(H*D) (B4 fix)
+    let chaseDepth: u32 = 0;
+    while ((getNodeFlags(acceptBase) & FLAG_EXTRACTED) != 0 && getNodeFirstChild(acceptBase) != 0 && chaseDepth < 8) {
+      chaseDepth++;
       let isShallowClone = false;
       let currTemp: ParseHead | null = headPtr != 0 ? changetype<ParseHead>(headPtr) : null;
-      while (currTemp) {
+      let tempLimit: u32 = 0;
+      while (currTemp && tempLimit < 64) {
+        tempLimit++;
         if (currTemp.astNode != 0 && currTemp.astNode != acceptBase && getNodeFirstChild(currTemp.astNode) == getNodeFirstChild(acceptBase)) {
            acceptBase = currTemp.astNode;
            isShallowClone = true;
@@ -1610,15 +1635,15 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   let nrDepth = getListDepth(newRightMost, listSym);
   if (nrDepth == lDepth) {
     let origC1 = getNodeFirstChild(newRightMost);
-    let origC2 = getNodeNextSibling(origC1);
+    let origC2 = origC1 != 0 ? getNodeNextSibling(origC1) : 0; // B5 fix: null check
 
     let c1 = cloneNodeShallow(origC1);
-    let c2 = cloneNodeShallow(origC2);
+    let c2 = origC2 != 0 ? cloneNodeShallow(origC2) : 0; // B5 fix: null check
 
     if (lDirectChildCount < LIST_MAX_CHILDREN) {
       if (lastChild == 0) setFirstChild(p, c1);
       else setNextSibling(lastChild, c1);
-      setNextSibling(c1, c2);
+      if (c2 != 0) setNextSibling(c1, c2);
       if (c2 != 0) setNextSibling(c2, 0);
       setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       fixNodeLength(p);
@@ -2162,7 +2187,7 @@ function constructReducedParentNode(
   return parentNode;
 }
 
-const MAX_POP_PATHS: i32 = 8;
+const MAX_POP_PATHS: i32 = 32; // D6 fix: increased from 8 to handle complex grammars
 const MAX_POP_DEPTH: i32 = 32;
 
 let t_popPathNodes: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
@@ -2542,6 +2567,7 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
     let idx = actionOffset + 1;
     let bestReduce = -1;
     let bestLhs = -1;
+    let shiftCandidateReduce = -1;
 
     for (let a = 0; a < actCount; a++) {
       let sym = action_data[idx++];
@@ -2556,18 +2582,29 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
               bestLhs = lhs;
               bestReduce = aTarget;
             }
+            // B7 fix: prioritize reduction that allows the lookahead token to be shifted
+            if (shiftCandidateReduce == -1 && tok != TOKEN_EOF) {
+              let rhsLen = prod_lengths[aTarget];
+              if (!(curr.state == 0 && rhsLen == 0)) {
+                let simRed = processReduceAction(curr, aTarget, frontierPos);
+                if (simRed != null && simRed != curr && lookupActions(simRed.state, tok) > 0) {
+                  shiftCandidateReduce = aTarget;
+                }
+              }
+            }
           }
         }
       }
     }
 
-    if (bestReduce == -1) break;
+    let chosenReduce = shiftCandidateReduce != -1 ? shiftCandidateReduce : bestReduce;
+    if (chosenReduce == -1) break;
 
-    if (curr.state == 0 && prod_lengths[bestReduce] == 0 && tok != TOKEN_EOF) {
+    if (curr.state == 0 && prod_lengths[chosenReduce] == 0 && tok != TOKEN_EOF) {
       break;
     }
 
-    let reduced = processReduceAction(curr, bestReduce, frontierPos);
+    let reduced = processReduceAction(curr, chosenReduce, frontierPos);
     if (reduced == null || reduced == curr) break;
     curr = reduced;
 
@@ -2685,11 +2722,12 @@ function processAcceptAction(head: ParseHead): void {
       if (singleNode != 0) {
         acceptedNode = cloneNodeShallow(singleNode);
         let accPad = getNodePadding(acceptedNode);
-        let accLen = getNodeByteLength(acceptedNode);
-        let expectedLen = inputLength > accPad ? inputLength - accPad : 0;
-        if (accLen != expectedLen && head.pos >= inputLength) {
-          setNodeByteLength(acceptedNode, expectedLen);
-        }
+        // B3 fix: removed unsafe length mutation — wrapWithTrailingErrors handles any gap
+        // let accLen = getNodeByteLength(acceptedNode);
+        // let expectedLen = inputLength > accPad ? inputLength - accPad : 0;
+        // if (accLen != expectedLen && head.pos >= inputLength) {
+        //   setNodeByteLength(acceptedNode, expectedLen);
+        // }
       } else {
         acceptedNode = head.astNode;
       }
@@ -3988,15 +4026,29 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   return 0;
 }
 function clearSubtreeErrorFlags(nodePtr: u32): void {
+  // B8 fix: converted from unbounded recursion to iterative
   if (nodePtr == 0) return;
-  let typeFlags = getNodeFlags(nodePtr);
-  if (getNodeType(nodePtr) != 0) {
-    setNodeFlags(nodePtr, (typeFlags & ~((FLAG_HAS_ERROR | FLAG_IS_TAINED) as u32)) as u16);
+  if (changetype<usize>(t_sanitizeStack) == 0) {
+    t_sanitizeStack = createChunkedUint32Array(50000);
+    t_sanitizeVisited = createChunkedUint32Array(50000);
+  } else {
+    t_sanitizeStack.clear();
   }
-  let child = getNodeFirstChild(nodePtr);
-  while (child != 0) {
-    clearSubtreeErrorFlags(child);
-    child = getNodeNextSibling(child);
+  t_sanitizeStack.push(nodePtr);
+  let iterations: u32 = 0;
+  while (t_sanitizeStack.length > 0 && iterations < 500000) {
+    iterations++;
+    let curr = t_sanitizeStack.pop();
+    if (curr == 0) continue;
+    let typeFlags = getNodeFlags(curr);
+    if (getNodeType(curr) != 0) {
+      setNodeFlags(curr, (typeFlags & ~((FLAG_HAS_ERROR | FLAG_IS_TAINED) as u32)) as u16);
+    }
+    let child = getNodeFirstChild(curr);
+    while (child != 0) {
+      t_sanitizeStack.push(child);
+      child = getNodeNextSibling(child);
+    }
   }
 }
 

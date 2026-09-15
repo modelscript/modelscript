@@ -184,8 +184,15 @@ export interface OWL2DisjointObjectProperties {
 }
 
 export interface OWL2NominalClass {
-  readonly type: "NominalClass";
+  readonly type: "NominalClass" | "ObjectOneOf";
   readonly classIri: string;
+  readonly individualIris: readonly string[];
+  readonly sourceLang?: string;
+}
+export type OWL2ObjectOneOf = OWL2NominalClass;
+
+export interface OWL2DifferentIndividuals {
+  readonly type: "DifferentIndividuals";
   readonly individualIris: readonly string[];
   readonly sourceLang?: string;
 }
@@ -197,9 +204,95 @@ export interface OWL2SelfRestriction {
   readonly sourceLang?: string;
 }
 
+export interface OWL2SubPropertyChainOf {
+  readonly type: "SubPropertyChainOf";
+  readonly subPropertyChain: readonly string[];
+  readonly superPropertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2LinearTerm {
+  readonly propertyIri: string;
+  readonly coefficient: number;
+}
+
+export interface OWL2LinearConstraint {
+  readonly type: "LinearConstraint";
+  readonly subjectIri: string;
+  readonly terms: readonly OWL2LinearTerm[];
+  readonly op: "<" | "<=" | ">" | ">=" | "=";
+  readonly bound: number;
+  readonly sourceLang?: string;
+}
+
+// ---------------------------------------------------------------------------
+// SWRL Rules and Atoms
+// ---------------------------------------------------------------------------
+
+export interface SWRLClassAtom {
+  readonly type: "ClassAtom";
+  readonly classIri: string;
+  readonly argument: string;
+}
+
+export interface SWRLIndividualPropertyAtom {
+  readonly type: "IndividualPropertyAtom";
+  readonly propertyIri: string;
+  readonly argument1: string;
+  readonly argument2: string;
+}
+
+export interface SWRLDataPropertyAtom {
+  readonly type: "DataPropertyAtom";
+  readonly propertyIri: string;
+  readonly argument1: string;
+  readonly argument2: string | number;
+}
+
+export interface SWRLBuiltInAtom {
+  readonly type: "BuiltInAtom";
+  readonly builtInIri: string;
+  readonly arguments: readonly (string | number)[];
+}
+
+export interface SWRLSameIndividualAtom {
+  readonly type: "SameIndividualAtom";
+  readonly argument1: string;
+  readonly argument2: string;
+}
+
+export interface SWRLDifferentIndividualsAtom {
+  readonly type: "DifferentIndividualsAtom";
+  readonly argument1: string;
+  readonly argument2: string;
+}
+
+export type SWRLAtom =
+  | SWRLClassAtom
+  | SWRLIndividualPropertyAtom
+  | SWRLDataPropertyAtom
+  | SWRLBuiltInAtom
+  | SWRLSameIndividualAtom
+  | SWRLDifferentIndividualsAtom;
+
+export interface OWL2SwrlRule {
+  readonly type: "SwrlRule";
+  readonly ruleIri?: string;
+  readonly body: readonly SWRLAtom[];
+  readonly head: readonly SWRLAtom[];
+  readonly sourceLang?: string;
+}
+
 // ---------------------------------------------------------------------------
 // SHACL Shapes and Rules (SHACL-AF)
 // ---------------------------------------------------------------------------
+
+export interface SHACLSparqlConstraint {
+  readonly ask?: BgpQuery;
+  readonly select?: BgpQuery;
+  readonly expectEmpty?: boolean;
+  readonly message?: string;
+}
 
 export interface SHACLPropertyShape {
   readonly path: string;
@@ -221,15 +314,26 @@ export interface SHACLPropertyShape {
   readonly maxExclusive?: number;
   readonly lessThan?: string;
   readonly lessThanOrEquals?: string;
+  readonly sparql?: SHACLSparqlConstraint;
 }
 
-export interface SHACLNodeShape {
+export interface SHACLTripleRule {
+  readonly type?: "TripleRule";
   readonly targetClass: string;
-  readonly propertyShapes: readonly SHACLPropertyShape[];
-  readonly closed?: boolean;
+  readonly subject?: string; // defaults to "?this" or "sh:this"
+  readonly predicate: string;
+  readonly object: string;
+  readonly condition?: SHACLPropertyShape;
 }
 
-export interface SHACLRule {
+export interface SHACLSparqlRule {
+  readonly type: "SparqlRule";
+  readonly targetClass: string;
+  readonly constructPatterns: readonly TriplePattern[];
+  readonly wherePatterns: readonly TriplePattern[];
+}
+
+export interface SHACLLegacyRule {
   readonly targetClass: string;
   readonly propertyIri: string;
   readonly fillerClassIri?: string;
@@ -238,6 +342,15 @@ export interface SHACLRule {
   readonly derivedClassIri?: string;
   readonly derivedPropertyIri?: string;
   readonly derivedValueIri?: string;
+}
+
+export type SHACLRule = SHACLTripleRule | SHACLSparqlRule | SHACLLegacyRule;
+
+export interface SHACLNodeShape {
+  readonly targetClass: string;
+  readonly propertyShapes: readonly SHACLPropertyShape[];
+  readonly closed?: boolean;
+  readonly rules?: readonly SHACLRule[];
 }
 
 export interface SHACLViolation {
@@ -274,7 +387,11 @@ export type OWL2Axiom =
   | OWL2IrreflexiveObjectProperty
   | OWL2DisjointObjectProperties
   | OWL2NominalClass
-  | OWL2SelfRestriction;
+  | OWL2DifferentIndividuals
+  | OWL2SelfRestriction
+  | OWL2SubPropertyChainOf
+  | OWL2LinearConstraint
+  | OWL2SwrlRule;
 
 export interface OWL2AxiomDelta {
   readonly retractions: readonly OWL2Axiom[];
@@ -871,6 +988,12 @@ export class WasmOntologyReasoner implements IOWLReasoner {
   private irreflexiveProperties = new Set<string>();
   private disjointPropertyPairs = new Set<string>();
   private rawDataPropertyAssertions: OWL2DataPropertyAssertion[] = [];
+  private subPropertyChains: OWL2SubPropertyChainOf[] = [];
+  private qualifiedCardinalities: OWL2QualifiedCardinality[] = [];
+  private linearConstraints: OWL2LinearConstraint[] = [];
+  private objectOneOfMap = new Map<string, Set<string>>();
+  private differentIndividualPairs = new Set<string>();
+  private swrlRules: OWL2SwrlRule[] = [];
 
   private _classified = false;
   private _wasmInstance: WasmOntologyInstance | null = null;
@@ -1016,7 +1139,137 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       }
     }
 
+    // Property chains saturation: R1 o R2 o ... o Rn SubPropertyOf S
+    if (this.subPropertyChains.length > 0) {
+      let chainChanged = true;
+      let chainPasses = 0;
+      while (chainChanged && chainPasses < 50) {
+        chainChanged = false;
+        chainPasses++;
+
+        for (const chainAxiom of this.subPropertyChains) {
+          const chain = chainAxiom.subPropertyChain;
+          if (chain.length < 2) continue;
+
+          let currPairs: { subjectIri: string; objectIri: string }[] = (
+            this.objectPropertyAssertions.get(chain[0]!) ?? []
+          ).map((e) => ({ ...e }));
+
+          for (let step = 1; step < chain.length; step++) {
+            const nextEdges = this.objectPropertyAssertions.get(chain[step]!) ?? [];
+            const nextPairs: { subjectIri: string; objectIri: string }[] = [];
+
+            for (const p of currPairs) {
+              for (const e of nextEdges) {
+                if (p.objectIri === e.subjectIri) {
+                  nextPairs.push({ subjectIri: p.subjectIri, objectIri: e.objectIri });
+                }
+              }
+            }
+            currPairs = nextPairs;
+            if (currPairs.length === 0) break;
+          }
+
+          const targetEdges = this.objectPropertyAssertions.get(chainAxiom.superPropertyIri) ?? [];
+          for (const pair of currPairs) {
+            if (!targetEdges.some((te) => te.subjectIri === pair.subjectIri && te.objectIri === pair.objectIri)) {
+              targetEdges.push({ subjectIri: pair.subjectIri, objectIri: pair.objectIri });
+              chainChanged = true;
+            }
+          }
+          this.objectPropertyAssertions.set(chainAxiom.superPropertyIri, targetEdges);
+        }
+      }
+    }
+
     // Propagate individual types
+    for (const [, types] of this.individualTypes) {
+      const inferredTypes = new Set(types);
+      for (const typeIri of types) {
+        const node = this.classes.get(typeIri);
+        if (node?.allSuperClasses) {
+          for (const superIri of node.allSuperClasses) {
+            inferredTypes.add(superIri);
+          }
+        }
+      }
+      for (const t of inferredTypes) types.add(t);
+    }
+
+    // ObjectOneOf / Nominal reasoning
+    if (this.objectOneOfMap.size > 0) {
+      let nomChanged = true;
+      let nomPasses = 0;
+      while (nomChanged && nomPasses < 10) {
+        nomChanged = false;
+        nomPasses++;
+
+        for (const [classIri, nominals] of this.objectOneOfMap) {
+          const nominalArr = Array.from(nominals);
+          // 1. Singleton nominal: C = {a} => any instance x of C is identical to a
+          if (nominalArr.length === 1) {
+            const singletonNominal = nominalArr[0]!;
+            for (const [ind, types] of this.individualTypes) {
+              if (types.has(classIri) && ind !== singletonNominal) {
+                const group = this.sameIndividualGroups.get(ind);
+                if (!group || !group.has(singletonNominal)) {
+                  this.unifyIndividuals(ind, singletonNominal);
+                  nomChanged = true;
+                }
+              }
+            }
+          }
+
+          // 2. Unit resolution / Negative elimination:
+          // If ind has type C, and ind is DifferentFrom k-1 nominals, ind must be the remaining one!
+          if (nominalArr.length > 1) {
+            for (const [ind, types] of this.individualTypes) {
+              if (!types.has(classIri)) continue;
+              if (nominals.has(ind)) continue;
+
+              const differentNominals: string[] = [];
+              for (const nom of nominalArr) {
+                if (this.isDifferent(ind, nom)) {
+                  differentNominals.push(nom);
+                }
+              }
+
+              if (differentNominals.length === nominalArr.length - 1) {
+                const remaining = nominalArr.find((n) => !differentNominals.includes(n))!;
+                const group = this.sameIndividualGroups.get(ind);
+                if (!group || !group.has(remaining)) {
+                  this.unifyIndividuals(ind, remaining);
+                  nomChanged = true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // SWRL rule saturation
+    if (this.swrlRules.length > 0) {
+      let swrlChanged = true;
+      let swrlPasses = 0;
+      while (swrlChanged && swrlPasses < 25) {
+        swrlChanged = false;
+        swrlPasses++;
+
+        for (const rule of this.swrlRules) {
+          const bindings = this.evaluateSwrlBody(rule.body);
+          for (const env of bindings) {
+            for (const headAtom of rule.head) {
+              if (this.applySwrlHeadAtom(headAtom, env)) {
+                swrlChanged = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Final propagation of individual types
     for (const [, types] of this.individualTypes) {
       const inferredTypes = new Set(types);
       for (const typeIri of types) {
@@ -1048,6 +1301,390 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     for (const t of types2) types1.add(t);
     this.individualTypes.set(ind1, types1);
     this.individualTypes.set(ind2, types2);
+  }
+
+  private isDifferent(ind1: string, ind2: string): boolean {
+    if (ind1 === ind2) return false;
+    let rep1 = ind1;
+    const g1 = this.sameIndividualGroups.get(ind1);
+    if (g1 && g1.size > 0) rep1 = Array.from(g1).sort()[0]!;
+
+    let rep2 = ind2;
+    const g2 = this.sameIndividualGroups.get(ind2);
+    if (g2 && g2.size > 0) rep2 = Array.from(g2).sort()[0]!;
+
+    if (rep1 === rep2) return false;
+    const key = rep1 < rep2 ? `${rep1}|${rep2}` : `${rep2}|${rep1}`;
+    if (this.differentIndividualPairs.has(key)) return true;
+
+    const keyDirect = ind1 < ind2 ? `${ind1}|${ind2}` : `${ind2}|${ind1}`;
+    return this.differentIndividualPairs.has(keyDirect);
+  }
+
+  private evaluateSwrlBody(body: readonly SWRLAtom[]): Record<string, string>[] {
+    let currentEnvs: Record<string, string>[] = [{}];
+
+    for (const atom of body) {
+      const nextEnvs: Record<string, string>[] = [];
+
+      for (const env of currentEnvs) {
+        switch (atom.type) {
+          case "ClassAtom": {
+            const arg = atom.argument;
+            if (arg.startsWith("?")) {
+              if (env[arg] !== undefined) {
+                const ind = env[arg]!;
+                if (this.individualTypes.get(ind)?.has(atom.classIri)) {
+                  nextEnvs.push({ ...env });
+                }
+              } else {
+                for (const [ind, types] of this.individualTypes) {
+                  if (types.has(atom.classIri)) {
+                    nextEnvs.push({ ...env, [arg]: ind });
+                  }
+                }
+              }
+            } else {
+              if (this.individualTypes.get(arg)?.has(atom.classIri)) {
+                nextEnvs.push({ ...env });
+              }
+            }
+            break;
+          }
+
+          case "IndividualPropertyAtom": {
+            const edges = this.objectPropertyAssertions.get(atom.propertyIri) ?? [];
+            const sArg = atom.argument1;
+            const oArg = atom.argument2;
+
+            for (const edge of edges) {
+              const newEnv = { ...env };
+              let match = true;
+
+              if (sArg.startsWith("?")) {
+                if (env[sArg] !== undefined) {
+                  if (env[sArg] !== edge.subjectIri) match = false;
+                } else {
+                  newEnv[sArg] = edge.subjectIri;
+                }
+              } else if (sArg !== edge.subjectIri) {
+                match = false;
+              }
+
+              if (!match) continue;
+
+              if (oArg.startsWith("?")) {
+                if (env[oArg] !== undefined) {
+                  if (env[oArg] !== edge.objectIri) match = false;
+                } else {
+                  newEnv[oArg] = edge.objectIri;
+                }
+              } else if (oArg !== edge.objectIri) {
+                match = false;
+              }
+
+              if (match) nextEnvs.push(newEnv);
+            }
+            break;
+          }
+
+          case "DataPropertyAtom": {
+            const asserts = this.dataPropertyAssertions.get(atom.propertyIri) ?? [];
+            const sArg = atom.argument1;
+            const valArg = String(atom.argument2);
+
+            for (const a of asserts) {
+              const newEnv = { ...env };
+              let match = true;
+
+              if (sArg.startsWith("?")) {
+                if (env[sArg] !== undefined) {
+                  if (env[sArg] !== a.subjectIri) match = false;
+                } else {
+                  newEnv[sArg] = a.subjectIri;
+                }
+              } else if (sArg !== a.subjectIri) {
+                match = false;
+              }
+
+              if (!match) continue;
+
+              if (valArg.startsWith("?")) {
+                if (env[valArg] !== undefined) {
+                  if (env[valArg] !== a.value) match = false;
+                } else {
+                  newEnv[valArg] = a.value;
+                }
+              } else if (valArg !== a.value) {
+                match = false;
+              }
+
+              if (match) nextEnvs.push(newEnv);
+            }
+            break;
+          }
+
+          case "SameIndividualAtom": {
+            const a1 = atom.argument1.startsWith("?") ? env[atom.argument1] : atom.argument1;
+            const a2 = atom.argument2.startsWith("?") ? env[atom.argument2] : atom.argument2;
+            if (a1 && a2) {
+              const rep1 = this.sameIndividualGroups.get(a1)
+                ? Array.from(this.sameIndividualGroups.get(a1)!).sort()[0]
+                : a1;
+              const rep2 = this.sameIndividualGroups.get(a2)
+                ? Array.from(this.sameIndividualGroups.get(a2)!).sort()[0]
+                : a2;
+              if (rep1 === rep2) nextEnvs.push({ ...env });
+            }
+            break;
+          }
+
+          case "DifferentIndividualsAtom": {
+            const a1 = atom.argument1.startsWith("?") ? env[atom.argument1] : atom.argument1;
+            const a2 = atom.argument2.startsWith("?") ? env[atom.argument2] : atom.argument2;
+            if (a1 && a2 && this.isDifferent(a1, a2)) {
+              nextEnvs.push({ ...env });
+            }
+            break;
+          }
+
+          case "BuiltInAtom": {
+            const evaluated = this.evaluateSwrlBuiltIn(atom, env);
+            if (evaluated) nextEnvs.push(evaluated);
+            break;
+          }
+        }
+      }
+
+      currentEnvs = nextEnvs;
+      if (currentEnvs.length === 0) break;
+    }
+
+    return currentEnvs;
+  }
+
+  private evaluateSwrlBuiltIn(atom: SWRLBuiltInAtom, env: Record<string, string>): Record<string, string> | null {
+    const resolveVal = (arg: string | number): number => {
+      const str = String(arg);
+      if (str.startsWith("?")) {
+        const bound = env[str];
+        return bound !== undefined ? Number(bound) : NaN;
+      }
+      return Number(arg);
+    };
+
+    const resolveStr = (arg: string | number): string => {
+      const str = String(arg);
+      if (str.startsWith("?")) {
+        return env[str] ?? "";
+      }
+      return String(arg);
+    };
+
+    const args = atom.arguments;
+    switch (atom.builtInIri) {
+      case "swrlb:add": {
+        if (args.length !== 3) return null;
+        const resArg = String(args[0]);
+        const a = resolveVal(args[1]!);
+        const b = resolveVal(args[2]!);
+        if (isNaN(a) || isNaN(b)) return null;
+        const sum = a + b;
+        if (resArg.startsWith("?")) {
+          if (env[resArg] !== undefined) {
+            return Number(env[resArg]) === sum ? { ...env } : null;
+          }
+          return { ...env, [resArg]: String(sum) };
+        }
+        return Number(resArg) === sum ? { ...env } : null;
+      }
+
+      case "swrlb:subtract": {
+        if (args.length !== 3) return null;
+        const resArg = String(args[0]);
+        const a = resolveVal(args[1]!);
+        const b = resolveVal(args[2]!);
+        if (isNaN(a) || isNaN(b)) return null;
+        const diff = a - b;
+        if (resArg.startsWith("?")) {
+          if (env[resArg] !== undefined) {
+            return Number(env[resArg]) === diff ? { ...env } : null;
+          }
+          return { ...env, [resArg]: String(diff) };
+        }
+        return Number(resArg) === diff ? { ...env } : null;
+      }
+
+      case "swrlb:multiply": {
+        if (args.length !== 3) return null;
+        const resArg = String(args[0]);
+        const a = resolveVal(args[1]!);
+        const b = resolveVal(args[2]!);
+        if (isNaN(a) || isNaN(b)) return null;
+        const prod = a * b;
+        if (resArg.startsWith("?")) {
+          if (env[resArg] !== undefined) {
+            return Number(env[resArg]) === prod ? { ...env } : null;
+          }
+          return { ...env, [resArg]: String(prod) };
+        }
+        return Number(resArg) === prod ? { ...env } : null;
+      }
+
+      case "swrlb:divide": {
+        if (args.length !== 3) return null;
+        const resArg = String(args[0]);
+        const a = resolveVal(args[1]!);
+        const b = resolveVal(args[2]!);
+        if (isNaN(a) || isNaN(b) || b === 0) return null;
+        const div = a / b;
+        if (resArg.startsWith("?")) {
+          if (env[resArg] !== undefined) {
+            return Number(env[resArg]) === div ? { ...env } : null;
+          }
+          return { ...env, [resArg]: String(div) };
+        }
+        return Number(resArg) === div ? { ...env } : null;
+      }
+
+      case "swrlb:equal": {
+        if (args.length !== 2) return null;
+        const v1 = resolveStr(args[0]!);
+        const v2 = resolveStr(args[1]!);
+        return v1 === v2 ? { ...env } : null;
+      }
+
+      case "swrlb:notEqual": {
+        if (args.length !== 2) return null;
+        const v1 = resolveStr(args[0]!);
+        const v2 = resolveStr(args[1]!);
+        return v1 !== v2 ? { ...env } : null;
+      }
+
+      case "swrlb:lessThan": {
+        if (args.length !== 2) return null;
+        const a = resolveVal(args[0]!);
+        const b = resolveVal(args[1]!);
+        return !isNaN(a) && !isNaN(b) && a < b ? { ...env } : null;
+      }
+
+      case "swrlb:lessThanOrEqual": {
+        if (args.length !== 2) return null;
+        const a = resolveVal(args[0]!);
+        const b = resolveVal(args[1]!);
+        return !isNaN(a) && !isNaN(b) && a <= b ? { ...env } : null;
+      }
+
+      case "swrlb:greaterThan": {
+        if (args.length !== 2) return null;
+        const a = resolveVal(args[0]!);
+        const b = resolveVal(args[1]!);
+        return !isNaN(a) && !isNaN(b) && a > b ? { ...env } : null;
+      }
+
+      case "swrlb:greaterThanOrEqual": {
+        if (args.length !== 2) return null;
+        const a = resolveVal(args[0]!);
+        const b = resolveVal(args[1]!);
+        return !isNaN(a) && !isNaN(b) && a >= b ? { ...env } : null;
+      }
+
+      case "swrlb:stringConcat": {
+        if (args.length < 2) return null;
+        const resArg = String(args[0]);
+        const parts = args.slice(1).map(resolveStr);
+        const concatenated = parts.join("");
+        if (resArg.startsWith("?")) {
+          if (env[resArg] !== undefined) {
+            return env[resArg] === concatenated ? { ...env } : null;
+          }
+          return { ...env, [resArg]: concatenated };
+        }
+        return resArg === concatenated ? { ...env } : null;
+      }
+
+      default:
+        return { ...env };
+    }
+  }
+
+  private applySwrlHeadAtom(headAtom: SWRLAtom, env: Record<string, string>): boolean {
+    const resolveInd = (arg: string): string => {
+      if (arg.startsWith("?")) return env[arg] ?? arg;
+      return arg;
+    };
+
+    switch (headAtom.type) {
+      case "ClassAtom": {
+        const ind = resolveInd(headAtom.argument);
+        const types = this.individualTypes.get(ind) ?? new Set();
+        if (!types.has(headAtom.classIri)) {
+          types.add(headAtom.classIri);
+          this.individualTypes.set(ind, types);
+          this._axioms.push({
+            type: "ClassAssertion",
+            individualIri: ind,
+            classIri: headAtom.classIri,
+            sourceLang: "swrl",
+          });
+          return true;
+        }
+        return false;
+      }
+
+      case "IndividualPropertyAtom": {
+        const s = resolveInd(headAtom.argument1);
+        const o = resolveInd(headAtom.argument2);
+        const edges = this.objectPropertyAssertions.get(headAtom.propertyIri) ?? [];
+        if (!edges.some((e) => e.subjectIri === s && e.objectIri === o)) {
+          edges.push({ subjectIri: s, objectIri: o });
+          this.objectPropertyAssertions.set(headAtom.propertyIri, edges);
+          this._axioms.push({
+            type: "ObjectPropertyAssertion",
+            propertyIri: headAtom.propertyIri,
+            subjectIri: s,
+            objectIri: o,
+            sourceLang: "swrl",
+          });
+          return true;
+        }
+        return false;
+      }
+
+      case "DataPropertyAtom": {
+        const s = resolveInd(headAtom.argument1);
+        const rawVal = headAtom.argument2.toString();
+        const val = rawVal.startsWith("?") ? (env[rawVal] ?? rawVal) : rawVal;
+        const asserts = this.dataPropertyAssertions.get(headAtom.propertyIri) ?? [];
+        if (!asserts.some((a) => a.subjectIri === s && a.value === val)) {
+          asserts.push({ subjectIri: s, value: val });
+          this.dataPropertyAssertions.set(headAtom.propertyIri, asserts);
+          this._axioms.push({
+            type: "DataPropertyAssertion",
+            propertyIri: headAtom.propertyIri,
+            subjectIri: s,
+            value: val,
+            sourceLang: "swrl",
+          });
+          return true;
+        }
+        return false;
+      }
+
+      case "SameIndividualAtom": {
+        const a1 = resolveInd(headAtom.argument1);
+        const a2 = resolveInd(headAtom.argument2);
+        const g = this.sameIndividualGroups.get(a1);
+        if (!g || !g.has(a2)) {
+          this.unifyIndividuals(a1, a2);
+          return true;
+        }
+        return false;
+      }
+
+      default:
+        return false;
+    }
   }
 
   dispose(): void {
@@ -1440,24 +2077,111 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       return { variables, bindings: [], executionTimeMs: performance.now() - start };
     }
 
+    // 1. Gather all asserted + inferred facts
     const allFacts: { s: string; p: string; o: string }[] = [];
+    const byPred = new Map<string, { s: string; o: string }[]>();
+    const bySubjPred = new Map<string, string[]>();
+
+    const addFact = (s: string, p: string, o: string) => {
+      allFacts.push({ s, p, o });
+      let pList = byPred.get(p);
+      if (!pList) {
+        pList = [];
+        byPred.set(p, pList);
+      }
+      pList.push({ s, o });
+
+      const spKey = `${s}|${p}`;
+      let spList = bySubjPred.get(spKey);
+      if (!spList) {
+        spList = [];
+        bySubjPred.set(spKey, spList);
+      }
+      spList.push(o);
+    };
+
+    // Object property assertions (inferred + asserted)
+    for (const [p, edges] of this.objectPropertyAssertions) {
+      for (const e of edges) addFact(e.subjectIri, p, e.objectIri);
+    }
+
+    // Data property assertions (inferred + asserted)
+    for (const [p, asserts] of this.dataPropertyAssertions) {
+      for (const a of asserts) addFact(a.subjectIri, p, a.value);
+    }
+
+    // Class assertions (inferred + asserted)
+    for (const [ind, types] of this.individualTypes) {
+      for (const t of types) addFact(ind, "rdf:type", t);
+    }
+
+    // SubClassOf axioms
     for (const ax of this._axioms) {
-      if (ax.type === "ObjectPropertyAssertion") {
-        allFacts.push({ s: ax.subjectIri, p: ax.propertyIri, o: ax.objectIri });
-      } else if (ax.type === "SubClassOf") {
-        allFacts.push({ s: ax.subClassIri, p: "rdfs:subClassOf", o: ax.superClassIri });
-      } else if (ax.type === "ClassAssertion") {
-        allFacts.push({ s: ax.individualIri, p: "rdf:type", o: ax.classIri });
+      if (ax.type === "SubClassOf") {
+        addFact(ax.subClassIri, "rdfs:subClassOf", ax.superClassIri);
       }
     }
 
+    // 2. Selectivity-guided pattern reordering
+    // Score patterns based on bound variables and constants
+    const remainingPatterns = [...query.patterns];
+    const orderedPatterns: TriplePattern[] = [];
+    const boundVars = new Set<string>();
+
+    while (remainingPatterns.length > 0) {
+      let bestIdx = 0;
+      let bestScore = -1;
+
+      for (let i = 0; i < remainingPatterns.length; i++) {
+        const pat = remainingPatterns[i]!;
+        let score = 0;
+        if (!pat.subject.startsWith("?") || boundVars.has(pat.subject)) score += 3;
+        if (!pat.predicate.startsWith("?") || boundVars.has(pat.predicate)) score += 5;
+        if (!pat.object.startsWith("?") || boundVars.has(pat.object)) score += 3;
+
+        // Bias towards smaller predicates
+        if (!pat.predicate.startsWith("?")) {
+          const predCount = byPred.get(pat.predicate)?.length ?? 0;
+          score += 1000 / (predCount + 1);
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+
+      const selected = remainingPatterns.splice(bestIdx, 1)[0]!;
+      orderedPatterns.push(selected);
+      if (selected.subject.startsWith("?")) boundVars.add(selected.subject);
+      if (selected.predicate.startsWith("?")) boundVars.add(selected.predicate);
+      if (selected.object.startsWith("?")) boundVars.add(selected.object);
+    }
+
+    // 3. Index-accelerated join execution
     let currentBindings: Record<string, string>[] = [{}];
 
-    for (const pat of query.patterns) {
+    for (const pat of orderedPatterns) {
       const nextBindings: Record<string, string>[] = [];
 
       for (const env of currentBindings) {
-        for (const fact of allFacts) {
+        const pVal = pat.predicate.startsWith("?") ? env[pat.predicate] : pat.predicate;
+        const sVal = pat.subject.startsWith("?") ? env[pat.subject] : pat.subject;
+
+        let candidateFacts: { s: string; p: string; o: string }[];
+        if (pVal && sVal) {
+          const objs = bySubjPred.get(`${sVal}|${pVal}`);
+          if (!objs || objs.length === 0) continue;
+          candidateFacts = objs.map((o) => ({ s: sVal, p: pVal, o }));
+        } else if (pVal) {
+          const edges = byPred.get(pVal);
+          if (!edges || edges.length === 0) continue;
+          candidateFacts = edges.map((e) => ({ s: e.s, p: pVal, o: e.o }));
+        } else {
+          candidateFacts = allFacts;
+        }
+
+        for (const fact of candidateFacts) {
           let match = true;
           const newEnv = { ...env };
 
@@ -1502,6 +2226,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       }
 
       currentBindings = nextBindings;
+      if (currentBindings.length === 0) break;
     }
 
     const uniqueMap = new Map<string, Record<string, string>>();
@@ -1720,8 +2445,16 @@ export class WasmOntologyReasoner implements IOWLReasoner {
         break;
       }
 
-      case "NominalClass": {
+      case "NominalClass":
+      case "ObjectOneOf": {
+        this.ensureClass(axiom.classIri);
+        let nomSet = this.objectOneOfMap.get(axiom.classIri);
+        if (!nomSet) {
+          nomSet = new Set<string>();
+          this.objectOneOfMap.set(axiom.classIri, nomSet);
+        }
         for (const ind of axiom.individualIris) {
+          nomSet.add(ind);
           const types = this.individualTypes.get(ind) ?? new Set();
           types.add(axiom.classIri);
           this.individualTypes.set(ind, types);
@@ -1729,8 +2462,49 @@ export class WasmOntologyReasoner implements IOWLReasoner {
         break;
       }
 
-      case "QualifiedCardinality":
+      case "DifferentIndividuals": {
+        for (let i = 0; i < axiom.individualIris.length; i++) {
+          for (let j = i + 1; j < axiom.individualIris.length; j++) {
+            const a = axiom.individualIris[i]!;
+            const b = axiom.individualIris[j]!;
+            const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+            this.differentIndividualPairs.add(key);
+          }
+        }
         break;
+      }
+
+      case "SwrlRule": {
+        this.swrlRules.push(axiom);
+        break;
+      }
+
+      case "QualifiedCardinality": {
+        this.qualifiedCardinalities.push(axiom);
+        this.ensureClass(axiom.classIri);
+        this.objectProperties.add(axiom.propertyIri);
+        if (axiom.fillerClassIri) {
+          this.ensureClass(axiom.fillerClassIri);
+        }
+        break;
+      }
+
+      case "SubPropertyChainOf": {
+        this.subPropertyChains.push(axiom);
+        this.objectProperties.add(axiom.superPropertyIri);
+        for (const p of axiom.subPropertyChain) {
+          this.objectProperties.add(p);
+        }
+        break;
+      }
+
+      case "LinearConstraint": {
+        this.linearConstraints.push(axiom);
+        for (const t of axiom.terms) {
+          this.dataProperties.add(t.propertyIri);
+        }
+        break;
+      }
 
       case "AsymmetricObjectProperty": {
         this.objectProperties.add(axiom.propertyIri);
@@ -1856,6 +2630,48 @@ export class WasmOntologyReasoner implements IOWLReasoner {
           const aIdx = assertions.findIndex((a) => a.subjectIri === axiom.subjectIri && a.value === axiom.value);
           if (aIdx !== -1) assertions.splice(aIdx, 1);
         }
+        break;
+      }
+
+      case "SubPropertyChainOf": {
+        const idx = this.subPropertyChains.findIndex((a) => axiomEqual(a, axiom));
+        if (idx !== -1) this.subPropertyChains.splice(idx, 1);
+        break;
+      }
+
+      case "QualifiedCardinality": {
+        const idx = this.qualifiedCardinalities.findIndex((a) => axiomEqual(a, axiom));
+        if (idx !== -1) this.qualifiedCardinalities.splice(idx, 1);
+        break;
+      }
+
+      case "LinearConstraint": {
+        const idx = this.linearConstraints.findIndex((a) => axiomEqual(a, axiom));
+        if (idx !== -1) this.linearConstraints.splice(idx, 1);
+        break;
+      }
+
+      case "NominalClass":
+      case "ObjectOneOf": {
+        this.objectOneOfMap.delete(axiom.classIri);
+        break;
+      }
+
+      case "DifferentIndividuals": {
+        for (let i = 0; i < axiom.individualIris.length; i++) {
+          for (let j = i + 1; j < axiom.individualIris.length; j++) {
+            const a = axiom.individualIris[i]!;
+            const b = axiom.individualIris[j]!;
+            const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+            this.differentIndividualPairs.delete(key);
+          }
+        }
+        break;
+      }
+
+      case "SwrlRule": {
+        const idx = this.swrlRules.findIndex((r) => axiomEqual(r, axiom));
+        if (idx !== -1) this.swrlRules.splice(idx, 1);
         break;
       }
 
@@ -2095,6 +2911,180 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       if (bounds.min > bounds.max) {
         for (const ax of bounds.axioms) {
           conflicts.push(ax);
+        }
+      }
+    }
+
+    // Qualified cardinality restrictions
+    for (const qc of this.qualifiedCardinalities) {
+      for (const [indIri, types] of this.individualTypes) {
+        if (!types.has(qc.classIri)) continue;
+
+        const edges = this.objectPropertyAssertions.get(qc.propertyIri) ?? [];
+        const rawFillers = edges.filter((e) => e.subjectIri === indIri).map((e) => e.objectIri);
+
+        const matchingFillers = qc.fillerClassIri
+          ? rawFillers.filter((fillerIri) => this.individualTypes.get(fillerIri)?.has(qc.fillerClassIri!))
+          : rawFillers;
+
+        const distinctFillers = new Set<string>();
+        for (const filler of matchingFillers) {
+          let rep = filler;
+          const group = this.sameIndividualGroups.get(filler);
+          if (group && group.size > 0) {
+            rep = Array.from(group).sort()[0]!;
+          }
+          distinctFillers.add(rep);
+        }
+
+        const count = distinctFillers.size;
+
+        if (qc.cardinalityType === "max" || qc.cardinalityType === "exact") {
+          if (count > qc.count) {
+            conflicts.push({
+              type: "QualifiedCardinality",
+              classIri: qc.classIri,
+              propertyIri: qc.propertyIri,
+              fillerClassIri: qc.fillerClassIri,
+              cardinalityType: qc.cardinalityType,
+              count: qc.count,
+              sourceLang: "inferred",
+            });
+            for (const f of distinctFillers) {
+              conflicts.push({
+                type: "ObjectPropertyAssertion",
+                propertyIri: qc.propertyIri,
+                subjectIri: indIri,
+                objectIri: f,
+                sourceLang: "inferred",
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Multivariate Linear Constraints (D reasoning)
+    for (const lc of this.linearConstraints) {
+      const targetIndividuals: string[] = [];
+      if (this.individualTypes.has(lc.subjectIri)) {
+        targetIndividuals.push(lc.subjectIri);
+      } else if (this.classes.has(lc.subjectIri)) {
+        for (const [ind, types] of this.individualTypes) {
+          if (types.has(lc.subjectIri)) targetIndividuals.push(ind);
+        }
+      } else {
+        targetIndividuals.push(lc.subjectIri);
+      }
+
+      for (const ind of targetIndividuals) {
+        let exprMin = 0;
+        let exprMax = 0;
+        let allTermsResolved = true;
+        const contributingAxioms: OWL2Axiom[] = [];
+
+        for (const term of lc.terms) {
+          const key = `${ind}|${term.propertyIri}`;
+          const bounds = numericIntervals.get(key);
+          if (!bounds || bounds.min === -Infinity || bounds.max === Infinity) {
+            const asserts =
+              this.dataPropertyAssertions.get(term.propertyIri)?.filter((a) => a.subjectIri === ind) ?? [];
+            if (asserts.length > 0) {
+              const numVal = Number(asserts[0]!.value);
+              if (!isNaN(numVal)) {
+                exprMin += term.coefficient * numVal;
+                exprMax += term.coefficient * numVal;
+                continue;
+              }
+            }
+            allTermsResolved = false;
+            break;
+          }
+
+          for (const ax of bounds.axioms) contributingAxioms.push(ax);
+
+          if (term.coefficient >= 0) {
+            exprMin += term.coefficient * bounds.min;
+            exprMax += term.coefficient * bounds.max;
+          } else {
+            exprMin += term.coefficient * bounds.max;
+            exprMax += term.coefficient * bounds.min;
+          }
+        }
+
+        if (allTermsResolved && lc.terms.length > 0) {
+          const eps = 1e-9;
+          let clash = false;
+          switch (lc.op) {
+            case "<=":
+              if (exprMin > lc.bound + eps) clash = true;
+              break;
+            case "<":
+              if (exprMin >= lc.bound - eps) clash = true;
+              break;
+            case ">=":
+              if (exprMax < lc.bound - eps) clash = true;
+              break;
+            case ">":
+              if (exprMax <= lc.bound + eps) clash = true;
+              break;
+            case "=":
+              if (lc.bound < exprMin - eps || lc.bound > exprMax + eps) clash = true;
+              break;
+          }
+
+          if (clash) {
+            conflicts.push(lc);
+            for (const ax of contributingAxioms) conflicts.push(ax);
+          }
+        }
+      }
+    }
+
+    // DifferentIndividuals vs SameIndividual conflicts
+    for (const pair of this.differentIndividualPairs) {
+      const [a, b] = pair.split("|");
+      if (a && b) {
+        const ga = this.sameIndividualGroups.get(a);
+        if (ga && ga.has(b)) {
+          conflicts.push({
+            type: "DifferentIndividuals",
+            individualIris: [a, b],
+            sourceLang: "inferred",
+          });
+          conflicts.push({
+            type: "SameIndividual",
+            individualIris: [a, b],
+            sourceLang: "inferred",
+          });
+        }
+      }
+    }
+
+    // ObjectOneOf conflicts: individual has type C, but is DifferentFrom ALL nominals of C
+    for (const [classIri, nominals] of this.objectOneOfMap) {
+      const nominalArr = Array.from(nominals);
+      for (const [ind, types] of this.individualTypes) {
+        if (!types.has(classIri)) continue;
+
+        let diffCount = 0;
+        for (const nom of nominalArr) {
+          if (this.isDifferent(ind, nom)) diffCount++;
+        }
+
+        if (diffCount === nominalArr.length) {
+          conflicts.push({
+            type: "ObjectOneOf",
+            classIri,
+            individualIris: nominalArr,
+            sourceLang: "inferred",
+          });
+          conflicts.push({
+            type: "ClassAssertion",
+            classIri,
+            individualIri: ind,
+            sourceLang: "inferred",
+          });
         }
       }
     }
@@ -2451,6 +3441,45 @@ export class WasmOntologyReasoner implements IOWLReasoner {
         }
       }
 
+      // Query / SPARQL constraint
+      if (ps.sparql) {
+        const query = ps.sparql.select ?? ps.sparql.ask;
+        if (query) {
+          const boundPatterns = query.patterns.map((p) => ({
+            subject: p.subject === "?this" ? focusNode : p.subject,
+            predicate: p.predicate,
+            object: p.object === "?this" ? focusNode : p.object,
+          }));
+          const queryRes = this.queryBgp({ patterns: boundPatterns });
+          const hasMatches = queryRes.bindings.length > 0;
+          const expectEmpty = ps.sparql.expectEmpty ?? false;
+
+          if (expectEmpty && hasMatches) {
+            valid = false;
+            if (recordViolations) {
+              nodeViolations.push({
+                focusNode,
+                resultPath: ps.path,
+                message: ps.sparql.message ?? `SPARQL graph query matched forbidden pattern on ${focusNode}.`,
+                constraintComponent: "sh:SPARQLConstraintComponent",
+                severity: "Violation",
+              });
+            }
+          } else if (!expectEmpty && !hasMatches) {
+            valid = false;
+            if (recordViolations) {
+              nodeViolations.push({
+                focusNode,
+                resultPath: ps.path,
+                message: ps.sparql.message ?? `SPARQL graph query failed to match required pattern on ${focusNode}.`,
+                constraintComponent: "sh:SPARQLConstraintComponent",
+                severity: "Violation",
+              });
+            }
+          }
+        }
+      }
+
       return valid;
     };
 
@@ -2512,6 +3541,170 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return violations;
   }
 
+  executeShaclRules(
+    shapes: readonly SHACLNodeShape[],
+    maxPasses = 10,
+  ): { materializedAxioms: OWL2Axiom[]; passes: number } {
+    const materializedAxioms: OWL2Axiom[] = [];
+    let passes = 0;
+    let changed = true;
+
+    while (changed && passes < maxPasses) {
+      changed = false;
+      passes++;
+
+      for (const shape of shapes) {
+        if (!shape.rules || shape.rules.length === 0) continue;
+
+        const targetClasses = new Set<string>([shape.targetClass]);
+        const node = this.classes.get(shape.targetClass);
+        if (node?.allSubClasses) {
+          for (const sub of node.allSubClasses) targetClasses.add(sub);
+        }
+
+        const focusNodes: string[] = [];
+        for (const [indIri, types] of this.individualTypes) {
+          if ([...targetClasses].some((tc) => types.has(tc))) {
+            focusNodes.push(indIri);
+          }
+        }
+
+        for (const focusNode of focusNodes) {
+          for (const rule of shape.rules) {
+            if ("type" in rule && rule.type === "SparqlRule") {
+              const boundWhere = rule.wherePatterns.map((p) => ({
+                subject: p.subject === "?this" ? focusNode : p.subject,
+                predicate: p.predicate,
+                object: p.object === "?this" ? focusNode : p.object,
+              }));
+              const qRes = this.queryBgp({ patterns: boundWhere });
+              for (const b of qRes.bindings) {
+                for (const cp of rule.constructPatterns) {
+                  const s = cp.subject === "?this" ? focusNode : (b[cp.subject] ?? cp.subject);
+                  const p = b[cp.predicate] ?? cp.predicate;
+                  const o = cp.object === "?this" ? focusNode : (b[cp.object] ?? cp.object);
+
+                  if (p === "rdf:type") {
+                    const types = this.individualTypes.get(s) ?? new Set();
+                    if (!types.has(o)) {
+                      types.add(o);
+                      this.individualTypes.set(s, types);
+                      const ax: OWL2Axiom = {
+                        type: "ClassAssertion",
+                        individualIri: s,
+                        classIri: o,
+                        sourceLang: "inferred",
+                      };
+                      materializedAxioms.push(ax);
+                      this._axioms.push(ax);
+                      changed = true;
+                    }
+                  } else {
+                    const edges = this.objectPropertyAssertions.get(p) ?? [];
+                    if (!edges.some((e) => e.subjectIri === s && e.objectIri === o)) {
+                      edges.push({ subjectIri: s, objectIri: o });
+                      this.objectPropertyAssertions.set(p, edges);
+                      const ax: OWL2Axiom = {
+                        type: "ObjectPropertyAssertion",
+                        propertyIri: p,
+                        subjectIri: s,
+                        objectIri: o,
+                        sourceLang: "inferred",
+                      };
+                      materializedAxioms.push(ax);
+                      this._axioms.push(ax);
+                      changed = true;
+                    }
+                  }
+                }
+              }
+            } else {
+              const tr = rule as SHACLTripleRule;
+              let matchesCondition = true;
+              if (tr.condition) {
+                const values = this.getPropertyValues(focusNode, tr.condition.path);
+                const numVals = values.map(Number).filter((n) => !isNaN(n));
+                if (tr.condition.minCount !== undefined && values.length < tr.condition.minCount)
+                  matchesCondition = false;
+                if (tr.condition.maxCount !== undefined && values.length > tr.condition.maxCount)
+                  matchesCondition = false;
+                if (
+                  tr.condition.class !== undefined &&
+                  !values.some((v) => this.individualTypes.get(v)?.has(tr.condition!.class!))
+                )
+                  matchesCondition = false;
+                if (tr.condition.minInclusive !== undefined && !numVals.some((n) => n >= tr.condition!.minInclusive!))
+                  matchesCondition = false;
+                if (tr.condition.maxInclusive !== undefined && !numVals.some((n) => n <= tr.condition!.maxInclusive!))
+                  matchesCondition = false;
+              }
+
+              if (matchesCondition) {
+                const s = !tr.subject || tr.subject === "?this" || tr.subject === "sh:this" ? focusNode : tr.subject;
+                const p = tr.predicate;
+                const o = tr.object;
+
+                if (p === "rdf:type") {
+                  const types = this.individualTypes.get(s) ?? new Set();
+                  if (!types.has(o)) {
+                    types.add(o);
+                    this.individualTypes.set(s, types);
+                    const ax: OWL2Axiom = {
+                      type: "ClassAssertion",
+                      individualIri: s,
+                      classIri: o,
+                      sourceLang: "inferred",
+                    };
+                    materializedAxioms.push(ax);
+                    this._axioms.push(ax);
+                    changed = true;
+                  }
+                } else if (
+                  this.objectProperties.has(p) ||
+                  (isNaN(Number(o)) && (this.classes.has(o) || this.individualTypes.has(o)))
+                ) {
+                  const edges = this.objectPropertyAssertions.get(p) ?? [];
+                  if (!edges.some((e) => e.subjectIri === s && e.objectIri === o)) {
+                    edges.push({ subjectIri: s, objectIri: o });
+                    this.objectPropertyAssertions.set(p, edges);
+                    const ax: OWL2Axiom = {
+                      type: "ObjectPropertyAssertion",
+                      propertyIri: p,
+                      subjectIri: s,
+                      objectIri: o,
+                      sourceLang: "inferred",
+                    };
+                    materializedAxioms.push(ax);
+                    this._axioms.push(ax);
+                    changed = true;
+                  }
+                } else {
+                  const list = this.dataPropertyAssertions.get(p) ?? [];
+                  if (!list.some((a) => a.subjectIri === s && a.value === String(o))) {
+                    list.push({ subjectIri: s, value: String(o) });
+                    this.dataPropertyAssertions.set(p, list);
+                    const ax: OWL2Axiom = {
+                      type: "DataPropertyAssertion",
+                      propertyIri: p,
+                      subjectIri: s,
+                      value: String(o),
+                      sourceLang: "inferred",
+                    };
+                    materializedAxioms.push(ax);
+                    this._axioms.push(ax);
+                    changed = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return { materializedAxioms, passes };
+  }
+
   private getPropertyValues(focusNode: string, path: string): string[] {
     const res: string[] = [];
     if (path === "rdf:type") {
@@ -2534,6 +3727,134 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return res;
   }
 
+  /**
+   * Extract minimal syntactic bot-locality module M for a given seed signature.
+   * Guarantees: M |= alpha <=> O |= alpha for any axiom alpha over seedSignature.
+   */
+  extractBotLocalityModule(seedSignature: ReadonlySet<string>): OWL2Axiom[] {
+    const currentSig = new Set<string>(seedSignature);
+    const module = new Set<OWL2Axiom>();
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      for (const axiom of this._axioms) {
+        if (module.has(axiom)) continue;
+        if (!this.isAxiomBotLocal(axiom, currentSig)) {
+          module.add(axiom);
+          for (const s of this.getAxiomSignature(axiom)) {
+            currentSig.add(s);
+          }
+          changed = true;
+        }
+      }
+    }
+
+    return Array.from(module);
+  }
+
+  private isAxiomBotLocal(axiom: OWL2Axiom, sig: ReadonlySet<string>): boolean {
+    switch (axiom.type) {
+      case "ClassDeclaration":
+      case "ObjectPropertyDeclaration":
+      case "DataPropertyDeclaration":
+      case "IndividualDeclaration":
+        return sig.has(axiom.iri);
+      case "SubClassOf":
+        return !sig.has(axiom.subClassIri);
+      case "EquivalentClasses":
+        return axiom.classIris.every((c) => !sig.has(c));
+      case "DisjointClasses":
+        return axiom.classIris.filter((c) => sig.has(c)).length <= 1;
+      case "ClassAssertion":
+        return !sig.has(axiom.individualIri) && !sig.has(axiom.classIri);
+      case "ObjectPropertyAssertion":
+        return !sig.has(axiom.subjectIri) && !sig.has(axiom.objectIri);
+      case "DataPropertyAssertion":
+        return !sig.has(axiom.subjectIri);
+      case "SubPropertyChainOf":
+        return !axiom.subPropertyChain.some((p) => sig.has(p));
+      case "QualifiedCardinality":
+        return !sig.has(axiom.classIri);
+      case "LinearConstraint":
+        return !sig.has(axiom.subjectIri);
+      case "NominalClass":
+      case "ObjectOneOf":
+        return !sig.has(axiom.classIri);
+      case "DifferentIndividuals":
+        return axiom.individualIris.filter((ind) => sig.has(ind)).length <= 1;
+      case "SwrlRule":
+        return !axiom.body.some((a) => {
+          if ("classIri" in a) return sig.has(a.classIri);
+          if ("propertyIri" in a) return sig.has(a.propertyIri);
+          return false;
+        });
+      default:
+        return false;
+    }
+  }
+
+  private getAxiomSignature(axiom: OWL2Axiom): string[] {
+    const s = new Set<string>();
+    switch (axiom.type) {
+      case "ClassDeclaration":
+      case "ObjectPropertyDeclaration":
+      case "DataPropertyDeclaration":
+      case "IndividualDeclaration":
+        s.add(axiom.iri);
+        break;
+      case "SubClassOf":
+        s.add(axiom.subClassIri);
+        s.add(axiom.superClassIri);
+        break;
+      case "EquivalentClasses":
+      case "DisjointClasses":
+        for (const c of axiom.classIris) s.add(c);
+        break;
+      case "ClassAssertion":
+        s.add(axiom.individualIri);
+        s.add(axiom.classIri);
+        break;
+      case "ObjectPropertyAssertion":
+        s.add(axiom.subjectIri);
+        s.add(axiom.propertyIri);
+        s.add(axiom.objectIri);
+        break;
+      case "DataPropertyAssertion":
+        s.add(axiom.subjectIri);
+        s.add(axiom.propertyIri);
+        break;
+      case "SubPropertyChainOf":
+        s.add(axiom.superPropertyIri);
+        for (const p of axiom.subPropertyChain) s.add(p);
+        break;
+      case "QualifiedCardinality":
+        s.add(axiom.classIri);
+        s.add(axiom.propertyIri);
+        if (axiom.fillerClassIri) s.add(axiom.fillerClassIri);
+        break;
+      case "LinearConstraint":
+        s.add(axiom.subjectIri);
+        for (const t of axiom.terms) s.add(t.propertyIri);
+        break;
+      case "NominalClass":
+      case "ObjectOneOf":
+        s.add(axiom.classIri);
+        for (const ind of axiom.individualIris) s.add(ind);
+        break;
+      case "DifferentIndividuals":
+        for (const ind of axiom.individualIris) s.add(ind);
+        break;
+      case "SwrlRule":
+        for (const a of [...axiom.body, ...axiom.head]) {
+          if ("classIri" in a) s.add(a.classIri);
+          if ("propertyIri" in a) s.add(a.propertyIri);
+        }
+        break;
+    }
+    return Array.from(s);
+  }
+
   private clear(): void {
     this._axioms = [];
     this.classes.clear();
@@ -2547,6 +3868,12 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this.irreflexiveProperties.clear();
     this.disjointPropertyPairs.clear();
     this.rawDataPropertyAssertions = [];
+    this.subPropertyChains = [];
+    this.qualifiedCardinalities = [];
+    this.linearConstraints = [];
+    this.objectOneOfMap.clear();
+    this.differentIndividualPairs.clear();
+    this.swrlRules = [];
     this.sameIndividualGroups.clear();
     this.individualTypes.clear();
     this.objectPropertyAssertions.clear();
@@ -3166,6 +4493,19 @@ export function axiomKey(axiom: OWL2Axiom): string {
       return `OSVF:${axiom.propertyIri}|${axiom.fillerClassIri}`;
     case "DataSomeValuesFrom":
       return `DSVF:${axiom.propertyIri}|${axiom.dataRange}`;
+    case "SubPropertyChainOf":
+      return `SPCO:${axiom.subPropertyChain.join("o")}->${axiom.superPropertyIri}`;
+    case "QualifiedCardinality":
+      return `QC:${axiom.classIri}|${axiom.propertyIri}|${axiom.cardinalityType}|${axiom.count}|${axiom.fillerClassIri ?? ""}`;
+    case "LinearConstraint":
+      return `LC:${axiom.subjectIri}|${axiom.terms.map((t) => `${t.coefficient}*${t.propertyIri}`).join("+")}|${axiom.op}|${axiom.bound}`;
+    case "NominalClass":
+    case "ObjectOneOf":
+      return `OOC:${axiom.classIri}|${[...axiom.individualIris].sort().join(",")}`;
+    case "DifferentIndividuals":
+      return `DIFF:${[...axiom.individualIris].sort().join(",")}`;
+    case "SwrlRule":
+      return `SWRL:${axiom.ruleIri ?? ""}|${JSON.stringify(axiom.body)}->${JSON.stringify(axiom.head)}`;
     default:
       return JSON.stringify(axiom);
   }
@@ -3197,6 +4537,24 @@ export function axiomReferencesIri(axiom: OWL2Axiom, iri: string): boolean {
       return axiom.propertyIri === iri || axiom.fillerClassIri === iri;
     case "DataSomeValuesFrom":
       return axiom.propertyIri === iri;
+    case "SubPropertyChainOf":
+      return axiom.superPropertyIri === iri || axiom.subPropertyChain.includes(iri);
+    case "QualifiedCardinality":
+      return axiom.classIri === iri || axiom.propertyIri === iri || axiom.fillerClassIri === iri;
+    case "LinearConstraint":
+      return axiom.subjectIri === iri || axiom.terms.some((t) => t.propertyIri === iri);
+    case "NominalClass":
+    case "ObjectOneOf":
+      return axiom.classIri === iri || axiom.individualIris.includes(iri);
+    case "DifferentIndividuals":
+      return axiom.individualIris.includes(iri);
+    case "SwrlRule":
+      return (
+        axiom.body.some(
+          (a) => ("classIri" in a && a.classIri === iri) || ("propertyIri" in a && a.propertyIri === iri),
+        ) ||
+        axiom.head.some((a) => ("classIri" in a && a.classIri === iri) || ("propertyIri" in a && a.propertyIri === iri))
+      );
     default:
       return false;
   }
@@ -3230,6 +4588,13 @@ export function axiomToFSS(axiom: OWL2Axiom): string {
       return `SubClassOf(owl:Thing ObjectSomeValuesFrom(${axiom.propertyIri} ${axiom.fillerClassIri}))`;
     case "DataSomeValuesFrom":
       return `SubClassOf(owl:Thing DataSomeValuesFrom(${axiom.propertyIri} ${axiom.dataRange}))`;
+    case "NominalClass":
+    case "ObjectOneOf":
+      return `EquivalentClasses(${axiom.classIri} ObjectOneOf(${axiom.individualIris.join(" ")}))`;
+    case "DifferentIndividuals":
+      return `DifferentIndividuals(${axiom.individualIris.join(" ")})`;
+    case "SwrlRule":
+      return `# DLSafeRule(${axiom.ruleIri ?? "anon"})`;
     default:
       return `# ${axiom.type}`;
   }

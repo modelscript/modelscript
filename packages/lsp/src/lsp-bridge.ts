@@ -75,35 +75,110 @@ export interface LSPHover {
  */
 export class PositionIndex {
   private lineStarts: number[];
+  private byteLineStarts: number[];
+  private sourceText: string;
+  private isPureAscii: boolean;
 
   constructor(sourceText: string) {
+    this.sourceText = sourceText;
     this.lineStarts = [0];
+    this.byteLineStarts = [0];
+
+    let pureAscii = true;
+    let byteOffset = 0;
+
     for (let i = 0; i < sourceText.length; i++) {
-      if (sourceText[i] === "\n") {
-        this.lineStarts.push(i + 1);
+      const code = sourceText.charCodeAt(i);
+      if (code > 0x7f) {
+        pureAscii = false;
+        if (code >= 0xd800 && code <= 0xdbff && i + 1 < sourceText.length) {
+          byteOffset += 4;
+          i++; // Skip low surrogate
+          continue;
+        } else if (code <= 0x7ff) {
+          byteOffset += 2;
+        } else {
+          byteOffset += 3;
+        }
+      } else {
+        byteOffset += 1;
+        if (code === 0x0a) {
+          this.lineStarts.push(i + 1);
+          this.byteLineStarts.push(byteOffset);
+        }
       }
     }
+    this.isPureAscii = pureAscii;
   }
 
   offsetToPosition(offset: number): { line: number; character: number } {
-    // Binary search for the line
     let lo = 0;
-    let hi = this.lineStarts.length - 1;
+    let hi = this.byteLineStarts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
-      if (this.lineStarts[mid] <= offset) {
+      if (this.byteLineStarts[mid] <= offset) {
         lo = mid;
       } else {
         hi = mid - 1;
       }
     }
-    return { line: lo, character: offset - this.lineStarts[lo] };
+
+    const byteDelta = offset - this.byteLineStarts[lo];
+    if (this.isPureAscii || byteDelta <= 0) {
+      return { line: lo, character: Math.max(0, byteDelta) };
+    }
+
+    const lineStartChar = this.lineStarts[lo];
+    const nextLineStartChar = lo + 1 < this.lineStarts.length ? this.lineStarts[lo + 1] : this.sourceText.length;
+    let currByte = 0;
+    let charIdx = lineStartChar;
+
+    while (charIdx < nextLineStartChar && currByte < byteDelta) {
+      const code = this.sourceText.charCodeAt(charIdx);
+      if (code <= 0x7f) {
+        currByte += 1;
+        charIdx += 1;
+      } else if (code >= 0xd800 && code <= 0xdbff && charIdx + 1 < nextLineStartChar) {
+        currByte += 4;
+        charIdx += 2;
+      } else if (code <= 0x7ff) {
+        currByte += 2;
+        charIdx += 1;
+      } else {
+        currByte += 3;
+        charIdx += 1;
+      }
+    }
+
+    return { line: lo, character: charIdx - lineStartChar };
   }
 
   /** Convert an LSP line/character position back to a byte offset. */
   positionToOffset(line: number, character: number): number {
     if (line < 0 || line >= this.lineStarts.length) return 0;
-    return this.lineStarts[line]! + character;
+    if (this.isPureAscii) {
+      return this.lineStarts[line]! + character;
+    }
+
+    const lineStartChar = this.lineStarts[line];
+    const targetCharIdx = Math.min(lineStartChar + character, this.sourceText.length);
+    let byteDelta = 0;
+
+    for (let i = lineStartChar; i < targetCharIdx; i++) {
+      const code = this.sourceText.charCodeAt(i);
+      if (code <= 0x7f) {
+        byteDelta += 1;
+      } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < targetCharIdx) {
+        byteDelta += 4;
+        i++;
+      } else if (code <= 0x7ff) {
+        byteDelta += 2;
+      } else {
+        byteDelta += 3;
+      }
+    }
+
+    return this.byteLineStarts[line] + byteDelta;
   }
 
   /** Total number of lines in the source. */

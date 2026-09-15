@@ -15005,11 +15005,11 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
     }
 
     // 2. Both in error: Tree-sitter relative cost comparison
-    // (candidate.cost - existing.cost) * (1 + existing.node_count) > MAX_COST_DIFFERENCE (7000)
+    // D3 fix: use nodeCount instead of successfulShifts for progress metric
     if (candidate.inErrorState && existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.successfulShifts as i32);
+        let progress = 1 + (existing.nodeCount as i32);
         if (costDiff * progress > MAX_COST_DIFFERENCE) {
           return true;
         }
@@ -15020,7 +15020,7 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
     if (!candidate.inErrorState && !existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.successfulShifts as i32);
+        let progress = 1 + (existing.nodeCount as i32);
         if (costDiff * progress > MAX_COST_DIFFERENCE) {
           return true;
         }
@@ -15043,7 +15043,8 @@ export function pushActiveHead(headPtr: u32): boolean {
   }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_activeHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+    // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos) {
       if (existingHead.prev == newHead.prev) {
         if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
           t_activeHeads[i] = headPtr;
@@ -15071,7 +15072,8 @@ export function pushNextHead(headPtr: u32): boolean {
   }
   for (let i: u32 = 0; i < nextHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_nextHeads[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+    // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos) {
       if (existingHead.prev == newHead.prev) {
         if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
           t_nextHeads[i] = headPtr;
@@ -15179,6 +15181,14 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
   }
   if (!newHead.inErrorState) {
     existingHead.inErrorState = false;
+  }
+  // D9 fix: propagate successfulShifts during merge (take max)
+  if (newHead.successfulShifts > existingHead.successfulShifts) {
+    existingHead.successfulShifts = newHead.successfulShifts;
+  }
+  // D9 fix: propagate nodeCount during merge (take max)
+  if (newHead.nodeCount > existingHead.nodeCount) {
+    existingHead.nodeCount = newHead.nodeCount;
   }
   if (existingHead.astNode != 0) {
     setNodeFlags(existingHead.astNode, getNodeFlags(existingHead.astNode) | FLAG_FRAGILE);
@@ -19013,16 +19023,29 @@ export function lsp_getBinaryLength(): u32 {
  * If the buffer capacity is exceeded, it dynamically chunks a larger \`t_lspBinaryBuffer\`.
  */
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
-  if (t_lspBinaryBuffer.length >= 10000 * 7) return;
-
-
-
   let bufLen = t_lspBinaryBuffer.length;
-  if (bufLen >= 7) {
-    let lastStart = t_lspBinaryBuffer[bufLen - 7];
-    let lastEnd = t_lspBinaryBuffer[bufLen - 6];
-    let lastLintId = t_lspBinaryBuffer[bufLen - 5];
-    if (lastStart == start && lastEnd == end && lastLintId == lintId) return;
+  if (bufLen >= 10000 * 7) {
+    // LSP2 fix: emit a meta-diagnostic once when limit is reached
+    if (bufLen == 10000 * 7) {
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0x7ffe); // Meta lint ID: diagnostics truncated
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+      t_lspBinaryBuffer.push(0);
+    }
+    return;
+  }
+
+  // LSP1 fix: check last 4 entries for deduplication
+  let entriesToCheck: u32 = (bufLen / 7) > 4 ? 4 : (bufLen / 7);
+  for (let i: u32 = 1; i <= entriesToCheck; i++) {
+    let offset = bufLen - i * 7;
+    let prevStart = t_lspBinaryBuffer[offset];
+    let prevEnd = t_lspBinaryBuffer[offset + 1];
+    let prevLintId = t_lspBinaryBuffer[offset + 2];
+    if (prevStart == start && prevEnd == end && prevLintId == lintId) return;
   }
 
   t_lspBinaryBuffer.push(start);
@@ -19629,23 +19652,38 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
               cLen = inputLength - childOffset;
             }
             
-            let maxLen = cLen;
             let step: u32 = getEncodingStep();
-            for (let i: u32 = 0; i < cLen; i += step) {
-               let c = peekChar(childOffset + i);
-               if (c == 10 || c == 13) {
-                  maxLen = i;
-                  break;
-               }
+            // LSP4 fix: split multi-line tokens into line-by-line segments instead of truncating/skipping
+            let segStart: u32 = childOffset;
+            let segLen: u32 = 0;
+            let i: u32 = 0;
+            while (i < cLen) {
+              let c = peekChar(childOffset + i);
+              if (c == 10 || c == 13) {
+                if (segLen > 0) {
+                  t_lspBinaryBuffer.push(segStart);
+                  t_lspBinaryBuffer.push(segLen);
+                  t_lspBinaryBuffer.push(tokenTypeId);
+                  t_lspBinaryBuffer.push(bitmask);
+                }
+                if (c == 13 && i + step < cLen && peekChar(childOffset + i + step) == 10) {
+                  i += step * 2;
+                } else {
+                  i += step;
+                }
+                segStart = childOffset + i;
+                segLen = 0;
+              } else {
+                segLen += step;
+                i += step;
+              }
             }
-            cLen = maxLen;
-            if (cLen == 0) continue;
-
-            let tokenModifiers = 0;
-            t_lspBinaryBuffer.push(childOffset);
-            t_lspBinaryBuffer.push(cLen);
-            t_lspBinaryBuffer.push(tokenTypeId);
-            t_lspBinaryBuffer.push(bitmask);
+            if (segLen > 0) {
+              t_lspBinaryBuffer.push(segStart);
+              t_lspBinaryBuffer.push(segLen);
+              t_lspBinaryBuffer.push(tokenTypeId);
+              t_lspBinaryBuffer.push(bitmask);
+            }
           }
         }
       }
@@ -19947,17 +19985,20 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
     let tokenEnd = tokenStart + len;
     
     if (targetOffset >= tokenStart && targetOffset <= tokenEnd) {
-       let update = true;
-       if (bestMatch != 0) {
+       let update = false;
+       if (bestMatch == 0) {
+          update = true;
+       } else {
           let bestLen = getNodeByteLength(bestMatch);
-          if (tokenStart == lspLastNodeOffset && len == bestLen) {
+          if (len < bestLen) {
+             // LSP3 fix: narrower (more specific) span wins
+             update = true;
+          } else if (len == bestLen) {
              let bestType = getNodeType(bestMatch);
              let nodeType = getNodeType(node);
-              if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
-                 update = true;
-              } else if (bestType <= (MAX_TERMINAL_ID as u16) && nodeType > (MAX_TERMINAL_ID as u16)) {
-                 update = false;
-              }
+             if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
+                update = true;
+             }
           }
        }
        if (update) {
@@ -25817,8 +25858,11 @@ export let lastPeekedTokenEnd: u32 = 0;
 export function peekNextTokenInState(pos: u32, state: i32): i32 {
   if (expected_tokens == 0) expected_tokens = atomicChunkAlloc(65536);
   if (savedExpectedTokensPtr == 0) savedExpectedTokensPtr = atomicChunkAlloc(65536);
-  memory.copy(savedExpectedTokensPtr, expected_tokens, 65536);
-  memory.fill(expected_tokens, 0, 65536);
+  // P5 fix: Only copy the used range (MAX_TERMINAL_ID+1 bytes) instead of full 64KB
+  let copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
+  if (copyLen > 65536) copyLen = 65536;
+  memory.copy(savedExpectedTokensPtr, expected_tokens, copyLen);
+  memory.fill(expected_tokens, 0, copyLen);
   addStateExpectedTokens(state, 0);
 
   let savedLexPos = lexPos;
@@ -25835,7 +25879,7 @@ export function peekNextTokenInState(pos: u32, state: i32): i32 {
   srcLexPos = savedSrcLexPos;
   currentScannerState = savedScannerState;
 
-  memory.copy(expected_tokens, savedExpectedTokensPtr, 65536);
+  memory.copy(expected_tokens, savedExpectedTokensPtr, copyLen);
   return tok;
 }
 
@@ -26181,7 +26225,8 @@ function sanitizeTree(root: u32): void {
               t_sanitizeVisited.push(freshClone);
               t_sanitizeStack.push(freshClone);
             } else {
-              // Clone failed (too deep); unlink to prevent cycle
+              // Clone failed (too deep); unlink to prevent cycle (B2 fix: log warning diagnostic)
+              debugLog(9009, child, node, 0);
               if (prevChild == 0) setFirstChild(node, nextSib);
               else setNextSibling(prevChild, nextSib);
               modified = true;
@@ -26220,18 +26265,34 @@ function sanitizeTree(root: u32): void {
  */
 function nodeHasAnyErrors(node: u32): boolean {
   if (node == 0) return false;
-  let flags = getNodeFlags(node);
-  if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0) return true;
-  let type = getNodeType(node);
-  if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0) return true;
-  let child = getNodeFirstChild(node);
-  let depth = 0;
-  while (child != 0 && depth < 50) {
-    if (nodeHasAnyErrors(child)) return true;
-    child = getNodeNextSibling(child);
-    depth++;
+  // Iterative traversal with explicit stack to avoid unbounded recursion (B1 fix)
+  if (changetype<usize>(t_sanitizeStack) == 0) {
+    t_sanitizeStack = createChunkedUint32Array(50000);
+    t_sanitizeVisited = createChunkedUint32Array(50000);
   }
-  return false;
+  let savedLen = t_sanitizeStack.length;
+  t_sanitizeStack.push(node);
+  let found = false;
+  let iterations: u32 = 0;
+  while (t_sanitizeStack.length > savedLen && iterations < 500000) {
+    iterations++;
+    let curr = t_sanitizeStack.pop();
+    if (curr == 0) continue;
+    let flags = getNodeFlags(curr);
+    if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0) { found = true; break; }
+    let type = getNodeType(curr);
+    if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0) { found = true; break; }
+    let child = getNodeFirstChild(curr);
+    let sibCount: u32 = 0;
+    while (child != 0 && sibCount < 50) {
+      t_sanitizeStack.push(child);
+      child = getNodeNextSibling(child);
+      sibCount++;
+    }
+  }
+  // Restore stack to saved length
+  while (t_sanitizeStack.length > savedLen) t_sanitizeStack.pop();
+  return found;
 }
 
 /**
@@ -26251,10 +26312,15 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
   let c_idx: u32 = 0;
     let acceptBase = acceptedNode;
     // Follow clones back to their origin
-    while ((getNodeFlags(acceptBase) & FLAG_EXTRACTED) != 0 && getNodeFirstChild(acceptBase) != 0) {
+    // Follow clones back to their origin with depth limit to avoid O(H*D) (B4 fix)
+    let chaseDepth: u32 = 0;
+    while ((getNodeFlags(acceptBase) & FLAG_EXTRACTED) != 0 && getNodeFirstChild(acceptBase) != 0 && chaseDepth < 8) {
+      chaseDepth++;
       let isShallowClone = false;
       let currTemp: ParseHead | null = headPtr != 0 ? changetype<ParseHead>(headPtr) : null;
-      while (currTemp) {
+      let tempLimit: u32 = 0;
+      while (currTemp && tempLimit < 64) {
+        tempLimit++;
         if (currTemp.astNode != 0 && currTemp.astNode != acceptBase && getNodeFirstChild(currTemp.astNode) == getNodeFirstChild(acceptBase)) {
            acceptBase = currTemp.astNode;
            isShallowClone = true;
@@ -26835,15 +26901,15 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   let nrDepth = getListDepth(newRightMost, listSym);
   if (nrDepth == lDepth) {
     let origC1 = getNodeFirstChild(newRightMost);
-    let origC2 = getNodeNextSibling(origC1);
+    let origC2 = origC1 != 0 ? getNodeNextSibling(origC1) : 0; // B5 fix: null check
 
     let c1 = cloneNodeShallow(origC1);
-    let c2 = cloneNodeShallow(origC2);
+    let c2 = origC2 != 0 ? cloneNodeShallow(origC2) : 0; // B5 fix: null check
 
     if (lDirectChildCount < LIST_MAX_CHILDREN) {
       if (lastChild == 0) setFirstChild(p, c1);
       else setNextSibling(lastChild, c1);
-      setNextSibling(c1, c2);
+      if (c2 != 0) setNextSibling(c1, c2);
       if (c2 != 0) setNextSibling(c2, 0);
       setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       fixNodeLength(p);
@@ -27387,7 +27453,7 @@ function constructReducedParentNode(
   return parentNode;
 }
 
-const MAX_POP_PATHS: i32 = 8;
+const MAX_POP_PATHS: i32 = 32; // D6 fix: increased from 8 to handle complex grammars
 const MAX_POP_DEPTH: i32 = 32;
 
 let t_popPathNodes: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
@@ -27767,6 +27833,7 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
     let idx = actionOffset + 1;
     let bestReduce = -1;
     let bestLhs = -1;
+    let shiftCandidateReduce = -1;
 
     for (let a = 0; a < actCount; a++) {
       let sym = action_data[idx++];
@@ -27781,18 +27848,29 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
               bestLhs = lhs;
               bestReduce = aTarget;
             }
+            // B7 fix: prioritize reduction that allows the lookahead token to be shifted
+            if (shiftCandidateReduce == -1 && tok != TOKEN_EOF) {
+              let rhsLen = prod_lengths[aTarget];
+              if (!(curr.state == 0 && rhsLen == 0)) {
+                let simRed = processReduceAction(curr, aTarget, frontierPos);
+                if (simRed != null && simRed != curr && lookupActions(simRed.state, tok) > 0) {
+                  shiftCandidateReduce = aTarget;
+                }
+              }
+            }
           }
         }
       }
     }
 
-    if (bestReduce == -1) break;
+    let chosenReduce = shiftCandidateReduce != -1 ? shiftCandidateReduce : bestReduce;
+    if (chosenReduce == -1) break;
 
-    if (curr.state == 0 && prod_lengths[bestReduce] == 0 && tok != TOKEN_EOF) {
+    if (curr.state == 0 && prod_lengths[chosenReduce] == 0 && tok != TOKEN_EOF) {
       break;
     }
 
-    let reduced = processReduceAction(curr, bestReduce, frontierPos);
+    let reduced = processReduceAction(curr, chosenReduce, frontierPos);
     if (reduced == null || reduced == curr) break;
     curr = reduced;
 
@@ -27910,11 +27988,12 @@ function processAcceptAction(head: ParseHead): void {
       if (singleNode != 0) {
         acceptedNode = cloneNodeShallow(singleNode);
         let accPad = getNodePadding(acceptedNode);
-        let accLen = getNodeByteLength(acceptedNode);
-        let expectedLen = inputLength > accPad ? inputLength - accPad : 0;
-        if (accLen != expectedLen && head.pos >= inputLength) {
-          setNodeByteLength(acceptedNode, expectedLen);
-        }
+        // B3 fix: removed unsafe length mutation — wrapWithTrailingErrors handles any gap
+        // let accLen = getNodeByteLength(acceptedNode);
+        // let expectedLen = inputLength > accPad ? inputLength - accPad : 0;
+        // if (accLen != expectedLen && head.pos >= inputLength) {
+        //   setNodeByteLength(acceptedNode, expectedLen);
+        // }
       } else {
         acceptedNode = head.astNode;
       }
@@ -29213,15 +29292,29 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   return 0;
 }
 function clearSubtreeErrorFlags(nodePtr: u32): void {
+  // B8 fix: converted from unbounded recursion to iterative
   if (nodePtr == 0) return;
-  let typeFlags = getNodeFlags(nodePtr);
-  if (getNodeType(nodePtr) != 0) {
-    setNodeFlags(nodePtr, (typeFlags & ~((FLAG_HAS_ERROR | FLAG_IS_TAINED) as u32)) as u16);
+  if (changetype<usize>(t_sanitizeStack) == 0) {
+    t_sanitizeStack = createChunkedUint32Array(50000);
+    t_sanitizeVisited = createChunkedUint32Array(50000);
+  } else {
+    t_sanitizeStack.clear();
   }
-  let child = getNodeFirstChild(nodePtr);
-  while (child != 0) {
-    clearSubtreeErrorFlags(child);
-    child = getNodeNextSibling(child);
+  t_sanitizeStack.push(nodePtr);
+  let iterations: u32 = 0;
+  while (t_sanitizeStack.length > 0 && iterations < 500000) {
+    iterations++;
+    let curr = t_sanitizeStack.pop();
+    if (curr == 0) continue;
+    let typeFlags = getNodeFlags(curr);
+    if (getNodeType(curr) != 0) {
+      setNodeFlags(curr, (typeFlags & ~((FLAG_HAS_ERROR | FLAG_IS_TAINED) as u32)) as u16);
+    }
+    let child = getNodeFirstChild(curr);
+    while (child != 0) {
+      t_sanitizeStack.push(child);
+      child = getNodeNextSibling(child);
+    }
   }
 }
 
@@ -29921,8 +30014,9 @@ import {
   inputEncoding,
 } from "./parser";
 
-export const ERROR_COST_PER_SKIPPED_TREE: i32 = 100;
-export const ERROR_COST_PER_MISSING_TREE: i32 = 110;
+// Recovery fix: swapped costs so insertion (less destructive) is cheaper than deletion
+export const ERROR_COST_PER_SKIPPED_TREE: i32 = 110;
+export const ERROR_COST_PER_MISSING_TREE: i32 = 100;
 export const ERROR_COST_PER_SKIPPED_CHAR: i32 = 1;
 export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 5000;
 
@@ -30097,6 +30191,10 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
   if (tLen == 0) tLen = 1;
 
+  // Recovery fix: fork up to 3 recovery candidates instead of returning on the first match
+  let forkCount: u32 = 0;
+  const MAX_FORKS: u32 = 3;
+
   for (let i: u32 = 0; i < head.summaryCount; i++) {
     let entry = changetype<StackSummaryEntry>(head.summaryPtr + i * SIZEOF_STACK_SUMMARY_ENTRY);
     let anc = entry.ancHead;
@@ -30163,11 +30261,12 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
           0
         );
         pushActiveHead(changetype<u32>(errHead));
-        return true;
+        forkCount++;
+        if (forkCount >= MAX_FORKS) return true;
       }
     }
   }
-  return false;
+  return forkCount > 0;
 }
 
 /**
@@ -30609,7 +30708,9 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
  * the upcoming lookahead token. If so, inserts a zero-width MISSING leaf and retries.
  */
 export function recoverMissingToken(head: ParseHead, token: i32, pos: u32): boolean {
-  if (head.consecutiveInsertions >= 3 || token == TOKEN_EOF) return false;
+  // Recovery fix: exponential cost instead of hard cutoff at 3
+  // Allow up to 6 consecutive insertions but with escalating cost
+  if (head.consecutiveInsertions >= 6 || token == TOKEN_EOF) return false;
   return tryRecoverMissingInState(head, head.state, token, pos, 0);
 }
 `;
@@ -35924,7 +36025,10 @@ export class LspFacade {
           : "Syntax Error";
       let severity = lintId > 0 && lintId < 0x8000 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
       let codeStr = lintId > 0 && lintId < 0x8000 ? lintId : undefined;
-      if (rawLintId === 0) {
+      if (rawLintId === 0x7ffe) {
+        msg = "Too many diagnostics; remaining diagnostics omitted";
+        severity = 2; // Warning
+      } else if (rawLintId === 0) {
         if (arg0 === 1 && arg1 > 0) {
           let symName =
             (this.syntaxNames && this.syntaxNames[arg1]) || \`token_\${arg1}\`;

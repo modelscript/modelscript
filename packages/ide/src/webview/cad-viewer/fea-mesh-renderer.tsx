@@ -55,9 +55,12 @@ interface FeaMeshRendererProps {
   displacementScale?: number;
 }
 
+export type FeaFieldType = "vonMises" | "dispMagnitude" | "dispX" | "dispY" | "dispZ";
+
 export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementScale = 50.0 }: FeaMeshRendererProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [activeScale, setActiveScale] = useState(displacementScale);
+  const [selectedField, setSelectedField] = useState<FeaFieldType>("vonMises");
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
@@ -74,6 +77,7 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
     const { positions, indices } = payload.geometry;
     const { vonMisesStress, displacements } = payload.fields;
     const maxStress = Math.max(1e-3, payload.stats.maxStress);
+    const maxDisp = Math.max(1e-6, payload.stats.maxDisplacement);
     const vertCount = positions.length / 3;
 
     // 1. Calculate displaced positions
@@ -88,29 +92,70 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
       displacedPositions[i * 3 + 2] = positions[i * 3 + 2] + uz * activeScale;
     }
 
-    // 2. Compute vertex colors from Von Mises stress
+    // 2. Compute vertex colors from chosen scalar field
     const colors = new Float32Array(vertCount * 3);
     for (let i = 0; i < vertCount; i++) {
-      const stress = vonMisesStress[i] ?? 0;
-      const t = Math.max(0, Math.min(1, stress / maxStress));
+      let scalar = 0;
+      let norm = 1;
+
+      if (selectedField === "vonMises") {
+        scalar = vonMisesStress[i] ?? 0;
+        norm = maxStress;
+      } else if (selectedField === "dispMagnitude") {
+        const ux = displacements[i * 3 + 0] ?? 0;
+        const uy = displacements[i * 3 + 1] ?? 0;
+        const uz = displacements[i * 3 + 2] ?? 0;
+        scalar = Math.hypot(ux, uy, uz);
+        norm = maxDisp;
+      } else if (selectedField === "dispX") {
+        scalar = Math.abs(displacements[i * 3 + 0] ?? 0);
+        norm = maxDisp;
+      } else if (selectedField === "dispY") {
+        scalar = Math.abs(displacements[i * 3 + 1] ?? 0);
+        norm = maxDisp;
+      } else if (selectedField === "dispZ") {
+        scalar = Math.abs(displacements[i * 3 + 2] ?? 0);
+        norm = maxDisp;
+      }
+
+      const t = Math.max(0, Math.min(1, scalar / norm));
       const [r, g, b] = turboColormap(t);
       colors[i * 3 + 0] = r;
       colors[i * 3 + 1] = g;
       colors[i * 3 + 2] = b;
     }
 
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(displacedPositions, 3));
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-    geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+    // 3. Update geometry attributes in-place to avoid GPU buffer reallocations
+    const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | undefined;
+    const colAttr = geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
+    const idxAttr = geometry.getIndex();
+
+    if (posAttr && posAttr.array.length === displacedPositions.length) {
+      (posAttr.array as Float32Array).set(displacedPositions);
+      posAttr.needsUpdate = true;
+    } else {
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(displacedPositions, 3));
+    }
+
+    if (colAttr && colAttr.array.length === colors.length) {
+      (colAttr.array as Float32Array).set(colors);
+      colAttr.needsUpdate = true;
+    } else {
+      geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    }
+
+    if (!idxAttr || idxAttr.array.length !== indices.length) {
+      geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+    }
+
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
+  }, [payload, geometry, activeScale, selectedField]);
 
-    geometry.attributes.position.needsUpdate = true;
-    geometry.attributes.color.needsUpdate = true;
-    if (geometry.attributes.normal) {
-      geometry.attributes.normal.needsUpdate = true;
-    }
-  }, [payload, geometry, activeScale]);
+  const maxWarpScale = useMemo(() => {
+    if (!payload?.stats.maxDisplacement) return 500;
+    return Math.min(2000, Math.max(50, Math.round(0.2 / Math.max(1e-6, payload.stats.maxDisplacement))));
+  }, [payload?.stats.maxDisplacement]);
 
   if (!payload) return null;
 
@@ -129,8 +174,11 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
         <meshBasicMaterial color="#ffffff" wireframe transparent opacity={0.15} />
       </mesh>
 
-      {/* Floating HUD Legend */}
-      <Html position={[0.15, 0.05, 0]} style={{ pointerEvents: "auto" }}>
+      {/* Screen-Space Floating HUD Legend */}
+      <Html
+        calculatePosition={(_el, _camera, size) => [Math.max(10, size.width - 230), 20]}
+        style={{ pointerEvents: "auto" }}
+      >
         <div
           style={{
             background: "rgba(13, 17, 23, 0.88)",
@@ -141,12 +189,12 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
             color: "#c9d1d9",
             fontFamily: "monospace",
             fontSize: "11px",
-            minWidth: "160px",
+            width: "200px",
             boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
             userSelect: "none",
           }}
         >
-          <div style={{ fontWeight: "bold", color: "#58a6ff", marginBottom: 4 }}>FEA: Structural Stress</div>
+          <div style={{ fontWeight: "bold", color: "#58a6ff", marginBottom: 4 }}>FEA: Multi-Physics</div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
             <span>Time:</span>
             <span style={{ color: "#79c0ff" }}>{payload.time.toFixed(3)} s</span>
@@ -158,6 +206,33 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
             <span>Deflection:</span>
             <span style={{ color: "#d2a8ff" }}>{maxDispMm} mm</span>
+          </div>
+
+          {/* Scalar field selector */}
+          <div style={{ marginBottom: 6 }}>
+            <label style={{ fontSize: "10px", color: "#8b949e", display: "block", marginBottom: 2 }}>Field:</label>
+            <select
+              value={selectedField}
+              onChange={(e) => setSelectedField(e.target.value as FeaFieldType)}
+              style={{
+                width: "100%",
+                background: "#21262d",
+                border: "1px solid #30363d",
+                borderRadius: "4px",
+                color: "#c9d1d9",
+                padding: "2px 4px",
+                fontSize: "10px",
+                fontFamily: "monospace",
+                outline: "none",
+                cursor: "pointer",
+              }}
+            >
+              <option value="vonMises">Von Mises Stress</option>
+              <option value="dispMagnitude">Total Deflection |U|</option>
+              <option value="dispX">Displacement Ux</option>
+              <option value="dispY">Displacement Uy</option>
+              <option value="dispZ">Displacement Uz</option>
+            </select>
           </div>
 
           {/* Colorbar gradient */}
@@ -191,7 +266,7 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
             <input
               type="range"
               min="1"
-              max="500"
+              max={maxWarpScale}
               value={activeScale}
               onChange={(e) => setActiveScale(Number(e.target.value))}
               style={{ width: "100%", height: "4px", cursor: "pointer", accentColor: "#58a6ff" }}

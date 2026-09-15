@@ -224,30 +224,84 @@ export class FeaCoSimParticipant implements CoSimParticipant {
   public async doStep(currentTime: number, stepSize: number): Promise<void> {
     this.currentTime = currentTime + stepSize;
 
-    // Determine total applied force from all connected input ports
-    let totalForce = 0.0;
+    const nodalLoads = new Map<number, [number, number, number]>();
+    const defaultAxis = this.options.loadAxis ?? "y";
+
+    // 1. Group inputs by target patch or global
+    const patchForces = new Map<string, [number, number, number]>();
+    let globalVector: [number, number, number] = [0, 0, 0];
+    let hasGlobalForce = false;
+
     for (const [k, v] of this.currentInputs.entries()) {
       const lower = k.toLowerCase();
-      if (lower.includes("force") || lower.includes("thrust") || lower.includes(".f") || lower.includes("load")) {
-        totalForce += v;
+      if (!lower.includes("force") && !lower.includes("thrust") && !lower.includes(".f") && !lower.includes("load")) {
+        continue;
+      }
+
+      // Check for directional axis
+      let axisIdx = defaultAxis === "x" ? 0 : defaultAxis === "z" ? 2 : 1;
+      if (lower.endsWith(".fx") || lower.endsWith("_x") || lower.endsWith(".x")) axisIdx = 0;
+      else if (lower.endsWith(".fy") || lower.endsWith("_y") || lower.endsWith(".y")) axisIdx = 1;
+      else if (lower.endsWith(".fz") || lower.endsWith("_z") || lower.endsWith(".z")) axisIdx = 2;
+
+      // Check if a specific boundary patch is targeted by the input variable name
+      let matchedTag: string | null = null;
+      for (const tag of this.loadTags) {
+        const tagLower = tag.toLowerCase();
+        const baseName = tagLower.replace(/(_|-)(mount|flange|load|tip|patch|surface|tag)$/, "");
+        if (lower.includes(tagLower) || (baseName.length >= 3 && lower.includes(baseName))) {
+          matchedTag = tag;
+          break;
+        }
+      }
+
+      if (matchedTag) {
+        let vec = patchForces.get(matchedTag);
+        if (!vec) {
+          vec = [0, 0, 0];
+          patchForces.set(matchedTag, vec);
+        }
+        vec[axisIdx] += v;
+      } else {
+        globalVector[axisIdx] += v;
+        hasGlobalForce = true;
       }
     }
 
-    // Distribute force evenly across boundary nodes of matched load tags
-    const nodalLoads = new Map<number, [number, number, number]>();
-    const axis = this.options.loadAxis ?? "y";
-
-    for (const tag of this.loadTags) {
+    // 2. Distribute patch-specific vector forces
+    for (const [tag, vec] of patchForces.entries()) {
       const nodes = this.mesh.boundaryNodes.get(tag) || [];
       if (nodes.length === 0) continue;
-      const forcePerNode = totalForce / (Math.max(1, this.loadTags.length) * nodes.length);
+      const fX = vec[0] / nodes.length;
+      const fY = vec[1] / nodes.length;
+      const fZ = vec[2] / nodes.length;
 
       for (const node of nodes) {
         const existing = nodalLoads.get(node) || [0, 0, 0];
-        if (axis === "x") existing[0] += forcePerNode;
-        else if (axis === "z") existing[2] += forcePerNode;
-        else existing[1] += forcePerNode;
+        existing[0] += fX;
+        existing[1] += fY;
+        existing[2] += fZ;
         nodalLoads.set(node, existing);
+      }
+    }
+
+    // 3. Distribute global force across load tags
+    if (hasGlobalForce && this.loadTags.length > 0) {
+      for (const tag of this.loadTags) {
+        const nodes = this.mesh.boundaryNodes.get(tag) || [];
+        if (nodes.length === 0) continue;
+        const totalNodes = Math.max(1, this.loadTags.length) * nodes.length;
+        const fX = globalVector[0] / totalNodes;
+        const fY = globalVector[1] / totalNodes;
+        const fZ = globalVector[2] / totalNodes;
+
+        for (const node of nodes) {
+          const existing = nodalLoads.get(node) || [0, 0, 0];
+          existing[0] += fX;
+          existing[1] += fY;
+          existing[2] += fZ;
+          nodalLoads.set(node, existing);
+        }
       }
     }
 
@@ -268,6 +322,42 @@ export class FeaCoSimParticipant implements CoSimParticipant {
     outputs.set("maxDisplacement", this.latestResult.maxDisplacement);
     outputs.set("maxVonMisesStress", this.latestResult.maxVonMisesStress);
     outputs.set("compliance", this.latestResult.maxDisplacement);
+
+    // Compute patch-specific and directional outputs
+    const u = this.latestResult.displacements;
+    let maxUx = 0,
+      maxUy = 0,
+      maxUz = 0;
+    for (let i = 0; i < this.mesh.numNodes; i++) {
+      const ux = Math.abs(u[i * 3 + 0] ?? 0);
+      const uy = Math.abs(u[i * 3 + 1] ?? 0);
+      const uz = Math.abs(u[i * 3 + 2] ?? 0);
+      if (ux > maxUx) maxUx = ux;
+      if (uy > maxUy) maxUy = uy;
+      if (uz > maxUz) maxUz = uz;
+    }
+
+    outputs.set("displacement_x", maxUx);
+    outputs.set("displacement_y", maxUy);
+    outputs.set("displacement_z", maxUz);
+
+    for (const tag of this.loadTags) {
+      const nodes = this.mesh.boundaryNodes.get(tag) || [];
+      if (nodes.length === 0) continue;
+      let sumUx = 0,
+        sumUy = 0,
+        sumUz = 0;
+      for (const n of nodes) {
+        sumUx += u[n * 3 + 0] ?? 0;
+        sumUy += u[n * 3 + 1] ?? 0;
+        sumUz += u[n * 3 + 2] ?? 0;
+      }
+      outputs.set(`${tag}.ux`, sumUx / nodes.length);
+      outputs.set(`${tag}.uy`, sumUy / nodes.length);
+      outputs.set(`${tag}.uz`, sumUz / nodes.length);
+      outputs.set(`${tag}.displacement`, Math.hypot(sumUx, sumUy, sumUz) / nodes.length);
+    }
+
     return outputs;
   }
 

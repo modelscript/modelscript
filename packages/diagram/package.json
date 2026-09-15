@@ -44,6 +44,14 @@
       "types": "./dist/telemetry.d.ts",
       "default": "./dist/telemetry.js"
     },
+    "./svg": {
+      "types": "./dist/svg-renderer.d.ts",
+      "default": "./dist/svg-renderer.js"
+    },
+    "./affine-matrix": {
+      "types": "./dist/affine-matrix.d.ts",
+      "default": "./dist/affine-matrix.js"
+    },
     "./spinner": {
       "types": "./dist/spinner.d.ts",
       "default": "./dist/spinner.js"

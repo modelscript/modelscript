@@ -83,6 +83,7 @@ export interface ComponentPropertyData {
   docInfo?: string;
   docRevisions?: string;
   iconSvg?: string;
+  icon?: string;
 }
 
 export interface DiagramPort {
@@ -120,6 +121,8 @@ export interface DiagramNode {
     header: string;
     entries: string[];
   }[];
+  attrs?: any;
+  data?: any;
 }
 
 export interface DiagramEdge {
@@ -128,15 +131,18 @@ export interface DiagramEdge {
   target: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
   vertices?: { x: number; y: number }[];
   connector?: string;
+  router?: string;
   zIndex: number;
   animations?: ReactiveAnimationBinding[];
+  style?: any;
+  labels?: any[];
   attrs: {
     line: {
       stroke: string;
       strokeWidth: number;
       strokeDasharray?: string;
-      sourceMarker?: unknown;
-      targetMarker?: unknown;
+      sourceMarker?: any;
+      targetMarker?: any;
       "vector-effect": string;
       "pointer-events": string;
     };
@@ -178,9 +184,33 @@ export type DiagramEditAction =
   | { type: "moveEdge"; edges: EdgeUpdate[] }
   | { type: "addComponent"; className: string; x: number; y: number; name?: string; section?: string }
   | { type: "deleteComponents"; names: string[] }
+  | {
+      type: "reconnect";
+      edgeId?: string;
+      oldSource: string;
+      oldTarget: string;
+      newSource: string;
+      newTarget: string;
+      oldSourcePort?: string;
+      oldTargetPort?: string;
+      newSourcePort?: string;
+      newTargetPort?: string;
+      edgeType?: string;
+      section?: string;
+    }
   | { type: "updateName"; oldName: string; newName: string }
   | { type: "updateDescription"; name: string; description: string }
   | { type: "updateParameter"; name: string; parameter: string; value: string };
+
+// ── SVG Export Options ──
+
+export interface SvgExportOptions {
+  theme?: "dark" | "light";
+  padding?: number;
+  scale?: number;
+  embedFonts?: boolean;
+  background?: string;
+}
 
 // ── Stencil / Palette ──
 
@@ -255,4 +285,18 @@ export interface DiagramGetComponentPropertiesParams {
   uri: string;
   componentName: string;
   className?: string;
+}
+
+// exportDiagram
+export interface DiagramExportParams {
+  uri?: string;
+  format: "svg" | "png" | "jpeg";
+  theme?: "dark" | "light";
+  scale?: number;
+  padding?: number;
+}
+
+export interface DiagramExportResult {
+  format: "svg" | "png" | "jpeg";
+  data: string; // SVG XML string or base64 data URL
 }

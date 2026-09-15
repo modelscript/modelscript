@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-import { CoSimSession, FeaCoSimParticipant, Orchestrator, WasmOpenFoamProvider } from "@modelscript/exchange/cosim";
+import {
+  CoSimSession,
+  FeaCoSimParticipant,
+  LbmCoSimParticipant,
+  Orchestrator,
+  WasmOpenFoamProvider,
+} from "@modelscript/exchange/cosim";
 import { generateFmuWasmSource, generateMultiModelWrapper } from "@modelscript/exchange/fmu";
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { Causality, DAEBuilder } from "@modelscript/runtime";
@@ -79,6 +85,8 @@ function flattenTargetClass(
   return { arena, target };
 }
 
+const activeCosimSessions = new Map<string, Orchestrator>();
+
 export function registerSimulationEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/simulate",
@@ -95,6 +103,7 @@ export function registerSimulationEndpoints(context: LspContext) {
       sweepConfig?: { parameterName: string; start: number; end: number; steps: number };
       physicsType?: string;
       domain?: string;
+      cadUri?: string;
     }): Promise<{
       t: number[];
       y: number[][];
@@ -150,10 +159,21 @@ export function registerSimulationEndpoints(context: LspContext) {
           target.className.toLowerCase().includes("dronearm") ||
           target.className.toLowerCase().includes("cantilever");
 
+        const isCfdProcess =
+          params.physicsType === "CFD" ||
+          params.physicsType === "LBM" ||
+          params.domain === "cfd" ||
+          target.className.toLowerCase().includes("cfd") ||
+          target.className.toLowerCase().includes("aero") ||
+          target.className.toLowerCase().includes("flow") ||
+          target.className.toLowerCase().includes("fluid");
+
         if (
           target.classKind === "process" ||
           params.physicsType === "FEA" ||
-          (params.domain === "fea" && target.classKind === "model")
+          params.physicsType === "CFD" ||
+          params.physicsType === "LBM" ||
+          ((params.domain === "fea" || params.domain === "cfd") && target.classKind === "model")
         ) {
           context.connection.console.info(`[simulate] Launching Co-Simulation Orchestrator for ${target.className}...`);
           const session = new CoSimSession("vscode-cosim");
@@ -173,12 +193,26 @@ export function registerSimulationEndpoints(context: LspContext) {
           session.addParticipant(modelica);
 
           let feaParticipant: FeaCoSimParticipant | null = null;
+          let lbmParticipant: LbmCoSimParticipant | null = null;
           let cfdParticipant: WasmOpenFoamProvider | null = null;
 
           if (isFeaProcess) {
             context.connection.console.info(
               `[simulate] Initializing 3D FEA Structural Participant (Tet10 Quadratic)...`,
             );
+
+            // Detect CAD annotation in source document if available
+            let cadUri = params.cadUri;
+            if (!cadUri && doc) {
+              const match = doc.getText().match(/CAD\s*\(\s*uri\s*=\s*["']([^"']+)["']/i);
+              if (match) {
+                cadUri = match[1];
+              }
+            }
+            if (cadUri) {
+              context.connection.console.info(`[simulate] Resolved CAD geometry reference: ${cadUri}`);
+            }
+
             const mesh = Tet4Mesher.createBoxMesh({
               width: 0.12,
               height: 0.015,
@@ -196,12 +230,15 @@ export function registerSimulationEndpoints(context: LspContext) {
             feaParticipant = new FeaCoSimParticipant("3d-fea", "StructuralArm", mesh, aluminum, {
               fixedTag: "fixed_hub",
               loadTag: "motor_mount",
+              loadTags: ["motor_mount", "motor1_mount", "motor2_mount", "motor3_mount", "motor4_mount", "tip_load"],
               loadAxis: "y",
+              corotational: true,
             });
             session.addParticipant(feaParticipant);
 
-            // Find force variable in Modelica arena (e.g. motor.f, thrust, flange_b.f)
-            let forceVarName = "";
+            // Find all force/thrust variables in Modelica arena (supporting multi-mount drones)
+            const forceVarNames: string[] = [];
+            let deflVarName = "";
             for (let i = 0; i < arena.varCount; i++) {
               if (arena.isVarRemoved(i)) continue;
               const name = arena.getVarName(i);
@@ -212,18 +249,93 @@ export function registerSimulationEndpoints(context: LspContext) {
                 lower.endsWith(".f") ||
                 lower.includes("load")
               ) {
-                forceVarName = name;
-                break;
+                forceVarNames.push(name);
+              }
+              if (
+                !deflVarName &&
+                (lower.includes("deflection") || lower.includes("displacement") || lower === "w" || lower === "u_tip")
+              ) {
+                deflVarName = name;
               }
             }
-            if (!forceVarName && arena.varCount > 0) {
-              forceVarName = arena.getVarName(0);
+            if (forceVarNames.length === 0) {
+              context.connection.console.warn(
+                `[simulate] No force/thrust variable found in '${target.className}' for 3D FEA coupling.`,
+              );
+              return {
+                t: [],
+                y: [],
+                states: [],
+                error: `Model '${target.className}' has no structural load variables (expected 'thrust', 'force', 'load', or connector '.f').`,
+              };
             }
 
-            if (forceVarName) {
+            // Map each detected force variable to 3D FEA (multi-mount patch routing)
+            for (const fVar of forceVarNames) {
               session.coupling.addCoupling({
-                from: { participantId: "1d-solver", variableName: forceVarName },
-                to: { participantId: "3d-fea", variableName: "load.force" },
+                from: { participantId: "1d-solver", variableName: fVar },
+                to: { participantId: "3d-fea", variableName: fVar },
+              });
+            }
+
+            // 2-way FSI: feedback 3D structural deflection to 1D Modelica
+            if (deflVarName) {
+              session.coupling.addCoupling({
+                from: { participantId: "3d-fea", variableName: "maxDisplacement" },
+                to: { participantId: "1d-solver", variableName: deflVarName },
+              });
+            }
+          } else if (isCfdProcess) {
+            context.connection.console.info(`[simulate] Initializing 3D LBM Aerodynamics CFD Participant...`);
+            lbmParticipant = new LbmCoSimParticipant("3d-lbm", "AerodynamicsLBM", {
+              config: {
+                nx: 30,
+                ny: 15,
+                nz: 15,
+                dx: 0.005,
+                dt: 1e-4,
+                tau: 0.6,
+                density: 1.225,
+                inletVelocity: [2.0, 0, 0],
+                turbulenceModel: "smagorinsky_les",
+              },
+              obstacles: {
+                cylinders: [{ center: [0.5, 0.5, 0.5], radius: 0.15, axis: "z", length: 0.6 }],
+              },
+            });
+            session.addParticipant(lbmParticipant);
+
+            // Coupling: Modelica velocity -> LBM inlet/wall, and LBM drag force -> Modelica
+            let velVarName = "";
+            let dragVarName = "";
+            for (let i = 0; i < arena.varCount; i++) {
+              if (arena.isVarRemoved(i)) continue;
+              const name = arena.getVarName(i);
+              const lower = name.toLowerCase();
+              if (
+                !velVarName &&
+                (lower.includes("speed") || lower.includes("velocity") || lower === "v" || lower === "vx")
+              ) {
+                velVarName = name;
+              }
+              if (
+                !dragVarName &&
+                (lower.includes("drag") || lower.includes("f_resist") || lower.includes("aero_force"))
+              ) {
+                dragVarName = name;
+              }
+            }
+
+            if (velVarName) {
+              session.coupling.addCoupling({
+                from: { participantId: "1d-solver", variableName: velVarName },
+                to: { participantId: "3d-lbm", variableName: "velocity_x" },
+              });
+            }
+            if (dragVarName) {
+              session.coupling.addCoupling({
+                from: { participantId: "3d-lbm", variableName: "aerodynamic_drag" },
+                to: { participantId: "1d-solver", variableName: dragVarName },
               });
             }
           } else {
@@ -261,6 +373,16 @@ export function registerSimulationEndpoints(context: LspContext) {
                   payload: feaPayload,
                 });
               }
+
+              if (lbmParticipant) {
+                const lbmPayload = lbmParticipant.getMeshPayload();
+                context.connection.sendNotification("modelscript/cosimStream", {
+                  type: "cfd-frame",
+                  participantId: "3d-lbm",
+                  time: res.time,
+                  payload: lbmPayload,
+                });
+              }
             },
             onVtkData: (pid, time, data) => {
               context.connection.console.info(
@@ -284,8 +406,23 @@ export function registerSimulationEndpoints(context: LspContext) {
             stepFiles: new Map([["3d-cfd", new Uint8Array([83, 84, 69, 80])]]), // mock step file
           });
 
+          const prevSession = activeCosimSessions.get(params.uri);
+          if (prevSession) {
+            context.connection.console.info(`[simulate] Aborting previous running co-simulation for ${params.uri}`);
+            prevSession.abort();
+            activeCosimSessions.delete(params.uri);
+          }
+
           // Run asynchronously in the background so we can return empty result to close the request
-          orchestrator.run().catch((e) => console.error("Orchestrator failed:", e));
+          activeCosimSessions.set(params.uri, orchestrator);
+          orchestrator
+            .run()
+            .catch((e) => console.error("Orchestrator failed:", e))
+            .finally(() => {
+              if (activeCosimSessions.get(params.uri) === orchestrator) {
+                activeCosimSessions.delete(params.uri);
+              }
+            });
 
           return { t: [], y: [], states: [], parameters: [], experiment: exp };
         }
@@ -755,6 +892,18 @@ export function registerSimulationEndpoints(context: LspContext) {
       return { ok: false, error: "Simulation handler not registered." };
     },
   );
+
+  context.connection.onRequest("modelscript/stopSimulation", async (params: { uri: string }) => {
+    const active = activeCosimSessions.get(params.uri);
+    if (active) {
+      context.connection.console.info(`[stopSimulation] Aborting co-simulation for ${params.uri}`);
+      active.abort();
+      activeCosimSessions.delete(params.uri);
+      context.connection.sendNotification("modelscript/cosimStream", { type: "stopped" });
+      return { success: true };
+    }
+    return { success: false, message: "No active simulation found for this document." };
+  });
 }
 
 // @ts-nocheck

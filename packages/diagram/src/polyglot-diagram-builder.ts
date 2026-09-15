@@ -51,7 +51,7 @@ export interface X6Ports {
 /** Full GraphicsConfig — node, edge, and port configuration for X6 rendering. */
 export interface GraphicsConfig {
   /** The graphic role this node plays in diagram rendering. */
-  role: "node" | "edge" | "group" | "port-owner" | "compartment";
+  role: "node" | "edge" | "group" | "port-owner" | "compartment" | "port";
 
   /** Node/Group visual configuration (X6 addNode format). */
   node?: {
@@ -161,6 +161,8 @@ export interface PolyglotDiagramNode {
     sourceRange?: { startByte: number; endByte: number };
     /** Grammar rule name, used for cross-diagram navigation. */
     ruleName?: string;
+    /** Embedded bitmap or SVG icon */
+    icon?: string;
   };
   /** Compartments for BDD blocks / structural definitions. */
   compartments?: { header: string; entries: string[] }[];
@@ -168,6 +170,8 @@ export interface PolyglotDiagramNode {
   autoLayout: boolean;
   /** Reactive simulation telemetry animation channels */
   animations?: { property: string; variableName: string; transform?: string }[];
+  /** Arbitrary domain and visualization data (multiplicity, sections, etc.) */
+  data?: any;
 }
 
 export interface PolyglotDiagramEdge {
@@ -204,6 +208,8 @@ export interface PolyglotDiagramOptions {
   standaloneKinds?: Set<string> | string[];
   usageKinds?: Set<string> | string[];
   definitionKinds?: Set<string> | string[];
+  portKinds?: Set<string> | string[];
+  reactiveDynamics?: boolean;
   typingRules?: Set<string> | string[];
   subclassificationRules?: Set<string> | string[];
   subsettingRules?: Set<string> | string[];
@@ -215,6 +221,112 @@ export interface PolyglotDiagramOptions {
   };
   solderDots?: boolean;
   stemLines?: boolean;
+}
+
+/**
+ * Enriches a diagram node with procedural 3D gradients, bitmap/raster icons,
+ * and reactive DynamicSelect animation channels.
+ */
+function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfig, sym: SymbolEntry): void {
+  const nodeConfig = config.node;
+  if (!nodeConfig) return;
+
+  // 1. Procedural 3D Gradients
+  const body = node.attrs?.body;
+  if (body) {
+    const pattern =
+      (body as any).fillPattern || (config as any).fillPattern || (nodeConfig.attrs as any)?.body?.fillPattern;
+    if (pattern === "cylinder-horizontal" || pattern === "HorizontalCylinder") {
+      body.fill = "url(#grad-cylinder-horizontal)";
+    } else if (pattern === "cylinder-vertical" || pattern === "VerticalCylinder") {
+      body.fill = "url(#grad-cylinder-vertical)";
+    } else if (pattern === "sphere" || pattern === "Sphere") {
+      body.fill = "url(#grad-sphere)";
+    }
+  }
+
+  // 2. Icon / Bitmap Raster Asset Embedding
+  const iconSrc =
+    (nodeConfig.attrs as any)?.icon ||
+    (sym.metadata as any)?.imageSource ||
+    (sym.metadata as any)?.icon ||
+    (config as any)?.icon ||
+    (nodeConfig as any)?.icon;
+
+  if (iconSrc) {
+    if (!Array.isArray(node.markup)) {
+      node.markup = node.markup ? [node.markup] : [];
+    }
+    if (!node.markup.some((m: any) => m.selector === "icon" || m.tagName === "image")) {
+      node.markup.push({ tagName: "image", selector: "icon" });
+    }
+    if (!node.attrs) node.attrs = {};
+    node.attrs.icon = {
+      "xlink:href": iconSrc,
+      href: iconSrc,
+      refWidth: "24",
+      refHeight: "24",
+      refX: 8,
+      refY: 8,
+      preserveAspectRatio: "xMidYMid meet",
+    };
+    if (node.properties) {
+      node.properties.icon = iconSrc;
+    }
+    if (node.data) {
+      node.data.icon = iconSrc;
+    }
+  }
+
+  // 3. Reactive Dynamics & DynamicSelect Animation Channels
+  const animBindings: { property: string; variableName: string; transform?: string }[] = [];
+  const animCfg = (nodeConfig as any).animation || (config as any).animation;
+  if (animCfg?.channels && Array.isArray(animCfg.channels)) {
+    for (const ch of animCfg.channels) {
+      if (ch.attribute && ch.signal) {
+        animBindings.push({
+          property: ch.attribute,
+          variableName: ch.signal,
+          transform: typeof ch.transform === "string" ? ch.transform : undefined,
+        });
+      }
+    }
+  }
+
+  if (Array.isArray((sym.metadata as any)?.dynamicBindings)) {
+    for (const b of (sym.metadata as any).dynamicBindings) {
+      if (b.property && b.variableName) {
+        animBindings.push({
+          property: b.property,
+          variableName: b.variableName,
+          transform: typeof b.dynamicExpr === "string" ? b.dynamicExpr : undefined,
+        });
+      }
+    }
+  }
+
+  if (Array.isArray((sym.metadata as any)?.animations)) {
+    for (const a of (sym.metadata as any).animations) {
+      animBindings.push(a);
+    }
+  }
+
+  for (const [key, val] of Object.entries(sym.metadata || {})) {
+    if (typeof val === "string" && val.includes("DynamicSelect")) {
+      const dsMatch = val.match(/DynamicSelect\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)/);
+      if (dsMatch) {
+        animBindings.push({
+          property: key,
+          variableName: dsMatch[2].trim(),
+          transform: dsMatch[2].trim(),
+        });
+      }
+    }
+  }
+
+  if (animBindings.length > 0) {
+    node.animations = animBindings;
+  }
 }
 
 // ── Builder ──
@@ -482,6 +594,17 @@ export function buildPolyglotDiagram(
     STANDALONE_CHILD_KINDS.add("ExhibitStateUsage");
   }
 
+  // Generalized port kinds: DSL portRules, config role: "port", or fallback
+  const PORT_KINDS = opts.portKinds ? new Set(opts.portKinds) : new Set(["PortUsage", "PortDefinition"]);
+  for (const [kind, cfg] of Object.entries(gfxConfig)) {
+    if (cfg?.role === "port") {
+      PORT_KINDS.add(kind);
+    }
+  }
+  for (const pk of PORT_KINDS) {
+    STANDALONE_CHILD_KINDS.add(pk);
+  }
+
   for (const sym of allSymbols) {
     if (sym.parentId === null) continue;
     const parentSym = index.symbols.get(sym.parentId);
@@ -511,7 +634,13 @@ export function buildPolyglotDiagram(
     const nodeId = `n_${sym.id}`;
     symbolIdToNodeId.set(sym.id, nodeId);
 
-    if (config.role === "edge" || config.role === "port-owner" || config.role === "compartment") {
+    if (
+      config.role === "edge" ||
+      config.role === "port-owner" ||
+      config.role === "compartment" ||
+      config.role === "port" ||
+      (PORT_KINDS.has(sym.ruleName) && sym.parentId !== null)
+    ) {
       continue;
     }
 
@@ -538,208 +667,235 @@ export function buildPolyglotDiagram(
     }
     const sections: Section[] = [];
 
-    const attrEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "AttributeUsage" || e.ruleName === "AttributeDefinition",
-    );
-    if (attrEntries.length > 0) {
-      sections.push({
-        header: "attributes",
-        entries: attrEntries
+    const customCompartments = (nodeConfig as any).compartments || (config as any).compartments;
+    if (Array.isArray(customCompartments) && customCompartments.length > 0) {
+      for (const comp of customCompartments) {
+        const query = comp.query;
+        const matched = compartmentEntries.filter((e) => {
+          if (!query || query === "*") return true;
+          return e.ruleName === query || e.ruleName?.toLowerCase().includes(query.toLowerCase());
+        });
+        const validEntries = matched
           .map((e) => {
             if (!isRealName(e.name)) return null;
-            // Try to resolve the attribute's type via OwnedFeatureTyping (or custom typing rules) children
             const typeName = resolveTypeName(e.id, index, resolver, typingRules);
             return typeName ? `${e.name} : ${typeName}` : e.name;
           })
-          .filter((v): v is string => v !== null),
-      });
-    }
+          .filter((v): v is string => v !== null);
 
-    // Ports and parts are no longer absorbed — they become X6 ports and
-    // standalone nodes respectively. Only show connections in compartments.
-    const connEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "ConnectionUsage" || e.ruleName === "ConnectionDefinition",
-    );
-    if (connEntries.length > 0) {
-      sections.push({
-        header: "connections",
-        entries: connEntries.map((e) => (isRealName(e.name) ? e.name : "connect ...")),
-      });
-    }
+        if (validEntries.length > 0) {
+          sections.push({
+            header: comp.header,
+            entries: validEntries,
+          });
+        }
+      }
+    } else {
+      const attrEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "AttributeUsage" || e.ruleName === "AttributeDefinition",
+      );
+      if (attrEntries.length > 0) {
+        sections.push({
+          header: "attributes",
+          entries: attrEntries
+            .map((e) => {
+              if (!isRealName(e.name)) return null;
+              // Try to resolve the attribute's type via OwnedFeatureTyping (or custom typing rules) children
+              const typeName = resolveTypeName(e.id, index, resolver, typingRules);
+              return typeName ? `${e.name} : ${typeName}` : e.name;
+            })
+            .filter((v): v is string => v !== null),
+        });
+      }
 
-    const actionEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "ActionUsage" || e.ruleName === "ActionDefinition" || e.ruleName === "PerformActionUsage",
-    );
-    const filteredActionNames = actionEntries.map((e) => e.name).filter(isRealName);
-    if (filteredActionNames.length > 0) {
-      sections.push({
-        header: "actions",
-        entries: filteredActionNames,
-      });
-    }
+      // Ports and parts are no longer absorbed — they become X6 ports and
+      // standalone nodes respectively. Only show connections in compartments.
+      const connEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "ConnectionUsage" || e.ruleName === "ConnectionDefinition",
+      );
+      if (connEntries.length > 0) {
+        sections.push({
+          header: "connections",
+          entries: connEntries.map((e) => (isRealName(e.name) ? e.name : "connect ...")),
+        });
+      }
 
-    const actorEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "ActorUsage" || e.ruleName === "StakeholderUsage",
-    );
-    const filteredActorNames = actorEntries.map((e) => e.name).filter(isRealName);
-    if (filteredActorNames.length > 0) {
-      sections.push({
-        header: "actors",
-        entries: filteredActorNames.map((name) => `actor ${name}`),
-      });
-    }
+      const actionEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "ActionUsage" || e.ruleName === "ActionDefinition" || e.ruleName === "PerformActionUsage",
+      );
+      const filteredActionNames = actionEntries.map((e) => e.name).filter(isRealName);
+      if (filteredActionNames.length > 0) {
+        sections.push({
+          header: "actions",
+          entries: filteredActionNames,
+        });
+      }
 
-    const subjectEntries = compartmentEntries.filter((e) => e.ruleName === "SubjectUsage");
-    const filteredSubjectNames = subjectEntries.map((e) => e.name).filter(isRealName);
-    if (filteredSubjectNames.length > 0) {
-      sections.push({
-        header: "subjects",
-        entries: filteredSubjectNames.map((name) => `subject ${name}`),
-      });
-    }
+      const actorEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "ActorUsage" || e.ruleName === "StakeholderUsage",
+      );
+      const filteredActorNames = actorEntries.map((e) => e.name).filter(isRealName);
+      if (filteredActorNames.length > 0) {
+        sections.push({
+          header: "actors",
+          entries: filteredActorNames.map((name) => `actor ${name}`),
+        });
+      }
 
-    // Requirement entries
-    const reqEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "RequirementUsage" || e.ruleName === "ObjectiveRequirementUsage",
-    );
-    const filteredReqNames = reqEntries.map((e) => e.name).filter(isRealName);
-    if (filteredReqNames.length > 0) {
-      sections.push({ header: "requirements", entries: filteredReqNames });
-    }
+      const subjectEntries = compartmentEntries.filter((e) => e.ruleName === "SubjectUsage");
+      const filteredSubjectNames = subjectEntries.map((e) => e.name).filter(isRealName);
+      if (filteredSubjectNames.length > 0) {
+        sections.push({
+          header: "subjects",
+          entries: filteredSubjectNames.map((name) => `subject ${name}`),
+        });
+      }
 
-    // Constraint entries
-    const constraintEntries = compartmentEntries.filter(
-      (e) =>
-        e.ruleName === "ConstraintUsage" ||
-        e.ruleName === "AssertConstraintUsage" ||
-        e.ruleName === "RequirementConstraintUsage",
-    );
-    const filteredConstraintNames = constraintEntries.map((e) => e.name).filter(isRealName);
-    if (filteredConstraintNames.length > 0) {
-      sections.push({ header: "constraints", entries: filteredConstraintNames });
-    }
+      // Requirement entries
+      const reqEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "RequirementUsage" || e.ruleName === "ObjectiveRequirementUsage",
+      );
+      const filteredReqNames = reqEntries.map((e) => e.name).filter(isRealName);
+      if (filteredReqNames.length > 0) {
+        sections.push({ header: "requirements", entries: filteredReqNames });
+      }
 
-    // State entries
-    const stateEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "StateUsage" || e.ruleName === "ExhibitStateUsage",
-    );
-    const filteredStateNames = stateEntries.map((e) => e.name).filter(isRealName);
-    if (filteredStateNames.length > 0) {
-      sections.push({ header: "states", entries: filteredStateNames });
-    }
+      // Constraint entries
+      const constraintEntries = compartmentEntries.filter(
+        (e) =>
+          e.ruleName === "ConstraintUsage" ||
+          e.ruleName === "AssertConstraintUsage" ||
+          e.ruleName === "RequirementConstraintUsage",
+      );
+      const filteredConstraintNames = constraintEntries.map((e) => e.name).filter(isRealName);
+      if (filteredConstraintNames.length > 0) {
+        sections.push({ header: "constraints", entries: filteredConstraintNames });
+      }
 
-    // Calculation entries
-    const calcEntries = compartmentEntries.filter((e) => e.ruleName === "CalculationUsage");
-    const filteredCalcNames = calcEntries.map((e) => e.name).filter(isRealName);
-    if (filteredCalcNames.length > 0) {
-      sections.push({ header: "calculations", entries: filteredCalcNames });
-    }
+      // State entries
+      const stateEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "StateUsage" || e.ruleName === "ExhibitStateUsage",
+      );
+      const filteredStateNames = stateEntries.map((e) => e.name).filter(isRealName);
+      if (filteredStateNames.length > 0) {
+        sections.push({ header: "states", entries: filteredStateNames });
+      }
 
-    // Case entries (use case, analysis case, verification case)
-    const caseEntries = compartmentEntries.filter(
-      (e) =>
-        e.ruleName === "UseCaseUsage" ||
-        e.ruleName === "IncludeUseCaseUsage" ||
-        e.ruleName === "AnalysisCaseUsage" ||
-        e.ruleName === "VerificationCaseUsage" ||
-        e.ruleName === "CaseUsage",
-    );
-    const filteredCaseNames = caseEntries.map((e) => e.name).filter(isRealName);
-    if (filteredCaseNames.length > 0) {
-      sections.push({ header: "cases", entries: filteredCaseNames });
-    }
+      // Calculation entries
+      const calcEntries = compartmentEntries.filter((e) => e.ruleName === "CalculationUsage");
+      const filteredCalcNames = calcEntries.map((e) => e.name).filter(isRealName);
+      if (filteredCalcNames.length > 0) {
+        sections.push({ header: "calculations", entries: filteredCalcNames });
+      }
 
-    // Item entries
-    const itemEntries = compartmentEntries.filter((e) => e.ruleName === "ItemUsage");
-    const filteredItemNames = itemEntries.map((e) => e.name).filter(isRealName);
-    if (filteredItemNames.length > 0) {
-      sections.push({ header: "items", entries: filteredItemNames });
-    }
+      // Case entries (use case, analysis case, verification case)
+      const caseEntries = compartmentEntries.filter(
+        (e) =>
+          e.ruleName === "UseCaseUsage" ||
+          e.ruleName === "IncludeUseCaseUsage" ||
+          e.ruleName === "AnalysisCaseUsage" ||
+          e.ruleName === "VerificationCaseUsage" ||
+          e.ruleName === "CaseUsage",
+      );
+      const filteredCaseNames = caseEntries.map((e) => e.name).filter(isRealName);
+      if (filteredCaseNames.length > 0) {
+        sections.push({ header: "cases", entries: filteredCaseNames });
+      }
 
-    // Enumeration entries
-    const enumEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "EnumerationUsage" || e.ruleName === "EnumeratedValue",
-    );
-    const filteredEnumNames = enumEntries.map((e) => e.name).filter(isRealName);
-    if (filteredEnumNames.length > 0) {
-      sections.push({ header: "enumerations", entries: filteredEnumNames });
-    }
+      // Item entries
+      const itemEntries = compartmentEntries.filter((e) => e.ruleName === "ItemUsage");
+      const filteredItemNames = itemEntries.map((e) => e.name).filter(isRealName);
+      if (filteredItemNames.length > 0) {
+        sections.push({ header: "items", entries: filteredItemNames });
+      }
 
-    // Flow entries
-    const flowEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "FlowUsage" || e.ruleName === "SuccessionFlowUsage",
-    );
-    const filteredFlowNames = flowEntries.map((e) => e.name).filter(isRealName);
-    if (filteredFlowNames.length > 0) {
-      sections.push({ header: "flows", entries: filteredFlowNames });
-    }
+      // Enumeration entries
+      const enumEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "EnumerationUsage" || e.ruleName === "EnumeratedValue",
+      );
+      const filteredEnumNames = enumEntries.map((e) => e.name).filter(isRealName);
+      if (filteredEnumNames.length > 0) {
+        sections.push({ header: "enumerations", entries: filteredEnumNames });
+      }
 
-    // Concern entries
-    const concernEntries = compartmentEntries.filter((e) => e.ruleName === "ConcernUsage");
-    const filteredConcernNames = concernEntries.map((e) => e.name).filter(isRealName);
-    if (filteredConcernNames.length > 0) {
-      sections.push({ header: "concerns", entries: filteredConcernNames });
-    }
+      // Flow entries
+      const flowEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "FlowUsage" || e.ruleName === "SuccessionFlowUsage",
+      );
+      const filteredFlowNames = flowEntries.map((e) => e.name).filter(isRealName);
+      if (filteredFlowNames.length > 0) {
+        sections.push({ header: "flows", entries: filteredFlowNames });
+      }
 
-    // Transition entries (for state definitions)
-    const transitionEntries = compartmentEntries.filter(
-      (e) => e.ruleName === "TransitionUsage" || e.ruleName === "SuccessionAsUsage",
-    );
-    const filteredTransitionNames = transitionEntries.map((e) => e.name).filter(isRealName);
-    if (filteredTransitionNames.length > 0) {
-      sections.push({ header: "transitions", entries: filteredTransitionNames });
-    }
+      // Concern entries
+      const concernEntries = compartmentEntries.filter((e) => e.ruleName === "ConcernUsage");
+      const filteredConcernNames = concernEntries.map((e) => e.name).filter(isRealName);
+      if (filteredConcernNames.length > 0) {
+        sections.push({ header: "concerns", entries: filteredConcernNames });
+      }
 
-    // Reference/metadata entries (generic catch-all for remaining)
-    const alreadyCategorized = new Set([
-      "AttributeUsage",
-      "AttributeDefinition",
-      "ConnectionUsage",
-      "ConnectionDefinition",
-      "ActionUsage",
-      "ActionDefinition",
-      "PerformActionUsage",
-      "ActorUsage",
-      "StakeholderUsage",
-      "SubjectUsage",
-      "RequirementUsage",
-      "ObjectiveRequirementUsage",
-      "ConstraintUsage",
-      "AssertConstraintUsage",
-      "RequirementConstraintUsage",
-      "StateUsage",
-      "ExhibitStateUsage",
-      "CalculationUsage",
-      "UseCaseUsage",
-      "IncludeUseCaseUsage",
-      "AnalysisCaseUsage",
-      "VerificationCaseUsage",
-      "CaseUsage",
-      "ItemUsage",
-      "EnumerationUsage",
-      "EnumeratedValue",
-      "FlowUsage",
-      "SuccessionFlowUsage",
-      "ConcernUsage",
-      "TransitionUsage",
-      "SuccessionAsUsage",
-      // These become standalone nodes or ports
-      "PartUsage",
-      "PartDefinition",
-      "PortUsage",
-      "PortDefinition",
-    ]);
-    const otherEntries = compartmentEntries.filter((e) => !alreadyCategorized.has(e.ruleName) && isRealName(e.name));
-    if (otherEntries.length > 0) {
-      sections.push({
-        header: "features",
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        entries: otherEntries.map((e) => e.name!),
-      });
+      // Transition entries (for state definitions)
+      const transitionEntries = compartmentEntries.filter(
+        (e) => e.ruleName === "TransitionUsage" || e.ruleName === "SuccessionAsUsage",
+      );
+      const filteredTransitionNames = transitionEntries.map((e) => e.name).filter(isRealName);
+      if (filteredTransitionNames.length > 0) {
+        sections.push({ header: "transitions", entries: filteredTransitionNames });
+      }
+
+      // Reference/metadata entries (generic catch-all for remaining)
+      const alreadyCategorized = new Set([
+        "AttributeUsage",
+        "AttributeDefinition",
+        "ConnectionUsage",
+        "ConnectionDefinition",
+        "ActionUsage",
+        "ActionDefinition",
+        "PerformActionUsage",
+        "ActorUsage",
+        "StakeholderUsage",
+        "SubjectUsage",
+        "RequirementUsage",
+        "ObjectiveRequirementUsage",
+        "ConstraintUsage",
+        "AssertConstraintUsage",
+        "RequirementConstraintUsage",
+        "StateUsage",
+        "ExhibitStateUsage",
+        "CalculationUsage",
+        "UseCaseUsage",
+        "IncludeUseCaseUsage",
+        "AnalysisCaseUsage",
+        "VerificationCaseUsage",
+        "CaseUsage",
+        "ItemUsage",
+        "EnumerationUsage",
+        "EnumeratedValue",
+        "FlowUsage",
+        "SuccessionFlowUsage",
+        "ConcernUsage",
+        "TransitionUsage",
+        "SuccessionAsUsage",
+        // These become standalone nodes or ports
+        "PartUsage",
+        "PartDefinition",
+        "PortUsage",
+        "PortDefinition",
+      ]);
+      const otherEntries = compartmentEntries.filter((e) => !alreadyCategorized.has(e.ruleName) && isRealName(e.name));
+      if (otherEntries.length > 0) {
+        sections.push({
+          header: "features",
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          entries: otherEntries.map((e) => e.name!),
+        });
+      }
     }
 
     // ── Determine if this is a structural node needing dynamic compartments ──
-    const isStructural = STRUCTURAL_KINDS.has(sym.ruleName) && sections.length > 0;
+    const isStructural =
+      (STRUCTURAL_KINDS.has(sym.ruleName) || (Array.isArray(customCompartments) && customCompartments.length > 0)) &&
+      sections.length > 0;
 
     // Resolve name for templates
     const nameText = sym.name ?? "";
@@ -846,6 +1002,7 @@ export function buildPolyglotDiagram(
         }
       }
 
+      enrichNodePresentation(node, config, sym);
       actualNodeIds.add(node.id);
       nodes.push(node);
       continue;
@@ -977,6 +1134,7 @@ export function buildPolyglotDiagram(
         }
       }
 
+      enrichNodePresentation(stateNode, config, sym);
       actualNodeIds.add(stateNode.id);
       nodes.push(stateNode);
       continue;
@@ -1083,6 +1241,7 @@ export function buildPolyglotDiagram(
         }
       }
 
+      enrichNodePresentation(controlNode, config, sym);
       actualNodeIds.add(controlNode.id);
       nodes.push(controlNode);
       continue;
@@ -1169,6 +1328,7 @@ export function buildPolyglotDiagram(
         }
       }
 
+      enrichNodePresentation(ucNode, config, sym);
       actualNodeIds.add(ucNode.id);
       nodes.push(ucNode);
       continue;
@@ -1334,6 +1494,11 @@ export function buildPolyglotDiagram(
           parameters,
         },
         compartments: sections,
+        data: {
+          ruleName: sym.ruleName,
+          sections,
+          multiplicity: (sym.metadata as any)?.multiplicity ?? (sym.name?.includes("[") ? 2 : 1),
+        },
         autoLayout: true,
       };
 
@@ -1357,6 +1522,7 @@ export function buildPolyglotDiagram(
         node.zIndex = 1;
       }
 
+      enrichNodePresentation(node, config, sym);
       actualNodeIds.add(node.id);
       nodes.push(node);
       continue; // skip the normal node creation below
@@ -1411,6 +1577,11 @@ export function buildPolyglotDiagram(
         description: sym.name ?? "",
         parameters,
       },
+      data: {
+        ruleName: sym.ruleName,
+        sections,
+        multiplicity: (sym.metadata as any)?.multiplicity ?? (sym.name?.includes("[") ? 2 : 1),
+      },
       autoLayout: true,
     };
 
@@ -1434,19 +1605,25 @@ export function buildPolyglotDiagram(
       node.zIndex = 1;
     }
 
+    enrichNodePresentation(node, config, sym);
     actualNodeIds.add(node.id);
     nodes.push(node);
   }
 
-  // ── Create X6 port items for PortUsage children ──
+  // ── Create X6 port items for child port symbols ──
   // Ports are shown on the border of their parent node, not as compartment text.
   // Must run before edge creation so port endpoints can be resolved.
   for (const sym of allSymbols) {
     if (sym.parentId === null) continue;
-    if (sym.ruleName !== "PortUsage" && sym.ruleName !== "PortDefinition") continue;
+    if (!PORT_KINDS.has(sym.ruleName) && gfxConfig[sym.ruleName]?.role !== "port") continue;
 
     const parentSym = index.symbols.get(sym.parentId);
-    if (!parentSym || !STRUCTURAL_KINDS.has(parentSym.ruleName)) continue;
+    if (!parentSym) continue;
+    const isStructuralParent =
+      STRUCTURAL_KINDS.has(parentSym.ruleName) ||
+      gfxConfig[parentSym.ruleName]?.role === "node" ||
+      gfxConfig[parentSym.ruleName]?.role === "group";
+    if (!isStructuralParent) continue;
 
     const parentNodeId = symbolIdToNodeId.get(sym.parentId);
     if (!parentNodeId) continue;
@@ -1490,11 +1667,15 @@ export function buildPolyglotDiagram(
     const portItems = parentNode.ports.items ?? [];
     const group = portItems.length % 2 === 0 ? "out" : "in";
 
+    const portCfg = gfxConfig[sym.ruleName];
+    const portCustomAttrs = portCfg?.node?.attrs?.body || portCfg?.node?.attrs?.circle;
+
     portItems.push({
       id: portName,
       group,
       attrs: {
         text: { text: portName },
+        ...(portCustomAttrs ? { circle: portCustomAttrs } : {}),
       },
     });
     parentNode.ports.items = portItems;
@@ -1605,6 +1786,20 @@ export function buildPolyglotDiagram(
       }
     }
 
+    const edgeAnimBindings: { property: string; variableName: string; transform?: string }[] = [];
+    const edgeAnimCfg = (edgeConfig as any).animation || (config as any).animation;
+    if (edgeAnimCfg?.channels && Array.isArray(edgeAnimCfg.channels)) {
+      for (const ch of edgeAnimCfg.channels) {
+        if (ch.attribute && ch.signal) {
+          edgeAnimBindings.push({
+            property: ch.attribute,
+            variableName: ch.signal,
+            transform: typeof ch.transform === "string" ? ch.transform : undefined,
+          });
+        }
+      }
+    }
+
     edges.push({
       id: `${sym.ruleName}_${sym.id}`,
       shape: edgeConfig.shape ?? "edge",
@@ -1616,6 +1811,7 @@ export function buildPolyglotDiagram(
       attrs: resolvedAttrs,
       labels: resolvedLabels,
       vertices: edgeVertices,
+      animations: edgeAnimBindings.length > 0 ? edgeAnimBindings : undefined,
     });
   }
 
