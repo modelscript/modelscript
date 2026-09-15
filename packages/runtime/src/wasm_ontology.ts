@@ -71,6 +71,9 @@ export interface OWL2DataPropertyAssertion {
   readonly value: string;
   readonly datatype?: string;
   readonly sourceLang?: string;
+  readonly minVal?: number;
+  readonly maxVal?: number;
+  readonly op?: "<" | "<=" | ">" | ">=" | "=" | "!=";
 }
 
 export interface OWL2TransitiveObjectProperty {
@@ -207,6 +210,17 @@ export interface SHACLPropertyShape {
   readonly pattern?: string;
   readonly hasValue?: string;
   readonly in?: readonly string[];
+  readonly class?: string;
+  readonly or?: readonly SHACLPropertyShape[];
+  readonly and?: readonly SHACLPropertyShape[];
+  readonly not?: SHACLPropertyShape;
+  readonly xone?: readonly SHACLPropertyShape[];
+  readonly minInclusive?: number;
+  readonly maxInclusive?: number;
+  readonly minExclusive?: number;
+  readonly maxExclusive?: number;
+  readonly lessThan?: string;
+  readonly lessThanOrEquals?: string;
 }
 
 export interface SHACLNodeShape {
@@ -407,6 +421,7 @@ export interface IOWLReasoner {
   query(q: DLQuery): DLQueryResult;
   queryBgp?(query: BgpQuery): BgpQueryResult;
   explain(subClassIri: string, superClassIri: string): readonly OWL2Axiom[];
+  validateShacl?(shapes: readonly SHACLNodeShape[]): readonly SHACLViolation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -851,6 +866,11 @@ export class WasmOntologyReasoner implements IOWLReasoner {
   private individualTypes = new Map<string, Set<string>>();
   private objectPropertyAssertions = new Map<string, PropertyEdge[]>();
   private dataPropertyAssertions = new Map<string, { subjectIri: string; value: string }[]>();
+  private functionalDataProperties = new Set<string>();
+  private asymmetricProperties = new Set<string>();
+  private irreflexiveProperties = new Set<string>();
+  private disjointPropertyPairs = new Set<string>();
+  private rawDataPropertyAssertions: OWL2DataPropertyAssertion[] = [];
 
   private _classified = false;
   private _wasmInstance: WasmOntologyInstance | null = null;
@@ -1070,8 +1090,8 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
   quickXplain(backgroundAxioms?: readonly OWL2Axiom[]): readonly OWL2Axiom[] {
     const bg = backgroundAxioms ? [...backgroundAxioms] : [];
-    const bgSet = new Set(bg.map((a) => JSON.stringify(a)));
-    const delta = this._axioms.filter((a) => !bgSet.has(JSON.stringify(a)));
+    const bgSet = new Set(bg.map((a) => axiomKey(a)));
+    const delta = this._axioms.filter((a) => !bgSet.has(axiomKey(a)));
 
     if (this.testConsistencySubset([...bg, ...delta])) {
       return [];
@@ -1087,7 +1107,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     const discovered: (readonly OWL2Axiom[])[] = [root];
     const queue: OWL2Axiom[][] = root.map((ax) => [ax]);
 
-    const serializeAxiom = (a: OWL2Axiom) => JSON.stringify(a);
+    const serializeAxiom = (a: OWL2Axiom) => axiomKey(a);
     const areCoresEqual = (c1: readonly OWL2Axiom[], c2: readonly OWL2Axiom[]) => {
       if (c1.length !== c2.length) return false;
       const s1 = new Set(c1.map(serializeAxiom));
@@ -1149,7 +1169,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
     const merged = [...d1Core, ...d2Core];
     const unique = new Map<string, OWL2Axiom>();
-    for (const a of merged) unique.set(JSON.stringify(a), a);
+    for (const a of merged) unique.set(axiomKey(a), a);
     return Array.from(unique.values());
   }
 
@@ -1580,6 +1600,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       }
 
       case "DataPropertyAssertion": {
+        this.rawDataPropertyAssertions.push(axiom);
         const assertions = this.dataPropertyAssertions.get(axiom.propertyIri);
         const assertion = { subjectIri: axiom.subjectIri, value: axiom.value };
         if (assertions) {
@@ -1614,6 +1635,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
       case "FunctionalDataProperty": {
         this.dataProperties.add(axiom.propertyIri);
+        this.functionalDataProperties.add(axiom.propertyIri);
         break;
       }
 
@@ -1708,10 +1730,33 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       }
 
       case "QualifiedCardinality":
-      case "AsymmetricObjectProperty":
-      case "IrreflexiveObjectProperty":
-      case "DisjointObjectProperties":
         break;
+
+      case "AsymmetricObjectProperty": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.asymmetricProperties.add(axiom.propertyIri);
+        break;
+      }
+
+      case "IrreflexiveObjectProperty": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.irreflexiveProperties.add(axiom.propertyIri);
+        break;
+      }
+
+      case "DisjointObjectProperties": {
+        for (let i = 0; i < axiom.propertyIris.length; i++) {
+          const p1 = axiom.propertyIris[i]!;
+          this.objectProperties.add(p1);
+          for (let j = i + 1; j < axiom.propertyIris.length; j++) {
+            const p2 = axiom.propertyIris[j]!;
+            this.objectProperties.add(p2);
+            const key = p1 < p2 ? `${p1}|${p2}` : `${p2}|${p1}`;
+            this.disjointPropertyPairs.add(key);
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -1773,6 +1818,44 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
       case "FunctionalObjectProperty": {
         this.functionalObjectProperties.delete(axiom.propertyIri);
+        break;
+      }
+
+      case "FunctionalDataProperty": {
+        this.functionalDataProperties.delete(axiom.propertyIri);
+        break;
+      }
+
+      case "AsymmetricObjectProperty": {
+        this.asymmetricProperties.delete(axiom.propertyIri);
+        break;
+      }
+
+      case "IrreflexiveObjectProperty": {
+        this.irreflexiveProperties.delete(axiom.propertyIri);
+        break;
+      }
+
+      case "DisjointObjectProperties": {
+        for (let i = 0; i < axiom.propertyIris.length; i++) {
+          for (let j = i + 1; j < axiom.propertyIris.length; j++) {
+            const p1 = axiom.propertyIris[i]!;
+            const p2 = axiom.propertyIris[j]!;
+            const key = p1 < p2 ? `${p1}|${p2}` : `${p2}|${p1}`;
+            this.disjointPropertyPairs.delete(key);
+          }
+        }
+        break;
+      }
+
+      case "DataPropertyAssertion": {
+        const rawIdx = this.rawDataPropertyAssertions.findIndex((a) => axiomEqual(a, axiom));
+        if (rawIdx !== -1) this.rawDataPropertyAssertions.splice(rawIdx, 1);
+        const assertions = this.dataPropertyAssertions.get(axiom.propertyIri);
+        if (assertions) {
+          const aIdx = assertions.findIndex((a) => a.subjectIri === axiom.subjectIri && a.value === axiom.value);
+          if (aIdx !== -1) assertions.splice(aIdx, 1);
+        }
         break;
       }
 
@@ -1843,11 +1926,184 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       }
     }
 
+    // Disjoint object properties
+    for (const pairKey of this.disjointPropertyPairs) {
+      const [p1, p2] = pairKey.split("|");
+      if (!p1 || !p2) continue;
+      const edges1 = this.objectPropertyAssertions.get(p1) ?? [];
+      const edges2 = this.objectPropertyAssertions.get(p2) ?? [];
+      for (const e1 of edges1) {
+        const match = edges2.find((e2) => e2.subjectIri === e1.subjectIri && e2.objectIri === e1.objectIri);
+        if (match) {
+          conflicts.push({
+            type: "DisjointObjectProperties",
+            propertyIris: [p1, p2],
+            sourceLang: "inferred",
+          });
+          conflicts.push({
+            type: "ObjectPropertyAssertion",
+            propertyIri: p1,
+            subjectIri: e1.subjectIri,
+            objectIri: e1.objectIri,
+            sourceLang: "inferred",
+          });
+          conflicts.push({
+            type: "ObjectPropertyAssertion",
+            propertyIri: p2,
+            subjectIri: match.subjectIri,
+            objectIri: match.objectIri,
+            sourceLang: "inferred",
+          });
+          break;
+        }
+      }
+    }
+
+    // Asymmetric object properties
+    for (const propIri of this.asymmetricProperties) {
+      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+      for (const e of edges) {
+        const rev = edges.find((r) => r.subjectIri === e.objectIri && r.objectIri === e.subjectIri);
+        if (rev) {
+          conflicts.push({
+            type: "AsymmetricObjectProperty",
+            propertyIri: propIri,
+            sourceLang: "inferred",
+          });
+          conflicts.push({
+            type: "ObjectPropertyAssertion",
+            propertyIri: propIri,
+            subjectIri: e.subjectIri,
+            objectIri: e.objectIri,
+            sourceLang: "inferred",
+          });
+          conflicts.push({
+            type: "ObjectPropertyAssertion",
+            propertyIri: propIri,
+            subjectIri: rev.subjectIri,
+            objectIri: rev.objectIri,
+            sourceLang: "inferred",
+          });
+          break;
+        }
+      }
+    }
+
+    // Irreflexive object properties
+    for (const propIri of this.irreflexiveProperties) {
+      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+      for (const e of edges) {
+        if (e.subjectIri === e.objectIri) {
+          conflicts.push({
+            type: "IrreflexiveObjectProperty",
+            propertyIri: propIri,
+            sourceLang: "inferred",
+          });
+          conflicts.push({
+            type: "ObjectPropertyAssertion",
+            propertyIri: propIri,
+            subjectIri: e.subjectIri,
+            objectIri: e.objectIri,
+            sourceLang: "inferred",
+          });
+          break;
+        }
+      }
+    }
+
+    // Functional data properties
+    for (const propIri of this.functionalDataProperties) {
+      const asserts = this.dataPropertyAssertions.get(propIri) ?? [];
+      const bySubj = new Map<string, string[]>();
+      for (const a of asserts) {
+        const list = bySubj.get(a.subjectIri) ?? [];
+        list.push(a.value);
+        bySubj.set(a.subjectIri, list);
+      }
+      for (const [subj, vals] of bySubj) {
+        const uniqueVals = Array.from(new Set(vals));
+        if (uniqueVals.length > 1) {
+          conflicts.push({
+            type: "FunctionalDataProperty",
+            propertyIri: propIri,
+            sourceLang: "inferred",
+          });
+          for (const v of uniqueVals) {
+            conflicts.push({
+              type: "DataPropertyAssertion",
+              propertyIri: propIri,
+              subjectIri: subj,
+              value: v,
+              sourceLang: "inferred",
+            });
+          }
+        }
+      }
+    }
+
+    // Quantitative and numeric intervals
+    const numericIntervals = new Map<string, { min: number; max: number; axioms: OWL2DataPropertyAssertion[] }>();
+    for (const dpa of this.rawDataPropertyAssertions) {
+      const key = `${dpa.subjectIri}|${dpa.propertyIri}`;
+      let bounds = numericIntervals.get(key);
+      if (!bounds) {
+        bounds = { min: -Infinity, max: Infinity, axioms: [] };
+        numericIntervals.set(key, bounds);
+      }
+      bounds.axioms.push(dpa);
+
+      const eps = 1e-9;
+      if (dpa.minVal !== undefined) {
+        bounds.min = Math.max(bounds.min, dpa.minVal);
+      }
+      if (dpa.maxVal !== undefined) {
+        bounds.max = Math.min(bounds.max, dpa.maxVal);
+      }
+
+      if (dpa.op) {
+        const numVal = Number(dpa.value);
+        if (!isNaN(numVal)) {
+          switch (dpa.op) {
+            case ">":
+              bounds.min = Math.max(bounds.min, numVal + eps);
+              break;
+            case ">=":
+              bounds.min = Math.max(bounds.min, numVal);
+              break;
+            case "<":
+              bounds.max = Math.min(bounds.max, numVal - eps);
+              break;
+            case "<=":
+              bounds.max = Math.min(bounds.max, numVal);
+              break;
+            case "=":
+              bounds.min = Math.max(bounds.min, numVal);
+              bounds.max = Math.min(bounds.max, numVal);
+              break;
+          }
+        }
+      } else if (dpa.value !== undefined) {
+        const numVal = Number(dpa.value);
+        if (!isNaN(numVal) && this.functionalDataProperties.has(dpa.propertyIri)) {
+          bounds.min = Math.max(bounds.min, numVal);
+          bounds.max = Math.min(bounds.max, numVal);
+        }
+      }
+    }
+
+    for (const [, bounds] of numericIntervals) {
+      if (bounds.min > bounds.max) {
+        for (const ax of bounds.axioms) {
+          conflicts.push(ax);
+        }
+      }
+    }
+
     if (conflicts.length > 0) {
       return {
         isConsistent: false,
         conflictingAxioms: conflicts,
-        explanation: `Found ${conflicts.length} disjointness violation(s) in the ontology.`,
+        explanation: `Found ${conflicts.length} consistency violation(s) in the ontology.`,
       };
     }
 
@@ -1907,6 +2163,377 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return node;
   }
 
+  validateShacl(shapes: readonly SHACLNodeShape[]): readonly SHACLViolation[] {
+    if (!this._classified) this.classify();
+    const violations: SHACLViolation[] = [];
+
+    const evaluatePropertyShape = (
+      focusNode: string,
+      ps: SHACLPropertyShape,
+      values: readonly string[],
+      numericVals: readonly number[],
+      nodeViolations: SHACLViolation[],
+      recordViolations: boolean,
+    ): boolean => {
+      let valid = true;
+      const count = values.length;
+
+      // minCount
+      if (ps.minCount !== undefined && count < ps.minCount) {
+        valid = false;
+        if (recordViolations) {
+          nodeViolations.push({
+            focusNode,
+            resultPath: ps.path,
+            message: `Node ${focusNode} has ${count} value(s) for property ${ps.path}, but minCount is ${ps.minCount}.`,
+            constraintComponent: "sh:MinCountConstraintComponent",
+            severity: "Violation",
+          });
+        }
+      }
+
+      // maxCount
+      if (ps.maxCount !== undefined && count > ps.maxCount) {
+        valid = false;
+        if (recordViolations) {
+          nodeViolations.push({
+            focusNode,
+            resultPath: ps.path,
+            message: `Node ${focusNode} has ${count} value(s) for property ${ps.path}, but maxCount is ${ps.maxCount}.`,
+            constraintComponent: "sh:MaxCountConstraintComponent",
+            severity: "Violation",
+          });
+        }
+      }
+
+      // hasValue
+      if (ps.hasValue !== undefined) {
+        const found = values.some((v) => String(v) === ps.hasValue);
+        if (!found) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Node ${focusNode} does not have required value ${ps.hasValue} for property ${ps.path}.`,
+              constraintComponent: "sh:HasValueConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+      }
+
+      // in
+      if (ps.in && ps.in.length > 0) {
+        const inSet = new Set(ps.in);
+        for (const v of values) {
+          if (!inSet.has(String(v))) {
+            valid = false;
+            if (recordViolations) {
+              nodeViolations.push({
+                focusNode,
+                resultPath: ps.path,
+                message: `Value ${String(v)} on ${focusNode} is not in allowed set: [${ps.in.join(", ")}].`,
+                constraintComponent: "sh:InConstraintComponent",
+                severity: "Violation",
+              });
+            }
+          }
+        }
+      }
+
+      // pattern
+      if (ps.pattern) {
+        const regex = new RegExp(ps.pattern);
+        for (const v of values) {
+          if (!regex.test(String(v))) {
+            valid = false;
+            if (recordViolations) {
+              nodeViolations.push({
+                focusNode,
+                resultPath: ps.path,
+                message: `Value ${String(v)} on ${focusNode} does not match regex pattern "${ps.pattern}".`,
+                constraintComponent: "sh:PatternConstraintComponent",
+                severity: "Violation",
+              });
+            }
+          }
+        }
+      }
+
+      // class
+      if (ps.class) {
+        for (const v of values) {
+          const strVal = String(v);
+          const types = this.individualTypes.get(strVal);
+          const isInstance = types?.has(ps.class) || false;
+          if (!isInstance) {
+            valid = false;
+            if (recordViolations) {
+              nodeViolations.push({
+                focusNode,
+                resultPath: ps.path,
+                message: `Object ${strVal} on ${focusNode} is not an instance of class ${ps.class}.`,
+                constraintComponent: "sh:ClassConstraintComponent",
+                severity: "Violation",
+              });
+            }
+          }
+        }
+      }
+
+      // Numeric boundary constraints
+      for (const num of numericVals) {
+        if (ps.minInclusive !== undefined && num < ps.minInclusive) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Value ${num} on ${focusNode} violates minInclusive ${ps.minInclusive}.`,
+              constraintComponent: "sh:MinInclusiveConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+        if (ps.maxInclusive !== undefined && num > ps.maxInclusive) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Value ${num} on ${focusNode} violates maxInclusive ${ps.maxInclusive}.`,
+              constraintComponent: "sh:MaxInclusiveConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+        if (ps.minExclusive !== undefined && num <= ps.minExclusive) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Value ${num} on ${focusNode} violates minExclusive ${ps.minExclusive}.`,
+              constraintComponent: "sh:MinExclusiveConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+        if (ps.maxExclusive !== undefined && num >= ps.maxExclusive) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Value ${num} on ${focusNode} violates maxExclusive ${ps.maxExclusive}.`,
+              constraintComponent: "sh:MaxExclusiveConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+      }
+
+      // Property comparisons (lessThan, lessThanOrEquals)
+      if (ps.lessThan) {
+        const otherVals = this.getPropertyValues(focusNode, ps.lessThan);
+        const otherNums = otherVals.map(Number).filter((n) => !isNaN(n));
+        for (const num of numericVals) {
+          for (const otherNum of otherNums) {
+            if (num >= otherNum) {
+              valid = false;
+              if (recordViolations) {
+                nodeViolations.push({
+                  focusNode,
+                  resultPath: ps.path,
+                  message: `Value ${num} for ${ps.path} is not strictly less than value ${otherNum} for ${ps.lessThan}.`,
+                  constraintComponent: "sh:LessThanConstraintComponent",
+                  severity: "Violation",
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (ps.lessThanOrEquals) {
+        const otherVals = this.getPropertyValues(focusNode, ps.lessThanOrEquals);
+        const otherNums = otherVals.map(Number).filter((n) => !isNaN(n));
+        for (const num of numericVals) {
+          for (const otherNum of otherNums) {
+            if (num > otherNum) {
+              valid = false;
+              if (recordViolations) {
+                nodeViolations.push({
+                  focusNode,
+                  resultPath: ps.path,
+                  message: `Value ${num} for ${ps.path} exceeds value ${otherNum} for ${ps.lessThanOrEquals}.`,
+                  constraintComponent: "sh:LessThanOrEqualsConstraintComponent",
+                  severity: "Violation",
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Logical: or
+      if (ps.or && ps.or.length > 0) {
+        const anyPass = ps.or.some((subPs) => {
+          const subVals = subPs.path ? this.getPropertyValues(focusNode, subPs.path) : values;
+          const subNums = subVals.map(Number).filter((n) => !isNaN(n));
+          return evaluatePropertyShape(focusNode, subPs, subVals, subNums, [], false);
+        });
+        if (!anyPass) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Node ${focusNode} does not satisfy any disjunct in sh:or constraint on ${ps.path}.`,
+              constraintComponent: "sh:OrConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+      }
+
+      // Logical: and
+      if (ps.and && ps.and.length > 0) {
+        for (const subPs of ps.and) {
+          const subVals = subPs.path ? this.getPropertyValues(focusNode, subPs.path) : values;
+          const subNums = subVals.map(Number).filter((n) => !isNaN(n));
+          const pass = evaluatePropertyShape(focusNode, subPs, subVals, subNums, nodeViolations, recordViolations);
+          if (!pass) valid = false;
+        }
+      }
+
+      // Logical: not
+      if (ps.not) {
+        const subVals = ps.not.path ? this.getPropertyValues(focusNode, ps.not.path) : values;
+        const subNums = subVals.map(Number).filter((n) => !isNaN(n));
+        const passedSub = evaluatePropertyShape(focusNode, ps.not, subVals, subNums, [], false);
+        if (passedSub) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Node ${focusNode} satisfied forbidden constraint in sh:not on ${ps.path}.`,
+              constraintComponent: "sh:NotConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+      }
+
+      // Logical: xone
+      if (ps.xone && ps.xone.length > 0) {
+        let passCount = 0;
+        for (const subPs of ps.xone) {
+          const subVals = subPs.path ? this.getPropertyValues(focusNode, subPs.path) : values;
+          const subNums = subVals.map(Number).filter((n) => !isNaN(n));
+          if (evaluatePropertyShape(focusNode, subPs, subVals, subNums, [], false)) {
+            passCount++;
+          }
+        }
+        if (passCount !== 1) {
+          valid = false;
+          if (recordViolations) {
+            nodeViolations.push({
+              focusNode,
+              resultPath: ps.path,
+              message: `Node ${focusNode} matched ${passCount} shapes in sh:xone on ${ps.path} (expected exactly 1).`,
+              constraintComponent: "sh:XoneConstraintComponent",
+              severity: "Violation",
+            });
+          }
+        }
+      }
+
+      return valid;
+    };
+
+    for (const shape of shapes) {
+      const targetClassNode = this.classes.get(shape.targetClass);
+      const targetClasses = new Set<string>([shape.targetClass]);
+      if (targetClassNode?.allSubClasses) {
+        for (const sub of targetClassNode.allSubClasses) targetClasses.add(sub);
+      }
+
+      const focusNodes: string[] = [];
+      for (const [indIri, types] of this.individualTypes) {
+        let match = false;
+        for (const tc of targetClasses) {
+          if (types.has(tc)) {
+            match = true;
+            break;
+          }
+        }
+        if (match) focusNodes.push(indIri);
+      }
+
+      for (const focusNode of focusNodes) {
+        if (shape.closed) {
+          const allowedPaths = new Set(shape.propertyShapes.map((ps) => ps.path));
+          allowedPaths.add("rdf:type");
+          for (const [propIri, edges] of this.objectPropertyAssertions) {
+            if (edges.some((e) => e.subjectIri === focusNode) && !allowedPaths.has(propIri)) {
+              violations.push({
+                focusNode,
+                resultPath: propIri,
+                message: `Node ${focusNode} has unallowed property ${propIri} on closed shape.`,
+                constraintComponent: "sh:ClosedConstraintComponent",
+                severity: "Violation",
+              });
+            }
+          }
+          for (const [propIri, assertions] of this.dataPropertyAssertions) {
+            if (assertions.some((a) => a.subjectIri === focusNode) && !allowedPaths.has(propIri)) {
+              violations.push({
+                focusNode,
+                resultPath: propIri,
+                message: `Node ${focusNode} has unallowed data property ${propIri} on closed shape.`,
+                constraintComponent: "sh:ClosedConstraintComponent",
+                severity: "Violation",
+              });
+            }
+          }
+        }
+
+        for (const ps of shape.propertyShapes) {
+          const values = this.getPropertyValues(focusNode, ps.path);
+          const numericVals = values.map(Number).filter((n) => !isNaN(n));
+          evaluatePropertyShape(focusNode, ps, values, numericVals, violations, true);
+        }
+      }
+    }
+
+    return violations;
+  }
+
+  private getPropertyValues(focusNode: string, path: string): string[] {
+    const res: string[] = [];
+    if (path === "rdf:type") {
+      const types = this.individualTypes.get(focusNode);
+      if (types) res.push(...types);
+      return res;
+    }
+    const objEdges = this.objectPropertyAssertions.get(path);
+    if (objEdges) {
+      for (const e of objEdges) {
+        if (e.subjectIri === focusNode) res.push(e.objectIri);
+      }
+    }
+    const dataAsserts = this.dataPropertyAssertions.get(path);
+    if (dataAsserts) {
+      for (const a of dataAsserts) {
+        if (a.subjectIri === focusNode) res.push(a.value);
+      }
+    }
+    return res;
+  }
+
   private clear(): void {
     this._axioms = [];
     this.classes.clear();
@@ -1914,6 +2541,13 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this.objectProperties.clear();
     this.dataProperties.clear();
     this.transitiveProperties.clear();
+    this.functionalObjectProperties.clear();
+    this.functionalDataProperties.clear();
+    this.asymmetricProperties.clear();
+    this.irreflexiveProperties.clear();
+    this.disjointPropertyPairs.clear();
+    this.rawDataPropertyAssertions = [];
+    this.sameIndividualGroups.clear();
     this.individualTypes.clear();
     this.objectPropertyAssertions.clear();
     this.dataPropertyAssertions.clear();
@@ -2235,17 +2869,43 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
           const children = unified.childrenOf?.get(id) ?? [];
           for (const childId of children) {
             const child = unified.symbols.get(childId);
-            if (
-              child &&
-              (child.ruleName === "OwnedSubsetting" || child.ruleName === "OwnedRedefinition") &&
-              child.name
-            ) {
-              projected.push({
-                type: "SubClassOf",
-                subClassIri: iri,
-                superClassIri: `${prefix}${child.name}`,
-                sourceLang: "sysml2",
-              });
+            if (child) {
+              if ((child.ruleName === "OwnedSubsetting" || child.ruleName === "OwnedRedefinition") && child.name) {
+                projected.push({
+                  type: "SubClassOf",
+                  subClassIri: iri,
+                  superClassIri: `${prefix}${child.name}`,
+                  sourceLang: "sysml2",
+                });
+              } else if (
+                child.kind === "Flow" ||
+                child.ruleName === "ItemFlow" ||
+                child.ruleName === "FlowConnectionUsage"
+              ) {
+                const src = (child as any).source || (child as any).from;
+                const tgt = (child as any).target || (child as any).to;
+                if (src && tgt) {
+                  projected.push({
+                    type: "ObjectPropertyAssertion",
+                    propertyIri: "sysml:flowsTo",
+                    subjectIri: `${prefix}${src}`,
+                    objectIri: `${prefix}${tgt}`,
+                    sourceLang: "sysml2",
+                  });
+                }
+              } else if (child.kind === "Allocation" || child.ruleName === "AllocationUsage") {
+                const src = (child as any).source || (child as any).from;
+                const tgt = (child as any).target || (child as any).to;
+                if (src && tgt) {
+                  projected.push({
+                    type: "ObjectPropertyAssertion",
+                    propertyIri: "sysml:allocatedTo",
+                    subjectIri: `${prefix}${src}`,
+                    objectIri: `${prefix}${tgt}`,
+                    sourceLang: "sysml2",
+                  });
+                }
+              }
             }
           }
         } else if (entry.kind === "Usage") {
@@ -2269,7 +2929,13 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
           }
         }
       } else if (language === "modelica") {
-        if (entry.kind === "Class" || entry.kind === "model" || entry.kind === "block") {
+        if (
+          entry.kind === "Class" ||
+          entry.kind === "model" ||
+          entry.kind === "block" ||
+          entry.kind === "connector" ||
+          entry.kind === "record"
+        ) {
           projected.push({
             type: "ClassDeclaration",
             iri,
@@ -2291,7 +2957,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
           const children = unified.childrenOf?.get(id) ?? [];
           for (const childId of children) {
             const child = unified.symbols.get(childId);
-            if (child && (child.kind === "Component" || child.kind === "Variable")) {
+            if (child && (child.kind === "Component" || child.kind === "Variable" || child.kind === "Connector")) {
               const compIri = `${prefix}${entry.name}.${child.name}`;
               projected.push({
                 type: "ClassDeclaration",
@@ -2305,13 +2971,47 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
                 objectIri: compIri,
                 sourceLang: "modelica",
               });
+              const typeName = (child as any).type || (child as any).typeName;
+              if (typeName) {
+                projected.push({
+                  type: "ClassAssertion",
+                  individualIri: compIri,
+                  classIri: `${prefix}${typeName}`,
+                  sourceLang: "modelica",
+                });
+              }
+            } else if (child && (child.kind === "Connect" || child.ruleName === "ConnectEquation")) {
+              const lhs = (child as any).lhs || (child as any).left;
+              const rhs = (child as any).rhs || (child as any).right;
+              if (lhs && rhs) {
+                projected.push({
+                  type: "ObjectPropertyAssertion",
+                  propertyIri: "mo:connectedTo",
+                  subjectIri: `${prefix}${lhs}`,
+                  objectIri: `${prefix}${rhs}`,
+                  sourceLang: "modelica",
+                });
+              }
             }
           }
         }
       }
     }
 
+    if (language === "modelica") {
+      projected.push({
+        type: "SymmetricObjectProperty",
+        propertyIri: "mo:connectedTo",
+        sourceLang: "modelica",
+      });
+    }
+
     return this.setAxioms(language, projected);
+  }
+
+  projectCadEnvelopes(boxes: readonly CadBoundingBox[]): OWL2AxiomDelta {
+    const axioms = projectCadEnvelopes(boxes);
+    return this.setAxioms("step", axioms);
   }
 
   update(workspaceVersions: Map<string, number>): OWL2AxiomDelta | null {
@@ -2562,4 +3262,197 @@ export function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | 
     default:
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// GCI Absorption Preprocessor (HermiT / Pellet optimization)
+// ---------------------------------------------------------------------------
+
+export function absorbGCIs(axioms: readonly OWL2Axiom[]): OWL2Axiom[] {
+  const result: OWL2Axiom[] = [];
+  for (const ax of axioms) {
+    if (ax.type === "SubClassOf") {
+      // Tautology: C SubClassOf C
+      if (ax.subClassIri === ax.superClassIri) continue;
+      // C SubClassOf owl:Thing is trivial
+      if (ax.superClassIri === "owl:Thing" || ax.superClassIri === "http://www.w3.org/2002/07/owl#Thing") continue;
+      // owl:Nothing SubClassOf C is trivial
+      if (ax.subClassIri === "owl:Nothing" || ax.subClassIri === "http://www.w3.org/2002/07/owl#Nothing") continue;
+      result.push(ax);
+    } else if (ax.type === "EquivalentClasses") {
+      const unique = Array.from(new Set(ax.classIris));
+      if (unique.length < 2) continue;
+      result.push({
+        ...ax,
+        classIris: unique,
+      });
+    } else if (ax.type === "DisjointClasses") {
+      const unique = Array.from(new Set(ax.classIris));
+      if (unique.length < 2) continue;
+      result.push({
+        ...ax,
+        classIris: unique,
+      });
+    } else {
+      result.push(ax);
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// STEP CAD 3D Bounding Box RCC-8 Spatial Projections
+// ---------------------------------------------------------------------------
+
+export interface CadBoundingBox {
+  readonly id: string;
+  readonly name?: string;
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+}
+
+export type Rcc8Relation =
+  | "rcc:DC"
+  | "rcc:EC"
+  | "rcc:PO"
+  | "rcc:EQ"
+  | "rcc:TPP"
+  | "rcc:NTPP"
+  | "rcc:TPPi"
+  | "rcc:NTPPi";
+
+export function computeRcc8Relation(a: CadBoundingBox, b: CadBoundingBox, epsilon: number = 1e-6): Rcc8Relation {
+  // Check for exact identity (EQ)
+  let isEqual = true;
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(a.min[i] - b.min[i]) > epsilon || Math.abs(a.max[i] - b.max[i]) > epsilon) {
+      isEqual = false;
+      break;
+    }
+  }
+  if (isEqual) return "rcc:EQ";
+
+  // Intersection bounds
+  const interMin = [Math.max(a.min[0], b.min[0]), Math.max(a.min[1], b.min[1]), Math.max(a.min[2], b.min[2])];
+  const interMax = [Math.min(a.max[0], b.max[0]), Math.min(a.max[1], b.max[1]), Math.min(a.max[2], b.max[2])];
+
+  // If disjoint on any axis => Disconnected (DC)
+  for (let i = 0; i < 3; i++) {
+    if (interMin[i] > interMax[i] + epsilon) {
+      return "rcc:DC";
+    }
+  }
+
+  // If touches at boundary face/edge/corner with 0-volume intersection => Externally Connected (EC)
+  let touchesBoundary = false;
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(interMin[i] - interMax[i]) <= epsilon) {
+      touchesBoundary = true;
+      break;
+    }
+  }
+  if (touchesBoundary) {
+    return "rcc:EC";
+  }
+
+  // 3D volume overlap exists: test proper part containment
+  // Is A inside B?
+  const aInB =
+    a.min[0] >= b.min[0] - epsilon &&
+    a.max[0] <= b.max[0] + epsilon &&
+    a.min[1] >= b.min[1] - epsilon &&
+    a.max[1] <= b.max[1] + epsilon &&
+    a.min[2] >= b.min[2] - epsilon &&
+    a.max[2] <= b.max[2] + epsilon;
+
+  if (aInB) {
+    const touchesEdge =
+      Math.abs(a.min[0] - b.min[0]) <= epsilon ||
+      Math.abs(a.max[0] - b.max[0]) <= epsilon ||
+      Math.abs(a.min[1] - b.min[1]) <= epsilon ||
+      Math.abs(a.max[1] - b.max[1]) <= epsilon ||
+      Math.abs(a.min[2] - b.min[2]) <= epsilon ||
+      Math.abs(a.max[2] - b.max[2]) <= epsilon;
+    return touchesEdge ? "rcc:TPP" : "rcc:NTPP";
+  }
+
+  // Is B inside A?
+  const bInA =
+    b.min[0] >= a.min[0] - epsilon &&
+    b.max[0] <= a.max[0] + epsilon &&
+    b.min[1] >= a.min[1] - epsilon &&
+    b.max[1] <= a.max[1] + epsilon &&
+    b.min[2] >= a.min[2] - epsilon &&
+    b.max[2] <= a.max[2] + epsilon;
+
+  if (bInA) {
+    const touchesEdge =
+      Math.abs(b.min[0] - a.min[0]) <= epsilon ||
+      Math.abs(b.max[0] - a.max[0]) <= epsilon ||
+      Math.abs(b.min[1] - a.min[1]) <= epsilon ||
+      Math.abs(b.max[1] - a.max[1]) <= epsilon ||
+      Math.abs(b.min[2] - a.min[2]) <= epsilon ||
+      Math.abs(b.max[2] - a.max[2]) <= epsilon;
+    return touchesEdge ? "rcc:TPPi" : "rcc:NTPPi";
+  }
+
+  return "rcc:PO";
+}
+
+export function projectCadEnvelopes(boxes: readonly CadBoundingBox[]): OWL2Axiom[] {
+  const axioms: OWL2Axiom[] = [
+    { type: "ClassDeclaration", iri: "cad:BoundingEnvelope", sourceLang: "step" },
+    { type: "SymmetricObjectProperty", propertyIri: "rcc:DC", sourceLang: "step" },
+    { type: "SymmetricObjectProperty", propertyIri: "rcc:EC", sourceLang: "step" },
+    { type: "SymmetricObjectProperty", propertyIri: "rcc:PO", sourceLang: "step" },
+    { type: "SymmetricObjectProperty", propertyIri: "rcc:EQ", sourceLang: "step" },
+    { type: "InverseObjectProperty", propertyIri: "rcc:TPP", inversePropertyIri: "rcc:TPPi", sourceLang: "step" },
+    { type: "InverseObjectProperty", propertyIri: "rcc:NTPP", inversePropertyIri: "rcc:NTPPi", sourceLang: "step" },
+  ];
+
+  for (const box of boxes) {
+    const indIri = `cad:${box.id}`;
+    axioms.push({ type: "IndividualDeclaration", iri: indIri, sourceLang: "step" });
+    axioms.push({
+      type: "ClassAssertion",
+      individualIri: indIri,
+      classIri: "cad:BoundingEnvelope",
+      sourceLang: "step",
+    });
+  }
+
+  const inverseMap: Record<Rcc8Relation, Rcc8Relation> = {
+    "rcc:DC": "rcc:DC",
+    "rcc:EC": "rcc:EC",
+    "rcc:PO": "rcc:PO",
+    "rcc:EQ": "rcc:EQ",
+    "rcc:TPP": "rcc:TPPi",
+    "rcc:NTPP": "rcc:NTPPi",
+    "rcc:TPPi": "rcc:TPP",
+    "rcc:NTPPi": "rcc:NTPP",
+  };
+
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const b1 = boxes[i]!;
+      const b2 = boxes[j]!;
+      const rel = computeRcc8Relation(b1, b2);
+      axioms.push({
+        type: "ObjectPropertyAssertion",
+        propertyIri: rel,
+        subjectIri: `cad:${b1.id}`,
+        objectIri: `cad:${b2.id}`,
+        sourceLang: "step",
+      });
+      axioms.push({
+        type: "ObjectPropertyAssertion",
+        propertyIri: inverseMap[rel],
+        subjectIri: `cad:${b2.id}`,
+        objectIri: `cad:${b1.id}`,
+        sourceLang: "step",
+      });
+    }
+  }
+
+  return axioms;
 }

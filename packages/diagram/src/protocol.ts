@@ -15,6 +15,10 @@ export const DiagramMethods = {
   applyEdits: "modelscript/diagram.applyEdits",
   /** Get component properties on-demand (lazy loading) */
   getComponentProperties: "modelscript/diagram.getComponentProperties",
+  /** Drill down into child subsystem / component diagram */
+  drillDown: "modelscript/diagram.drillDown",
+  /** Get palette / stencils for diagram toolbox */
+  getPalette: "modelscript/diagram.getPalette",
 } as const;
 
 // ── Shared Value Types ──
@@ -157,17 +161,66 @@ export interface DiagramData {
 // ── Diagram Edit Actions ──
 
 export type DiagramEditAction =
+  | {
+      type: "connect";
+      source: string;
+      target: string;
+      points?: Point[];
+      edgeType?: string;
+      sourcePort?: string;
+      targetPort?: string;
+      section?: string;
+    }
+  | { type: "disconnect"; source: string; target: string; edgeType?: string }
   | { type: "move"; items: PlacementItem[] }
   | { type: "resize"; item: PlacementItem }
   | { type: "rotate"; item: PlacementItem }
-  | { type: "connect"; source: string; target: string; points?: Point[] }
-  | { type: "disconnect"; source: string; target: string }
   | { type: "moveEdge"; edges: EdgeUpdate[] }
-  | { type: "addComponent"; className: string; x: number; y: number }
+  | { type: "addComponent"; className: string; x: number; y: number; name?: string; section?: string }
   | { type: "deleteComponents"; names: string[] }
   | { type: "updateName"; oldName: string; newName: string }
   | { type: "updateDescription"; name: string; description: string }
   | { type: "updateParameter"; name: string; parameter: string; value: string };
+
+// ── Stencil / Palette ──
+
+export interface DiagramPaletteItem {
+  label: string;
+  className: string;
+  iconSvg?: string;
+  description?: string;
+  defaultProps?: Record<string, any>;
+}
+
+export interface DiagramPaletteCategory {
+  name: string;
+  items: DiagramPaletteItem[];
+}
+
+export interface DiagramPalette {
+  categories: DiagramPaletteCategory[];
+}
+
+export interface DiagramGetPaletteParams {
+  uri: string;
+}
+
+// ── Drill-Down Navigation ──
+
+export interface DiagramDrillDownParams {
+  uri: string;
+  componentId?: string;
+  className?: string;
+  componentName?: string;
+  nodeId?: string;
+}
+
+export interface DiagramDrillDownResult {
+  data: DiagramData | null;
+  breadcrumbs: { id: string; label: string; uri?: string }[];
+  targetUri?: string;
+  targetClassName?: string;
+}
 
 // ── Request / Response Types ──
 

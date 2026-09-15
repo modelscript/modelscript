@@ -263,4 +263,88 @@ export class Tet10Element {
 
     return { stress: avgStress, vonMises };
   }
+
+  /**
+   * Evaluates the 10 shape functions at barycentric coordinates [L0, L1, L2, L3].
+   */
+  public static computeShapeFunctions(L0: number, L1: number, L2: number, L3: number): Float64Array {
+    const N = new Float64Array(10);
+    N[0] = L0 * (2.0 * L0 - 1.0);
+    N[1] = L1 * (2.0 * L1 - 1.0);
+    N[2] = L2 * (2.0 * L2 - 1.0);
+    N[3] = L3 * (2.0 * L3 - 1.0);
+    N[4] = 4.0 * L0 * L1;
+    N[5] = 4.0 * L1 * L2;
+    N[6] = 4.0 * L2 * L0;
+    N[7] = 4.0 * L0 * L3;
+    N[8] = 4.0 * L1 * L3;
+    N[9] = 4.0 * L2 * L3;
+    return N;
+  }
+
+  /**
+   * Computes the 30x30 consistent mass matrix Me for a quadratic 10-node tetrahedron (Tet10).
+   * Me = integral_Ve rho * N^T * N dV evaluated with 4-point Gauss quadrature.
+   */
+  public static computeElementMass(
+    nodes: [number, number, number][],
+    rho: number,
+  ): { Me: Float64Array; volume: number } {
+    if (nodes.length !== 10) {
+      throw new Error(`Tet10Element requires exactly 10 nodes, got ${nodes.length}`);
+    }
+
+    const Me = new Float64Array(900); // 30 x 30
+    let totalVolume = 0.0;
+
+    for (let g = 0; g < 4; g++) {
+      const [L0, L1, L2, L3] = GAUSS_POINTS[g];
+      const { dNdr, dNds, dNdt } = this.computeNaturalDerivatives(L0, L1, L2, L3);
+      const N = this.computeShapeFunctions(L0, L1, L2, L3);
+
+      let J11 = 0,
+        J12 = 0,
+        J13 = 0;
+      let J21 = 0,
+        J22 = 0,
+        J23 = 0;
+      let J31 = 0,
+        J32 = 0,
+        J33 = 0;
+
+      for (let i = 0; i < 10; i++) {
+        const x = nodes[i][0],
+          y = nodes[i][1],
+          z = nodes[i][2];
+        J11 += dNdr[i] * x;
+        J12 += dNdr[i] * y;
+        J13 += dNdr[i] * z;
+        J21 += dNds[i] * x;
+        J22 += dNds[i] * y;
+        J23 += dNds[i] * z;
+        J31 += dNdt[i] * x;
+        J32 += dNdt[i] * y;
+        J33 += dNdt[i] * z;
+      }
+
+      const detJ = J11 * (J22 * J33 - J23 * J32) - J12 * (J21 * J33 - J23 * J31) + J13 * (J21 * J32 - J22 * J31);
+      const absDetJ = Math.abs(detJ);
+      const dV = GAUSS_WEIGHT * absDetJ;
+      totalVolume += dV;
+
+      // Me += rho * dV * (N^T * N) tensor I_3
+      const factor = rho * dV;
+      for (let i = 0; i < 10; i++) {
+        const Ni = N[i];
+        for (let j = 0; j < 10; j++) {
+          const val = factor * Ni * N[j];
+          for (let d = 0; d < 3; d++) {
+            Me[(i * 3 + d) * 30 + (j * 3 + d)] += val;
+          }
+        }
+      }
+    }
+
+    return { Me, volume: totalVolume };
+  }
 }

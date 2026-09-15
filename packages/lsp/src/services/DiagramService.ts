@@ -300,6 +300,28 @@ export class DiagramService {
 
       const genericBackend = new GenericDSLDiagramBackend({
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
+        getSymbolIndex: () => {
+          try {
+            return this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          } catch {
+            return undefined;
+          }
+        },
+        getScopeResolver: () => {
+          try {
+            return (this.workspaceManager as any).scopeResolver;
+          } catch {
+            return undefined;
+          }
+        },
+        getDiagramConfig: (uri) => {
+          try {
+            const lang = (this.workspaceManager as any).getLanguageForUri?.(uri);
+            return lang?.diagram;
+          } catch {
+            return undefined;
+          }
+        },
       });
 
       this.diagramDispatch = createDiagramDispatch({

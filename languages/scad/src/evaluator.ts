@@ -6,9 +6,11 @@ import {
   cylinder,
   fillet,
   intersect,
+  linearExtrude,
   mirror,
   rotate,
   scale,
+  SolidKind,
   sphere,
   subtract,
   tagPatch,
@@ -278,6 +280,7 @@ export class ScadEvaluator {
   private evaluatePrefixSolid(prefixNode: any, scope: Scope): Solid | null {
     const opNode =
       this.findChildByType(prefixNode, "TransformOp") ??
+      this.findChildByType(prefixNode, "LinearExtrudeOp") ??
       this.findChildByType(prefixNode, "BooleanOp") ??
       this.findChildByType(prefixNode, "TagPortOp");
     const childNode =
@@ -285,12 +288,32 @@ export class ScadEvaluator {
 
     if (!opNode || !childNode) return null;
 
+    const opText = opNode.text.trim();
+
+    // 0. LinearExtrudeOp: linear_extrude(height, twist, scale)
+    if (opNode.type === "LinearExtrudeOp" || opText.startsWith("linear_extrude")) {
+      const argListNode = this.findChildByType(opNode, "ArgumentList");
+      const args = this.evaluateArgumentList(argListNode, scope);
+      const height = Number(args.positional[0] ?? args.named.get("height") ?? 10);
+      const twist = args.named.has("twist") ? Number(args.named.get("twist")) : undefined;
+      const scale = args.named.has("scale") ? Number(args.named.get("scale")) : undefined;
+
+      const childSolids: Solid[] = [];
+      this.evaluateStatement(childNode, scope, childSolids);
+      if (childSolids.length > 0) {
+        const first = childSolids[0];
+        if (first.kind === SolidKind.Extrusion) {
+          return linearExtrude(first.polygon, height, { twist, scale });
+        }
+        return first;
+      }
+      return null;
+    }
+
     // Collect child solids
     const childSolids: Solid[] = [];
     this.evaluateStatement(childNode, scope, childSolids);
     if (childSolids.length === 0) return null;
-
-    const opText = opNode.text.trim();
 
     // 1. TagPortOp: tag_port("name", "type", normal)
     if (opNode.type === "TagPortOp" || opText.startsWith("tag_port")) {
@@ -381,7 +404,6 @@ export class ScadEvaluator {
 
       const b = box({ width: w, height: h, depth: d });
       if (center) return b;
-      // In OpenSCAD, center=false anchors box corner at (0, 0, 0)
       return translate(b, [w / 2, h / 2, d / 2]);
     }
 
@@ -410,6 +432,65 @@ export class ScadEvaluator {
         widthSegments: Math.max(8, Number(fn)),
         heightSegments: Math.max(6, Math.floor(Number(fn) / 2)),
       });
+    }
+
+    if (type === "PolygonPrimitive") {
+      const args = this.evaluateArgumentList(this.findChildByType(node, "ArgumentList"), scope);
+      const points = args.positional[0] ?? args.named.get("points") ?? [];
+      const poly: [number, number][] = [];
+      if (Array.isArray(points)) {
+        for (const pt of points) {
+          if (Array.isArray(pt)) {
+            poly.push([Number(pt[0] ?? 0), Number(pt[1] ?? 0)]);
+          }
+        }
+      }
+      return linearExtrude(
+        poly.length >= 3
+          ? poly
+          : [
+              [0, 0],
+              [1, 0],
+              [0, 1],
+            ],
+        1.0,
+      );
+    }
+
+    if (type === "SquarePrimitive") {
+      const args = this.evaluateArgumentList(this.findChildByType(node, "ArgumentList"), scope);
+      const size = args.positional[0] ?? args.named.get("size") ?? [1, 1];
+      const center = args.named.get("center") ?? false;
+      const w = Array.isArray(size) ? Number(size[0] ?? 1) : Number(size);
+      const h = Array.isArray(size) ? Number(size[1] ?? 1) : Number(size);
+      const poly: [number, number][] = center
+        ? [
+            [-w / 2, -h / 2],
+            [w / 2, -h / 2],
+            [w / 2, h / 2],
+            [-w / 2, h / 2],
+          ]
+        : [
+            [0, 0],
+            [w, 0],
+            [w, h],
+            [0, h],
+          ];
+      return linearExtrude(poly, 1.0);
+    }
+
+    if (type === "CirclePrimitive") {
+      const args = this.evaluateArgumentList(this.findChildByType(node, "ArgumentList"), scope);
+      const r = Number(
+        args.named.get("r") ?? (args.named.has("d") ? args.named.get("d") / 2 : (args.positional[0] ?? 1)),
+      );
+      const fn = Math.max(8, Number(scope.getVar("$fn") ?? 24));
+      const poly: [number, number][] = [];
+      for (let i = 0; i < fn; i++) {
+        const th = (i / fn) * 2 * Math.PI;
+        poly.push([r * Math.cos(th), r * Math.sin(th)]);
+      }
+      return linearExtrude(poly, 1.0);
     }
 
     if (type === "ModuleInstantiation") {

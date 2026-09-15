@@ -2,7 +2,13 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { computeOrthogonalRoute, segmentIntersectsRect, type PointLike, type RectLike } from "../src/port-router.js";
+import {
+  computeOrthogonalRoute,
+  computeStemLines,
+  segmentIntersectsRect,
+  type PointLike,
+  type RectLike,
+} from "../src/port-router.js";
 
 describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
   it("should accurately detect segment-rectangle intersection", () => {
@@ -72,5 +78,43 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     assert.strictEqual(waypoints[0].y, source.y);
     assert.strictEqual(waypoints[1].y, target.y);
     assert.strictEqual(waypoints[0].x, waypoints[1].x);
+  });
+
+  it("should compute boundary stem lines for internal ports", () => {
+    const node = { id: "node1", x: 100, y: 100, width: 200, height: 100 };
+    const ports = [
+      { id: "p_left", x: 100, y: 150 }, // On left perimeter: no stem line
+      { id: "p_internal_left", x: 120, y: 150 }, // Inside near left: stem to left (x=100)
+      { id: "p_internal_top", x: 200, y: 110, side: "top" as const }, // Inside near top: stem to top (y=100)
+      { id: "p_internal_bottom", x: 200, y: 180, side: "bottom" as const }, // Inside near bottom: stem to bottom (y=200)
+      { id: "p_internal_right", x: 280, y: 150 }, // Inside near right: stem to right (x=300)
+    ];
+
+    const stems = computeStemLines(node, ports);
+    assert.strictEqual(stems.length, 4);
+
+    const leftStem = stems.find((s) => s.portId === "p_internal_left");
+    assert.ok(leftStem);
+    assert.strictEqual(leftStem.side, "left");
+    assert.strictEqual(leftStem.end.x, 100);
+    assert.strictEqual(leftStem.end.y, 150);
+
+    const topStem = stems.find((s) => s.portId === "p_internal_top");
+    assert.ok(topStem);
+    assert.strictEqual(topStem.side, "top");
+    assert.strictEqual(topStem.end.x, 200);
+    assert.strictEqual(topStem.end.y, 100);
+
+    const bottomStem = stems.find((s) => s.portId === "p_internal_bottom");
+    assert.ok(bottomStem);
+    assert.strictEqual(bottomStem.side, "bottom");
+    assert.strictEqual(bottomStem.end.x, 200);
+    assert.strictEqual(bottomStem.end.y, 200);
+
+    const rightStem = stems.find((s) => s.portId === "p_internal_right");
+    assert.ok(rightStem);
+    assert.strictEqual(rightStem.side, "right");
+    assert.strictEqual(rightStem.end.x, 300);
+    assert.strictEqual(rightStem.end.y, 150);
   });
 });

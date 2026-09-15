@@ -23357,7 +23357,7 @@ export class OntologyStore {
     let changed = true;
     let iterations: u32 = 0;
 
-    while (changed && iterations < 16) {
+    while (changed && iterations < 1000) {
       changed = false;
       iterations++;
 
@@ -23453,6 +23453,27 @@ export class OntologyStore {
                     }
                   }
                   axId3 = this.nextSpo.get(axId3);
+                }
+              }
+            }
+          }
+        }
+
+        // CR4: Universal Range Restraints: ⊤ ⊑ ∀R.D ∧ C ⊑ ∃R.E ⇒ E ⊑ D
+        else if (aType1 == AXIOM_UNIVERSAL_RESTRICTION) {
+          let r = this.axiomTable.get(bIdx1 + 2);
+          let target = this.axiomTable.get(bIdx1 + 3);
+          if (r != 0 && target != 0) {
+            for (let j: u32 = 1; j < this.axiomCount; j++) {
+              if (this.axiomActive.get(j) == 0) continue;
+              let jIdx = j * AXIOM_STRIDE;
+              if (((this.axiomTable.get(jIdx + 0) & 0xffff) as u16) == AXIOM_OBJECT_SOME_VALUES_FROM) {
+                let rCand = this.axiomTable.get(jIdx + 2);
+                let e = this.axiomTable.get(jIdx + 3);
+                if (rCand == r && e != 0 && e != target && !this.hasDirectSubclass(e, target)) {
+                  this.addAxiom(AXIOM_SUBCLASS_OF, 0, e, 0, target, 1);
+                  newInferences++;
+                  changed = true;
                 }
               }
             }
@@ -24221,17 +24242,22 @@ export class TableauEngine {
   arenaPtr: u32;
   watermarkStack: ChunkedUint32Array;
   branchStack: ChunkedUint32Array;
+  ancestorMap: UnmanagedMap64;
+  decisionLevelStack: ChunkedUint32Array;
 
   init(capacity: u32 = 16384): void {
     this.arena = createChunkedUint32Array(capacity);
     this.arenaPtr = 0;
     this.watermarkStack = createChunkedUint32Array(256);
     this.branchStack = createChunkedUint32Array(256);
+    this.ancestorMap = changetype<UnmanagedMap64>(createMap64());
+    this.decisionLevelStack = createChunkedUint32Array(256);
   }
 
   mark(): u32 {
     let markVal = this.arenaPtr;
     this.watermarkStack.push(markVal);
+    this.decisionLevelStack.push(this.branchStack.length);
     return markVal;
   }
 
@@ -24240,6 +24266,43 @@ export class TableauEngine {
       let markVal = this.watermarkStack.pop();
       this.arenaPtr = markVal;
     }
+    if (this.decisionLevelStack.length > 0) {
+      this.decisionLevelStack.pop();
+    }
+  }
+
+  /**
+   * Ancestor Core Blocking Check:
+   * Returns true if individual 'currInd' is blocked by an ancestor in the tableau graph,
+   * preventing infinite expansion cycles on existential axioms (e.g. C ⊑ ∃R.C).
+   */
+  isBlocked(store: OntologyStore, currInd: u32): boolean {
+    if (currInd == 0) return false;
+    let ancestor = this.ancestorMap.get(currInd as u64) as u32;
+    while (ancestor != 0 && ancestor != currInd) {
+      // Check label inclusion: if types(currInd) ⊆ types(ancestor), currInd is blocked
+      let allContained = true;
+      for (let i: u32 = 1; i < store.axiomCount; i++) {
+        if (store.axiomActive.get(i) == 0) continue;
+        let bIdx = i * AXIOM_STRIDE;
+        if (((store.axiomTable.get(bIdx + 0) & 0xffff) as u16) == AXIOM_CLASS_ASSERT) {
+          if (store.axiomTable.get(bIdx + 1) == currInd) {
+            let cls = store.axiomTable.get(bIdx + 3);
+            if (!store.isInstanceOf(ancestor, cls)) {
+              allContained = false;
+              break;
+            }
+          }
+        }
+      }
+      if (allContained) return true;
+      ancestor = this.ancestorMap.get(ancestor as u64) as u32;
+    }
+    return false;
+  }
+
+  registerSuccessor(parentInd: u32, childInd: u32): void {
+    this.ancestorMap.set(childInd as u64, parentInd as u32);
   }
 
   solveSubsumption(store: OntologyStore, subClass: u32, supClass: u32): boolean {

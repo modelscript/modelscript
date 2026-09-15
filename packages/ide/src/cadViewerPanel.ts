@@ -159,6 +159,16 @@ export class CadViewerPanel {
     });
   }
 
+  /**
+   * Push live FEA structural frame data to the webview for real-time stress & deformation rendering.
+   */
+  public sendFeaPayload(payload: unknown): void {
+    this._panel.webview.postMessage({
+      type: "FEA_PAYLOAD",
+      data: payload,
+    });
+  }
+
   public postMessage(msg: unknown): void {
     this._panel.webview.postMessage(msg);
   }

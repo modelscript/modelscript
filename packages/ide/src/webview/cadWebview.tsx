@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { AnimationController } from "./cad-viewer/animation-controller";
 import CadViewer, { type CadComponent } from "./cad-viewer/cad-viewer";
 import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
+import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,6 +17,7 @@ function App() {
   const [isDark, setIsDark] = useState<boolean>(true);
   const animationControllerRef = useRef<AnimationController | null>(null);
   const [cfdPayload, setCfdPayload] = useState<CfdMeshPayload | null>(null);
+  const [feaPayload, setFeaPayload] = useState<FeaMeshPayload | null>(null);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -105,6 +107,15 @@ function App() {
         } catch (e) {
           console.warn("[CadWebview] Failed to parse VTK_PAYLOAD:", e);
         }
+      } else if (message.type === "FEA_PAYLOAD") {
+        try {
+          const payload = (message.data?.payload || message.data) as FeaMeshPayload;
+          if (payload && (payload.type === "fea-mesh" || payload.fields)) {
+            setFeaPayload(payload);
+          }
+        } catch (e) {
+          console.warn("[CadWebview] Failed to handle FEA_PAYLOAD:", e);
+        }
       }
     };
     window.addEventListener("message", handleMessage);
@@ -137,6 +148,7 @@ function App() {
         assetBaseUrl={(window as unknown as { __CAD_ASSET_BASE_URL__: string }).__CAD_ASSET_BASE_URL__}
         animationController={animationControllerRef.current}
         cfdPayload={cfdPayload}
+        feaPayload={feaPayload}
       />
     </div>
   );

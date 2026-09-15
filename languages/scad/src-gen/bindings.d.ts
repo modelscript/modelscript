@@ -1150,50 +1150,54 @@ export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export enum SyntaxKind {
   ERROR = 0,
-  EmptyStatement = 99,
-  _EmptyStatement = 99,
-  IDENTIFIER = 138,
-  NUMBER = 139,
-  STRING = 140,
-  UNDEF = 142,
-  SourceFile = 60,
-  Statement = 61,
-  BlockStatement = 62,
-  VariableDeclaration = 63,
-  ModuleDeclaration = 64,
-  FunctionDeclaration = 65,
-  IfStatement = 66,
-  ForStatement = 67,
-  ParameterList = 68,
-  Parameter = 69,
-  ArgumentList = 70,
-  Argument = 71,
-  PrefixSolid = 72,
-  TransformOp = 73,
-  BooleanOp = 74,
-  TagPortOp = 75,
-  ChainedSolidStatement = 76,
-  ChainedSolid = 77,
-  MethodCall = 78,
-  MethodName = 79,
-  PrimarySolid = 80,
-  CubePrimitive = 81,
-  CylinderPrimitive = 82,
-  SpherePrimitive = 83,
-  PolyhedronPrimitive = 84,
-  ModuleInstantiation = 85,
-  Expression = 86,
-  ConditionalExpression = 87,
-  BinaryExpression = 88,
-  UnaryExpression = 89,
-  PostfixExpression = 90,
-  PrimaryExpression = 91,
-  ParenthesizedExpression = 92,
-  VectorLiteral = 93,
-  RangeLiteral = 94,
-  BOOLEAN = 95,
-  START = 96,
-  _START = 96,
+  EmptyStatement = 107,
+  _EmptyStatement = 107,
+  IDENTIFIER = 146,
+  NUMBER = 147,
+  STRING = 148,
+  UNDEF = 150,
+  SourceFile = 64,
+  Statement = 65,
+  BlockStatement = 66,
+  VariableDeclaration = 67,
+  ModuleDeclaration = 68,
+  FunctionDeclaration = 69,
+  IfStatement = 70,
+  ForStatement = 71,
+  ParameterList = 72,
+  Parameter = 73,
+  ArgumentList = 74,
+  Argument = 75,
+  PrefixSolid = 76,
+  TransformOp = 77,
+  LinearExtrudeOp = 78,
+  BooleanOp = 79,
+  TagPortOp = 80,
+  ChainedSolidStatement = 81,
+  ChainedSolid = 82,
+  MethodCall = 83,
+  MethodName = 84,
+  PrimarySolid = 85,
+  CubePrimitive = 86,
+  CylinderPrimitive = 87,
+  SpherePrimitive = 88,
+  PolyhedronPrimitive = 89,
+  PolygonPrimitive = 90,
+  CirclePrimitive = 91,
+  SquarePrimitive = 92,
+  ModuleInstantiation = 93,
+  Expression = 94,
+  ConditionalExpression = 95,
+  BinaryExpression = 96,
+  UnaryExpression = 97,
+  PostfixExpression = 98,
+  PrimaryExpression = 99,
+  ParenthesizedExpression = 100,
+  VectorLiteral = 101,
+  RangeLiteral = 102,
+  BOOLEAN = 103,
+  START = 104,
+  _START = 104,
   EOF = 1023,
 }
 
@@ -1313,6 +1317,10 @@ export interface TransformOpNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TransformOp;
 }
 export declare function isTransformOp(node: SyntaxNode | null | undefined): node is TransformOpNode;
+export interface LinearExtrudeOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LinearExtrudeOp;
+}
+export declare function isLinearExtrudeOp(node: SyntaxNode | null | undefined): node is LinearExtrudeOpNode;
 export interface BooleanOpNode extends SyntaxNode {
   readonly typeId: SyntaxKind.BooleanOp;
 }
@@ -1357,6 +1365,18 @@ export interface PolyhedronPrimitiveNode extends SyntaxNode {
   readonly typeId: SyntaxKind.PolyhedronPrimitive;
 }
 export declare function isPolyhedronPrimitive(node: SyntaxNode | null | undefined): node is PolyhedronPrimitiveNode;
+export interface PolygonPrimitiveNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PolygonPrimitive;
+}
+export declare function isPolygonPrimitive(node: SyntaxNode | null | undefined): node is PolygonPrimitiveNode;
+export interface CirclePrimitiveNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CirclePrimitive;
+}
+export declare function isCirclePrimitive(node: SyntaxNode | null | undefined): node is CirclePrimitiveNode;
+export interface SquarePrimitiveNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SquarePrimitive;
+}
+export declare function isSquarePrimitive(node: SyntaxNode | null | undefined): node is SquarePrimitiveNode;
 export interface ModuleInstantiationNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ModuleInstantiation;
 }
@@ -1532,6 +1552,13 @@ export namespace Cst {
     args(node: SyntaxNode | null | undefined): SyntaxNode | null;
     argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const LinearExtrudeOp: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LinearExtrudeOpNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const BooleanOp: {
     readonly typeId: number;
     readonly type: string;
@@ -1604,6 +1631,27 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is PolyhedronPrimitiveNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const PolygonPrimitive: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PolygonPrimitiveNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const CirclePrimitive: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CirclePrimitiveNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const SquarePrimitive: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SquarePrimitiveNode;
     args(node: SyntaxNode | null | undefined): SyntaxNode | null;
     argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };

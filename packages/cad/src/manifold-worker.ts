@@ -94,6 +94,11 @@ class SurfaceMeshBuilder {
         break;
       }
 
+      case SolidKind.Extrusion: {
+        this.emitExtrusion(solid.polygon, solid.height, solid.twist, solid.scale, parentMat, activeTag);
+        break;
+      }
+
       case SolidKind.Union:
       case SolidKind.Subtract:
       case SolidKind.Intersect: {
@@ -456,6 +461,139 @@ class SurfaceMeshBuilder {
     const y = r * Math.sin(v);
     const z = (R + r * Math.cos(v)) * Math.sin(u);
     return [x, y, z];
+  }
+
+  private emitExtrusion(
+    polygon: readonly [number, number][],
+    height: number,
+    twist: number | undefined,
+    scale: number | undefined,
+    mat: Mat4,
+    tag?: BoundaryPatchTag,
+  ): void {
+    const N = polygon.length;
+    if (N < 3) return;
+
+    // 1. Determine orientation via signed area
+    let signedArea = 0;
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N;
+      signedArea += polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1];
+    }
+    signedArea *= 0.5;
+
+    // Ensure CCW orientation
+    const pts: [number, number][] = [];
+    if (signedArea < 0) {
+      for (let i = N - 1; i >= 0; i--) pts.push([polygon[i][0], polygon[i][1]]);
+    } else {
+      for (let i = 0; i < N; i++) pts.push([polygon[i][0], polygon[i][1]]);
+    }
+
+    // 2. Triangulate planar polygon using ear-clipping algorithm
+    const triangles: [number, number, number][] = [];
+    const indices = Array.from({ length: N }, (_, i) => i);
+
+    const isEar = (prev: number, curr: number, next: number, poly: [number, number][], idxs: number[]): boolean => {
+      const a = poly[prev];
+      const b = poly[curr];
+      const c = poly[next];
+
+      // Must be convex corner (cross product > 0 for CCW)
+      const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      if (cross <= 1e-9) return false;
+
+      // Check that no other vertex in remaining polygon lies inside triangle (a, b, c)
+      for (const idx of idxs) {
+        if (idx === prev || idx === curr || idx === next) continue;
+        const p = poly[idx];
+        const c0 = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+        const c1 = (c[0] - b[0]) * (p[1] - b[1]) - (c[1] - b[1]) * (p[0] - b[0]);
+        const c2 = (a[0] - c[0]) * (p[1] - c[1]) - (a[1] - c[1]) * (p[0] - c[0]);
+        if (c0 >= -1e-9 && c1 >= -1e-9 && c2 >= -1e-9) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const remaining = indices.slice();
+    let maxIters = remaining.length * remaining.length;
+    while (remaining.length > 3 && maxIters-- > 0) {
+      let earFound = false;
+      const len = remaining.length;
+      for (let i = 0; i < len; i++) {
+        const prev = remaining[(i - 1 + len) % len];
+        const curr = remaining[i];
+        const next = remaining[(i + 1) % len];
+
+        if (isEar(prev, curr, next, pts, remaining)) {
+          triangles.push([prev, curr, next]);
+          remaining.splice(i, 1);
+          earFound = true;
+          break;
+        }
+      }
+      if (!earFound) {
+        break;
+      }
+    }
+    if (remaining.length >= 3) {
+      for (let i = 1; i < remaining.length - 1; i++) {
+        triangles.push([remaining[0], remaining[i], remaining[i + 1]]);
+      }
+    }
+
+    // 3. Compute top cap transformation (twist and scale)
+    const rad = twist ? (twist * Math.PI) / 180.0 : 0;
+    const cosT = Math.cos(rad);
+    const sinT = Math.sin(rad);
+    const scl = scale !== undefined ? scale : 1.0;
+
+    const topPts: [number, number, number][] = [];
+    const botPts: [number, number, number][] = [];
+    for (let i = 0; i < N; i++) {
+      const [x, y] = pts[i];
+      botPts.push([x, y, 0]);
+      const tx = (x * cosT - y * sinT) * scl;
+      const ty = (x * sinT + y * cosT) * scl;
+      topPts.push([tx, ty, height]);
+    }
+
+    // 4. Emit bottom cap (normal [0, 0, -1], clockwise when viewed from +Z)
+    const botNorm = this.transformNormal(mat, 0, 0, -1);
+    for (const [i0, i1, i2] of triangles) {
+      const p0 = this.transformPoint(mat, botPts[i0][0], botPts[i0][1], botPts[i0][2]);
+      const p1 = this.transformPoint(mat, botPts[i1][0], botPts[i1][1], botPts[i1][2]);
+      const p2 = this.transformPoint(mat, botPts[i2][0], botPts[i2][1], botPts[i2][2]);
+      this.addTriangle(p0, p2, p1, botNorm, tag);
+    }
+
+    // 5. Emit top cap (normal [0, 0, 1], counter-clockwise when viewed from +Z)
+    const topNorm = this.transformNormal(mat, 0, 0, 1);
+    for (const [i0, i1, i2] of triangles) {
+      const p0 = this.transformPoint(mat, topPts[i0][0], topPts[i0][1], topPts[i0][2]);
+      const p1 = this.transformPoint(mat, topPts[i1][0], topPts[i1][1], topPts[i1][2]);
+      const p2 = this.transformPoint(mat, topPts[i2][0], topPts[i2][1], topPts[i2][2]);
+      this.addTriangle(p0, p1, p2, topNorm, tag);
+    }
+
+    // 6. Emit side quad walls
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N;
+      const b0 = this.transformPoint(mat, botPts[i][0], botPts[i][1], botPts[i][2]);
+      const b1 = this.transformPoint(mat, botPts[j][0], botPts[j][1], botPts[j][2]);
+      const t1 = this.transformPoint(mat, topPts[j][0], topPts[j][1], topPts[j][2]);
+      const t0 = this.transformPoint(mat, topPts[i][0], topPts[i][1], topPts[i][2]);
+
+      const dx = pts[j][0] - pts[i][0];
+      const dy = pts[j][1] - pts[i][1];
+      const len = Math.hypot(dx, dy) || 1.0;
+      const sideNorm = this.transformNormal(mat, dy / len, -dx / len, 0);
+
+      this.addTriangle(b0, b1, t1, sideNorm, tag);
+      this.addTriangle(b0, t1, t0, sideNorm, tag);
+    }
   }
 
   public finalize(): ManifoldSurfaceMesh {

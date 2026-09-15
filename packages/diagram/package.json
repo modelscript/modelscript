@@ -40,6 +40,10 @@
       "types": "./dist/solder-dots.d.ts",
       "default": "./dist/solder-dots.js"
     },
+    "./telemetry": {
+      "types": "./dist/telemetry.d.ts",
+      "default": "./dist/telemetry.js"
+    },
     "./spinner": {
       "types": "./dist/spinner.d.ts",
       "default": "./dist/spinner.js"

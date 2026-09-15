@@ -169,3 +169,74 @@ export function portOrthogonalRouter(
 
   return computeOrthogonalRoute(source, target, obstacles, args);
 }
+
+/** Stem line representation connecting an internal port pad to the node boundary */
+export interface BoundaryStemLine {
+  id: string;
+  nodeId: string;
+  portId: string;
+  start: PointLike;
+  end: PointLike;
+  side: "top" | "bottom" | "left" | "right";
+}
+
+/**
+ * Computes boundary stem lines for internal ports within a node.
+ * If a port is located strictly inside the node body, an orthogonal stem segment
+ * is emitted to project the connection anchor cleanly to the exterior perimeter.
+ */
+export function computeStemLines(
+  node: { id: string; x: number; y: number; width: number; height: number },
+  ports: { id: string; x: number; y: number; side?: "top" | "bottom" | "left" | "right" }[],
+  margin = 2,
+): BoundaryStemLine[] {
+  const stems: BoundaryStemLine[] = [];
+  const nodeLeft = node.x;
+  const nodeRight = node.x + node.width;
+  const nodeTop = node.y;
+  const nodeBottom = node.y + node.height;
+
+  for (const port of ports) {
+    const px = port.x;
+    const py = port.y;
+
+    // Distances to 4 boundaries
+    const distLeft = Math.abs(px - nodeLeft);
+    const distRight = Math.abs(px - nodeRight);
+    const distTop = Math.abs(py - nodeTop);
+    const distBottom = Math.abs(py - nodeBottom);
+
+    // If port is already on perimeter (within margin), no stem line needed
+    if (distLeft <= margin || distRight <= margin || distTop <= margin || distBottom <= margin) {
+      continue;
+    }
+
+    // Determine target side
+    let side = port.side;
+    if (!side) {
+      const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+      if (minDist === distLeft) side = "left";
+      else if (minDist === distRight) side = "right";
+      else if (minDist === distTop) side = "top";
+      else side = "bottom";
+    }
+
+    let endX = px;
+    let endY = py;
+    if (side === "left") endX = nodeLeft;
+    else if (side === "right") endX = nodeRight;
+    else if (side === "top") endY = nodeTop;
+    else if (side === "bottom") endY = nodeBottom;
+
+    stems.push({
+      id: `stem_${node.id}_${port.id}`,
+      nodeId: node.id,
+      portId: port.id,
+      start: { x: px, y: py },
+      end: { x: endX, y: endY },
+      side,
+    });
+  }
+
+  return stems;
+}

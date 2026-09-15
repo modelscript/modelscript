@@ -4,12 +4,30 @@ import type { LbmGridConfig, LbmStepResult } from "../cfd/lbm-types.js";
 import { WebGPULbmRunner } from "../cfd/webgpu-lbm-runner.js";
 import { FeaSolver } from "../fea/fea-solver.js";
 import type { FeaStepResult, MaterialProperties, Tet4Mesh } from "../fea/tet4-types.js";
+import { ArenaSimulator, initializeArenaEnvironment } from "./simulate-arena.js";
 
 export interface ModelicaPortMapping {
   portName: string;
   matchedTag: string;
   role: "fixed_support" | "mechanical_flange" | "fluid_inlet" | "fluid_outlet" | "aerodynamic_surface";
   nodeCount: number;
+}
+
+export interface ModelicaSystemConfig {
+  /** Compiled Modelica DAE simulator instance. */
+  simulator: ArenaSimulator;
+  /** Variable name in Modelica model providing actuator thrust/force (e.g. "motor.flange.f"). */
+  actuatorVar: string;
+  /** Variable name in Modelica model receiving displacement/velocity sensor feedback (e.g. "motor.flange.s"). */
+  sensorVar?: string;
+  /** Optional simulation environment array. */
+  values?: Float64Array;
+  /** State variable name IDs. */
+  stateStringIds?: number[];
+  /** Derivative variable name IDs. */
+  derivStringIds?: number[];
+  /** ODE solver algorithm (default: 'rk4'). */
+  solver?: "euler" | "rk4" | "dopri5" | "bdf";
 }
 
 export interface LiveCoSimConfig {
@@ -29,17 +47,20 @@ export interface LiveCoSimConfig {
     tol?: number;
     /** PCG maximum iterations (default 500). */
     maxIters?: number;
+    /** Enable transient dynamic elastodynamics via Newmark-beta integration. */
+    transient?: boolean;
   };
   /** CFD lattice configuration and obstacle occupancy mask. */
   cfd: {
     config: LbmGridConfig;
     cellTypes: Uint8Array;
   };
-  /** 1D Modelica system parameters (e.g. mass, damping, spring stiffness). */
+  /** 1D Modelica system parameters or compiled Modelica DAE model. */
   system: {
-    mass: number; // kg
-    stiffness: number; // N/m
-    baseDamping: number; // N*s/m
+    mass?: number; // kg
+    stiffness?: number; // N/m
+    baseDamping?: number; // N*s/m
+    modelica?: ModelicaSystemConfig;
   };
 }
 
@@ -59,6 +80,8 @@ export interface LiveCoSimState {
   // 3D Field outputs
   feaResult: FeaStepResult;
   cfdResult: LbmStepResult;
+  // Modelica DAE state values
+  modelicaValues?: Float64Array;
 }
 
 /**
@@ -78,10 +101,37 @@ export class LiveCoSimOrchestrator {
   private portMappings: ModelicaPortMapping[] = [];
   private prevStructuralDisplacement = 0.0;
 
+  private modelicaValues?: Float64Array;
+  private modelicaActuatorId?: number;
+  private modelicaSensorId?: number;
+  private modelicaStateIds: number[] = [];
+  private modelicaDerivIds: number[] = [];
+
   constructor(config: LiveCoSimConfig) {
     this.config = config;
     this.feaSolver = new FeaSolver(config.fea.mesh, config.fea.material);
     this.cfdRunner = new WebGPULbmRunner(config.cfd.config, config.cfd.cellTypes);
+
+    if (this.config.system.modelica) {
+      const mConfig = this.config.system.modelica;
+      if (mConfig.simulator.sortedEquations.length === 0) {
+        mConfig.simulator.prepare();
+      }
+      if (mConfig.values && mConfig.stateStringIds && mConfig.derivStringIds) {
+        this.modelicaValues = mConfig.values;
+        this.modelicaStateIds = mConfig.stateStringIds;
+        this.modelicaDerivIds = mConfig.derivStringIds;
+      } else {
+        const init = initializeArenaEnvironment(mConfig.simulator.arena, mConfig.simulator);
+        this.modelicaValues = mConfig.values ?? init.valuesByStringId;
+        this.modelicaStateIds = mConfig.stateStringIds ?? init.stateStringIds;
+        this.modelicaDerivIds = mConfig.derivStringIds ?? init.derivStringIds;
+      }
+      this.modelicaActuatorId = mConfig.simulator.arena.interner.intern(mConfig.actuatorVar);
+      if (mConfig.sensorVar) {
+        this.modelicaSensorId = mConfig.simulator.arena.interner.intern(mConfig.sensorVar);
+      }
+    }
 
     this.autoMatchPorts();
 
@@ -95,25 +145,34 @@ export class LiveCoSimOrchestrator {
     }
 
     // Initial zero state
+    const isTransient = config.fea.transient ?? config.fea.material.rho !== undefined;
     const initialBcs = {
       fixedNodes: fixedNodeSet,
       nodalLoads: new Map(),
+      transient: isTransient,
+      dt: config.macroDt,
     };
     const initialFea = this.feaSolver.step(initialBcs);
     const initialCfd = this.cfdRunner.step(1);
+
+    const initialThrust =
+      this.modelicaValues && this.modelicaActuatorId !== undefined
+        ? (this.modelicaValues[this.modelicaActuatorId] ?? 0.0)
+        : 0.0;
 
     this.state = {
       time: 0.0,
       position: 0.0,
       velocity: 0.0,
       acceleration: 0.0,
-      appliedThrustN: 0.0,
+      appliedThrustN: initialThrust,
       aerodynamicDragN: 0.0,
       structuralComplianceM: 0.0,
       structuralVelocityM_s: 0.0,
       activePortMappings: this.portMappings,
       feaResult: initialFea,
       cfdResult: initialCfd,
+      modelicaValues: this.modelicaValues,
     };
   }
 
@@ -150,7 +209,14 @@ export class LiveCoSimOrchestrator {
       }
 
       // 2. Match Actuator / Flange Load
+      const isModelicaActuator =
+        this.config.system.modelica &&
+        (this.config.system.modelica.actuatorVar === tag ||
+          this.config.system.modelica.actuatorVar.toLowerCase().includes(lower) ||
+          lower.includes(this.config.system.modelica.actuatorVar.toLowerCase()));
+
       if (
+        isModelicaActuator ||
         (this.config.fea.loadTag && this.config.fea.loadTag === tag) ||
         lower.includes("motor") ||
         lower.includes("flange") ||
@@ -160,7 +226,7 @@ export class LiveCoSimOrchestrator {
       ) {
         this.resolvedLoadTags.push(tag);
         this.portMappings.push({
-          portName: tag,
+          portName: this.config.system.modelica?.actuatorVar ?? tag,
           matchedTag: tag,
           role: "mechanical_flange",
           nodeCount: nodes.length,
@@ -206,19 +272,38 @@ export class LiveCoSimOrchestrator {
    *
    * @param thrustInput Motor thrust command (either scalar N or map of tag -> N).
    */
-  public step(thrustInput: number | Record<string, number>): LiveCoSimState {
+  public step(thrustInput: number | Record<string, number> = 0.0): LiveCoSimState {
     const dt = this.config.macroDt;
     const lbmSubSteps = this.config.lbmSubSteps ?? 5;
-    const { mass, stiffness, baseDamping } = this.config.system;
+    const mass = this.config.system.mass ?? 1.0;
+    const stiffness = this.config.system.stiffness ?? 0.0;
+    const baseDamping = this.config.system.baseDamping ?? 0.0;
+    const mConfig = this.config.system.modelica;
+
+    // 0. Modelica DAE Step & Actuator Resolution
+    let modelicaForce = 0.0;
+    if (mConfig && this.modelicaValues && this.modelicaActuatorId !== undefined) {
+      // Feedback: inject structural compliance / displacement into sensor variable
+      if (this.modelicaSensorId !== undefined) {
+        this.modelicaValues[this.modelicaSensorId] = this.state.structuralComplianceM;
+      }
+
+      // Step Modelica continuous dynamic states
+      mConfig.simulator.step(dt, this.modelicaValues, this.modelicaStateIds, this.modelicaDerivIds, {
+        solver: mConfig.solver === "euler" ? "euler" : "rk4",
+      });
+
+      modelicaForce = this.modelicaValues[this.modelicaActuatorId] ?? 0.0;
+    }
 
     // Resolve thrust command per load tag
     let totalThrustN = 0.0;
     const loadForces = new Map<string, number>();
 
     if (typeof thrustInput === "number") {
-      totalThrustN = thrustInput;
+      totalThrustN = thrustInput + modelicaForce;
       for (const tag of this.resolvedLoadTags) {
-        loadForces.set(tag, thrustInput / Math.max(1, this.resolvedLoadTags.length));
+        loadForces.set(tag, totalThrustN / Math.max(1, this.resolvedLoadTags.length));
       }
     } else {
       for (const [key, val] of Object.entries(thrustInput)) {
@@ -227,6 +312,13 @@ export class LiveCoSimOrchestrator {
         if (matched) {
           loadForces.set(matched, (loadForces.get(matched) ?? 0) + val);
           totalThrustN += val;
+        }
+      }
+      totalThrustN += modelicaForce;
+      if (modelicaForce !== 0) {
+        const forcePerTag = modelicaForce / Math.max(1, this.resolvedLoadTags.length);
+        for (const tag of this.resolvedLoadTags) {
+          loadForces.set(tag, (loadForces.get(tag) ?? 0) + forcePerTag);
         }
       }
     }
@@ -274,7 +366,17 @@ export class LiveCoSimOrchestrator {
       }
     }
 
-    const feaRes = this.feaSolver.step({ fixedNodes, nodalLoads }, this.config.fea.tol, this.config.fea.maxIters);
+    const isTransient = this.config.fea.transient ?? this.config.fea.material.rho !== undefined;
+    const feaRes = this.feaSolver.step(
+      {
+        fixedNodes,
+        nodalLoads,
+        transient: isTransient,
+        dt,
+      },
+      this.config.fea.tol,
+      this.config.fea.maxIters,
+    );
 
     // 4. Package synchronized multi-physics state
     this.state = {
@@ -289,6 +391,7 @@ export class LiveCoSimOrchestrator {
       activePortMappings: this.portMappings,
       feaResult: feaRes,
       cfdResult: cfdRes,
+      modelicaValues: this.modelicaValues,
     };
 
     return this.state;

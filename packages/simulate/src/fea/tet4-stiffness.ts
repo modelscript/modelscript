@@ -197,4 +197,50 @@ export class Tet4Element {
 
     return { stress, vonMises };
   }
+
+  /**
+   * Computes the 12x12 consistent mass matrix Me for a linear tetrahedron (Tet4).
+   * Me = (rho * V / 20) * [ 2*I  I    I    I   ]
+   *                       [ I    2*I  I    I   ]
+   *                       [ I    I    2*I  I   ]
+   *                       [ I    I    I    2*I ]
+   */
+  public static computeElementMass(
+    p0: [number, number, number],
+    p1: [number, number, number],
+    p2: [number, number, number],
+    p3: [number, number, number],
+    rho: number,
+  ): { Me: Float64Array; volume: number } {
+    const x21 = p1[0] - p0[0],
+      y21 = p1[1] - p0[1],
+      z21 = p1[2] - p0[2];
+    const x31 = p2[0] - p0[0],
+      y31 = p2[1] - p0[1],
+      z31 = p2[2] - p0[2];
+    const x41 = p3[0] - p0[0],
+      y41 = p3[1] - p0[1],
+      z41 = p3[2] - p0[2];
+
+    const detJ = x21 * (y31 * z41 - y41 * z31) - y21 * (x31 * z41 - x41 * z31) + z21 * (x31 * y41 - x41 * y31);
+    const volume = Math.abs(detJ) / 6.0;
+
+    const Me = new Float64Array(144);
+    const factor = (rho * volume) / 20.0;
+    const diagFactor = 2.0 * factor;
+    const offDiagFactor = 1.0 * factor;
+
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        const val = i === j ? diagFactor : offDiagFactor;
+        for (let d = 0; d < 3; d++) {
+          const row = i * 3 + d;
+          const col = j * 3 + d;
+          Me[row * 12 + col] = val;
+        }
+      }
+    }
+
+    return { Me, volume };
+  }
 }

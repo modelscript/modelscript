@@ -13,6 +13,8 @@ export type {
   ChamferSolid,
   CylinderOptions,
   CylinderSolid,
+  ExtrusionOptions,
+  ExtrusionSolid,
   FilletSolid,
   Mat4,
   ParamMeta,
@@ -31,7 +33,17 @@ export type {
 export { SolidKind } from "./types.js";
 
 // Primitives
-export { box, chamfer, cylinder, fillet, resetNameCounter, sphere, tagPatch, torus } from "./primitives.js";
+export {
+  box,
+  chamfer,
+  cylinder,
+  fillet,
+  linearExtrude,
+  resetNameCounter,
+  sphere,
+  tagPatch,
+  torus,
+} from "./primitives.js";
 
 // Transforms
 export {

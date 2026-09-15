@@ -5,8 +5,9 @@
 // based on the document URI. This replaces the per-method if-branching that
 // was previously scattered across 12 handlers in browserServerMain.ts.
 
-import { buildDiagramFromDSL } from "@modelscript/diagram/builder";
+import { buildDiagramFromDSL, buildPolyglotDiagram } from "@modelscript/diagram/builder";
 import { SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
+import { compileDiagramConfigToPolyglot } from "@modelscript/dsl";
 import {
   buildComponentProperties,
   buildDiagramData,
@@ -27,8 +28,12 @@ import type {
   DiagramApplyEditsParams,
   DiagramApplyEditsResult,
   DiagramData,
+  DiagramDrillDownParams,
+  DiagramDrillDownResult,
   DiagramGetComponentPropertiesParams,
   DiagramGetDataParams,
+  DiagramGetPaletteParams,
+  DiagramPalette,
 } from "./diagramProtocol.js";
 
 // ── Backend Interface ──
@@ -48,6 +53,12 @@ export interface DiagramBackend {
 
   /** Apply a batch of edit actions, returning a unified result */
   applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> | DiagramApplyEditsResult;
+
+  /** Stencil palette items for the palette panel */
+  getPalette?(params: DiagramGetPaletteParams): Promise<DiagramPalette | null> | DiagramPalette | null;
+
+  /** Drill-down navigation into sub-diagram */
+  drillDown?(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> | DiagramDrillDownResult | null;
 }
 
 // ── Modelica Backend ──
@@ -97,6 +108,23 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     }
 
     return processDiagramEditBatch(params, instances[0], docText);
+  }
+
+  async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
+    const targetName = params.className || params.componentName;
+    if (!targetName) return null;
+    const classInstance = this.deps.resolveClassInstance(params.uri, targetName);
+    if (!classInstance) return null;
+    const childData = await buildDiagramData(classInstance);
+    return {
+      targetUri: params.uri,
+      targetClassName: targetName,
+      breadcrumbs: [
+        { id: "root", label: "Root", uri: params.uri },
+        { id: params.nodeId || targetName, label: targetName, uri: params.uri },
+      ],
+      data: childData ?? undefined,
+    };
   }
 }
 
@@ -293,6 +321,53 @@ export class SysML2DiagramBackend implements DiagramBackend {
       renderHint: needsRender,
     };
   }
+
+  getPalette(params: DiagramGetPaletteParams): DiagramPalette | null {
+    return {
+      categories: [
+        {
+          name: "Structure",
+          items: [
+            { label: "Part", className: "PartDefinition" },
+            { label: "Port", className: "PortDefinition" },
+            { label: "Item", className: "ItemDefinition" },
+          ],
+        },
+        {
+          name: "Behavior",
+          items: [
+            { label: "Action", className: "ActionDefinition" },
+            { label: "State", className: "StateDefinition" },
+          ],
+        },
+        {
+          name: "Requirements",
+          items: [
+            { label: "Requirement", className: "RequirementDefinition" },
+            { label: "Constraint", className: "ConstraintDefinition" },
+          ],
+        },
+      ],
+    };
+  }
+
+  drillDown(params: DiagramDrillDownParams): DiagramDrillDownResult | null {
+    const targetName = params.className || params.componentName;
+    if (!targetName) return null;
+    const childData = this.deps.buildDiagramData({
+      uri: params.uri,
+      className: targetName,
+    });
+    return {
+      targetUri: params.uri,
+      targetClassName: targetName,
+      breadcrumbs: [
+        { id: "root", label: "Root", uri: params.uri },
+        { id: params.nodeId || targetName, label: targetName, uri: params.uri },
+      ],
+      data: childData ?? undefined,
+    };
+  }
 }
 
 // ── Generic DSL Diagram Backend ──
@@ -302,7 +377,85 @@ export interface GenericDSLBackendDeps {
   getDiagramConfig?: (uri: string) => any;
   getSyntaxNames?: (uri: string) => Record<number, string> | string[] | undefined;
   getRawAstData?: (uri: string) => { nodes: any[]; edges: any[] } | null;
+  getSymbolIndex?: (uri: string) => any;
+  getScopeResolver?: (uri: string) => any;
   layoutStorage?: SidecarLayoutStorage;
+}
+
+function findSectionClosingLine(lines: string[], sectionName: string): number | null {
+  const secRegex = new RegExp(`\\b${sectionName}\\b`);
+  let inSection = false;
+  let depth = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!inSection) {
+      if (secRegex.test(line)) {
+        inSection = true;
+        for (const ch of line.substring(line.search(secRegex))) {
+          if (ch === "{") depth++;
+          else if (ch === "}") depth--;
+        }
+      }
+    } else {
+      for (const ch of line) {
+        if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth <= 0) {
+            return i;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content: string, targetSection?: string) {
+  if (targetSection) {
+    const secLine = findSectionClosingLine(lines, targetSection);
+    if (secLine !== null) {
+      allEdits.push({
+        range: {
+          start: { line: secLine, character: 0 },
+          end: { line: secLine, character: 0 },
+        },
+        newText: "    " + content.trim() + "\n",
+      });
+      return;
+    } else {
+      let insertLine = lines.length;
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (lines[i].trim() === "}") {
+          insertLine = i;
+          break;
+        }
+      }
+      allEdits.push({
+        range: {
+          start: { line: insertLine, character: 0 },
+          end: { line: insertLine, character: 0 },
+        },
+        newText: `  ${targetSection} {\n    ${content.trim()}\n  }\n`,
+      });
+      return;
+    }
+  }
+
+  let insertLine = lines.length;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trim() === "}") {
+      insertLine = i;
+      break;
+    }
+  }
+  allEdits.push({
+    range: {
+      start: { line: insertLine, character: 0 },
+      end: { line: insertLine, character: 0 },
+    },
+    newText: (insertLine < lines.length ? "  " : "") + content.trim() + "\n",
+  });
 }
 
 /**
@@ -319,12 +472,31 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
   async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
     const docText = this.deps.getDocumentText(params.uri);
     const config = this.deps.getDiagramConfig?.(params.uri);
-    const syntaxNames = this.deps.getSyntaxNames?.(params.uri);
-    const rawData = this.deps.getRawAstData?.(params.uri) ?? { nodes: [], edges: [] };
+    const symbolIndex = this.deps.getSymbolIndex?.(params.uri);
+    const resolver = this.deps.getScopeResolver?.(params.uri);
 
-    if (!docText && rawData.nodes.length === 0) return null;
+    let diagramData: any = null;
 
-    const diagramData = buildDiagramFromDSL(rawData, config, syntaxNames, params.diagramType, docText);
+    if (symbolIndex && config) {
+      const { graphicsConfig, options } = compileDiagramConfigToPolyglot(config);
+      diagramData = buildPolyglotDiagram(
+        symbolIndex,
+        graphicsConfig,
+        params.uri,
+        resolver,
+        params.diagramType ?? "All",
+        options,
+      );
+    } else {
+      const syntaxNames = this.deps.getSyntaxNames?.(params.uri);
+      const rawData = this.deps.getRawAstData?.(params.uri) ?? { nodes: [], edges: [] };
+
+      if (!docText && rawData.nodes.length === 0) return null;
+
+      diagramData = buildDiagramFromDSL(rawData, config, syntaxNames, params.diagramType, docText);
+    }
+
+    if (!diagramData) return null;
 
     // Merge persisted layout if available
     const layout = await this.layoutStorage.loadLayout(params.uri);
@@ -354,6 +526,47 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     };
   }
 
+  getPalette(params: DiagramGetPaletteParams): DiagramPalette | null {
+    const config = this.deps.getDiagramConfig?.(params.uri);
+    if (config?.palette?.categories) {
+      return { categories: config.palette.categories };
+    }
+    return null;
+  }
+
+  async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
+    const symbolIndex = this.deps.getSymbolIndex?.(params.uri);
+    const targetName = params.className || params.componentName;
+    if (!targetName) return null;
+
+    let targetUri = params.uri;
+    if (symbolIndex) {
+      for (const [, sym] of symbolIndex.symbols) {
+        if (sym.name === targetName) {
+          if (sym.resourceId) targetUri = sym.resourceId;
+          break;
+        }
+      }
+    }
+
+    const breadcrumbs = [
+      { id: "root", label: "Root", uri: params.uri },
+      { id: params.nodeId || targetName, label: targetName, uri: targetUri },
+    ];
+
+    const childData = await this.getData({
+      uri: targetUri,
+      className: targetName,
+    });
+
+    return {
+      targetUri,
+      targetClassName: targetName,
+      breadcrumbs,
+      data: childData ?? undefined,
+    };
+  }
+
   async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
     const allEdits: TextEdit[] = [];
     const itemsToSave: any[] = [];
@@ -372,34 +585,29 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           break;
         case "connect": {
           let edgeText = "";
-          if (typeof mutations?.createEdge === "function") {
-            edgeText = mutations.createEdge(action.source, action.target);
-          } else if (typeof mutations?.edgeTemplate === "function") {
-            edgeText = mutations.edgeTemplate(action.source, action.target);
-          } else if (typeof mutations?.edgeTemplate === "string") {
-            edgeText = mutations.edgeTemplate
+          const edgeTemplates = mutations?.edgeTemplates;
+          const edgeTemplate =
+            (action.edgeType && edgeTemplates?.[action.edgeType]) || mutations?.edgeTemplate || mutations?.createEdge;
+
+          if (typeof edgeTemplate === "function") {
+            edgeText = edgeTemplate(action.source, action.target, action.sourcePort, action.targetPort);
+          } else if (typeof edgeTemplate === "string") {
+            edgeText = edgeTemplate
               .replace(/\$\{source\}/g, action.source)
-              .replace(/\$\{target\}/g, action.target);
+              .replace(/\$\{target\}/g, action.target)
+              .replace(/\$\{sourcePort\}/g, action.sourcePort ?? "")
+              .replace(/\$\{targetPort\}/g, action.targetPort ?? "");
           } else {
-            edgeText = `connect(${action.source}, ${action.target});\n`;
+            const src = action.sourcePort ? `${action.source}.${action.sourcePort}` : action.source;
+            const tgt = action.targetPort ? `${action.target}.${action.targetPort}` : action.target;
+            edgeText = `connect(${src}, ${tgt});\n`;
           }
 
           if (docText !== undefined && edgeText) {
             const lines = docText.split("\n");
-            let insertLine = lines.length;
-            for (let i = lines.length - 1; i >= 0; i--) {
-              if (lines[i].trim() === "}") {
-                insertLine = i;
-                break;
-              }
-            }
-            allEdits.push({
-              range: {
-                start: { line: insertLine, character: 0 },
-                end: { line: insertLine, character: 0 },
-              },
-              newText: (insertLine < lines.length ? "  " : "") + edgeText,
-            });
+            const targetSection =
+              action.section || mutations?.sections?.edge || mutations?.insertionSection || mutations?.defaultSection;
+            insertIntoSectionOrRoot(lines, allEdits, edgeText, targetSection);
           }
 
           if (action.points && action.points.length > 0) {
@@ -438,9 +646,9 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           break;
         }
         case "addComponent": {
-          const baseName = action.className.charAt(0).toLowerCase() + action.className.slice(1);
-          let uniqueName = `${baseName}1`;
-          if (docText) {
+          const baseName = action.name || action.className.charAt(0).toLowerCase() + action.className.slice(1);
+          let uniqueName = action.name || `${baseName}1`;
+          if (!action.name && docText) {
             let idx = 1;
             while (new RegExp(`\\b${baseName}${idx}\\b`).test(docText)) {
               idx++;
@@ -463,20 +671,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
           if (docText !== undefined && nodeText) {
             const lines = docText.split("\n");
-            let insertLine = lines.length;
-            for (let i = lines.length - 1; i >= 0; i--) {
-              if (lines[i].trim() === "}") {
-                insertLine = i;
-                break;
-              }
-            }
-            allEdits.push({
-              range: {
-                start: { line: insertLine, character: 0 },
-                end: { line: insertLine, character: 0 },
-              },
-              newText: (insertLine < lines.length ? "  " : "") + nodeText,
-            });
+            const targetSection = action.section || mutations?.sections?.node || mutations?.defaultSection;
+            insertIntoSectionOrRoot(lines, allEdits, nodeText, targetSection);
           }
 
           itemsToSave.push({
@@ -525,6 +721,79 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                 connectedOnly: true,
               },
             ]);
+          }
+          break;
+        }
+        case "updateName": {
+          if (docText !== undefined && action.oldName && action.newName) {
+            const escOld = action.oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const regex = new RegExp(`\\b${escOld}\\b`, "g");
+            const lines = docText.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              let match: RegExpExecArray | null;
+              while ((match = regex.exec(lines[i])) !== null) {
+                allEdits.push({
+                  range: {
+                    start: { line: i, character: match.index },
+                    end: { line: i, character: match.index + action.oldName.length },
+                  },
+                  newText: action.newName,
+                });
+              }
+            }
+          }
+          break;
+        }
+        case "updateParameter": {
+          if (docText !== undefined && action.parameter && action.value !== undefined) {
+            const lines = docText.split("\n");
+            const escParam = action.parameter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const paramRegex = new RegExp(`\\b(${escParam}\\s*=\\s*)([^,;\\)\\}\\n]+)`);
+            let matched = false;
+
+            if (action.name) {
+              const escName = action.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const nameRegex = new RegExp(`\\b${escName}\\b`);
+              for (let i = 0; i < lines.length; i++) {
+                if (nameRegex.test(lines[i])) {
+                  for (let j = i; j < Math.min(lines.length, i + 6); j++) {
+                    const m = paramRegex.exec(lines[j]);
+                    if (m) {
+                      const startCol = m.index + m[1].length;
+                      const endCol = startCol + m[2].trimEnd().length;
+                      allEdits.push({
+                        range: {
+                          start: { line: j, character: startCol },
+                          end: { line: j, character: endCol },
+                        },
+                        newText: String(action.value),
+                      });
+                      matched = true;
+                      break;
+                    }
+                  }
+                  if (matched) break;
+                }
+              }
+            }
+
+            if (!matched) {
+              for (let i = 0; i < lines.length; i++) {
+                const m = paramRegex.exec(lines[i]);
+                if (m) {
+                  const startCol = m.index + m[1].length;
+                  const endCol = startCol + m[2].trimEnd().length;
+                  allEdits.push({
+                    range: {
+                      start: { line: i, character: startCol },
+                      end: { line: i, character: endCol },
+                    },
+                    newText: String(action.value),
+                  });
+                  break;
+                }
+              }
+            }
           }
           break;
         }
@@ -585,6 +854,16 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
 
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
       return await getBackend(params.uri).applyEdits(params);
+    },
+
+    async getPalette(params: DiagramGetPaletteParams): Promise<DiagramPalette | null> {
+      const backend = getBackend(params.uri);
+      return backend.getPalette ? await backend.getPalette(params) : null;
+    },
+
+    async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
+      const backend = getBackend(params.uri);
+      return backend.drillDown ? await backend.drillDown(params) : null;
     },
   };
 }

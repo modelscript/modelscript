@@ -1,3 +1,4 @@
+import { computeStemLines } from "./port-router.js";
 import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
 
 /** X6 SVG Markup element — defines the DOM structure of a node/port. */
@@ -165,6 +166,8 @@ export interface PolyglotDiagramNode {
   compartments?: { header: string; entries: string[] }[];
   /** Whether this node should be auto-laid-out by Dagre. */
   autoLayout: boolean;
+  /** Reactive simulation telemetry animation channels */
+  animations?: { property: string; variableName: string; transform?: string }[];
 }
 
 export interface PolyglotDiagramEdge {
@@ -178,6 +181,8 @@ export interface PolyglotDiagramEdge {
   connector?: string | { name: string; args?: Record<string, unknown> };
   attrs: X6Attrs;
   labels?: any[];
+  /** Reactive simulation telemetry animation channels */
+  animations?: { property: string; variableName: string; transform?: string }[];
 }
 
 export interface PolyglotDiagramData {
@@ -199,12 +204,17 @@ export interface PolyglotDiagramOptions {
   standaloneKinds?: Set<string> | string[];
   usageKinds?: Set<string> | string[];
   definitionKinds?: Set<string> | string[];
+  typingRules?: Set<string> | string[];
+  subclassificationRules?: Set<string> | string[];
+  subsettingRules?: Set<string> | string[];
+  redefinitionRules?: Set<string> | string[];
   inModelDiscovery?: {
     rule?: string;
     nameField?: string;
     exposeField?: string;
   };
   solderDots?: boolean;
+  stemLines?: boolean;
 }
 
 // ── Builder ──
@@ -383,6 +393,8 @@ export function buildPolyglotDiagram(
   // Map from symbolId → generated node id (for edge resolution)
   const symbolIdToNodeId = new Map<SymbolId, string>();
 
+  const typingRules = opts.typingRules ? new Set(opts.typingRules) : new Set(["OwnedFeatureTyping", "FeatureTyping"]);
+
   // ── Structural parent kinds whose children get absorbed as compartment text ──
   const STRUCTURAL_KINDS = opts.structuralKinds
     ? new Set(opts.structuralKinds)
@@ -535,8 +547,8 @@ export function buildPolyglotDiagram(
         entries: attrEntries
           .map((e) => {
             if (!isRealName(e.name)) return null;
-            // Try to resolve the attribute's type via OwnedFeatureTyping children
-            const typeName = resolveTypeName(e.id, index, resolver);
+            // Try to resolve the attribute's type via OwnedFeatureTyping (or custom typing rules) children
+            const typeName = resolveTypeName(e.id, index, resolver, typingRules);
             return typeName ? `${e.name} : ${typeName}` : e.name;
           })
           .filter((v): v is string => v !== null),
@@ -792,7 +804,7 @@ export function buildPolyglotDiagram(
       };
 
       const parameters: { name: string; value: string }[] = [];
-      for (const [key, value] of Object.entries(sym.metadata)) {
+      for (const [key, value] of Object.entries(sym.metadata || {})) {
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
           parameters.push({ name: key, value: String(value) });
         }
@@ -923,7 +935,7 @@ export function buildPolyglotDiagram(
       }
 
       const parameters: { name: string; value: string }[] = [];
-      for (const [key, value] of Object.entries(sym.metadata)) {
+      for (const [key, value] of Object.entries(sym.metadata || {})) {
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
           parameters.push({ name: key, value: String(value) });
         }
@@ -980,7 +992,7 @@ export function buildPolyglotDiagram(
     ) {
       const isForkJoin = sym.ruleName === "ForkNode" || sym.ruleName === "JoinNode";
       const parameters: { name: string; value: string }[] = [];
-      for (const [key, value] of Object.entries(sym.metadata)) {
+      for (const [key, value] of Object.entries(sym.metadata || {})) {
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
           parameters.push({ name: key, value: String(value) });
         }
@@ -1115,7 +1127,7 @@ export function buildPolyglotDiagram(
       };
 
       const parameters: { name: string; value: string }[] = [];
-      for (const [key, value] of Object.entries(sym.metadata)) {
+      for (const [key, value] of Object.entries(sym.metadata || {})) {
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
           parameters.push({ name: key, value: String(value) });
         }
@@ -1294,7 +1306,7 @@ export function buildPolyglotDiagram(
 
       // Build metadata for properties panel
       const parameters: { name: string; value: string }[] = [];
-      for (const [key, value] of Object.entries(sym.metadata)) {
+      for (const [key, value] of Object.entries(sym.metadata || {})) {
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
           parameters.push({ name: key, value: String(value) });
         }
@@ -1372,7 +1384,7 @@ export function buildPolyglotDiagram(
 
     // Build metadata for properties panel
     const parameters: { name: string; value: string }[] = [];
-    for (const [key, value] of Object.entries(sym.metadata)) {
+    for (const [key, value] of Object.entries(sym.metadata || {})) {
       if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
         parameters.push({ name: key, value: String(value) });
       }
@@ -1521,9 +1533,9 @@ export function buildPolyglotDiagram(
     // If this is a TransitionUsage or SuccessionAsUsage with guard/trigger/effect metadata,
     // replace the static label with the UML/SysML convention.
     if (sym.ruleName === "TransitionUsage" || sym.ruleName === "SuccessionAsUsage") {
-      const trigger = sym.metadata.trigger as string | undefined;
-      const guard = sym.metadata.guard as string | undefined;
-      const effect = sym.metadata.effect as string | undefined;
+      const trigger = sym.metadata?.trigger as string | undefined;
+      const guard = sym.metadata?.guard as string | undefined;
+      const effect = sym.metadata?.effect as string | undefined;
 
       const parts: string[] = [];
       if (trigger) parts.push(trigger.trim());
@@ -1823,6 +1835,12 @@ export function buildPolyglotDiagram(
     }
   }
 
+  const subclassificationRules = opts.subclassificationRules
+    ? new Set(opts.subclassificationRules)
+    : new Set(["OwnedSubclassification"]);
+  const subsettingRules = opts.subsettingRules ? new Set(opts.subsettingRules) : new Set(["OwnedSubsetting"]);
+  const redefinitionRules = opts.redefinitionRules ? new Set(opts.redefinitionRules) : new Set(["OwnedRedefinition"]);
+
   // ── Specialization edges (subclass -> superclass with UML |> hollow triangle) ──
   for (const sym of allSymbols) {
     if (!DEFINITION_KINDS.has(sym.ruleName)) continue;
@@ -1831,7 +1849,7 @@ export function buildPolyglotDiagram(
 
     const refChildren = refChildrenByParent.get(sym.id) ?? [];
     for (const refEntry of refChildren) {
-      if (refEntry.ruleName === "OwnedSubclassification") {
+      if (subclassificationRules.has(refEntry.ruleName)) {
         const resolved = resolveEntryTargets(refEntry);
         for (const superDef of resolved) {
           const superNodeId = symbolIdToNodeId.get(superDef.id);
@@ -1876,8 +1894,8 @@ export function buildPolyglotDiagram(
 
     const refChildren = refChildrenByParent.get(sym.id) ?? [];
     for (const refEntry of refChildren) {
-      if (refEntry.ruleName === "OwnedSubsetting" || refEntry.ruleName === "OwnedRedefinition") {
-        const isRedef = refEntry.ruleName === "OwnedRedefinition";
+      if (subsettingRules.has(refEntry.ruleName) || redefinitionRules.has(refEntry.ruleName)) {
+        const isRedef = redefinitionRules.has(refEntry.ruleName);
         const resolved = resolveEntryTargets(refEntry);
         for (const target of resolved) {
           const targetNodeId = symbolIdToNodeId.get(target.id);
@@ -2109,6 +2127,44 @@ export function buildPolyglotDiagram(
     }
   }
 
+  // Boundary stem lines for internal ports
+  if (opts.stemLines) {
+    for (const n of nodes) {
+      if (!n.ports?.items || n.ports.items.length === 0) continue;
+      const portPoints = n.ports.items
+        .filter((p: any) => p.args && typeof p.args.x === "number" && typeof p.args.y === "number")
+        .map((p: any) => ({
+          id: p.id || "port",
+          x: p.args.x,
+          y: p.args.y,
+          side: p.group as any,
+        }));
+      if (portPoints.length === 0) continue;
+
+      const stems = computeStemLines({ id: n.id, x: 0, y: 0, width: n.width, height: n.height }, portPoints);
+      for (const stem of stems) {
+        edges.push({
+          id: stem.id,
+          shape: "edge",
+          zIndex: 0,
+          source: { cell: n.id, port: stem.portId },
+          target: { cell: n.id },
+          vertices: [{ x: stem.end.x, y: stem.end.y }],
+          router: { name: "normal" },
+          connector: { name: "normal" },
+          attrs: {
+            line: {
+              stroke: "#94a3b8",
+              strokeWidth: 1,
+              strokeDasharray: "2 2",
+            },
+          },
+          labels: [],
+        });
+      }
+    }
+  }
+
   return {
     nodes,
     edges,
@@ -2315,13 +2371,18 @@ function resolveTemplates(
  *
  * Returns the first resolved type name, or undefined if no type is found.
  */
-function resolveTypeName(symbolId: SymbolId, index: SymbolIndex, resolver?: ScopeResolver): string | undefined {
+function resolveTypeName(
+  symbolId: SymbolId,
+  index: SymbolIndex,
+  resolver?: ScopeResolver,
+  typingRules: Set<string> = new Set(["OwnedFeatureTyping", "FeatureTyping"]),
+): string | undefined {
   // Strategy 1: Check childrenOf map (fast path if populated)
   const childIds = index.childrenOf.get(symbolId) ?? [];
   for (const childId of childIds) {
     const child = index.symbols.get(childId);
     if (!child) continue;
-    if (child.ruleName !== "OwnedFeatureTyping" && child.ruleName !== "FeatureTyping") continue;
+    if (!typingRules.has(child.ruleName)) continue;
 
     // Try resolving via scope graph
     if (resolver) {
@@ -2342,7 +2403,7 @@ function resolveTypeName(symbolId: SymbolId, index: SymbolIndex, resolver?: Scop
   // Strategy 2: Full scan of all symbols (handles cases where childrenOf isn't populated)
   for (const entry of index.symbols.values()) {
     if (entry.parentId !== symbolId) continue;
-    if (entry.ruleName !== "OwnedFeatureTyping" && entry.ruleName !== "FeatureTyping") continue;
+    if (!typingRules.has(entry.ruleName)) continue;
 
     // Try resolving via scope graph
     if (resolver) {

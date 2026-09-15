@@ -13,6 +13,7 @@ import type {
   ChamferSolid,
   CylinderOptions,
   CylinderSolid,
+  ExtrusionSolid,
   FilletSolid,
   Solid,
   SphereOptions,
@@ -178,5 +179,28 @@ export function chamfer(child: Solid, distance: number, edges?: string[], name?:
     child,
     distance,
     edges,
+  });
+}
+
+/**
+ * Create a linear extrusion of a 2D planar polygon.
+ *
+ * @example
+ * ```ts
+ * const bracket = linearExtrude([[0, 0], [20, 0], [15, 10], [0, 10]], 5);
+ * ```
+ */
+export function linearExtrude(
+  polygon: readonly [number, number][],
+  height: number,
+  opts?: { twist?: number; scale?: number; name?: string },
+): ExtrusionSolid {
+  return Object.freeze({
+    kind: SolidKind.Extrusion,
+    name: opts?.name ?? autoName("Extrusion"),
+    polygon,
+    height,
+    twist: opts?.twist,
+    scale: opts?.scale,
   });
 }

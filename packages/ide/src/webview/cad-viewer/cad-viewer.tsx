@@ -24,6 +24,7 @@ import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./animation-timeline";
 import { CfdMeshRenderer, type CfdMeshPayload } from "./cfd-mesh-renderer";
+import { FeaMeshRenderer, type FeaMeshPayload } from "./fea-mesh-renderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,8 @@ interface CadViewerProps {
   animationController?: AnimationController | null;
   /** CFD mesh payload from co-simulation VTK stream */
   cfdPayload?: CfdMeshPayload | null;
+  /** FEA structural mesh payload from co-simulation stream */
+  feaPayload?: FeaMeshPayload | null;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -312,6 +315,7 @@ function SceneContents({
   dark,
   animationController,
   cfdPayload,
+  feaPayload,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -320,6 +324,7 @@ function SceneContents({
   dark?: boolean;
   animationController?: AnimationController | null;
   cfdPayload?: CfdMeshPayload | null;
+  feaPayload?: FeaMeshPayload | null;
 }) {
   const { gl } = useThree();
 
@@ -383,6 +388,9 @@ function SceneContents({
       {/* CFD Mesh Visualization (co-simulation melt front) */}
       {cfdPayload && <CfdMeshRenderer payload={cfdPayload} />}
 
+      {/* FEA Mesh Visualization (structural stress & deformation) */}
+      {feaPayload && <FeaMeshRenderer payload={feaPayload} />}
+
       {/* Controls */}
       <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
 
@@ -434,6 +442,7 @@ export default function CadViewer({
   dark = false,
   animationController = null,
   cfdPayload = null,
+  feaPayload = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -462,7 +471,7 @@ export default function CadViewer({
     );
   }
 
-  if (components.length === 0) {
+  if (components.length === 0 && !cfdPayload && !feaPayload) {
     return (
       <div style={{ height: "100%", position: "relative", background: dark ? "#1e1e1e" : "#f5f5f5" }}>
         <EmptyState dark={dark} />
@@ -487,6 +496,7 @@ export default function CadViewer({
           dark={dark}
           animationController={animationController}
           cfdPayload={cfdPayload}
+          feaPayload={feaPayload}
         />
       </Canvas>
 

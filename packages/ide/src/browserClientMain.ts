@@ -604,7 +604,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   client.onNotification(
     "modelscript/cosimStream",
-    async (msg: { type: string; participantId: string; time: number; data: number[] }) => {
+    async (msg: { type: string; participantId: string; time: number; data?: number[]; payload?: any }) => {
       // Forward the co-simulation streaming events to the CAD Viewer React webview
       const { CadViewerPanel } = await import("./cadViewerPanel");
       if (CadViewerPanel.currentPanel) {
@@ -615,9 +615,11 @@ export async function activate(context: vscode.ExtensionContext) {
             data: {
               pid: msg.participantId,
               time: msg.time,
-              buffer: new Uint8Array(msg.data), // Parse Array back to typed array
+              buffer: new Uint8Array(msg.data || []), // Parse Array back to typed array
             },
           });
+        } else if (msg.type === "fea-frame" || msg.type === "fea") {
+          CadViewerPanel.currentPanel.sendFeaPayload(msg.payload || msg);
         } else {
           // Forward general step or complete events
           CadViewerPanel.currentPanel.postMessage(msg);
@@ -1530,6 +1532,41 @@ END-ISO-10303-21;`;
       if (client) {
         SimulationViewPanel.createOrShow(context, client, className, targetUri.toString());
       }
+    }),
+    commands.registerCommand("modelscript.runPhysicsSimulation", async (args?: { uri: string; className?: string }) => {
+      if (!client) return;
+      const uri = args?.uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!uri) return;
+      const className = args?.className;
+
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Running multi-physics simulation for ${className || "study"}...`,
+          cancellable: false,
+        },
+        async () => {
+          try {
+            // Open 3D CAD viewer if not already open
+            const { CadViewerPanel } = await import("./cadViewerPanel");
+            CadViewerPanel.createOrShow(context.extensionUri, client);
+
+            const result = await client.sendRequest<any>("modelscript/simulatePhysics", {
+              uri,
+              className,
+              physicsType: "FEA",
+            });
+
+            if (result?.error) {
+              vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
+            } else {
+              vscode.window.showInformationMessage("Physics co-simulation completed successfully.");
+            }
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to run physics simulation: ${err?.message || err}`);
+          }
+        },
+      );
     }),
     commands.registerCommand("modelscript.createFeaSetup", async (uri?: vscode.Uri) => {
       let targetUri = uri;

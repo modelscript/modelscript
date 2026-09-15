@@ -11,8 +11,12 @@ import { QueryEngine, WorkspaceIndex, type VerificationResult } from "@modelscri
 import { sysml2Language } from "./language.js";
 import {
   sysml2DefinitionKinds,
+  sysml2RedefinitionRules,
   sysml2StandaloneChildKinds,
   sysml2StructuralKinds,
+  sysml2SubclassificationRules,
+  sysml2SubsettingRules,
+  sysml2TypingRules,
   sysml2UsageKinds,
   sysml2Views,
 } from "./views.js";
@@ -83,6 +87,10 @@ export function buildSysML2DiagramData(
     standaloneKinds: sysml2StandaloneChildKinds,
     usageKinds: sysml2UsageKinds,
     definitionKinds: sysml2DefinitionKinds,
+    typingRules: sysml2TypingRules,
+    subclassificationRules: sysml2SubclassificationRules,
+    subsettingRules: sysml2SubsettingRules,
+    redefinitionRules: sysml2RedefinitionRules,
     inModelDiscovery: {
       rule: "ViewDefinition",
       nameField: "name",

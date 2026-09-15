@@ -253,8 +253,8 @@ export class NativeRuntime {
   }
 }
 export const SYNTAX_NAMES =
-  typeof ["ERROR","/\\s+/","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\";\"","\"{\"","\"}\"","\"=\"","\"module\"","\"(\"","\")\"","\"function\"","\"if\"","\"else\"","\"for\"","\",\"","\"translate\"","\"rotate\"","\"scale\"","\"mirror\"","\"color\"","\"union\"","\"difference\"","\"intersection\"","\"tag_port\"","\".\"","\"fillet\"","\"chamfer\"","\"cube\"","\"cylinder\"","\"sphere\"","\"polyhedron\"","\"?\"","\":\"","\"||\"","\"&&\"","\"==\"","\"!=\"","\"<\"","\"<=\"","\">\"","\">=\"","\"+\"","\"-\"","\"*\"","\"/\"","\"%\"","\"^\"","\"!\"","\"[\"","\"]\"","/\\$?[a-zA-Z_][a-zA-Z0-9_]*/","/[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?/","/\"([^\"\\\\]|\\\\.)*\"/","\"true\"","\"false\"","\"undef\"","SourceFile","Statement","BlockStatement","VariableDeclaration","ModuleDeclaration","FunctionDeclaration","IfStatement","ForStatement","ParameterList","Parameter","ArgumentList","Argument","PrefixSolid","TransformOp","BooleanOp","TagPortOp","ChainedSolidStatement","ChainedSolid","MethodCall","MethodName","PrimarySolid","CubePrimitive","CylinderPrimitive","SpherePrimitive","PolyhedronPrimitive","ModuleInstantiation","Expression","ConditionalExpression","BinaryExpression","UnaryExpression","PostfixExpression","PrimaryExpression","ParenthesizedExpression","VectorLiteral","RangeLiteral","BOOLEAN","_START","_Statement*","_(VariableDeclaration | ModuleDeclaration | FunctionDeclaration | IfStatement | ForStatement | BlockStatement | PrefixSolid | ChainedSolidStatement | _EmptyStatement)","_EmptyStatement","_(ParameterList | ())","_((\"else\" Statement) | ())","_(\"if\" \"(\" Expression \")\" Statement ((\"else\" Statement) | ()))","_(\",\" Parameter)*","_((\"=\" Expression) | ())","_(\",\" Argument)*","_((IDENTIFIER \"=\" Expression) | Expression)","_(TransformOp | BooleanOp | TagPortOp)","_(ArgumentList | ())","_((\"translate\" \"(\" (ArgumentList | ()) \")\") | (\"rotate\" \"(\" (ArgumentList | ()) \")\") | (\"scale\" \"(\" (ArgumentList | ()) \")\") | (\"mirror\" \"(\" (ArgumentList | ()) \")\") | (\"color\" \"(\" (ArgumentList | ()) \")\"))","_((\"union\" \"(\" \")\") | (\"difference\" \"(\" \")\") | (\"intersection\" \"(\" \")\"))","_MethodCall*","_(IDENTIFIER | \"translate\" | \"rotate\" | \"scale\" | \"mirror\" | \"color\" | \"fillet\" | \"chamfer\")","_(CubePrimitive | CylinderPrimitive | SpherePrimitive | PolyhedronPrimitive | ModuleInstantiation)","_(ConditionalExpression | BinaryExpression | UnaryExpression | PostfixExpression | PrimaryExpression)","_(Expression \"?\" Expression \":\" Expression)","_(Expression \"||\" Expression)","_((Expression \"||\" Expression) | (Expression \"&&\" Expression) | (Expression (\"==\" | \"!=\") Expression) | (Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression) | (Expression (\"+\" | \"-\") Expression) | (Expression (\"*\" | \"/\" | \"%\") Expression) | (Expression \"^\" Expression))","_(Expression \"&&\" Expression)","_(\"==\" | \"!=\")","_(Expression (\"==\" | \"!=\") Expression)","_(\"<\" | \"<=\" | \">\" | \">=\")","_(Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression)","_(\"+\" | \"-\")","_(Expression (\"+\" | \"-\") Expression)","_(\"*\" | \"/\" | \"%\")","_(Expression (\"*\" | \"/\" | \"%\") Expression)","_(Expression \"^\" Expression)","_(\"!\" | \"-\" | \"+\")","_((\"!\" | \"-\" | \"+\") Expression)","_(Expression \"[\" Expression \"]\")","_((Expression \"[\" Expression \"]\") | (Expression \"(\" (ArgumentList | ()) \")\"))","_(ArgumentList | ())_1","_(Expression \"(\" (ArgumentList | ()) \")\")","_(NUMBER | STRING | BOOLEAN | UNDEF | IDENTIFIER | VectorLiteral | RangeLiteral | ParenthesizedExpression)","_(\",\" Expression)*","_((Expression (\",\" Expression)*) | ())","_((Expression \":\" Expression) | Expression)","IDENTIFIER","NUMBER","STRING","_(\"true\" | \"false\")","UNDEF","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
-    ? ["ERROR","/\\s+/","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\";\"","\"{\"","\"}\"","\"=\"","\"module\"","\"(\"","\")\"","\"function\"","\"if\"","\"else\"","\"for\"","\",\"","\"translate\"","\"rotate\"","\"scale\"","\"mirror\"","\"color\"","\"union\"","\"difference\"","\"intersection\"","\"tag_port\"","\".\"","\"fillet\"","\"chamfer\"","\"cube\"","\"cylinder\"","\"sphere\"","\"polyhedron\"","\"?\"","\":\"","\"||\"","\"&&\"","\"==\"","\"!=\"","\"<\"","\"<=\"","\">\"","\">=\"","\"+\"","\"-\"","\"*\"","\"/\"","\"%\"","\"^\"","\"!\"","\"[\"","\"]\"","/\\$?[a-zA-Z_][a-zA-Z0-9_]*/","/[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?/","/\"([^\"\\\\]|\\\\.)*\"/","\"true\"","\"false\"","\"undef\"","SourceFile","Statement","BlockStatement","VariableDeclaration","ModuleDeclaration","FunctionDeclaration","IfStatement","ForStatement","ParameterList","Parameter","ArgumentList","Argument","PrefixSolid","TransformOp","BooleanOp","TagPortOp","ChainedSolidStatement","ChainedSolid","MethodCall","MethodName","PrimarySolid","CubePrimitive","CylinderPrimitive","SpherePrimitive","PolyhedronPrimitive","ModuleInstantiation","Expression","ConditionalExpression","BinaryExpression","UnaryExpression","PostfixExpression","PrimaryExpression","ParenthesizedExpression","VectorLiteral","RangeLiteral","BOOLEAN","_START","_Statement*","_(VariableDeclaration | ModuleDeclaration | FunctionDeclaration | IfStatement | ForStatement | BlockStatement | PrefixSolid | ChainedSolidStatement | _EmptyStatement)","_EmptyStatement","_(ParameterList | ())","_((\"else\" Statement) | ())","_(\"if\" \"(\" Expression \")\" Statement ((\"else\" Statement) | ()))","_(\",\" Parameter)*","_((\"=\" Expression) | ())","_(\",\" Argument)*","_((IDENTIFIER \"=\" Expression) | Expression)","_(TransformOp | BooleanOp | TagPortOp)","_(ArgumentList | ())","_((\"translate\" \"(\" (ArgumentList | ()) \")\") | (\"rotate\" \"(\" (ArgumentList | ()) \")\") | (\"scale\" \"(\" (ArgumentList | ()) \")\") | (\"mirror\" \"(\" (ArgumentList | ()) \")\") | (\"color\" \"(\" (ArgumentList | ()) \")\"))","_((\"union\" \"(\" \")\") | (\"difference\" \"(\" \")\") | (\"intersection\" \"(\" \")\"))","_MethodCall*","_(IDENTIFIER | \"translate\" | \"rotate\" | \"scale\" | \"mirror\" | \"color\" | \"fillet\" | \"chamfer\")","_(CubePrimitive | CylinderPrimitive | SpherePrimitive | PolyhedronPrimitive | ModuleInstantiation)","_(ConditionalExpression | BinaryExpression | UnaryExpression | PostfixExpression | PrimaryExpression)","_(Expression \"?\" Expression \":\" Expression)","_(Expression \"||\" Expression)","_((Expression \"||\" Expression) | (Expression \"&&\" Expression) | (Expression (\"==\" | \"!=\") Expression) | (Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression) | (Expression (\"+\" | \"-\") Expression) | (Expression (\"*\" | \"/\" | \"%\") Expression) | (Expression \"^\" Expression))","_(Expression \"&&\" Expression)","_(\"==\" | \"!=\")","_(Expression (\"==\" | \"!=\") Expression)","_(\"<\" | \"<=\" | \">\" | \">=\")","_(Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression)","_(\"+\" | \"-\")","_(Expression (\"+\" | \"-\") Expression)","_(\"*\" | \"/\" | \"%\")","_(Expression (\"*\" | \"/\" | \"%\") Expression)","_(Expression \"^\" Expression)","_(\"!\" | \"-\" | \"+\")","_((\"!\" | \"-\" | \"+\") Expression)","_(Expression \"[\" Expression \"]\")","_((Expression \"[\" Expression \"]\") | (Expression \"(\" (ArgumentList | ()) \")\"))","_(ArgumentList | ())_1","_(Expression \"(\" (ArgumentList | ()) \")\")","_(NUMBER | STRING | BOOLEAN | UNDEF | IDENTIFIER | VectorLiteral | RangeLiteral | ParenthesizedExpression)","_(\",\" Expression)*","_((Expression (\",\" Expression)*) | ())","_((Expression \":\" Expression) | Expression)","IDENTIFIER","NUMBER","STRING","_(\"true\" | \"false\")","UNDEF","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
+  typeof ["ERROR","/\\s+/","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\";\"","\"{\"","\"}\"","\"=\"","\"module\"","\"(\"","\")\"","\"function\"","\"if\"","\"else\"","\"for\"","\",\"","\"translate\"","\"rotate\"","\"scale\"","\"mirror\"","\"color\"","\"linear_extrude\"","\"union\"","\"difference\"","\"intersection\"","\"tag_port\"","\".\"","\"fillet\"","\"chamfer\"","\"cube\"","\"cylinder\"","\"sphere\"","\"polyhedron\"","\"polygon\"","\"circle\"","\"square\"","\"?\"","\":\"","\"||\"","\"&&\"","\"==\"","\"!=\"","\"<\"","\"<=\"","\">\"","\">=\"","\"+\"","\"-\"","\"*\"","\"/\"","\"%\"","\"^\"","\"!\"","\"[\"","\"]\"","/\\$?[a-zA-Z_][a-zA-Z0-9_]*/","/[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?/","/\"([^\"\\\\]|\\\\.)*\"/","\"true\"","\"false\"","\"undef\"","SourceFile","Statement","BlockStatement","VariableDeclaration","ModuleDeclaration","FunctionDeclaration","IfStatement","ForStatement","ParameterList","Parameter","ArgumentList","Argument","PrefixSolid","TransformOp","LinearExtrudeOp","BooleanOp","TagPortOp","ChainedSolidStatement","ChainedSolid","MethodCall","MethodName","PrimarySolid","CubePrimitive","CylinderPrimitive","SpherePrimitive","PolyhedronPrimitive","PolygonPrimitive","CirclePrimitive","SquarePrimitive","ModuleInstantiation","Expression","ConditionalExpression","BinaryExpression","UnaryExpression","PostfixExpression","PrimaryExpression","ParenthesizedExpression","VectorLiteral","RangeLiteral","BOOLEAN","_START","_Statement*","_(VariableDeclaration | ModuleDeclaration | FunctionDeclaration | IfStatement | ForStatement | BlockStatement | PrefixSolid | ChainedSolidStatement | _EmptyStatement)","_EmptyStatement","_(ParameterList | ())","_((\"else\" Statement) | ())","_(\"if\" \"(\" Expression \")\" Statement ((\"else\" Statement) | ()))","_(\",\" Parameter)*","_((\"=\" Expression) | ())","_(\",\" Argument)*","_((IDENTIFIER \"=\" Expression) | Expression)","_(TransformOp | BooleanOp | TagPortOp | LinearExtrudeOp)","_(ArgumentList | ())","_((\"translate\" \"(\" (ArgumentList | ()) \")\") | (\"rotate\" \"(\" (ArgumentList | ()) \")\") | (\"scale\" \"(\" (ArgumentList | ()) \")\") | (\"mirror\" \"(\" (ArgumentList | ()) \")\") | (\"color\" \"(\" (ArgumentList | ()) \")\"))","_((\"union\" \"(\" \")\") | (\"difference\" \"(\" \")\") | (\"intersection\" \"(\" \")\"))","_MethodCall*","_(IDENTIFIER | \"translate\" | \"rotate\" | \"scale\" | \"mirror\" | \"color\" | \"fillet\" | \"chamfer\")","_(CubePrimitive | CylinderPrimitive | SpherePrimitive | PolyhedronPrimitive | PolygonPrimitive | CirclePrimitive | SquarePrimitive | ModuleInstantiation)","_(ConditionalExpression | BinaryExpression | UnaryExpression | PostfixExpression | PrimaryExpression)","_(Expression \"?\" Expression \":\" Expression)","_(Expression \"||\" Expression)","_((Expression \"||\" Expression) | (Expression \"&&\" Expression) | (Expression (\"==\" | \"!=\") Expression) | (Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression) | (Expression (\"+\" | \"-\") Expression) | (Expression (\"*\" | \"/\" | \"%\") Expression) | (Expression \"^\" Expression))","_(Expression \"&&\" Expression)","_(\"==\" | \"!=\")","_(Expression (\"==\" | \"!=\") Expression)","_(\"<\" | \"<=\" | \">\" | \">=\")","_(Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression)","_(\"+\" | \"-\")","_(Expression (\"+\" | \"-\") Expression)","_(\"*\" | \"/\" | \"%\")","_(Expression (\"*\" | \"/\" | \"%\") Expression)","_(Expression \"^\" Expression)","_(\"!\" | \"-\" | \"+\")","_((\"!\" | \"-\" | \"+\") Expression)","_(Expression \"[\" Expression \"]\")","_((Expression \"[\" Expression \"]\") | (Expression \"(\" (ArgumentList | ()) \")\"))","_(ArgumentList | ())_1","_(Expression \"(\" (ArgumentList | ()) \")\")","_(NUMBER | STRING | BOOLEAN | UNDEF | IDENTIFIER | VectorLiteral | RangeLiteral | ParenthesizedExpression)","_(\",\" Expression)*","_((Expression (\",\" Expression)*) | ())","_((Expression \":\" Expression) | Expression)","IDENTIFIER","NUMBER","STRING","_(\"true\" | \"false\")","UNDEF","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s+/","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\";\"","\"{\"","\"}\"","\"=\"","\"module\"","\"(\"","\")\"","\"function\"","\"if\"","\"else\"","\"for\"","\",\"","\"translate\"","\"rotate\"","\"scale\"","\"mirror\"","\"color\"","\"linear_extrude\"","\"union\"","\"difference\"","\"intersection\"","\"tag_port\"","\".\"","\"fillet\"","\"chamfer\"","\"cube\"","\"cylinder\"","\"sphere\"","\"polyhedron\"","\"polygon\"","\"circle\"","\"square\"","\"?\"","\":\"","\"||\"","\"&&\"","\"==\"","\"!=\"","\"<\"","\"<=\"","\">\"","\">=\"","\"+\"","\"-\"","\"*\"","\"/\"","\"%\"","\"^\"","\"!\"","\"[\"","\"]\"","/\\$?[a-zA-Z_][a-zA-Z0-9_]*/","/[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?/","/\"([^\"\\\\]|\\\\.)*\"/","\"true\"","\"false\"","\"undef\"","SourceFile","Statement","BlockStatement","VariableDeclaration","ModuleDeclaration","FunctionDeclaration","IfStatement","ForStatement","ParameterList","Parameter","ArgumentList","Argument","PrefixSolid","TransformOp","LinearExtrudeOp","BooleanOp","TagPortOp","ChainedSolidStatement","ChainedSolid","MethodCall","MethodName","PrimarySolid","CubePrimitive","CylinderPrimitive","SpherePrimitive","PolyhedronPrimitive","PolygonPrimitive","CirclePrimitive","SquarePrimitive","ModuleInstantiation","Expression","ConditionalExpression","BinaryExpression","UnaryExpression","PostfixExpression","PrimaryExpression","ParenthesizedExpression","VectorLiteral","RangeLiteral","BOOLEAN","_START","_Statement*","_(VariableDeclaration | ModuleDeclaration | FunctionDeclaration | IfStatement | ForStatement | BlockStatement | PrefixSolid | ChainedSolidStatement | _EmptyStatement)","_EmptyStatement","_(ParameterList | ())","_((\"else\" Statement) | ())","_(\"if\" \"(\" Expression \")\" Statement ((\"else\" Statement) | ()))","_(\",\" Parameter)*","_((\"=\" Expression) | ())","_(\",\" Argument)*","_((IDENTIFIER \"=\" Expression) | Expression)","_(TransformOp | BooleanOp | TagPortOp | LinearExtrudeOp)","_(ArgumentList | ())","_((\"translate\" \"(\" (ArgumentList | ()) \")\") | (\"rotate\" \"(\" (ArgumentList | ()) \")\") | (\"scale\" \"(\" (ArgumentList | ()) \")\") | (\"mirror\" \"(\" (ArgumentList | ()) \")\") | (\"color\" \"(\" (ArgumentList | ()) \")\"))","_((\"union\" \"(\" \")\") | (\"difference\" \"(\" \")\") | (\"intersection\" \"(\" \")\"))","_MethodCall*","_(IDENTIFIER | \"translate\" | \"rotate\" | \"scale\" | \"mirror\" | \"color\" | \"fillet\" | \"chamfer\")","_(CubePrimitive | CylinderPrimitive | SpherePrimitive | PolyhedronPrimitive | PolygonPrimitive | CirclePrimitive | SquarePrimitive | ModuleInstantiation)","_(ConditionalExpression | BinaryExpression | UnaryExpression | PostfixExpression | PrimaryExpression)","_(Expression \"?\" Expression \":\" Expression)","_(Expression \"||\" Expression)","_((Expression \"||\" Expression) | (Expression \"&&\" Expression) | (Expression (\"==\" | \"!=\") Expression) | (Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression) | (Expression (\"+\" | \"-\") Expression) | (Expression (\"*\" | \"/\" | \"%\") Expression) | (Expression \"^\" Expression))","_(Expression \"&&\" Expression)","_(\"==\" | \"!=\")","_(Expression (\"==\" | \"!=\") Expression)","_(\"<\" | \"<=\" | \">\" | \">=\")","_(Expression (\"<\" | \"<=\" | \">\" | \">=\") Expression)","_(\"+\" | \"-\")","_(Expression (\"+\" | \"-\") Expression)","_(\"*\" | \"/\" | \"%\")","_(Expression (\"*\" | \"/\" | \"%\") Expression)","_(Expression \"^\" Expression)","_(\"!\" | \"-\" | \"+\")","_((\"!\" | \"-\" | \"+\") Expression)","_(Expression \"[\" Expression \"]\")","_((Expression \"[\" Expression \"]\") | (Expression \"(\" (ArgumentList | ()) \")\"))","_(ArgumentList | ())_1","_(Expression \"(\" (ArgumentList | ()) \")\")","_(NUMBER | STRING | BOOLEAN | UNDEF | IDENTIFIER | VectorLiteral | RangeLiteral | ParenthesizedExpression)","_(\",\" Expression)*","_((Expression (\",\" Expression)*) | ())","_((Expression \":\" Expression) | Expression)","IDENTIFIER","NUMBER","STRING","_(\"true\" | \"false\")","UNDEF","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
   typeof {} !== "undefined"
@@ -4905,50 +4905,54 @@ export const semanticLegend = { tokenTypes: [], tokenModifiers: [] };
 
 export const SyntaxKind = {
   ERROR: 0,
-  EmptyStatement: 99,
-  _EmptyStatement: 99,
-  IDENTIFIER: 138,
-  NUMBER: 139,
-  STRING: 140,
-  UNDEF: 142,
-  SourceFile: 60,
-  Statement: 61,
-  BlockStatement: 62,
-  VariableDeclaration: 63,
-  ModuleDeclaration: 64,
-  FunctionDeclaration: 65,
-  IfStatement: 66,
-  ForStatement: 67,
-  ParameterList: 68,
-  Parameter: 69,
-  ArgumentList: 70,
-  Argument: 71,
-  PrefixSolid: 72,
-  TransformOp: 73,
-  BooleanOp: 74,
-  TagPortOp: 75,
-  ChainedSolidStatement: 76,
-  ChainedSolid: 77,
-  MethodCall: 78,
-  MethodName: 79,
-  PrimarySolid: 80,
-  CubePrimitive: 81,
-  CylinderPrimitive: 82,
-  SpherePrimitive: 83,
-  PolyhedronPrimitive: 84,
-  ModuleInstantiation: 85,
-  Expression: 86,
-  ConditionalExpression: 87,
-  BinaryExpression: 88,
-  UnaryExpression: 89,
-  PostfixExpression: 90,
-  PrimaryExpression: 91,
-  ParenthesizedExpression: 92,
-  VectorLiteral: 93,
-  RangeLiteral: 94,
-  BOOLEAN: 95,
-  START: 96,
-  _START: 96,
+  EmptyStatement: 107,
+  _EmptyStatement: 107,
+  IDENTIFIER: 146,
+  NUMBER: 147,
+  STRING: 148,
+  UNDEF: 150,
+  SourceFile: 64,
+  Statement: 65,
+  BlockStatement: 66,
+  VariableDeclaration: 67,
+  ModuleDeclaration: 68,
+  FunctionDeclaration: 69,
+  IfStatement: 70,
+  ForStatement: 71,
+  ParameterList: 72,
+  Parameter: 73,
+  ArgumentList: 74,
+  Argument: 75,
+  PrefixSolid: 76,
+  TransformOp: 77,
+  LinearExtrudeOp: 78,
+  BooleanOp: 79,
+  TagPortOp: 80,
+  ChainedSolidStatement: 81,
+  ChainedSolid: 82,
+  MethodCall: 83,
+  MethodName: 84,
+  PrimarySolid: 85,
+  CubePrimitive: 86,
+  CylinderPrimitive: 87,
+  SpherePrimitive: 88,
+  PolyhedronPrimitive: 89,
+  PolygonPrimitive: 90,
+  CirclePrimitive: 91,
+  SquarePrimitive: 92,
+  ModuleInstantiation: 93,
+  Expression: 94,
+  ConditionalExpression: 95,
+  BinaryExpression: 96,
+  UnaryExpression: 97,
+  PostfixExpression: 98,
+  PrimaryExpression: 99,
+  ParenthesizedExpression: 100,
+  VectorLiteral: 101,
+  RangeLiteral: 102,
+  BOOLEAN: 103,
+  START: 104,
+  _START: 104,
   EOF: 1023,
 };
 
@@ -5020,147 +5024,159 @@ export function cstKind(node) {
   return node ? normalizeToken(node.type) : "";
 }
 export function isSourceFile(node) {
-  return node != null && node.typeId === 60;
-}
-export function isStatement(node) {
-  return node != null && node.typeId === 61;
-}
-export function isBlockStatement(node) {
-  return node != null && node.typeId === 62;
-}
-export function isVariableDeclaration(node) {
-  return node != null && node.typeId === 63;
-}
-export function isModuleDeclaration(node) {
   return node != null && node.typeId === 64;
 }
-export function isFunctionDeclaration(node) {
+export function isStatement(node) {
   return node != null && node.typeId === 65;
 }
-export function isIfStatement(node) {
+export function isBlockStatement(node) {
   return node != null && node.typeId === 66;
 }
-export function isForStatement(node) {
+export function isVariableDeclaration(node) {
   return node != null && node.typeId === 67;
 }
-export function isParameterList(node) {
+export function isModuleDeclaration(node) {
   return node != null && node.typeId === 68;
 }
-export function isParameter(node) {
+export function isFunctionDeclaration(node) {
   return node != null && node.typeId === 69;
 }
-export function isArgumentList(node) {
+export function isIfStatement(node) {
   return node != null && node.typeId === 70;
 }
-export function isArgument(node) {
+export function isForStatement(node) {
   return node != null && node.typeId === 71;
 }
-export function isPrefixSolid(node) {
+export function isParameterList(node) {
   return node != null && node.typeId === 72;
 }
-export function isTransformOp(node) {
+export function isParameter(node) {
   return node != null && node.typeId === 73;
 }
-export function isBooleanOp(node) {
+export function isArgumentList(node) {
   return node != null && node.typeId === 74;
 }
-export function isTagPortOp(node) {
+export function isArgument(node) {
   return node != null && node.typeId === 75;
 }
-export function isChainedSolidStatement(node) {
+export function isPrefixSolid(node) {
   return node != null && node.typeId === 76;
 }
-export function isChainedSolid(node) {
+export function isTransformOp(node) {
   return node != null && node.typeId === 77;
 }
-export function isMethodCall(node) {
+export function isLinearExtrudeOp(node) {
   return node != null && node.typeId === 78;
 }
-export function isMethodName(node) {
+export function isBooleanOp(node) {
   return node != null && node.typeId === 79;
 }
-export function isPrimarySolid(node) {
+export function isTagPortOp(node) {
   return node != null && node.typeId === 80;
 }
-export function isCubePrimitive(node) {
+export function isChainedSolidStatement(node) {
   return node != null && node.typeId === 81;
 }
-export function isCylinderPrimitive(node) {
+export function isChainedSolid(node) {
   return node != null && node.typeId === 82;
 }
-export function isSpherePrimitive(node) {
+export function isMethodCall(node) {
   return node != null && node.typeId === 83;
 }
-export function isPolyhedronPrimitive(node) {
+export function isMethodName(node) {
   return node != null && node.typeId === 84;
 }
-export function isModuleInstantiation(node) {
+export function isPrimarySolid(node) {
   return node != null && node.typeId === 85;
 }
-export function isExpression(node) {
+export function isCubePrimitive(node) {
   return node != null && node.typeId === 86;
 }
-export function isConditionalExpression(node) {
+export function isCylinderPrimitive(node) {
   return node != null && node.typeId === 87;
 }
-export function isBinaryExpression(node) {
+export function isSpherePrimitive(node) {
   return node != null && node.typeId === 88;
 }
-export function isUnaryExpression(node) {
+export function isPolyhedronPrimitive(node) {
   return node != null && node.typeId === 89;
 }
-export function isPostfixExpression(node) {
+export function isPolygonPrimitive(node) {
   return node != null && node.typeId === 90;
 }
-export function isPrimaryExpression(node) {
+export function isCirclePrimitive(node) {
   return node != null && node.typeId === 91;
 }
-export function isParenthesizedExpression(node) {
+export function isSquarePrimitive(node) {
   return node != null && node.typeId === 92;
 }
-export function isVectorLiteral(node) {
+export function isModuleInstantiation(node) {
   return node != null && node.typeId === 93;
 }
-export function isRangeLiteral(node) {
+export function isExpression(node) {
   return node != null && node.typeId === 94;
 }
-export function isBOOLEAN(node) {
+export function isConditionalExpression(node) {
   return node != null && node.typeId === 95;
 }
+export function isBinaryExpression(node) {
+  return node != null && node.typeId === 96;
+}
+export function isUnaryExpression(node) {
+  return node != null && node.typeId === 97;
+}
+export function isPostfixExpression(node) {
+  return node != null && node.typeId === 98;
+}
+export function isPrimaryExpression(node) {
+  return node != null && node.typeId === 99;
+}
+export function isParenthesizedExpression(node) {
+  return node != null && node.typeId === 100;
+}
+export function isVectorLiteral(node) {
+  return node != null && node.typeId === 101;
+}
+export function isRangeLiteral(node) {
+  return node != null && node.typeId === 102;
+}
+export function isBOOLEAN(node) {
+  return node != null && node.typeId === 103;
+}
 export function isIDENTIFIER(node) {
-  return node != null && node.typeId === 138;
+  return node != null && node.typeId === 146;
 }
 export function isNUMBER(node) {
-  return node != null && node.typeId === 139;
+  return node != null && node.typeId === 147;
 }
 export function isSTRING(node) {
-  return node != null && node.typeId === 140;
+  return node != null && node.typeId === 148;
 }
 export function isUNDEF(node) {
-  return node != null && node.typeId === 142;
+  return node != null && node.typeId === 150;
 }
 export const Cst = {
   kind: cstKind,
   normalize: normalizeToken,
   SourceFile: {
-    typeId: 60,
+    typeId: 64,
     type: "SourceFile",
-    is(node) { return node != null && node.typeId === 60; },
+    is(node) { return node != null && node.typeId === 64; },
   },
   Statement: {
-    typeId: 61,
+    typeId: 65,
     type: "Statement",
-    is(node) { return node != null && node.typeId === 61; },
+    is(node) { return node != null && node.typeId === 65; },
   },
   BlockStatement: {
-    typeId: 62,
+    typeId: 66,
     type: "BlockStatement",
-    is(node) { return node != null && node.typeId === 62; },
+    is(node) { return node != null && node.typeId === 66; },
   },
   VariableDeclaration: {
-    typeId: 63,
+    typeId: 67,
     type: "VariableDeclaration",
-    is(node) { return node != null && node.typeId === 63; },
+    is(node) { return node != null && node.typeId === 67; },
     name(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
     },
@@ -5175,9 +5191,9 @@ export const Cst = {
     },
   },
   ModuleDeclaration: {
-    typeId: 64,
+    typeId: 68,
     type: "ModuleDeclaration",
-    is(node) { return node != null && node.typeId === 64; },
+    is(node) { return node != null && node.typeId === 68; },
     name(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
     },
@@ -5198,9 +5214,9 @@ export const Cst = {
     },
   },
   FunctionDeclaration: {
-    typeId: 65,
+    typeId: 69,
     type: "FunctionDeclaration",
-    is(node) { return node != null && node.typeId === 65; },
+    is(node) { return node != null && node.typeId === 69; },
     name(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
     },
@@ -5221,9 +5237,9 @@ export const Cst = {
     },
   },
   IfStatement: {
-    typeId: 66,
+    typeId: 70,
     type: "IfStatement",
-    is(node) { return node != null && node.typeId === 66; },
+    is(node) { return node != null && node.typeId === 70; },
     condition(node) {
       return node ? (node.childForFieldId(5) || node.childForFieldName("condition")) : null;
     },
@@ -5244,9 +5260,9 @@ export const Cst = {
     },
   },
   ForStatement: {
-    typeId: 67,
+    typeId: 71,
     type: "ForStatement",
-    is(node) { return node != null && node.typeId === 67; },
+    is(node) { return node != null && node.typeId === 71; },
     var(node) {
       return node ? (node.childForFieldId(8) || node.childForFieldName("var")) : null;
     },
@@ -5267,14 +5283,14 @@ export const Cst = {
     },
   },
   ParameterList: {
-    typeId: 68,
+    typeId: 72,
     type: "ParameterList",
-    is(node) { return node != null && node.typeId === 68; },
+    is(node) { return node != null && node.typeId === 72; },
   },
   Parameter: {
-    typeId: 69,
+    typeId: 73,
     type: "Parameter",
-    is(node) { return node != null && node.typeId === 69; },
+    is(node) { return node != null && node.typeId === 73; },
     name(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
     },
@@ -5289,14 +5305,14 @@ export const Cst = {
     },
   },
   ArgumentList: {
-    typeId: 70,
+    typeId: 74,
     type: "ArgumentList",
-    is(node) { return node != null && node.typeId === 70; },
+    is(node) { return node != null && node.typeId === 74; },
   },
   Argument: {
-    typeId: 71,
+    typeId: 75,
     type: "Argument",
-    is(node) { return node != null && node.typeId === 71; },
+    is(node) { return node != null && node.typeId === 75; },
     name(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
     },
@@ -5311,9 +5327,9 @@ export const Cst = {
     },
   },
   PrefixSolid: {
-    typeId: 72,
+    typeId: 76,
     type: "PrefixSolid",
-    is(node) { return node != null && node.typeId === 72; },
+    is(node) { return node != null && node.typeId === 76; },
     operator(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("operator")) : null;
     },
@@ -5328,9 +5344,20 @@ export const Cst = {
     },
   },
   TransformOp: {
-    typeId: 73,
+    typeId: 77,
     type: "TransformOp",
-    is(node) { return node != null && node.typeId === 73; },
+    is(node) { return node != null && node.typeId === 77; },
+    args(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
+    },
+    argsList(node) {
+      return node ? node.childrenForFieldName("args") : [];
+    },
+  },
+  LinearExtrudeOp: {
+    typeId: 78,
+    type: "LinearExtrudeOp",
+    is(node) { return node != null && node.typeId === 78; },
     args(node) {
       return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
     },
@@ -5339,14 +5366,14 @@ export const Cst = {
     },
   },
   BooleanOp: {
-    typeId: 74,
+    typeId: 79,
     type: "BooleanOp",
-    is(node) { return node != null && node.typeId === 74; },
+    is(node) { return node != null && node.typeId === 79; },
   },
   TagPortOp: {
-    typeId: 75,
+    typeId: 80,
     type: "TagPortOp",
-    is(node) { return node != null && node.typeId === 75; },
+    is(node) { return node != null && node.typeId === 80; },
     args(node) {
       return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
     },
@@ -5355,9 +5382,9 @@ export const Cst = {
     },
   },
   ChainedSolidStatement: {
-    typeId: 76,
+    typeId: 81,
     type: "ChainedSolidStatement",
-    is(node) { return node != null && node.typeId === 76; },
+    is(node) { return node != null && node.typeId === 81; },
     solid(node) {
       return node ? (node.childForFieldId(14) || node.childForFieldName("solid")) : null;
     },
@@ -5366,9 +5393,9 @@ export const Cst = {
     },
   },
   ChainedSolid: {
-    typeId: 77,
+    typeId: 82,
     type: "ChainedSolid",
-    is(node) { return node != null && node.typeId === 77; },
+    is(node) { return node != null && node.typeId === 82; },
     receiver(node) {
       return node ? (node.childForFieldId(15) || node.childForFieldName("receiver")) : null;
     },
@@ -5383,9 +5410,9 @@ export const Cst = {
     },
   },
   MethodCall: {
-    typeId: 78,
+    typeId: 83,
     type: "MethodCall",
-    is(node) { return node != null && node.typeId === 78; },
+    is(node) { return node != null && node.typeId === 83; },
     name(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
     },
@@ -5400,19 +5427,19 @@ export const Cst = {
     },
   },
   MethodName: {
-    typeId: 79,
+    typeId: 84,
     type: "MethodName",
-    is(node) { return node != null && node.typeId === 79; },
+    is(node) { return node != null && node.typeId === 84; },
   },
   PrimarySolid: {
-    typeId: 80,
+    typeId: 85,
     type: "PrimarySolid",
-    is(node) { return node != null && node.typeId === 80; },
+    is(node) { return node != null && node.typeId === 85; },
   },
   CubePrimitive: {
-    typeId: 81,
+    typeId: 86,
     type: "CubePrimitive",
-    is(node) { return node != null && node.typeId === 81; },
+    is(node) { return node != null && node.typeId === 86; },
     args(node) {
       return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
     },
@@ -5421,9 +5448,9 @@ export const Cst = {
     },
   },
   CylinderPrimitive: {
-    typeId: 82,
+    typeId: 87,
     type: "CylinderPrimitive",
-    is(node) { return node != null && node.typeId === 82; },
+    is(node) { return node != null && node.typeId === 87; },
     args(node) {
       return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
     },
@@ -5432,9 +5459,9 @@ export const Cst = {
     },
   },
   SpherePrimitive: {
-    typeId: 83,
+    typeId: 88,
     type: "SpherePrimitive",
-    is(node) { return node != null && node.typeId === 83; },
+    is(node) { return node != null && node.typeId === 88; },
     args(node) {
       return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
     },
@@ -5443,9 +5470,42 @@ export const Cst = {
     },
   },
   PolyhedronPrimitive: {
-    typeId: 84,
+    typeId: 89,
     type: "PolyhedronPrimitive",
-    is(node) { return node != null && node.typeId === 84; },
+    is(node) { return node != null && node.typeId === 89; },
+    args(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
+    },
+    argsList(node) {
+      return node ? node.childrenForFieldName("args") : [];
+    },
+  },
+  PolygonPrimitive: {
+    typeId: 90,
+    type: "PolygonPrimitive",
+    is(node) { return node != null && node.typeId === 90; },
+    args(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
+    },
+    argsList(node) {
+      return node ? node.childrenForFieldName("args") : [];
+    },
+  },
+  CirclePrimitive: {
+    typeId: 91,
+    type: "CirclePrimitive",
+    is(node) { return node != null && node.typeId === 91; },
+    args(node) {
+      return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
+    },
+    argsList(node) {
+      return node ? node.childrenForFieldName("args") : [];
+    },
+  },
+  SquarePrimitive: {
+    typeId: 92,
+    type: "SquarePrimitive",
+    is(node) { return node != null && node.typeId === 92; },
     args(node) {
       return node ? (node.childForFieldId(13) || node.childForFieldName("args")) : null;
     },
@@ -5454,9 +5514,9 @@ export const Cst = {
     },
   },
   ModuleInstantiation: {
-    typeId: 85,
+    typeId: 93,
     type: "ModuleInstantiation",
-    is(node) { return node != null && node.typeId === 85; },
+    is(node) { return node != null && node.typeId === 93; },
     name(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("name")) : null;
     },
@@ -5471,14 +5531,14 @@ export const Cst = {
     },
   },
   Expression: {
-    typeId: 86,
+    typeId: 94,
     type: "Expression",
-    is(node) { return node != null && node.typeId === 86; },
+    is(node) { return node != null && node.typeId === 94; },
   },
   ConditionalExpression: {
-    typeId: 87,
+    typeId: 95,
     type: "ConditionalExpression",
-    is(node) { return node != null && node.typeId === 87; },
+    is(node) { return node != null && node.typeId === 95; },
     condition(node) {
       return node ? (node.childForFieldId(5) || node.childForFieldName("condition")) : null;
     },
@@ -5499,9 +5559,9 @@ export const Cst = {
     },
   },
   BinaryExpression: {
-    typeId: 88,
+    typeId: 96,
     type: "BinaryExpression",
-    is(node) { return node != null && node.typeId === 88; },
+    is(node) { return node != null && node.typeId === 96; },
     left(node) {
       return node ? (node.childForFieldId(17) || node.childForFieldName("left")) : null;
     },
@@ -5522,9 +5582,9 @@ export const Cst = {
     },
   },
   UnaryExpression: {
-    typeId: 89,
+    typeId: 97,
     type: "UnaryExpression",
-    is(node) { return node != null && node.typeId === 89; },
+    is(node) { return node != null && node.typeId === 97; },
     operator(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("operator")) : null;
     },
@@ -5539,9 +5599,9 @@ export const Cst = {
     },
   },
   PostfixExpression: {
-    typeId: 90,
+    typeId: 98,
     type: "PostfixExpression",
-    is(node) { return node != null && node.typeId === 90; },
+    is(node) { return node != null && node.typeId === 98; },
     operand(node) {
       return node ? (node.childForFieldId(19) || node.childForFieldName("operand")) : null;
     },
@@ -5568,14 +5628,14 @@ export const Cst = {
     },
   },
   PrimaryExpression: {
-    typeId: 91,
+    typeId: 99,
     type: "PrimaryExpression",
-    is(node) { return node != null && node.typeId === 91; },
+    is(node) { return node != null && node.typeId === 99; },
   },
   ParenthesizedExpression: {
-    typeId: 92,
+    typeId: 100,
     type: "ParenthesizedExpression",
-    is(node) { return node != null && node.typeId === 92; },
+    is(node) { return node != null && node.typeId === 100; },
     expression(node) {
       return node ? (node.childForFieldId(23) || node.childForFieldName("expression")) : null;
     },
@@ -5584,14 +5644,14 @@ export const Cst = {
     },
   },
   VectorLiteral: {
-    typeId: 93,
+    typeId: 101,
     type: "VectorLiteral",
-    is(node) { return node != null && node.typeId === 93; },
+    is(node) { return node != null && node.typeId === 101; },
   },
   RangeLiteral: {
-    typeId: 94,
+    typeId: 102,
     type: "RangeLiteral",
-    is(node) { return node != null && node.typeId === 94; },
+    is(node) { return node != null && node.typeId === 102; },
     start(node) {
       return node ? (node.childForFieldId(24) || node.childForFieldName("start")) : null;
     },
@@ -5612,28 +5672,28 @@ export const Cst = {
     },
   },
   BOOLEAN: {
-    typeId: 95,
+    typeId: 103,
     type: "BOOLEAN",
-    is(node) { return node != null && node.typeId === 95; },
+    is(node) { return node != null && node.typeId === 103; },
   },
   IDENTIFIER: {
-    typeId: 138,
+    typeId: 146,
     type: "IDENTIFIER",
-    is(node) { return node != null && node.typeId === 138; },
+    is(node) { return node != null && node.typeId === 146; },
   },
   NUMBER: {
-    typeId: 139,
+    typeId: 147,
     type: "NUMBER",
-    is(node) { return node != null && node.typeId === 139; },
+    is(node) { return node != null && node.typeId === 147; },
   },
   STRING: {
-    typeId: 140,
+    typeId: 148,
     type: "STRING",
-    is(node) { return node != null && node.typeId === 140; },
+    is(node) { return node != null && node.typeId === 148; },
   },
   UNDEF: {
-    typeId: 142,
+    typeId: 150,
     type: "UNDEF",
-    is(node) { return node != null && node.typeId === 142; },
+    is(node) { return node != null && node.typeId === 150; },
   },
 };

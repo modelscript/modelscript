@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-import { CoSimSession, Orchestrator, WasmOpenFoamProvider } from "@modelscript/exchange/cosim";
+import { CoSimSession, FeaCoSimParticipant, Orchestrator, WasmOpenFoamProvider } from "@modelscript/exchange/cosim";
 import { generateFmuWasmSource, generateMultiModelWrapper } from "@modelscript/exchange/fmu";
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { Causality, DAEBuilder } from "@modelscript/runtime";
-import { ArenaSimulator, simulateArena, simulateArenaAsync } from "@modelscript/simulate";
+import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@modelscript/simulate";
 import { LspContext } from "../LspContext.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
@@ -93,6 +93,8 @@ export function registerSimulationEndpoints(context: LspContext) {
       format?: string;
       parameterOverrides?: Record<string, number>;
       sweepConfig?: { parameterName: string; start: number; end: number; steps: number };
+      physicsType?: string;
+      domain?: string;
     }): Promise<{
       t: number[];
       y: number[][];
@@ -139,13 +141,26 @@ export function registerSimulationEndpoints(context: LspContext) {
         }
         const { arena, target } = flat;
 
-        if (target.classKind === "process") {
-          context.connection.console.info(`[simulate] Detected process. Launching Co-Simulation Orchestrator...`);
+        const isFeaProcess =
+          params.physicsType === "FEA" ||
+          params.domain === "fea" ||
+          target.className.toLowerCase().includes("fea") ||
+          target.className.toLowerCase().includes("structural") ||
+          target.className.toLowerCase().includes("stress") ||
+          target.className.toLowerCase().includes("dronearm") ||
+          target.className.toLowerCase().includes("cantilever");
+
+        if (
+          target.classKind === "process" ||
+          params.physicsType === "FEA" ||
+          (params.domain === "fea" && target.classKind === "model")
+        ) {
+          context.connection.console.info(`[simulate] Launching Co-Simulation Orchestrator for ${target.className}...`);
           const session = new CoSimSession("vscode-cosim");
           const exp = arena.experiment;
           const cosimStartTime = params.startTime ?? exp.startTime ?? 0;
-          const cosimStopTime = params.stopTime ?? exp.stopTime ?? 0.1;
-          const cosimStepSize = params.interval ?? exp.interval ?? 0.05;
+          const cosimStopTime = params.stopTime ?? exp.stopTime ?? 0.2;
+          const cosimStepSize = params.interval ?? exp.interval ?? 0.005;
 
           session.experiment = {
             startTime: cosimStartTime,
@@ -154,25 +169,79 @@ export function registerSimulationEndpoints(context: LspContext) {
             tolerance: exp.tolerance ?? 1e-4,
           };
 
-          const cfd = new WasmOpenFoamProvider("3d-cfd", "InjectionCavity");
-          cfd.metadata.variables = [
-            { name: "gateInlet.p", causality: "input", type: "Real" },
-            { name: "gateInlet.m_flow", causality: "output", type: "Real" },
-          ];
-
           const modelica = new ModelScriptParticipant("1d-solver", target.className, arena);
-
-          session.addParticipant(cfd);
           session.addParticipant(modelica);
 
-          session.coupling.addCoupling({
-            from: { participantId: "1d-solver", variableName: "fluidOut.p" },
-            to: { participantId: "3d-cfd", variableName: "gateInlet.p" },
-          });
-          session.coupling.addCoupling({
-            from: { participantId: "3d-cfd", variableName: "gateInlet.m_flow" },
-            to: { participantId: "1d-solver", variableName: "fluidOut.m_flow" },
-          });
+          let feaParticipant: FeaCoSimParticipant | null = null;
+          let cfdParticipant: WasmOpenFoamProvider | null = null;
+
+          if (isFeaProcess) {
+            context.connection.console.info(
+              `[simulate] Initializing 3D FEA Structural Participant (Tet10 Quadratic)...`,
+            );
+            const mesh = Tet4Mesher.createBoxMesh({
+              width: 0.12,
+              height: 0.015,
+              depth: 0.015,
+              nx: 12,
+              ny: 2,
+              nz: 2,
+              order: "quadratic",
+              faceTags: {
+                minX: "fixed_hub",
+                maxX: "motor_mount",
+              },
+            });
+            const aluminum = { E: 69e9, nu: 0.33, rho: 2700, yieldStrength: 270e6 };
+            feaParticipant = new FeaCoSimParticipant("3d-fea", "StructuralArm", mesh, aluminum, {
+              fixedTag: "fixed_hub",
+              loadTag: "motor_mount",
+              loadAxis: "y",
+            });
+            session.addParticipant(feaParticipant);
+
+            // Find force variable in Modelica arena (e.g. motor.f, thrust, flange_b.f)
+            let forceVarName = "";
+            for (let i = 0; i < arena.varCount; i++) {
+              if (arena.isVarRemoved(i)) continue;
+              const name = arena.getVarName(i);
+              const lower = name.toLowerCase();
+              if (
+                lower.includes("thrust") ||
+                lower.includes("force") ||
+                lower.endsWith(".f") ||
+                lower.includes("load")
+              ) {
+                forceVarName = name;
+                break;
+              }
+            }
+            if (!forceVarName && arena.varCount > 0) {
+              forceVarName = arena.getVarName(0);
+            }
+
+            if (forceVarName) {
+              session.coupling.addCoupling({
+                from: { participantId: "1d-solver", variableName: forceVarName },
+                to: { participantId: "3d-fea", variableName: "load.force" },
+              });
+            }
+          } else {
+            cfdParticipant = new WasmOpenFoamProvider("3d-cfd", "InjectionCavity");
+            cfdParticipant.metadata.variables = [
+              { name: "gateInlet.p", causality: "input", type: "Real" },
+              { name: "gateInlet.m_flow", causality: "output", type: "Real" },
+            ];
+            session.addParticipant(cfdParticipant);
+            session.coupling.addCoupling({
+              from: { participantId: "1d-solver", variableName: "fluidOut.p" },
+              to: { participantId: "3d-cfd", variableName: "gateInlet.p" },
+            });
+            session.coupling.addCoupling({
+              from: { participantId: "3d-cfd", variableName: "gateInlet.m_flow" },
+              to: { participantId: "1d-solver", variableName: "fluidOut.m_flow" },
+            });
+          }
 
           // Create the orchestrator
           const orchestrator = new Orchestrator(session, null, {
@@ -182,12 +251,21 @@ export function registerSimulationEndpoints(context: LspContext) {
                 type: "step",
                 time: res.time,
               });
+
+              if (feaParticipant) {
+                const feaPayload = feaParticipant.getMeshPayload();
+                context.connection.sendNotification("modelscript/cosimStream", {
+                  type: "fea-frame",
+                  participantId: "3d-fea",
+                  time: res.time,
+                  payload: feaPayload,
+                });
+              }
             },
             onVtkData: (pid, time, data) => {
               context.connection.console.info(
                 `[Orchestrator] VTK Data extracted from ${pid} at t=${time}. Length: ${data.length}`,
               );
-              // Send the VTK blob
               context.connection.sendNotification("modelscript/cosimStream", {
                 type: "vtk",
                 participantId: pid,
@@ -655,10 +733,28 @@ export function registerSimulationEndpoints(context: LspContext) {
     const entries = Array.from(currentDebugEnv.entries()).sort((a, b) => a[0].localeCompare(b[0]));
     return entries.map(([name, value]) => ({
       name,
-      value: formatDebugValue(value),
       variablesReference: 0,
     }));
   });
+
+  context.connection.onRequest(
+    "modelscript/simulatePhysics",
+    async (params: { uri: string; className?: string; physicsType?: string }) => {
+      context.connection.console.info(
+        `[simulatePhysics] Received request for ${params.className || params.uri} (type: ${params.physicsType || "FEA"})`,
+      );
+      // Dispatch simulation with FEA physics domain
+      const simHandler = (context.connection as any)._requestHandlers?.get("modelscript/simulate");
+      if (simHandler) {
+        return await simHandler({
+          ...params,
+          physicsType: params.physicsType || "FEA",
+          domain: "fea",
+        });
+      }
+      return { ok: false, error: "Simulation handler not registered." };
+    },
+  );
 }
 
 // @ts-nocheck

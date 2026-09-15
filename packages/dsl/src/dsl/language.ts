@@ -2241,6 +2241,19 @@ export interface SpatialPlacementConfig<FieldName extends string = string> {
   autoLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular";
 }
 
+/** Explicit individual port definition for a node */
+export interface VisualPortDefinition {
+  id: string;
+  label?: string;
+  side?: "top" | "bottom" | "left" | "right";
+  offset?: number; // 0.0 to 1.0 along perimeter or pixel offset
+  x?: number; // absolute coordinate within icon
+  y?: number;
+  angle?: number;
+  conjugated?: boolean;
+  style?: VisualStyle;
+}
+
 /** Port / Anchor configuration for connecting edges to nodes */
 export interface VisualPortConfig<
   RuleName extends string = string,
@@ -2256,8 +2269,10 @@ export interface VisualPortConfig<
   /** Field or callback for port identifier / label */
   label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, port: u32) => string);
   /** Anchor placement group */
-  group?: "in" | "out" | "left" | "right" | "top" | "bottom" | "auto" | "radial";
+  group?: "in" | "out" | "left" | "right" | "top" | "bottom" | "auto" | "radial" | "absolute";
   style?: VisualStyle;
+  /** Explicit static or template port items */
+  items?: VisualPortDefinition[];
 }
 
 /** Structured internal compartment configuration (e.g. attributes, operations, parameters) */
@@ -2487,8 +2502,33 @@ export interface VisualMutationConfig {
   /** Declarative string templates or builders */
   nodeTemplate?: string | ((className: string, name: string) => string);
   edgeTemplate?: string | ((source: string, target: string) => string);
+  /** Per-relationship and per-view edge templates */
+  edgeTemplates?: Record<string, string | ((src: string, tgt: string, srcPort?: string, tgtPort?: string) => string)>;
+  /** Section names for inserting elements (e.g. { edge: "equations", node: "elements" }) */
+  sections?: Record<string, string>;
+  defaultSection?: string;
   edgeRule?: string;
   insertionSection?: string;
+}
+
+/** Single stencil/tool item in a diagram palette */
+export interface DiagramPaletteItem {
+  label: string;
+  className: string;
+  iconSvg?: string;
+  description?: string;
+  defaultProps?: Record<string, any>;
+}
+
+/** Category grouping for diagram palette items */
+export interface DiagramPaletteCategory {
+  name: string;
+  items: DiagramPaletteItem[];
+}
+
+/** Stencil / Palette configuration for diagram authoring toolboxes */
+export interface DiagramPaletteConfig {
+  categories: DiagramPaletteCategory[];
 }
 
 /**
@@ -2563,6 +2603,9 @@ export interface DiagramConfig<
   /** Visual mutations (Unparser-backed AST transformations) */
   mutations?: VisualMutationConfig;
 
+  /** Stencil / Palette configuration */
+  palette?: DiagramPaletteConfig;
+
   /** Spatial placement storage strategy */
   placement?: {
     persistence?: "inline" | "sidecar";
@@ -2576,6 +2619,120 @@ export interface DiagramConfig<
   standaloneRules?: (RuleName | string)[];
   usageRules?: (RuleName | string)[];
   definitionRules?: (RuleName | string)[];
+}
+
+/**
+ * Compiles a declarative DiagramConfig into the GraphicsConfig dictionary
+ * and PolyglotDiagramOptions consumed by buildPolyglotDiagram.
+ */
+export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
+  gfxConfig: Record<string, any>;
+  graphicsConfig: Record<string, any>;
+  options: {
+    customProjections?: Record<string, any>;
+    structuralKinds?: string[];
+    standaloneKinds?: string[];
+    usageKinds?: string[];
+    definitionKinds?: string[];
+    inModelDiscovery?: any;
+    solderDots?: boolean;
+    mutations?: VisualMutationConfig;
+    palette?: DiagramPaletteConfig;
+  };
+} {
+  const gfxConfig: Record<string, any> = {};
+  if (!diagramConfig || Object.keys(diagramConfig).length === 0) {
+    return { gfxConfig, graphicsConfig: gfxConfig, options: {} };
+  }
+
+  // Compile nodes / entities
+  const nodes = diagramConfig.nodes || diagramConfig.entities || {};
+  for (const [ruleName, nodeCfg] of Object.entries(nodes)) {
+    if (!nodeCfg) continue;
+    const role = nodeCfg.role || (nodeCfg.shape === "subsystem" || nodeCfg.shape === "package" ? "group" : "node");
+    const shape = nodeCfg.shape || "rect";
+    const size = nodeCfg.size;
+
+    const ports: any = {};
+    if (nodeCfg.ports) {
+      if (nodeCfg.ports.items && nodeCfg.ports.items.length > 0) {
+        ports.items = nodeCfg.ports.items.map((p) => ({
+          id: p.id,
+          group: p.side || "auto",
+          args: p.x !== undefined || p.y !== undefined ? { x: p.x, y: p.y, angle: p.angle } : undefined,
+          attrs: p.style ? { circle: { fill: p.style.fill, stroke: p.style.stroke } } : undefined,
+        }));
+      }
+      if (nodeCfg.ports.group) {
+        ports.groups = {
+          [nodeCfg.ports.group]: { position: nodeCfg.ports.group },
+        };
+      }
+    }
+
+    const portsObj = Object.keys(ports).length > 0 ? ports : undefined;
+    gfxConfig[ruleName] = {
+      role,
+      ports: portsObj,
+      node: {
+        shape,
+        size,
+        ports: portsObj,
+        attrs: nodeCfg.style
+          ? {
+              body: {
+                fill: nodeCfg.style.fill,
+                stroke: nodeCfg.style.stroke,
+                strokeWidth: nodeCfg.style.strokeWidth,
+                rx: nodeCfg.style.rx,
+                ry: nodeCfg.style.ry,
+              },
+            }
+          : undefined,
+      },
+    };
+  }
+
+  // Compile edges / connections
+  const edges = diagramConfig.edges || diagramConfig.connections || {};
+  for (const [ruleName, edgeCfg] of Object.entries(edges)) {
+    if (!edgeCfg) continue;
+    gfxConfig[ruleName] = {
+      role: "edge",
+      edge: {
+        shape: "edge",
+        source: typeof edgeCfg.source === "string" ? edgeCfg.source : undefined,
+        target: typeof edgeCfg.target === "string" ? edgeCfg.target : undefined,
+        sourcePort: typeof edgeCfg.sourcePort === "string" ? edgeCfg.sourcePort : undefined,
+        targetPort: typeof edgeCfg.targetPort === "string" ? edgeCfg.targetPort : undefined,
+        router: edgeCfg.style?.router,
+        connector: edgeCfg.style?.connector,
+        attrs: edgeCfg.style
+          ? {
+              line: {
+                stroke: edgeCfg.style.stroke,
+                strokeWidth: edgeCfg.style.strokeWidth,
+                strokeDasharray: edgeCfg.style.strokeDasharray,
+              },
+            }
+          : undefined,
+      },
+    };
+  }
+
+  const options = {
+    customProjections: diagramConfig.projections || diagramConfig.views,
+    structuralKinds: diagramConfig.structuralRules ? [...diagramConfig.structuralRules] : undefined,
+    standaloneKinds: diagramConfig.standaloneRules ? [...diagramConfig.standaloneRules] : undefined,
+    usageKinds: diagramConfig.usageRules ? [...diagramConfig.usageRules] : undefined,
+    definitionKinds: diagramConfig.definitionRules ? [...diagramConfig.definitionRules] : undefined,
+    inModelDiscovery: diagramConfig.inModelProjections || diagramConfig.inModelViews,
+    solderDots: true,
+    mutations: diagramConfig.mutations,
+    palette: diagramConfig.palette,
+  };
+
+  return { gfxConfig, graphicsConfig: gfxConfig, options };
 }
 
 // Backward-compatible type aliases

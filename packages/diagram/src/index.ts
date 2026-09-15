@@ -23,6 +23,7 @@ import { portOrthogonalRouter } from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout } from "./swimlane-layout.js";
+import { animateCells } from "./telemetry.js";
 
 if (typeof Graph.registerRouter === "function") {
   Graph.registerRouter("port-orthogonal-astar", portOrthogonalRouter);
@@ -1199,6 +1200,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   }
 
   // ── Full render path (first render or topology changed) ──
+  const prevZoom = isFirstRender || typeof g.zoom !== "function" ? null : g.zoom();
+  const prevTrans = isFirstRender || typeof g.translate !== "function" ? null : g.translate();
 
   // 2. Load the flat graph
   g.fromJSON({ nodes, edges });
@@ -1229,6 +1232,13 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       } catch {
         // ignore
       }
+    }
+  } else if (prevZoom !== null && prevTrans !== null) {
+    try {
+      g.zoom(prevZoom, { absolute: true });
+      g.translate(prevTrans.tx, prevTrans.ty);
+    } catch {
+      // ignore
     }
   }
 
@@ -1707,42 +1717,12 @@ export function getGraph(): Graph | null {
   return graph;
 }
 
-/**
- * Applies a live numerical simulation state vector to graph cells without full re-rendering.
- * Updates SVG attributes (fill, stroke, rotation, visibility) in-place at 60 FPS.
- * Supports both Record<string, number> and zero-copy Float64Array / SharedArrayBuffer streams.
- */
 export function applySimulationFrame(
   stateVector: Record<string, number> | Float64Array,
   varIndexMap?: Map<string, number> | Record<string, number>,
 ): void {
   if (!graph) return;
-  const isBuffer = stateVector instanceof Float64Array;
-  const nodes = graph.getNodes();
-  for (const node of nodes) {
-    const anims = node.getData()?.animations as { property: string; variableName: string }[] | undefined;
-    if (!anims || anims.length === 0) continue;
-    for (const anim of anims) {
-      let val: number | undefined;
-      if (isBuffer) {
-        if (!varIndexMap) continue;
-        const idx = varIndexMap instanceof Map ? varIndexMap.get(anim.variableName) : varIndexMap[anim.variableName];
-        if (idx !== undefined && idx >= 0 && idx < stateVector.length) {
-          val = stateVector[idx];
-        }
-      } else {
-        val = stateVector[anim.variableName];
-      }
-      if (val === undefined) continue;
-      if (anim.property === "rotation") {
-        node.rotate(val, { absolute: true });
-      } else if (anim.property === "fill" || anim.property === "stroke") {
-        node.attr(`body/${anim.property}`, String(val));
-      } else if (anim.property === "visibility") {
-        node.setVisible(Boolean(val));
-      }
-    }
-  }
+  animateCells({ nodes: graph.getNodes(), edges: graph.getEdges() }, stateVector, varIndexMap);
 }
 
 export * from "./color-inversion.js";
@@ -1750,4 +1730,5 @@ export * from "./glyphs.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-router.js";
 export * from "./swimlane-layout.js";
+export * from "./telemetry.js";
 export type { TopologyEdge, TopologyGraph, TopologyNode } from "./topology.js";

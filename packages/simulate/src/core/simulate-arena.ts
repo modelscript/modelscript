@@ -1307,6 +1307,65 @@ export class ArenaSimulator {
   }
 
   /**
+   * Advances the DAE simulation by a single time step (dt).
+   *
+   * Evaluates algebraic blocks, event indicators, when clauses,
+   * advances states using RK4 or Euler, and updates time to t + dt.
+   */
+  public step(
+    dt: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    options?: {
+      solver?: "euler" | "rk4";
+    },
+  ): void {
+    const solver = options?.solver ?? "rk4";
+    const timeId = this.arena.interner.intern("time");
+    const currentTime = valuesByStringId[timeId] ?? 0;
+    const n = stateStringIds.length;
+
+    if (!this.preValuesByStringId || this.preValuesByStringId.length !== valuesByStringId.length) {
+      this.preValuesByStringId = new Float64Array(valuesByStringId.length);
+      this.preValuesByStringId.set(valuesByStringId);
+    }
+
+    // Evaluate at current time
+    valuesByStringId[timeId] = currentTime;
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+    this.preValuesByStringId.set(valuesByStringId);
+    this.executeStateMachines(valuesByStringId);
+    this.processWhenClauses(valuesByStringId);
+    if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, dt);
+    this.checkAssertions(valuesByStringId, currentTime);
+
+    // Run regular algorithm sections
+    for (const sec of this.arena.algorithmSections) {
+      executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+    }
+
+    // Integrate state variables
+    if (solver === "rk4") {
+      this.rk4Step(dt, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+    } else {
+      for (let i = 0; i < n; i++) {
+        const stateId = stateStringIds[i] ?? -1;
+        const derivId = derivStringIds[i] ?? -1;
+        if (derivId !== -1 && stateId !== -1) {
+          valuesByStringId[stateId] = (valuesByStringId[stateId] ?? 0) + dt * (valuesByStringId[derivId] ?? 0);
+        }
+      }
+    }
+
+    const nextTime = currentTime + dt;
+    valuesByStringId[timeId] = nextTime;
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+  }
+
+  /**
    * Run simulation using an adaptive solver (Dopri5 or BDF).
    * Bridges the arena evaluation into the standalone solver modules.
    */
@@ -1948,6 +2007,103 @@ export class ArenaSimulator {
 
     return { f, J };
   }
+}
+
+/**
+ * Initializes the simulation environment Float64Array with parameter bindings,
+ * evaluated start values, and solved initial equations. Returns the initialized
+ * state vector, state IDs, derivative IDs, and variable names.
+ */
+export function initializeArenaEnvironment(
+  arena: DAEBuilder,
+  sim: ArenaSimulator,
+  options?: {
+    startTime?: number;
+    parameterOverrides?: Map<string, number>;
+  },
+): {
+  valuesByStringId: Float64Array;
+  stateStringIds: number[];
+  derivStringIds: number[];
+  stateNames: string[];
+} {
+  const startTime = options?.startTime ?? arena.experiment.startTime ?? 0;
+  const envSize = Math.max(arena.interner.size + 256, 4096);
+  const valuesByStringId = new Float64Array(envSize);
+
+  // Set time
+  const timeId = arena.interner.intern("time");
+  valuesByStringId[timeId] = startTime;
+
+  // Set parameters from the simulator's resolved parameters and arena start values
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Parameter || v === Variability.Constant) {
+      const name = arena.getVarName(i);
+      const nameId = arena.getVarNameId(i);
+      const val = sim.parameters.get(name) ?? arena.getVarStartValue(i);
+      valuesByStringId[nameId] = val;
+      sim.parameters.set(name, val);
+    }
+  }
+  for (const [name, val] of sim.parameters) {
+    const nameId = arena.interner.intern(name);
+    valuesByStringId[nameId] = val;
+  }
+
+  // Apply parameter overrides
+  if (options?.parameterOverrides) {
+    for (const [name, val] of options.parameterOverrides) {
+      const nameId = arena.interner.intern(name);
+      valuesByStringId[nameId] = val;
+      sim.parameters.set(name, val);
+    }
+  }
+
+  // Set start values for all non-parameter variables
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Parameter || v === Variability.Constant || sim.parameterVars.has(i)) continue;
+
+    const nameId = arena.getVarNameId(i);
+    const startVal = arena.getVarStartValue(i);
+    if (startVal !== 0 || valuesByStringId[nameId] === 0) {
+      valuesByStringId[nameId] = startVal;
+    }
+
+    // Evaluate start expression if present
+    const exprId = arena.getVarExpression(i) as number | undefined;
+    if (typeof exprId === "number" && exprId !== -1) {
+      const val = evaluateArenaExpression(arena, exprId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+  }
+
+  // Solve initial equations
+  const initResult = solveInitialEquationsArena(arena, valuesByStringId);
+  valuesByStringId.set(initResult.valuesByStringId);
+
+  // Identify state/derivative StringIds
+  const stateNameIds: number[] = [];
+  const derivNameIds: number[] = [];
+  const stateNames: string[] = [];
+
+  for (const varIdx of sim.stateVars) {
+    const name = arena.getVarName(varIdx);
+    const nameId = arena.getVarNameId(varIdx);
+    const derName = `der(${name})`;
+    const derNameId = arena.interner.intern(derName);
+
+    stateNameIds.push(nameId);
+    derivNameIds.push(derNameId);
+    stateNames.push(name);
+  }
+
+  return { valuesByStringId, stateStringIds: stateNameIds, derivStringIds: derivNameIds, stateNames };
 }
 
 /** Result of an arena-path simulation. */

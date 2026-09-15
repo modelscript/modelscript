@@ -46,6 +46,7 @@ export enum SolidKind {
   TaggedPatch = "tagged_patch",
   Fillet = "fillet",
   Chamfer = "chamfer",
+  Extrusion = "extrusion",
 }
 
 // ── Primitive option bags ────────────────────────────────────────────────
@@ -96,6 +97,19 @@ export interface TorusOptions {
   name?: string | undefined;
 }
 
+export interface ExtrusionOptions {
+  /** 2D closed polygon vertices [[x0, y0], [x1, y1], ...]. */
+  polygon: readonly [number, number][];
+  /** Extrusion height along Z. */
+  height: number;
+  /** Optional twist angle in degrees. */
+  twist?: number | undefined;
+  /** Optional scale factor for the top cap. */
+  scale?: number | undefined;
+  /** Optional display name. */
+  name?: string | undefined;
+}
+
 // ── Solid node types ─────────────────────────────────────────────────────
 
 export interface BoxSolid {
@@ -104,6 +118,15 @@ export interface BoxSolid {
   readonly width: number;
   readonly height: number;
   readonly depth: number;
+}
+
+export interface ExtrusionSolid {
+  readonly kind: SolidKind.Extrusion;
+  readonly name: string;
+  readonly polygon: readonly [number, number][];
+  readonly height: number;
+  readonly twist?: number | undefined;
+  readonly scale?: number | undefined;
 }
 
 export interface CylinderSolid {
@@ -189,6 +212,7 @@ export type Solid =
   | CylinderSolid
   | SphereSolid
   | TorusSolid
+  | ExtrusionSolid
   | TransformSolid
   | BooleanSolid
   | TaggedPatchSolid

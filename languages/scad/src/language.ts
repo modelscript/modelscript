@@ -117,7 +117,10 @@ export const scadLanguage = language({
     // ── Solid Statements & Hybrid Chaining ─────────────────────────────────
 
     PrefixSolid: ($) =>
-      seq(field("operator", choice($.TransformOp, $.BooleanOp, $.TagPortOp)), field("child", $.Statement)),
+      seq(
+        field("operator", choice($.TransformOp, $.BooleanOp, $.TagPortOp, $.LinearExtrudeOp)),
+        field("child", $.Statement),
+      ),
 
     TransformOp: ($) =>
       choice(
@@ -127,6 +130,8 @@ export const scadLanguage = language({
         seq("mirror", "(", optional(field("args", $.ArgumentList)), ")"),
         seq("color", "(", optional(field("args", $.ArgumentList)), ")"),
       ),
+
+    LinearExtrudeOp: ($) => seq("linear_extrude", "(", optional(field("args", $.ArgumentList)), ")"),
 
     BooleanOp: ($) => choice(seq("union", "(", ")"), seq("difference", "(", ")"), seq("intersection", "(", ")")),
 
@@ -148,7 +153,16 @@ export const scadLanguage = language({
     MethodName: ($) => choice($.IDENTIFIER, "translate", "rotate", "scale", "mirror", "color", "fillet", "chamfer"),
 
     PrimarySolid: ($) =>
-      choice($.CubePrimitive, $.CylinderPrimitive, $.SpherePrimitive, $.PolyhedronPrimitive, $.ModuleInstantiation),
+      choice(
+        $.CubePrimitive,
+        $.CylinderPrimitive,
+        $.SpherePrimitive,
+        $.PolyhedronPrimitive,
+        $.PolygonPrimitive,
+        $.CirclePrimitive,
+        $.SquarePrimitive,
+        $.ModuleInstantiation,
+      ),
 
     CubePrimitive: ($) => seq("cube", "(", optional(field("args", $.ArgumentList)), ")"),
 
@@ -157,6 +171,12 @@ export const scadLanguage = language({
     SpherePrimitive: ($) => seq("sphere", "(", optional(field("args", $.ArgumentList)), ")"),
 
     PolyhedronPrimitive: ($) => seq("polyhedron", "(", optional(field("args", $.ArgumentList)), ")"),
+
+    PolygonPrimitive: ($) => seq("polygon", "(", optional(field("args", $.ArgumentList)), ")"),
+
+    CirclePrimitive: ($) => seq("circle", "(", optional(field("args", $.ArgumentList)), ")"),
+
+    SquarePrimitive: ($) => seq("square", "(", optional(field("args", $.ArgumentList)), ")"),
 
     ModuleInstantiation: ($) => seq(field("name", $.IDENTIFIER), "(", optional(field("args", $.ArgumentList)), ")"),
 

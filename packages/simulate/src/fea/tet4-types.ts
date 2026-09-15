@@ -28,6 +28,10 @@ export interface MaterialProperties {
   rho?: number;
   /** Yield strength in Pa (e.g., 270e6 for Aluminum 6061-T6). */
   yieldStrength?: number;
+  /** Mass-proportional Rayleigh damping coefficient (alpha_M in C = alpha_M * M + beta_K * K). */
+  alphaM?: number;
+  /** Stiffness-proportional Rayleigh damping coefficient (beta_K in C = alpha_M * M + beta_K * K). */
+  betaK?: number;
 }
 
 export interface FeaBoundaryConditions {
@@ -37,11 +41,21 @@ export interface FeaBoundaryConditions {
   nodalLoads: Map<number, [number, number, number]>;
   /** Enable geometrically non-linear corotational kinematics to eliminate artificial stress under rigid rotations. */
   corotational?: boolean;
+  /** Enable transient dynamic elastodynamics (M*u'' + C*u' + K*u = F) via Newmark-beta integration. */
+  transient?: boolean;
+  /** Transient time step size in seconds (e.g., 0.005 = 5ms). */
+  dt?: number;
+  /** Whether to reset velocity and acceleration states to zero. */
+  resetDynamics?: boolean;
 }
 
 export interface FeaStepResult {
   /** Nodal displacement vectors [ux0, uy0, uz0, ux1, uy1, uz1, ...]. */
   displacements: Float32Array;
+  /** Nodal velocity vectors [vx0, vy0, vz0, vx1, vy1, vz1, ...]. Present when transient is true. */
+  velocities?: Float32Array;
+  /** Nodal acceleration vectors [ax0, ay0, az0, ax1, ay1, az1, ...]. Present when transient is true. */
+  accelerations?: Float32Array;
   /** Per-element von Mises stresses in Pa. */
   elementVonMises: Float32Array;
   /** Per-node interpolated von Mises stresses in Pa (for vertex color rendering). */

@@ -92,6 +92,14 @@ export function registerDiagramHandlers(context: LspContext) {
     return await context.diagramService.getDiagramDispatch().applyEdits(params);
   });
 
+  context.connection.onRequest(DiagramMethods.getPalette, async (params: any) => {
+    return await context.diagramService.getDiagramDispatch().getPalette(params);
+  });
+
+  context.connection.onRequest(DiagramMethods.drillDown, async (params: any) => {
+    return await context.diagramService.getDiagramDispatch().drillDown(params);
+  });
+
   context.connection.onRequest("modelscript/getStepMeshes", async (params: { uri: string }): Promise<any[]> => {
     return await dispatchLanguageRequest(context, "modelscript/getStepMeshes", params.uri, params, []);
   });

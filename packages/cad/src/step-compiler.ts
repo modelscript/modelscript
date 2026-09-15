@@ -284,6 +284,27 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       return [brepRef];
     }
 
+    case SolidKind.Extrusion: {
+      let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity;
+      for (const [x, y] of solid.polygon) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const cz = solid.height / 2;
+      const hw = Math.max(1e-3, (maxX - minX) / 2);
+      const hh = Math.max(1e-3, (maxY - minY) / 2);
+      const hd = Math.max(1e-3, solid.height / 2);
+      const brepRef = buildBoxBrep(ctx, solid.name, cx, cy, cz, hw, hh, hd, parentMatrix);
+      return [brepRef];
+    }
+
     case SolidKind.Transform: {
       const combined = mat4Multiply(parentMatrix, solid.matrix);
       return flattenSolid(ctx, solid.child, combined);

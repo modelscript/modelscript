@@ -206,3 +206,8 @@ export const sysml2DefinitionKinds = new Set([
   "ViewDefinition",
   "ViewpointDefinition",
 ]);
+
+export const sysml2TypingRules = ["OwnedFeatureTyping", "FeatureTyping"];
+export const sysml2SubclassificationRules = ["OwnedSubclassification"];
+export const sysml2SubsettingRules = ["OwnedSubsetting"];
+export const sysml2RedefinitionRules = ["OwnedRedefinition"];
