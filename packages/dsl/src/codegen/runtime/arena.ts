@@ -4,9 +4,12 @@
 
 import {
   ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array, UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedUint16Array,
-  createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array, atomicChunkAlloc
+  createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array, atomicChunkAlloc as _atomicChunkAlloc
 } from "./array";
-export { atomicChunkAlloc };
+
+export function atomicChunkAlloc(size: u32): u32 {
+  return _atomicChunkAlloc(size);
+}
 import { inputEncoding } from "./parser";
 
 @external("engine", "debugLog")
@@ -612,17 +615,23 @@ export function allocAstNode(type: u16, paddingLength: u32, byteLength: u32, env
 export function computeNodeMerkleHash(nodeId: u32): u64 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
+  if (node.merkleLow != 0 || node.merkleHigh != 0) {
+    return (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+  }
   let h: u64 = 0xcbf29ce484222325; // FNV-1a 64-bit offset basis
 
-  let t: u64 = (node.type as u64) | ((node.flags as u64) << 16);
+  let semanticFlags = node.flags & ~EPHEMERAL_FLAGS;
+  let t: u64 = (node.type as u64) | ((semanticFlags as u64) << 16);
   h ^= t;
+  h = h * 0x100000001b3;
+  h ^= (node.byteLength as u64);
   h = h * 0x100000001b3;
 
   let child = node.firstChild;
   if (child == 0) {
-    let span = ast_getTextSpan(nodeId, node.paddingLength);
-    let ptr = (span & 0xffffffff) as usize;
-    let len = (span >> 32) as u32;
+    let span = ast_getTextSpan(nodeId);
+    let ptr = (span >> 32) as usize;
+    let len = (span & 0xffffffff) as u32;
     if (ptr != 0 && len > 0) {
       for (let i: u32 = 0; i < len; i++) {
         h ^= load<u8>(ptr + i) as u64;
@@ -631,14 +640,10 @@ export function computeNodeMerkleHash(nodeId: u32): u64 {
     }
   } else {
     while (child != 0) {
-      let cNode = changetype<ASTNode>(child);
-      let cHash: u64 = (cNode.merkleLow as u64) | ((cNode.merkleHigh as u64) << 32);
-      if (cHash == 0) {
-        cHash = computeNodeMerkleHash(child);
-      }
+      let cHash = getNodeMerkleHash(child);
       h ^= cHash;
       h = h * 0x100000001b3;
-      child = cNode.nextSibling;
+      child = getNodeNextSibling(child);
     }
   }
 
@@ -681,12 +686,121 @@ export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
   node.merkleHigh = high;
 }
 
+@inline
 export function getNodeStartState(ptr: u32): u32 {
-  return changetype<ASTNode>(ptr).startState;
+  return changetype<ASTNode>(ptr).startState & 0xffff;
 }
 
+@inline
+export function getNodeReductionLookahead(ptr: u32): u32 {
+  return (changetype<ASTNode>(ptr).startState >> 16) & 0xffff;
+}
+
+@inline
 export function setNodeStartState(ptr: u32, state: u32): void {
-  changetype<ASTNode>(ptr).startState = state;
+  let node = changetype<ASTNode>(ptr);
+  node.startState = (node.startState & 0xffff0000) | (state & 0xffff);
+}
+
+@inline
+export function setNodeReductionLookahead(ptr: u32, lookahead: u32): void {
+  let node = changetype<ASTNode>(ptr);
+  node.startState = (node.startState & 0x0000ffff) | ((lookahead & 0xffff) << 16);
+}
+
+@inline
+export function setNodeReductionInfo(ptr: u32, state: u32, lookahead: u32): void {
+  let node = changetype<ASTNode>(ptr);
+  node.startState = (state & 0xffff) | ((lookahead & 0xffff) << 16);
+}
+
+// ----------------------------------------------------------------------------
+// Tier 4: Value-Type Tree Cursor
+// ----------------------------------------------------------------------------
+export const TREE_CURSOR_MAX_DEPTH: i32 = 128;
+export const TREE_CURSOR_SIZE: u32 = 1040;
+
+@unmanaged
+export class TreeCursor {
+  root: u32;
+  depth: i32;
+}
+
+export function treeCursorAlloc(): usize {
+  let ptr = atomicChunkAlloc(TREE_CURSOR_SIZE);
+  treeCursorReset(ptr, 0);
+  return ptr;
+}
+
+export function treeCursorReset(cursorPtr: usize, rootPtr: u32): void {
+  store<u32>(cursorPtr, rootPtr);
+  if (rootPtr != 0) {
+    store<i32>(cursorPtr + 4, 0); // depth = 0
+    store<u32>(cursorPtr + 8, rootPtr); // nodes[0] = rootPtr
+    store<u32>(cursorPtr + 8 + 512, getNodePadding(rootPtr)); // contentStarts[0]
+  } else {
+    store<i32>(cursorPtr + 4, -1); // depth = -1
+  }
+}
+
+@inline
+export function treeCursorCurrentNode(cursorPtr: usize): u32 {
+  let d = load<i32>(cursorPtr + 4);
+  if (d < 0) return 0;
+  return load<u32>(cursorPtr + 8 + (d << 2));
+}
+
+@inline
+export function treeCursorCurrentOffset(cursorPtr: usize): u32 {
+  let d = load<i32>(cursorPtr + 4);
+  if (d < 0) return 0;
+  return load<u32>(cursorPtr + 8 + 512 + (d << 2));
+}
+
+@inline
+export function treeCursorDepth(cursorPtr: usize): i32 {
+  return load<i32>(cursorPtr + 4);
+}
+
+export function treeCursorGotoFirstChild(cursorPtr: usize): boolean {
+  let d = load<i32>(cursorPtr + 4);
+  if (d < 0 || d >= TREE_CURSOR_MAX_DEPTH - 1) return false;
+
+  let cPtr = load<u32>(cursorPtr + 8 + (d << 2));
+  let child = getNodeFirstChild(cPtr);
+  if (child == 0) return false;
+
+  let parentContentStart = load<u32>(cursorPtr + 8 + 512 + (d << 2));
+  d++;
+  store<i32>(cursorPtr + 4, d);
+  store<u32>(cursorPtr + 8 + (d << 2), child);
+  store<u32>(cursorPtr + 8 + 512 + (d << 2), parentContentStart);
+  return true;
+}
+
+export function treeCursorGotoNextSibling(cursorPtr: usize): boolean {
+  let d = load<i32>(cursorPtr + 4);
+  if (d < 0) return false;
+
+  let cPtr = load<u32>(cursorPtr + 8 + (d << 2));
+  let sibling = getNodeNextSibling(cPtr);
+  if (sibling == 0) return false;
+
+  let contentStart = load<u32>(cursorPtr + 8 + 512 + (d << 2));
+  let prevContentEnd = contentStart + getNodeByteLength(cPtr);
+  let siblingContentStart = prevContentEnd + getNodePadding(sibling);
+
+  store<u32>(cursorPtr + 8 + (d << 2), sibling);
+  store<u32>(cursorPtr + 8 + 512 + (d << 2), siblingContentStart);
+  return true;
+}
+
+export function treeCursorGotoParent(cursorPtr: usize): boolean {
+  let d = load<i32>(cursorPtr + 4);
+  if (d <= 0) return false;
+  d--;
+  store<i32>(cursorPtr + 4, d);
+  return true;
 }
 
 
@@ -783,6 +897,7 @@ export const FLAG_IS_INSERTED: u16 = 256;
 export const FLAG_IS_SHARED: u16 = 512;
 export const FLAG_IS_SYNTHETIC: u16 = 1024;
 export const FLAG_FRAGILE: u16 = 4096;
+export const EPHEMERAL_FLAGS: u16 = FLAG_GC_MARK | FLAG_EXTRACTED | FLAG_LSP_VISITED | FLAG_LSP_TRAVERSED | FLAG_IS_SHARED;
 
 export function getNodeFlags(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).flags;

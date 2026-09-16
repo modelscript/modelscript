@@ -7,6 +7,17 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import assert from "node:assert";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
+
+const expect = (actual: any) => ({
+  toBeGreaterThan: (expected: number) => assert.ok(actual > expected, `Expected ${actual} > ${expected}`),
+  toContain: (expected: string) =>
+    assert.ok(String(actual).includes(expected), `Expected ${actual} to contain ${expected}`),
+  toBe: (expected: any) => assert.strictEqual(actual, expected),
+  toEqual: (expected: any) => assert.deepStrictEqual(actual, expected),
+});
+
 const toyGrammar = {
   name: "ReuseTestDSL",
   rules: {

@@ -324,6 +324,28 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
+      case "hardwareConnected": {
+        const protocol = (msg.protocol as string) ?? "slcan";
+        const baudRate = (msg.baudRate as number) ?? 500000;
+        const portName = (msg.portName as string) ?? "Serial Device";
+        vscode.window.showInformationMessage(
+          `Soft HIL: Connected to ${portName} (${protocol.toUpperCase()} @ ${baudRate} baud).`,
+        );
+        this.postMessage({ type: "hardwareStatus", connected: true, protocol, baudRate, portName });
+        break;
+      }
+
+      case "hardwareDisconnected": {
+        vscode.window.showInformationMessage("Soft HIL: Hardware disconnected.");
+        this.postMessage({ type: "hardwareStatus", connected: false });
+        break;
+      }
+
+      case "hardwareFrameTx":
+      case "hardwareFrameRx": {
+        break;
+      }
+
       case "deleteSession": {
         if (this.localMode) {
           this.localDeleteSession(msg.sessionId as string);
@@ -1489,6 +1511,41 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
     .wrapper-banner.visible { display: block; }
     .wrapper-banner button { margin-top: 6px; }
+
+    /* ── Hardware-in-the-Loop (Soft HIL) ── */
+    .hil-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .hil-badge.disconnected {
+      color: var(--vscode-descriptionForeground);
+      background: var(--vscode-badge-background, rgba(128,128,128,0.2));
+    }
+    .hil-badge.connected {
+      color: #fff;
+      background: var(--vscode-charts-green, #2da44e);
+    }
+    .hil-badge.active {
+      color: #fff;
+      background: var(--vscode-charts-blue, #0969da);
+      animation: hilPulse 1.5s infinite ease-in-out;
+    }
+    @keyframes hilPulse {
+      0% { opacity: 0.8; }
+      50% { opacity: 1; }
+      100% { opacity: 0.8; }
+    }
+    .can-dir-rx {
+      color: var(--vscode-charts-green, #2da44e);
+      font-weight: bold;
+    }
+    .can-dir-tx {
+      color: var(--vscode-charts-blue, #0969da);
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -1575,6 +1632,78 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       <div class="btn-row">
         <button id="btn-submit-session">Create</button>
         <button id="btn-cancel-session" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hardware-in-the-Loop (Soft HIL) -->
+  <div class="section" id="hardware-hil-section">
+    <div class="section-header" data-section="hardware-hil">
+      <span class="chevron">▾</span>
+      Hardware-in-the-Loop (Soft HIL)
+    </div>
+    <div class="section-body" id="hardware-hil-body">
+      <div class="field">
+        <label>Interface Protocol</label>
+        <select id="hil-protocol-select">
+          <option value="slcan">CAN Bus (SLCAN / CANable / USBtin)</option>
+          <option value="json">Line-delimited JSON Stream</option>
+          <option value="cobs">COBS Binary Framing</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Baud Rate</label>
+        <select id="hil-baud-select">
+          <option value="115200">115,200 baud</option>
+          <option value="230400">230,400 baud</option>
+          <option value="460800">460,800 baud</option>
+          <option value="500000" selected>500,000 baud (Standard CAN)</option>
+          <option value="921600">921,600 baud</option>
+          <option value="2000000">2,000,000 baud</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Real-Time Clock Synchronization</label>
+        <select id="hil-clock-select">
+          <option value="realtime">Unthrottled Web Audio (AudioWorklet)</option>
+          <option value="free">Free Running (Max Speed)</option>
+          <option value="sync">Hardware Synchronized Step</option>
+        </select>
+      </div>
+      <div style="margin: 8px 0; display: flex; align-items: center; justify-content: space-between;">
+        <span class="hil-badge disconnected" id="hil-status-badge">● Disconnected</span>
+        <span id="hil-metrics" style="font-size: 11px; color: var(--vscode-descriptionForeground);">0 frames | 0 fps</span>
+      </div>
+      <div class="btn-row">
+        <button id="btn-connect-hardware" style="flex:1">⚡ Connect Hardware</button>
+        <button id="btn-disconnect-hardware" class="secondary" style="flex:1" disabled>Disconnect</button>
+      </div>
+
+      <!-- Live CAN Bus Inspector -->
+      <div style="margin-top: 12px; border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border)); padding-top: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--vscode-sideBarSectionHeader-foreground);">Live CAN Inspector</span>
+          <div style="display: flex; gap: 4px;">
+            <button id="btn-pause-can" class="secondary" style="padding: 2px 6px; font-size: 10px;">Pause</button>
+            <button id="btn-clear-can" class="secondary" style="padding: 2px 6px; font-size: 10px;">Clear</button>
+          </div>
+        </div>
+        <div id="can-monitor-container" style="max-height: 160px; overflow-y: auto; font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; background: var(--vscode-editor-background); border-radius: 4px; padding: 4px; border: 1px solid var(--vscode-widget-border);">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="text-align: left; opacity: 0.7; border-bottom: 1px solid var(--vscode-widget-border);">
+                <th style="padding: 2px 4px;">Dir</th>
+                <th style="padding: 2px 4px;">ID</th>
+                <th style="padding: 2px 4px;">DLC</th>
+                <th style="padding: 2px 4px;">Payload</th>
+                <th style="padding: 2px 4px;">Signals</th>
+              </tr>
+            </thead>
+            <tbody id="can-frame-rows">
+              <tr><td colspan="5" style="text-align: center; opacity: 0.5; padding: 12px 0;">No traffic on bus</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

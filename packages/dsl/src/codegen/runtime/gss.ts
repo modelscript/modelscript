@@ -14,6 +14,14 @@ import {
   getNodeFlags,
   FLAG_IS_INSERTED,
   FLAG_FRAGILE,
+  treeCursorAlloc,
+  treeCursorReset,
+  treeCursorCurrentNode,
+  treeCursorCurrentOffset,
+  treeCursorDepth,
+  treeCursorGotoFirstChild,
+  treeCursorGotoNextSibling,
+  treeCursorGotoParent,
 } from "./arena";
 
 import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "./array";
@@ -31,6 +39,11 @@ export let nextHeadsCount: u32 = 0;
 export let candidateHeadsCount: u32 = 0;
 export let t_pausedHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let pausedHeadsCount: u32 = 0;
+
+export const HEAD_PROBE_SIZE: u32 = 2048;
+export const HEAD_PROBE_MASK: u32 = 2047;
+export let t_activeHeadProbe: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_nextHeadProbe: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 /**
  * Initializes the Graph-Structured Stack (GSS) active and next heads buffer memory.
@@ -51,10 +64,27 @@ export function initGSS(): void {
   if (changetype<usize>(t_pausedHeads) == 0) {
     t_pausedHeads = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
   }
+  if (changetype<usize>(t_activeHeadProbe) == 0) {
+    t_activeHeadProbe = changetype<UnmanagedUint32Array>(heap.alloc(HEAD_PROBE_SIZE * 4));
+    memory.fill(changetype<usize>(t_activeHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
+  if (changetype<usize>(t_nextHeadProbe) == 0) {
+    t_nextHeadProbe = changetype<UnmanagedUint32Array>(heap.alloc(HEAD_PROBE_SIZE * 4));
+    memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
   activeHeadsCount = 0;
   nextHeadsCount = 0;
   candidateHeadsCount = 0;
   pausedHeadsCount = 0;
+}
+
+export function resetGSSProbe(): void {
+  if (changetype<usize>(t_activeHeadProbe) != 0) {
+    memory.fill(changetype<usize>(t_activeHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
+  if (changetype<usize>(t_nextHeadProbe) != 0) {
+    memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
 }
 
 export function resetPausedHeads(): void {
@@ -144,6 +174,19 @@ export function pushActiveHead(headPtr: u32): boolean {
   if (betterVersionExists(newHead, t_activeHeads, activeHeadsCount)) {
     return false;
   }
+  if (activeHeadsCount == 0 && changetype<usize>(t_activeHeadProbe) != 0) {
+    memory.fill(changetype<usize>(t_activeHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
+  let probeKey: u32 = (((newHead.state as u32) * 31) ^ newHead.pos) & HEAD_PROBE_MASK;
+  if (changetype<usize>(t_activeHeadProbe) != 0) {
+    let probeIdx = t_activeHeadProbe[probeKey];
+    if (probeIdx == 0) {
+      t_activeHeadProbe[probeKey] = activeHeadsCount + 1;
+      t_activeHeads[activeHeadsCount] = headPtr;
+      activeHeadsCount++;
+      return true;
+    }
+  }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_activeHeads[i]);
     // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
@@ -159,6 +202,9 @@ export function pushActiveHead(headPtr: u32): boolean {
       }
     }
   }
+  if (changetype<usize>(t_activeHeadProbe) != 0) {
+    t_activeHeadProbe[probeKey] = activeHeadsCount + 1;
+  }
   t_activeHeads[activeHeadsCount] = headPtr;
   activeHeadsCount++;
   return true;
@@ -172,6 +218,19 @@ export function pushNextHead(headPtr: u32): boolean {
   let newHead = changetype<ParseHead>(headPtr);
   if (betterVersionExists(newHead, t_nextHeads, nextHeadsCount)) {
     return false;
+  }
+  if (nextHeadsCount == 0 && changetype<usize>(t_nextHeadProbe) != 0) {
+    memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
+  let probeKey: u32 = (((newHead.state as u32) * 31) ^ newHead.pos) & HEAD_PROBE_MASK;
+  if (changetype<usize>(t_nextHeadProbe) != 0) {
+    let probeIdx = t_nextHeadProbe[probeKey];
+    if (probeIdx == 0) {
+      t_nextHeadProbe[probeKey] = nextHeadsCount + 1;
+      t_nextHeads[nextHeadsCount] = headPtr;
+      nextHeadsCount++;
+      return true;
+    }
   }
   for (let i: u32 = 0; i < nextHeadsCount; i++) {
     let existingHead = changetype<ParseHead>(t_nextHeads[i]);
@@ -188,6 +247,9 @@ export function pushNextHead(headPtr: u32): boolean {
       }
     }
   }
+  if (changetype<usize>(t_nextHeadProbe) != 0) {
+    t_nextHeadProbe[probeKey] = nextHeadsCount + 1;
+  }
   t_nextHeads[nextHeadsCount] = headPtr;
   nextHeadsCount++;
   return true;
@@ -200,8 +262,14 @@ export function swapActiveAndNextHeads(): void {
   let tmp = t_activeHeads;
   t_activeHeads = t_nextHeads;
   t_nextHeads = tmp;
+  let tmpProbe = t_activeHeadProbe;
+  t_activeHeadProbe = t_nextHeadProbe;
+  t_nextHeadProbe = tmpProbe;
   activeHeadsCount = nextHeadsCount;
   nextHeadsCount = 0;
+  if (changetype<usize>(t_nextHeadProbe) != 0) {
+    memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
 }
 
 /**
@@ -358,6 +426,9 @@ export class ParseHead {
   /** Pointer to the active open ERROR container node (if any). */
   errorNode: u32;
 
+  /** Pointer to the last child appended inside errorNode (for O(1) appends). */
+  errorLastChild: u32;
+
   /** True if this head is temporarily paused waiting for parallel heads to advance. */
   isPaused: bool;
 
@@ -366,7 +437,7 @@ export class ParseHead {
 }
 
 /**
- * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (88 bytes).
+ * Allocates and initializes a new ParseHead instance in Generation 0 linear memory (96 bytes).
  */
 export function allocParseHead(
   state: i32,
@@ -387,10 +458,11 @@ export function allocParseHead(
   summaryCount: u32 = 0,
   nodeCount: u32 = 0,
   errorNode: u32 = 0,
+  errorLastChild: u32 = 0,
   isPaused: bool = false,
   pausedLookahead: i32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(88);
+  let ptr = allocGen0(96);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -410,6 +482,7 @@ export function allocParseHead(
   h.summaryCount = summaryCount;
   h.nodeCount = nodeCount;
   h.errorNode = errorNode;
+  h.errorLastChild = errorLastChild;
   h.isPaused = isPaused;
   h.pausedLookahead = pausedLookahead;
   return h;
@@ -462,19 +535,28 @@ export function allocErrorBranch(
 }
 
 // ----------------------------------------------------------------------------
-// Global Tree Traversal Cursor
+// Global Tree Traversal Cursor (backed by value-type TreeCursor)
 // ----------------------------------------------------------------------------
 
 export const cursorNodeStack = createChunkedUint32Array();
 export const cursorContentStartStack = createChunkedUint32Array();
 
 export let globalCursorDepth: i32 = -1;
+export let g_globalTreeCursor: usize = 0;
+
+export function ensureGlobalTreeCursor(): usize {
+  if (g_globalTreeCursor == 0) {
+    g_globalTreeCursor = treeCursorAlloc();
+  }
+  return g_globalTreeCursor;
+}
 
 /**
  * Initializes the global singleton tree cursor at the root node.
  * @param rootPtr Arena pointer to the root AST node.
  */
 export function initGlobalCursor(rootPtr: u32): void {
+  treeCursorReset(ensureGlobalTreeCursor(), rootPtr);
   if (rootPtr != 0) {
     globalCursorDepth = 0;
     cursorNodeStack[0] = rootPtr;
@@ -488,53 +570,42 @@ export function initGlobalCursor(rootPtr: u32): void {
  * Gets the current AST node pointer under the global cursor.
  */
 export function globalCursorCurrentNode(): u32 {
-  if (globalCursorDepth < 0) return 0;
-  return cursorNodeStack[globalCursorDepth];
+  return treeCursorCurrentNode(ensureGlobalTreeCursor());
 }
 
 /**
  * Moves the global cursor to the first child of the current node.
  */
 export function globalCursorGotoFirstChild(): boolean {
-  if (globalCursorDepth < 0 || globalCursorDepth >= MAX_CURSOR_DEPTH) return false;
-
-  let cPtr = cursorNodeStack[globalCursorDepth];
-  let child = getNodeFirstChild(cPtr);
-  if (child == 0) return false;
-
-  // Rule 2: First child starts at the parent's exact content start
-  let parentContentStart = cursorContentStartStack[globalCursorDepth];
-
-  globalCursorDepth++;
-  cursorNodeStack[globalCursorDepth] = child;
-  cursorContentStartStack[globalCursorDepth] = parentContentStart;
-  return true;
+  let ok = treeCursorGotoFirstChild(ensureGlobalTreeCursor());
+  if (ok) {
+    globalCursorDepth = treeCursorDepth(ensureGlobalTreeCursor());
+    cursorNodeStack[globalCursorDepth] = treeCursorCurrentNode(ensureGlobalTreeCursor());
+    cursorContentStartStack[globalCursorDepth] = treeCursorCurrentOffset(ensureGlobalTreeCursor());
+  }
+  return ok;
 }
 
 /**
  * Moves the global cursor to the next sibling of the current node.
  */
 export function globalCursorGotoNextSibling(): boolean {
-  if (globalCursorDepth < 0) return false;
-
-  let cPtr = cursorNodeStack[globalCursorDepth];
-  let sibling = getNodeNextSibling(cPtr);
-  if (sibling == 0) return false;
-
-  // Rule 3: Sibling starts after previous child's content end + sibling's padding
-  let prevContentEnd = cursorContentStartStack[globalCursorDepth] + getNodeByteLength(cPtr);
-  let siblingContentStart = prevContentEnd + getNodePadding(sibling);
-
-  cursorNodeStack[globalCursorDepth] = sibling;
-  cursorContentStartStack[globalCursorDepth] = siblingContentStart;
-  return true;
+  let ok = treeCursorGotoNextSibling(ensureGlobalTreeCursor());
+  if (ok) {
+    globalCursorDepth = treeCursorDepth(ensureGlobalTreeCursor());
+    cursorNodeStack[globalCursorDepth] = treeCursorCurrentNode(ensureGlobalTreeCursor());
+    cursorContentStartStack[globalCursorDepth] = treeCursorCurrentOffset(ensureGlobalTreeCursor());
+  }
+  return ok;
 }
 
 /**
  * Moves the global cursor up to the parent node.
  */
 export function globalCursorGotoParent(): boolean {
-  if (globalCursorDepth <= 0) return false;
-  globalCursorDepth--;
-  return true;
+  let ok = treeCursorGotoParent(ensureGlobalTreeCursor());
+  if (ok) {
+    globalCursorDepth = treeCursorDepth(ensureGlobalTreeCursor());
+  }
+  return ok;
 }

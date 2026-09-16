@@ -14,17 +14,22 @@ import type { CommandModule } from "yargs";
 
 const require = createRequire(import.meta.url);
 
+import { LanguageResolver } from "../util/language-registry.js";
+
 interface DiffArgs {
   file1: string;
   file2: string;
+  orderAgnostic?: boolean;
+  breakingOnly?: boolean;
   "order-agnostic": boolean;
   "breaking-only": boolean;
   format: string;
+  language?: string;
 }
 
 export const Diff: CommandModule<{}, DiffArgs> = {
   command: "diff <file1> <file2>",
-  describe: "Compute an AST-aware semantic diff between two Modelica or SysML v2 models",
+  describe: "Compute an AST-aware semantic diff between two model files (supports any registered DSL)",
   builder: (yargs) => {
     return yargs
       .positional("file1", {
@@ -35,6 +40,11 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       .positional("file2", {
         demandOption: true,
         description: "Path to modified/target file",
+        type: "string",
+      })
+      .option("language", {
+        alias: "l",
+        description: "Explicit language override (e.g. modelica, sysml2, scad)",
         type: "string",
       })
       .option("order-agnostic", {
@@ -66,13 +76,16 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       process.exit(1);
     }
 
-    const isSysml = file1Path.endsWith(".sysml") || file2Path.endsWith(".sysml");
-    const isModelica = file1Path.endsWith(".mo") || file2Path.endsWith(".mo");
-
-    if (!isSysml && !isModelica) {
-      console.error("Error: Semantic diff only supports .mo (Modelica) and .sysml (SysML v2) files.");
-      process.exit(1);
+    let detectedLang: string = args.language || "";
+    if (!detectedLang) {
+      try {
+        const r1 = await LanguageResolver.resolve(file1Path);
+        detectedLang = r1.manifest.id;
+      } catch {}
     }
+
+    const isSysml = detectedLang === "sysml2" || file1Path.endsWith(".sysml") || file2Path.endsWith(".sysml");
+    const isModelica = detectedLang === "modelica" || file1Path.endsWith(".mo") || file2Path.endsWith(".mo");
 
     const orderAgnostic = args.orderAgnostic ?? args["order-agnostic"] ?? true;
     const breakingOnly = args.breakingOnly ?? args["breaking-only"] ?? false;
@@ -105,7 +118,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       newWIdx.register(file2Path, () => newAst);
       newIndex = newWIdx.toUnified();
       newDb = new QueryEngine(newIndex, (modelicaLangFallback as any).queryHooks);
-    } else {
+    } else if (isSysml) {
       let sysmlWasmPath: string;
       try {
         sysmlWasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
@@ -128,6 +141,23 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       newWIdx.register(file2Path, () => newAst);
       newIndex = await newWIdx.toUnifiedAsync();
       newDb = new QueryEngine(newIndex, (sysml2LangFallback as any).queryHooks);
+    } else {
+      // Generic DSL semantic diff
+      const resolved = await LanguageResolver.resolve(file1Path, args.language);
+      const { parser: genParser } = await resolved.loadParser();
+      const tree1 = genParser.parse(text1);
+      const tree2 = genParser.parse(text2);
+      const s1 = tree1?.rootNode?.toString() || text1;
+      const s2 = tree2?.rootNode?.toString() || text2;
+      if (s1 === s2) {
+        console.log("No semantic changes detected.");
+        return;
+      }
+      console.log(`[Semantic Diff: ${resolved.manifest.name}]`);
+      console.log(`Base:   ${file1Path}`);
+      console.log(`Target: ${file2Path}`);
+      console.log("Files differ in AST structure.");
+      return;
     }
 
     const getRoots = (idx: any) => {

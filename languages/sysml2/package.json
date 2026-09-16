@@ -42,7 +42,9 @@
     "./diagram/*": {
       "types": "./dist/src/diagram/*.d.ts",
       "default": "./dist/src/diagram/*.js"
-    }
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dist/parser.wasm": "./dist/parser.wasm"
   },
   "files": [
     "src/**",

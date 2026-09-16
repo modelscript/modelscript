@@ -27,6 +27,8 @@ import {
   VarType,
 } from "@modelscript/runtime";
 import { deflateRaw } from "pako";
+import type { FmiLsBusManifest } from "./fmi-ls-bus.js";
+import { extractBusManifestFromDae, generateFmiLsBusXml } from "./fmi-ls-bus.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
 import { generateFmi3 } from "./fmi3.js";
@@ -57,6 +59,8 @@ export interface FmuArchiveOptions extends FmuOptions {
   resourceFiles?: Map<string, Uint8Array>;
   /** Which FMI versions to bundle (default: "both"). */
   fmiVersion?: "2" | "3" | "both";
+  /** Optional FMI-LS-BUS layered standard manifest to bundle in the FMU root as fmi-ls-bus.xml. */
+  busManifest?: FmiLsBusManifest;
 }
 
 /** Result of FMU archive generation. */
@@ -403,6 +407,13 @@ export function buildFmuArchive(
   if (options.includeModelJson !== false) {
     const modelJson = JSON.stringify(serializeArenaToJson(dae), null, 2);
     files.set("resources/model.json", encoder.encode(modelJson));
+  }
+
+  // ── FMI-LS-BUS Layered Standard Manifest ──
+  const busManifest = options.busManifest ?? extractBusManifestFromDae(dae);
+  if (busManifest && busManifest.buses.length > 0) {
+    const busXml = generateFmiLsBusXml(busManifest);
+    files.set("fmi-ls-bus.xml", encoder.encode(busXml));
   }
 
   // ── Additional resource files ──

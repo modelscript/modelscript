@@ -38,7 +38,9 @@
     "./physical-data": {
       "types": "./dist/src/physical-data.d.ts",
       "default": "./dist/src/physical-data.js"
-    }
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dist/parser.wasm": "./dist/parser.wasm"
   },
   "files": [
     "queries/*",

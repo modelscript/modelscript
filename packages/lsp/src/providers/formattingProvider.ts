@@ -3,16 +3,24 @@ import { Connection, TextDocuments, TextEdit } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 const INDENT_STRING = "  ";
 
-// Nodes that increase indentation for their children/content
+// Nodes that increase indentation for their children/content (supporting both PascalCase and snake_case AST nodes)
 const INDENT_TRIGGER_NODES = new Set([
   "ClassDefinition",
+  "class_definition",
   "IfStatement",
+  "if_statement",
   "ForStatement",
+  "for_statement",
   "WhileStatement",
+  "while_statement",
   "WhenStatement",
+  "when_statement",
   "IfEquation",
+  "if_equation",
   "ForEquation",
+  "for_equation",
   "WhenEquation",
+  "when_equation",
   "enumeration_literal",
 ]);
 
@@ -35,7 +43,8 @@ const DEDENT_START_TOKENS = new Set([
   "expandable",
 ]);
 
-function formatModelicaTree(tree: any, content: string): string {
+export function formatModelicaTree(tree: any, content: string, indentSize: number = 2): string {
+  const indentString = " ".repeat(Math.max(1, indentSize));
   const lines = content.split("\n");
   const formattedLines: string[] = [];
 
@@ -93,14 +102,18 @@ function formatModelicaTree(tree: any, content: string): string {
       indentLevel--;
     }
 
-    const indent = INDENT_STRING.repeat(Math.max(0, indentLevel));
+    const indent = indentString.repeat(Math.max(0, indentLevel));
     formattedLines.push(indent + trimmedLine);
   }
 
   return formattedLines.join("\n");
 }
 
-function formatStepDocument(document: TextDocument): TextEdit[] {
+export function formatStepDocument(document: {
+  getText: () => string;
+  lineCount: number;
+  offsetAt: (pos: any) => number;
+}): TextEdit[] {
   const text = document.getText();
 
   // Normalize line endings

@@ -2451,8 +2451,15 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
     "fmi3Status fmi3GetVariableDependencies(fmi3Instance instance, fmi3ValueReference dependent, size_t elementIndicesOfDependent[], fmi3ValueReference independents[], size_t elementIndicesOfIndependents[], fmi3DependencyKind dependencyKinds[], size_t ndependencies) { (void)instance; (void)dependent; (void)elementIndicesOfDependent; (void)independents; (void)elementIndicesOfIndependents; (void)dependencyKinds; (void)ndependencies; return fmi3Error; }",
   );
   lines.push(
-    "fmi3Status fmi3ActivateModelPartition(fmi3Instance instance, fmi3ValueReference clockReference, fmi3Float64 activationTime) { (void)instance; (void)clockReference; (void)activationTime; return fmi3Error; }",
+    "fmi3Status fmi3ActivateModelPartition(fmi3Instance instance, fmi3ValueReference clockReference, fmi3Float64 activationTime) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error;");
+  lines.push("  inst->model.time = activationTime;");
+  lines.push("  (void)clockReference;");
+  lines.push(`  ${id}_getDerivatives(&inst->model);`);
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
     "fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance, fmi3Boolean* discreteStatesNeedUpdate, fmi3Boolean* terminateSimulation, fmi3Boolean* nominalsOfContinuousStatesChanged, fmi3Boolean* valuesOfContinuousStatesChanged, fmi3Boolean* nextEventTimeDefined, fmi3Float64* nextEventTime) {",
   );

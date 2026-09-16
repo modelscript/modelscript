@@ -4,21 +4,29 @@ import { existsSync, readFileSync } from "node:fs";
 import path, { join } from "node:path";
 import type { CommandModule } from "yargs";
 
+import { LanguageResolver } from "../util/language-registry.js";
+
 declare const WebAssembly: any;
 
 interface ParseArgs {
   file: string;
   encoding?: string;
+  language?: string;
 }
 
-export const Parse: CommandModule<{}, ParseArgs> = {
+export const Parse: CommandModule<any, any> = {
   command: "parse <file>",
-  describe: "Parse a file using the language parser in the current directory",
+  describe: "Parse a file using its language DSL parser (supports any registered language)",
   builder: (yargs) => {
     return yargs
       .positional("file", {
         demandOption: true,
         description: "path of file to parse",
+        type: "string",
+      })
+      .option("language", {
+        alias: "l",
+        description: "Explicit language override (e.g. modelica, sysml2, scad, step, owl2, csv)",
         type: "string",
       })
       .option("encoding", {
@@ -28,7 +36,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
         default: "utf8",
       });
   },
-  handler: async (args) => {
+  handler: async (args: any) => {
     const cwd = process.cwd();
     const filePath = path.resolve(cwd, args.file);
 
@@ -39,42 +47,27 @@ export const Parse: CommandModule<{}, ParseArgs> = {
 
     const wrapperPath = join(cwd, "build", "src-gen", "index.js");
 
-    // Native fallback for Modelica (.mo) and SysML (.sysml) files
-    if (!existsSync(wrapperPath)) {
-      const { createRequire } = await import("node:module");
-      const require = createRequire(import.meta.url);
-      const { createWasmParser } = await import("@modelscript/dsl/bindings");
-
-      let wasmPath = "";
-      if (args.file.endsWith(".mo")) {
-        try {
-          wasmPath = require.resolve("@modelscript/modelica/parser.wasm");
-        } catch {}
-      } else if (args.file.endsWith(".sysml")) {
-        try {
-          wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
-        } catch {}
+    // Attempt universal language resolution first
+    try {
+      const resolved = await LanguageResolver.resolve(filePath, args.language, cwd);
+      const { parser } = await resolved.loadParser();
+      const text = readFileSync(filePath, "utf-8");
+      const tree = parser.parse(text);
+      if (!tree) {
+        console.error("Parse failed. No tree returned.");
+        process.exit(1);
       }
-
-      if (wasmPath && existsSync(wasmPath)) {
-        const { parser } = await createWasmParser(wasmPath);
-        const text = readFileSync(filePath, "utf-8");
-        const tree = parser.parse(text);
-        if (!tree) {
-          console.error("Parse failed. No tree returned.");
-          process.exit(1);
-        }
-        console.log(tree.rootNode.toString());
-        if (tree.rootNode.hasError && typeof tree.rootNode.hasError === "function" && tree.rootNode.hasError()) {
-          console.error("\n[Syntax Errors Detected]");
-        }
-        return;
+      console.log(tree.rootNode.toString());
+      if (tree.rootNode.hasError && typeof tree.rootNode.hasError === "function" && tree.rootNode.hasError()) {
+        console.error(`\n[Syntax Errors Detected in ${resolved.manifest.name}]`);
       }
-
-      console.error(
-        `Could not find parser wrapper at ${wrapperPath}.\nIf parsing a custom DSL, run 'msc build' first.\nFor built-in languages, provide a .mo or .sysml file.`,
-      );
-      process.exit(1);
+      return;
+    } catch (resolveErr: any) {
+      // If language was not in registry, fall back to local wrapperPath in cwd if present
+      if (!existsSync(wrapperPath)) {
+        console.error(resolveErr.message);
+        process.exit(1);
+      }
     }
 
     // Find the .wasm file in dist/

@@ -9,6 +9,78 @@ export var InputEncoding;
   InputEncoding[(InputEncoding["UTF32BE"] = 4)] = "UTF32BE";
 })(InputEncoding || (InputEncoding = {}));
 /**
+ * Value-Type Tree Cursor for zero-allocation, re-entrant tree traversals.
+ */
+export class WasmTreeCursor {
+  cursorPtr;
+  runtime;
+  constructor(runtime, rootNode) {
+    this.runtime = runtime;
+    const exports = runtime.exports || runtime.wasmExports || runtime;
+    if (exports && exports.treeCursorAlloc) {
+      this.cursorPtr = exports.treeCursorAlloc();
+      exports.treeCursorReset(this.cursorPtr, rootNode);
+    } else {
+      this.cursorPtr = 0;
+    }
+  }
+  reset(rootNode) {
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    if (this.cursorPtr && exports && exports.treeCursorReset) {
+      exports.treeCursorReset(this.cursorPtr, rootNode);
+    }
+  }
+  currentNode() {
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    if (this.cursorPtr && exports && exports.treeCursorCurrentNode) {
+      return exports.treeCursorCurrentNode(this.cursorPtr);
+    }
+    return 0;
+  }
+  currentOffset() {
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    if (this.cursorPtr && exports && exports.treeCursorCurrentOffset) {
+      return exports.treeCursorCurrentOffset(this.cursorPtr);
+    }
+    return 0;
+  }
+  depth() {
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    if (this.cursorPtr && exports && exports.treeCursorDepth) {
+      return exports.treeCursorDepth(this.cursorPtr);
+    }
+    return -1;
+  }
+  gotoFirstChild() {
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    if (this.cursorPtr && exports && exports.treeCursorGotoFirstChild) {
+      return Boolean(exports.treeCursorGotoFirstChild(this.cursorPtr));
+    }
+    return false;
+  }
+  gotoNextSibling() {
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    if (this.cursorPtr && exports && exports.treeCursorGotoNextSibling) {
+      return Boolean(exports.treeCursorGotoNextSibling(this.cursorPtr));
+    }
+    return false;
+  }
+  gotoParent() {
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    if (this.cursorPtr && exports && exports.treeCursorGotoParent) {
+      return Boolean(exports.treeCursorGotoParent(this.cursorPtr));
+    }
+    return false;
+  }
+}
+/**
  * A lightweight wrapper over a parsed AST node pointer.
  * Used internally by the Parser class to traverse the tree.
  */
@@ -1178,13 +1250,71 @@ export class LspFacade {
             const extracted = extractTokenText(startByte, endByte);
             if (extracted) symName = extracted;
           }
-          msg = symName
-            ? `Syntax Error: Unexpected '${symName}'`
-            : "Syntax Error";
+          let rawArg2 = arg2 & 0x7fff;
+          let rawArg3 = arg3 & 0x7fff;
+          let expName1 =
+            rawArg2 > 0
+              ? (this.syntaxNames && this.syntaxNames[rawArg2]) ||
+                (rawArg2 >= 32 && rawArg2 <= 126
+                  ? String.fromCharCode(rawArg2)
+                  : `token_${rawArg2}`)
+              : "";
+          if (expName1.startsWith("T_")) expName1 = expName1.substring(2);
+          if (expName1.startsWith('"') && expName1.endsWith('"')) {
+            expName1 = expName1.substring(1, expName1.length - 1);
+          }
+          let expName2 =
+            rawArg3 > 0
+              ? (this.syntaxNames && this.syntaxNames[rawArg3]) ||
+                (rawArg3 >= 32 && rawArg3 <= 126
+                  ? String.fromCharCode(rawArg3)
+                  : `token_${rawArg3}`)
+              : "";
+          if (expName2.startsWith("T_")) expName2 = expName2.substring(2);
+          if (expName2.startsWith('"') && expName2.endsWith('"')) {
+            expName2 = expName2.substring(1, expName2.length - 1);
+          }
+          let expectedStr = "";
+          if (expName1 && expName2 && expName1 !== expName2) {
+            if (expName1 === symName) {
+              expectedStr = `'${expName2}'`;
+            } else if (expName2 === symName) {
+              expectedStr = `'${expName1}'`;
+            } else {
+              expectedStr = `'${expName1}' or '${expName2}'`;
+            }
+          } else if (expName1 && expName1 !== symName) {
+            expectedStr = `'${expName1}'`;
+          }
+          if (symName && expectedStr) {
+            msg = `Syntax Error: Unexpected '${symName}', expected ${expectedStr}`;
+          } else if (symName) {
+            msg = `Syntax Error: Unexpected '${symName}'`;
+          } else if (expectedStr) {
+            msg = `Syntax Error: Expected ${expectedStr}`;
+          } else {
+            msg = "Syntax Error";
+          }
         } else if (arg0 === 0) {
           let symName = extractTokenText(startByte, endByte);
-          if (symName) {
+          let rawArg2 = arg2 & 0x7fff;
+          let expName1 =
+            rawArg2 > 0
+              ? (this.syntaxNames && this.syntaxNames[rawArg2]) ||
+                (rawArg2 >= 32 && rawArg2 <= 126
+                  ? String.fromCharCode(rawArg2)
+                  : `token_${rawArg2}`)
+              : "";
+          if (expName1.startsWith("T_")) expName1 = expName1.substring(2);
+          if (expName1.startsWith('"') && expName1.endsWith('"')) {
+            expName1 = expName1.substring(1, expName1.length - 1);
+          }
+          if (symName && expName1 && symName !== expName1) {
+            msg = `Syntax Error: Unexpected '${symName}', expected '${expName1}'`;
+          } else if (symName) {
             msg = `Syntax Error: Unexpected '${symName}'`;
+          } else if (expName1) {
+            msg = `Syntax Error: Expected '${expName1}'`;
           }
         }
       }
@@ -1473,10 +1603,12 @@ export class LspFacade {
         if (isOverlapping && prev.code === undefined && d.code === undefined) {
           const prevIsSpecific =
             prev.message.startsWith("Expected ") ||
-            prev.message.startsWith("Syntax Error: Missing ");
+            prev.message.startsWith("Syntax Error: Missing ") ||
+            prev.message.startsWith("Syntax Error: Unexpected ");
           const dIsSpecific =
             d.message.startsWith("Expected ") ||
-            d.message.startsWith("Syntax Error: Missing ");
+            d.message.startsWith("Syntax Error: Missing ") ||
+            d.message.startsWith("Syntax Error: Unexpected ");
           const prevIsGeneric = prev.message === "Syntax Error";
           const dIsGeneric = d.message === "Syntax Error";
           if (prevIsGeneric && dIsSpecific) {
@@ -1486,8 +1618,11 @@ export class LspFacade {
           } else if (prevIsSpecific && dIsGeneric) {
             // Keep specific error, skip generic
             continue;
-          } else if (prevIsGeneric && dIsGeneric) {
-            // Merge two adjacent generic syntax errors
+          } else if (
+            (prevIsGeneric && dIsGeneric) ||
+            prev.message === d.message
+          ) {
+            // Merge two adjacent identical syntax errors
             if (d.range.end.character > prev.range.end.character) {
               prev.range.end = d.range.end;
             }
@@ -1526,6 +1661,67 @@ export class LspFacade {
     const result = new Uint32Array(numElements * 4);
     result.set(mem32.subarray(dirPtr >>> 2, (dirPtr >>> 2) + numElements * 4));
     return result;
+  }
+  /**
+   * Retrieves semantic tokens delta edits (LSP 3.16+ textDocument/semanticTokens/full/delta).
+   */
+  getSemanticTokensDelta(astRoot, prevResultId) {
+    if (
+      !this.exports.lsp_semanticTokens_delta ||
+      !this.exports.lsp_getBinaryBuffer
+    ) {
+      return { resultId: 0, fullTokens: this.getSemanticTokens(astRoot) };
+    }
+    const numEdits = this.exports.lsp_semanticTokens_delta(
+      astRoot,
+      prevResultId,
+    );
+    const resultId = this.exports.lsp_getSemanticTokensResultId
+      ? this.exports.lsp_getSemanticTokensResultId()
+      : prevResultId + 1;
+    if (numEdits === 0) {
+      return { resultId, fullTokens: this.getSemanticTokens(astRoot) };
+    }
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    const edits = [];
+    let idx = dirPtr >>> 2;
+    for (let e = 0; e < numEdits; e++) {
+      const start = mem32[idx++];
+      const deleteCount = mem32[idx++];
+      const insertCount = mem32[idx++];
+      const data = [];
+      for (let i = 0; i < insertCount; i++) {
+        data.push(mem32[idx++]);
+      }
+      edits.push({ start, deleteCount, data });
+    }
+    return { resultId, edits };
+  }
+  /**
+   * Compares oldTree and newTree to compute the precise modified byte spans (ts_tree_get_changed_ranges equivalent).
+   */
+  getChangedRanges(oldTree, newTree) {
+    if (!this.exports.lsp_getChangedRanges || !this.exports.lsp_getBinaryBuffer)
+      return [];
+    const count = this.exports.lsp_getChangedRanges(oldTree, newTree);
+    const ranges = [];
+    if (count === 0) return ranges;
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    for (let i = 0; i < count * 2; i += 2) {
+      ranges.push({
+        start: mem32[(dirPtr >>> 2) + i],
+        end: mem32[(dirPtr >>> 2) + i + 1],
+      });
+    }
+    return ranges;
+  }
+  /**
+   * Instantiates a new value-type TreeCursor rooted at rootNode.
+   */
+  createTreeCursor(rootNode) {
+    return new WasmTreeCursor(this, rootNode);
   }
   /** Retrieves a list of collapsable folding ranges from the parsed syntax tree. */
   getFoldingRanges(astRoot) {
@@ -3493,7 +3689,14 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text, editStart = 0, editOldEnd = 0, editNewEnd = 0, uri, oldRoot) {
+  parse(
+    text,
+    editStartOrEdits = 0,
+    editOldEnd = 0,
+    editNewEnd = 0,
+    uri,
+    oldRoot,
+  ) {
     const getInputBuf =
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
@@ -3522,27 +3725,59 @@ export class LspFacade {
     let baseRoot =
       oldRoot !== undefined && oldRoot !== 0
         ? oldRoot
-        : prevAstRoot !== 0
-          ? prevAstRoot
-          : this.lastAstRoot;
-    let editStartByte = editStart * 2;
-    let editOldEndByte = editOldEnd * 2;
-    let editNewEndByte = editNewEnd * 2;
-    if (
-      baseRoot === 0 ||
-      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
-    ) {
-      editNewEndByte = lenBytes;
-      baseRoot = 0;
-      editStartByte = 0;
-      editOldEndByte = 0;
+        : Array.isArray(editStartOrEdits) &&
+            typeof editOldEnd === "number" &&
+            editOldEnd > 0
+          ? editOldEnd
+          : prevAstRoot !== 0
+            ? prevAstRoot
+            : this.lastAstRoot;
+    let newAstRoot = 0;
+    if (Array.isArray(editStartOrEdits)) {
+      const edits = editStartOrEdits;
+      if (
+        edits.length > 0 &&
+        this.exports.parseWithEdits &&
+        this.exports.atomicChunkAlloc
+      ) {
+        const editsPtr = this.exports.atomicChunkAlloc(edits.length * 12);
+        const mem32 = new Uint32Array(this.wasmMemory.buffer);
+        for (let i = 0; i < edits.length; i++) {
+          const base = (editsPtr >>> 2) + i * 3;
+          mem32[base] = edits[i].startByte;
+          mem32[base + 1] = edits[i].oldEndByte;
+          mem32[base + 2] = edits[i].newEndByte;
+        }
+        newAstRoot = this.exports.parseWithEdits(
+          baseRoot,
+          editsPtr,
+          edits.length,
+        );
+      } else {
+        newAstRoot = this.exports.parse(baseRoot, 0, 0, lenBytes);
+      }
+    } else {
+      let editStart =
+        typeof editStartOrEdits === "number" ? editStartOrEdits : 0;
+      let editStartByte = editStart * 2;
+      let editOldEndByte = editOldEnd * 2;
+      let editNewEndByte = editNewEnd * 2;
+      if (
+        baseRoot === 0 ||
+        (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+      ) {
+        editNewEndByte = lenBytes;
+        baseRoot = 0;
+        editStartByte = 0;
+        editOldEndByte = 0;
+      }
+      newAstRoot = this.exports.parse(
+        baseRoot,
+        editStartByte,
+        editOldEndByte,
+        editNewEndByte,
+      );
     }
-    const newAstRoot = this.exports.parse(
-      baseRoot,
-      editStartByte,
-      editOldEndByte,
-      editNewEndByte,
-    );
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
         for (const listener of this.astListeners) {

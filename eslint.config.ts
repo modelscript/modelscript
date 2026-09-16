@@ -75,8 +75,8 @@ export default defineConfig([
             "packages/dsl/src/codegen/runtime/fmi2_wasm.ts",
             "packages/dsl/src/codegen/runtime/fmi3_wasm.ts",
             "packages/examples/calc/src/language.ts",
-            "apps/cli/tests/test-recovery-branches.test.ts",
-            "apps/cli/tests/test-playground-worker-syntax.test.ts",
+            "apps/cli/tests/*.ts",
+            "packages/exchange/validation/*.ts",
             "apps/cli/jest.config.ts",
             "languages/ssp/tests/*.ts",
             "languages/step/tests/*.ts",
@@ -89,7 +89,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["scripts/**/*.ts", "packages/exchange/validation/fmi/scripts/**/*.ts"],
+    files: ["scripts/**/*.ts", "packages/exchange/validation/**/*.ts", "apps/cli/tests/**/*.ts"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/consistent-generic-constructors": "off",

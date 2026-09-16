@@ -1,8 +1,10 @@
-import { buildParser, choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { buildParser, choice, field, language, optional, prec, repeat, semanticToken, seq } from "../src/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

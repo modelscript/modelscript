@@ -8,6 +8,7 @@ import type { CommandModule } from "yargs";
 interface BuildArgs {
   entry: string;
   target: string;
+  register?: boolean;
 }
 
 export const Build: CommandModule<{}, BuildArgs> = {
@@ -26,6 +27,11 @@ export const Build: CommandModule<{}, BuildArgs> = {
         type: "string",
         choices: ["wasm", "native"],
         default: "native",
+      })
+      .option("register", {
+        description: "Register the compiled language into the user catalog (~/.modelscript/languages/)",
+        type: "boolean",
+        default: false,
       });
   },
   handler: async (args) => {
@@ -151,5 +157,17 @@ export const Build: CommandModule<{}, BuildArgs> = {
     console.log(`=== Build Complete ===`);
     console.log(`Target: ${args.target}`);
     console.log(`WASM written to: ${wasmPath}`);
+
+    if (args.register) {
+      const { registerLanguageFromDirectory } = await import("../util/language-registry.js");
+      try {
+        const manifest = await registerLanguageFromDirectory(process.cwd());
+        console.log(
+          `✔ Automatically registered language '${manifest.name}' [${manifest.id}] in ~/.modelscript/languages/`,
+        );
+      } catch (err: any) {
+        console.warn(`Could not auto-register language: ${err.message}`);
+      }
+    }
   },
 };

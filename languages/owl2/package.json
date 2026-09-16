@@ -22,7 +22,9 @@
     "./cst-lowering": {
       "types": "./dist/src/cst-lowering.d.ts",
       "default": "./dist/src/cst-lowering.js"
-    }
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dist/parser.wasm": "./dist/parser.wasm"
   },
   "files": [
     "queries/*",

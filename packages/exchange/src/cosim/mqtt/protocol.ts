@@ -16,7 +16,7 @@ export interface ParticipantVariable {
   /** FMI-style causality. */
   causality: "input" | "output" | "parameter" | "local";
   /** Data type. */
-  type: "Real" | "Integer" | "Boolean" | "String";
+  type: "Real" | "Integer" | "Boolean" | "String" | "Binary";
   /** SI unit string (optional). */
   unit?: string | undefined;
   /** Start/default value. */
@@ -32,7 +32,7 @@ export interface ParticipantMetadata {
   /** Modelica model name. */
   modelName: string;
   /** Participant type. */
-  type: "js-simulator" | "fmu-js" | "fmu-wasm" | "fmu-native" | "external";
+  type: "js-simulator" | "fmu-js" | "fmu-wasm" | "fmu-native" | "external" | "web-hardware";
   /** Modelica class kind (model, block, connector, etc.). */
   classKind: string;
   /** Human-readable description. */

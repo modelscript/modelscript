@@ -24,6 +24,62 @@ const dsl = language({
   },
 });
 
+import assert from "node:assert";
+import { before as beforeAll, beforeEach, describe, it } from "node:test";
+
+function makeExpect(actual: any, isNot = false): any {
+  const matchers = {
+    toBeGreaterThan: (n: number) => {
+      const cond = actual > n;
+      assert.ok(isNot ? !cond : cond, `Expected ${actual} ${isNot ? "not " : ""}to be greater than ${n}`);
+    },
+    toBeGreaterThanOrEqual: (n: number) => {
+      const cond = actual >= n;
+      assert.ok(isNot ? !cond : cond, `Expected ${actual} ${isNot ? "not " : ""}to be >= ${n}`);
+    },
+    toBeLessThan: (n: number) => {
+      const cond = actual < n;
+      assert.ok(isNot ? !cond : cond, `Expected ${actual} ${isNot ? "not " : ""}to be less than ${n}`);
+    },
+    toContain: (s: string) => {
+      const cond = String(actual).includes(s);
+      assert.ok(isNot ? !cond : cond, `Expected ${actual} ${isNot ? "not " : ""}to contain ${s}`);
+    },
+    toMatch: (re: RegExp) => {
+      const cond = re.test(String(actual));
+      assert.ok(isNot ? !cond : cond, `Expected ${actual} ${isNot ? "not " : ""}to match ${re}`);
+    },
+    toHaveLength: (len: number) => {
+      const actualLen = actual ? actual.length : 0;
+      const cond = actualLen === len;
+      assert.ok(isNot ? !cond : cond, `Expected length ${len}, got ${actualLen}`);
+    },
+    toBeDefined: () => {
+      const cond = actual !== undefined;
+      assert.ok(isNot ? !cond : cond, `Expected value to be defined`);
+    },
+    toBeUndefined: () => {
+      const cond = actual === undefined;
+      assert.ok(isNot ? !cond : cond, `Expected value to be undefined`);
+    },
+    toBe: (val: any) => {
+      if (isNot) assert.notStrictEqual(actual, val);
+      else assert.strictEqual(actual, val);
+    },
+    toEqual: (val: any) => {
+      if (isNot) assert.notDeepStrictEqual(actual, val);
+      else assert.deepStrictEqual(actual, val);
+    },
+    not: null as any,
+  };
+  if (!isNot) {
+    matchers.not = makeExpect(actual, true);
+  }
+  return matchers;
+}
+
+const expect = (actual: any) => makeExpect(actual, false);
+
 describe("GLR Parser Error Recovery Integration", () => {
   let activeFacade: any;
   let tmpDir: string;

@@ -25,9 +25,10 @@ import {
   registerRoot,
   dropRoot,
   cloneNode,
+  getNodeMerkleHash,
   S,
 } from "./arena";
-import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds } from "./engine";
+import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3 } from "./engine";
 import { inputLength, inputEncoding } from "./parser";
 import { UnmanagedMap64To64, createMap64To64, UnmanagedMap64 } from "./hashmap";
 import { stub_getDefinition, stub_getBinaryBuffer } from "./stub";
@@ -87,6 +88,8 @@ export function lsp_registerDocument(fileId: u32, astRoot: u32): void {
   // Cache all leaf node strings into the stringArena for lexical multi-file fallback
   cacheNodeStrings(astRoot, 0);
   registerRoot(astRoot);
+  indexDocumentSymbolsForReferences(fileId, astRoot);
+  lsp_invalidateCache();
 }
 
 export function lsp_unregisterDocument(fileId: u32): void {
@@ -95,6 +98,7 @@ export function lsp_unregisterDocument(fileId: u32): void {
     if (oldRoot != 0) dropRoot(oldRoot);
     t_documentRoots.set(fileId as u64, 0 as u64);
   }
+  lsp_invalidateCache();
 }
 
 /**
@@ -108,11 +112,14 @@ export function lsp_evictDocumentAst(fileId: u32): void {
       t_documentRoots.set(fileId as u64, 0 as u64);
     }
   }
+  lsp_invalidateCache();
 }
 
 export function lsp_clearDocuments(): void {
   t_documentRoots = changetype<UnmanagedMap64To64>(createMap64To64());
   clearNodeOffsetCache();
+  t_refIndexTotalTokens = 0;
+  lsp_invalidateCache();
 }
 
 export function lsp_getDocumentRoot(fileId: u32): u32 {
@@ -126,6 +133,99 @@ let t_lspBinaryBuffer: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 let t_lspFlatBinaryBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let t_lspFlatBinaryBufferPtr: u32 = 0;
 let t_lspFlatBinaryCapacity: u32 = 0;
+
+// --- L3 Caching for Folding Ranges & Document Symbols ---
+let t_cachedFoldingRoot: u32 = 0;
+let t_cachedFoldingCount: u32 = 0;
+let t_cachedFoldingBuffer: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+
+let t_cachedSymbolsRoot: u32 = 0;
+let t_cachedSymbolsCount: u32 = 0;
+let t_cachedSymbolsBuffer: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+
+export function lsp_invalidateCache(): void {
+  t_cachedFoldingRoot = 0;
+  t_cachedFoldingCount = 0;
+  t_cachedSymbolsRoot = 0;
+  t_cachedSymbolsCount = 0;
+}
+
+// --- L5 Inverted Symbol Index for References ---
+let t_refIndexNodes: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let t_refIndexTotalTokens: u32 = 0;
+let t_refIndexCapacity: u32 = 0;
+
+function ensureRefIndexBuffer(requiredCapacity: u32): void {
+  if (requiredCapacity > t_refIndexCapacity) {
+    let newCap: u32 = t_refIndexCapacity == 0 ? 4096 : (t_refIndexCapacity * 2);
+    while (newCap < requiredCapacity) newCap *= 2;
+    let newPtr = atomicChunkAlloc(newCap * 4);
+    if (t_refIndexTotalTokens > 0 && changetype<usize>(t_refIndexNodes) != 0) {
+      memory.copy(newPtr, changetype<usize>(t_refIndexNodes), t_refIndexTotalTokens * 4);
+    }
+    t_refIndexNodes = changetype<UnmanagedUint32Array>(newPtr);
+    t_refIndexCapacity = newCap;
+  }
+}
+
+export function indexDocumentSymbolsForReferences(fileId: u32, rootNode: u32): void {
+  if (rootNode == 0) return;
+  
+  ensureLspBuffers();
+  let stackTop: u32 = 0;
+  ensureTraverseStack(1);
+  t_lspTraverseStack.set(0, rootNode);
+  t_lspOffsetStack.set(0, getNodeLeadingPad(rootNode));
+  stackTop++;
+
+  while (stackTop > 0) {
+    stackTop--;
+    let current = t_lspTraverseStack.get(stackTop);
+    let offset = t_lspOffsetStack.get(stackTop);
+
+    let child = getNodeFirstChild(current);
+    if (child == 0) {
+      let len = getNodeByteLength(current);
+      if (len > 0) {
+        let span = ast_getTextSpan(current, offset);
+        let hash = ast_hashSpan(span);
+        ensureRefIndexBuffer(t_refIndexTotalTokens + 5);
+        let idx = t_refIndexTotalTokens;
+        t_refIndexNodes[idx] = fileId;
+        t_refIndexNodes[idx + 1] = hash;
+        t_refIndexNodes[idx + 2] = offset;
+        t_refIndexNodes[idx + 3] = len;
+        t_refIndexNodes[idx + 4] = current;
+        t_refIndexTotalTokens += 5;
+      }
+    } else {
+      let childCount: u32 = 0;
+      let countChild = child;
+      while (countChild != 0) {
+        childCount++;
+        countChild = getNodeNextSibling(countChild);
+      }
+      ensureTraverseStack(stackTop + childCount);
+      let currOffset = offset;
+      let currChildIdx: i32 = 0;
+      while (child != 0) {
+        let padVal = getNodePadding(child);
+        let lenVal = getNodeByteLength(child);
+        if (currChildIdx > 0) {
+          currOffset += padVal;
+        }
+        let childStart = currOffset;
+        let slot = stackTop + (childCount - 1 - currChildIdx);
+        t_lspTraverseStack[slot] = child;
+        t_lspOffsetStack[slot] = childStart;
+        currOffset = childStart + lenVal;
+        currChildIdx++;
+        child = getNodeNextSibling(child);
+      }
+      stackTop += childCount;
+    }
+  }
+}
 
 export function lsp_getBinaryBuffer(): u32 {
   if (t_lspFlatBinaryBufferPtr == 0) {
@@ -558,14 +658,36 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
           lsp_allocDiagnostic(dStart, dEnd, 0, 1, (type & 0x7fff) as u32);
           allocatedDiag = true;
         } else {
-          lsp_allocDiagnostic(dStart, dEnd, 0, 2, tokType as u32);
+          let exp1: u32 = 0;
+          let exp2: u32 = 0;
+          for (let ei = 0; ei < errorCount; ei++) {
+            if (t_errorStarts[ei] <= dEnd && t_errorEnds[ei] >= dStart) {
+              if (changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) {
+                exp1 = t_errorArg2[ei];
+                exp2 = t_errorArg3[ei];
+                break;
+              }
+            }
+          }
+          lsp_allocDiagnostic(dStart, dEnd, 0, 2, tokType as u32, exp1, exp2);
           allocatedDiag = true;
         }
       } else if (isLeaf && (type == 0 || isMutated || ((flags & FLAG_HAS_ERROR) != 0))) {
         let fallbackStart = nodeStart < totalInputBytes ? nodeStart : (totalInputBytes >= step ? totalInputBytes - step : 0);
         let fallbackEnd = fallbackStart + step <= totalInputBytes ? fallbackStart + step : totalInputBytes;
         if (fallbackEnd > fallbackStart) {
-          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 2, tokType as u32);
+          let exp1: u32 = 0;
+          let exp2: u32 = 0;
+          for (let ei = 0; ei < errorCount; ei++) {
+            if (t_errorStarts[ei] <= fallbackEnd && t_errorEnds[ei] >= fallbackStart) {
+              if (changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) {
+                exp1 = t_errorArg2[ei];
+                exp2 = t_errorArg3[ei];
+                break;
+              }
+            }
+          }
+          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 2, tokType as u32, exp1, exp2);
           allocatedDiag = true;
         }
       }
@@ -662,7 +784,11 @@ export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd:
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];
       if (e > s && (s <= rangeEnd && e >= rangeStart)) {
-        lsp_allocDiagnostic(s, e, 0, 0, 0);
+        let a0 = changetype<u32>(t_errorArg0) != 0 ? t_errorArg0[i] : 0;
+        let a1 = changetype<u32>(t_errorArg1) != 0 ? t_errorArg1[i] : 0;
+        let a2 = changetype<u32>(t_errorArg2) != 0 ? t_errorArg2[i] : 0;
+        let a3 = changetype<u32>(t_errorArg3) != 0 ? t_errorArg3[i] : 0;
+        lsp_allocDiagnostic(s, e, 0, a0, a1, a2, a3);
       }
     }
   }
@@ -690,7 +816,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];
       if (e > s) {
-        lsp_allocDiagnostic(s, e, 0, 0, 0);
+        let a0 = changetype<u32>(t_errorArg0) != 0 ? t_errorArg0[i] : 0;
+        let a1 = changetype<u32>(t_errorArg1) != 0 ? t_errorArg1[i] : 0;
+        let a2 = changetype<u32>(t_errorArg2) != 0 ? t_errorArg2[i] : 0;
+        let a3 = changetype<u32>(t_errorArg3) != 0 ? t_errorArg3[i] : 0;
+        lsp_allocDiagnostic(s, e, 0, a0, a1, a2, a3);
       }
     }
   }
@@ -716,7 +846,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
   let stackTop: u32 = 0;
   t_lspTraverseStack[stackTop] = astRoot;
-  t_lspOffsetStack[stackTop] = 0;
+  t_lspOffsetStack[stackTop] = getNodeLeadingPad(astRoot);
   stackTop++;
 
   while (stackTop > 0) {
@@ -736,7 +866,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     let len = getNodeByteLength(node);
     let type = getNodeType(node);
     let isErrorNode = type == 0;
-    let nodeStart = start + pad;
+    let nodeStart = start;
 
     let hasError = (flags & FLAG_HAS_ERROR) != 0;
     
@@ -758,6 +888,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         let targetChild: u32 = 0;
         let currOffset = nodeStart;
         let childOffset: u32 = 0;
+        let currChildIdx: i32 = 0;
 
         while (child != 0) {
           let cPad = getNodePadding(child);
@@ -766,15 +897,21 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           let cLen = getNodeByteLength(child);
           let isExtra = cType == NODE_TYPE_ERROR;
 
+          if (currChildIdx > 0) {
+            currOffset += cPad;
+          }
+          let childStart = currOffset;
+
           if (!isExtra) {
             if (childCount == childIdx) {
               targetChild = child;
-              childOffset = currOffset + cPad;
+              childOffset = childStart;
               break;
             }
             childCount++;
           }
-          currOffset += cPad + cLen;
+          currOffset = childStart + cLen;
+          currChildIdx++;
           child = getNodeNextSibling(child);
         }
 
@@ -843,16 +980,20 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
       ensureTraverseStack(stackTop + childCount);
       let currOffset = nodeStart;
-      let writeIdx = stackTop + childCount - 1;
       let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
+      let currChildIdx: i32 = 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let childByteLen = getNodeByteLength(child);
-        let cLen = padVal + childByteLen;
-        t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit;
-        writeIdx--;
-        currOffset += cLen;
+        if (currChildIdx > 0) {
+          currOffset += padVal;
+        }
+        let childStart = currOffset;
+        let slot = stackTop + (childCount - 1 - currChildIdx);
+        t_lspTraverseStack[slot] = child;
+        t_lspOffsetStack[slot] = childStart | errorFlagBit;
+        currOffset = childStart + childByteLen;
+        currChildIdx++;
         child = getNodeNextSibling(child);
       }
       stackTop += childCount;
@@ -882,25 +1023,30 @@ function sortSemanticTokens(flatPtr: usize, numTokens: u32): void {
 }
 
 function heapifySemanticTokens(flatPtr: usize, n: u32, i: u32): void {
-  let largest = i;
-  let left = (i << 1) + 1;
-  let right = (i << 1) + 2;
+  let curr = i;
+  while (true) {
+    let largest = curr;
+    let left = (curr << 1) + 1;
+    let right = (curr << 1) + 2;
 
-  if (left < n) {
-    let keyL = load<u32>(flatPtr + (left << 4));
-    let keyLargest = load<u32>(flatPtr + (largest << 4));
-    if (keyL > keyLargest) largest = left;
-  }
+    if (left < n) {
+      let keyL = load<u32>(flatPtr + (left << 4));
+      let keyLargest = load<u32>(flatPtr + (largest << 4));
+      if (keyL > keyLargest) largest = left;
+    }
 
-  if (right < n) {
-    let keyR = load<u32>(flatPtr + (right << 4));
-    let keyLargest = load<u32>(flatPtr + (largest << 4));
-    if (keyR > keyLargest) largest = right;
-  }
+    if (right < n) {
+      let keyR = load<u32>(flatPtr + (right << 4));
+      let keyLargest = load<u32>(flatPtr + (largest << 4));
+      if (keyR > keyLargest) largest = right;
+    }
 
-  if (largest != i) {
-    swapSemanticTokens(flatPtr, i, largest);
-    heapifySemanticTokens(flatPtr, n, largest);
+    if (largest != curr) {
+      swapSemanticTokens(flatPtr, curr, largest);
+      curr = largest;
+    } else {
+      break;
+    }
   }
 }
 
@@ -937,11 +1083,23 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
     flushBinaryBuffer();
     return 0;
   }
+
+  // L3 fix: Fast return cached folding ranges if astRoot is unchanged
+  if (astRoot == t_cachedFoldingRoot && changetype<usize>(t_cachedFoldingBuffer) != 0 && t_cachedFoldingCount > 0) {
+    t_lspBinaryBuffer.clear();
+    let cLen = t_cachedFoldingBuffer.length;
+    for (let i: u32 = 0; i < cLen; i++) {
+      t_lspBinaryBuffer.push(t_cachedFoldingBuffer[i]);
+    }
+    flushBinaryBuffer();
+    return t_cachedFoldingCount;
+  }
+
   globalAstRoot = astRoot;
 
   let stackTop: u32 = 0;
   t_lspTraverseStack[stackTop] = astRoot;
-  t_lspOffsetStack[stackTop] = 0;
+  t_lspOffsetStack[stackTop] = packOffsetStack(getNodeLeadingPad(astRoot), false, false, false);
   stackTop++;
 
   while (stackTop > 0) {
@@ -963,7 +1121,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
     let type = getNodeType(node);
     let isErrorNode = type == 0;
 
-    let nodeStart = start + pad;
+    let nodeStart = start;
     let nodeEnd = nodeStart + getNodeByteLength(node);
 
     // @ts-ignore
@@ -990,14 +1148,19 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
 
       ensureTraverseStack(stackTop + childCount);
       let currOffset = nodeStart;
-      let writeIdx = stackTop + childCount - 1;
+      let currChildIdx: i32 = 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
-        let cLen = padVal + getNodeByteLength(child);
-        t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, false, false);
-        writeIdx--;
-        currOffset += cLen;
+        let lenVal = getNodeByteLength(child);
+        if (currChildIdx > 0) {
+          currOffset += padVal;
+        }
+        let childStart = currOffset;
+        let slot = stackTop + (childCount - 1 - currChildIdx);
+        t_lspTraverseStack[slot] = child;
+        t_lspOffsetStack[slot] = packOffsetStack(childStart, isErrorNode || inError, false, false);
+        currOffset = childStart + lenVal;
+        currChildIdx++;
         child = getNodeNextSibling(child);
       }
       stackTop += childCount;
@@ -1006,7 +1169,21 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
 
   lsp_clearVisited();
   flushBinaryBuffer();
-  return t_lspBinaryBuffer.length / 2;
+
+  // L3 fix: Cache computed folding ranges
+  if (changetype<usize>(t_cachedFoldingBuffer) == 0) {
+    t_cachedFoldingBuffer = createChunkedUint32Array(1024);
+  } else {
+    t_cachedFoldingBuffer.clear();
+  }
+  let fLen = t_lspBinaryBuffer.length;
+  for (let i: u32 = 0; i < fLen; i++) {
+    t_cachedFoldingBuffer.push(t_lspBinaryBuffer[i]);
+  }
+  t_cachedFoldingRoot = astRoot;
+  t_cachedFoldingCount = fLen / 2;
+
+  return t_cachedFoldingCount;
 }
 
 /**
@@ -1021,11 +1198,23 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
     flushBinaryBuffer();
     return 0;
   }
+
+  // L3 fix: Fast return cached document symbols if astRoot is unchanged
+  if (astRoot == t_cachedSymbolsRoot && changetype<usize>(t_cachedSymbolsBuffer) != 0 && t_cachedSymbolsCount > 0) {
+    t_lspBinaryBuffer.clear();
+    let cLen = t_cachedSymbolsBuffer.length;
+    for (let i: u32 = 0; i < cLen; i++) {
+      t_lspBinaryBuffer.push(t_cachedSymbolsBuffer[i]);
+    }
+    flushBinaryBuffer();
+    return t_cachedSymbolsCount;
+  }
+
   globalAstRoot = astRoot;
 
   let stackTop: u32 = 0;
   t_lspTraverseStack[stackTop] = astRoot;
-  t_lspOffsetStack[stackTop] = 0;
+  t_lspOffsetStack[stackTop] = packOffsetStack(getNodeLeadingPad(astRoot), false, false, false);
   stackTop++;
 
   while (stackTop > 0) {
@@ -1047,7 +1236,7 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
     let type = getNodeType(node);
     let isErrorNode = type == 0;
 
-    let nodeStart = start + pad;
+    let nodeStart = start;
     let nodeEnd = nodeStart + getNodeByteLength(node);
 
     // @ts-ignore
@@ -1076,14 +1265,19 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
 
       ensureTraverseStack(stackTop + childCount);
       let currOffset = nodeStart;
-      let writeIdx = stackTop + childCount - 1;
+      let currChildIdx: i32 = 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
-        let cLen = padVal + getNodeByteLength(child);
-        t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, false, false);
-        writeIdx--;
-        currOffset += cLen;
+        let lenVal = getNodeByteLength(child);
+        if (currChildIdx > 0) {
+          currOffset += padVal;
+        }
+        let childStart = currOffset;
+        let slot = stackTop + (childCount - 1 - currChildIdx);
+        t_lspTraverseStack[slot] = child;
+        t_lspOffsetStack[slot] = packOffsetStack(childStart, isErrorNode || inError, false, false);
+        currOffset = childStart + lenVal;
+        currChildIdx++;
         child = getNodeNextSibling(child);
       }
       stackTop += childCount;
@@ -1092,7 +1286,21 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
 
   lsp_clearVisited();
   flushBinaryBuffer();
-  return t_lspBinaryBuffer.length / 4;
+
+  // L3 fix: Cache computed document symbols
+  if (changetype<usize>(t_cachedSymbolsBuffer) == 0) {
+    t_cachedSymbolsBuffer = createChunkedUint32Array(1024);
+  } else {
+    t_cachedSymbolsBuffer.clear();
+  }
+  let sLen = t_lspBinaryBuffer.length;
+  for (let i: u32 = 0; i < sLen; i++) {
+    t_cachedSymbolsBuffer.push(t_lspBinaryBuffer[i]);
+  }
+  t_cachedSymbolsRoot = astRoot;
+  t_cachedSymbolsCount = sLen / 4;
+
+  return t_cachedSymbolsCount;
 }
 
 export let lspLastNodeOffset: u32 = 0;
@@ -1373,6 +1581,30 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    if (defNode == 0) defNode = node; // If no definition, assume we are on the definition
    
    ensureLspBuffers();
+
+   // L5 fix: Fast path using inverted symbol index across registered documents
+   if (t_refIndexTotalTokens > 0) {
+      let totalEntries = t_refIndexTotalTokens / 5;
+      for (let i: u32 = 0; i < totalEntries; i++) {
+         let base = i * 5;
+         let h = t_refIndexNodes[base + 1];
+         let l = t_refIndexNodes[base + 3];
+         if (h == targetHash && l == targetLen) {
+            let nPtr = t_refIndexNodes[base + 4];
+            let candidateDef = lsp_invokeDefinition(nPtr);
+            if (candidateDef == defNode || candidateDef == 0) {
+               t_lspBinaryBuffer.push(t_refIndexNodes[base]);     // fileId
+               t_lspBinaryBuffer.push(t_refIndexNodes[base + 2]); // start
+               t_lspBinaryBuffer.push(t_refIndexNodes[base + 2] + l); // end
+            }
+         }
+      }
+      if (t_lspBinaryBuffer.length > 0) {
+         flushBinaryBuffer();
+         return t_lspBinaryBuffer.length / 3;
+      }
+   }
+
    let numRoots: u32 = 0;
    let allocCap: u32 = 1024;
    if (changetype<usize>(t_documentRoots) != 0 && t_documentRoots.capacity > allocCap) {
@@ -1570,7 +1802,7 @@ export function lsp_getDiagramData(astRoot: u32): u32 {
 
   let stackTop: u32 = 0;
   t_lspTraverseStack[stackTop] = astRoot;
-  t_lspOffsetStack[stackTop] = 0;
+  t_lspOffsetStack[stackTop] = packOffsetStack(getNodeLeadingPad(astRoot), false, false, false);
   stackTop++;
 
   let recordCount: u32 = 0;
@@ -1591,7 +1823,7 @@ export function lsp_getDiagramData(astRoot: u32): u32 {
     let pad = getNodePadding(node);
     let type = getNodeType(node);
     let isErrorNode = type == 0;
-    let nodeStart = start + pad;
+    let nodeStart = start;
     let nodeLen = getNodeByteLength(node);
     let nodeEnd = nodeStart + nodeLen;
 
@@ -1625,14 +1857,19 @@ export function lsp_getDiagramData(astRoot: u32): u32 {
 
       ensureTraverseStack(stackTop + childCount);
       let currOffset = nodeStart;
-      let writeIdx = stackTop + childCount - 1;
+      let currChildIdx: i32 = 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
-        let cLen = padVal + getNodeByteLength(child);
-        t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, false, false);
-        writeIdx--;
-        currOffset += cLen;
+        let lenVal = getNodeByteLength(child);
+        if (currChildIdx > 0) {
+          currOffset += padVal;
+        }
+        let childStart = currOffset;
+        let slot = stackTop + (childCount - 1 - currChildIdx);
+        t_lspTraverseStack[slot] = child;
+        t_lspOffsetStack[slot] = packOffsetStack(childStart, isErrorNode || inError, false, false);
+        currOffset = childStart + lenVal;
+        currChildIdx++;
         child = getNodeNextSibling(child);
       }
       stackTop += childCount;
@@ -1836,4 +2073,230 @@ export function lsp_getCompletionContext(rootNode: u32, cursorOffset: u32): u32 
   flushBinaryBuffer();
 
   return 4;
+}
+
+// ----------------------------------------------------------------------------
+// Tier 4 Item 14: Changed Ranges Computation (Tree Diffing)
+// ----------------------------------------------------------------------------
+
+function pushCoalescedChangedRange(start: u32, end: u32): void {
+  let len = t_lspBinaryBuffer.length;
+  if (len >= 2) {
+    let lastStart = t_lspBinaryBuffer[len - 2];
+    let lastEnd = t_lspBinaryBuffer[len - 1];
+    // If adjacent or overlapping, merge
+    if (start <= lastEnd) {
+      if (end > lastEnd) {
+        t_lspBinaryBuffer[len - 1] = end;
+      }
+      return;
+    }
+  }
+  t_lspBinaryBuffer.push(start);
+  t_lspBinaryBuffer.push(end);
+}
+
+/**
+ * Compares oldTree and newTree and serializes changed byte ranges into t_lspBinaryBuffer.
+ * Each range is a pair of [startByte, endByte].
+ * Returns the number of changed ranges.
+ */
+export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
+  ensureLspBuffers();
+  t_lspBinaryBuffer.clear();
+
+  if (oldTree == 0 || newTree == 0) {
+    if (newTree != 0) {
+      let pad = getNodePadding(newTree);
+      let len = getNodeByteLength(newTree);
+      t_lspBinaryBuffer.push(pad);
+      t_lspBinaryBuffer.push(pad + len);
+    }
+    flushBinaryBuffer();
+    return t_lspBinaryBuffer.length / 2;
+  }
+
+  if (oldTree == newTree) {
+    flushBinaryBuffer();
+    return 0;
+  }
+
+  let oldMerkle = getNodeMerkleHash(oldTree);
+  let newMerkle = getNodeMerkleHash(newTree);
+  if (oldMerkle != 0 && oldMerkle == newMerkle) {
+    flushBinaryBuffer();
+    return 0;
+  }
+
+  let maxStack: u32 = 2048;
+  let oStack = atomicChunkAlloc(maxStack * 4);
+  let nStack = atomicChunkAlloc(maxStack * 4);
+  let oOffsetStack = atomicChunkAlloc(maxStack * 4);
+  let nOffsetStack = atomicChunkAlloc(maxStack * 4);
+  let sp: u32 = 0;
+
+  store<u32>(oStack, oldTree);
+  store<u32>(nStack, newTree);
+  store<u32>(oOffsetStack, getNodePadding(oldTree));
+  store<u32>(nOffsetStack, getNodePadding(newTree));
+  sp++;
+
+  while (sp > 0) {
+    sp--;
+    let oNode = load<u32>(oStack + (sp << 2));
+    let nNode = load<u32>(nStack + (sp << 2));
+    let oStart = load<u32>(oOffsetStack + (sp << 2));
+    let nStart = load<u32>(nOffsetStack + (sp << 2));
+
+    if (oNode == nNode) continue;
+
+    let oM = getNodeMerkleHash(oNode);
+    let nM = getNodeMerkleHash(nNode);
+    if (oM != 0 && oM == nM) continue;
+
+    let oType = getNodeType(oNode);
+    let nType = getNodeType(nNode);
+    let oLen = getNodeByteLength(oNode);
+    let nLen = getNodeByteLength(nNode);
+
+    let oChild = getNodeFirstChild(oNode);
+    let nChild = getNodeFirstChild(nNode);
+
+    if (oType != nType || oChild == 0 || nChild == 0) {
+      let rStart = nStart < oStart ? nStart : oStart;
+      let oEnd = oStart + oLen;
+      let nEnd = nStart + nLen;
+      let rEnd = nEnd > oEnd ? nEnd : oEnd;
+      pushCoalescedChangedRange(rStart, rEnd);
+      continue;
+    }
+
+    let oChildCount: u32 = 0;
+    let oc = oChild;
+    while (oc != 0) { oChildCount++; oc = getNodeNextSibling(oc); }
+
+    let nChildCount: u32 = 0;
+    let nc = nChild;
+    while (nc != 0) { nChildCount++; nc = getNodeNextSibling(nc); }
+
+    if (oChildCount == nChildCount && sp + oChildCount < maxStack) {
+      let oOffsets = atomicChunkAlloc(oChildCount * 4);
+      let nOffsets = atomicChunkAlloc(nChildCount * 4);
+      let oNodes = atomicChunkAlloc(oChildCount * 4);
+      let nNodes = atomicChunkAlloc(nChildCount * 4);
+
+      let currO = oStart;
+      let curChild = oChild;
+      for (let i: u32 = 0; i < oChildCount; i++) {
+        if (i > 0) currO += getNodePadding(curChild);
+        store<u32>(oOffsets + (i << 2), currO);
+        store<u32>(oNodes + (i << 2), curChild);
+        currO += getNodeByteLength(curChild);
+        curChild = getNodeNextSibling(curChild);
+      }
+
+      let currN = nStart;
+      curChild = nChild;
+      for (let i: u32 = 0; i < nChildCount; i++) {
+        if (i > 0) currN += getNodePadding(curChild);
+        store<u32>(nOffsets + (i << 2), currN);
+        store<u32>(nNodes + (i << 2), curChild);
+        currN += getNodeByteLength(curChild);
+        curChild = getNodeNextSibling(curChild);
+      }
+
+      for (let i: i32 = (oChildCount as i32) - 1; i >= 0; i--) {
+        let oC = load<u32>(oNodes + (i << 2));
+        let nC = load<u32>(nNodes + (i << 2));
+        store<u32>(oStack + (sp << 2), oC);
+        store<u32>(nStack + (sp << 2), nC);
+        store<u32>(oOffsetStack + (sp << 2), load<u32>(oOffsets + (i << 2)));
+        store<u32>(nOffsetStack + (sp << 2), load<u32>(nOffsets + (i << 2)));
+        sp++;
+      }
+    } else {
+      let rStart = nStart < oStart ? nStart : oStart;
+      let oEnd = oStart + oLen;
+      let nEnd = nStart + nLen;
+      let rEnd = nEnd > oEnd ? nEnd : oEnd;
+      pushCoalescedChangedRange(rStart, rEnd);
+    }
+  }
+
+  flushBinaryBuffer();
+  return t_lspBinaryBuffer.length / 2;
+}
+
+// ----------------------------------------------------------------------------
+// Tier 4 Item 12: Semantic Tokens Delta Protocol
+// ----------------------------------------------------------------------------
+
+let t_prevSemanticTokens: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+let t_currentResultId: u32 = 0;
+
+export function lsp_semanticTokens_delta(astRoot: u32, prevResultId: u32): u32 {
+  ensureLspBuffers();
+
+  if (prevResultId == 0 || prevResultId != t_currentResultId || changetype<usize>(t_prevSemanticTokens) == 0 || t_prevSemanticTokens.length == 0) {
+    t_currentResultId++;
+    let numTokens = lsp_semanticTokens_full(astRoot);
+    if (changetype<usize>(t_prevSemanticTokens) == 0) {
+      t_prevSemanticTokens = createChunkedUint32Array(1024);
+    } else {
+      t_prevSemanticTokens.clear();
+    }
+    let totalInts = numTokens * 4;
+    let flatPtr = changetype<usize>(t_lspFlatBinaryBuffer);
+    for (let i: u32 = 0; i < totalInts; i++) {
+      t_prevSemanticTokens.push(load<u32>(flatPtr + (i << 2)));
+    }
+    return 0; // 0 edits signals client to request full
+  }
+
+  let currTokensCount = lsp_semanticTokens_full(astRoot);
+  let currTotalInts = currTokensCount * 4;
+  let prevTotalInts = t_prevSemanticTokens.length;
+  let currFlatPtr = changetype<usize>(t_lspFlatBinaryBuffer);
+
+  let prefixLen: u32 = 0;
+  while (prefixLen < prevTotalInts && prefixLen < currTotalInts) {
+    let pVal = t_prevSemanticTokens[prefixLen];
+    let cVal = load<u32>(currFlatPtr + (prefixLen << 2));
+    if (pVal != cVal) break;
+    prefixLen++;
+  }
+
+  let suffixLen: u32 = 0;
+  while (suffixLen < (prevTotalInts - prefixLen) && suffixLen < (currTotalInts - prefixLen)) {
+    let pVal = t_prevSemanticTokens[prevTotalInts - 1 - suffixLen];
+    let cVal = load<u32>(currFlatPtr + ((currTotalInts - 1 - suffixLen) << 2));
+    if (pVal != cVal) break;
+    suffixLen++;
+  }
+
+  t_lspBinaryBuffer.clear();
+  let deleteCount = prevTotalInts - prefixLen - suffixLen;
+  let insertCount = currTotalInts - prefixLen - suffixLen;
+
+  if (deleteCount > 0 || insertCount > 0) {
+    t_lspBinaryBuffer.push(prefixLen);
+    t_lspBinaryBuffer.push(deleteCount);
+    t_lspBinaryBuffer.push(insertCount);
+    for (let i: u32 = 0; i < insertCount; i++) {
+      t_lspBinaryBuffer.push(load<u32>(currFlatPtr + ((prefixLen + i) << 2)));
+    }
+  }
+
+  t_prevSemanticTokens.clear();
+  for (let i: u32 = 0; i < currTotalInts; i++) {
+    t_prevSemanticTokens.push(load<u32>(currFlatPtr + (i << 2)));
+  }
+  t_currentResultId++;
+
+  flushBinaryBuffer();
+  return (deleteCount > 0 || insertCount > 0) ? 1 : 0;
+}
+
+export function lsp_getSemanticTokensResultId(): u32 {
+  return t_currentResultId;
 }

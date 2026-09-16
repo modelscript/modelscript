@@ -956,3 +956,219 @@ export function saveROM(rom: TrainedROM): string {
 export function loadROM(json: string): TrainedROM {
   return JSON.parse(json) as TrainedROM;
 }
+
+export interface RomCExport {
+  header: string;
+  source: string;
+  functionName: string;
+}
+
+/**
+ * Export a trained ROM to zero-dependency standalone C code (header + source).
+ * Adheres to eFMI principles: zero dynamic memory allocation, static arrays,
+ * bounded execution time, suitable for embedded HIL and hard real-time execution.
+ */
+export function exportROMToC(rom: TrainedROM, functionName = "rom_evaluate"): RomCExport {
+  const nIn = rom.inputNames.length;
+  const nOut = rom.outputNames.length;
+  const prefix = functionName.toUpperCase();
+
+  const headerLines: string[] = [
+    `/* Auto-generated zero-allocation C ROM surrogate by ModelScript */`,
+    `#ifndef ${prefix}_H`,
+    `#define ${prefix}_H`,
+    ``,
+    `#define ${prefix}_N_INPUTS ${nIn}`,
+    `#define ${prefix}_N_OUTPUTS ${nOut}`,
+    ``,
+    `#ifdef __cplusplus`,
+    `extern "C" {`,
+    `#endif`,
+    ``,
+    `/**`,
+    ` * Evaluate the surrogate model with physical inputs and write physical outputs.`,
+    ` * @param in  Array of ${nIn} physical inputs matching: ${rom.inputNames.join(", ")}`,
+    ` * @param out Array of ${nOut} physical outputs matching: ${rom.outputNames.join(", ")}`,
+    ` */`,
+    `void ${functionName}(const double in[${prefix}_N_INPUTS], double out[${prefix}_N_OUTPUTS]);`,
+    ``,
+    `#ifdef __cplusplus`,
+    `}`,
+    `#endif`,
+    ``,
+    `#endif /* ${prefix}_H */`,
+  ];
+
+  const sourceLines: string[] = [
+    `/* Auto-generated zero-allocation C ROM surrogate by ModelScript */`,
+    `#include "${functionName}.h"`,
+    `#include <math.h>`,
+    `#include <string.h>`,
+    ``,
+    `/* Normalization parameters */`,
+    `static const double in_mean[${nIn}] = { ${rom.inputScaling.map((s) => s.mean.toExponential(12)).join(", ")} };`,
+    `static const double in_std[${nIn}] = { ${rom.inputScaling.map((s) => s.std.toExponential(12)).join(", ")} };`,
+    `static const double out_mean[${nOut}] = { ${rom.outputScaling.map((s) => s.mean.toExponential(12)).join(", ")} };`,
+    `static const double out_std[${nOut}] = { ${rom.outputScaling.map((s) => s.std.toExponential(12)).join(", ")} };`,
+    ``,
+  ];
+
+  if (rom.weights.type === "mlp") {
+    const mlp = rom.weights;
+    let maxDim = Math.max(nIn, nOut);
+    for (const layer of mlp.layers) {
+      maxDim = Math.max(maxDim, layer.W.length, layer.W[0]?.length ?? 0);
+    }
+
+    // Emit weights for each layer
+    for (let l = 0; l < mlp.layers.length; l++) {
+      const { W, b } = mlp.layers[l]!;
+      const rows = W.length;
+      const cols = W[0]!.length;
+      sourceLines.push(`/* Layer ${l}: ${rows}x${cols} */`);
+      sourceLines.push(`static const double W_${l}[${rows}][${cols}] = {`);
+      for (let i = 0; i < rows; i++) {
+        sourceLines.push(`  { ${W[i]!.map((v) => v.toExponential(12)).join(", ")} }${i < rows - 1 ? "," : ""}`);
+      }
+      sourceLines.push(`};`);
+      sourceLines.push(`static const double b_${l}[${rows}] = { ${b.map((v) => v.toExponential(12)).join(", ")} };`);
+      sourceLines.push(``);
+    }
+
+    // Activation helper
+    sourceLines.push(`static inline double act_fn(double x) {`);
+    if (mlp.activation === "relu") {
+      sourceLines.push(`  return x > 0.0 ? x : 0.0;`);
+    } else if (mlp.activation === "tanh") {
+      sourceLines.push(`  return tanh(x);`);
+    } else if (mlp.activation === "sigmoid") {
+      sourceLines.push(`  return 1.0 / (1.0 + exp(-x));`);
+    } else if (mlp.activation === "gelu") {
+      sourceLines.push(`  return 0.5 * x * (1.0 + tanh(0.7978845608 * (x + 0.044715 * x * x * x)));`);
+    } else {
+      sourceLines.push(`  return x; /* linear */`);
+    }
+    sourceLines.push(`}`);
+    sourceLines.push(``);
+
+    // Main evaluation function
+    sourceLines.push(`void ${functionName}(const double in[${prefix}_N_INPUTS], double out[${prefix}_N_OUTPUTS]) {`);
+    sourceLines.push(`  double bufA[${maxDim}];`);
+    sourceLines.push(`  double bufB[${maxDim}];`);
+    sourceLines.push(`  double* cur = bufA;`);
+    sourceLines.push(`  double* nxt = bufB;`);
+    sourceLines.push(``);
+    sourceLines.push(`  /* Normalize input */`);
+    sourceLines.push(`  for (int j = 0; j < ${nIn}; j++) {`);
+    sourceLines.push(`    cur[j] = (in[j] - in_mean[j]) / in_std[j];`);
+    sourceLines.push(`  }`);
+    sourceLines.push(``);
+
+    for (let l = 0; l < mlp.layers.length; l++) {
+      const { W } = mlp.layers[l]!;
+      const rows = W.length;
+      const cols = W[0]!.length;
+      const isLast = l === mlp.layers.length - 1;
+
+      sourceLines.push(`  /* Layer ${l} */`);
+      sourceLines.push(`  for (int i = 0; i < ${rows}; i++) {`);
+      sourceLines.push(`    double z = b_${l}[i];`);
+      sourceLines.push(`    for (int j = 0; j < ${cols}; j++) {`);
+      sourceLines.push(`      z += W_${l}[i][j] * cur[j];`);
+      sourceLines.push(`    }`);
+      sourceLines.push(isLast ? `    nxt[i] = z;` : `    nxt[i] = act_fn(z);`);
+      sourceLines.push(`  }`);
+      sourceLines.push(`  { double* tmp = cur; cur = nxt; nxt = tmp; }`);
+      sourceLines.push(``);
+    }
+
+    sourceLines.push(`  /* Denormalize output */`);
+    sourceLines.push(`  for (int k = 0; k < ${nOut}; k++) {`);
+    sourceLines.push(`    out[k] = cur[k] * out_std[k] + out_mean[k];`);
+    sourceLines.push(`  }`);
+    sourceLines.push(`}`);
+  } else if (rom.weights.type === "rbf") {
+    const rbf = rom.weights;
+    const nCenters = rbf.centers.length;
+    sourceLines.push(`static const double rbf_epsilon = ${rbf.epsilon.toExponential(12)};`);
+    sourceLines.push(`static const double rbf_centers[${nCenters}][${nIn}] = {`);
+    for (let c = 0; c < nCenters; c++) {
+      sourceLines.push(
+        `  { ${rbf.centers[c]!.map((v) => v.toExponential(12)).join(", ")} }${c < nCenters - 1 ? "," : ""}`,
+      );
+    }
+    sourceLines.push(`};`);
+    sourceLines.push(`static const double rbf_weights[${nOut}][${nCenters}] = {`);
+    for (let k = 0; k < nOut; k++) {
+      sourceLines.push(`  { ${rbf.weights[k]!.map((v) => v.toExponential(12)).join(", ")} }${k < nOut - 1 ? "," : ""}`);
+    }
+    sourceLines.push(`};`);
+    sourceLines.push(``);
+
+    sourceLines.push(`void ${functionName}(const double in[${prefix}_N_INPUTS], double out[${prefix}_N_OUTPUTS]) {`);
+    sourceLines.push(`  double normIn[${nIn}];`);
+    sourceLines.push(`  double phi[${nCenters}];`);
+    sourceLines.push(`  const double denom = 2.0 * rbf_epsilon * rbf_epsilon;`);
+    sourceLines.push(``);
+    sourceLines.push(`  for (int j = 0; j < ${nIn}; j++) normIn[j] = (in[j] - in_mean[j]) / in_std[j];`);
+    sourceLines.push(``);
+    sourceLines.push(`  for (int c = 0; c < ${nCenters}; c++) {`);
+    sourceLines.push(`    double r2 = 0.0;`);
+    sourceLines.push(`    for (int j = 0; j < ${nIn}; j++) {`);
+    sourceLines.push(`      double d = normIn[j] - rbf_centers[c][j];`);
+    sourceLines.push(`      r2 += d * d;`);
+    sourceLines.push(`    }`);
+    sourceLines.push(`    phi[c] = exp(-r2 / denom);`);
+    sourceLines.push(`  }`);
+    sourceLines.push(``);
+    sourceLines.push(`  for (int k = 0; k < ${nOut}; k++) {`);
+    sourceLines.push(`    double s = 0.0;`);
+    sourceLines.push(`    for (int c = 0; c < ${nCenters}; c++) s += rbf_weights[k][c] * phi[c];`);
+    sourceLines.push(`    out[k] = s * out_std[k] + out_mean[k];`);
+    sourceLines.push(`  }`);
+    sourceLines.push(`}`);
+  } else {
+    // Polynomial
+    const poly = rom.weights;
+    const monomials = generateMonomials(poly.nInputs, poly.degree);
+    const nMonomials = monomials.length;
+
+    sourceLines.push(`static const int poly_monomials[${nMonomials}][${nIn}] = {`);
+    for (let m = 0; m < nMonomials; m++) {
+      sourceLines.push(`  { ${monomials[m]!.join(", ")} }${m < nMonomials - 1 ? "," : ""}`);
+    }
+    sourceLines.push(`};`);
+    sourceLines.push(`static const double poly_coeffs[${nOut}][${nMonomials}] = {`);
+    for (let k = 0; k < nOut; k++) {
+      sourceLines.push(
+        `  { ${poly.coefficients[k]!.map((v) => v.toExponential(12)).join(", ")} }${k < nOut - 1 ? "," : ""}`,
+      );
+    }
+    sourceLines.push(`};`);
+    sourceLines.push(``);
+
+    sourceLines.push(`void ${functionName}(const double in[${prefix}_N_INPUTS], double out[${prefix}_N_OUTPUTS]) {`);
+    sourceLines.push(`  double normIn[${nIn}];`);
+    sourceLines.push(`  for (int j = 0; j < ${nIn}; j++) normIn[j] = (in[j] - in_mean[j]) / in_std[j];`);
+    sourceLines.push(``);
+    sourceLines.push(`  for (int k = 0; k < ${nOut}; k++) {`);
+    sourceLines.push(`    double sum = 0.0;`);
+    sourceLines.push(`    for (int m = 0; m < ${nMonomials}; m++) {`);
+    sourceLines.push(`      double term = poly_coeffs[k][m];`);
+    sourceLines.push(`      for (int j = 0; j < ${nIn}; j++) {`);
+    sourceLines.push(`        int exp = poly_monomials[m][j];`);
+    sourceLines.push(`        for (int p = 0; p < exp; p++) term *= normIn[j];`);
+    sourceLines.push(`      }`);
+    sourceLines.push(`      sum += term;`);
+    sourceLines.push(`    }`);
+    sourceLines.push(`    out[k] = sum * out_std[k] + out_mean[k];`);
+    sourceLines.push(`  }`);
+    sourceLines.push(`}`);
+  }
+
+  return {
+    header: headerLines.join("\n"),
+    source: sourceLines.join("\n"),
+    functionName,
+  };
+}

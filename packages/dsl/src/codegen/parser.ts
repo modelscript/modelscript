@@ -972,10 +972,32 @@ export function generateParserTables(
       "type_field_data",
       "type_is_list",
       "expected_tokens",
+      "MAX_TERMINAL_ID",
+      "inputLength",
+      "setInputLength",
+      "inputEncoding",
+      "setInputEncoding",
+      "getInputBuffer",
+      "ParseHead",
+      "ErrorBranch",
     ]);
     while ((match = regex.exec(codeStr)) !== null) {
       if (!ignoreList.has(match[2])) {
         exports.push(match[2]);
+      }
+    }
+    const reexportRegex = /^export\s+\{([^}]+)\}/gm;
+    let reexportMatch;
+    while ((reexportMatch = reexportRegex.exec(codeStr)) !== null) {
+      const items = reexportMatch[1].split(",");
+      for (const item of items) {
+        const trimmed = item
+          .trim()
+          .split(/\s+as\s+/)[0]
+          .trim();
+        if (trimmed && !ignoreList.has(trimmed) && !exports.includes(trimmed)) {
+          exports.push(trimmed);
+        }
       }
     }
     if (exports.length > 0) {

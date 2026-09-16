@@ -26,6 +26,36 @@ export interface RuntimeAdapter {
   getNodeNextSibling(ptr: number): number;
   getNodeType?(ptr: number): number;
 }
+export interface EditRange {
+  startByte: number;
+  oldEndByte: number;
+  newEndByte: number;
+}
+export interface SemanticTokensEdit {
+  start: number;
+  deleteCount: number;
+  data: number[];
+}
+export interface SemanticTokensDeltaResponse {
+  resultId: number;
+  edits?: SemanticTokensEdit[];
+  fullTokens?: Uint32Array;
+}
+/**
+ * Value-Type Tree Cursor for zero-allocation, re-entrant tree traversals.
+ */
+export declare class WasmTreeCursor {
+  private cursorPtr;
+  private runtime;
+  constructor(runtime: any, rootNode: number);
+  reset(rootNode: number): void;
+  currentNode(): number;
+  currentOffset(): number;
+  depth(): number;
+  gotoFirstChild(): boolean;
+  gotoNextSibling(): boolean;
+  gotoParent(): boolean;
+}
 /**
  * A lightweight wrapper over a parsed AST node pointer.
  * Used internally by the Parser class to traverse the tree.
@@ -318,6 +348,27 @@ export declare class LspFacade {
    * Array layout is: [lineDelta, charDelta, length, typeId] repeating.
    */
   getSemanticTokens(astRoot: number): Uint32Array;
+  /**
+   * Retrieves semantic tokens delta edits (LSP 3.16+ textDocument/semanticTokens/full/delta).
+   */
+  getSemanticTokensDelta(
+    astRoot: number,
+    prevResultId: number,
+  ): SemanticTokensDeltaResponse;
+  /**
+   * Compares oldTree and newTree to compute the precise modified byte spans (ts_tree_get_changed_ranges equivalent).
+   */
+  getChangedRanges(
+    oldTree: number,
+    newTree: number,
+  ): {
+    start: number;
+    end: number;
+  }[];
+  /**
+   * Instantiates a new value-type TreeCursor rooted at rootNode.
+   */
+  createTreeCursor(rootNode: number): WasmTreeCursor;
   /** Retrieves a list of collapsable folding ranges from the parsed syntax tree. */
   getFoldingRanges(astRoot: number): {
     start: Position;
@@ -839,7 +890,7 @@ export declare class LspFacade {
    */
   parse(
     text: string,
-    editStart?: number,
+    editStartOrEdits?: number | EditRange[],
     editOldEnd?: number,
     editNewEnd?: number,
     uri?: string,

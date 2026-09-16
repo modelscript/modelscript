@@ -39,6 +39,17 @@ const inputRtFactor = document.getElementById("input-rt-factor") as HTMLInputEle
 const btnSubmitSession = document.getElementById("btn-submit-session")!;
 const btnCancelSession = document.getElementById("btn-cancel-session")!;
 
+const hilProtocolSelect = document.getElementById("hil-protocol-select") as HTMLSelectElement | null;
+const hilBaudSelect = document.getElementById("hil-baud-select") as HTMLSelectElement | null;
+const hilClockSelect = document.getElementById("hil-clock-select") as HTMLSelectElement | null;
+const hilStatusBadge = document.getElementById("hil-status-badge");
+const hilMetrics = document.getElementById("hil-metrics");
+const btnConnectHardware = document.getElementById("btn-connect-hardware") as HTMLButtonElement | null;
+const btnDisconnectHardware = document.getElementById("btn-disconnect-hardware") as HTMLButtonElement | null;
+const btnPauseCan = document.getElementById("btn-pause-can") as HTMLButtonElement | null;
+const btnClearCan = document.getElementById("btn-clear-can") as HTMLButtonElement | null;
+const canFrameRows = document.getElementById("can-frame-rows");
+
 const errorContainer = document.getElementById("error-container")!;
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
@@ -224,6 +235,26 @@ window.addEventListener("message", (event) => {
     case "cosimWrapperDetected":
       wrapperBanner.classList.toggle("visible", msg.detected as boolean);
       break;
+
+    case "hardwareStatus": {
+      const hStatus = msg as { connected: boolean; baudRate?: number; protocol?: string };
+      if (hStatus.connected) {
+        if (hilStatusBadge) {
+          hilStatusBadge.className = "hil-badge connected";
+          hilStatusBadge.textContent = `● Connected (${hStatus.baudRate ?? 500000} baud)`;
+        }
+        if (btnDisconnectHardware) btnDisconnectHardware.disabled = false;
+        if (btnConnectHardware) btnConnectHardware.disabled = true;
+      } else {
+        if (hilStatusBadge) {
+          hilStatusBadge.className = "hil-badge disconnected";
+          hilStatusBadge.textContent = "● Disconnected";
+        }
+        if (btnDisconnectHardware) btnDisconnectHardware.disabled = true;
+        if (btnConnectHardware) btnConnectHardware.disabled = false;
+      }
+      break;
+    }
 
     case "error":
       showError(msg.message as string);
@@ -495,6 +526,195 @@ function showError(message: string): void {
   errorContainer.appendChild(div);
   setTimeout(() => div.remove(), 8000);
 }
+
+// ── Soft HIL & Real-Time CAN Inspector ──
+
+interface CanFrameLogEntry {
+  timestamp: number;
+  dir: "RX" | "TX";
+  id: string;
+  dlc: number;
+  payload: string;
+  signals: string;
+}
+
+const canRingBuffer: CanFrameLogEntry[] = [];
+const MAX_CAN_BUFFER = 100;
+let isCanPaused = false;
+let totalFrames = 0;
+let fpsCounter = 0;
+let lastFpsTime = performance.now();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let activeSerialPort: any = null;
+
+async function connectWebSerial(): Promise<void> {
+  const nav = navigator as any;
+  if (!nav.serial) {
+    showError("WebSerial API is not supported or accessible in this browser.");
+    return;
+  }
+  try {
+    if (btnConnectHardware) btnConnectHardware.disabled = true;
+    activeSerialPort = await nav.serial.requestPort();
+    const baudRate = parseInt(hilBaudSelect?.value ?? "500000", 10);
+    await activeSerialPort.open({ baudRate });
+
+    if (hilStatusBadge) {
+      hilStatusBadge.className = "hil-badge connected";
+      hilStatusBadge.textContent = `● Connected (${baudRate} baud)`;
+    }
+    if (btnDisconnectHardware) btnDisconnectHardware.disabled = false;
+
+    vscode.postMessage({
+      type: "hardwareConnected",
+      protocol: hilProtocolSelect?.value ?? "slcan",
+      baudRate,
+      portName: "WebSerial Device",
+    });
+
+    void readSerialStream(activeSerialPort);
+  } catch (err: any) {
+    showError(`Failed to connect serial device: ${err.message || err}`);
+    if (btnConnectHardware) btnConnectHardware.disabled = false;
+  }
+}
+
+async function disconnectWebSerial(): Promise<void> {
+  if (activeSerialPort) {
+    try {
+      await activeSerialPort.close();
+    } catch {}
+    activeSerialPort = null;
+  }
+  if (hilStatusBadge) {
+    hilStatusBadge.className = "hil-badge disconnected";
+    hilStatusBadge.textContent = "● Disconnected";
+  }
+  if (btnConnectHardware) btnConnectHardware.disabled = false;
+  if (btnDisconnectHardware) btnDisconnectHardware.disabled = true;
+
+  vscode.postMessage({ type: "hardwareDisconnected" });
+}
+
+async function readSerialStream(port: any): Promise<void> {
+  while (port.readable && activeSerialPort === port) {
+    const reader = port.readable.getReader();
+    try {
+      const decoder = new TextDecoder();
+      let lineBuffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          lineBuffer += decoder.decode(value, { stream: true });
+          const lines = lineBuffer.split(/\r?\n/);
+          lineBuffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            processIncomingSerialLine(line.trim());
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn("Serial read loop terminated:", err.message);
+      break;
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {}
+    }
+  }
+}
+
+function processIncomingSerialLine(line: string): void {
+  totalFrames++;
+  fpsCounter++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) {
+    const fps = Math.round((fpsCounter * 1000) / (now - lastFpsTime));
+    fpsCounter = 0;
+    lastFpsTime = now;
+    if (hilMetrics) {
+      hilMetrics.textContent = `${totalFrames} frames | ${fps} fps`;
+    }
+  }
+
+  let idStr = "---";
+  let dlc = 0;
+  let payloadHex = line;
+  const decodedSignals = "";
+
+  if (line.startsWith("t") && line.length >= 5) {
+    idStr = "0x" + line.substring(1, 4).toUpperCase();
+    dlc = parseInt(line.charAt(4), 10) || 0;
+    payloadHex = line.substring(5);
+  } else if (line.startsWith("T") && line.length >= 10) {
+    idStr = "0x" + line.substring(1, 9).toUpperCase();
+    dlc = parseInt(line.charAt(9), 10) || 0;
+    payloadHex = line.substring(10);
+  }
+
+  if (canRingBuffer.length >= MAX_CAN_BUFFER) {
+    canRingBuffer.shift();
+  }
+  canRingBuffer.push({
+    timestamp: Math.round(now),
+    dir: "RX",
+    id: idStr,
+    dlc,
+    payload: payloadHex,
+    signals: decodedSignals,
+  });
+
+  if (!isCanPaused) {
+    renderCanMonitor();
+  }
+}
+
+function renderCanMonitor(): void {
+  if (!canFrameRows) return;
+  if (canRingBuffer.length === 0) {
+    canFrameRows.innerHTML =
+      '<tr><td colspan="5" style="text-align: center; opacity: 0.5; padding: 12px 0;">No traffic on bus</td></tr>';
+    return;
+  }
+  const rows = canRingBuffer
+    .slice(-20)
+    .reverse()
+    .map((entry) => {
+      const dirClass = entry.dir === "RX" ? "can-dir-rx" : "can-dir-tx";
+      return `
+      <tr style="border-bottom: 1px solid var(--vscode-widget-border);">
+        <td style="padding: 2px 4px;" class="${dirClass}">${entry.dir}</td>
+        <td style="padding: 2px 4px; font-weight: 600;">${escapeHtmlCosim(entry.id)}</td>
+        <td style="padding: 2px 4px;">${entry.dlc}</td>
+        <td style="padding: 2px 4px; font-family: monospace;">${escapeHtmlCosim(entry.payload)}</td>
+        <td style="padding: 2px 4px; opacity: 0.9;">${escapeHtmlCosim(entry.signals)}</td>
+      </tr>
+    `;
+    });
+  canFrameRows.innerHTML = rows.join("");
+}
+
+btnConnectHardware?.addEventListener("click", () => {
+  void connectWebSerial();
+});
+
+btnDisconnectHardware?.addEventListener("click", () => {
+  void disconnectWebSerial();
+});
+
+btnClearCan?.addEventListener("click", () => {
+  canRingBuffer.length = 0;
+  totalFrames = 0;
+  if (hilMetrics) hilMetrics.textContent = "0 frames | 0 fps";
+  renderCanMonitor();
+});
+
+btnPauseCan?.addEventListener("click", () => {
+  isCanPaused = !isCanPaused;
+  if (btnPauseCan) btnPauseCan.textContent = isCanPaused ? "Resume" : "Pause";
+});
 
 // ── Initial setup: auto-enable local mode ──
 

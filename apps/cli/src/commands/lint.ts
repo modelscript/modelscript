@@ -13,30 +13,37 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandModule } from "yargs";
 
+import { LanguageResolver } from "../util/language-registry.js";
+
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface LintArgs {
   path: string;
   paths: string[] | undefined;
+  language?: string;
 }
 
-function findPolyglotFiles(dir: string, fileList: string[] = []) {
+function findPolyglotFiles(dir: string, fileList: string[] = [], recognizedExts: Set<string>) {
   if (!fs.existsSync(dir)) return fileList;
   const stat = fs.statSync(dir);
-  if (stat.isFile() && (dir.endsWith(".mo") || dir.endsWith(".sysml"))) {
-    fileList.push(dir);
+  if (stat.isFile()) {
+    const ext = path.extname(dir).toLowerCase();
+    if (recognizedExts.has(ext)) {
+      fileList.push(dir);
+    }
   } else if (stat.isDirectory()) {
     for (const file of fs.readdirSync(dir)) {
-      findPolyglotFiles(path.join(dir, file), fileList);
+      if (["node_modules", "dist", ".git", "build"].includes(file)) continue;
+      findPolyglotFiles(path.join(dir, file), fileList, recognizedExts);
     }
   }
   return fileList;
 }
 
-export const Lint: CommandModule<{}, LintArgs> = {
+export const Lint: CommandModule<any, any> = {
   command: "lint <path> [paths...]",
-  describe: "Lint a Polyglot library using the QueryEngine",
+  describe: "Lint polyglot libraries using QueryEngine and DSL parsers",
   builder: (yargs) => {
     return yargs
       .positional("path", {
@@ -49,27 +56,46 @@ export const Lint: CommandModule<{}, LintArgs> = {
         demandOption: false,
         description: "additional paths of libraries and modules to load",
         type: "string",
+      })
+      .option("language", {
+        alias: "l",
+        description: "Filter to specific language (e.g. modelica, sysml2, scad)",
+        type: "string",
       });
   },
   handler: async (args) => {
     const u = new UnifiedWorkspace();
     const modelicaItems: { uri: string; text: string }[] = [];
     const sysmlItems: { uri: string; text: string }[] = [];
+    const genericItems: { uri: string; text: string; langName: string }[] = [];
 
     const allPaths = [args.path, ...(args.paths ?? [])];
     const files = new Set<string>();
 
+    let recognizedExts: Set<string>;
+    if (args.language) {
+      const resolved = await LanguageResolver.resolve(undefined, args.language);
+      recognizedExts = new Set(resolved.manifest.extensions.map((e) => e.toLowerCase()));
+    } else {
+      recognizedExts = new Set(LanguageResolver.getAllExtensions().map((e) => e.toLowerCase()));
+    }
+
     for (const p of allPaths) {
-      const found = findPolyglotFiles(path.resolve(p));
+      const found = findPolyglotFiles(path.resolve(p), [], recognizedExts);
       for (const f of found) files.add(f);
     }
 
     for (const file of files) {
       const content = fs.readFileSync(file, "utf-8");
-      if (file.endsWith(".mo")) {
+      if (file.endsWith(".mo") || file.endsWith(".mos") || file.endsWith(".msim")) {
         modelicaItems.push({ uri: `file://${file}`, text: content });
       } else if (file.endsWith(".sysml")) {
         sysmlItems.push({ uri: `file://${file}`, text: content });
+      } else {
+        try {
+          const lang = await LanguageResolver.resolve(file);
+          genericItems.push({ uri: `file://${file}`, text: content, langName: lang.manifest.name });
+        } catch {}
       }
     }
 
@@ -151,6 +177,36 @@ export const Lint: CommandModule<{}, LintArgs> = {
       diagnostics.push(...diagsS);
     }
 
+    for (const item of genericItems) {
+      try {
+        const lang = await LanguageResolver.resolve(item.uri);
+        const { parser } = await lang.loadParser();
+        const tree = parser.parse(item.text);
+        if (tree?.rootNode?.hasError && tree.rootNode.hasError()) {
+          const filePath = item.uri.replace("file://", "");
+          diagnostics.push({
+            severity: "error",
+            lintName: "syntax-error",
+            message: `Syntax errors detected in ${lang.manifest.name} document`,
+            symbolId: null,
+            resourceId: filePath,
+            startByte: 0,
+            endByte: item.text.length,
+          });
+        }
+      } catch (e: any) {
+        diagnostics.push({
+          severity: "error",
+          lintName: "parser-failure",
+          message: e.message,
+          symbolId: null,
+          resourceId: item.uri.replace("file://", ""),
+          startByte: 0,
+          endByte: 0,
+        });
+      }
+    }
+
     if (diagnostics.length === 0) {
       console.log("No diagnostics found.");
       return;
@@ -158,10 +214,10 @@ export const Lint: CommandModule<{}, LintArgs> = {
 
     for (const d of diagnostics) {
       let entry = null;
-      if (engineM) entry = engineM.toQueryDB().symbol(d.symbolId);
-      if (!entry && engineS) entry = engineS.toQueryDB().symbol(d.symbolId);
+      if (engineM && d.symbolId) entry = engineM.toQueryDB().symbol(d.symbolId);
+      if (!entry && engineS && d.symbolId) entry = engineS.toQueryDB().symbol(d.symbolId);
 
-      const resource = entry?.resourceId ? entry.resourceId.replace("file://", "") : "unknown";
+      const resource = d.resourceId ?? (entry?.resourceId ? entry.resourceId.replace("file://", "") : "unknown");
       console.log(`[${resource}:${d.startByte}-${d.endByte}] ${d.severity}: [${d.lintName}] ${d.message}`);
     }
 

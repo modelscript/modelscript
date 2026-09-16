@@ -1006,12 +1006,36 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return existed;
   }
 
+  private static languageExtensionMap = new Map<string, string>([
+    [".sysml", "sysml2"],
+    [".mo", "modelica"],
+    [".msim", "modelica"],
+    [".mos", "modelica"],
+    [".step", "step"],
+    [".stp", "step"],
+    [".p21", "step"],
+    [".owl", "owl2"],
+    [".ttl", "owl2"],
+    [".ofn", "owl2"],
+    [".rdf", "owl2"],
+    [".csv", "csv"],
+    [".scad", "scad"],
+  ]);
+
+  static registerLanguageExtension(ext: string, lang: string): void {
+    const normalized = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+    UnifiedWorkspace.languageExtensionMap.set(normalized, lang.toLowerCase());
+  }
+
+  registerLanguageExtension(ext: string, lang: string): void {
+    UnifiedWorkspace.registerLanguageExtension(ext, lang);
+  }
+
   detectLanguage(uri: string): string | undefined {
-    if (uri.endsWith(".sysml")) return "sysml2";
-    if (uri.endsWith(".mo") || uri.endsWith(".msim")) return "modelica";
-    if (uri.endsWith(".step") || uri.endsWith(".stp")) return "step";
-    if (uri.endsWith(".owl") || uri.endsWith(".ttl") || uri.endsWith(".rdf")) return "owl2";
-    if (uri.endsWith(".csv")) return "csv";
+    const ext = uri.includes(".") ? `.${uri.split(".").pop()?.toLowerCase()}` : "";
+    if (UnifiedWorkspace.languageExtensionMap.has(ext)) {
+      return UnifiedWorkspace.languageExtensionMap.get(ext);
+    }
     return undefined;
   }
 

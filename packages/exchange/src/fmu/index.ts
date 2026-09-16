@@ -3,6 +3,7 @@
 export * from "./ad-codegen.js";
 export * from "./archive.js";
 export * from "./compile-wasm.js";
+export * from "./fmi-ls-bus.js";
 export * from "./fmi.js";
 export * from "./fmi3.js";
 export * from "./fmu-as-codegen.js";
@@ -22,6 +23,7 @@ export {
 } from "./model-description.js";
 export * from "./rom-wasm-codegen.js";
 export * from "./solver-options.js";
+export * from "./standalone-codegen.js";
 export * from "./storage.js";
 export * from "./sundials-codegen.js";
 export * from "./transpiler-utils.js";

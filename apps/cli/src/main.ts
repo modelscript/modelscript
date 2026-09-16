@@ -12,11 +12,13 @@ import { Cosim } from "./commands/cosim.js";
 import { BuildCSG } from "./commands/csg.js";
 import { Diff } from "./commands/diff.js";
 import { Fmu } from "./commands/fmu.js";
+import { Format } from "./commands/format.js";
 import { Generate } from "./commands/generate.js";
 import { Grad } from "./commands/grad.js";
 import { I18n } from "./commands/i18n.js";
 import { Init } from "./commands/init.js";
 import { Instantiate } from "./commands/instantiate.js";
+import { Language } from "./commands/language.js";
 import { Lint } from "./commands/lint.js";
 import { Login } from "./commands/login.js";
 import { Logout } from "./commands/logout.js";
@@ -32,6 +34,7 @@ import { ReqIf } from "./commands/reqif.js";
 import { Sandbox } from "./commands/sandbox.js";
 import { Simulate } from "./commands/simulate.js";
 import { Surrogate } from "./commands/surrogate.js";
+import { Unparse } from "./commands/unparse.js";
 import { Unpublish } from "./commands/unpublish.js";
 import { Verify } from "./commands/verify.js";
 
@@ -55,6 +58,8 @@ yargs(process.argv.slice(2))
   .command(Cosim)
   // Verification, Linting & Translation
   .command(Lint)
+  .command(Format)
+  .command(Unparse)
   .command(Diff)
   .command(Render)
   .command(I18n)
@@ -66,6 +71,7 @@ yargs(process.argv.slice(2))
   .command(Build)
   .command(Generate)
   .command(Parse)
+  .command(Language)
   .command(Lsp)
   .command(Playground)
   .command(Sandbox)

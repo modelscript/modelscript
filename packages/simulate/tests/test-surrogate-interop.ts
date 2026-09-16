@@ -3,6 +3,7 @@
 import { FmuSubsystemRegistry, OnnxFmuSubsystem } from "@modelscript/runtime";
 import {
   evaluateROM,
+  exportROMToC,
   exportROMToONNX,
   exportROMToPyTorch,
   loadROM,
@@ -133,6 +134,26 @@ async function main() {
     throw new Error(`OnnxFmuSubsystem output mismatch: ${outVal} vs ${pred[0]}`);
   }
   console.log(`  ✔ OnnxFmuSubsystem evaluated output correctly: ${outVal.toFixed(4)}`);
+
+  // 7. Test Zero-Allocation C Code Generation (eFMI / Embedded HIL)
+  console.log("\n6. Testing Zero-Allocation C ROM Code Generation (exportROMToC)...");
+  const cExport = exportROMToC(rom, "decay_rom_eval");
+  if (!cExport.header.includes("#define DECAY_ROM_EVAL_N_INPUTS 2")) {
+    throw new Error("Missing DECAY_ROM_EVAL_N_INPUTS in generated C header");
+  }
+  if (!cExport.header.includes("#define DECAY_ROM_EVAL_N_OUTPUTS 1")) {
+    throw new Error("Missing DECAY_ROM_EVAL_N_OUTPUTS in generated C header");
+  }
+  if (!cExport.source.includes("void decay_rom_eval(")) {
+    throw new Error("Missing function definition in generated C source");
+  }
+  if (!cExport.source.includes("static const double W_0")) {
+    throw new Error("Missing static weight array W_0 in generated C source");
+  }
+  if (cExport.source.includes("malloc") || cExport.source.includes("free")) {
+    throw new Error("Zero-allocation violation: malloc or free found in generated C ROM code");
+  }
+  console.log("  ✔ Standalone C code generated with zero dynamic memory allocation");
 
   console.log("\nAll Surrogate ROM & ONNX Interop tests PASSED!");
 }

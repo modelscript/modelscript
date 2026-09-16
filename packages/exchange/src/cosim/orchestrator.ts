@@ -155,7 +155,7 @@ export class Orchestrator {
           const outputs = await p.getOutputs();
           const map: Record<string, number | string | boolean> = {};
           outputs.forEach((value, key) => {
-            map[key] = value;
+            map[key] = value instanceof Uint8Array ? Buffer.from(value).toString("base64") : value;
           });
           stepOutputs[p.id] = map;
         }
@@ -172,9 +172,13 @@ export class Orchestrator {
           // Publish individual variable values for each participant
           for (const p of participants) {
             const outputs = await p.getOutputs();
+            const safeBatch: Record<string, number | string | boolean> = {};
+            outputs.forEach((v, k) => {
+              safeBatch[k] = v instanceof Uint8Array ? Buffer.from(v).toString("base64") : v;
+            });
             this.mqttClient.publishVariableBatch(this.session.sessionId, p.id, {
               time: t + effectiveH,
-              values: Object.fromEntries(outputs),
+              values: safeBatch,
             });
           }
         }
@@ -269,7 +273,7 @@ export class Orchestrator {
     h: number,
   ): Promise<void> {
     // Collect all current outputs
-    const allOutputs = new Map<string, Map<string, number | string | boolean>>();
+    const allOutputs = new Map<string, Map<string, CosimValue>>();
     for (const p of participants) {
       const outputs = await p.getOutputs();
       allOutputs.set(p.id, outputs);
@@ -303,7 +307,7 @@ export class Orchestrator {
     h: number,
   ): Promise<void> {
     // Collect all outputs from previous step (before any stepping)
-    const allOutputs = new Map<string, Map<string, number | string | boolean>>();
+    const allOutputs = new Map<string, Map<string, CosimValue>>();
     for (const p of participants) {
       const outputs = await p.getOutputs();
       allOutputs.set(p.id, outputs);
@@ -360,7 +364,7 @@ export class Orchestrator {
     await this.stepGaussSeidel(participants, coupling, t, h);
 
     // Collect full-step outputs
-    const fullStepOutputs = new Map<string, Map<string, number | string | boolean>>();
+    const fullStepOutputs = new Map<string, Map<string, CosimValue>>();
     for (const p of participants) {
       fullStepOutputs.set(p.id, await p.getOutputs());
     }
@@ -379,7 +383,7 @@ export class Orchestrator {
     await this.stepGaussSeidel(participants, coupling, t + halfH, halfH);
 
     // Collect half-step outputs
-    const halfStepOutputs = new Map<string, Map<string, number | string | boolean>>();
+    const halfStepOutputs = new Map<string, Map<string, CosimValue>>();
     for (const p of participants) {
       halfStepOutputs.set(p.id, await p.getOutputs());
     }

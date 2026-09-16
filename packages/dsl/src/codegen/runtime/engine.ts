@@ -186,6 +186,10 @@ export function initStaticTables(): void {
 export let errorCount: i32 = 0;
 export let t_errorStarts: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let t_errorEnds: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_errorArg0: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_errorArg1: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_errorArg2: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_errorArg3: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 export const MAX_ERRORS: i32 = 10000;
 export const MAX_PARALLEL_HEADS: u32 = 32;
@@ -305,14 +309,22 @@ export function getErrorEnd(index: i32): u32 {
  * @param start The absolute byte offset of the syntax error start.
  * @param end The absolute byte offset of the syntax error end.
  */
-export function reportGlobalError(start: u32, end: u32): void {
+export function reportGlobalError(start: u32, end: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
   if (changetype<u32>(t_errorStarts) == 0) {
     t_errorStarts = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
     t_errorEnds = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
+    t_errorArg0 = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
+    t_errorArg1 = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
+    t_errorArg2 = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
+    t_errorArg3 = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
   }
   if (errorCount < MAX_ERRORS) {
     t_errorStarts[errorCount] = start;
     t_errorEnds[errorCount] = end;
+    t_errorArg0[errorCount] = arg0;
+    t_errorArg1[errorCount] = arg1;
+    t_errorArg2[errorCount] = arg2;
+    t_errorArg3[errorCount] = arg3;
     errorCount++;
   }
 }
@@ -324,15 +336,27 @@ export class DiagnosticNode {
   end: u32;
   tokenType: u32;
   arg0: u32;
+  arg1: u32;
+  arg2: u32;
 }
 
-export function pushDiagnostic(tailPtr: u32, start: u32, end: u32, tokenType: u32 = 0, arg0: u32 = 0): u32 {
+export function pushDiagnostic(
+  tailPtr: u32,
+  start: u32,
+  end: u32,
+  tokenType: u32 = 0,
+  arg0: u32 = 0,
+  arg1: u32 = 0,
+  arg2: u32 = 0
+): u32 {
   let node = changetype<DiagnosticNode>(allocGen0(offsetof<DiagnosticNode>()));
   node.next = tailPtr;
   node.start = start;
   node.end = end;
   node.tokenType = tokenType;
   node.arg0 = arg0;
+  node.arg1 = arg1;
+  node.arg2 = arg2;
   return changetype<u32>(node);
 }
 
@@ -355,8 +379,54 @@ export function commitDiagnostics(tailPtr: u32): void {
 
   for (let i = 0; i < count; i++) {
     let n = changetype<DiagnosticNode>(arr[i]);
-    reportGlobalError(n.start, n.end);
+    reportGlobalError(n.start, n.end, n.arg0, n.tokenType, n.arg1, n.arg2);
   }
+}
+
+export function getExpectedTokensForState(state: i32, depth: i32 = 0): u64 {
+  if (depth > 2 || state < 0 || state >= action_offsets.length) return 0;
+  let gOffset = action_offsets[state];
+  if (gOffset < 0 || gOffset >= action_data.length) return 0;
+  let actionCount = action_data[gOffset];
+  let idx = gOffset + 1;
+  let first: u32 = 0;
+  let second: u32 = 0;
+  for (let j = 0; j < actionCount; j++) {
+    let sym = action_data[idx++];
+    let actCount = action_data[idx++];
+    if (sym > 0 && sym <= (MAX_TERMINAL_ID as i32)) {
+      if (first == 0) {
+        first = sym as u32;
+      } else if (second == 0 && (sym as u32) != first) {
+        second = sym as u32;
+      }
+    } else if (sym == 0 && first == 0 && depth < 2) {
+      for (let na = 0; na < actCount; na++) {
+        let aType = action_data[idx + na * 2];
+        let aTarget = action_data[idx + na * 2 + 1];
+        if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lhs.length) {
+          let lhs = prod_lhs[aTarget];
+          let gotoOffset = goto_offsets[state];
+          if (gotoOffset >= 0 && gotoOffset < goto_data.length) {
+            let gCount = goto_data[gotoOffset];
+            let gIdx = gotoOffset + 1;
+            for (let k = 0; k < gCount; k++) {
+              if (goto_data[gIdx++] == lhs) {
+                let nextSt = goto_data[gIdx++];
+                let subExp = getExpectedTokensForState(nextSt, depth + 1);
+                if (subExp != 0) {
+                  return subExp;
+                }
+                break;
+              } else gIdx++;
+            }
+          }
+        }
+      }
+    }
+    idx += actCount * 2;
+  }
+  return ((first as u64) | ((second as u64) << 32));
 }
 
 

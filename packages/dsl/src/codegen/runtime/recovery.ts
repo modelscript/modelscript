@@ -31,6 +31,7 @@ import {
   token_string_offsets,
   token_string_bytes,
   prod_is_list,
+  getExpectedTokensForState,
 } from "./engine";
 import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength } from "./parser-loop";
 import {
@@ -290,7 +291,8 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         }
         let errLen = diagEnd > diagStart ? diagEnd - diagStart : 1;
         let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
-        let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd, token as u32, 2);
+        let exp = getExpectedTokensForState(ancState);
+        let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd, token as u32, 2, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
 
         let targetNode = errNode;
         let parentHead: ParseHead | null = anc;
@@ -342,25 +344,34 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   
   let childTokType = (token == TOKEN_UNKNOWN || token == -1 ? NODE_TYPE_ERROR : token) as u16;
   let tNode = head.errorNode;
+  let lastChild = head.errorLastChild;
   if (tNode == 0) {
     tNode = allocNode(NODE_TYPE_ERROR, pad, tLen, 0, false);
     setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
     let childLeaf = allocNode(childTokType, 0, tLen, 0, false);
     setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
     setFirstChild(tNode, childLeaf);
+    lastChild = childLeaf;
   } else {
     let prevByteLen = getNodeByteLength(tNode);
     setNodeByteLength(tNode, prevByteLen + pad + tLen);
     let childLeaf = allocNode(childTokType, pad, tLen, 0, false);
     setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
-    let curr = getNodeFirstChild(tNode);
-    if (curr == 0) {
-      setFirstChild(tNode, childLeaf);
+    if (lastChild != 0) {
+      setNextSibling(lastChild, childLeaf);
+      lastChild = childLeaf;
     } else {
-      while (getNodeNextSibling(curr) != 0) {
-        curr = getNodeNextSibling(curr);
+      let curr = getNodeFirstChild(tNode);
+      if (curr == 0) {
+        setFirstChild(tNode, childLeaf);
+        lastChild = childLeaf;
+      } else {
+        while (getNodeNextSibling(curr) != 0) {
+          curr = getNodeNextSibling(curr);
+        }
+        setNextSibling(curr, childLeaf);
+        lastChild = childLeaf;
       }
-      setNextSibling(curr, childLeaf);
     }
   }
 
@@ -368,7 +379,8 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let newPos = nextPos > pos ? nextPos : pos + 1;
   let diagStart = srcLexPos;
   let diagEnd = srcLexPos + tLen;
-  let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, childTokType as u32, 2);
+  let exp = getExpectedTokensForState(head.state);
+  let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, childTokType as u32, 2, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
 
   let hasNl = false;
   let pNl = nextPos;
@@ -403,7 +415,8 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     head.summaryPtr,
     head.summaryCount,
     0,
-    tNode
+    tNode,
+    lastChild
   );
   pushNextHead(changetype<u32>(skippedHead));
 }
@@ -468,9 +481,9 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
     return 0; // Perfect combined split-word typo match!
   }
 
+  if (matchChars == 0) return 999999;
   let delta = kwLen > matchChars ? (kwLen - matchChars) : 0;
   let penalty: i32 = (delta as i32) * 15;
-  if (matchChars == 0) penalty += 80;
   return penalty;
 }
 
@@ -570,7 +583,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
           let diagStart = srcLexPos;
           let diagEnd = srcLexPos + (lexLen > 0 ? lexLen : 1);
-          let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestRep as u32, 1);
+          let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestRep as u32, 1, bestRep as u32, 0);
 
           let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
           let insHead = allocParseHead(
@@ -651,7 +664,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
             let diagStart = curSrcLexPos;
             let diagEnd = curSrcLexPos + curTLen;
-            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 2);
+            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 2, sym as u32, 0);
 
             let substHead = allocParseHead(
               aTarget,
@@ -683,7 +696,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
             let diagStart = curSrcLexPos;
             let diagEnd = curSrcLexPos + curTLen;
-            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 1);
+            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 1, sym as u32, 0);
 
             let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
             let insHead = allocParseHead(
@@ -749,7 +762,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
     let diagStart = curSrcLexPos;
     let diagEnd = curSrcLexPos + bestSubstSpan;
-    let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestSubstSym as u32, 2);
+    let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestSubstSym as u32, 2, bestSubstSym as u32, 0);
 
     let substHead = allocParseHead(
       bestSubstResolvedHead.state,

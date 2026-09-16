@@ -9,9 +9,9 @@
 
 /**
  * Value type for co-simulation variable exchange.
- * Supports all FMI 2.0 scalar types: Real, Integer, Boolean, String.
+ * Supports FMI 2.0/3.0 scalar types: Real, Integer, Boolean, String, and Binary (Uint8Array).
  */
-export type CosimValue = number | string | boolean;
+export type CosimValue = number | string | boolean | Uint8Array;
 
 /** A single variable coupling: one output feeds one input. */
 export interface VariableCoupling {
