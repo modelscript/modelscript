@@ -35,6 +35,7 @@ import {
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../src-gen/bindings.js";
 import { ModelicaPortBalancer } from "./connections.js";
+import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "./errors.js";
 import { isPredefinedType } from "./predefined-types.js";
 import { getShortClassSpecifierNode } from "./queries.js";
@@ -2703,6 +2704,160 @@ export class ModelicaFlattener {
   private pendingArrayBindings = new Map<string, { lhsExprId: number; rhsExprId: number }[]>();
   currentImports = new Map<string, string>();
 
+  private extractClassAnnotations(dae: DAEBuilder, classId: SymbolId): void {
+    const cst = this.db.cstNode(classId) as any;
+    if (!cst) return;
+
+    const evaluator = new AnnotationEvaluator(this.db as any);
+
+    // 1. Experiment annotation (Modelica 3.7 / MCP-0036)
+    const exp = evaluator.evaluate(cst, "experiment");
+    if (exp) {
+      if (exp.StartTime !== undefined || exp.startTime !== undefined) {
+        dae.experiment.startTime = Number(exp.StartTime ?? exp.startTime);
+      }
+      if (exp.StopTime !== undefined || exp.stopTime !== undefined) {
+        dae.experiment.stopTime = Number(exp.StopTime ?? exp.stopTime);
+      }
+      if (exp.Tolerance !== undefined || exp.tolerance !== undefined) {
+        dae.experiment.tolerance = Number(exp.Tolerance ?? exp.tolerance);
+      }
+      if (exp.Interval !== undefined || exp.interval !== undefined) {
+        dae.experiment.interval = Number(exp.Interval ?? exp.interval);
+      }
+      if (exp.NumberOfIntervals !== undefined || exp.numberOfIntervals !== undefined) {
+        dae.experiment.numberOfIntervals = Number(exp.NumberOfIntervals ?? exp.numberOfIntervals);
+      }
+      if (exp.Algorithm !== undefined || exp.algorithm !== undefined) {
+        dae.experiment.algorithm = String(exp.Algorithm ?? exp.algorithm);
+      }
+      if (exp.EquidistantOutput !== undefined || exp.equidistantOutput !== undefined) {
+        dae.experiment.__modelscript_equidistantOutput = Boolean(exp.EquidistantOutput ?? exp.equidistantOutput);
+      }
+    }
+
+    // 2. WebGPU
+    const gpu = evaluator.evaluate(cst, "webgpu");
+    if (gpu) {
+      dae.extensionMetadata.webgpu = {
+        workgroupSize: gpu.workgroupSize ? Number(gpu.workgroupSize) : undefined,
+        precision: gpu.precision ? String(gpu.precision) : undefined,
+        parallelInstances: gpu.parallelInstances ? Number(gpu.parallelInstances) : undefined,
+      };
+    }
+
+    // 3. AudioClock
+    const audio = evaluator.evaluate(cst, "audioclock");
+    if (audio) {
+      dae.extensionMetadata.audioClock = {
+        sampleRate: audio.sampleRate ? Number(audio.sampleRate) : undefined,
+        targetHz: audio.targetHz ? Number(audio.targetHz) : undefined,
+        realtimeFactor: audio.realtimeFactor ? Number(audio.realtimeFactor) : undefined,
+      };
+    }
+
+    // 4. SDE
+    const sde = evaluator.evaluate(cst, "sde");
+    if (sde) {
+      dae.extensionMetadata.sde = {
+        method: sde.method ? String(sde.method) : undefined,
+        ensemblePaths: sde.ensemblePaths ? Number(sde.ensemblePaths) : undefined,
+        seed: sde.seed ? Number(sde.seed) : undefined,
+      };
+    }
+
+    // 5. BVP
+    const bvp = evaluator.evaluate(cst, "bvp");
+    if (bvp) {
+      dae.extensionMetadata.bvp = {
+        boundaryConditions: Array.isArray(bvp.boundaryConditions) ? bvp.boundaryConditions.map(String) : undefined,
+        method: bvp.method ? String(bvp.method) : undefined,
+        intervals: bvp.intervals ? Number(bvp.intervals) : undefined,
+      };
+    }
+
+    // 6. Surrogate
+    const surrogate = evaluator.evaluate(cst, "surrogate");
+    if (surrogate) {
+      if (!dae.extensionMetadata.surrogate) dae.extensionMetadata.surrogate = new Map();
+      dae.extensionMetadata.surrogate.set("model", {
+        architecture: surrogate.architecture ? String(surrogate.architecture) : undefined,
+        datasetUri: surrogate.datasetUri ? String(surrogate.datasetUri) : undefined,
+        errorTolerance: surrogate.errorTolerance ? Number(surrogate.errorTolerance) : undefined,
+      });
+    }
+
+    // 7. FEAMesh
+    const fea = evaluator.evaluate(cst, "feamesh");
+    if (fea) {
+      if (!dae.extensionMetadata.feaMesh) dae.extensionMetadata.feaMesh = [];
+      dae.extensionMetadata.feaMesh.push({
+        cadUri: fea.cadUri ? String(fea.cadUri) : undefined,
+        meshType: fea.meshType ? String(fea.meshType) : undefined,
+        material: fea.material ? String(fea.material) : undefined,
+        loadConnector: fea.loadConnector ? String(fea.loadConnector) : undefined,
+        feedbackDeflection: fea.feedbackDeflection ? String(fea.feedbackDeflection) : undefined,
+      });
+    }
+
+    // 8. CFDFlow
+    const cfd = evaluator.evaluate(cst, "cfdflow");
+    if (cfd) {
+      if (!dae.extensionMetadata.cfdFlow) dae.extensionMetadata.cfdFlow = [];
+      dae.extensionMetadata.cfdFlow.push({
+        grid: Array.isArray(cfd.grid) ? cfd.grid.map(Number) : undefined,
+        dx: cfd.dx ? Number(cfd.dx) : undefined,
+        turbulenceModel: cfd.turbulenceModel ? String(cfd.turbulenceModel) : undefined,
+        velocityVariable: cfd.velocityVariable ? String(cfd.velocityVariable) : undefined,
+        dragForceVariable: cfd.dragForceVariable ? String(cfd.dragForceVariable) : undefined,
+      });
+    }
+
+    // 9. MBSE / IoT (SysML, OWL, Telemetry)
+    const sysml = evaluator.evaluate(cst, "sysml");
+    const owl = evaluator.evaluate(cst, "owl");
+    const telemetry = evaluator.evaluate(cst, "telemetry");
+    if (sysml || owl || telemetry) {
+      if (!dae.extensionMetadata.mbse) dae.extensionMetadata.mbse = {};
+      if (sysml) {
+        if (!dae.extensionMetadata.mbse.sysml) dae.extensionMetadata.mbse.sysml = [];
+        dae.extensionMetadata.mbse.sysml.push(sysml);
+      }
+      if (owl) {
+        if (!dae.extensionMetadata.mbse.owl) dae.extensionMetadata.mbse.owl = [];
+        dae.extensionMetadata.mbse.owl.push(owl);
+      }
+      if (telemetry) {
+        if (!dae.extensionMetadata.mbse.telemetry) dae.extensionMetadata.mbse.telemetry = [];
+        dae.extensionMetadata.mbse.telemetry.push(telemetry);
+      }
+    }
+  }
+
+  private isComponentHidden(elemId: SymbolId): boolean {
+    const cst = this.db.cstNode(elemId) as any;
+    if (!cst) return false;
+    let curr = cst;
+    while (
+      curr &&
+      curr.type !== "component_declaration" &&
+      curr.type !== "ComponentDeclaration" &&
+      curr.type !== "component_clause" &&
+      curr.type !== "ComponentClause"
+    ) {
+      curr = curr.parent;
+    }
+    if (!curr) curr = cst;
+    const evaluator = new AnnotationEvaluator();
+    const hideRes = evaluator.evaluate(curr, "hideresult") ?? evaluator.evaluate(cst, "hideresult");
+    if (hideRes !== null && hideRes !== undefined) {
+      if (typeof hideRes === "boolean") return hideRes;
+      if (typeof hideRes === "object" && hideRes.value !== undefined) return Boolean(hideRes.value);
+      return true;
+    }
+    return false;
+  }
+
   private extractDescription(elemCst: any): string | null {
     if (!elemCst) return null;
     let curr: any = elemCst;
@@ -2939,6 +3094,7 @@ export class ModelicaFlattener {
       else if (words.includes("operator") && !words.includes("record")) specKind = "operator";
     }
     dae.classKind = specKind ?? rawKind;
+    this.extractClassAnnotations(dae, rootClassId);
 
     // Check for non-instantiable class specializations (package, function, etc.)
     const classCstForCheck = classCst as SyntaxNode | null;
@@ -4720,12 +4876,20 @@ export class ModelicaFlattener {
             else if (compInst.variability === "discrete") variability = Variability.Discrete;
             else if (parentMods?.parentVariability !== undefined) variability = parentMods.parentVariability;
 
+            const isEvaluated = this.db.query<boolean>("isEvaluate", elemId);
+            if (isEvaluated && variability === Variability.Parameter) {
+              variability = Variability.Constant;
+            }
+
             let causality = Causality.Local;
             if (compInst.causality === "input") causality = Causality.Input;
             else if (compInst.causality === "output") causality = Causality.Output;
             else if (parentMods?.parentCausality !== undefined) causality = parentMods.parentCausality;
 
             const varIdx = dae.addVariable(dae.interner.intern(name), varType, variability, causality, 0.0);
+            if (this.isComponentHidden(elemId)) {
+              dae.hiddenVarIndices.add(varIdx);
+            }
 
             const sym = this.db.symbol(elemId);
             if (sym && sym.startByte != null && sym.endByte != null) {
@@ -5256,6 +5420,10 @@ export class ModelicaFlattener {
         else if (typeof meta?.variability === "number") variability = meta.variability as number;
         if (variability === Variability.Continuous && parentMods?.parentVariability !== undefined) {
           variability = parentMods.parentVariability;
+        }
+        const isEvaluated = this.db.query<boolean>("isEvaluate", elemId);
+        if (isEvaluated && variability === Variability.Parameter) {
+          variability = Variability.Constant;
         }
 
         let causality = Causality.Local;
@@ -6196,6 +6364,9 @@ export class ModelicaFlattener {
               causality as number,
               0.0,
             );
+            if (this.isComponentHidden(elemId)) {
+              dae.hiddenVarIndices.add(varIdx);
+            }
             const rawDims = this.db.query<any[] | null>("arrayDimensions", elemId);
             const concreteShape =
               arrayDims && arrayDims.length > 0 && arrayDims.every((d) => d > 0)
@@ -6290,6 +6461,9 @@ export class ModelicaFlattener {
               causality as number,
               0.0,
             );
+            if (this.isComponentHidden(elemId)) {
+              dae.hiddenVarIndices.add(varIdx);
+            }
             if (elemCst) {
               const startB = elemCst.startIndex ?? elemCst.startByte;
               const endB = elemCst.endIndex ?? elemCst.endByte;
@@ -6385,6 +6559,9 @@ export class ModelicaFlattener {
             causality as number,
             0.0,
           );
+          if (this.isComponentHidden(elemId)) {
+            dae.hiddenVarIndices.add(varIdx);
+          }
           if (elemCst) {
             const startB = elemCst.startIndex ?? elemCst.startByte;
             const endB = elemCst.endIndex ?? elemCst.endByte;
@@ -7045,6 +7222,44 @@ export class ModelicaFlattener {
             const endB = node.endIndex ?? node.endByte;
             if (startB != null && endB != null && eqIdx >= 0) {
               dae.setEqSourceRange(eqIdx, startB, endB);
+            }
+
+            // Check equation annotation for diffusion (SDE)
+            const evaluator = new AnnotationEvaluator();
+            const diffVal =
+              evaluator.evaluate(node, "diffusion") ??
+              evaluator.evaluate(node.parent, "diffusion") ??
+              evaluator.evaluate(node.parent?.parent, "diffusion");
+            if (diffVal !== null && diffVal !== undefined) {
+              let stateVarIdx = -1;
+              const derExpr = lhsKind === ExprKind.Der ? lhsExprId : rhsKind === ExprKind.Der ? rhsExprId : -1;
+              if (derExpr >= 0) {
+                const derArgId = dae.getExprData1(derExpr);
+                if (dae.getExprKind(derArgId) === ExprKind.Name) {
+                  const nameId = dae.getExprData1(derArgId);
+                  const varName = dae.interner.resolve(nameId);
+                  stateVarIdx = dae.findVar(varName);
+                }
+              }
+              if (stateVarIdx >= 0) {
+                let diffExprId: number;
+                if (typeof diffVal === "number") {
+                  diffExprId = dae.addRealLiteral(diffVal);
+                } else if (typeof diffVal === "object" && diffVal.coefficient !== undefined) {
+                  diffExprId =
+                    typeof diffVal.coefficient === "number"
+                      ? dae.addRealLiteral(diffVal.coefficient)
+                      : addArenaValueAsExpr(dae, diffVal.coefficient, VarType.Real);
+                } else if (typeof diffVal === "object" && diffVal.value !== undefined) {
+                  diffExprId =
+                    typeof diffVal.value === "number"
+                      ? dae.addRealLiteral(diffVal.value)
+                      : addArenaValueAsExpr(dae, diffVal.value, VarType.Real);
+                } else {
+                  diffExprId = addArenaValueAsExpr(dae, diffVal, VarType.Real);
+                }
+                dae.diffusionExprIds.set(stateVarIdx, diffExprId);
+              }
             }
             let t = "";
             for (const c of node.children || []) {

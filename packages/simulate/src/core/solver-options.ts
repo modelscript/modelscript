@@ -21,11 +21,23 @@
 export type IntegratorMethod =
   /** Fixed-step 4th-order Runge-Kutta (simple, non-adaptive). */
   | "rk4"
-  /** Dormand-Prince 5(4) adaptive RK (default, good for non-stiff). */
+  /** Dormand-Prince 5(4) adaptive RK (good for non-stiff). */
   | "dopri5"
+  /** Tsitouras 5(4) adaptive RK (modern default, high-efficiency, continuous Hermite interpolant). */
+  | "tsit5"
   /** Variable-order BDF 1-5 (good for stiff, pure TS). */
   | "bdf"
-  /** Auto-detect: start DOPRI5, fall back to BDF if stiff. */
+  /** 4th-order Rosenbrock-W method (stiff DAEs with mass matrix, zero event-restart stall). */
+  | "rodas4p"
+  /** 2nd-order L-stable composite Trapezoidal-BDF2 method (robust stiff solver for switching circuits). */
+  | "trbdf2"
+  /** Euler-Maruyama 1st-order stochastic differential equation integrator. */
+  | "euler-maruyama"
+  /** SRIW1 adaptive stochastic Runge-Kutta integrator (order 1.5/2.0). */
+  | "sriw1"
+  /** Method-of-steps Delay Differential Equation integrator with circular ring buffer. */
+  | "dde-steps"
+  /** Auto-detect: start Tsit5/DOPRI5, fall back to BDF or Rodas4P if stiff. */
   | "auto"
   /** SUNDIALS CVODE via WASM (production-grade variable-order BDF/Adams). */
   | "cvode"
@@ -109,6 +121,48 @@ export type LpMethod =
   | "clp"
   /** COIN-OR CBC via WASM (branch-and-cut MILP). */
   | "cbc";
+
+// ── Problem-Specific Solver Options ──
+
+/** Options for Stochastic Differential Equation integrators. */
+export interface SDEOptions {
+  /** Fixed step size dt (default: (tEnd - t0) / 1000). */
+  dt?: number;
+  /** Absolute error tolerance (for adaptive SDE solvers like SRIW1). */
+  atol?: number;
+  /** Relative error tolerance (for adaptive SDE solvers like SRIW1). */
+  rtol?: number;
+  /** PRNG seed for reproducible Brownian motion paths. */
+  seed?: number;
+  /** Noise structure. */
+  noiseType?: "diagonal" | "scalar" | "matrix";
+}
+
+/** Options for Delay Differential Equation integrators. */
+export interface DDEOptions {
+  /** Absolute error tolerance (default: 1e-6). */
+  atol?: number;
+  /** Relative error tolerance (default: 1e-6). */
+  rtol?: number;
+  /** Maximum step size. */
+  maxStep?: number;
+  /** Initial step size. */
+  initialStep?: number;
+  /** Ring buffer capacity for historical samples. */
+  bufferCapacity?: number;
+}
+
+/** Options for Boundary Value Problem solvers. */
+export interface BVPOptions {
+  /** Discretization / transcription method (default: "collocation-lgr"). */
+  method?: "collocation-lgr" | "collocation-trapezoidal" | "multiple-shooting" | "single-shooting";
+  /** Number of mesh intervals or shooting nodes (default: 20). */
+  numIntervals?: number;
+  /** Convergence tolerance (default: 1e-6). */
+  tolerance?: number;
+  /** Maximum nonlinear solver iterations (default: 50). */
+  maxIterations?: number;
+}
 
 // ── Unified Options ──
 

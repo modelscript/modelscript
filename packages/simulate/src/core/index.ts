@@ -4,6 +4,7 @@ export * from "./ad-transforms.js";
 export * from "./adjoint-integrator.js";
 export * from "./gpu-buffers.js";
 export * from "./live-cosim-orchestrator.js";
+export * from "./problem-types.js";
 export * from "./simulate-arena.js";
 export * from "./simulation.js";
 export * from "./solver-options.js";

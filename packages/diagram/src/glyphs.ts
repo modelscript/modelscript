@@ -299,3 +299,267 @@ export function pinPortGlyph(options?: {
     },
   ];
 }
+
+// ── Interactive SCADA / Modelica Glyphs ─────────────────────────────────────
+
+/**
+ * Industrial Pushbutton / Momentary Switch Glyph.
+ * Features a tactile button cap, bevel border, and central text label.
+ */
+export function momentaryButtonGlyph(options?: {
+  width?: number;
+  height?: number;
+  color?: string;
+  label?: string;
+}): X6Markup[] {
+  const width = options?.width ?? 60;
+  const height = options?.height ?? 32;
+  const color = options?.color ?? "#d32f2f";
+  const label = options?.label ?? "PUSH";
+
+  return [
+    // Base bevel
+    {
+      tagName: "rect",
+      selector: "base",
+      attrs: {
+        width,
+        height,
+        fill: "#263238",
+        stroke: "#37474f",
+        strokeWidth: 2,
+        rx: 4,
+        ry: 4,
+      },
+    },
+    // Button cap (moves down on press)
+    {
+      tagName: "rect",
+      selector: "button",
+      attrs: {
+        x: 4,
+        y: 4,
+        width: width - 8,
+        height: height - 8,
+        fill: color,
+        stroke: "#ffffff",
+        strokeWidth: 1,
+        rx: 3,
+        ry: 3,
+        cursor: "pointer",
+      },
+    },
+    // Label
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: label,
+        fill: "#ffffff",
+        fontSize: 10,
+        fontWeight: "bold",
+        textAnchor: "middle",
+        refX: width / 2,
+        refY: height / 2 + 3,
+        pointerEvents: "none",
+      },
+    },
+  ];
+}
+
+/**
+ * Industrial Toggle Switch Glyph.
+ * Features a switch housing, movable lever handle, and status LED indicator.
+ */
+export function toggleSwitchGlyph(options?: { width?: number; height?: number; label?: string }): X6Markup[] {
+  const width = options?.width ?? 50;
+  const height = options?.height ?? 34;
+  const label = options?.label ?? "SW";
+
+  return [
+    // Switch plate
+    {
+      tagName: "rect",
+      selector: "body",
+      attrs: {
+        width,
+        height,
+        fill: "#eceff1",
+        stroke: "#78909c",
+        strokeWidth: 1.5,
+        rx: 4,
+        ry: 4,
+        cursor: "pointer",
+      },
+    },
+    // Status LED indicator
+    {
+      tagName: "circle",
+      selector: "indicator",
+      attrs: {
+        cx: 12,
+        cy: 12,
+        r: 4,
+        fill: "#57606a",
+        stroke: "#37474f",
+        strokeWidth: 1,
+      },
+    },
+    // Toggle handle lever
+    {
+      tagName: "line",
+      selector: "handle",
+      attrs: {
+        x1: 25,
+        y1: 24,
+        x2: 35,
+        y2: 10,
+        stroke: "#263238",
+        strokeWidth: 4,
+        strokeLinecap: "round",
+        cursor: "pointer",
+      },
+    },
+    // Label
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: label,
+        fill: "#37474f",
+        fontSize: 9,
+        fontWeight: "bold",
+        textAnchor: "middle",
+        refX: width / 2,
+        refY: height - 4,
+        pointerEvents: "none",
+      },
+    },
+  ];
+}
+
+/**
+ * Linear Slider Track Glyph with Draggable Thumb.
+ */
+export function sliderTrackGlyph(options?: { width?: number; height?: number; label?: string }): X6Markup[] {
+  const width = options?.width ?? 100;
+  const height = options?.height ?? 26;
+  const label = options?.label ?? "SETPOINT";
+
+  return [
+    // Frame
+    {
+      tagName: "rect",
+      selector: "body",
+      attrs: {
+        width,
+        height,
+        fill: "#f8f9fa",
+        stroke: "#cfd8dc",
+        strokeWidth: 1,
+        rx: 3,
+        ry: 3,
+      },
+    },
+    // Track groove
+    {
+      tagName: "rect",
+      selector: "track",
+      attrs: {
+        x: 8,
+        y: 11,
+        width: width - 16,
+        height: 4,
+        fill: "#b0bec5",
+        rx: 2,
+        ry: 2,
+      },
+    },
+    // Thumb handle
+    {
+      tagName: "circle",
+      selector: "thumb",
+      attrs: {
+        cx: 12,
+        cy: 13,
+        r: 7,
+        fill: "#1976d2",
+        stroke: "#ffffff",
+        strokeWidth: 2,
+        cursor: "ew-resize",
+      },
+    },
+    // Readout label
+    {
+      tagName: "text",
+      selector: "value",
+      attrs: {
+        text: label,
+        fill: "#455a64",
+        fontSize: 8,
+        textAnchor: "middle",
+        refX: width / 2,
+        refY: height - 2,
+        pointerEvents: "none",
+      },
+    },
+  ];
+}
+
+/**
+ * Numeric Readout / Setpoint Badge Glyph.
+ */
+export function numericReadoutBadgeGlyph(options?: {
+  width?: number;
+  height?: number;
+  label?: string;
+  unit?: string;
+}): X6Markup[] {
+  const width = options?.width ?? 70;
+  const height = options?.height ?? 28;
+  const label = options?.label ?? "SP";
+
+  return [
+    {
+      tagName: "rect",
+      selector: "body",
+      attrs: {
+        width,
+        height,
+        fill: "#1e1e1e",
+        stroke: "#424242",
+        strokeWidth: 1.5,
+        rx: 3,
+        ry: 3,
+        cursor: "pointer",
+      },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: label,
+        fill: "#90caf9",
+        fontSize: 8,
+        fontWeight: "bold",
+        refX: 6,
+        refY: 10,
+        pointerEvents: "none",
+      },
+    },
+    {
+      tagName: "text",
+      selector: "value",
+      attrs: {
+        text: "--",
+        fill: "#00e676",
+        fontSize: 12,
+        fontFamily: "monospace",
+        fontWeight: "bold",
+        refX: 6,
+        refY: 22,
+        pointerEvents: "none",
+      },
+    },
+  ];
+}

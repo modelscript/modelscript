@@ -77,6 +77,56 @@ describe("compileDiagramConfigToPolyglot Compiler", () => {
     assert.strictEqual(options.customProjections["InternalView"].label, "Internal Structure");
   });
 
+  it("should forward declarative property inspector configuration to options", () => {
+    const config: DiagramConfig = {
+      properties: {
+        entities: {
+          Block: {
+            title: "{{name}} : Block",
+            tabs: [
+              {
+                id: "general",
+                label: "General",
+                groups: [
+                  {
+                    id: "params",
+                    label: "Parameters",
+                    fields: [
+                      { key: "gain", label: "Gain", kind: "number", defaultValue: 1.0 },
+                      { key: "enabled", label: "Enabled", kind: "boolean", defaultValue: true },
+                      {
+                        key: "filterType",
+                        label: "Filter Type",
+                        kind: "choice",
+                        choices: ["LowPass", "HighPass", "BandPass"],
+                        defaultValue: "LowPass",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const { options } = compileDiagramConfigToPolyglot(config);
+    assert.ok(options.properties);
+    assert.ok(options.properties.entities);
+    assert.ok(options.properties.entities["Block"]);
+    assert.strictEqual(options.properties.entities["Block"].title, "{{name}} : Block");
+
+    const tabs = options.properties.entities["Block"].tabs;
+    assert.strictEqual(tabs.length, 1);
+    assert.strictEqual(tabs[0].id, "general");
+    assert.strictEqual(tabs[0].groups[0].fields.length, 3);
+    assert.strictEqual(tabs[0].groups[0].fields[0].key, "gain");
+    assert.strictEqual(tabs[0].groups[0].fields[0].kind, "number");
+    assert.strictEqual(tabs[0].groups[0].fields[1].kind, "boolean");
+    assert.strictEqual(tabs[0].groups[0].fields[2].kind, "choice");
+  });
+
   it("should handle empty or undefined diagram configuration gracefully", () => {
     const res1 = compileDiagramConfigToPolyglot(undefined);
     assert.ok(res1);

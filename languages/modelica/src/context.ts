@@ -95,6 +95,61 @@ export class Context {
   #trees = new Map<string, Tree>();
   #fileTexts = new Map<string, string>();
   #fileDeltas = new Map<string, number>();
+  #modelicaPath: string | null = null;
+
+  get modelicaPath(): string {
+    return this.#modelicaPath ?? (typeof process !== "undefined" ? process.env.MODELICAPATH || "" : "");
+  }
+
+  set modelicaPath(value: string | null) {
+    this.#modelicaPath = value;
+  }
+
+  /**
+   * Search configured MODELICAPATH directories for a package or file.
+   * Looks for `${dir}/${packageName}/package.mo` or `${dir}/${packageName}.mo`.
+   *
+   * @param packageName - Name of the package to search for.
+   * @returns Path to the directory or file if found, otherwise null.
+   */
+  findInModelicaPath(packageName: string): string | null {
+    const mp = this.modelicaPath;
+    if (!mp) return null;
+    const searchDirs = mp
+      .split(/[:;]/)
+      .map((d) => d.trim())
+      .filter(Boolean);
+    for (const searchDir of searchDirs) {
+      const pkgDir = this.#fs.join(searchDir, packageName);
+      const pkgMo = this.#fs.join(pkgDir, "package.mo");
+      try {
+        if (this.#fs.stat(pkgMo)?.isFile()) {
+          return pkgDir;
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const singleMo = this.#fs.join(searchDir, `${packageName}.mo`);
+      try {
+        if (this.#fs.stat(singleMo)?.isFile()) {
+          return singleMo;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Automatically locate and load a package from MODELICAPATH if found.
+   */
+  async loadFromModelicaPath(packageName: string, options?: { skipIndex?: boolean }): Promise<ModelicaLibrary | null> {
+    const found = this.findInModelicaPath(packageName);
+    if (!found) return null;
+    return this.addLibrary(found, options);
+  }
 
   get workspaceIndex(): WorkspaceIndex {
     return this.#workspaceIndex;
@@ -413,6 +468,30 @@ export class Context {
             parentFQN = undefined;
           }
 
+          // Check within clause if present
+          try {
+            const textHeader = this.#fs.read(dir);
+            if (textHeader) {
+              const withinMatch = textHeader.match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
+              if (withinMatch) {
+                const declaredWithin = withinMatch[1]?.trim();
+                if (declaredWithin) {
+                  if (parentFQN && declaredWithin !== parentFQN) {
+                    console.warn(
+                      `[modelica] Notice: ${dir} declares 'within ${declaredWithin};' which differs from path hierarchy '${parentFQN}'. Using declared within.`,
+                    );
+                  }
+                  parentFQN = declaredWithin;
+                } else if (basename !== "package.mo") {
+                  // 'within;' with no name means root/top-level
+                  parentFQN = undefined;
+                }
+              }
+            }
+          } catch {
+            /* ignore read errors during registration */
+          }
+
           // Register for lazy loading (tree is parsed for indexing, on-demand parsing handles flattening)
           this.#workspaceIndex.register(
             dir,
@@ -439,9 +518,46 @@ export class Context {
         }
       } else if (s.isDirectory()) {
         const ignoreList = new Set(["node_modules", "dist", ".git", "testsuite"]);
-        for (const entry of this.#fs.readdir(dir)) {
-          if (ignoreList.has(entry.name)) continue;
+        let entries = this.#fs.readdir(dir).filter((entry) => !ignoreList.has(entry.name));
 
+        // Always sort package.mo FIRST so the enclosing package definition is registered before its members
+        entries.sort((a, b) => {
+          if (a.name === "package.mo") return -1;
+          if (b.name === "package.mo") return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        // Sort entries by package.order if present
+        const orderFile = this.#fs.join(dir, "package.order");
+        try {
+          if (this.#fs.stat(orderFile)?.isFile()) {
+            const orderContent = this.#fs.read(orderFile);
+            if (orderContent) {
+              const orderLines = orderContent
+                .split(/\r?\n/)
+                .map((l) => l.trim())
+                .filter((l) => l && !l.startsWith("#") && !l.startsWith("//"));
+              if (orderLines.length > 0) {
+                const orderMap = new Map<string, number>();
+                orderLines.forEach((name, idx) => orderMap.set(name, idx));
+                entries.sort((a, b) => {
+                  if (a.name === "package.mo") return -1;
+                  if (b.name === "package.mo") return 1;
+                  const nameA = a.name.replace(/\.mo$/, "");
+                  const nameB = b.name.replace(/\.mo$/, "");
+                  const idxA = orderMap.has(nameA) ? orderMap.get(nameA)! : 999999;
+                  const idxB = orderMap.has(nameB) ? orderMap.get(nameB)! : 999999;
+                  if (idxA !== idxB) return idxA - idxB;
+                  return a.name.localeCompare(b.name);
+                });
+              }
+            }
+          }
+        } catch {
+          /* ignore order read errors */
+        }
+
+        for (const entry of entries) {
           const entryMode = this.#fs.stat(this.#fs.join(dir, entry.name));
           if (entryMode?.isDirectory()) {
             const nextFQN = `${currentFQN}.${entry.name}`;

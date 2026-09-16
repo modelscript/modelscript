@@ -19,6 +19,7 @@ type Selection = any;
 type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
 import { computeJumpoverPath, computeSmoothBezierPath, portOrthogonalRouter } from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import * as Spinner from "./spinner.js";
@@ -678,10 +679,60 @@ export function initGraph(isDark: boolean): Graph {
     }
   });
 
-  g.on("node:click", ({ node }) => {
+  g.on("node:mousedown", ({ node }: any) => {
+    const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
+    if (Array.isArray(interactiveBindings)) {
+      for (const binding of interactiveBindings) {
+        if (binding.action === "momentary") {
+          const action = defaultInteractiveStateManager.handleInteraction(node, binding, "mousedown");
+          if (action) enqueueDiagramAction(action);
+        }
+      }
+    }
+  });
+
+  g.on("node:mouseup", ({ node }: any) => {
+    const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
+    if (Array.isArray(interactiveBindings)) {
+      for (const binding of interactiveBindings) {
+        if (binding.action === "momentary") {
+          const action = defaultInteractiveStateManager.handleInteraction(node, binding, "mouseup");
+          if (action) enqueueDiagramAction(action);
+        }
+      }
+    }
+  });
+
+  g.on("node:click", ({ node }: any) => {
     if (!graph) return;
     selectedNodeId = node.id;
     const data = node.getData();
+
+    // Process interactive bindings on click (toggle, numeric, selector, faceplate)
+    const interactiveBindings: InteractiveBinding[] = data?.interactive;
+    if (Array.isArray(interactiveBindings)) {
+      for (const binding of interactiveBindings) {
+        if (binding.action === "toggle" || binding.action === "faceplate") {
+          const action = defaultInteractiveStateManager.handleInteraction(node, binding, "click");
+          if (action) enqueueDiagramAction(action);
+        } else if (binding.action === "numeric" || binding.action === "slider") {
+          if (typeof window !== "undefined" && typeof (window as any).prompt === "function") {
+            const current = defaultInteractiveStateManager.getValue(node.id, binding.variableName, binding.min ?? 0);
+            const unitLabel = binding.unit ? ` [${binding.unit}]` : "";
+            const rangeLabel =
+              binding.min !== undefined && binding.max !== undefined ? ` (${binding.min} - ${binding.max})` : "";
+            const input = (window as any).prompt(
+              `Set ${binding.label ?? binding.variableName}${unitLabel}${rangeLabel}:`,
+              String(current),
+            );
+            if (input !== null) {
+              const action = defaultInteractiveStateManager.handleInteraction(node, binding, "input", input);
+              if (action) enqueueDiagramAction(action);
+            }
+          }
+        }
+      }
+    }
 
     // Show properties panel immediately with lightweight data, then request full properties
     const cachedProps = propertyCache.get(node.id);
@@ -802,7 +853,12 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       opacity: node.opacity,
       markup: node.markup,
       ports: node.ports,
-      data: { properties: node.properties },
+      data: {
+        properties: node.properties,
+        animations: node.animations,
+        interactive: node.interactive,
+        ...(node.data || {}),
+      },
       autoLayout: node.autoLayout,
     };
     // Forward polyglot X6 attrs and shape (selector-based rendering)
@@ -1823,9 +1879,30 @@ export async function exportDiagramPng(scale = 2): Promise<string> {
   });
 }
 
+export function triggerInteractiveInput(
+  nodeId: string,
+  variableName: string,
+  eventType: "click" | "mousedown" | "mouseup" | "input",
+  inputValue?: unknown,
+): InteractiveWriteAction | null {
+  if (!graph) return null;
+  const node = graph.getCellById(nodeId);
+  if (!node || !node.isNode()) return null;
+  const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
+  if (!Array.isArray(interactiveBindings)) return null;
+  const binding = interactiveBindings.find((b) => b.variableName === variableName);
+  if (!binding) return null;
+  const action = defaultInteractiveStateManager.handleInteraction(node, binding, eventType, inputValue);
+  if (action) {
+    enqueueDiagramAction(action);
+  }
+  return action;
+}
+
 export * from "./affine-matrix.js";
 export * from "./color-inversion.js";
 export * from "./glyphs.js";
+export * from "./interactive.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-router.js";
 export * from "./svg-renderer.js";

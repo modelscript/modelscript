@@ -1,3 +1,4 @@
+import type { InteractiveBinding } from "./interactive.js";
 import { computeStemLines } from "./port-router.js";
 import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
 
@@ -170,6 +171,8 @@ export interface PolyglotDiagramNode {
   autoLayout: boolean;
   /** Reactive simulation telemetry animation channels */
   animations?: { property: string; variableName: string; transform?: string }[];
+  /** Interactive bidirectional bindings (momentary, toggle, slider, numeric) */
+  interactive?: InteractiveBinding[];
   /** Arbitrary domain and visualization data (multiplicity, sections, etc.) */
   data?: any;
 }
@@ -326,6 +329,10 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
 
   if (animBindings.length > 0) {
     node.animations = animBindings;
+  }
+
+  if (Array.isArray((sym.metadata as any)?.interactive)) {
+    node.interactive = (sym.metadata as any).interactive;
   }
 }
 

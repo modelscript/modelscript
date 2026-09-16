@@ -65,32 +65,38 @@ function resolveAnnotationName(name: string, evalScope: any): any {
 export function evaluateCSTExpression(node: any, evalScope?: any): any {
   if (!node) return null;
 
-  if (typeof node.value === "number" || typeof node.value === "boolean") {
+  if (typeof node.value === "number" || typeof node.value === "boolean" || typeof node.value === "string") {
     return node.value;
   }
+
+  const rawText = typeof node.text === "string" ? node.text.trim() : "";
+  if (rawText === "true") return true;
+  if (rawText === "false") return false;
+  if (rawText.startsWith('"') && rawText.endsWith('"')) {
+    return rawText.slice(1, -1);
+  }
+  if (/^[+-]?\d+$/.test(rawText)) {
+    return parseInt(rawText, 10);
+  }
+  if (/^[+-]?\d+\.?\d*(?:[eE][+-]?\d+)?$/.test(rawText) && !isNaN(Number(rawText))) {
+    return parseFloat(rawText);
+  }
+  if (rawText.startsWith("{") && rawText.endsWith("}")) {
+    const inner = rawText.slice(1, -1).trim();
+    if (!inner) return [];
+    return inner.split(",").map((s) => {
+      const trimmed = s.trim();
+      if (trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed.slice(1, -1);
+      if (!isNaN(Number(trimmed))) return Number(trimmed);
+      return trimmed;
+    });
+  }
+
   if (node.type === "unsigned_integer" || node.type === "IntegerLiteral") {
     return parseInt(node.text ?? String(node.value), 10);
   }
   if (node.type === "unsigned_real" || node.type === "RealLiteral") {
     return parseFloat(node.text ?? String(node.value));
-  }
-  if (node.type === "true" || node.text === "true") return true;
-  if (node.type === "false" || node.text === "false") return false;
-
-  if (
-    typeof node.text === "string" &&
-    !node.parts &&
-    !node.operand &&
-    !node.operand1 &&
-    !node.functionReference &&
-    !node.expressionList
-  ) {
-    if (node.text.startsWith('"') && node.text.endsWith('"')) {
-      return node.text.slice(1, -1);
-    }
-    if (node.type === "string_literal" || node.type === "StringLiteral" || node.syntaxKind?.includes("String")) {
-      return node.text.replace(/^"|"$/g, "");
-    }
   }
 
   if ("operand" in node && node.operand) {
@@ -301,6 +307,20 @@ export function evaluateCondition(component: any, parentContext?: any): boolean 
 export class AnnotationEvaluator {
   private scope: any;
   public dynamicBindings: { property?: string; staticExpr: any; dynamicExpr: any; variableName?: string }[] = [];
+  public interactiveBindings: {
+    action: "momentary" | "toggle" | "numeric" | "slider" | "selector" | "faceplate";
+    variableName: string;
+    targetSelector?: string;
+    label?: string;
+    min?: number;
+    max?: number;
+    step?: number;
+    unit?: string;
+    options?: { label: string; value: number | string }[];
+    onValue?: number | boolean | string;
+    offValue?: number | boolean | string;
+    confirmPrompt?: string;
+  }[] = [];
 
   constructor(
     private evalScope?: any | null,
@@ -310,10 +330,7 @@ export class AnnotationEvaluator {
   }
 
   public evaluate(ast: any, name: string): any {
-    let classMod = ast?.classModification;
-    if (!classMod && ast?.annotationClause?.classModification) {
-      classMod = ast.annotationClause.classModification;
-    }
+    const classMod = this.extractClassModification(ast);
     if (!classMod) return null;
     const layerMod = this.findModByName(classMod, name);
     if (!layerMod) return null;
@@ -321,12 +338,188 @@ export class AnnotationEvaluator {
     return this.parseMod(layerMod, name);
   }
 
+  private extractClassModification(ast: any): any {
+    if (!ast) return null;
+    if (ast.classModification) return ast.classModification;
+    if (ast.annotationClause?.classModification) return ast.annotationClause.classModification;
+
+    let ann = ast;
+    if (ann.type !== "annotationClause" && ann.type !== "AnnotationClause" && ann.type !== "annotation_clause") {
+      ann = this.findAnnotationClauseInCst(ast);
+    }
+    if (!ann) return null;
+
+    if (ann.classModification) return ann.classModification;
+    const children = ann.children || ann.namedChildren;
+    if (Array.isArray(children)) {
+      const cm = children.find(
+        (c: any) => c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
+      );
+      if (cm) return cm;
+    }
+    return null;
+  }
+
+  private findAnnotationClauseInCst(node: any, depth = 0): any {
+    if (!node || depth > 8) return null;
+    if (node.type === "annotationClause" || node.type === "AnnotationClause" || node.type === "annotation_clause") {
+      return node;
+    }
+    const children = node.children || node.namedChildren;
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        if (
+          child.type === "annotationClause" ||
+          child.type === "AnnotationClause" ||
+          child.type === "annotation_clause"
+        ) {
+          return child;
+        }
+      }
+      for (const child of children) {
+        const res = this.findAnnotationClauseInCst(child, depth + 1);
+        if (res) return res;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Evaluates Interactive(...) or Dialog(...) annotations on a component or parameter.
+   */
+  public evaluateInteractive(ast: any, variableName: string): any {
+    let classMod = ast?.classModification;
+    if (!classMod && ast?.annotationClause?.classModification) {
+      classMod = ast.annotationClause.classModification;
+    }
+    if (!classMod) return null;
+
+    // Check Interactive annotation
+    let interMod = this.findModByName(classMod, "Interactive");
+    if (!interMod) interMod = this.findModByName(classMod, "__OpenModelica_interactive");
+    if (!interMod) interMod = this.findModByName(classMod, "__Dymola_interactive");
+
+    if (interMod) {
+      const parsed = this.parseMod(interMod, "Interactive");
+      const action = parsed.type ?? parsed.action ?? "toggle";
+      const binding: any = {
+        action,
+        variableName,
+        targetSelector: parsed.targetSelector ?? parsed.clickTarget,
+        label: parsed.label ?? parsed.description,
+        min: parsed.min,
+        max: parsed.max,
+        step: parsed.step,
+        unit: parsed.unit,
+        onValue: parsed.onValue,
+        offValue: parsed.offValue,
+        confirmPrompt: parsed.confirmPrompt,
+      };
+      this.interactiveBindings.push(binding);
+      return binding;
+    }
+
+    // Check Dialog annotation
+    const dialogMod = this.findModByName(classMod, "Dialog");
+    if (dialogMod) {
+      const parsed = this.parseMod(dialogMod, "Dialog");
+      const action = parsed.min !== undefined && parsed.max !== undefined ? "slider" : "numeric";
+      const binding: any = {
+        action,
+        variableName,
+        label: parsed.description ?? parsed.label,
+        min: parsed.min,
+        max: parsed.max,
+        step: parsed.step,
+        unit: parsed.unit,
+        options: parsed.selector
+          ? Array.isArray(parsed.selector)
+            ? parsed.selector.map((s: any) => ({ label: String(s), value: s }))
+            : undefined
+          : undefined,
+      };
+      this.interactiveBindings.push(binding);
+      return binding;
+    }
+
+    return null;
+  }
+
+  private extractArgName(arg: any): string | null {
+    if (!arg) return null;
+    if (typeof arg.name === "string") return arg.name;
+    const fromParts = arg.name?.parts?.[0]?.identifier?.text ?? arg.name?.parts?.[0]?.text ?? arg.name?.text;
+    if (fromParts) return fromParts;
+    const children = arg.children || arg.namedChildren;
+    if (Array.isArray(children)) {
+      const nameNode = children.find(
+        (c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier" || c.type === "Identifier",
+      );
+      if (nameNode) return nameNode.text ?? null;
+    }
+    return null;
+  }
+
+  private matchesAnnotationName(target: string, query: string): boolean {
+    if (!target || !query) return false;
+    if (target === query) return true;
+    const t = target.toLowerCase();
+    const q = query.toLowerCase();
+    if (t === q) return true;
+
+    const aliases: Record<string, string[]> = {
+      experiment: ["experiment"],
+      webgpu: ["webgpu", "__modelscript_webgpu"],
+      audioclock: ["audioclock", "audio_clock", "__modelscript_audio_clock"],
+      sde: ["sde", "__modelscript_sde"],
+      bvp: ["bvp", "__modelscript_bvp"],
+      diffusion: ["diffusion", "__modelscript_diffusion"],
+      surrogate: ["surrogate", "__modelscript_surrogate"],
+      sysml: ["sysml"],
+      owl: ["owl"],
+      telemetry: ["telemetry"],
+      feamesh: ["feamesh", "fea_mesh"],
+      cfdflow: ["cfdflow", "cfd_flow"],
+      evaluate: ["evaluate"],
+      inline: ["inline"],
+      hideresult: ["hideresult", "hide_result"],
+      smoothorder: ["smoothorder", "smooth_order"],
+    };
+
+    for (const [key, list] of Object.entries(aliases)) {
+      if (key === q || list.includes(q)) {
+        if (key === t || list.includes(t)) return true;
+      }
+    }
+    return false;
+  }
+
+  private getArgumentsFromClassMod(classMod: any): any[] {
+    if (!classMod) return [];
+    if (classMod.modificationArguments) return classMod.modificationArguments;
+    const result: any[] = [];
+    const walk = (node: any) => {
+      if (!node) return;
+      if (node.type === "element_modification" || node.type === "ElementModification") {
+        result.push(node);
+        return;
+      }
+      const children = node.namedChildren || node.children || [];
+      for (const child of children) {
+        if (child.type === "(" || child.type === ")" || child.type === ",") continue;
+        walk(child);
+      }
+    };
+    walk(classMod);
+    return result;
+  }
+
   private findModByName(classMod: any, name: string): any {
     if (!classMod) return null;
-    const args = classMod.modificationArguments ?? [];
+    const args = this.getArgumentsFromClassMod(classMod);
     for (const arg of args) {
-      const argName = arg.name?.parts?.[0]?.identifier?.text ?? arg.name?.parts?.[0]?.text ?? arg.name?.text;
-      if (argName === name) return arg;
+      const argName = this.extractArgName(arg);
+      if (argName && this.matchesAnnotationName(argName, name)) return arg;
     }
     return null;
   }
@@ -334,10 +527,26 @@ export class AnnotationEvaluator {
   private parseMod(mod: any, name: string): any {
     const result: any = { "@type": name };
 
-    if (mod.modification?.classModification) {
-      const args = mod.modification.classModification.modificationArguments ?? [];
+    let classMod =
+      mod.modification?.classModification ??
+      mod.children?.find(
+        (c: any) => c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
+      );
+
+    if (!classMod && mod.children) {
+      const modNode = mod.children.find((c: any) => c.type === "modification" || c.type === "Modification");
+      if (modNode && modNode.children) {
+        classMod = modNode.children.find(
+          (c: any) =>
+            c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
+        );
+      }
+    }
+
+    if (classMod) {
+      const args = this.getArgumentsFromClassMod(classMod);
       for (const arg of args) {
-        const argName = arg.name?.parts?.[0]?.identifier?.text ?? arg.name?.parts?.[0]?.text ?? arg.name?.text;
+        const argName = this.extractArgName(arg);
         if (argName) {
           let mappedName = argName;
           if (name === "Rectangle" && argName === "cornerRadius") {
@@ -346,26 +555,91 @@ export class AnnotationEvaluator {
           result[mappedName] = this.parseValue(arg, argName);
         }
       }
-    } else if (mod.modification?.modificationExpression?.expression) {
-      const expr = mod.modification.modificationExpression.expression;
+    } else {
+      let expr =
+        mod.modification?.modificationExpression?.expression ??
+        mod.modification?.expression ??
+        mod.children?.find(
+          (c: any) =>
+            c.type === "modification_expression" ||
+            c.type === "ModificationExpression" ||
+            c.type === "expression" ||
+            c.type === "Expression",
+        );
+
+      if (!expr && mod.children) {
+        const modNode = mod.children.find((c: any) => c.type === "modification" || c.type === "Modification");
+        if (modNode && modNode.children) {
+          expr = modNode.children.find(
+            (c: any) =>
+              c.type === "modification_expression" ||
+              c.type === "ModificationExpression" ||
+              c.type === "expression" ||
+              c.type === "Expression",
+          );
+        }
+      }
+
       if (name === "graphics") {
         return this.parseGraphicsArray(expr);
       } else if (expr && "functionReference" in expr) {
         return this.parseFunctionCall(expr, name);
       }
-      return this.toJSON(evaluateCSTExpression(expr, this.scope));
+      if (expr) {
+        return this.toJSON(evaluateCSTExpression(expr, this.scope));
+      }
     }
 
     return result;
   }
 
   private parseValue(arg: any, fallbackName: string): any {
-    const argName = arg.name?.parts?.[0]?.identifier?.text ?? arg.name?.parts?.[0]?.text ?? arg.name?.text;
-    if (arg.modification?.classModification) {
-      return this.parseMod(arg, argName ?? fallbackName);
+    const argName = this.extractArgName(arg) ?? fallbackName;
+
+    let classMod =
+      arg.modification?.classModification ??
+      arg.children?.find(
+        (c: any) => c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
+      );
+
+    if (!classMod && arg.children) {
+      const modNode = arg.children.find((c: any) => c.type === "modification" || c.type === "Modification");
+      if (modNode && modNode.children) {
+        classMod = modNode.children.find(
+          (c: any) =>
+            c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
+        );
+      }
     }
 
-    const expr = arg.modification?.modificationExpression?.expression;
+    if (classMod || arg.modification?.classModification) {
+      return this.parseMod(arg, argName);
+    }
+
+    let expr =
+      arg.modification?.modificationExpression?.expression ??
+      arg.modification?.expression ??
+      arg.children?.find(
+        (c: any) =>
+          c.type === "modification_expression" ||
+          c.type === "ModificationExpression" ||
+          c.type === "expression" ||
+          c.type === "Expression",
+      );
+
+    if (!expr && arg.children) {
+      const modNode = arg.children.find((c: any) => c.type === "modification" || c.type === "Modification");
+      if (modNode && modNode.children) {
+        expr = modNode.children.find(
+          (c: any) =>
+            c.type === "modification_expression" ||
+            c.type === "ModificationExpression" ||
+            c.type === "expression" ||
+            c.type === "Expression",
+        );
+      }
+    }
+
     if (!expr) return null;
 
     if (fallbackName === "graphics") {
@@ -373,7 +647,7 @@ export class AnnotationEvaluator {
     }
 
     if (expr && "functionReference" in expr) {
-      return this.parseFunctionCall(expr, argName ?? fallbackName);
+      return this.parseFunctionCall(expr, argName);
     }
 
     return this.toJSON(evaluateCSTExpression(expr, this.scope));

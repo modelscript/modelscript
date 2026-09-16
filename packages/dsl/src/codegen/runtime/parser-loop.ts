@@ -653,7 +653,9 @@ function updateExpectedTokens(frontierPos: u32 = 0): void {
   if (expected_tokens == 0) {
     expected_tokens = atomicChunkAlloc(65536);
   }
-  memory.fill(expected_tokens, 0, 65536);
+  let copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
+  if (copyLen > 65536) copyLen = 65536;
+  memory.fill(expected_tokens, 0, copyLen);
   if (currentParserMode == MODE_LR) {
     if (lrStackDepth > 0) {
       let state = t_lrStateStack[lrStackDepth - 1] as i32;
@@ -670,7 +672,7 @@ function updateExpectedTokens(frontierPos: u32 = 0): void {
     }
     // Only unmask all tokens when ALL active heads at this frontier are in an error state
     if (healthyCount == 0) {
-      memory.fill(expected_tokens, 1, 2048);
+      memory.fill(expected_tokens, 1, copyLen);
     }
   }
 }
@@ -955,6 +957,7 @@ function sanitizeTree(root: u32): void {
         // Corrupt node: REMOVE it by unlinking from the chain.
         if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
           // Cannot mutate Gen1 nodes. Leave as is.
+          prevChild = child;
         } else {
           if (prevChild == 0) setFirstChild(node, nextSib);
           else setNextSibling(prevChild, nextSib);
@@ -974,6 +977,7 @@ function sanitizeTree(root: u32): void {
         if (isShared) {
           if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
             // Cannot mutate Gen1 nodes to break aliasing. Skip.
+            prevChild = child;
           } else {
             // Deep-clone to break shared-pointer aliasing
             let freshClone = deepCloneSubtree(child, 0);
@@ -1299,16 +1303,38 @@ export function isPureErrorNode(node: u32): boolean {
   if (getNodeType(node) != NODE_TYPE_ERROR) return false;
 
   let flags = getNodeFlags(node);
-  if ((flags & FLAG_IS_LIST) != 0) {
-    let child = getNodeFirstChild(node);
-    while (child != 0) {
-      if (!isPureErrorNode(child)) {
-        return false;
+  if ((flags & FLAG_IS_LIST) == 0) return true;
+
+  if (changetype<usize>(t_sanitizeStack) == 0) {
+    t_sanitizeStack = createChunkedUint32Array(50000);
+    t_sanitizeVisited = createChunkedUint32Array(50000);
+  }
+  let savedLen = t_sanitizeStack.length;
+  t_sanitizeStack.push(node);
+  let isPure = true;
+  let iterations: u32 = 0;
+
+  while (t_sanitizeStack.length > savedLen && iterations < 500000) {
+    iterations++;
+    let curr = t_sanitizeStack.pop();
+    if (curr == 0) continue;
+    if (getNodeType(curr) != NODE_TYPE_ERROR) {
+      isPure = false;
+      break;
+    }
+    let cFlags = getNodeFlags(curr);
+    if ((cFlags & FLAG_IS_LIST) != 0) {
+      let child = getNodeFirstChild(curr);
+      let sibCount: u32 = 0;
+      while (child != 0 && sibCount < 50) {
+        t_sanitizeStack.push(child);
+        child = getNodeNextSibling(child);
+        sibCount++;
       }
-      child = getNodeNextSibling(child);
     }
   }
-  return true;
+  while (t_sanitizeStack.length > savedLen) t_sanitizeStack.pop();
+  return isPure;
 }
 /**
  * Helper to shallow-clone the children of `leftNode` and attach them to `p`.
@@ -2004,7 +2030,9 @@ export function saveSimulationState(): void {
   savedBestAcceptedCount = bestAcceptedCount;
   savedBestAcceptedPad = bestAcceptedPad;
 
-  memory.copy(changetype<usize>(savedExpectedTokens), changetype<usize>(expected_tokens), 65536);
+  let copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
+  if (copyLen > 65536) copyLen = 65536;
+  memory.copy(changetype<usize>(savedExpectedTokens), changetype<usize>(expected_tokens), copyLen);
 }
 
 /**
@@ -2028,7 +2056,9 @@ export function restoreSimulationState(): void {
   bestAcceptedCount = savedBestAcceptedCount;
   bestAcceptedPad = savedBestAcceptedPad;
 
-  memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), 65536);
+  let copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
+  if (copyLen > 65536) copyLen = 65536;
+  memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), copyLen);
 }
 /**
  * Retrieves the best accepting head found so far.
@@ -2212,8 +2242,6 @@ function constructReducedParentNode(
           setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
         }
       }
-      let pFlags = getNodeFlags(parentNode);
-      setNodeFlags(parentNode, pFlags);
     }
   }
   return parentNode;
@@ -3440,59 +3468,22 @@ function pruneGSS(pos: u32): void {
   }
 
   if (activeHeadsTrimCount > MAX_PARALLEL_HEADS) {
-    let heapLen = activeHeadsTrimCount;
-    for (let hi: i32 = (heapLen as i32) / 2 - 1; hi >= 0; hi--) {
-      let ci: u32 = hi as u32;
-      while (true) {
-        let smallest = ci;
-        let left = ci * 2 + 1;
-        let right = ci * 2 + 2;
-        if (left < heapLen) {
-          let hL = changetype<ParseHead>(t_activeHeads[left]);
-          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
-          if (hL.errorCost < hS.errorCost || (hL.errorCost == hS.errorCost && hL.pos > hS.pos)) smallest = left;
+    let sortLimit: u32 = MAX_PARALLEL_HEADS;
+    for (let i: u32 = 0; i < sortLimit; i++) {
+      let bestIdx = i;
+      let hBest = changetype<ParseHead>(t_activeHeads[i]);
+      for (let j: u32 = i + 1; j < activeHeadsTrimCount; j++) {
+        let hJ = changetype<ParseHead>(t_activeHeads[j]);
+        if (hJ.errorCost < hBest.errorCost || (hJ.errorCost == hBest.errorCost && hJ.pos > hBest.pos)) {
+          bestIdx = j;
+          hBest = hJ;
         }
-        if (right < heapLen) {
-          let hR = changetype<ParseHead>(t_activeHeads[right]);
-          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
-          if (hR.errorCost < hS.errorCost || (hR.errorCost == hS.errorCost && hR.pos > hS.pos)) smallest = right;
-        }
-        if (smallest == ci) break;
-        let tmp = t_activeHeads[ci];
-        t_activeHeads[ci] = t_activeHeads[smallest];
-        t_activeHeads[smallest] = tmp;
-        ci = smallest;
       }
-    }
-    let sortLimit: u32 = heapLen < MAX_PARALLEL_HEADS ? heapLen : MAX_PARALLEL_HEADS;
-    for (let ei: u32 = 0; ei < sortLimit && heapLen > 0; ei++) {
-      t_extractedHeadsBuffer[ei] = t_activeHeads[0];
-      t_activeHeads[0] = t_activeHeads[heapLen - 1];
-      heapLen--;
-      let ci: u32 = 0;
-      while (true) {
-        let smallest = ci;
-        let left = ci * 2 + 1;
-        let right = ci * 2 + 2;
-        if (left < heapLen) {
-          let hL = changetype<ParseHead>(t_activeHeads[left]);
-          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
-          if (hL.errorCost < hS.errorCost || (hL.errorCost == hS.errorCost && hL.pos > hS.pos)) smallest = left;
-        }
-        if (right < heapLen) {
-          let hR = changetype<ParseHead>(t_activeHeads[right]);
-          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
-          if (hR.errorCost < hS.errorCost || (hR.errorCost == hS.errorCost && hR.pos > hS.pos)) smallest = right;
-        }
-        if (smallest == ci) break;
-        let tmp = t_activeHeads[ci];
-        t_activeHeads[ci] = t_activeHeads[smallest];
-        t_activeHeads[smallest] = tmp;
-        ci = smallest;
+      if (bestIdx != i) {
+        let tmp = t_activeHeads[i];
+        t_activeHeads[i] = t_activeHeads[bestIdx];
+        t_activeHeads[bestIdx] = tmp;
       }
-    }
-    for (let ei: u32 = 0; ei < sortLimit; ei++) {
-      t_activeHeads[ei] = t_extractedHeadsBuffer[ei];
     }
     activeHeadsCount = sortLimit;
   }
@@ -3514,6 +3505,29 @@ export let t_defaultSingleEdit: usize = 0;
 export function setEditRanges(ptr: usize, count: u32): void {
   t_editRangesPtr = ptr;
   t_editRangesCount = count;
+  // Ensure edit intervals are monotonically sorted by start offset
+  if (count > 1 && ptr != 0) {
+    for (let i: u32 = 0; i < count - 1; i++) {
+      for (let j: u32 = 0; j < count - 1 - i; j++) {
+        let b1 = ptr + j * 12;
+        let b2 = b1 + 12;
+        let s1 = load<u32>(b1);
+        let s2 = load<u32>(b2);
+        if (s1 > s2) {
+          let o1 = load<u32>(b1 + 4);
+          let n1 = load<u32>(b1 + 8);
+          let o2 = load<u32>(b2 + 4);
+          let n2 = load<u32>(b2 + 8);
+          store<u32>(b1, s2);
+          store<u32>(b1 + 4, o2);
+          store<u32>(b1 + 8, n2);
+          store<u32>(b2, s1);
+          store<u32>(b2 + 4, o1);
+          store<u32>(b2 + 8, n1);
+        }
+      }
+    }
+  }
 }
 
 export function mapNewPosToOldPos(pos: u32): u32 {
@@ -4143,8 +4157,7 @@ export let g_isMultiEdit: boolean = false;
  * Accepts an array of non-overlapping EditRanges [startByte, oldEndByte, newEndByte].
  */
 export function parseWithEdits(oldTree: u32, editsPtr: usize, editsCount: u32): u32 {
-  t_editRangesPtr = editsPtr;
-  t_editRangesCount = editsCount;
+  setEditRanges(editsPtr, editsCount);
   g_isMultiEdit = true;
   let eStart: u32 = 0;
   let eOldEnd: u32 = 0;
@@ -4158,6 +4171,9 @@ export function parseWithEdits(oldTree: u32, editsPtr: usize, editsCount: u32): 
   g_isMultiEdit = false;
   t_editRangesCount = 0;
   t_editRangesPtr = 0;
+  g_editStart = 0;
+  g_editOldEnd = 0;
+  g_editNewEnd = 0;
   return res;
 }
 
@@ -4168,6 +4184,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   g_editNewEnd = editNewEnd;
 
   if (!g_isMultiEdit) {
+    t_editRangesPtr = 0;
+    t_editRangesCount = 0;
     if (t_defaultSingleEdit == 0) {
       t_defaultSingleEdit = atomicChunkAlloc(12);
     }
@@ -4271,6 +4289,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       fixNodeLengthRecursive(finalTree);
       globalAstRoot = finalTree;
       debugLog(9003, finalTree, bestAcceptedCost, errorCount);
+      t_editRangesPtr = 0;
+      t_editRangesCount = 0;
+      g_editStart = 0;
+      g_editOldEnd = 0;
+      g_editNewEnd = 0;
       return finalTree;
   }
   if (bestDyingHead != 0) {
@@ -4399,10 +4422,20 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     globalAstRoot = root;
     debugLog(9003, root, 999999, errorCount);
+    t_editRangesPtr = 0;
+    t_editRangesCount = 0;
+    g_editStart = 0;
+    g_editOldEnd = 0;
+    g_editNewEnd = 0;
     return root;
   }
   globalAstRoot = 0;
   debugLog(9003, 0, 999999, errorCount);
+  t_editRangesPtr = 0;
+  t_editRangesCount = 0;
+  g_editStart = 0;
+  g_editOldEnd = 0;
+  g_editNewEnd = 0;
   return 0;
 }
 function clearSubtreeErrorFlags(nodePtr: u32): void {

@@ -187,6 +187,17 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 { type: "updateParameter", name: message.name, parameter: message.parameter, value: message.value },
               ];
               break;
+            case "updateProperty":
+              actions = [
+                {
+                  type: "updateProperty",
+                  name: message.name,
+                  key: message.key,
+                  value: message.value,
+                  previousValue: message.previousValue,
+                },
+              ];
+              break;
             case "diagramEdit":
               // Direct batch from the webview (already in actions format)
               actions = message.actions;
@@ -276,7 +287,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             const isOptimisticOnly = actions.every(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (a: any) =>
-                a.type === "move" || a.type === "resize" || a.type === "moveEdge" || a.type === "updateParameter",
+                a.type === "move" ||
+                a.type === "resize" ||
+                a.type === "moveEdge" ||
+                a.type === "updateParameter" ||
+                a.type === "updateProperty",
             );
 
             if (isOptimisticOnly) {

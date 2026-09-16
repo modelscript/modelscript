@@ -2,11 +2,12 @@ import * as ts from "typescript";
 import { getDJB2Hash } from "./utils.js";
 
 export interface TranspileOptions {
-  context?: "query" | "lint" | "lsp" | "subtyping" | "dataflow";
+  context?: "query" | "lint" | "lsp" | "subtyping" | "dataflow" | "scanner";
   queryIdMap?: Map<string, number>;
   hostQueryIdMap?: Map<string, number>;
   attrIdMap?: Map<string, number>;
   rules?: Record<string, any>;
+  externals?: string[] | Set<string>;
   fieldToInt?: Map<string, number> | Set<string>;
 }
 
@@ -70,9 +71,120 @@ export function transpileQuery(
     }
   }
 
+  let lexerName = "lexer";
+  let validName = "valid";
+  if (context === "scanner") {
+    if (originalParams.length > 0) {
+      if (originalParams[0] === "$") {
+        lexerName = originalParams[1] || "lexer";
+        validName = originalParams[2] || "valid";
+      } else {
+        lexerName = originalParams[0];
+        validName = originalParams[1] || "valid";
+      }
+    }
+  }
+
   let cursorCounter = 0;
   const transformer: ts.TransformerFactory<ts.SourceFile> = (transformerContext) => {
     const visit: ts.Visitor = (node) => {
+      if (context === "scanner") {
+        // Handle assignment: lexer.state = expr
+        if (
+          ts.isBinaryExpression(node) &&
+          node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+          ts.isPropertyAccessExpression(node.left) &&
+          node.left.expression.getText(sourceFile) === lexerName &&
+          node.left.name.getText(sourceFile) === "state"
+        ) {
+          return ts.factory.createBinaryExpression(
+            ts.factory.createIdentifier("currentScannerState"),
+            node.operatorToken,
+            ts.factory.createTypeAssertion(
+              ts.factory.createTypeReferenceNode("u32"),
+              visitNode(node.right) as ts.Expression,
+            ),
+          );
+        }
+
+        // Handle property accesses on lexer: lookahead, pos, length, state
+        if (ts.isPropertyAccessExpression(node) && node.expression.getText(sourceFile) === lexerName) {
+          const propName = node.name.getText(sourceFile);
+          if (propName === "lookahead") {
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("peekChar"), undefined, [
+              ts.factory.createIdentifier("lexPos"),
+            ]);
+          }
+          if (propName === "pos") {
+            return ts.factory.createIdentifier("lexPos");
+          }
+          if (propName === "length") {
+            return ts.factory.createIdentifier("lexLen");
+          }
+          if (propName === "state") {
+            return ts.factory.createIdentifier("currentScannerState");
+          }
+        }
+
+        // Handle method calls on lexer: peek, advance, markEnd, skipWhitespace, isExpected, isEof
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.expression.getText(sourceFile) === lexerName
+        ) {
+          const meth = node.expression.name.getText(sourceFile);
+          if (meth === "peek") {
+            const offsetArg = node.arguments.length > 0 ? (visitNode(node.arguments[0]) as ts.Expression) : undefined;
+            const posArg = offsetArg
+              ? ts.factory.createBinaryExpression(
+                  ts.factory.createIdentifier("lexPos"),
+                  ts.factory.createToken(ts.SyntaxKind.PlusToken),
+                  offsetArg,
+                )
+              : ts.factory.createIdentifier("lexPos");
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("peekChar"), undefined, [posArg]);
+          }
+          if (meth === "advance") {
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("scanAdvance"), undefined, []);
+          }
+          if (meth === "markEnd") {
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("scanMarkEnd"), undefined, []);
+          }
+          if (meth === "skipWhitespace") {
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("scanSkipWhitespace"), undefined, []);
+          }
+          if (meth === "isExpected") {
+            const tokArg = visitNode(node.arguments[0]) as ts.Expression;
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("scanIsExpected"), undefined, [
+              ts.factory.createTypeAssertion(ts.factory.createTypeReferenceNode("u32"), tokArg),
+            ]);
+          }
+          if (meth === "isEof") {
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("scanIsEof"), undefined, []);
+          }
+        }
+
+        // Handle valid.has(tok)
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.expression.getText(sourceFile) === validName &&
+          node.expression.name.getText(sourceFile) === "has"
+        ) {
+          const tokArg = visitNode(node.arguments[0]) as ts.Expression;
+          return ts.factory.createCallExpression(ts.factory.createIdentifier("scanIsExpected"), undefined, [
+            ts.factory.createTypeAssertion(ts.factory.createTypeReferenceNode("u32"), tokArg),
+          ]);
+        }
+
+        // Handle valid[tok]
+        if (ts.isElementAccessExpression(node) && node.expression.getText(sourceFile) === validName) {
+          const tokArg = visitNode(node.argumentExpression) as ts.Expression;
+          return ts.factory.createCallExpression(ts.factory.createIdentifier("scanIsExpected"), undefined, [
+            ts.factory.createTypeAssertion(ts.factory.createTypeReferenceNode("u32"), tokArg),
+          ]);
+        }
+      }
       // 3. Syntax Sugar: for...of loops over cursors
       if (ts.isForOfStatement(node)) {
         const iterExpr = visitNode(node.expression) as ts.Expression;
@@ -267,7 +379,12 @@ export function transpileQuery(
         const rawName = node.name.getText();
         const upper = rawName.toUpperCase();
         const rules = opts.rules;
-        const existsInRules = rules ? Boolean(rules[rawName] || rules[upper]) : true;
+        const isExternal = opts.externals
+          ? opts.externals instanceof Set
+            ? opts.externals.has(rawName) || opts.externals.has(upper)
+            : (opts.externals as any).includes(rawName) || (opts.externals as any).includes(upper)
+          : false;
+        const existsInRules = isExternal || (rules ? Boolean(rules[rawName] || rules[upper]) : true);
         if (rules && !existsInRules) {
           return ts.factory.createTypeAssertion(
             ts.factory.createTypeReferenceNode("u16"),

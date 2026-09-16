@@ -42,11 +42,38 @@ const refAsIndexerHooks = (refHooks ?? [])
   }));
 const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 /**
  * Creates a configured WorkspaceIndex for SysML2.
  */
 export function createSysML2WorkspaceIndex(): WorkspaceIndex {
   return new WorkspaceIndex(allIndexerHooks);
+}
+
+/**
+ * Loads and registers the embedded KerML standard library stubs (ScalarValues, ISQ)
+ * into a SysML2 WorkspaceIndex.
+ */
+export function loadEmbeddedKerMLStdlib(workspaceIndex: WorkspaceIndex, parser: any): string | null {
+  try {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    const kermlPath = path.resolve(currentDir, "../stdlib/KerML.sysml");
+    if (fs.existsSync(kermlPath)) {
+      const text = fs.readFileSync(kermlPath, "utf-8");
+      const uri = "sysml2://stdlib/KerML.sysml";
+      workspaceIndex.register(uri, () => {
+        const tree = parser.parse(text);
+        return tree ? (tree.rootNode as any) : null;
+      });
+      return uri;
+    }
+  } catch {
+    /* ignore in non-filesystem environments */
+  }
+  return null;
 }
 
 /**

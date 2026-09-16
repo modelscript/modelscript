@@ -26,6 +26,12 @@ let diagramActionTimer: ReturnType<typeof setTimeout> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function enqueueDiagramAction(action: any) {
   console.log("[diagram.ts] enqueuing diagram action:", action.type, action);
+
+  if (action.type === "interactiveWrite") {
+    vscode.postMessage({ type: "interactiveWrite", ...action });
+    return;
+  }
+
   pendingDiagramActions.push(action);
   if (diagramActionTimer) clearTimeout(diagramActionTimer);
 
@@ -117,6 +123,8 @@ window.addEventListener("DOMContentLoaded", () => {
 // empty, error, componentProperties, autoLayout, setLanguage) are handled
 // by @modelscript/diagram's canonical message handler in index.ts.
 
+const nodeActiveTabMap = new Map<string, string>();
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function showProperties(nodeData: any) {
   const panel = document.getElementById("properties-panel");
@@ -131,7 +139,9 @@ function showProperties(nodeData: any) {
   // Prevent overwriting the DOM if the user is currently typing in an input field for the same component
   if (
     content.contains(document.activeElement) &&
-    (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") &&
+    (document.activeElement?.tagName === "INPUT" ||
+      document.activeElement?.tagName === "TEXTAREA" ||
+      document.activeElement?.tagName === "SELECT") &&
     title.textContent === expectedTitle &&
     !isLoading
   ) {
@@ -200,48 +210,149 @@ function showProperties(nodeData: any) {
   `;
 
   if (isLoading) {
-    // Show loading indicator for parameters and docs sections
     html += loadingSpinner;
   } else if (props) {
-    if (props.parameters && props.parameters.length > 0) {
-      html += `<div style="margin-top:24px; margin-bottom:12px; font-weight:600; text-transform:uppercase; font-size:11px; color:var(--vscode-sideBarTitle-foreground)">Parameters</div>`;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const p of props.parameters as any[]) {
-        const escapedValue = (p.value || "").replace(/"/g, "&quot;");
-        const escapedDescParam = (p.description || "").replace(/"/g, "&quot;");
+    const hasSchemaTabs = props.schema?.tabs && props.schema.tabs.length > 0;
+
+    if (hasSchemaTabs) {
+      const availableTabs = props.schema.tabs;
+      let activeTabId = nodeActiveTabMap.get(nodeData.id);
+      if (!activeTabId || !availableTabs.some((t: any) => t.id === activeTabId)) {
+        activeTabId = availableTabs[0].id;
+        if (activeTabId) {
+          nodeActiveTabMap.set(String(nodeData.id), activeTabId);
+        }
+      }
+      const activeTab = availableTabs.find((t: any) => t.id === activeTabId) || availableTabs[0];
+
+      // Tab navigation bar
+      html += `
+        <div class="prop-tabs-bar" style="display: flex; gap: 4px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); margin-top: 12px; margin-bottom: 12px; overflow-x: auto;">
+          ${availableTabs
+            .map(
+              (t: any) => `
+            <button class="prop-tab-btn" data-tab="${t.id}" style="padding: 6px 10px; background: transparent; border: none; border-bottom: 2px solid ${t.id === activeTabId ? "var(--vscode-panelTitle-activeBorder, #007acc)" : "transparent"}; color: ${t.id === activeTabId ? "var(--vscode-panelTitle-activeForeground, #fff)" : "var(--vscode-descriptionForeground, #888)"}; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;">
+              ${t.label}
+            </button>
+          `,
+            )
+            .join("")}
+        </div>
+      `;
+
+      // Active tab groups
+      if (activeTab && activeTab.groups) {
+        for (const group of activeTab.groups) {
+          html += `
+            <details open style="margin-bottom: 12px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
+              <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground); margin-bottom: 8px;">${group.label}</summary>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+          `;
+          for (const field of group.fields || []) {
+            const val = props.values?.[field.key] ?? field.defaultValue ?? "";
+            const escapedVal = String(val).replace(/"/g, "&quot;");
+            const escapedDesc = (field.description || "").replace(/"/g, "&quot;");
+
+            let isDisabled = false;
+            if (field.enabledIf && props.values) {
+              const cond = field.enabledIf.trim();
+              if (cond.startsWith("!")) {
+                isDisabled = props.values[cond.slice(1)] === true || props.values[cond.slice(1)] === "true";
+              } else {
+                isDisabled = props.values[cond] === false || props.values[cond] === "false" || !props.values[cond];
+              }
+            }
+
+            if (field.kind === "boolean") {
+              const isChecked = val === true || val === "true";
+              html += `
+                <div class="prop-group" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; opacity: ${isDisabled ? 0.5 : 1};">
+                  <label class="prop-label" title="${escapedDesc}">${field.label}</label>
+                  <input type="checkbox" class="prop-checkbox prop-input-property" data-prop="${field.key}" ${isChecked ? "checked" : ""} ${isDisabled ? "disabled" : ""} />
+                </div>
+              `;
+            } else if (field.kind === "choice" && Array.isArray(field.choices)) {
+              html += `
+                <div class="prop-group" style="opacity: ${isDisabled ? 0.5 : 1};">
+                  <label class="prop-label" title="${escapedDesc}">${field.label}</label>
+                  <select class="prop-select prop-input-property" data-prop="${field.key}" style="width: 100%; border-radius: 4px; padding: 4px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border);" ${isDisabled ? "disabled" : ""}>
+                    ${field.choices
+                      .map((c: any) => {
+                        const cVal = typeof c === "string" ? c : c.value;
+                        const cLabel = typeof c === "string" ? c : c.label;
+                        return `<option value="${cVal}" ${String(cVal) === String(val) ? "selected" : ""}>${cLabel}</option>`;
+                      })
+                      .join("")}
+                  </select>
+                </div>
+              `;
+            } else if (field.kind === "codeBlock") {
+              html += `
+                <div class="prop-group" style="display: flex; flex-direction: column; gap: 4px;">
+                  <label class="prop-label" title="${escapedDesc}">${field.label}</label>
+                  <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.4; max-height: 200px; overflow-y: auto;">
+                    ${val}
+                  </div>
+                </div>
+              `;
+            } else {
+              html += `
+                <div class="prop-group" style="opacity: ${isDisabled ? 0.5 : 1};">
+                  <label class="prop-label" title="${escapedDesc}">${field.label} ${field.unit ? `[${field.unit}]` : ""}</label>
+                  <div style="display: flex; gap: 4px; align-items: center;">
+                    <input type="text" class="prop-input prop-input-property" data-prop="${field.key}" value="${escapedVal}" ${field.readOnly ? "readonly" : ""} ${isDisabled ? "disabled" : ""} style="flex: 1;" />
+                    ${field.unit ? `<span style="font-size: 11px; color: var(--vscode-descriptionForeground);">${field.unit}</span>` : ""}
+                  </div>
+                </div>
+              `;
+            }
+          }
+          html += `
+              </div>
+            </details>
+          `;
+        }
+      }
+    } else {
+      // Legacy flat parameters fallback
+      if (props.parameters && props.parameters.length > 0) {
+        html += `<div style="margin-top:24px; margin-bottom:12px; font-weight:600; text-transform:uppercase; font-size:11px; color:var(--vscode-sideBarTitle-foreground)">Parameters</div>`;
+        for (const p of props.parameters as any[]) {
+          const escapedValue = (p.value || "").replace(/"/g, "&quot;");
+          const escapedDescParam = (p.description || "").replace(/"/g, "&quot;");
+          html += `
+            <div class="prop-group">
+              <label class="prop-label" title="${escapedDescParam}">${p.name} ${p.unit ? `[${p.unit}]` : ""}</label>
+              <input type="text" class="prop-input prop-input-param prop-input-property" data-param="${p.name}" data-prop="${p.name}" value="${escapedValue}" />
+            </div>
+          `;
+        }
+      }
+
+      if (props.docInfo) {
         html += `
-          <div class="prop-group">
-            <label class="prop-label" title="${escapedDescParam}">${p.name} ${p.unit ? `[${p.unit}]` : ""}</label>
-            <input type="text" class="prop-input prop-input-param" data-param="${p.name}" value="${escapedValue}" />
-          </div>
+          <details open style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
+            <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Information</summary>
+            <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
+              ${props.docInfo}
+            </div>
+          </details>
+        `;
+      }
+
+      if (props.docRevisions) {
+        html += `
+          <details style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
+            <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Revisions</summary>
+            <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
+              ${props.docRevisions}
+            </div>
+          </details>
         `;
       }
     }
 
-    // Add inline style for images inside docs
     html += `<style>.prop-doc-container img { max-width: 100%; height: auto; }</style>`;
-
-    if (props.docInfo) {
-      html += `
-        <details open style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
-          <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Information</summary>
-          <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
-            ${props.docInfo}
-          </div>
-        </details>
-      `;
-    }
-
-    if (props.docRevisions) {
-      html += `
-        <details style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
-          <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Revisions</summary>
-          <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
-            ${props.docRevisions}
-          </div>
-        </details>
-      `;
-    }
   }
 
   content.innerHTML = html;
@@ -295,44 +406,95 @@ function showProperties(nodeData: any) {
     });
   }
 
-  const paramInputs = document.querySelectorAll(".prop-input-param");
-  // Debounce timers per parameter to avoid flooding the LSP with edits
-  const paramDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Bind tab buttons
+  const tabBtns = document.querySelectorAll(".prop-tab-btn");
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const tabId = (e.currentTarget as HTMLElement).getAttribute("data-tab");
+      if (tabId) {
+        nodeActiveTabMap.set(String(nodeData.id), tabId);
+        showProperties(nodeData);
+      }
+    });
+  });
 
-  paramInputs.forEach((input) => {
-    // Use `input` event for real-time updates as the user types
-    input.addEventListener("input", (e) => {
-      const target = e.target as HTMLInputElement;
-      const paramName = target.getAttribute("data-param");
-      const newValue = target.value;
-      if (!paramName) return;
+  // Bind property inputs (inputs, checkboxes, selects)
+  const propInputs = document.querySelectorAll(".prop-input-property");
+  const propDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-      // Optimistically update the prop model
-      const oldValue =
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        props?.parameters?.find((param: any) => param.name === paramName)?.value ?? "";
+  propInputs.forEach((input) => {
+    const isCheckbox = (input as HTMLInputElement).type === "checkbox";
+    const isSelect = input.tagName === "SELECT";
+    const eventType = isCheckbox || isSelect ? "change" : "input";
+
+    input.addEventListener(eventType, (e) => {
+      const target = e.target as HTMLInputElement | HTMLSelectElement;
+      const propKey = target.getAttribute("data-prop");
+      if (!propKey) return;
+
+      const newValue = isCheckbox ? (target as HTMLInputElement).checked : target.value;
+      const prevValue = props?.values?.[propKey];
+
+      if (props?.values) {
+        props.values[propKey] = newValue;
+      }
       if (props?.parameters) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const p = props.parameters.find((param: any) => param.name === paramName);
-        if (p) p.value = newValue;
+        const p = props.parameters.find((param: any) => param.name === propKey);
+        if (p) p.value = String(newValue);
       }
 
-      // Optimistically patch the diagram SVG text in-place (instant, no re-render)
-      updateParameterText(nodeData.id, paramName, oldValue, newValue);
+      // Optimistically patch diagram SVG text in-place
+      updateParameterText(nodeData.id, propKey, String(prevValue ?? ""), String(newValue));
 
-      // Debounce the LSP text edit (100ms) to avoid overwhelming on rapid typing
-      const timerKey = `${nodeData.id}:${paramName}`;
-      const existing = paramDebounceTimers.get(timerKey);
+      // Live condition evaluation for enabledIf fields in the current DOM
+      const allPropInputs = document.querySelectorAll(".prop-input-property");
+      allPropInputs.forEach((otherInput) => {
+        const otherKey = otherInput.getAttribute("data-prop");
+        for (const tab of props?.schema?.tabs || []) {
+          for (const grp of tab.groups || []) {
+            const f = grp.fields?.find((field: any) => field.key === otherKey);
+            if (f?.enabledIf && props.values) {
+              const cond = f.enabledIf.trim();
+              let disabled = false;
+              if (cond.startsWith("!")) {
+                disabled = props.values[cond.slice(1)] === true || props.values[cond.slice(1)] === "true";
+              } else {
+                disabled = props.values[cond] === false || props.values[cond] === "false" || !props.values[cond];
+              }
+              const parentGroup = otherInput.closest(".prop-group") as HTMLElement | null;
+              if (parentGroup) {
+                parentGroup.style.opacity = disabled ? "0.5" : "1";
+              }
+              if (disabled) {
+                otherInput.setAttribute("disabled", "");
+              } else {
+                otherInput.removeAttribute("disabled");
+              }
+            }
+          }
+        }
+      });
+
+      // Debounce LSP update action
+      const timerKey = `${nodeData.id}:${propKey}`;
+      const existing = propDebounceTimers.get(timerKey);
       if (existing) clearTimeout(existing);
-      paramDebounceTimers.set(
+      propDebounceTimers.set(
         timerKey,
         setTimeout(() => {
-          paramDebounceTimers.delete(timerKey);
+          propDebounceTimers.delete(timerKey);
+          enqueueDiagramAction({
+            type: "updateProperty",
+            name: nodeData.id,
+            key: propKey,
+            value: newValue,
+            previousValue: prevValue,
+          });
           enqueueDiagramAction({
             type: "updateParameter",
             name: nodeData.id,
-            parameter: paramName,
-            value: newValue,
+            parameter: propKey,
+            value: String(newValue),
           });
         }, 100),
       );

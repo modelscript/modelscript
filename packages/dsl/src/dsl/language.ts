@@ -704,6 +704,49 @@ export type LanguageProtocolHandler<TParams = any, TResult = any> = (
 export type RuntimeFileInput = { filename?: string; content?: string; path?: string } | string;
 
 /**
+ * Context provided to an external scanner lambda.
+ */
+export interface LexerContext {
+  /** The lookahead character code at the current lexer position (-1 or 0 if EOF). */
+  readonly lookahead: number;
+  /** Current byte position in input. */
+  readonly pos: number;
+  /** Length of the token currently being scanned. */
+  readonly length: number;
+  /** Custom 32-bit integer scanner state tracked per GLR head. */
+  state: number;
+  /** Peeks a character code at the given offset relative to current position. */
+  peek(offset?: number): number;
+  /** Advances the lexer by 1 or more characters. */
+  advance(count?: number): void;
+  /** Marks the end of the current token. */
+  markEnd(): void;
+  /** Skips whitespace characters (spaces, tabs, newlines). */
+  skipWhitespace(): void;
+  /** Checks whether a specific token symbol is expected by the parser in this state. */
+  isExpected(token: number | any): boolean;
+  /** Returns true if at or beyond EOF. */
+  isEof(): boolean;
+}
+
+/**
+ * Valid tokens interface passed to the external scanner lambda.
+ */
+export interface ValidTokens {
+  /** Returns true if the given terminal symbol is expected in the current parser state. */
+  has(token: number | any): boolean;
+  [key: number]: boolean;
+}
+
+/**
+ * First-class external scanner lambda function compiling down to AssemblyScript / WASM.
+ */
+export type ExternalScannerFunction =
+  | (($: Record<string, any>, lexer: LexerContext, valid: ValidTokens) => number)
+  | ((lexer: LexerContext, valid: ValidTokens) => number)
+  | (($: Record<string, any>) => (lexer: LexerContext, valid: ValidTokens) => number);
+
+/**
  * Configuration options passed to the `language(...)` function.
  * Modeled after Tree-sitter's Grammar API.
  */
@@ -776,8 +819,11 @@ export interface LanguageOptions<
   /** External Scanner (Context-Sensitive Lexing) */
   externals?: ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[];
 
-  /** External scanner logic (WASM fallback). Not typically used directly in DSL. */
-  scanner?: (currentPos: number, scannerState: number) => number;
+  /** External scanner logic compiled down to zero-overhead AssemblyScript / WASM. */
+  scanner?:
+    | ExternalScannerFunction
+    | { scan: ExternalScannerFunction }
+    | ((currentPos: number, scannerState: number) => number);
 
   /**
    * Tree-sitter Parity: Rules that serve as supertypes (interfaces/abstract classes)
@@ -875,6 +921,9 @@ export interface LanguageOptions<
 
   /** Declarative 2D Diagram & Visual Modeling Configuration */
   diagram?: DiagramConfig<RuleName, FieldName, QueryName, ModelAttrs>;
+
+  /** Declarative Property Inspector Configuration */
+  properties?: PropertyInspectorConfig<RuleName, FieldName, QueryName, ModelAttrs>;
 
   /** Declarative Control Flow Graph Nodes Configuration */
   cfgNodes?: Record<
@@ -2593,6 +2642,106 @@ export interface ExpressionEvaluatorConfig {
   splitStaticDynamic?: (db: CodeGraph, exprNode: u32) => { staticNode: u32; dynamicNode: u32 };
 }
 
+/** Supported field input kinds in the property inspector */
+export type PropertyFieldKind =
+  | "string"
+  | "number"
+  | "boolean"
+  | "expression"
+  | "choice"
+  | "quantity"
+  | "typeReference"
+  | "codeBlock"
+  | "color"
+  | "filePicker"
+  | "table";
+
+/** A single option in a choice/dropdown field */
+export interface PropertyChoiceOption {
+  label: string;
+  value: any;
+  description?: string;
+  icon?: string;
+}
+
+/** Dynamic condition predicate for property visibility or enablement */
+export type PropertyPredicate = string | ((ctx: any) => boolean);
+
+/** Field-level validation rule */
+export interface PropertyFieldValidation {
+  min?: number;
+  max?: number;
+  pattern?: string;
+  validate?: (value: any, ctx: any) => string | null;
+}
+
+/** Declarative property field definition */
+export interface PropertyFieldConfig {
+  key: string;
+  label: string;
+  kind: PropertyFieldKind;
+  description?: string;
+  placeholder?: string;
+  defaultValue?: any;
+  unit?: string;
+  choices?: (string | PropertyChoiceOption)[] | ((ctx: any) => (string | PropertyChoiceOption)[]);
+  enabledIf?: PropertyPredicate;
+  visibleIf?: PropertyPredicate;
+  required?: boolean;
+  validation?: PropertyFieldValidation;
+  readOnly?: boolean;
+}
+
+/** Declarative group (accordion/collapsible section) */
+export interface PropertyGroupConfig {
+  id: string;
+  label: string;
+  description?: string;
+  collapsedByDefault?: boolean;
+  visibleIf?: PropertyPredicate;
+  fields: PropertyFieldConfig[];
+}
+
+/** Declarative tab */
+export interface PropertyTabConfig {
+  id: string;
+  label: string;
+  icon?: string;
+  visibleIf?: PropertyPredicate;
+  groups: PropertyGroupConfig[];
+}
+
+/** Schema for an entity rule */
+export interface EntityPropertySchema<RuleName extends string = string> {
+  title?: string | ((node: any) => string);
+  icon?: string | ((node: any) => string);
+  tabs: PropertyTabConfig[];
+}
+
+/** In-model dynamic property and annotation discovery (e.g. Modelica Dialog) */
+export interface InModelPropertyDiscoveryHook {
+  extractSchema?: (db: any, node: any, queryEngine: any) => EntityPropertySchema | null;
+  extractValues?: (db: any, node: any, queryEngine: any) => Record<string, any> | null;
+}
+
+/** AST mutation handler for updating properties back to source code */
+export interface PropertyMutator<RuleName extends string = string> {
+  updateProperty?: (db: any, node: any, key: string, value: any, previousValue?: any) => any;
+  updateModifier?: (docText: string, node: any, paramName: string, newValue: any) => any;
+}
+
+/** Property Inspector configuration for a language */
+export interface PropertyInspectorConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  entities?: Partial<Record<NoInfer<RuleName>, EntityPropertySchema<RuleName>>>;
+  inModelDiscovery?: InModelPropertyDiscoveryHook;
+  mutator?: PropertyMutator<RuleName>;
+}
+
 /**
  * Universal 2D Visual Modeling & Diagram DSL Configuration
  */
@@ -2602,6 +2751,9 @@ export interface DiagramConfig<
   QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
+  /** Declarative Property Inspector Configuration */
+  properties?: PropertyInspectorConfig<RuleName, FieldName, QueryName, ModelAttrs>;
+
   /** Static / built-in diagram projections */
   projections?: Record<string, DiagramProjectionConfig<RuleName, FieldName>>;
   views?: Record<string, DiagramProjectionConfig<RuleName, FieldName>>; // Alias for backward-compat
@@ -2818,6 +2970,7 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
     mutations: diagramConfig.mutations,
     palette: diagramConfig.palette,
     placement: diagramConfig.placement,
+    properties: diagramConfig.properties,
   };
 
   return { gfxConfig, graphicsConfig: gfxConfig, options };

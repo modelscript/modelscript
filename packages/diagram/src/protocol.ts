@@ -15,6 +15,8 @@ export const DiagramMethods = {
   applyEdits: "modelscript/diagram.applyEdits",
   /** Get component properties on-demand (lazy loading) */
   getComponentProperties: "modelscript/diagram.getComponentProperties",
+  /** Get schema-driven property definitions */
+  getPropertySchema: "modelscript/diagram.getPropertySchema",
   /** Drill down into child subsystem / component diagram */
   drillDown: "modelscript/diagram.drillDown",
   /** Get palette / stencils for diagram toolbox */
@@ -40,7 +42,7 @@ export interface PlacementItem {
   y: number;
   width: number;
   height: number;
-  rotation: number;
+  rotation?: number;
   edges?: EdgeUpdate[];
   connectedOnly?: boolean;
 }
@@ -51,9 +53,80 @@ export interface X6Markup {
   tagName: string;
   selector?: string;
   groupSelector?: string;
-  attrs?: Record<string, string | number | undefined>;
+  attrs?: Record<string, string | number>;
+  style?: Record<string, string | number>;
+  className?: string;
   children?: X6Markup[];
   textContent?: string;
+}
+
+// ── Property Inspector Schema ──
+
+/** Supported field input kinds in the property inspector */
+export type PropertyFieldKind =
+  | "string"
+  | "number"
+  | "boolean"
+  | "expression"
+  | "choice"
+  | "quantity"
+  | "typeReference"
+  | "codeBlock"
+  | "color"
+  | "filePicker"
+  | "table";
+
+export interface PropertyChoiceOption {
+  label: string;
+  value: any;
+  description?: string;
+  icon?: string;
+}
+
+export interface PropertyFieldValidation {
+  min?: number;
+  max?: number;
+  pattern?: string;
+  validate?: (value: any, ctx: any) => string | null;
+}
+
+export interface PropertyFieldConfig {
+  key: string;
+  label: string;
+  kind: PropertyFieldKind;
+  description?: string;
+  placeholder?: string;
+  defaultValue?: any;
+  unit?: string;
+  choices?: (string | PropertyChoiceOption)[];
+  enabledIf?: string;
+  visibleIf?: string;
+  required?: boolean;
+  validation?: PropertyFieldValidation;
+  readOnly?: boolean;
+}
+
+export interface PropertyGroupConfig {
+  id: string;
+  label: string;
+  description?: string;
+  collapsedByDefault?: boolean;
+  visibleIf?: string;
+  fields: PropertyFieldConfig[];
+}
+
+export interface PropertyTabConfig {
+  id: string;
+  label: string;
+  icon?: string;
+  visibleIf?: string;
+  groups: PropertyGroupConfig[];
+}
+
+export interface EntityPropertySchema {
+  title?: string;
+  icon?: string;
+  tabs: PropertyTabConfig[];
 }
 
 // ── Diagram Data (read model) ──
@@ -75,6 +148,9 @@ export interface ComponentPropertyData {
     localizedDescription?: string;
     isBoolean?: boolean;
     unit?: string;
+    tab?: string;
+    group?: string;
+    enable?: string;
   }[];
   documentation?: {
     info?: string;
@@ -84,6 +160,12 @@ export interface ComponentPropertyData {
   docRevisions?: string;
   iconSvg?: string;
   icon?: string;
+  /** Structured schema-driven property definition */
+  schema?: EntityPropertySchema;
+  /** Property values map (key -> value) */
+  values?: Record<string, any>;
+  /** Validation error map (key -> error message) */
+  errors?: Record<string, string>;
 }
 
 export interface DiagramPort {
@@ -200,7 +282,8 @@ export type DiagramEditAction =
     }
   | { type: "updateName"; oldName: string; newName: string }
   | { type: "updateDescription"; name: string; description: string }
-  | { type: "updateParameter"; name: string; parameter: string; value: string };
+  | { type: "updateParameter"; name: string; parameter: string; value: string }
+  | { type: "updateProperty"; name: string; key: string; value: any; previousValue?: any };
 
 // ── SVG Export Options ──
 

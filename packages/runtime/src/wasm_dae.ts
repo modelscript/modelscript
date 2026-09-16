@@ -378,7 +378,34 @@ export class WasmDaeBridge implements IDaeBuilder {
     stopTime?: number;
     tolerance?: number;
     interval?: number;
+    numberOfIntervals?: number;
+    algorithm?: string;
     __modelscript_equidistantOutput?: boolean;
+  } = {};
+
+  public hiddenVarIndices = new Set<number>();
+  public diffusionExprIds = new Map<number, number>();
+  public extensionMetadata: {
+    webgpu?: { workgroupSize?: number; precision?: string; parallelInstances?: number };
+    audioClock?: { sampleRate?: number; targetHz?: number; realtimeFactor?: number };
+    sde?: { method?: string; ensemblePaths?: number; seed?: number };
+    bvp?: { boundaryConditions?: string[]; method?: string; intervals?: number };
+    surrogate?: Map<string, { architecture?: string; datasetUri?: string; errorTolerance?: number }>;
+    feaMesh?: {
+      cadUri?: string;
+      meshType?: string;
+      material?: string;
+      loadConnector?: string;
+      feedbackDeflection?: string;
+    }[];
+    cfdFlow?: {
+      grid?: number[];
+      dx?: number;
+      turbulenceModel?: string;
+      velocityVariable?: string;
+      dragForceVariable?: string;
+    }[];
+    mbse?: { sysml?: any[]; owl?: any[]; telemetry?: any[] };
   } = {};
 
   public functions = new Map<string | number, WasmDaeBridge>();
@@ -576,6 +603,10 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   getVarIdxByName(name: string): number {
+    return this.lookupVariable(name);
+  }
+
+  findVar(name: string): number {
     return this.lookupVariable(name);
   }
 
@@ -1729,6 +1760,28 @@ export class WasmDaeBridge implements IDaeBuilder {
     copy.algorithmAnnotations = [...this.algorithmAnnotations];
     copy.diagnostics = [...this.diagnostics];
     copy.experiment = { ...this.experiment };
+    copy.hiddenVarIndices = new Set(this.hiddenVarIndices);
+    for (const [k, v] of this.diffusionExprIds) copy.diffusionExprIds.set(k, v);
+    copy.extensionMetadata = {
+      ...this.extensionMetadata,
+      ...(this.extensionMetadata.webgpu && { webgpu: { ...this.extensionMetadata.webgpu } }),
+      ...(this.extensionMetadata.audioClock && { audioClock: { ...this.extensionMetadata.audioClock } }),
+      ...(this.extensionMetadata.sde && { sde: { ...this.extensionMetadata.sde } }),
+      ...(this.extensionMetadata.bvp && {
+        bvp: {
+          ...this.extensionMetadata.bvp,
+          boundaryConditions: this.extensionMetadata.bvp.boundaryConditions
+            ? [...this.extensionMetadata.bvp.boundaryConditions]
+            : undefined,
+        },
+      }),
+      ...(this.extensionMetadata.surrogate && { surrogate: new Map(this.extensionMetadata.surrogate) }),
+      ...(this.extensionMetadata.feaMesh && { feaMesh: this.extensionMetadata.feaMesh.map((x) => ({ ...x })) }),
+      ...(this.extensionMetadata.cfdFlow && {
+        cfdFlow: this.extensionMetadata.cfdFlow.map((x) => ({ ...x, grid: x.grid ? [...x.grid] : undefined })),
+      }),
+      ...(this.extensionMetadata.mbse && { mbse: { ...this.extensionMetadata.mbse } }),
+    };
     for (const [k, v] of this.functions) copy.functions.set(k, v);
     for (const s of this._algorithmSections) copy._algorithmSections.push({ ...s });
     for (const s of this._initialAlgorithmSections) copy._initialAlgorithmSections.push({ ...s });

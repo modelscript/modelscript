@@ -376,34 +376,90 @@ type CSTNode = import("@modelscript/dsl").CSTNode;
 
 /**
  * Resolve a feature reference name within a scope.
- * Searches: (1) children of the enclosing definition, (2) global byName.
+ * Searches: (1) qualified names, (2) direct scope children, (3) imported members/namespaces, (4) global byName.
  */
 const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string): SymbolEntry | null => {
-  // Search enclosing scope's children first
+  // 1. Direct qualified name lookup (e.g. "ScalarValues::Real" or "ISQ::Time")
+  if (name.includes("::")) {
+    const parts = name.split("::");
+    const pkgName = parts[0];
+    const memberName = parts[parts.length - 1];
+    const pkgCandidates = db.byName(pkgName);
+    for (const pkg of pkgCandidates) {
+      for (const child of db.childrenOf(pkg.id)) {
+        if (child.name === memberName) return child;
+      }
+    }
+  }
+
+  // 2. Search enclosing scope's children and imports up the scope chain
   if (scopeId !== null) {
     let current: number | null = scopeId;
     while (current !== null) {
       const parent = db.symbol(current);
       if (!parent) break;
-      for (const child of db.childrenOf(parent.id)) {
-        if (child.name === name) return child;
+      const children = db.childrenOf(parent.id);
+
+      // (a) Search direct non-import children
+      for (const child of children) {
+        if (child.kind !== "Import" && child.name === name) return child;
       }
+
+      // (b) Search imports in this scope
+      for (const child of children) {
+        if (child.kind === "Import" && child.name) {
+          const importTarget = child.name;
+
+          // Case i: Namespace wildcard import (e.g. "ScalarValues::*" or "ScalarValues")
+          if (importTarget.endsWith("::*") || importTarget.endsWith("::**") || !importTarget.includes("::")) {
+            const rawPkg = importTarget.replace(/::\*+$/, "");
+            const pkgBaseName = rawPkg.split("::").pop() || rawPkg;
+            const pkgs = db.byName(pkgBaseName);
+            for (const p of pkgs) {
+              for (const member of db.childrenOf(p.id)) {
+                if (member.name === name) return member;
+              }
+            }
+          }
+
+          // Case ii: Membership import (e.g. "ScalarValues::Real" or "ISQ::Time")
+          if (importTarget.endsWith("::" + name) || importTarget === name) {
+            const parts = importTarget.split("::");
+            if (parts.length > 1) {
+              const pkgName = parts[parts.length - 2];
+              const pkgs = db.byName(pkgName);
+              for (const p of pkgs) {
+                for (const member of db.childrenOf(p.id)) {
+                  if (member.name === name) return member;
+                }
+              }
+            } else {
+              const candidates = db.byName(name);
+              if (candidates && candidates.length > 0) return candidates[0];
+            }
+          }
+        }
+      }
+
       current = parent.parentId;
     }
   }
-  // Fallback: global name lookup
+
+  // 3. Fallback: global name lookup
   const globals = db.byName(name);
   return globals?.[0] ?? null;
 };
 
 /**
  * Resolve the type entry for a feature usage.
- * Reads the OwnedFeatureTyping child's name and resolves via db.byName().
+ * Reads the OwnedFeatureTyping child's name and resolves via resolveFeatureInScope or db.byName().
  */
 const resolveTypeOf = (db: QueryDB, entry: SymbolEntry): SymbolEntry | null => {
   // Look for OwnedFeatureTyping children to get the type name
   for (const child of db.childrenOf(entry.id)) {
     if (child.ruleName === "OwnedFeatureTyping" && child.name) {
+      const resolved = resolveFeatureInScope(db, entry.parentId, child.name);
+      if (resolved) return resolved;
       const typeEntries = db.byName(child.name);
       if (typeEntries.length > 0) return typeEntries[0];
     }

@@ -46,6 +46,7 @@ interface DiagramEditorProps {
   theme: Theme;
   isLoading?: boolean;
   onRenderComplete?: (diagramData: any) => void;
+  onInteractiveWrite?: (variableName: string, value: any, nodeId: string) => void;
 }
 
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
@@ -105,6 +106,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           case "deleteComponents":
             if (p.onComponentsDelete) p.onComponentsDelete(action.names);
             else if (p.onComponentDelete && action.names.length > 0) p.onComponentDelete(action.names[0]);
+            break;
+          case "interactiveWrite":
+            if (p.onInteractiveWrite) p.onInteractiveWrite(action.variableName, action.value, action.nodeId);
             break;
         }
       },

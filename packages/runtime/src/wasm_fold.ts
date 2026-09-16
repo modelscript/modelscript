@@ -2001,6 +2001,29 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
   out.diagnostics.push(...dae.diagnostics);
   out.equationAnnotations = [...dae.equationAnnotations];
   out.algorithmAnnotations = [...dae.algorithmAnnotations];
+  out.experiment = { ...dae.experiment };
+  out.hiddenVarIndices = new Set(dae.hiddenVarIndices);
+  for (const [k, v] of dae.diffusionExprIds) out.diffusionExprIds.set(k, v);
+  out.extensionMetadata = {
+    ...dae.extensionMetadata,
+    ...(dae.extensionMetadata.webgpu && { webgpu: { ...dae.extensionMetadata.webgpu } }),
+    ...(dae.extensionMetadata.audioClock && { audioClock: { ...dae.extensionMetadata.audioClock } }),
+    ...(dae.extensionMetadata.sde && { sde: { ...dae.extensionMetadata.sde } }),
+    ...(dae.extensionMetadata.bvp && {
+      bvp: {
+        ...dae.extensionMetadata.bvp,
+        boundaryConditions: dae.extensionMetadata.bvp.boundaryConditions
+          ? [...dae.extensionMetadata.bvp.boundaryConditions]
+          : undefined,
+      },
+    }),
+    ...(dae.extensionMetadata.surrogate && { surrogate: new Map(dae.extensionMetadata.surrogate) }),
+    ...(dae.extensionMetadata.feaMesh && { feaMesh: dae.extensionMetadata.feaMesh.map((x) => ({ ...x })) }),
+    ...(dae.extensionMetadata.cfdFlow && {
+      cfdFlow: dae.extensionMetadata.cfdFlow.map((x) => ({ ...x, grid: x.grid ? [...x.grid] : undefined })),
+    }),
+    ...(dae.extensionMetadata.mbse && { mbse: { ...dae.extensionMetadata.mbse } }),
+  };
   const arrayShapes = new Map<string, number[]>();
 
   for (let i = 0; i < dae.varCount; i++) {

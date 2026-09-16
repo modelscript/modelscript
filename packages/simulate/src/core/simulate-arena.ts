@@ -24,6 +24,9 @@ import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
 import { solveInitialEquationsArena } from "@modelscript/runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "@modelscript/runtime/wasm_statement_executor.js";
 import { buildAdJacobian } from "@modelscript/runtime/wasm_tape.js";
+import { rodas4p } from "../solvers/rodas4p.js";
+import { trbdf2 } from "../solvers/trbdf2.js";
+import { tsit5 } from "../solvers/tsit5.js";
 import {
   type ArenaAssertion,
   type ArenaEventIndicator,
@@ -1209,7 +1212,7 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     options?: {
-      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode";
       atol?: number;
       rtol?: number;
       outputStringIds?: number[];
@@ -1241,8 +1244,15 @@ export class ArenaSimulator {
       ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
     }
 
-    // ── Adaptive solvers (Dopri5, BDF) ──
-    if (solver === "dopri5" || solver === "bdf" || solver === "auto") {
+    // ── Adaptive solvers (Tsit5, Dopri5, BDF, Rodas4P, TRBDF2) ──
+    if (
+      solver === "dopri5" ||
+      solver === "tsit5" ||
+      solver === "bdf" ||
+      solver === "rodas4p" ||
+      solver === "trbdf2" ||
+      solver === "auto"
+    ) {
       return this.simulateAdaptive(
         solver,
         steps,
@@ -1371,7 +1381,7 @@ export class ArenaSimulator {
    * Bridges the arena evaluation into the standalone solver modules.
    */
   private simulateAdaptive(
-    solver: "dopri5" | "bdf" | "auto",
+    solver: "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto",
     steps: number,
     step: number,
     valuesByStringId: Float64Array,
@@ -1422,6 +1432,22 @@ export class ArenaSimulator {
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,
       );
+    } else if (solver === "tsit5") {
+      rawResult = tsit5(
+        rhsFn,
+        startTime,
+        y0,
+        stopTime,
+        outputTimes,
+        { atol, rtol },
+        eventFns.length > 0 ? eventFns : undefined,
+        eventCb,
+        eventDirs,
+      );
+    } else if (solver === "rodas4p") {
+      rawResult = rodas4p(rhsFn, startTime, y0, stopTime, outputTimes, { atol, rtol });
+    } else if (solver === "trbdf2") {
+      rawResult = trbdf2(rhsFn, startTime, y0, stopTime, outputTimes, { atol, rtol });
     } else {
       // dopri5 or auto
       rawResult = dopri5(
@@ -1712,7 +1738,7 @@ export class ArenaSimulator {
     derivStringIds: number[],
     options?: {
       signal?: AbortSignal;
-      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode";
       atol?: number;
       rtol?: number;
       outputStringIds?: number[];
@@ -1769,7 +1795,14 @@ export class ArenaSimulator {
     }
 
     // Adaptive solvers run synchronously (they're CPU-bound; yielding inside would break solver state)
-    if (solver === "dopri5" || solver === "bdf" || solver === "auto") {
+    if (
+      solver === "dopri5" ||
+      solver === "tsit5" ||
+      solver === "bdf" ||
+      solver === "rodas4p" ||
+      solver === "trbdf2" ||
+      solver === "auto"
+    ) {
       if (options?.signal?.aborted) throw new Error("Simulation aborted");
       return this.simulateAdaptive(
         solver,
@@ -2139,8 +2172,8 @@ export interface ArenaSimulateOptions {
   step?: number;
   /** Number of output intervals (used if `step` is not given). */
   numberOfIntervals?: number;
-  /** ODE solver selection. */
-  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "webgpu" | "cvode";
+  /** ODE/DAE solver selection. */
+  solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "webgpu" | "cvode";
   /** Absolute tolerance for adaptive solvers (default: 1e-6). */
   atol?: number;
   /** Relative tolerance for adaptive solvers (default: 1e-6). */
@@ -2155,6 +2188,8 @@ export interface ArenaSimulateOptions {
   fmuRegistry?: FmuSubsystemRegistry;
   /** Optional debugger hook for step-by-step statement execution. */
   debuggerHook?: SimulationDebugger;
+  /** When true, preserves internal variables tagged with HideResult. */
+  debug?: boolean;
 }
 
 /**
@@ -2182,11 +2217,10 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const exp = arena.experiment;
   const startTime = options?.startTime ?? exp.startTime ?? 0;
   const stopTime = options?.stopTime ?? exp.stopTime ?? 10;
+  const numIntervals = options?.numberOfIntervals ?? exp.numberOfIntervals;
   const step =
     options?.step ??
-    (options?.numberOfIntervals
-      ? (stopTime - startTime) / options.numberOfIntervals
-      : (exp.interval ?? (stopTime - startTime) / 500));
+    (numIntervals ? (stopTime - startTime) / numIntervals : (exp.interval ?? (stopTime - startTime) / 500));
 
   // ── Step 3: Build the environment (Float64Array indexed by StringId) ──
   const envSize = Math.max(arena.interner.size + 256, 4096);
@@ -2285,10 +2319,18 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   // ── Step 5.5: Initialize FMU subsystems (if any) ──
   sim.initializeFmuSubsystems(startTime, stopTime, step);
 
+  const defaultSolver = (exp.algorithm as any) ?? "rk4";
+  const chosenSolver =
+    options?.solver === "webgpu"
+      ? "rk4"
+      : options?.solver && options.solver !== "auto"
+        ? options.solver
+        : defaultSolver;
+
   const rawResult = sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
-    solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
-    ...(options?.atol !== undefined && { atol: options.atol }),
-    ...(options?.rtol !== undefined && { rtol: options.rtol }),
+    solver: chosenSolver,
+    atol: options?.atol ?? exp.tolerance,
+    rtol: options?.rtol ?? exp.tolerance,
     ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
   });
 
@@ -2300,11 +2342,26 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const y: number[][] = rawResult.y.map((row) => Array.from(row));
 
   let outNames = stateNames;
+  let outY = y;
   if (options?.outputStringIds) {
     outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  } else if (arena.hiddenVarIndices && arena.hiddenVarIndices.size > 0 && !options?.debug) {
+    const keepIndices: number[] = [];
+    const filteredNames: string[] = [];
+    for (let idx = 0; idx < stateNames.length; idx++) {
+      const varIdx = Array.from(sim.stateVars)[idx];
+      if (varIdx === undefined || !arena.hiddenVarIndices.has(varIdx)) {
+        keepIndices.push(idx);
+        filteredNames.push(stateNames[idx]!);
+      }
+    }
+    if (keepIndices.length < stateNames.length) {
+      outNames = filteredNames;
+      outY = y.map((row) => keepIndices.map((idx) => row[idx]!));
+    }
   }
 
-  return { t, y, states: outNames };
+  return { t, y: outY, states: outNames };
 }
 
 /**
@@ -2328,11 +2385,10 @@ export async function simulateArenaAsync(
   const exp = arena.experiment;
   const startTime = options?.startTime ?? exp.startTime ?? 0;
   const stopTime = options?.stopTime ?? exp.stopTime ?? 10;
+  const numIntervals = options?.numberOfIntervals ?? exp.numberOfIntervals;
   const step =
     options?.step ??
-    (options?.numberOfIntervals
-      ? (stopTime - startTime) / options.numberOfIntervals
-      : (exp.interval ?? (stopTime - startTime) / 500));
+    (numIntervals ? (stopTime - startTime) / numIntervals : (exp.interval ?? (stopTime - startTime) / 500));
 
   const envSize = Math.max(arena.interner.size + 256, 4096);
   const valuesByStringId = new Float64Array(envSize);
@@ -2489,12 +2545,20 @@ export async function simulateArenaAsync(
     }
   }
 
+  const defaultSolver = (exp.algorithm as any) ?? "tsit5";
+  const chosenSolver =
+    options?.solver === "webgpu"
+      ? "rk4"
+      : options?.solver && options.solver !== "auto"
+        ? options.solver
+        : defaultSolver;
+
   const t_sim0 = performance.now();
   const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
-    solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
+    solver: chosenSolver,
     ...(options?.signal !== undefined && { signal: options.signal }),
-    ...(options?.atol !== undefined && { atol: options.atol }),
-    ...(options?.rtol !== undefined && { rtol: options.rtol }),
+    atol: options?.atol ?? exp.tolerance,
+    rtol: options?.rtol ?? exp.tolerance,
     ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
   });
   const t_sim = performance.now() - t_sim0;
@@ -2506,8 +2570,23 @@ export async function simulateArenaAsync(
   const y: number[][] = rawResult.y.map((row) => Array.from(row as ArrayLike<number>));
 
   let outNames = stateNames;
+  let outY = y;
   if (options?.outputStringIds) {
     outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  } else if (arena.hiddenVarIndices && arena.hiddenVarIndices.size > 0 && !options?.debug) {
+    const keepIndices: number[] = [];
+    const filteredNames: string[] = [];
+    for (let idx = 0; idx < stateNames.length; idx++) {
+      const varIdx = Array.from(sim.stateVars)[idx];
+      if (varIdx === undefined || !arena.hiddenVarIndices.has(varIdx)) {
+        keepIndices.push(idx);
+        filteredNames.push(stateNames[idx]!);
+      }
+    }
+    if (keepIndices.length < stateNames.length) {
+      outNames = filteredNames;
+      outY = y.map((row) => keepIndices.map((idx) => row[idx]!));
+    }
   }
-  return { t, y, states: outNames };
+  return { t, y: outY, states: outNames };
 }

@@ -2,6 +2,7 @@ import { compileRegexToDFA } from "../dsl/automata.js";
 import { NormalizedGrammar } from "../dsl/grammar.js";
 import type { LanguageOptions, Rule } from "../dsl/language.js";
 import { toRule } from "../dsl/language.js";
+import { transpileQuery } from "./transpiler.js";
 
 /**
  * Generates an AssemblyScript DFA-based lexer state machine for the specified grammar.
@@ -263,18 +264,18 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   lexerCode += `export function lex(pos: u32): i32 {\n`;
   lexerCode += `  lexLen = 0;\n`;
   lexerCode += `  lexPos = pos;\n`;
-  lexerCode += `  if (lexPos >= inputLength) { srcLexPos = lexPos; return 1023; } // EOF
-`;
+  lexerCode += `  srcLexPos = pos;\n`;
+  lexerCode += `  srcLexLen = 0;\n`;
+  lexerCode += `  if (lexPos >= inputLength) { return 1023; } // EOF\n`;
 
   // Inject External Scanner Custom State/Functions
   if (grammar.scanner) {
-    lexerCode += `  // --- External Scanner --- 
-`;
-    lexerCode += `  let extToken = scanExternal(lexPos, currentScannerState);
-`;
-    lexerCode += `  if (extToken != 0) return extToken;
-
-`;
+    lexerCode += `  // --- External Scanner --- \n`;
+    lexerCode += `  let extToken = scanExternal(lexPos, currentScannerState);\n`;
+    lexerCode += `  if (extToken != 0) {\n`;
+    lexerCode += `    if (srcLexLen > 0) {\n      lexLen = srcLexLen;\n      lexPos = srcLexPos + lexLen;\n    }\n`;
+    lexerCode += `    return extToken;\n`;
+    lexerCode += `  }\n\n`;
   }
 
   let hasWhitespaceExtra = false;
@@ -774,27 +775,79 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
   if (grammar.scanner) {
     lexerCode += `
-// External Scanner Custom Code
-`;
-    let scannerStr = grammar.scanner.toString();
-    let bodyCode = "";
+// --- External Scanner Helper Primitives ---
+export function scanAdvance(skip: boolean = false): void {
+  let chLen = peekCharLen(lexPos);
+  lexPos += chLen;
+  if (skip) {
+    srcLexPos = lexPos;
+    lexLen = 0;
+    srcLexLen = 0;
+  } else {
+    lexLen += chLen;
+    srcLexLen = lexLen;
+  }
+}
 
-    // Fallback regex to extract the body of a function or arrow function
-    const blockMatch = scannerStr.match(/^[^{]*\{([\s\S]*)\}\s*$/);
-    if (blockMatch) {
-      bodyCode = blockMatch[1].trim();
+export function scanMarkEnd(): void {
+  srcLexLen = lexLen;
+}
+
+export function scanSkipWhitespace(): void {
+  while (lexPos < inputLength) {
+    let c = peekChar(lexPos);
+    if (c == 32 || c == 9 || c == 10 || c == 13) {
+      lexPos += peekCharLen(lexPos);
     } else {
-      const arrowMatch = scannerStr.match(/^[^=]*=>\s*(.*)$/);
-      if (arrowMatch) {
-        bodyCode = "return " + arrowMatch[1] + ";";
+      break;
+    }
+  }
+  srcLexPos = lexPos;
+  lexLen = 0;
+  srcLexLen = 0;
+}
+
+export function scanIsExpected(tok: u32): boolean {
+  if (tok > (MAX_TERMINAL_ID as u32)) return false;
+  return load<u8>(expected_tokens + tok) == 1;
+}
+
+export function scanIsEof(): boolean {
+  return lexPos >= inputLength;
+}
+
+// --- External Scanner Custom Logic ---
+`;
+    let rawScanner: any = grammar.scanner;
+    if (typeof rawScanner?.scan === "function") {
+      rawScanner = rawScanner.scan;
+    }
+    const dummy$ = new Proxy({}, { get: (_, prop) => ({ type: "SYMBOL", value: String(prop) }) });
+    let scannerFn: any = rawScanner;
+    try {
+      if (typeof rawScanner === "function" && rawScanner.length === 1) {
+        const evaluated = rawScanner(dummy$);
+        if (typeof evaluated === "function") {
+          scannerFn = evaluated;
+        }
+      }
+    } catch {
+      scannerFn = rawScanner;
+    }
+    const extNames = new Set<string>();
+    if (grammar.externals) {
+      const dummy$ = new Proxy({}, { get: (_, prop) => ({ type: "SYMBOL", value: String(prop) }) });
+      const extRules = grammar.externals(dummy$ as any);
+      for (const ext of extRules) {
+        if (ext && ext.value) extNames.add(ext.value);
       }
     }
-
-    if (bodyCode) {
-      lexerCode += `function scanExternal(currentPos: u32, scannerState: u32): i32 {\n${bodyCode}\n}\n`;
-    } else {
-      lexerCode += scannerStr + "\n";
-    }
+    const transpileRes = transpileQuery(scannerFn, {
+      context: "scanner",
+      rules: grammar.rules,
+      externals: extNames,
+    });
+    lexerCode += `export function scanExternal(currentPos: u32, scannerState: u32): i32 {\n  currentScannerState = scannerState;\n${transpileRes.body}\n  return 0;\n}\n`;
   }
 
   lexerCode += `

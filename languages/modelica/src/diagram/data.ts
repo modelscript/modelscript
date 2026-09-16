@@ -58,8 +58,13 @@ import type {
   DiagramEdge,
   DiagramNode,
   DiagramPort,
+  EntityPropertySchema,
+  PropertyFieldConfig,
+  PropertyGroupConfig,
+  PropertyTabConfig,
   X6Markup,
 } from "@modelscript/diagram/protocol";
+import { AnnotationEvaluator } from "./annotation-evaluator.js";
 
 // ── Build diagram data from a class instance ──
 
@@ -1520,8 +1525,27 @@ export function buildComponentProperties(
   const componentClassInstance = component.classInstance;
   if (!componentClassInstance) return null;
 
-  // Extract parameters
+  const evaluator = new AnnotationEvaluator(componentClassInstance);
+
+  // Extract parameters and build structured tabs & groups
   const parameters: ComponentPropertyData["parameters"] = [];
+  const tabMap = new Map<string, Map<string, PropertyFieldConfig[]>>();
+  const values: Record<string, any> = {
+    name: component.name ?? "",
+    description: component.description ?? "",
+  };
+
+  const getOrCreateGroup = (tabName: string, groupName: string): PropertyFieldConfig[] => {
+    if (!tabMap.has(tabName)) {
+      tabMap.set(tabName, new Map());
+    }
+    const groups = tabMap.get(tabName)!;
+    if (!groups.has(groupName)) {
+      groups.set(groupName, []);
+    }
+    return groups.get(groupName)!;
+  };
+
   for (const element of componentClassInstance.elements || []) {
     if (
       (element.isComponentInstance || element.kind === "Component") &&
@@ -1537,13 +1561,75 @@ export function buildComponentProperties(
       const unit = rawUnit ? formatUnit(rawUnit) : undefined;
       const isBoolean = element.classInstance?.name === "Boolean";
 
+      // Extract Dialog(...) annotation
+      let dialogAnn: any = null;
+      if (typeof element.annotation === "function") {
+        try {
+          dialogAnn = element.annotation("Dialog");
+        } catch {
+          // ignore
+        }
+      }
+      if (!dialogAnn && element.abstractSyntaxNode) {
+        try {
+          dialogAnn = evaluator.evaluate(element.abstractSyntaxNode, "Dialog");
+        } catch {
+          // ignore
+        }
+      }
+
+      const tabName =
+        dialogAnn && typeof dialogAnn === "object" && typeof dialogAnn.tab === "string" ? dialogAnn.tab : "General";
+      const groupName =
+        dialogAnn && typeof dialogAnn === "object" && typeof dialogAnn.group === "string"
+          ? dialogAnn.group
+          : "Parameters";
+      const enableCondition =
+        dialogAnn && typeof dialogAnn === "object" && dialogAnn.enable !== undefined
+          ? String(dialogAnn.enable)
+          : undefined;
+
+      // Extract choices/enumeration
+      let choices: string[] | undefined = undefined;
+      const enumLits = element.classInstance?.enumLiterals;
+      if (Array.isArray(enumLits) && enumLits.length > 0) {
+        choices = enumLits.map((lit: any) => lit.name ?? String(lit));
+      }
+
+      let kind: PropertyFieldConfig["kind"] = "expression";
+      if (isBoolean) {
+        kind = "boolean";
+      } else if (choices && choices.length > 0) {
+        kind = "choice";
+      } else if (unit) {
+        kind = "quantity";
+      }
+
       parameters.push({
         name: element.name ?? "",
         value,
         description: element.description ?? undefined,
         isBoolean,
         unit,
+        tab: tabName,
+        group: groupName,
+        enable: enableCondition,
       });
+
+      values[element.name ?? ""] = value;
+
+      const fieldConfig: PropertyFieldConfig = {
+        key: element.name ?? "",
+        label: element.name ?? "",
+        kind,
+        description: element.description ?? undefined,
+        defaultValue: value,
+        unit,
+        choices,
+        enabledIf: enableCondition,
+      };
+
+      getOrCreateGroup(tabName, groupName).push(fieldConfig);
     }
   }
 
@@ -1556,9 +1642,74 @@ export function buildComponentProperties(
   const context = (classInstance as any).context;
   const docInfo = processHtml(docAnnotation?.info, context);
   const docRevisions = processHtml(docAnnotation?.revisions, context);
+  if (docInfo) values["docInfo"] = docInfo;
+  if (docRevisions) values["docRevisions"] = docRevisions;
 
   // Render icon SVG
   const iconSvg = getClassIconSvg(componentClassInstance, 80, true);
+
+  // Assemble tabs
+  const tabs: PropertyTabConfig[] = [];
+  for (const [tabId, groupsMap] of tabMap.entries()) {
+    const groups: PropertyGroupConfig[] = [];
+    for (const [groupId, fields] of groupsMap.entries()) {
+      groups.push({
+        id: groupId.toLowerCase().replace(/\s+/g, "-"),
+        label: groupId,
+        fields,
+      });
+    }
+    tabs.push({
+      id: tabId.toLowerCase().replace(/\s+/g, "-"),
+      label: tabId,
+      groups,
+    });
+  }
+
+  if (docInfo || docRevisions) {
+    const docGroups: PropertyGroupConfig[] = [];
+    if (docInfo) {
+      docGroups.push({
+        id: "info",
+        label: "Information",
+        fields: [
+          {
+            key: "docInfo",
+            label: "Information",
+            kind: "codeBlock",
+            defaultValue: docInfo,
+            readOnly: true,
+          },
+        ],
+      });
+    }
+    if (docRevisions) {
+      docGroups.push({
+        id: "revisions",
+        label: "Revisions",
+        fields: [
+          {
+            key: "docRevisions",
+            label: "Revisions",
+            kind: "codeBlock",
+            defaultValue: docRevisions,
+            readOnly: true,
+          },
+        ],
+      });
+    }
+    tabs.push({
+      id: "documentation",
+      label: "Documentation",
+      groups: docGroups,
+    });
+  }
+
+  const schema: EntityPropertySchema = {
+    title: `${component.name ?? ""} : ${componentClassInstance.name ?? ""}`,
+    icon: iconSvg,
+    tabs,
+  };
 
   return {
     classKind: componentClassInstance.classKind,
@@ -1569,6 +1720,8 @@ export function buildComponentProperties(
     docInfo,
     docRevisions,
     iconSvg,
+    schema,
+    values,
   };
 }
 

@@ -60,7 +60,7 @@ import {
   type_fields as _type_fields,
   type_field_data as _type_field_data,
   type_is_list as _type_is_list,
-  expected_tokens as _expected_tokens,
+  expected_tokens,
   currentScannerState,
   initExtras,
   inputLength,
@@ -172,7 +172,6 @@ export function initStaticTables(): void {
   type_fields = changetype<StaticTable>(_type_fields);
   type_field_data = changetype<StaticTable>(_type_field_data);
   type_is_list = changetype<StaticTable>(_type_is_list);
-  expected_tokens = _expected_tokens;
 }
 
 
@@ -590,7 +589,7 @@ export function lsp_isCatastrophicError(): boolean {
  * A bitmap of tokens that are valid transitions from the current active GLR heads.
  * Used by the language server for auto-completion triggering.
  */
-export let expected_tokens: usize = 0;
+export { expected_tokens };
 
 /**
  * Computes the union of all valid next tokens across all currently active GSS heads.

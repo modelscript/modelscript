@@ -8,6 +8,7 @@
 import { error } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
 import { Cst } from "../src-gen/bindings.js";
+import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 
 function cyrb53(str: string, seed = 0): string {
@@ -2513,23 +2514,16 @@ export const componentDeclarationQueries: Record<string, any> = {
    */
   isEvaluate: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
+    if (!cst) return false;
     let current = cst;
     while (current && current.type !== "ComponentDeclaration" && current.type !== "component_declaration")
       current = current.parent;
-    const ann = (current?.children || []).find(
-      (c: any) => c.type === "annotationClause" || c.type === "AnnotationClause",
-    );
-    if (!ann) return false;
-    const classMod = Cst.Modification.classModification(ann);
-    if (!classMod) return false;
-    for (const arg of classMod.namedChildren ?? []) {
-      if (arg.type !== "ElementModification") continue;
-      const argName = Cst.ElementModification.name(arg)?.text;
-      if (argName === "Evaluate") {
-        const modNode = Cst.ElementModification.modification(arg);
-        const modExpr = Cst.Modification.modificationExpression(modNode);
-        if (modExpr?.text === "true") return true;
-      }
+    const evaluator = new AnnotationEvaluator();
+    const evalRes = evaluator.evaluate(current ?? cst, "evaluate");
+    if (evalRes !== null && evalRes !== undefined) {
+      if (typeof evalRes === "boolean") return evalRes;
+      if (typeof evalRes === "object" && evalRes.value !== undefined) return Boolean(evalRes.value);
+      return true;
     }
     return false;
   },

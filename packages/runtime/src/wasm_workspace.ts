@@ -557,6 +557,15 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         list.push(symId);
         this.unifiedIndex.byName.set(name, list);
 
+        if (_parentFQN && parentId === initialParentId && name) {
+          const fqn = `${_parentFQN}.${name}`;
+          const fqnList = this.unifiedIndex.byName.get(fqn) || [];
+          if (!fqnList.includes(symId)) {
+            fqnList.push(symId);
+            this.unifiedIndex.byName.set(fqn, fqnList);
+          }
+        }
+
         const childList = this.unifiedIndex.childrenOf.get(parentId ?? 0) || [];
         childList.push(symId);
         this.unifiedIndex.childrenOf.set(parentId ?? 0, childList);
@@ -578,7 +587,21 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
     };
 
-    walk(rootNode, null);
+    let initialParentId: SymbolId | null = null;
+    if (_parentFQN) {
+      let parentEntries = this.unifiedIndex.byName.get(_parentFQN);
+      if (!parentEntries || parentEntries.length === 0) {
+        const lastPart = _parentFQN.split(".").pop();
+        if (lastPart) {
+          parentEntries = this.unifiedIndex.byName.get(lastPart);
+        }
+      }
+      if (parentEntries && parentEntries.length > 0) {
+        initialParentId = parentEntries[0]!;
+      }
+    }
+
+    walk(rootNode, initialParentId);
 
     for (const oldId of oldSymbolsToDelete) {
       this.globalChangedIds.add(oldId);
@@ -627,9 +650,104 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return this.toSymbolIndex();
   }
 
-  hydrate(_uri: string, _index: any, _parentFQN?: string, _mapResourceId?: any): void {
+  hydrate(uri: string, indexData: any, parentFQN?: string, mapResourceId?: (path: string) => string): void {
+    if (!indexData) {
+      this._version++;
+      this._structuralRevision++;
+      return;
+    }
+
+    const fileId = this.getFileId(uri);
+    if (parentFQN && this.instance && typeof this.instance.registerFileParentFQN === "function") {
+      this.instance.registerFileParentFQN(fileId, parentFQN);
+    }
+
+    // 1. Merge symbols
+    const symbolsSource =
+      indexData.symbols instanceof Map ? indexData.symbols.entries() : Object.entries(indexData.symbols || {});
+    for (const [rawId, rawEntry] of symbolsSource) {
+      const id = typeof rawId === "string" && !isNaN(Number(rawId)) ? Number(rawId) : rawId;
+      if (typeof id === "number" && id >= this.nextSymbolId) {
+        this.nextSymbolId = id + 1;
+      }
+      const entry: SymbolEntry = { ...(rawEntry as SymbolEntry) };
+      if (mapResourceId && entry.resourceId) {
+        entry.resourceId = mapResourceId(entry.resourceId);
+      }
+      this.unifiedIndex.symbols.set(id as SymbolId, entry);
+
+      // Associate with file URI for tracking
+      const effectiveUri = entry.resourceId || uri;
+      let list = this.fileSymbols.get(effectiveUri);
+      if (!list) {
+        list = [];
+        this.fileSymbols.set(effectiveUri, list);
+      }
+      list.push(id as SymbolId);
+
+      // Register into WASM linear memory if instance supports it
+      if (this.instance && typeof this.instance.registerSymbol === "function") {
+        try {
+          const sFileId = entry.resourceId ? this.getFileId(entry.resourceId) : fileId;
+          const sParentId = entry.parentId === null ? 0 : Number(entry.parentId);
+          this.instance.registerSymbol(
+            sFileId,
+            Number(id),
+            sParentId,
+            0,
+            0,
+            entry.name || "",
+            entry.startByte ?? 0,
+            entry.endByte ?? 0,
+            0,
+            0,
+            parentFQN || "",
+          );
+        } catch {
+          /* ignore WASM registration errors during hydration */
+        }
+      }
+    }
+
+    // 2. Merge byName
+    const byNameSource =
+      indexData.byName instanceof Map ? indexData.byName.entries() : Object.entries(indexData.byName || {});
+    for (const [name, ids] of byNameSource) {
+      const idList = Array.isArray(ids) ? (ids as SymbolId[]) : [];
+      const existing = this.unifiedIndex.byName.get(name);
+      if (!existing) {
+        this.unifiedIndex.byName.set(name, [...idList]);
+      } else {
+        const idSet = new Set(existing);
+        for (const id of idList) idSet.add(id);
+        this.unifiedIndex.byName.set(name, Array.from(idSet));
+      }
+    }
+
+    // 3. Merge childrenOf
+    const childrenOfSource =
+      indexData.childrenOf instanceof Map ? indexData.childrenOf.entries() : Object.entries(indexData.childrenOf || {});
+    for (const [rawParentId, children] of childrenOfSource) {
+      const parentId =
+        rawParentId === "null" || rawParentId === null || rawParentId === undefined
+          ? null
+          : typeof rawParentId === "string" && !isNaN(Number(rawParentId))
+            ? Number(rawParentId)
+            : (rawParentId as SymbolId);
+      const childList = Array.isArray(children) ? (children as SymbolId[]) : [];
+      const existing = this.unifiedIndex.childrenOf.get(parentId);
+      if (!existing) {
+        this.unifiedIndex.childrenOf.set(parentId, [...childList]);
+      } else {
+        const childSet = new Set(existing);
+        for (const c of childList) childSet.add(c);
+        this.unifiedIndex.childrenOf.set(parentId, Array.from(childSet));
+      }
+    }
+
     this._version++;
     this._structuralRevision++;
+    this.bumpFileStructuralRevision(uri);
   }
 
   toSymbolIndex(): SymbolIndex {

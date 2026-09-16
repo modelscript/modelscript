@@ -249,5 +249,111 @@ class Annotation
     Real boardEdgeClearance = 0.25 "Minimum clearance to board edge (mm)";
   end PCBDesignRules;
 
+  // 18.2 Experiment Annotation (Modelica 3.7 / MCP-0036)
+
+  record Experiment
+    Real StartTime = 0.0 "Simulation start time";
+    Real StopTime = 1.0 "Simulation stop time";
+    Real Tolerance = 1e-4 "Relative integration tolerance";
+    Real Interval "Step size or output interval";
+    Integer NumberOfIntervals "Number of output intervals";
+    String Algorithm = "auto" "Integration algorithm (e.g. tsit5, rodas4p, trbdf2, ida, cvode)";
+    Boolean EquidistantOutput = true "Whether output is sampled equidistantly";
+  end Experiment;
+
+  // 18.3 Evaluation and Inlining Directives
+
+  record Evaluate
+    Boolean value = true "Whether parameter is evaluated and folded at compile time";
+  end Evaluate;
+
+  record Inline
+    Boolean value = true "Whether function call is inlined directly into DAE";
+  end Inline;
+
+  record HideResult
+    Boolean value = true "Whether variable is hidden from output trajectory buffer";
+  end HideResult;
+
+  record SmoothOrder
+    Integer order = 1 "Order of continuous differentiability C^k";
+  end SmoothOrder;
+
+  // ModelScript WebGPU & Real-Time Extensions
+
+  record WebGPU
+    Integer workgroupSize = 64 "WebGPU compute workgroup invocation size";
+    String precision = "f32" "Floating-point precision (f32 or f16)";
+    Integer parallelInstances = 1 "Number of parallel ensemble / parameter sweep instances";
+  end WebGPU;
+
+  record AudioClock
+    Integer sampleRate = 48000 "Audio sample rate in Hz";
+    Real targetHz = 200.0 "Simulation tick frequency in Hz";
+    Real realtimeFactor = 1.0 "Target wall-clock execution ratio";
+  end AudioClock;
+
+  // Scientific ML & Advanced Math Extensions
+
+  record Diffusion
+    Real coefficient = 0.0 "Brownian motion diffusion coefficient g(t, x)";
+  end Diffusion;
+
+  record SDE
+    String method = "sriw1" "Stochastic solver (euler-maruyama, sriw1)";
+    Integer ensemblePaths = 100 "Number of sample realizations";
+    Integer seed = 42 "PRNG seed";
+  end SDE;
+
+  record BVP
+    String boundaryConditions[:] "Two-point boundary conditions";
+    String method = "collocation" "Collocation or multiple-shooting method";
+    Integer intervals = 20 "Number of collocation sub-intervals";
+  end BVP;
+
+  record Surrogate
+    String architecture = "mlp" "Surrogate model architecture (mlp, rbf, poly)";
+    String datasetUri = "" "Dataset path for training or evaluation";
+    Real errorTolerance = 0.01 "Acceptable ROM approximation error";
+  end Surrogate;
+
+  // 3D Multi-Physics Co-Simulation Extensions
+
+  record FEAMesh
+    String cadUri = "" "URI to STEP/GLTF geometry";
+    String meshType = "Tet10" "Finite element mesh type";
+    String material = "Steel" "Physical material definition";
+    String loadConnector = "" "1D Modelica variable/connector mapped to mechanical load";
+    String feedbackDeflection = "" "3D deflection mapped back to 1D variable";
+  end FEAMesh;
+
+  record CFDFlow
+    Integer grid[3] = {32, 32, 32} "3D fluid lattice dimensions";
+    Real dx = 0.01 "Lattice cell spacing (m)";
+    String turbulenceModel = "smagorinsky_les" "Turbulence model";
+    String velocityVariable = "" "1D velocity / mass flow variable";
+    String dragForceVariable = "" "3D aerodynamic drag force variable mapped back to 1D";
+  end CFDFlow;
+
+  // MBSE, Semantic Ontology & IoT Annotations
+
+  record SysML
+    String satisfies = "" "Requirement identifier satisfied by this model";
+    String allocatedBlock = "" "SysML v2 block allocation path";
+    String verificationStatus = "automated-test" "Verification status";
+  end SysML;
+
+  record OWL
+    String iri = "" "Ontology concept IRI";
+    String ontology = "" "Ontology TTL file reference";
+  end OWL;
+
+  record Telemetry
+    String topic = "" "MQTT / SCADA telemetry topic";
+    String protocol = "mqtt" "Telemetry protocol";
+    Real publishRateHz = 50.0 "Publish frequency in Hz";
+    Integer qualityOfService = 1 "MQTT QoS level (0, 1, 2)";
+  end Telemetry;
+
 end Annotation;
 `;

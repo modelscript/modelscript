@@ -34,6 +34,10 @@ import type {
   DiagramGetDataParams,
   DiagramGetPaletteParams,
   DiagramPalette,
+  EntityPropertySchema,
+  PropertyFieldConfig,
+  PropertyGroupConfig,
+  PropertyTabConfig,
 } from "./diagramProtocol.js";
 
 // ── Backend Interface ──
@@ -184,28 +188,106 @@ export class SysML2DiagramBackend implements DiagramBackend {
 
     // Build parameters from child attribute/usage entries
     const parameters: ComponentPropertyData["parameters"] = [];
+    const attrFields: PropertyFieldConfig[] = [];
+    const portFields: PropertyFieldConfig[] = [];
+    const values: Record<string, any> = {
+      name: data.name,
+      description: data.description ?? "",
+    };
+
     if (data.children) {
       for (const child of data.children) {
-        // Only show attribute-like children as parameters
-        if (
-          child.ruleName.includes("Attribute") ||
-          child.ruleName.includes("Usage") ||
-          child.ruleName.includes("Port")
-        ) {
+        const isPort = child.ruleName.includes("Port");
+        const isAttr = child.ruleName.includes("Attribute");
+        const isUsage = child.ruleName.includes("Usage");
+
+        if (isPort || isAttr || isUsage) {
+          const val = child.value ?? "";
           parameters.push({
             name: child.name,
-            value: child.value ?? "",
+            value: val,
             description: child.description,
+            group: isPort ? "Ports" : "Attributes",
+            tab: isPort ? "Ports" : "General",
           });
+          values[child.name] = val;
+
+          const field: PropertyFieldConfig = {
+            key: child.name,
+            label: child.name,
+            kind: isPort ? "typeReference" : "expression",
+            description: child.description,
+            defaultValue: val,
+          };
+
+          if (isPort) {
+            portFields.push(field);
+          } else {
+            attrFields.push(field);
+          }
         }
       }
     }
+
+    const generalGroups: PropertyGroupConfig[] = [
+      {
+        id: "identification",
+        label: "Identification",
+        fields: [
+          { key: "name", label: "Name", kind: "string", defaultValue: data.name },
+          {
+            key: "type",
+            label: "Type",
+            kind: "string",
+            defaultValue: data.ruleName.replace(/(Definition|Usage)$/, ""),
+            readOnly: true,
+          },
+        ],
+      },
+    ];
+
+    if (attrFields.length > 0) {
+      generalGroups.push({
+        id: "attributes",
+        label: "Attributes",
+        fields: attrFields,
+      });
+    }
+
+    const tabs: PropertyTabConfig[] = [
+      {
+        id: "general",
+        label: "General",
+        groups: generalGroups,
+      },
+    ];
+
+    if (portFields.length > 0) {
+      tabs.push({
+        id: "ports",
+        label: "Ports",
+        groups: [
+          {
+            id: "ports-group",
+            label: "Directed Ports",
+            fields: portFields,
+          },
+        ],
+      });
+    }
+
+    const schema: EntityPropertySchema = {
+      title: `${data.name} : ${data.ruleName.replace(/(Definition|Usage)$/, "")}`,
+      tabs,
+    };
 
     return {
       className: data.ruleName.replace(/(Definition|Usage)$/, ""),
       name: data.name,
       description: data.description ?? "",
       parameters,
+      schema,
+      values,
     };
   }
 
@@ -289,6 +371,17 @@ export class SysML2DiagramBackend implements DiagramBackend {
               const tree = parser.parse(docText);
               allEdits.push(
                 ...this.deps.computeParameterEdit(tree, docText, action.name, action.parameter, action.value),
+              );
+            }
+            needsRender = "debounced";
+            break;
+          }
+          case "updateProperty": {
+            const parser = this.deps.getSysML2Parser();
+            if (parser) {
+              const tree = parser.parse(docText);
+              allEdits.push(
+                ...this.deps.computeParameterEdit(tree, docText, action.name, action.key, String(action.value)),
               );
             }
             needsRender = "debounced";
@@ -579,6 +672,26 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
   }
 
   getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
+    const config = this.deps.getDiagramConfig?.(params.uri);
+    const propConfig = (config as any)?.properties;
+    if (propConfig) {
+      const className = params.className || "Component";
+      const schema =
+        propConfig.entities?.[className] ||
+        (propConfig.entities && Object.keys(propConfig.entities).length > 0
+          ? Object.values(propConfig.entities)[0]
+          : undefined);
+      if (schema) {
+        return {
+          className,
+          name: params.componentName,
+          description: "",
+          parameters: [],
+          schema,
+          values: { name: params.componentName },
+        };
+      }
+    }
     return {
       className: "Component",
       name: params.componentName,
@@ -955,9 +1068,12 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           }
           break;
         }
-        case "updateParameter": {
-          if (docText !== undefined && action.parameter && action.value !== undefined) {
-            const escParam = action.parameter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        case "updateParameter":
+        case "updateProperty": {
+          const paramName = action.type === "updateProperty" ? action.key : action.parameter;
+          const paramVal = action.type === "updateProperty" ? action.value : action.value;
+          if (docText !== undefined && paramName && paramVal !== undefined) {
+            const escParam = paramName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const paramRegex = new RegExp(`\\b(${escParam}\\s*=\\s*)([^,;\\)\\}\\n]+)`);
             let matched = false;
 
@@ -976,7 +1092,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                           start: { line: j, character: startCol },
                           end: { line: j, character: endCol },
                         },
-                        newText: String(action.value),
+                        newText: String(paramVal),
                       });
                       matched = true;
                       break;
@@ -998,7 +1114,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                       start: { line: i, character: startCol },
                       end: { line: i, character: endCol },
                     },
-                    newText: String(action.value),
+                    newText: String(paramVal),
                   });
                   break;
                 }
@@ -1152,6 +1268,10 @@ export function processDiagramEditBatch(
         allEdits.push(...computeParameterEdit(classInstance, action.name, action.parameter, action.value));
         // Parameter edits are treated as optimistic — the webview patches the
         // diagram text in-place without a full re-render.
+        if (needsRender === "none") needsRender = "none";
+        break;
+      case "updateProperty":
+        allEdits.push(...computeParameterEdit(classInstance, action.name, action.key, String(action.value)));
         if (needsRender === "none") needsRender = "none";
         break;
     }
