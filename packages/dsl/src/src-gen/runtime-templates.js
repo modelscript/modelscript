@@ -26965,8 +26965,9 @@ function sanitizeTree(root: u32): void {
       let cleanType = childType & 0x7FFF;
       if (cleanType > (SYMBOL_COUNT as u16) && childType != TOKEN_EOF) {
         // Corrupt node: REMOVE it by unlinking from the chain.
-        if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
-          // Cannot mutate Gen1 nodes. Leave as is.
+        // v5 fix: always check the parent (node) for Gen2 mutability, not prevChild
+        if (!isNodeGen2(node)) {
+          // Cannot mutate Gen1 parent. Leave as is.
           prevChild = child;
         } else {
           if (prevChild == 0) setFirstChild(node, nextSib);
@@ -26985,8 +26986,9 @@ function sanitizeTree(root: u32): void {
         let isShared = (cFlags & FLAG_LSP_VISITED) != 0;
         
         if (isShared) {
-          if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
-            // Cannot mutate Gen1 nodes to break aliasing. Skip.
+          // v5 fix: always check the parent (node) for Gen2 mutability
+          if (!isNodeGen2(node)) {
+            // Cannot mutate Gen1 parent to break aliasing. Skip.
             prevChild = child;
           } else {
             // Deep-clone to break shared-pointer aliasing
@@ -27242,8 +27244,10 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
 
   // Force lexer to accept any token during error node construction, saving previous mask
   if (savedExpectedTokensPtr == 0) savedExpectedTokensPtr = atomicChunkAlloc(65536);
-  memory.copy(savedExpectedTokensPtr, expected_tokens, 2048);
-  memory.fill(expected_tokens, 1, 2048);
+  let _copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
+  if (_copyLen > 65536) _copyLen = 65536;
+  memory.copy(savedExpectedTokensPtr, expected_tokens, _copyLen);
+  memory.fill(expected_tokens, 1, _copyLen);
 
   while (lexP < inputLength) {
     let tok = lex(lexP);
@@ -27265,7 +27269,7 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
     lexP = srcLexPos + tLen > lexP ? srcLexPos + tLen : lexP + 1;
   }
 
-  memory.copy(expected_tokens, savedExpectedTokensPtr, 2048);
+  memory.copy(expected_tokens, savedExpectedTokensPtr, _copyLen);
   lexPos = savedLexPos;
   lexLen = savedLexLen;
   srcLexPos = savedSrcLexPos;
@@ -27752,8 +27756,12 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       }
       if (lastChild2 == 0) setFirstChild(newRightChunk, c1);
       else setNextSibling(lastChild2, c1);
-      setNextSibling(c1, c2);
-      setNextSibling(c2, 0);
+      if (c2 != 0) {
+        setNextSibling(c1, c2);
+        setNextSibling(c2, 0);
+      } else {
+        setNextSibling(c1, 0);
+      }
       fixNodeLength(newRightChunk);
 
       setFirstChild(superP, p);
@@ -28406,7 +28414,8 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
 
   // Fast-path: traverse linear chain and check if any node has firstEdge != 0
   let curr: ParseHead | null = head;
-  let c_idx = 99999;
+  // v5 fix: use MAX_CHILD_NODES - 1 instead of 99999 to stay within allocated bounds
+  let c_idx: i32 = (MAX_CHILD_NODES as i32) - 1;
   let needed = popCount;
   let hasMultiLink = false;
 
@@ -28427,8 +28436,8 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
     return null;
   }
 
-  let actualCount = 99999 - c_idx;
-  for (let k = 0; k < actualCount; k++) {
+  let actualCount: i32 = (MAX_CHILD_NODES as i32) - 1 - c_idx;
+  for (let k: i32 = 0; k < actualCount; k++) {
     t_globalChildNodes[k] = t_globalReduceCollected[c_idx + 1 + k];
   }
 
@@ -28595,12 +28604,16 @@ function breakdownTopOfStack(head: ParseHead): ParseHead | null {
     }
 
     currPos += childPad + childByteLen;
-    if (getNodeFirstChild(childPtr) != 0) {
-      setNodeFlags(childPtr, getNodeFlags(childPtr) | FLAG_EXTRACTED);
+    // v5 fix: clone child to avoid stale sibling pointers from the reused subtree
+    let clonedChild = cloneNodeShallow(childPtr);
+    setNextSibling(clonedChild, 0); // Clear stale sibling link
+    if (getNodeFirstChild(clonedChild) != 0) {
+      setNodeFlags(clonedChild, getNodeFlags(clonedChild) | FLAG_EXTRACTED);
     }
+    childPtr = clonedChild;
     let newHead = allocParseHead(
       nextState,
-      childPtr,
+      clonedChild,
       currHead,
       currPos,
       currHead.scannerState,
@@ -29301,7 +29314,8 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32,
     return false; // Abort forced reduction if missing token cost exceeds budget
   }
 
-  let c_idx2 = 99999;
+  // v5 fix: use MAX_CHILD_NODES - 1 instead of 99999 to stay within allocated bounds
+  let c_idx2: i32 = (MAX_CHILD_NODES as i32) - 1;
 
   // Prepend virtual nodes for the missing trailing pieces
   for (let m: i32 = 0; m < missingCount; m++) {
@@ -29330,7 +29344,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32,
     curr = curr.prev;
   }
 
-  let actualCount: u32 = (99999 - c_idx2) as u32;
+  let actualCount: u32 = ((MAX_CHILD_NODES as i32) - 1 - c_idx2) as u32;
   for (let k: u32 = 0; k < actualCount; k++) {
     t_globalChildNodes[k] = t_globalReduceCollected[(c_idx2 as u32) + 1 + k];
   }
@@ -29703,18 +29717,27 @@ export function advanceGLR(): void {
             }
           }
         } else {
+          // v5 fix: parse action table in correct grouped format [sym, actCount, type, target, ...]
           if ((head.state as i32) < action_offsets.length) {
             let aOffset = action_offsets[head.state];
             if (aOffset >= 0 && aOffset < action_data.length) {
               let count = action_data[aOffset];
               let aIdx = aOffset + 1;
               for (let ai = 0; ai < count; ai++) {
-                let aTok = action_data[aIdx++];
-                let aTarget = action_data[aIdx++];
-                if ((aTok & 0x7fff) == nodeType && (aTok & 0x8000) == 0) {
-                  nextState = aTarget;
-                  break;
+                let aSym = action_data[aIdx++];
+                let actCount = action_data[aIdx++];
+                if (aSym == (nodeType as i32) || aSym == 0) {
+                  for (let na = 0; na < actCount; na++) {
+                    let aType = action_data[aIdx + na * 2];
+                    let aTarget = action_data[aIdx + na * 2 + 1];
+                    if (aType == ACTION_SHIFT) {
+                      nextState = aTarget;
+                      break;
+                    }
+                  }
+                  if (nextState != -1) break;
                 }
+                aIdx += actCount * 2;
               }
             }
           }
@@ -30356,7 +30379,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       }
 
       // Force lexer to accept any token during garbage collection
-      memory.fill(expected_tokens, 1, 2048);
+      // v5 fix: use bounded fill instead of hardcoded 2048
+      let _catCopyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
+      if (_catCopyLen > 65536) _catCopyLen = 65536;
+      memory.fill(expected_tokens, 1, _catCopyLen);
 
       while (p < inputLength) {
         let tok = lex(p);
