@@ -160,7 +160,6 @@ export const modelicaLanguage = language({
   word: ($) => $.identifier,
 
   conflicts: ($) => [
-    [$.name],
     [$.class_prefixes],
     [$.component_reference, $.identifier],
     [$.external_function_call, $.identifier],
@@ -175,9 +174,11 @@ export const modelicaLanguage = language({
     [$.for_equation],
     [$.for_statement],
     [$.element_list, $.annotation_clause],
+    [$.algorithm_section, $.annotation_clause],
+    [$.equation_section, $.annotation_clause],
   ],
 
-  inline: ["element_list", "component_list", "statement_or_procedure"],
+  inline: ["element_list", "component_list", "statement_or_procedure", "lhs_expression", "lhs_primary"],
 
   primitives: {
     nestedComment: { open: "/*", close: "*/" },
@@ -704,29 +705,35 @@ export const modelicaLanguage = language({
     algorithm_section: ($) => seq(optional("initial"), "algorithm", repeat(seq($.statement, ";"))),
 
     some_equation: ($) =>
-      seq(
-        choice($.equation_or_procedure, $.if_equation, $.for_equation, $.connect_equation, $.when_equation),
-        $.description,
+      choice(
+        seq(
+          choice($.equation_or_procedure, $.if_equation, $.for_equation, $.connect_equation, $.when_equation),
+          $.description,
+        ),
+        $.annotation_clause,
       ),
 
     // GLR parsers handle this without needing left-factoring!
     equation_or_procedure: ($) => choice($.simple_equation, $.function_call),
 
-    simple_equation: ($) => seq(field("lhs", $.expression), "=", field("rhs", $.expression)),
+    simple_equation: ($) => seq(field("lhs", $.lhs_expression), "=", field("rhs", $.expression)),
 
     statement: ($) =>
-      seq(
-        choice(
-          $.statement_or_procedure,
-          seq("(", $.output_expression_list, ")", ":=", $.function_call),
-          "break",
-          "return",
-          $.if_statement,
-          $.for_statement,
-          $.while_statement,
-          $.when_statement,
+      choice(
+        seq(
+          choice(
+            $.statement_or_procedure,
+            seq("(", $.output_expression_list, ")", ":=", $.function_call),
+            "break",
+            "return",
+            $.if_statement,
+            $.for_statement,
+            $.while_statement,
+            $.when_statement,
+          ),
+          $.description,
         ),
-        $.description,
+        $.annotation_clause,
       ),
 
     statement_or_procedure: ($) => choice($.function_call, $.assignment_statement),
@@ -902,6 +909,74 @@ export const modelicaLanguage = language({
         seq("{", $.array_arguments, "}"),
       ),
 
+    lhs_expression: ($) =>
+      choice(
+        $.lhs_primary,
+
+        // range (:)
+        prec.left(PRECEDENCE.range, seq(field("left", $.lhs_expression), ":", field("right", $.expression))),
+
+        // logical or
+        prec.left(PRECEDENCE.or, seq(field("left", $.lhs_expression), "or", field("right", $.expression))),
+
+        // logical and
+        prec.left(PRECEDENCE.and, seq(field("left", $.lhs_expression), "and", field("right", $.expression))),
+
+        // logical not
+        prec(PRECEDENCE.not, seq("not", field("operand", $.expression))),
+
+        // relation
+        prec.left(
+          PRECEDENCE.relational,
+          seq(field("left", $.lhs_expression), choice("<", "<=", ">", ">=", "==", "<>"), field("right", $.expression)),
+        ),
+
+        // add/sub
+        prec.left(
+          PRECEDENCE.add,
+          seq(field("left", $.lhs_expression), choice("+", "-", ".+", ".-"), field("right", $.expression)),
+        ),
+
+        // unary add/sub
+        prec(PRECEDENCE.unary, seq(choice("+", "-", ".+", ".-"), field("operand", $.expression))),
+
+        // mul/div
+        prec.left(
+          PRECEDENCE.mul,
+          seq(field("left", $.lhs_expression), choice("*", "/", ".*", "./"), field("right", $.expression)),
+        ),
+
+        // exp
+        prec.right(
+          PRECEDENCE.exp,
+          seq(field("left", $.lhs_expression), choice("^", ".^"), field("right", $.expression)),
+        ),
+
+        // postfix transpose (')
+        prec(PRECEDENCE.postfix_transpose, seq(field("operand", $.lhs_primary), "'")),
+      ),
+
+    lhs_primary: ($) =>
+      choice(
+        $.unsigned_number,
+        $.string_literal,
+        "false",
+        "true",
+        "time",
+        seq($.component_reference, $.function_call_args),
+        seq("der", "(", $.expression_list, ")"),
+        seq("pure", "(", optional($.function_arguments), ")"),
+        $.component_reference,
+        seq(
+          "(",
+          choice($.expression, $.output_expression_list),
+          ")",
+          optional(choice($.array_subscripts, seq(".", $.identifier))),
+        ),
+        seq("[", $.expression_list, repeat(seq(";", $.expression_list)), "]"),
+        seq("{", $.array_arguments, "}"),
+      ),
+
     unsigned_number: ($) => choice($.unsigned_integer, $.unsigned_real),
 
     type_specifier: ($) =>
@@ -910,7 +985,7 @@ export const modelicaLanguage = language({
         semanticToken("class", $.name, ["declaration"]),
       ),
 
-    name: ($) => seq($.identifier, repeat(seq(".", $.identifier))),
+    name: ($) => choice($.identifier, prec.left(1, seq($.name, ".", $.identifier))),
 
     component_reference: ($) =>
       choice(
@@ -938,9 +1013,8 @@ export const modelicaLanguage = language({
 
     function_arguments: ($) =>
       choice(
-        $.expression_list,
+        seq($.function_argument, optional(seq(",", $.function_arguments_non_first))),
         seq($.expression, "for", $.for_indices),
-        seq($.function_partial_application, optional(seq(",", $.function_arguments_non_first))),
         $.named_arguments,
       ),
 
@@ -976,7 +1050,7 @@ export const modelicaLanguage = language({
     annotation_clause: ($) => seq("annotation", $.class_modification),
 
     // Tokens
-    identifier: () => token(/[a-zA-Z_][a-zA-Z0-9_]*/),
+    identifier: () => token(/[a-zA-Z_][a-zA-Z0-9_]*|'([^'\\\r\n]|\\.)*'/),
     string_literal: () => semanticToken("string", token(/"(?:[^"\\]|\\.)*"/)),
     unsigned_integer: () => semanticToken("number", token(/\d+/)),
     unsigned_real: () =>

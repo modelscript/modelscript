@@ -867,6 +867,13 @@ export class ArenaSimulator {
               case BinOp.Div:
               case BinOp.ElemDiv:
                 return `((${left}) / (${right}))`;
+              case BinOp.Pow:
+              case BinOp.ElemPow:
+                return `Math.pow(${left}, ${right})`;
+              case BinOp.And:
+                return `(((${left}) !== 0 && (${right}) !== 0) ? 1 : 0)`;
+              case BinOp.Or:
+                return `(((${left}) !== 0 || (${right}) !== 0) ? 1 : 0)`;
               case BinOp.Lt:
                 return `((${left}) < (${right}) ? 1 : 0)`;
               case BinOp.Lte:
@@ -894,9 +901,23 @@ export class ArenaSimulator {
             const arg = exprToJs(arena.getExprLeft(exprId));
             if (fnName === "sin") return `Math.sin(${arg})`;
             if (fnName === "cos") return `Math.cos(${arg})`;
+            if (fnName === "tan") return `Math.tan(${arg})`;
+            if (fnName === "asin") return `Math.asin(${arg})`;
+            if (fnName === "acos") return `Math.acos(${arg})`;
+            if (fnName === "atan") return `Math.atan(${arg})`;
+            if (fnName === "sinh") return `Math.sinh(${arg})`;
+            if (fnName === "cosh") return `Math.cosh(${arg})`;
+            if (fnName === "tanh") return `Math.tanh(${arg})`;
             if (fnName === "exp") return `Math.exp(${arg})`;
+            if (fnName === "log") return `Math.log(${arg})`;
+            if (fnName === "log10") return `Math.log10(${arg})`;
             if (fnName === "sqrt") return `Math.sqrt(${arg})`;
             if (fnName === "abs") return `Math.abs(${arg})`;
+            if (fnName === "sign") return `Math.sign(${arg})`;
+            if (fnName === "ceil") return `Math.ceil(${arg})`;
+            if (fnName === "floor") return `Math.floor(${arg})`;
+            if (fnName === "noEvent" || fnName === "/*Real*/" || fnName === "/*Integer*/" || fnName === "/*Boolean*/")
+              return `(${arg})`;
             return "0";
           }
           default:

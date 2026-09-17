@@ -955,9 +955,8 @@ function sanitizeTree(root: u32): void {
       let cleanType = childType & 0x7FFF;
       if (cleanType > (SYMBOL_COUNT as u16) && childType != TOKEN_EOF) {
         // Corrupt node: REMOVE it by unlinking from the chain.
-        // v5 fix: always check the parent (node) for Gen2 mutability, not prevChild
-        if (!isNodeGen2(node)) {
-          // Cannot mutate Gen1 parent. Leave as is.
+        // Gen1 immutability: cannot mutate Gen1 parent (if prevChild==0) or Gen1 prevChild (if prevChild!=0)
+        if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
           prevChild = child;
         } else {
           if (prevChild == 0) setFirstChild(node, nextSib);
@@ -976,9 +975,8 @@ function sanitizeTree(root: u32): void {
         let isShared = (cFlags & FLAG_LSP_VISITED) != 0;
         
         if (isShared) {
-          // v5 fix: always check the parent (node) for Gen2 mutability
-          if (!isNodeGen2(node)) {
-            // Cannot mutate Gen1 parent to break aliasing. Skip.
+          // Cannot mutate Gen1 parent or Gen1 prevChild to break aliasing
+          if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
             prevChild = child;
           } else {
             // Deep-clone to break shared-pointer aliasing
@@ -1233,6 +1231,7 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
   savedScannerState = currentScannerState;
 
   // Force lexer to accept any token during error node construction, saving previous mask
+  if (expected_tokens == 0) expected_tokens = atomicChunkAlloc(65536);
   if (savedExpectedTokensPtr == 0) savedExpectedTokensPtr = atomicChunkAlloc(65536);
   let _copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
   if (_copyLen > 65536) _copyLen = 65536;
@@ -3623,6 +3622,9 @@ function recoverEofAccept(head: ParseHead, pos: u32): void {
  */
 export function advanceGLR(): void {
   while (activeHeadsCount > 0) {
+    if ((++globalLoopIterations as u32) > (inputLength > 1000 ? inputLength : 1000) * LOOP_MULTIPLIER_LIMIT) {
+      break;
+    }
     // 1. Find minimum byte offset frontier across all active heads
     let frontierPos: u32 = 0xffffffff;
     for (let i: u32 = 0; i < activeHeadsCount; i++) {

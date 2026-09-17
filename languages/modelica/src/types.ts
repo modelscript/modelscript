@@ -72,3 +72,24 @@ export enum ModelicaVisibility {
   PUBLIC = "public",
   PROTECTED = "protected",
 }
+
+export interface OperatorOverloadParam {
+  name: string;
+  typeSpec: string;
+  isArray: boolean;
+  hasDefault: boolean;
+  defaultValue?: string;
+}
+
+export interface OperatorOverload {
+  opName: string;
+  shortName: string;
+  qualifiedName: string;
+  funcSymId: number;
+  inputParams: OperatorOverloadParam[];
+  inputTypes: string[];
+  outputType: string;
+  outputParam: OperatorOverloadParam | null;
+  inputCount: number;
+  isInline: boolean;
+}

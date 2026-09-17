@@ -221,6 +221,14 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
     }
     case ExprKind.Comprehension: {
       collectExprVarNames(arena.getExprLeft(exprId), arena, names);
+      const iterCount = arena.getExprRight(exprId);
+      for (let i = 0; i < iterCount; i++) {
+        const iterNodeId = exprId + 1 + i;
+        const rangeExpr = arena.getExprLeft(iterNodeId);
+        if (rangeExpr >= 0) {
+          collectExprVarNames(rangeExpr, arena, names);
+        }
+      }
       break;
     }
     case ExprKind.PartialFunc:

@@ -309,6 +309,7 @@ function generateModelH(
   lines.push(`void ${id}_solveAlgebraicLoops(${id}_Instance* inst);`);
   lines.push(`void ${id}_getDerivatives(${id}_Instance* inst);`);
   lines.push(`void ${id}_getEventIndicators(${id}_Instance* inst, double* indicators);`);
+  lines.push(`int ${id}_checkWhenEvents(${id}_Instance* inst);`);
   lines.push(`void ${id}_getJacobianSparse(${id}_Instance* inst, int* colptrs, int* rowvals, double* data);`);
   lines.push("");
   lines.push("#endif");
@@ -412,7 +413,7 @@ function generateAlgebraicLoopSolvers(id: string, dae: DAEBuilder, result: FmuRe
     .filter((b) => {
       if (b.vars.length !== 1 || b.eqIdxs.length !== 1) return false;
       const v = b.vars[0]!;
-      if (derivativeVars.has(v)) return false;
+      if (stateVars.has(v) || derivativeVars.has(v)) return false;
       const causality = dae.getVarCausality(v);
       if (
         causality === Causality.Input ||
@@ -1014,6 +1015,69 @@ function generateModelC(id: string, dae: DAEBuilder, result: FmuResult): string 
   }
   lines.push("}");
 
+  // ── checkWhenEvents function ──
+  const whenEqIdxs: number[] = [];
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    if (dae.getEqKind(idx) === EqKind.When) {
+      whenEqIdxs.push(idx);
+    }
+  }
+
+  lines.push("");
+  lines.push(`int ${id}_checkWhenEvents(${id}_Instance* inst) {`);
+  if (whenEqIdxs.length === 0) {
+    lines.push("  (void)inst;");
+    lines.push("  return 0;");
+    lines.push("}");
+  } else {
+    const whenReferencedNames = new Set<string>();
+    for (const eqIdx of whenEqIdxs) {
+      const weq = dae.getWhenEquationMeta(eqIdx);
+      if (!weq) continue;
+      collectReferencedNames(dae, weq.conditionExprId, whenReferencedNames);
+      for (const clause of weq.elseWhenClauses) {
+        collectReferencedNames(dae, clause.conditionExprId, whenReferencedNames);
+      }
+    }
+    if (whenReferencedNames.has("time")) {
+      lines.push("  double time = inst->time;");
+      lines.push("  (void)time;");
+    }
+    for (const sv of result.scalarVariables) {
+      if (sv.causality === "independent") continue;
+      if (!whenReferencedNames.has(sv.name)) continue;
+      const cName = varToC(sv.name);
+      lines.push(`  double ${cName} = inst->vars[${sv.valueReference}];`);
+      lines.push(`  (void)${cName};`);
+    }
+    lines.push("  int triggered = 0;");
+    let whenIdx = 0;
+    for (const eqIdx of whenEqIdxs) {
+      const weq = dae.getWhenEquationMeta(eqIdx);
+      if (!weq) continue;
+      const condC = exprToC(dae, weq.conditionExprId);
+      lines.push(`  double condVal_${whenIdx} = (double)(${condC});`);
+      lines.push(`  if (condVal_${whenIdx} != 0.0) {`);
+      lines.push(`    if (inst->whenPrev[${whenIdx}] == 0.0) { triggered = 1; }`);
+      lines.push(`  } else {`);
+      lines.push(`    inst->whenPrev[${whenIdx}] = 0.0;`);
+      lines.push(`  }`);
+      whenIdx++;
+      for (const clause of weq.elseWhenClauses) {
+        const condElseC = exprToC(dae, clause.conditionExprId);
+        lines.push(`  double condVal_${whenIdx} = (double)(${condElseC});`);
+        lines.push(`  if (condVal_${whenIdx} != 0.0) {`);
+        lines.push(`    if (inst->whenPrev[${whenIdx}] == 0.0) { triggered = 1; }`);
+        lines.push(`  } else {`);
+        lines.push(`    inst->whenPrev[${whenIdx}] = 0.0;`);
+        lines.push(`  }`);
+        whenIdx++;
+      }
+    }
+    lines.push("  return triggered;");
+    lines.push("}");
+  }
+
   return lines.join("\n");
 }
 
@@ -1106,7 +1170,11 @@ function generateFmi2FunctionsC(
   lines.push(
     "fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte serializedState[], size_t size, fmi2FMUstate* state) { (void)c; (void)serializedState; (void)size; (void)state; return fmi2Error; }",
   );
-  lines.push("fmi2Status fmi2EnterEventMode(fmi2Component c) { (void)c; return fmi2OK; }");
+  lines.push("fmi2Status fmi2EnterEventMode(fmi2Component c) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push(`  if (inst) ${id}_checkWhenEvents(&inst->model);`);
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push("fmi2Status fmi2EnterContinuousTimeMode(fmi2Component c) { (void)c; return fmi2OK; }");
   lines.push(
     "fmi2Status fmi2GetNominalsOfContinuousStates(fmi2Component c, fmi2Real x_nominal[], size_t nx) { (void)c; for(size_t i=0;i<nx;i++) x_nominal[i]=1.0; return fmi2OK; }",
@@ -1352,7 +1420,7 @@ function generateFmi2FunctionsC(
     "fmi2Status fmi2CompletedIntegratorStep(fmi2Component c, fmi2Boolean noSetFMUStatePriorToCurrentPoint, fmi2Boolean* enterEventMode, fmi2Boolean* terminateSimulation) {",
   );
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
-  lines.push("  *enterEventMode = fmi2False;");
+  lines.push(`  if (enterEventMode) *enterEventMode = ${id}_checkWhenEvents(&inst->model) ? fmi2True : fmi2False;`);
   lines.push("  *terminateSimulation = inst->terminateRequested ? fmi2True : fmi2False;");
   lines.push("  (void)noSetFMUStatePriorToCurrentPoint;");
   lines.push("  return fmi2OK;");
@@ -2422,13 +2490,18 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   );
   lines.push("fmi3Status fmi3EvaluateDiscreteStates(fmi3Instance instance) { (void)instance; return fmi3Error; }");
   lines.push("fmi3Status fmi3EnterStepMode(fmi3Instance instance) { (void)instance; return fmi3Error; }");
-  lines.push("fmi3Status fmi3EnterEventMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  lines.push("fmi3Status fmi3EnterEventMode(fmi3Instance instance) {");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push(`  if (inst) ${id}_checkWhenEvents(&inst->model);`);
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push("fmi3Status fmi3EnterContinuousTimeMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
   lines.push(
     "fmi3Status fmi3CompletedIntegratorStep(fmi3Instance instance, fmi3Boolean noSetFMUStatePriorToCurrentPoint, fmi3Boolean* enterEventMode, fmi3Boolean* terminateSimulation) {",
   );
-  lines.push("  (void)instance; (void)noSetFMUStatePriorToCurrentPoint;");
-  lines.push("  if (enterEventMode) *enterEventMode = fmi3False;");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  (void)noSetFMUStatePriorToCurrentPoint;");
+  lines.push(`  if (enterEventMode) *enterEventMode = ${id}_checkWhenEvents(&inst->model) ? fmi3True : fmi3False;`);
   lines.push("  if (terminateSimulation) *terminateSimulation = fmi3False;");
   lines.push("  return fmi3OK;");
   lines.push("}");
@@ -2617,11 +2690,17 @@ function generateEventHandlingLogic(dae: DAEBuilder, result: FmuResult, fmiVersi
       if (tEvent) {
         lines.push(`  if (inst->model.time < (${tEvent})) {`);
         if (fmiVersion === "fmi2") {
-          lines.push("    info->nextEventTimeDefined = fmi2True;");
-          lines.push(`    info->nextEventTime = ${tEvent};`);
+          lines.push(`    if (!info->nextEventTimeDefined || (${tEvent}) < info->nextEventTime) {`);
+          lines.push("      info->nextEventTimeDefined = fmi2True;");
+          lines.push(`      info->nextEventTime = ${tEvent};`);
+          lines.push("    }");
         } else {
-          lines.push("    if (nextEventTimeDefined) *nextEventTimeDefined = fmi3True;");
-          lines.push(`    if (nextEventTime) *nextEventTime = ${tEvent};`);
+          lines.push("    if (nextEventTimeDefined && nextEventTime) {");
+          lines.push(`      if (!*nextEventTimeDefined || (${tEvent}) < *nextEventTime) {`);
+          lines.push("        *nextEventTimeDefined = fmi3True;");
+          lines.push(`        *nextEventTime = ${tEvent};`);
+          lines.push("      }");
+          lines.push("    }");
         }
         lines.push("  }");
       }
@@ -2630,11 +2709,17 @@ function generateEventHandlingLogic(dae: DAEBuilder, result: FmuResult, fmiVersi
         if (tEventElse) {
           lines.push(`  if (inst->model.time < (${tEventElse})) {`);
           if (fmiVersion === "fmi2") {
-            lines.push("    info->nextEventTimeDefined = fmi2True;");
-            lines.push(`    info->nextEventTime = ${tEventElse};`);
+            lines.push(`    if (!info->nextEventTimeDefined || (${tEventElse}) < info->nextEventTime) {`);
+            lines.push("      info->nextEventTimeDefined = fmi2True;");
+            lines.push(`      info->nextEventTime = ${tEventElse};`);
+            lines.push("    }");
           } else {
-            lines.push("    if (nextEventTimeDefined) *nextEventTimeDefined = fmi3True;");
-            lines.push(`    if (nextEventTime) *nextEventTime = ${tEventElse};`);
+            lines.push("    if (nextEventTimeDefined && nextEventTime) {");
+            lines.push(`      if (!*nextEventTimeDefined || (${tEventElse}) < *nextEventTime) {`);
+            lines.push("        *nextEventTimeDefined = fmi3True;");
+            lines.push(`        *nextEventTime = ${tEventElse};`);
+            lines.push("      }");
+            lines.push("    }");
           }
           lines.push("  }");
         }

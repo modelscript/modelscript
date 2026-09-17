@@ -3,7 +3,7 @@
 import { generateFmu } from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { initBltWasm, type DAEBuilder } from "@modelscript/runtime";
+import { foldArenaConstants, initBltWasm, scalarizeArena, type DAEBuilder } from "@modelscript/runtime";
 import { simulateArena, simulateArenaAsync, snapshotMemory, type MemorySnapshot } from "@modelscript/simulate";
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
@@ -137,8 +137,22 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
     // Flatten the model
     profiler.start("flattening");
-    const arena = context.flattenArena(args.name);
+    let arena = context.flattenArena(args.name);
     profiler.end("flattening");
+
+    if (arena) {
+      let hasArrays = false;
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.getVarShape(i).length > 0) {
+          hasArrays = true;
+          break;
+        }
+      }
+      if (hasArrays) {
+        arena = scalarizeArena(arena);
+        foldArenaConstants(arena);
+      }
+    }
 
     if (args.memoryProfile && lastSnap) {
       const snap = snapshotMemory(true);

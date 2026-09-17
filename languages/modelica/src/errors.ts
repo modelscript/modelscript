@@ -224,8 +224,8 @@ export const ModelicaErrorCode = {
     code: 4008,
     rule: "array-subscript-count-mismatch",
     severity: "error",
-    message: (componentName: string, actualCount: string, expectedCount: string) =>
-      `Array subscript count mismatch: '${componentName}' has ${expectedCount} dimension(s), but was indexed with ${actualCount} subscript(s).`,
+    message: (refStr: string, actualCount: number | string, expectedCount: number | string) =>
+      `Wrong number of subscripts in ${refStr} (${actualCount} subscripts for ${expectedCount} dimensions).`,
   },
   FUNCTION_DEFAULT_ARG_CYCLE: {
     code: 4009,
@@ -706,6 +706,67 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (connectorName: string, flowCount: string) =>
       `Invalid stream connector .${connectorName}: A stream connector must have exactly one flow variable, this connector has ${flowCount} flow variables.`,
+  },
+  CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE: {
+    code: 4055,
+    rule: "cannot-connect-expandable-with-non-expandable",
+    severity: "error",
+    message: (expName: string, nonExpName: string) =>
+      `Cannot connect expandable connector ${expName} with non-expandable connector ${nonExpName}.`,
+  },
+  CANNOT_CONNECT_UNDECLARED_EXPANDABLE_CONNECTORS: {
+    code: 4056,
+    rule: "cannot-connect-undeclared-expandable-connectors",
+    severity: "error",
+    message: (c1: string, c2: string) =>
+      `Cannot connect undeclared connectors ${c1} with ${c2}. At least one of them must be declared.`,
+  },
+  EXPANDABLE_CONNECTOR_FLOW_ELEMENT: {
+    code: 4057,
+    rule: "expandable-connector-flow-element",
+    severity: "error",
+    message: (compName: string) =>
+      `Prefix 'flow' on component '${compName}' not allowed in class specialization 'expandable connector'.`,
+  },
+  NON_ENCAPSULATED_OPERATOR: {
+    code: 4070,
+    rule: "operator-encapsulation",
+    severity: "error",
+    message: (recordName: string, opName: string) => `Operator ${recordName}.'${opName}' is not encapsulated.`,
+  },
+  OPERATOR_CONSTRUCTOR_INVALID_OUTPUT_COUNT: {
+    code: 4071,
+    rule: "operator-constructor-outputs",
+    severity: "error",
+    message: (recordName: string) => `Operator ${recordName}.'constructor' must have exactly one output.`,
+  },
+  OPERATOR_CONSTRUCTOR_INVALID_OUTPUT_TYPE: {
+    code: 4072,
+    rule: "operator-constructor-output-type",
+    severity: "error",
+    message: (recordName: string, outputName: string, actualType: string) =>
+      `Output '${outputName}' in operator ${recordName}.'constructor' must be of type ${recordName}, got type ${actualType}.`,
+  },
+  AMBIGUOUS_OPERATOR_OVERLOAD: {
+    code: 4073,
+    rule: "ambiguous-operator-overload",
+    severity: "error",
+    message: (exprText: string, candidatesText: string) =>
+      `Ambiguous matching overloaded operator functions found for ${exprText}.\nCandidates are:\n${candidatesText}`,
+  },
+  NO_MATCHING_OPERATOR_FUNCTION: {
+    code: 4074,
+    rule: "no-matching-operator-function",
+    severity: "error",
+    message: (callExprText: string, candidatesText: string) =>
+      `No matching function found for ${callExprText}.\nCandidates are:\n${candidatesText}`,
+  },
+  CANNOT_RESOLVE_OPERATOR_TYPE: {
+    code: 4075,
+    rule: "cannot-resolve-operator-type",
+    severity: "error",
+    message: (exprText: string, leftType: string, rightType: string) =>
+      `Cannot resolve type of expression ${exprText}. The operands have types ${leftType}, ${rightType} in component <NO_COMPONENT>.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

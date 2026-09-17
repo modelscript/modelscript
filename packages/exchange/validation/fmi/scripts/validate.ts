@@ -14,6 +14,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const VALIDATION_DIR = path.resolve(__dirname, "..");
 const FMI_PKG_ROOT = path.resolve(VALIDATION_DIR, "../..");
+const REPO_ROOT = path.resolve(FMI_PKG_ROOT, "../..");
+const CLI_BIN = path.join(REPO_ROOT, "apps/cli/dist/main.js");
 const REF_REPO_DIR = path.join(VALIDATION_DIR, "reference_fmus_repo");
 const EXPORTED_DIR = path.join(VALIDATION_DIR, "exported_fmus");
 const REF_FMUS_DIR = path.join(VALIDATION_DIR, "reference_fmus");
@@ -97,8 +99,8 @@ async function prepareModelicaModels() {
       const fmuPath = path.join(outDir, `${model.name}_${fmiVer}.fmu`);
       try {
         await runCmd(
-          `npx msc fmu ${model.name} ${path.join(MODELS_DIR, model.file)} -o ${fmuPath} --compile --fmi-version ${fmiVer === "2.0" ? "2" : "3"}`,
-          path.resolve("../.."),
+          `node "${CLI_BIN}" fmu ${model.name} "${path.join(MODELS_DIR, model.file)}" -o "${fmuPath}" --compile --fmi-version ${fmiVer === "2.0" ? "2" : "3"}`,
+          REPO_ROOT,
         );
         console.log(`  [✓] ModelScript compiled: ${model.name}_${fmiVer}.fmu`);
       } catch (e: any) {
@@ -152,8 +154,8 @@ async function runCrossSimulationMatrix() {
       const moPath = path.join(MODELS_DIR, model.file);
       const solverArg = `--engine arena --solver ${model.solver || "cvode"}`;
       const stdout = await runCmd(
-        `npx msc simulate ${model.name} "${moPath}" --stop-time ${model.stopTime} --interval ${model.stepSize} ${solverArg} --format csv`,
-        path.resolve("../.."),
+        `node "${CLI_BIN}" simulate ${model.name} "${moPath}" --stop-time ${model.stopTime} --interval ${model.stepSize} ${solverArg} --format csv`,
+        REPO_ROOT,
       );
       const csvLines = stdout.split("\n").filter((line) => line.includes(",") && !line.includes("[Context]"));
 

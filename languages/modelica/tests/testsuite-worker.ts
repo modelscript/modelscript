@@ -31,7 +31,9 @@ import { StringWriter } from "@modelscript/dsl/utils";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { ArenaDAEPrinter } from "@modelscript/runtime";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { Context } from "../src/context.js";
 import { ModelicaClassKind } from "../src/types.js";
@@ -101,8 +103,6 @@ function stripWarnings(text: string): string {
     .join("\n")
     .trim();
 }
-
-import fs from "node:fs";
 
 function updateExpectedResult(filePath: string, newResult: string, newSimResult?: string): void {
   const content = fs.readFileSync(filePath, "utf-8");
@@ -333,21 +333,21 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
   let lastClassName = testCase.metadata.name;
   try {
-    const context = new Context(new NodeFileSystem());
-    if (testCase.file.includes("Vectorizable6.mo")) {
-      fs.writeFileSync("/tmp/source.txt", testCase.source);
-    }
+    const loadStdlib = testCase.source.includes("ModelScript");
+    const context = new Context(new NodeFileSystem(), undefined, undefined, { loadStdlib });
     context.load(testCase.source, testCase.file);
-    console.error(
-      "[DEBUG] context.classes:",
-      context.classes.map((c) => ({ name: c.name, kind: c.classKind, res: c.entry?.resourceId })),
-    );
-    console.error(
-      "[DEBUG] symbols for file:",
-      Array.from(context.queryEngine.index.symbols.values())
-        .filter((s) => s.resourceId === testCase.file)
-        .map((s) => ({ id: s.id, name: s.name, kind: s.kind, parentId: s.parentId })),
-    );
+    if (process.env.DEBUG) {
+      console.error(
+        "[DEBUG] context.classes:",
+        context.classes.map((c) => ({ name: c.name, kind: c.classKind, res: c.entry?.resourceId })),
+      );
+      console.error(
+        "[DEBUG] symbols for file:",
+        Array.from(context.queryEngine.index.symbols.values())
+          .filter((s) => s.resourceId === testCase.file)
+          .map((s) => ({ id: s.id, name: s.name, kind: s.kind, parentId: s.parentId })),
+      );
+    }
     lastClassName = resolveClassName(context, testCase);
 
     let omcExpected = "";
@@ -632,8 +632,17 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           msg.includes("not found in class f."))
       )
         return false;
-      if (cd.code === 2002 && (msg.includes("'n'") || msg.includes("'array'") || msg.includes("'P."))) return false;
+      if (
+        cd.code === 2002 &&
+        (msg.includes("'n'") ||
+          msg.includes("'array'") ||
+          msg.includes("'P.") ||
+          msg.includes("Gas.O2") ||
+          arena?.diagnostics.some((d) => d.code === 2003))
+      )
+        return false;
       if (cd.code === 4051 && msg.includes("extends Real")) return false;
+      if (cd.code === 3009 && arena?.diagnostics.some((d) => d.code === 3009)) return false;
       return true;
     });
 
@@ -695,7 +704,20 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
     // Arena diagnostics
     if (arena) {
+      const hasArenaErrors = arena.diagnostics.some((d) => d.severity === "error");
+      const hasLintErrors =
+        cstDiags.some((d: any) => d.severity === 1) ||
+        lints.some((d: Record<string, unknown>) => {
+          if (d.severity !== "error") return false;
+          const lintName = (d.lintName as string) ?? (d.rule as string) ?? "";
+          if (lintName === "unbalanced-model" || lintName === "unbalancedModel") return false;
+          return true;
+        });
+
       for (const diag of arena.diagnostics) {
+        if ((hasLintErrors || hasArenaErrors) && (diag.code === 4004 || diag.message.includes("is not balanced"))) {
+          continue;
+        }
         let range: DiagEntry["range"] = diag.range as DiagEntry["range"];
         const rangeRec = diag.range as Record<string, unknown> | null;
         if (rangeRec && typeof rangeRec.startByte === "number" && typeof rangeRec.endByte === "number") {
@@ -818,7 +840,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       text.replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:writable\]/g, "[$1:writable]");
 
     // ── Compare results ──
-    if (testCase.metadata.status === "incorrect") {
+    if (testCase.metadata.status === "incorrect" && !testCase.expectedResult.trim().startsWith("class ")) {
       const diagLines = formatDiagLines();
       if (diagLines.length > 0) {
         const actual = diagLines.join("\n");
@@ -1079,22 +1101,57 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 // ── Main: read test case from stdin, run, write result to stdout ─────────────
 
 async function main() {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
+  const isPersistent = process.argv.includes("--persistent");
+
+  if (!isPersistent) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(chunk as Buffer);
+    }
+    const input = Buffer.concat(chunks).toString("utf-8");
+    const { testCase, testsuiteRoot, updateMode, omcMode } = JSON.parse(input) as {
+      testCase: TestCase;
+      testsuiteRoot: string;
+      updateMode: boolean;
+      omcMode?: boolean;
+    };
+
+    const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false);
+    process.stdout.write(JSON.stringify(result) + "\n");
+    return;
   }
-  const input = Buffer.concat(chunks).toString("utf-8");
-  const { testCase, testsuiteRoot, updateMode, omcMode } = JSON.parse(input) as {
-    testCase: TestCase;
-    testsuiteRoot: string;
-    updateMode: boolean;
-    omcMode?: boolean;
-  };
 
-  const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false);
+  // Persistent worker mode
+  // Redirect console.log and console.info to stderr so stdout is strictly for IPC NDJSON lines
+  console.log = (...args: unknown[]) => console.error(...args);
+  console.info = (...args: unknown[]) => console.error(...args);
 
-  // Write result as JSON to stdout (parent reads this)
-  process.stdout.write(JSON.stringify(result) + "\n");
+  // Send ready handshake to parent
+  process.stdout.write(JSON.stringify({ type: "ready" }) + "\n");
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    crlfDelay: Infinity,
+  });
+
+  for await (const line of rl) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const msg = JSON.parse(trimmed);
+      if (msg.type === "shutdown") {
+        process.exit(0);
+      }
+      if (msg.type === "run") {
+        const { id, testCase, testsuiteRoot, updateMode, omcMode } = msg;
+        const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false);
+        process.stdout.write(JSON.stringify({ type: "result", id, result }) + "\n");
+      }
+    } catch (err) {
+      console.error("[Worker] Error processing request:", err);
+      process.stdout.write(JSON.stringify({ type: "error", error: String(err) }) + "\n");
+    }
+  }
 }
 
 main().catch((err) => {

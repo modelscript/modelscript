@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { LspFacade, TreeSitterParser } from "@modelscript/dsl";
+
 const require = createRequire(import.meta.url);
 
 export interface LanguageManifest {
@@ -29,7 +31,7 @@ export interface FormatOptions {
 
 export interface ResolvedLanguage {
   manifest: LanguageManifest;
-  loadParser(): Promise<{ parser: unknown; facade?: unknown; binding?: unknown }>;
+  loadParser(): Promise<{ parser: TreeSitterParser; facade?: LspFacade; binding?: unknown }>;
   format(content: string, options?: FormatOptions): Promise<string>;
   unparse(content: string, options?: FormatOptions): Promise<string>;
 }
@@ -547,7 +549,7 @@ function createResolvedLanguage(manifest: LanguageManifest): ResolvedLanguage {
         if (facade?.exports?.lsp_formatDocument && facade?.exports?.lsp_getBinaryBuffer) {
           const tree = parser.parse(content);
           if (tree) {
-            const rootPtr = tree.rootNode?.getPtr ? tree.rootNode.getPtr() : 0;
+            const rootPtr = tree.rootNode ? tree.rootNode.ptr : 0;
             const numBytes = facade.exports.lsp_formatDocument(rootPtr, preserveFormatting ? 1 : 0);
             if (numBytes > 0) {
               const dirPtr = facade.exports.lsp_getBinaryBuffer();

@@ -8,6 +8,7 @@ import {
   isClassKind,
   isConnectorCompatible,
   isDescendantOfInnerClass,
+  isExpandableConnector,
   resolveDottedComponentClass,
 } from "./helpers.js";
 
@@ -51,6 +52,11 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
         const lhsClass = resolveDottedComponentClass(db, enclosingClass, lhs, $);
         const rhsClass = resolveDottedComponentClass(db, enclosingClass, rhs, $);
         if (lhsClass != 0 && rhsClass != 0) {
+          const lhsExp = isExpandableConnector(db, lhsClass, $);
+          const rhsExp = isExpandableConnector(db, rhsClass, $);
+          if (lhsExp || rhsExp) {
+            return;
+          }
           const mismatchIdent = findFlowMismatchInConnectors(db, lhsClass, rhsClass, $);
           if (mismatchIdent != 0) {
             const lhsComp = findComponentClauseForIdent(db, lhsClass, mismatchIdent, $);
@@ -64,6 +70,71 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
           const rhsFlows = getFlowVariableCount(db, rhsClass, $);
           if (lhsFlows != rhsFlows || !isConnectorCompatible(db, lhsClass, rhsClass, $)) {
             db.diagnostic(node, lhs, rhs);
+          }
+        }
+      }
+    },
+  },
+
+  /**
+   * M4055: Cannot connect expandable connector with non-expandable connector.
+   */
+  cannotConnectExpandableWithNonExpandable: {
+    nodes: ["connect_equation"],
+    severity: "error",
+    code: 4055,
+    message: (target, expRef, nonExpRef) =>
+      `Cannot connect expandable connector ${expRef.text} with non-expandable connector ${nonExpRef.text}.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let enclosingClass: u32 = 0;
+      for (const cls of db.ast.getAncestors(node)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          enclosingClass = cls;
+          break;
+        }
+      }
+      if (enclosingClass == 0) return;
+
+      const lhs = db.ast.getChildByFieldId(node, "lhs");
+      const rhs = db.ast.getChildByFieldId(node, "rhs");
+      if (lhs != 0 && rhs != 0) {
+        const lhsClass = resolveDottedComponentClass(db, enclosingClass, lhs, $);
+        const rhsClass = resolveDottedComponentClass(db, enclosingClass, rhs, $);
+        const lhsExp = lhsClass != 0 && isExpandableConnector(db, lhsClass, $);
+        const rhsExp = rhsClass != 0 && isExpandableConnector(db, rhsClass, $);
+        if (lhsExp !== rhsExp) {
+          const expRef = lhsExp ? lhs : rhs;
+          const nonExpRef = lhsExp ? rhs : lhs;
+          db.diagnostic(node, expRef, nonExpRef);
+        }
+      }
+    },
+  },
+
+  /**
+   * M4057: Prefix 'flow' not allowed in expandable connector.
+   */
+  expandableConnectorFlowElement: {
+    nodes: ["component_clause"],
+    severity: "error",
+    code: 4057,
+    message: (target, compName) =>
+      `Prefix 'flow' on component '${compName.text}' not allowed in class specialization 'expandable connector'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let enclosingClass: u32 = 0;
+      for (const cls of db.ast.getAncestors(node)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          enclosingClass = cls;
+          break;
+        }
+      }
+      if (enclosingClass == 0 || !isExpandableConnector(db, enclosingClass, $)) return;
+
+      if (hasTypePrefix(db, node, "flow", $)) {
+        for (const decl of db.ast.getDescendants(node, $.declaration)) {
+          const nameNode = db.ast.getChildByFieldId(decl, "name");
+          if (nameNode != 0) {
+            db.diagnostic(decl, nameNode);
           }
         }
       }

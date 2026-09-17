@@ -10,6 +10,7 @@ import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
 import { Cst } from "../src-gen/bindings.js";
 import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
+import type { OperatorOverload, OperatorOverloadParam } from "./types.js";
 
 function cyrb53(str: string, seed = 0): string {
   let h1 = 0xdeadbeef ^ seed,
@@ -1601,11 +1602,31 @@ export const classDefinitionQueries: Record<string, any> = {
     );
   },
   /**
+   * Check if this class is an expandable connector type.
+   */
+  isExpandableConnector: (db: QueryDB, self: SymbolEntry) => {
+    let kind = String(
+      (self.metadata as Record<string, unknown>)?.classPrefixes ??
+        (self.metadata as Record<string, unknown>)?.classKind ??
+        "",
+    );
+    kind = kind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+    const words = kind.split(/\s+/).filter(Boolean);
+    return words.includes("expandable") && words.includes("connector");
+  },
+  /**
    * Check if this class is an operator record type.
    */
   isOperatorRecord: (db: QueryDB, self: SymbolEntry) => {
-    const kind = (self.metadata as Record<string, unknown>)?.classPrefixes;
-    return kind === "operator record";
+    const meta = (self.metadata as Record<string, unknown>) || {};
+    const rawKind = String(meta.classPrefixes ?? meta.classKind ?? "");
+    if (rawKind.includes("operator") && rawKind.includes("record")) return true;
+    const cst = db.cstNode(self.id) as any;
+    if (cst) {
+      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+      if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) return true;
+    }
+    return false;
   },
   /**
    * For an `operator record` class, collect all operator functions.
@@ -1623,112 +1644,178 @@ export const classDefinitionQueries: Record<string, any> = {
    *     operator function '+' ... end '+';  // shorthand form
    *   end C;
    */
-  operatorFunctions: (db: QueryDB, self: SymbolEntry) => {
-    const kind = (self.metadata as Record<string, unknown>)?.classPrefixes;
-    if (kind !== "operator record") return null;
+  operatorFunctions: (db: QueryDB, self: SymbolEntry): Map<string, OperatorOverload[]> | null => {
+    const meta = (self.metadata as Record<string, unknown>) || {};
+    const rawKind = String(meta.classPrefixes ?? meta.classKind ?? "");
+    const isOpRecord =
+      (rawKind.includes("operator") && rawKind.includes("record")) ||
+      (() => {
+        const cst = db.cstNode(self.id) as any;
+        if (cst) {
+          const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+          return /^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text);
+        }
+        return false;
+      })();
+    if (!isOpRecord) return null;
 
-    type CSTNode = import("@modelscript/runtime").CSTNode;
     const recordName = self.name;
-
-    interface OperatorOverload {
-      qualifiedName: string;
-      inputTypes: string[];
-      outputType: string;
-      inputCount: number;
-    }
-
     const result = new Map<string, OperatorOverload[]>();
 
-    const children = db.childrenOf(self.id);
-    // console.error(`[debug] operatorFunctions for ${self.name}, children count: ${children.length}`);
+    const addOverload = (opName: string, overload: OperatorOverload) => {
+      const list1 = result.get(opName) ?? [];
+      list1.push(overload);
+      result.set(opName, list1);
 
-    // Walk children of the operator record
-    for (const child of children) {
-      if (child.kind !== "Class") continue;
-      const childMeta = child.metadata as Record<string, unknown>;
-      const childPrefix = childMeta?.classPrefixes as string | undefined;
+      const clean = opName.replace(/^'|'$/g, "");
+      if (clean !== opName) {
+        const list2 = result.get(clean) ?? [];
+        list2.push(overload);
+        result.set(clean, list2);
+      }
+    };
 
-      // console.error(`[debug] child: ${child.name}, prefix: ${childPrefix}`);
+    const extractOverload = (
+      funcSym: SymbolEntry,
+      opName: string,
+      shortName: string,
+      qualifiedName: string,
+    ): OperatorOverload => {
+      const inputParams: OperatorOverloadParam[] = [];
+      const inputTypes: string[] = [];
+      let outputParam: OperatorOverloadParam | null = null;
+      let outputType = "";
+      let inputCount = 0;
 
-      // Case 1: `operator function '+'` (shorthand — the class IS the function)
-      if (childPrefix === "operator function") {
-        const opName = child.name; // e.g., "'+'"
-        const inputTypes: string[] = [];
-        let outputType = "";
-        let inputCount = 0;
+      for (const param of db.childrenOf(funcSym.id)) {
+        if (param.kind !== "Component") continue;
+        const pMeta = param.metadata as Record<string, unknown>;
+        const compInst = db.query<any>("componentInstance", param.id);
+        const causality = compInst?.causality ?? (pMeta?.causality as string | undefined);
+        let typeSpec = compInst?.typeSpecifier ?? (pMeta?.typeSpecifier as string | undefined) ?? "Real";
+        let isArray = false;
+        if (typeSpec.includes("[")) {
+          isArray = true;
+          typeSpec = typeSpec.replace(/\[.*\]$/, "").trim();
+        }
+        if (param.name.includes("[")) {
+          isArray = true;
+        }
+        if (compInst?.arrayDimensions && compInst.arrayDimensions.length > 0) {
+          isArray = true;
+        }
 
-        // Extract input/output types from function children
-        for (const param of db.childrenOf(child.id)) {
-          if (param.kind !== "Component") continue;
-          const pMeta = param.metadata as Record<string, unknown>;
-          const causality = pMeta?.causality as string | undefined;
-          const typeSpec = pMeta?.typeSpecifier as string | undefined;
-          if (causality === "input") {
-            inputTypes.push(typeSpec ?? "Real");
-            inputCount++;
-          } else if (causality === "output") {
-            outputType = typeSpec ?? "Real";
+        let hasDefault = false;
+        let defaultValue: string | undefined = undefined;
+        const paramCst = db.cstNode(param.id) as any;
+        if (paramCst) {
+          const pText = paramCst.text ?? "";
+          if (pText.includes("[:]")) {
+            isArray = true;
+          }
+          const eqIdx = pText.indexOf("=");
+          if (eqIdx >= 0) {
+            hasDefault = true;
+            let defVal = pText.slice(eqIdx + 1).trim();
+            defVal = defVal
+              .replace(/;.*$/, "")
+              .replace(/"[^"]*"$/, "")
+              .trim();
+            defaultValue = defVal;
           }
         }
 
-        const overloads = result.get(opName) ?? [];
-        overloads.push({
-          qualifiedName: `${recordName}.${opName}`,
-          inputTypes,
-          outputType,
-          inputCount,
-        });
-        result.set(opName, overloads);
+        if (causality === "input") {
+          inputParams.push({
+            name: param.name.replace(/\[.*\]$/, ""),
+            typeSpec,
+            isArray,
+            hasDefault,
+            defaultValue,
+          });
+          inputTypes.push(typeSpec);
+          inputCount++;
+        } else if (causality === "output") {
+          outputType = typeSpec;
+          outputParam = {
+            name: param.name.replace(/\[.*\]$/, ""),
+            typeSpec,
+            isArray,
+            hasDefault,
+            defaultValue,
+          };
+        }
+      }
+
+      let isInline = false;
+      const funcCst = db.cstNode(funcSym.id) as any;
+      if (funcCst) {
+        const fText = funcCst.text ?? "";
+        if (fText.includes("Inline=true") || fText.includes("Inline = true")) {
+          isInline = true;
+        }
+      }
+
+      return {
+        opName,
+        shortName,
+        qualifiedName,
+        funcSymId: funcSym.id,
+        inputParams,
+        inputTypes,
+        outputType,
+        outputParam,
+        inputCount,
+        isInline,
+      };
+    };
+
+    const children = db.childrenOf(self.id);
+    for (const child of children) {
+      if (child.kind !== "Class") continue;
+      const childMeta = (child.metadata as Record<string, unknown>) || {};
+      const childPrefix = String(childMeta?.classPrefixes ?? childMeta?.classKind ?? "");
+
+      // Case 1: `operator function '+'` (shorthand — the class IS the function)
+      if (childPrefix.includes("operator function")) {
+        const opName = child.name; // e.g., "'+'"
+        const qual = `${recordName}.${opName}`;
+        addOverload(opName, extractOverload(child, opName, opName, qual));
         continue;
       }
 
       // Case 2: `operator '+'` containing function children
-      if (childPrefix === "operator") {
+      if (childPrefix.includes("operator") || child.name.startsWith("'")) {
         const opName = child.name; // e.g., "'+'"
-
         const funcs = db.childrenOf(child.id);
-        // console.error(`[debug] found operator ${opName}, funcs count: ${funcs.length}`);
-
         for (const func of funcs) {
-          // console.error(`[debug]   func: ${func.name}, kind: ${func.kind}`);
           if (func.kind !== "Class") continue;
-          const funcMeta = func.metadata as Record<string, unknown>;
-          const funcPrefix = funcMeta?.classPrefixes as string | undefined;
-          // console.error(`[debug]   funcPrefix: ${funcPrefix}`);
-          if (funcPrefix !== "function" && funcPrefix !== "operator function") continue;
-
-          const inputTypes: string[] = [];
-          let outputType = "";
-          let inputCount = 0;
-
-          for (const param of db.childrenOf(func.id)) {
-            if (param.kind !== "Component") continue;
-            const pMeta = param.metadata as Record<string, unknown>;
-            const causality = pMeta?.causality as string | undefined;
-            const typeSpec = pMeta?.typeSpecifier as string | undefined;
-            if (causality === "input") {
-              inputTypes.push(typeSpec ?? "Real");
-              inputCount++;
-            } else if (causality === "output") {
-              outputType = typeSpec ?? "Real";
-            }
+          const funcMeta = (func.metadata as Record<string, unknown>) || {};
+          const funcPrefix = String(funcMeta?.classPrefixes ?? funcMeta?.classKind ?? "");
+          if (!funcPrefix.includes("function")) {
+            const fCst = db.cstNode(func.id) as any;
+            const fText = fCst?.text?.trim() ?? "";
+            if (!fText.startsWith("function")) continue;
           }
-
-          const overloads = result.get(opName) ?? [];
-          overloads.push({
-            qualifiedName: `${recordName}.${opName}.${func.name}`,
-            inputTypes,
-            outputType,
-            inputCount,
-          });
-          result.set(opName, overloads);
+          const qual = `${recordName}.${opName}.${func.name}`;
+          addOverload(opName, extractOverload(func, opName, func.name, qual));
         }
         continue;
       }
     }
 
-    // console.error(`[debug] returning result size: ${result.size}`);
     return result.size > 0 ? result : null;
+  },
+
+  operatorConstructors: (db: QueryDB, self: SymbolEntry): OperatorOverload[] => {
+    const ops = db.query<Map<string, OperatorOverload[]> | null>("operatorFunctions", self.id);
+    if (!ops) return [];
+    return ops.get("'constructor'") ?? ops.get("constructor") ?? [];
+  },
+
+  hasOperatorConstructor: (db: QueryDB, self: SymbolEntry): boolean => {
+    const ctors = db.query<OperatorOverload[]>("operatorConstructors", self.id);
+    return Boolean(ctors && ctors.length > 0);
   },
   /**
    * Resolve a modification argument by name from the class's

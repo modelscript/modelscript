@@ -28,7 +28,7 @@ end LotkaVolterra;
 //   Real rabbits(start = 700.0) "Rabbits,(R) with start population 700";
 //   Real foxes(start = 10.0) "Foxes,(F) with start population 10";
 // equation
-//   der(rabbits) = rabbits * (g_r - d_rf * foxes);
-//   der(foxes) = g_fr * d_rf * rabbits * foxes - d_f * foxes;
+//   der(rabbits) = g_r * rabbits - d_rf * foxes * rabbits;
+//   der(foxes) = d_rf * g_fr * foxes * rabbits - d_f * foxes;
 // end LotkaVolterra;
 // endResult

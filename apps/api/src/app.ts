@@ -19,6 +19,7 @@ import { fmuRouter } from "./routes/fmu.js";
 import { gitRouter } from "./routes/git.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
+import { instancesRouter } from "./routes/instances.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
 import { npmRegistryRouter } from "./routes/npm-registry.js";
 import { packagesRouter } from "./routes/packages.js";
@@ -45,6 +46,8 @@ import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examp
 export interface AppOptions {
   /** Optional library storage override. */
   storage?: LibraryStorage | undefined;
+  /** Optional database override. */
+  database?: LibraryDatabase | undefined;
   /** MQTT client for co-simulation (null = no MQTT). */
   mqttClient?: CosimMqttClient | null | undefined;
   /** PostgreSQL pool for historian queries (null = stubs). */
@@ -62,7 +65,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const jobQueue = new JobQueue();
   app.locals.jobQueue = jobQueue;
 
-  const database = new LibraryDatabase();
+  const database = opts.database ?? new LibraryDatabase();
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
 
@@ -351,6 +354,7 @@ graph TD
   app.use("/api/v1/cosim", cosimRouter(mqttClient));
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(mqttClient));
   app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
+  app.use("/api/v1/instances", instancesRouter(database, dbPool));
   app.use("/api/v1/fmus", fmuRouter());
   app.use("/api/v1/git", gitRouter());
   app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility

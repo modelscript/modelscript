@@ -16,7 +16,17 @@
  * FMI 3.0 specification: https://fmi-standard.org/
  */
 
-import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  type DAEBuilder,
+  Causality,
+  EqKind,
+  ExprKind,
+  foldArenaConstants,
+  scalarizeArena,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
+import { extractEventIndicatorsFromDae } from "./fmi.js";
 
 // ── Public interface ──
 
@@ -183,6 +193,20 @@ export interface Fmi3Result {
  * Generate FMI 3.0 model description from a DAE.
  */
 export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: Set<string>): Fmi3Result {
+  let hasArrays = false;
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.getVarShape(i).length > 0) {
+      hasArrays = true;
+      break;
+    }
+  }
+  if (hasArrays) {
+    dae = scalarizeArena(dae);
+    foldArenaConstants(dae);
+  }
+
+  extractEventIndicatorsFromDae(dae);
+
   const guid = options.guid ?? generateGuid();
   const variables: Fmi3Variable[] = [];
 
@@ -263,9 +287,6 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
     }
   }
 
-  // ── Group array variables for FMI 3.0 native arrays ──
-  const groupedVariables = groupArrayVariables3(variables);
-
   // ── Event Indicators (FMI 3.0 requires them as ModelVariables) ──
   const nEventIndicators = dae.eventIndicatorExprIds.length;
   for (let i = 0; i < nEventIndicators; i++) {
@@ -277,6 +298,9 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
       type: "Float64",
     });
   }
+
+  // ── Group array variables for FMI 3.0 native arrays ──
+  const groupedVariables = groupArrayVariables3(variables);
 
   // ── Compute dependencies ──
   const deps = computeDependencies3(dae, groupedVariables, outputRefs, derivativeRefs, initialUnknownRefs);

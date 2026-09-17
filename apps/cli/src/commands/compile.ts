@@ -58,22 +58,17 @@ export const Compile: CommandModule<{}, CompileArgs> = {
   handler: async (args) => {
     const profiler = new Profiler();
 
-    const { UnifiedWorkspace } = await import("@modelscript/runtime");
-    const { createModelicaQueryEngine, createModelicaWorkspaceIndex } = await import("@modelscript/modelica/factory");
-    const { createSysML2WorkspaceIndex, loadEmbeddedKerMLStdlib } = await import("@modelscript/sysml2/factory");
-    const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;
-    const modelicaLangFallback = (await import("@modelscript/modelica/language")).default;
+    const hasSysML = args.paths.some((p) => p.endsWith(".sysml"));
 
     const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as any);
-    const context = Context.createBatch(new NodeFileSystem());
+
+    const needsStdlib = args.name.startsWith("ModelScript.") || args.paths.some((p) => p.includes("modelscript-"));
+    const context = Context.createBatch(new NodeFileSystem(), { loadStdlib: needsStdlib });
 
     if (args["modelica-path"]) {
       context.modelicaPath = args["modelica-path"] as string;
     }
-
-    const mIdx = createModelicaWorkspaceIndex();
-    const sysmlIndex = createSysML2WorkspaceIndex();
 
     // Auto-load root package from MODELICAPATH if specified in class name
     const rootName = args.name.split(".")[0];
@@ -91,15 +86,23 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     let lastSnap = args.memoryProfile ? snapshotMemory(true) : null;
 
     let sysmlParser: any = null;
-    let hasSysML = false;
+    let mIdx: any = null;
+    let sysmlIndex: any = null;
+
+    if (hasSysML) {
+      const { createModelicaWorkspaceIndex } = await import("@modelscript/modelica/factory");
+      const { createSysML2WorkspaceIndex } = await import("@modelscript/sysml2/factory");
+      mIdx = createModelicaWorkspaceIndex();
+      sysmlIndex = createSysML2WorkspaceIndex();
+    }
+
     profiler.start("parsing");
     for (const p of args.paths) {
       if (p.endsWith(".sysml")) {
-        hasSysML = true;
-        const { createWasmParser } = await import("@modelscript/dsl");
+        const { createWasmParser: createSysmlParser } = await import("@modelscript/dsl");
         const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
         if (!sysmlParser) {
-          const sysmlResult = await createWasmParser(wasmPath);
+          const sysmlResult = await createSysmlParser(wasmPath);
           sysmlParser = sysmlResult.parser;
         }
         const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
@@ -109,9 +112,10 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         sysmlIndex.register(fileUri, () => tree.rootNode as any);
       } else if (p.endsWith(".mo")) {
         await context.addLibrary(p);
-        const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
-
-        mIdx.register(`file://${path.resolve(p)}`, () => parser.parse(text)?.rootNode as any);
+        if (hasSysML && mIdx) {
+          const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
+          mIdx.register(`file://${path.resolve(p)}`, () => parser.parse(text)?.rootNode as any);
+        }
       } else {
         await context.addLibrary(p);
       }
@@ -119,6 +123,11 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     profiler.end("parsing");
 
     if (hasSysML) {
+      const { UnifiedWorkspace } = await import("@modelscript/runtime");
+      const { createModelicaQueryEngine } = await import("@modelscript/modelica/factory");
+      const { loadEmbeddedKerMLStdlib } = await import("@modelscript/sysml2/factory");
+      const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;
+      const modelicaLangFallback = (await import("@modelscript/modelica/language")).default;
       if (sysmlParser) {
         loadEmbeddedKerMLStdlib(sysmlIndex, sysmlParser);
       }

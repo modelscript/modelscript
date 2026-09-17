@@ -281,7 +281,10 @@ export class ArenaDAEPrinter {
           if (isHigh && ck === ExprKind.IntLiteral && a.getExprData1(childId) < 0) return true;
           if ((op === BinOp.Pow || op === BinOp.ElemPow) && ck === ExprKind.Binary) return true;
           if (isHigh && ck === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(childId) as BinOp)) return true;
-          if (isRhs && (op === BinOp.Div || op === BinOp.ElemDiv) && ck === ExprKind.Binary) return true;
+          if (isRhs && (op === BinOp.Div || op === BinOp.ElemDiv) && ck === ExprKind.Binary) {
+            const childOp = a.getExprData1(childId) as BinOp;
+            if (childOp !== BinOp.Pow && childOp !== BinOp.ElemPow) return true;
+          }
           if (ck === ExprKind.IfElse) return true;
           return false;
         };
@@ -537,12 +540,35 @@ export class ArenaDAEPrinter {
                   nonLiterals.push(childId);
                 }
               }
+              const getOperandRank = (nid: number): number => {
+                if (a.getExprKind(nid) === ExprKind.Name) {
+                  const nameId = a.getExprData1(nid);
+                  let vIdx = a.lookupVariable(nameId);
+                  if (vIdx < 0) {
+                    const nameStr = a.interner.resolve(nameId);
+                    if (nameStr) vIdx = a.getVarIdxByName(nameStr);
+                  }
+                  if (vIdx >= 0) {
+                    const v = a.getVarVariability(vIdx);
+                    if (v === Variability.Constant) return 1;
+                    if (v === Variability.Parameter) return 2;
+                    return 3;
+                  }
+                }
+                return 4;
+              };
               if (op === BinOp.Mul && nonLiterals.every((nid) => a.getExprKind(nid) === ExprKind.Name)) {
-                nonLiterals.sort((x, y) => {
-                  const nx = a.interner.resolve(a.getExprData1(x)) || "";
-                  const ny = a.interner.resolve(a.getExprData1(y)) || "";
-                  return nx.localeCompare(ny);
-                });
+                const names = nonLiterals.map((nid) => a.interner.resolve(a.getExprData1(nid)) || "");
+                if (names.every((n) => !n.includes("["))) {
+                  nonLiterals.sort((x, y) => {
+                    const rx = getOperandRank(x);
+                    const ry = getOperandRank(y);
+                    if (rx !== ry) return rx - ry;
+                    const nx = a.interner.resolve(a.getExprData1(x)) || "";
+                    const ny = a.interner.resolve(a.getExprData1(y)) || "";
+                    return nx.localeCompare(ny);
+                  });
+                }
               }
               operands.length = 0;
               operands.push(...literals, ...nonLiterals);
@@ -586,11 +612,35 @@ export class ArenaDAEPrinter {
             finalLhs = rhs;
             finalRhs = lhs;
           } else if (op === BinOp.Mul && lKind === ExprKind.Name && rKind === ExprKind.Name) {
-            const lName = a.interner.resolve(a.getExprData1(lhs));
-            const rName = a.interner.resolve(a.getExprData1(rhs));
-            if (lName && rName && lName.localeCompare(rName) > 0) {
-              finalLhs = rhs;
-              finalRhs = lhs;
+            const getRank = (nid: number): number => {
+              const nameId = a.getExprData1(nid);
+              let vIdx = a.lookupVariable(nameId);
+              if (vIdx < 0) {
+                const nameStr = a.interner.resolve(nameId);
+                if (nameStr) vIdx = a.getVarIdxByName(nameStr);
+              }
+              if (vIdx >= 0) {
+                const v = a.getVarVariability(vIdx);
+                if (v === Variability.Constant) return 1;
+                if (v === Variability.Parameter) return 2;
+                return 3;
+              }
+              return 4;
+            };
+            const lRank = getRank(lhs);
+            const rRank = getRank(rhs);
+            if (lRank !== rRank) {
+              if (lRank > rRank) {
+                finalLhs = rhs;
+                finalRhs = lhs;
+              }
+            } else {
+              const lName = a.interner.resolve(a.getExprData1(lhs));
+              const rName = a.interner.resolve(a.getExprData1(rhs));
+              if (lName && rName && !lName.includes("[") && !rName.includes("[") && lName.localeCompare(rName) > 0) {
+                finalLhs = rhs;
+                finalRhs = lhs;
+              }
             }
           }
         }
@@ -748,8 +798,24 @@ export class ArenaDAEPrinter {
 
       case ExprKind.Comprehension: {
         const cfn = a.interner.resolve(a.getExprData1(id));
+        const bodyId = a.getExprLeft(id);
+        const iterCount = a.getExprRight(id);
         this.out.write(cfn + "(");
-        this.printExpr(a.getExprLeft(id));
+        this.printExpr(bodyId);
+        if (iterCount > 0) {
+          this.out.write(" for ");
+          for (let i = 0; i < iterCount; i++) {
+            if (i > 0) this.out.write(", ");
+            const iterNodeId = id + 1 + i;
+            const iterVarName = a.interner.resolve(a.getExprData1(iterNodeId));
+            const rangeExprId = a.getExprLeft(iterNodeId);
+            this.out.write(iterVarName);
+            if (rangeExprId >= 0) {
+              this.out.write(" in ");
+              this.printExpr(rangeExprId);
+            }
+          }
+        }
         this.out.write(")");
         break;
       }
@@ -814,7 +880,8 @@ export class ArenaDAEPrinter {
     if (causality === 1) this.out.write("input ");
     else if (causality === 2) this.out.write("output ");
 
-    const customType = a.getVarCustomType(idx);
+    const rawCustomType = a.getVarCustomType(idx);
+    const customType = rawCustomType && rawCustomType.startsWith(".") ? rawCustomType.slice(1) : rawCustomType;
     if (
       customType &&
       type !== VarType.Integer &&
@@ -1250,7 +1317,8 @@ export class ArenaDAEPrinter {
     this.visitedFunctions.clear();
     // Emit function definitions
     const uniqueFns = Array.from(new Set(dae.functions.values()));
-    const getOmcFnRank = (name: string): [number, number, string] => {
+    const getOmcFnRank = (fn: DAEBuilder): [number, number, string] => {
+      const name = fn.name;
       if (name.includes("DummyFunctions")) {
         const isRead = name.includes("readSerial") ? 0 : 1;
         return [0, isRead, name];
@@ -1263,15 +1331,18 @@ export class ArenaDAEPrinter {
         const methodRank = name.endsWith(".constructor") ? 0 : name.endsWith(".destructor") ? 1 : 2;
         return [2, methodRank, name];
       }
-      return [3, 0, name];
+      const isRecordOrOp =
+        fn.description?.startsWith("Automatically generated record constructor") || name.includes(".'");
+      const kindRank = isRecordOrOp ? 3 : 4;
+      return [kindRank, 0, name];
     };
     const sortedFns = this.omcCompatibility
       ? uniqueFns.sort((a, b) => {
-          const rA = getOmcFnRank(a.name);
-          const rB = getOmcFnRank(b.name);
+          const rA = getOmcFnRank(a);
+          const rB = getOmcFnRank(b);
           if (rA[0] !== rB[0]) return rA[0] - rB[0];
           if (rA[1] !== rB[1]) return rA[1] - rB[1];
-          return rA[2].localeCompare(rB[2]);
+          return rA[2] < rB[2] ? -1 : rA[2] > rB[2] ? 1 : 0;
         })
       : uniqueFns.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const fn of sortedFns) {
@@ -1289,9 +1360,44 @@ export class ArenaDAEPrinter {
     this.out.write("\n");
 
     // Variables (order matches definition order, inline protected flags)
+    const varIndices: number[] = [];
     for (let i = 0; i < dae.varCount; i++) {
-      if (dae.isVarRemoved(i)) continue;
-      this.printVar(i);
+      if (!dae.isVarRemoved(i)) varIndices.push(i);
+    }
+    if (this.omcCompatibility) {
+      const virtualVars: number[] = [];
+      const normalVars: number[] = [];
+      for (const idx of varIndices) {
+        if (dae.getVarDescription(idx) === "virtual variable in expandable connector") {
+          virtualVars.push(idx);
+        } else {
+          normalVars.push(idx);
+        }
+      }
+      virtualVars.sort((idxA, idxB) => {
+        const nameA = dae.getVarName(idxA);
+        const nameB = dae.getVarName(idxB);
+        const dotA = nameA.lastIndexOf(".");
+        const dotB = nameB.lastIndexOf(".");
+        const prefixA = dotA !== -1 ? nameA.slice(0, dotA) : "";
+        const prefixB = dotB !== -1 ? nameB.slice(0, dotB) : "";
+        if (prefixA === prefixB && prefixA !== "") {
+          const flowA = dae.isVarFlow(idxA) ? 1 : 0;
+          const flowB = dae.isVarFlow(idxB) ? 1 : 0;
+          if (flowA !== flowB) return flowB - flowA;
+        }
+        const mA = nameA.match(/^([^[]+)\[(\d+)\](.*)$/);
+        const mB = nameB.match(/^([^[]+)\[(\d+)\](.*)$/);
+        if (mA && mB && mA[1] === mB[1] && mA[3] === mB[3]) {
+          return parseInt(mB[2], 10) - parseInt(mA[2], 10);
+        }
+        return 0;
+      });
+      varIndices.length = 0;
+      varIndices.push(...virtualVars, ...normalVars);
+    }
+    for (const idx of varIndices) {
+      this.printVar(idx);
     }
 
     // Initial equations
@@ -1323,20 +1429,17 @@ export class ArenaDAEPrinter {
       return aux === 9999;
     };
     const eqIndices: number[] = [];
-    if (this.omcCompatibility) {
-      for (let i = 0; i < dae.eqCount; i++) {
-        if (isConnEq(i)) eqIndices.push(i);
-      }
-      for (let i = 0; i < dae.eqCount; i++) {
-        if (!isConnEq(i)) eqIndices.push(i);
-      }
-    } else {
-      for (let i = 0; i < dae.eqCount; i++) eqIndices.push(i);
-    }
+    for (let i = 0; i < dae.eqCount; i++) eqIndices.push(i);
 
     for (const i of eqIndices) {
       const ek = dae.getEqKind(i);
-      if (ek === EqKind.InitialSimple || ek === EqKind.InitialFor || ek === EqKind.InitialFunctionCall) continue;
+      if (
+        ek === EqKind.InitialSimple ||
+        ek === EqKind.InitialFor ||
+        ek === EqKind.InitialFunctionCall ||
+        ek === EqKind.Connect
+      )
+        continue;
       if (this.isDeclarationBinding(dae, i)) continue;
       if (!hasEq) {
         this.out.write("equation\n");
@@ -1354,12 +1457,13 @@ export class ArenaDAEPrinter {
 
     // Algorithms
     for (const sec of dae.algorithmSections) {
-      if (sec.count > 0) {
-        this.out.write("algorithm\n");
-        let idx = sec.start;
-        const end = sec.start + sec.count;
-        while (idx < end) idx = this.printStmt(idx);
-      }
+      this.out.write("algorithm\n");
+      let idx = sec.start;
+      const end = sec.start + sec.count;
+      while (idx < end) idx = this.printStmt(idx);
+    }
+    if (dae.algorithmSections.length === 0 && (dae.hasAlgorithmSection || (dae as any).hasAlgorithmSection)) {
+      this.out.write("algorithm\n");
     }
 
     if (dae.algorithmAnnotations.length > 0) {
@@ -1421,6 +1525,7 @@ export class ArenaDAEPrinter {
 
     let hasEq = false;
     for (let i = 0; i < fn.eqCount; i++) {
+      if (fn.getEqKind(i) === EqKind.Connect) continue;
       if (this.isDeclarationBinding(fn, i)) continue;
       if (!hasEq) {
         this.out.write("equation\n");
@@ -1429,13 +1534,18 @@ export class ArenaDAEPrinter {
       this.printEq(i);
     }
 
+    let hasPrintedAlg = false;
     for (const sec of fn.algorithmSections) {
       if (sec.count > 0) {
         this.out.write("algorithm\n");
+        hasPrintedAlg = true;
         let idx = sec.start;
         const end = sec.start + sec.count;
         while (idx < end) idx = this.printStmt(idx);
       }
+    }
+    if (!hasPrintedAlg && ((fn as any).hasAlgorithmSection || fn.algorithmSections.length > 0)) {
+      this.out.write("algorithm\n");
     }
 
     if (fn.equationAnnotations.length > 0) {

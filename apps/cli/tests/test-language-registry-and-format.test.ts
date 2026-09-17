@@ -1,8 +1,6 @@
-import expect from "expect";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { after as afterAll, before as beforeAll, describe, it as test } from "node:test";
 import {
   LanguageResolver,
   listAllLanguages,

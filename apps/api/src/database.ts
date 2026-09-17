@@ -463,6 +463,21 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_package_versions_pkg ON package_versions(package_id);
       CREATE INDEX IF NOT EXISTS idx_dist_tags_pkg ON dist_tags(package_id);
       CREATE INDEX IF NOT EXISTS idx_artifacts_version ON artifacts(version_id);
+
+      CREATE TABLE IF NOT EXISTS instances (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        serial_number   TEXT NOT NULL UNIQUE,
+        package_id      INTEGER NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
+        version         TEXT NOT NULL,
+        commit_sha      TEXT,
+        variant         TEXT,
+        birth_data      TEXT,
+        created_at      TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_instances_serial ON instances(serial_number);
+      CREATE INDEX IF NOT EXISTS idx_instances_pkg ON instances(package_id);
+
       
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -2706,8 +2721,124 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT * FROM script_templates WHERE id = ?`).get(id) as ScriptTemplateRow | undefined;
   }
 
-  getScriptTemplateBySlug(slug: string): ScriptTemplateRow | undefined {
-    return this.#db.prepare(`SELECT * FROM script_templates WHERE slug = ?`).get(slug) as ScriptTemplateRow | undefined;
+  // ── Serialized Instances (Digital Twins) ───────────────────────
+
+  createInstance(data: {
+    serialNumber: string;
+    packageId: number;
+    version: string;
+    commitSha?: string | null;
+    variant?: string | null;
+    birthData?: string | null;
+  }): number {
+    const result = this.#db
+      .prepare(
+        `INSERT INTO instances (serial_number, package_id, version, commit_sha, variant, birth_data)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        data.serialNumber,
+        data.packageId,
+        data.version,
+        data.commitSha ?? null,
+        data.variant ?? null,
+        data.birthData ?? null,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  getInstanceBySerialNumber(serialNumber: string):
+    | {
+        id: number;
+        serial_number: string;
+        package_id: number;
+        package_name: string;
+        version: string;
+        commit_sha: string | null;
+        variant: string | null;
+        birth_data: string | null;
+        created_at: string;
+      }
+    | undefined {
+    return this.#db
+      .prepare(
+        `SELECT i.*, p.name as package_name
+         FROM instances i
+         JOIN packages p ON p.id = i.package_id
+         WHERE i.serial_number = ?`,
+      )
+      .get(serialNumber) as
+      | {
+          id: number;
+          serial_number: string;
+          package_id: number;
+          package_name: string;
+          version: string;
+          commit_sha: string | null;
+          variant: string | null;
+          birth_data: string | null;
+          created_at: string;
+        }
+      | undefined;
+  }
+
+  listInstancesForPackage(
+    packageId: number,
+    limit = 50,
+  ): Array<{
+    id: number;
+    serial_number: string;
+    version: string;
+    commit_sha: string | null;
+    variant: string | null;
+    created_at: string;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT id, serial_number, version, commit_sha, variant, created_at
+         FROM instances
+         WHERE package_id = ?
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(packageId, limit) as Array<{
+      id: number;
+      serial_number: string;
+      version: string;
+      commit_sha: string | null;
+      variant: string | null;
+      created_at: string;
+    }>;
+  }
+
+  listInstances(limit = 50): Array<{
+    id: number;
+    serial_number: string;
+    package_id: number;
+    package_name: string;
+    version: string;
+    commit_sha: string | null;
+    variant: string | null;
+    created_at: string;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT i.id, i.serial_number, i.package_id, p.name as package_name, i.version, i.commit_sha, i.variant, i.created_at
+         FROM instances i
+         JOIN packages p ON p.id = i.package_id
+         ORDER BY i.id DESC
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      id: number;
+      serial_number: string;
+      package_id: number;
+      package_name: string;
+      version: string;
+      commit_sha: string | null;
+      variant: string | null;
+      created_at: string;
+    }>;
   }
 
   close(): void {

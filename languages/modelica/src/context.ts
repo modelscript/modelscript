@@ -76,6 +76,10 @@ export class ModelicaLibrary {
 
 export { computeEditRanges, isIdentChar, type EditRange };
 
+export interface ContextOptions {
+  loadStdlib?: boolean;
+}
+
 /**
  * The polyglot compiler context managing file system resources and loaded Modelica code.
  *
@@ -273,8 +277,9 @@ export class Context {
    * @param fs - The FileSystem implementation to use for reading files and checking paths.
    * @param cacheStore - Optional external store for memoizing queries
    * @param maxMemos - Optional max number of memos to keep in memory
+   * @param options - Compiler context options (e.g. loadStdlib)
    */
-  constructor(fs: FileSystem, cacheStore?: any, maxMemos?: number) {
+  constructor(fs: FileSystem, cacheStore?: any, maxMemos?: number, options?: ContextOptions) {
     const workspaceIndex = createModelicaWorkspaceIndex();
 
     // Provide a CSTTree that looks up trees by resourceId cached in Context,
@@ -328,17 +333,19 @@ export class Context {
     this.#fs = fs;
     this.#workspaceIndex = workspaceIndex;
     this.#queryEngine = queryEngine;
-    this.load(MODELSCRIPT_CAS_PACKAGE, "modelscript-cas.mo");
-    this.load(MODELSCRIPT_STUDIES_PACKAGE, "modelscript-studies.mo");
-    this.load(MODELSCRIPT_GEOMETRY_PACKAGE, "modelscript-geometry.mo");
+    if (options?.loadStdlib !== false) {
+      this.load(MODELSCRIPT_CAS_PACKAGE, "modelscript-cas.mo");
+      this.load(MODELSCRIPT_STUDIES_PACKAGE, "modelscript-studies.mo");
+      this.load(MODELSCRIPT_GEOMETRY_PACKAGE, "modelscript-geometry.mo");
+    }
   }
 
   /**
    * Create a Context optimized for batch (one-shot) compilation.
    * Uses a reasonable memo limit to prevent O(N^2) query re-evaluation while bounding memory.
    */
-  static createBatch(fs: FileSystem): Context {
-    return new Context(fs, undefined, 500_000);
+  static createBatch(fs: FileSystem, options?: ContextOptions): Context {
+    return new Context(fs, undefined, 500_000, options);
   }
 
   /**

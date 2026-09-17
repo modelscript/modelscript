@@ -12,7 +12,7 @@ export interface ArenaSimulateOptions {
   stopTime?: number;
   step?: number;
   numberOfIntervals?: number;
-  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "webgpu" | "cvode";
+  solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "webgpu" | "cvode";
   atol?: number;
   rtol?: number;
   outputStringIds?: number[];
@@ -20,6 +20,7 @@ export interface ArenaSimulateOptions {
   signal?: AbortSignal;
   fmuRegistry?: any;
   debuggerHook?: any;
+  debug?: boolean;
 }
 
 export type ArenaSimulatorFn = (arena: DAEBuilder, options?: ArenaSimulateOptions) => ArenaSimulationResult;

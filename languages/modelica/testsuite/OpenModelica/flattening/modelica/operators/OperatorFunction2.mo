@@ -35,7 +35,8 @@ end OperatorIllegal;
 // # Please check the error message and the flags.
 //
 // Error: Variable MyRec.r in package MyRec is not constant.
-// [OpenModelica/flattening/modelica/operators/OperatorFunction2.mo:27:3-27:16:writable] Error: Variable MyRec.r not found in scope OperatorIllegal.
+// [OpenModelica/flattening/modelica/operators/OperatorFunction2.mo:27:3-27:10:writable] Error: Variable MyRec.r not found in scope OperatorIllegal.
+// [OpenModelica/flattening/modelica/operators/OperatorFunction2.mo:28:3-28:10:writable] Error: Variable MyRec.k not found in scope OperatorIllegal.
 // Error: Error occurred while flattening model OperatorIllegal
 //
 // Execution failed!

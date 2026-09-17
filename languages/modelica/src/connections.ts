@@ -73,9 +73,10 @@ export class ModelicaPortBalancer {
     }
 
     const uf = new IntUnionFind(dae.varCount);
-    const resolvedPairs: [number, number][] = [];
-    const connectPairs: [number, number][] = [];
+    const resolvedPairs: [number, number, number][] = [];
+    const connectPairs: [number, number, number][] = [];
     const outsideOutsidePairs: [number, number][] = [];
+    const varConnectEqIdx = new Map<number, number>();
 
     // 1. Gather all explicit connect() equation pairs
     for (let i = 0; i < dae.eqCount; i++) {
@@ -90,10 +91,56 @@ export class ModelicaPortBalancer {
           if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip") && !isExactVar) {
             outsideOutsidePairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
           } else {
-            connectPairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
+            connectPairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId), i]);
           }
         }
       }
+    }
+
+    const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
+    const isExpBusVar = (name: string) => expBuses.some((b) => b && (name === b || name.startsWith(b + ".")));
+
+    let hasExpBusFlows = false;
+    if (expBuses.length > 0) {
+      for (let i = 0; i < dae.varCount; i++) {
+        if (dae.isVarRemoved(i)) continue;
+        if (
+          dae.isVarFlow(i) &&
+          isExpBusVar(dae.getVarName(i)) &&
+          dae.getVarDescription(i) === "virtual variable in expandable connector"
+        ) {
+          hasExpBusFlows = true;
+          break;
+        }
+      }
+    }
+
+    const compToBusPairs: [string, string][] = [];
+    const busToBusPairs: [string, string][] = [];
+    for (const [fromStrId, toStrId] of connectPairs) {
+      const fromStr = dae.interner.resolve(fromStrId);
+      const toStr = dae.interner.resolve(toStrId);
+      if (expBuses.includes(fromStr) && expBuses.includes(toStr)) {
+        busToBusPairs.push([fromStr, toStr]);
+      } else if (isExpBusVar(fromStr) !== isExpBusVar(toStr)) {
+        const compPort = isExpBusVar(fromStr) ? toStr : fromStr;
+        const busTerminal = isExpBusVar(fromStr) ? fromStr : toStr;
+        compToBusPairs.push([compPort, busTerminal]);
+      }
+    }
+
+    const activateBusFlowBalance = hasExpBusFlows;
+    if (activateBusFlowBalance) {
+      const remainingConnectPairs: [number, number, number][] = [];
+      for (const [fromStrId, toStrId, eqIdx] of connectPairs) {
+        const fromStr = dae.interner.resolve(fromStrId);
+        const toStr = dae.interner.resolve(toStrId);
+        if (!(expBuses.includes(fromStr) && expBuses.includes(toStr)) && isExpBusVar(fromStr) === isExpBusVar(toStr)) {
+          remainingConnectPairs.push([fromStrId, toStrId, eqIdx]);
+        }
+      }
+      connectPairs.length = 0;
+      connectPairs.push(...remainingConnectPairs);
     }
 
     // 2. Build a prefix map ONLY for needed connector prefixes to avoid O(N) allocations
@@ -112,6 +159,7 @@ export class ModelicaPortBalancer {
         prefixMap.set(prefix, []);
       }
       for (let i = 0; i < dae.varCount; i++) {
+        if (dae.isVarRemoved(i)) continue;
         const varName = dae.getVarName(i);
         let dot = varName.indexOf(".");
         while (dot !== -1) {
@@ -126,16 +174,18 @@ export class ModelicaPortBalancer {
     }
 
     // 3. Resolve structural connections to variable index pairs efficiently
-    for (const [fromStrId, toStrId] of connectPairs) {
+    for (const [fromStrId, toStrId, eqIdx] of connectPairs) {
       const fromStr = dae.interner.resolve(fromStrId);
       const toStr = dae.interner.resolve(toStrId);
 
       const fromExact = dae.getVarIdxByName(fromStr);
       const toExact = dae.getVarIdxByName(toStr);
 
-      if (fromExact !== -1 && toExact !== -1) {
+      if (fromExact !== -1 && toExact !== -1 && !dae.isVarRemoved(fromExact) && !dae.isVarRemoved(toExact)) {
         uf.union(fromExact, toExact);
-        resolvedPairs.push([fromExact, toExact]);
+        resolvedPairs.push([fromExact, toExact, eqIdx]);
+        if (!varConnectEqIdx.has(fromExact)) varConnectEqIdx.set(fromExact, eqIdx);
+        if (!varConnectEqIdx.has(toExact)) varConnectEqIdx.set(toExact, eqIdx);
         if (dae.exports?.flattener_unionSets) {
           const wasmFlattener = (dae as any)._wasmFlattener;
           if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, fromExact, toExact);
@@ -149,9 +199,11 @@ export class ModelicaPortBalancer {
             const suffix = vNameA.substring(fromPrefixLen);
             const targetName = toStr + suffix;
             const idxB = dae.getVarIdxByName(targetName);
-            if (idxB !== -1) {
+            if (idxB !== -1 && !dae.isVarRemoved(idxB)) {
               uf.union(idxA, idxB);
-              resolvedPairs.push([idxA, idxB]);
+              resolvedPairs.push([idxA, idxB, eqIdx]);
+              if (!varConnectEqIdx.has(idxA)) varConnectEqIdx.set(idxA, eqIdx);
+              if (!varConnectEqIdx.has(idxB)) varConnectEqIdx.set(idxB, eqIdx);
               if (dae.exports?.flattener_unionSets) {
                 const wasmFlattener = (dae as any)._wasmFlattener;
                 if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
@@ -174,6 +226,7 @@ export class ModelicaPortBalancer {
     // 3.5. Stream variables: inStream(s) and actualStream(s) expansion and outside-outside connection equations
     const streamGroups = new Map<number, number[]>();
     for (let i = 0; i < dae.varCount; i++) {
+      if (dae.isVarRemoved(i)) continue;
       if (dae.getVarFlowPrefix(i) === "stream") {
         const root = uf.find(i);
         let list = streamGroups.get(root);
@@ -253,6 +306,7 @@ export class ModelicaPortBalancer {
               const portPrefix = dotLast !== -1 ? vName.substring(0, dotLast + 1) : "";
               let flowVarIdx = -1;
               for (let i = 0; i < dae.varCount; i++) {
+                if (dae.isVarRemoved(i)) continue;
                 if (dae.isVarFlow(i) && dae.getVarName(i).startsWith(portPrefix)) {
                   flowVarIdx = i;
                   break;
@@ -340,6 +394,7 @@ export class ModelicaPortBalancer {
     // 4. Build equivalence classes
     const roots = new Map<number, number[]>();
     for (let i = 0; i < dae.varCount; i++) {
+      if (dae.isVarRemoved(i)) continue;
       const root = uf.find(i);
       let list = roots.get(root);
       if (!list) {
@@ -350,9 +405,189 @@ export class ModelicaPortBalancer {
     }
 
     // 5. Emit flow-balance and potential equality equations
-    const potentialEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
+    const potentialEqs: { kind: EqKind; lhs: number; rhs: number; str: string; eqIdx?: number; connOrder?: number }[] =
+      [];
     const flowSumEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
     const zeroFlows: { kind: EqKind; lhs: number; rhs: number; varName: string }[] = [];
+    const compBusFlowEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
+    const connectedBusTerminals = new Set<string>();
+    const handledFlowVars = new Set<number>();
+
+    if (activateBusFlowBalance) {
+      // Process Component-to-Bus connections
+      for (const [compPort, busTerminal] of compToBusPairs) {
+        connectedBusTerminals.add(busTerminal);
+        const compPrefix = compPort + ".";
+        const compVars: number[] = [];
+        for (let v = 0; v < dae.varCount; v++) {
+          if (dae.isVarRemoved(v)) continue;
+          if (dae.getVarName(v).startsWith(compPrefix)) {
+            compVars.push(v);
+          }
+        }
+        // Sort: non-flow (potentials) first, then flow
+        compVars.sort((a, b) => {
+          const flowA = dae.isVarFlow(a) ? 1 : 0;
+          const flowB = dae.isVarFlow(b) ? 1 : 0;
+          if (flowA !== flowB) return flowA - flowB;
+          return dae.getVarName(a).localeCompare(dae.getVarName(b));
+        });
+
+        for (const cIdx of compVars) {
+          const sub = dae.getVarName(cIdx).slice(compPrefix.length);
+          const bIdx = dae.getVarIdxByName(`${busTerminal}.${sub}`);
+          if (bIdx >= 0) {
+            const cExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(cIdx));
+            const bExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(bIdx));
+            if (!dae.isVarFlow(cIdx)) {
+              potentialEqs.push({
+                kind: EqKind.Simple,
+                lhs: cExpr,
+                rhs: bExpr,
+                str: dae.getVarName(cIdx),
+                eqIdx: 0,
+              });
+            } else {
+              handledFlowVars.add(cIdx);
+              handledFlowVars.add(bIdx);
+              const diffExpr = dae.addBinaryExpr(BinOp.Sub, cExpr, bExpr);
+              compBusFlowEqs.push({
+                kind: EqKind.Simple,
+                lhs: diffExpr,
+                rhs: zeroExpr,
+                str: dae.getVarName(cIdx),
+              });
+            }
+          }
+        }
+      }
+
+      // Process Bus-to-Bus connections
+      const busParent = new Map<string, string>();
+      const busFind = (x: string): string => {
+        let p = busParent.get(x) ?? x;
+        if (p !== x) {
+          p = busFind(p);
+          busParent.set(x, p);
+        }
+        return p;
+      };
+      const busUnion = (x: string, y: string) => {
+        const rx = busFind(x);
+        const ry = busFind(y);
+        if (rx !== ry) busParent.set(rx, ry);
+      };
+      for (const [b1, b2] of busToBusPairs) {
+        busUnion(b1, b2);
+      }
+      const busGroups = new Map<string, string[]>();
+      for (const b of expBuses) {
+        const root = busFind(b);
+        let list = busGroups.get(root);
+        if (!list) {
+          list = [];
+          busGroups.set(root, list);
+        }
+        list.push(b);
+      }
+
+      for (const group of busGroups.values()) {
+        const terminals = new Set<string>();
+        for (const b of group) {
+          const pfx = b + ".";
+          for (let v = 0; v < dae.varCount; v++) {
+            if (dae.isVarRemoved(v)) continue;
+            const vn = dae.getVarName(v);
+            if (vn.startsWith(pfx)) {
+              const rest = vn.slice(pfx.length);
+              const term = rest.split(".")[0]!;
+              terminals.add(term);
+            }
+          }
+        }
+        const sortedTerminals = Array.from(terminals).sort();
+
+        // Bus-to-bus potential equations: reference bus is group[0], others in reverse order
+        if (group.length > 1) {
+          const refBus = group[0]!;
+          const otherBuses = group.slice(1).reverse();
+          for (const term of sortedTerminals) {
+            const refVarIdx = dae.getVarIdxByName(`${refBus}.${term}.v`);
+            if (refVarIdx < 0) continue;
+            const refExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(refVarIdx));
+            for (const otherBus of otherBuses) {
+              const otherVarIdx = dae.getVarIdxByName(`${otherBus}.${term}.v`);
+              if (otherVarIdx >= 0) {
+                const otherExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherVarIdx));
+                potentialEqs.push({
+                  kind: EqKind.Simple,
+                  lhs: refExpr,
+                  rhs: otherExpr,
+                  str: `${refBus}.${term}.v`,
+                  eqIdx: 1,
+                });
+              }
+            }
+          }
+        }
+
+        // Bus flow sums: reverse order
+        const revBuses = [...group].reverse();
+        for (const term of sortedTerminals) {
+          const flowVarIndices: number[] = [];
+          for (const b of revBuses) {
+            const idx = dae.getVarIdxByName(`${b}.${term}.i`);
+            if (idx >= 0) flowVarIndices.push(idx);
+          }
+          if (flowVarIndices.length > 1) {
+            flowVarIndices.forEach((fi) => handledFlowVars.add(fi));
+            let sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIndices[0]!));
+            for (let k = 1; k < flowVarIndices.length; k++) {
+              const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIndices[k]!));
+              sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, vi);
+            }
+            flowSumEqs.push({
+              kind: EqKind.Simple,
+              lhs: sumExpr,
+              rhs: zeroExpr,
+              str: dae.getVarName(flowVarIndices[0]!),
+            });
+          } else if (flowVarIndices.length === 1) {
+            const fi = flowVarIndices[0]!;
+            handledFlowVars.add(fi);
+            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(fi));
+            zeroFlows.push({
+              kind: EqKind.Simple,
+              lhs: vExpr,
+              rhs: zeroExpr,
+              varName: dae.getVarName(fi),
+            });
+          }
+        }
+
+        // Unconnected bus terminals get zero flow (only for interconnected peer buses)
+        if (group.length > 1) {
+          for (const b of revBuses) {
+            for (const term of sortedTerminals) {
+              const terminalKey = `${b}.${term}`;
+              if (!connectedBusTerminals.has(terminalKey)) {
+                const idx = dae.getVarIdxByName(`${b}.${term}.i`);
+                if (idx >= 0) {
+                  handledFlowVars.add(idx);
+                  const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(idx));
+                  zeroFlows.push({
+                    kind: EqKind.Simple,
+                    lhs: vExpr,
+                    rhs: zeroExpr,
+                    varName: `${b}.${term}.i`,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
 
     let anyGroupHasOutside = false;
     if (options?.omcCompatibility && options?.isOldFrontend) {
@@ -372,7 +607,7 @@ export class ModelicaPortBalancer {
       if (firstVarIdx === undefined) continue;
 
       if (group.length <= 1) {
-        if (isFlow) {
+        if (isFlow && !handledFlowVars.has(firstVarIdx)) {
           const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
           zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(firstVarIdx) });
         }
@@ -437,16 +672,20 @@ export class ModelicaPortBalancer {
           }
           if (bestCount > 1 && !tie) {
             potRoot = bestVar;
-            const otherVars = group.filter((v) => v !== potRoot);
+            const otherVars = group
+              .filter((v) => v !== potRoot)
+              .sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
             orderedGroup = [potRoot, ...otherVars];
           } else {
             const sorted = [...group].sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
             potRoot = sorted[0]!;
-            const otherVars = group.filter((v) => v !== potRoot);
-            orderedGroup = [potRoot, ...otherVars];
+            orderedGroup = sorted;
           }
         }
+        const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
+        const isExpBusVar = (name: string) => expBuses.some((b) => b && (name === b || name.startsWith(b + ".")));
         const rootExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(potRoot));
+
         for (const vIdx of orderedGroup) {
           if (vIdx !== potRoot) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
@@ -463,7 +702,51 @@ export class ModelicaPortBalancer {
               const callExpr = dae.addCallExpr("assert", [eqExpr, msgExpr]);
               potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
             } else {
-              potentialEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(potRoot) });
+              let finalLhs = rootExpr;
+              let finalRhs = vExpr;
+              let finalLhsIdx = potRoot;
+              let finalRhsIdx = vIdx;
+
+              const isVIdxSource = resolvedPairs.some(([s, t]) => s === vIdx && t === potRoot);
+              if (isVIdxSource) {
+                finalLhs = vExpr;
+                finalRhs = rootExpr;
+                finalLhsIdx = vIdx;
+                finalRhsIdx = potRoot;
+              }
+
+              const lhsName = dae.getVarName(finalLhsIdx);
+              const rhsName = dae.getVarName(finalRhsIdx);
+              const isSubComp =
+                lhsName.includes(".") &&
+                rhsName.includes(".") &&
+                lhsName.split(".")[0] === rhsName.split(".")[0] &&
+                (lhsName.split(".")[0]!.includes("[") || lhsName.split(".").length > 2);
+
+              let eqRank = 1;
+              if (isSubComp) {
+                eqRank = 0;
+              } else if (isExpBusVar(lhsName) && isExpBusVar(rhsName)) {
+                eqRank = 1;
+              } else {
+                eqRank = 2;
+              }
+
+              const connOrder =
+                varConnectEqIdx.get(finalLhsIdx) ??
+                varConnectEqIdx.get(finalRhsIdx) ??
+                varConnectEqIdx.get(potRoot) ??
+                varConnectEqIdx.get(vIdx) ??
+                99999;
+
+              potentialEqs.push({
+                kind: EqKind.Simple,
+                lhs: finalLhs,
+                rhs: finalRhs,
+                str: lhsName,
+                eqIdx: eqRank,
+                connOrder,
+              });
             }
           }
         }
@@ -472,20 +755,25 @@ export class ModelicaPortBalancer {
         const hasOutside = options?.isOldFrontend && group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
         const isWorldGroup =
           options?.omcCompatibility &&
-          group.length > 2 &&
-          group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."));
+          ((group.length > 2 && group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."))) ||
+            group.some((vIdx) => {
+              const name = dae.getVarName(vIdx);
+              return name.startsWith("bus.") && name.includes(".f");
+            }) ||
+            (options?.isOldFrontend &&
+              group.length === 2 &&
+              group.every((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)))));
         if (options?.omcCompatibility && options?.isOldFrontend && hasOutside) {
           if (isWorldGroup) {
-            const v0 = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
-            sumExpr = dae.addExpression(ExprKind.Negate, 0, v0);
+            let posSum = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
             for (let i = 1; i < group.length; i++) {
               const vIdx = group[i];
               if (vIdx !== undefined) {
                 const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                const negi = dae.addExpression(ExprKind.Negate, 0, vi);
-                sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, negi);
+                posSum = dae.addBinaryExpr(BinOp.Add, posSum, vi);
               }
             }
+            sumExpr = dae.addExpression(ExprKind.Negate, 0, posSum);
             for (const vIdx of group) {
               const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
@@ -573,6 +861,7 @@ export class ModelicaPortBalancer {
       const getPortVars = (port: string) => {
         const vars: { r: number[]; f?: number; s?: number } = { r: [] };
         for (let i = 0; i < dae.varCount; i++) {
+          if (dae.isVarRemoved(i)) continue;
           const vName = dae.getVarName(i);
           if (vName.startsWith(port + ".")) {
             if (dae.getVarFlowPrefix(i) === "stream") {
@@ -773,14 +1062,14 @@ export class ModelicaPortBalancer {
             // Component precedence for unconnected zero flows: targets first, then source, then others
             const compOrder = new Map<string, number>();
             let rank = 1;
-            for (const [, tgt] of resolvedPairs) {
-              const cName = dae.getVarName(tgt).split(".")[0]!;
+            for (const [src] of resolvedPairs) {
+              const cName = dae.getVarName(src).split(".")[0]!;
               if (!compOrder.has(cName)) {
                 compOrder.set(cName, rank++);
               }
             }
-            for (const [src] of resolvedPairs) {
-              const cName = dae.getVarName(src).split(".")[0]!;
+            for (const [, tgt] of resolvedPairs) {
+              const cName = dae.getVarName(tgt).split(".")[0]!;
               if (!compOrder.has(cName)) {
                 compOrder.set(cName, rank++);
               }
@@ -799,31 +1088,81 @@ export class ModelicaPortBalancer {
               return a.varName.localeCompare(b.varName);
             });
 
-            const hasArrayOutside = zeroFlows.some((eq) => /\[\d+\]\./.test(eq.varName));
-            if (hasArrayOutside) {
-              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
-              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
-            } else {
-              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
-              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+            if (options?.omcCompatibility) {
+              potentialEqs.sort((a, b) => {
+                const rankA = a.eqIdx ?? 99999;
+                const rankB = b.eqIdx ?? 99999;
+                if (rankA !== rankB) return rankA - rankB;
+                const orderA = (a as any).connOrder ?? 99999;
+                const orderB = (b as any).connOrder ?? 99999;
+                if (orderA !== orderB) return orderA - orderB;
+                const lhsNameA =
+                  dae.getExprKind(a.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(a.lhs)) : a.str;
+                const lhsNameB =
+                  dae.getExprKind(b.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(b.lhs)) : b.str;
+                if (lhsNameA !== lhsNameB) return lhsNameA.localeCompare(lhsNameB);
+                const rhsA =
+                  dae.getExprKind(a.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(a.rhs)) : "";
+                const rhsB =
+                  dae.getExprKind(b.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(b.rhs)) : "";
+                if (rankA === 1 && rankB === 1) return rhsB.localeCompare(rhsA);
+                return rhsA.localeCompare(rhsB);
+              });
             }
 
-            potentialEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+            const hasArrayOutside = zeroFlows.some((eq) => /\[\d+\]\./.test(eq.varName));
+            if (hasArrayOutside) {
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+            } else {
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+            }
+            compBusFlowEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+
+            potentialEqs.forEach((eq) => {
+              const lhsName = dae.interner.resolve(dae.getExprData1(eq.lhs));
+              const rhsName = dae.interner.resolve(dae.getExprData1(eq.rhs));
+              if (
+                ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
+                (lhsName.includes(".bout.") && rhsName.includes(".bin."))
+              ) {
+                dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
+              } else {
+                dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+              }
+            });
           }
         }
       } else {
-        const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number }[] = [];
+        const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number; eqIdx: number }[] = [];
         potentialEqs.forEach((eq) =>
-          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str) }),
+          allEqs.push({
+            kind: eq.kind,
+            lhs: eq.lhs,
+            rhs: eq.rhs,
+            varIdx: dae.getVarIdxByName(eq.str),
+            eqIdx: (eq as any).eqIdx ?? 99999,
+          }),
         );
         flowSumEqs.forEach((eq) =>
-          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str) }),
+          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str), eqIdx: 99999 }),
         );
         zeroFlows.forEach((eq) =>
-          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.varName) }),
+          allEqs.push({
+            kind: eq.kind,
+            lhs: eq.lhs,
+            rhs: eq.rhs,
+            varIdx: dae.getVarIdxByName(eq.varName),
+            eqIdx: 99999,
+          }),
+        );
+        compBusFlowEqs.forEach((eq) =>
+          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str), eqIdx: 99999 }),
         );
         if (options?.omcCompatibility) {
           allEqs.sort((a, b) => {
+            if (a.eqIdx !== b.eqIdx) return a.eqIdx - b.eqIdx;
             const nameA = dae.getExprKind(a.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(a.lhs)) : "";
             const nameB = dae.getExprKind(b.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(b.lhs)) : "";
             if (nameA !== nameB) return nameA.localeCompare(nameB);
@@ -834,12 +1173,26 @@ export class ModelicaPortBalancer {
         } else {
           allEqs.sort((a, b) => a.varIdx - b.varIdx);
         }
-        allEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+        allEqs.forEach((eq) => {
+          const lhsName =
+            dae.getExprKind(eq.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.lhs)) : "";
+          const rhsName =
+            dae.getExprKind(eq.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.rhs)) : "";
+          if (
+            ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
+            (lhsName.includes(".bout.") && rhsName.includes(".bin."))
+          ) {
+            dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
+          } else {
+            dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+          }
+        });
       }
     } else {
       potentialEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
       flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
       zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+      compBusFlowEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
     }
   }
 }

@@ -27,6 +27,7 @@ end SumVec;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
+// [OpenModelica/flattening/modelica/arrays/VectorizeSumVec.mo:16:3-16:36:writable] Error: Class atan2SumVec not found in scope SumVec (looking for a function or record).
 // [OpenModelica/flattening/modelica/arrays/VectorizeSumVec.mo:17:3-17:63:writable] Error: Class atan2SumVec not found in scope SumVec (looking for a function or record).
 // Error: Error occurred while flattening model SumVec
 //

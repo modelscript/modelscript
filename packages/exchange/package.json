@@ -20,6 +20,18 @@
       "types": "./dist/ssp/index.d.ts",
       "default": "./dist/ssp/index.js"
     },
+    "./lens": {
+      "types": "./dist/lens/index.d.ts",
+      "default": "./dist/lens/index.js"
+    },
+    "./aasx": {
+      "types": "./dist/aasx/index.d.ts",
+      "default": "./dist/aasx/index.js"
+    },
+    "./variants": {
+      "types": "./dist/variants/index.d.ts",
+      "default": "./dist/variants/index.js"
+    },
     "./cosim": {
       "types": "./dist/cosim/index.d.ts",
       "default": "./dist/cosim/index.js"

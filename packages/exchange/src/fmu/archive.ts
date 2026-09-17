@@ -22,6 +22,8 @@ import {
   Causality,
   EqKind,
   ExprKind,
+  foldArenaConstants,
+  scalarizeArena,
   UnaryOp,
   Variability,
   VarType,
@@ -315,6 +317,18 @@ export function buildFmuArchive(
   options: FmuArchiveOptions,
   stateVars: Set<string> = new Set<string>(),
 ): FmuArchiveResult {
+  let hasArrays = false;
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.getVarShape(i).length > 0) {
+      hasArrays = true;
+      break;
+    }
+  }
+  if (hasArrays) {
+    dae = scalarizeArena(dae);
+    foldArenaConstants(dae);
+  }
+
   const fmiVersion = options.fmiVersion ?? "both";
   const fmuResult = generateFmu(dae, options, stateVars);
   const fmi3Result = generateFmi3(dae, options, stateVars);

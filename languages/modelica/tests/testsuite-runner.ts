@@ -30,6 +30,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { generateHtmlReport } from "./ctrf-to-html.js";
+import { TestsuitePool } from "./testsuite-pool.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -432,16 +433,23 @@ async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
   const updateMode = rawArgs.includes("--update");
   const omcMode = rawArgs.includes("--omc");
+  const freshProcess = rawArgs.includes("--fresh-process");
   const concurrencyArg = rawArgs.find((a) => a.startsWith("--concurrency="));
   const concurrency = concurrencyArg
     ? parseInt(concurrencyArg.split("=")[1] ?? "1", 10)
     : Math.max(1, process.env.CI ? os.availableParallelism() : Math.floor(os.availableParallelism() / 2));
 
   const args = rawArgs.filter(
-    (a) => a !== "--update" && a !== "--omc" && a !== "--allow-failures" && !a.startsWith("--concurrency="),
+    (a) =>
+      a !== "--update" &&
+      a !== "--omc" &&
+      a !== "--allow-failures" &&
+      a !== "--fresh-process" &&
+      !a.startsWith("--concurrency="),
   );
 
-  console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena)`);
+  const modeStr = freshProcess ? "isolated processes" : "persistent worker pool";
+  console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena, mode=${modeStr})`);
   console.log();
 
   // Determine which subdirectories (and optionally specific files) to run
@@ -569,8 +577,24 @@ async function main(): Promise<void> {
 
   const globalStart = Date.now();
 
+  const pool =
+    !freshProcess && allQueued.length > 0
+      ? new TestsuitePool({
+          concurrency: Math.min(concurrency, allQueued.length),
+          workerScript: WORKER_SCRIPT,
+          cwd: path.resolve(import.meta.dirname ?? __dirname, ".."),
+          testsuiteRoot: baseTestsuiteRoot,
+          updateMode,
+          omcMode,
+          timeoutMs: WORKER_TIMEOUT_MS,
+        })
+      : null;
+
   // Build task closures
   const tasks = allQueued.map(({ testCase }) => {
+    if (pool) {
+      return () => pool.runTest(testCase);
+    }
     return () => runTestInWorker(testCase, baseTestsuiteRoot, updateMode, omcMode);
   });
 
@@ -599,31 +623,38 @@ async function main(): Promise<void> {
     updateProgressBar(0, allQueued.length);
   }
 
-  const workerResults = await runWithConcurrency(tasks, concurrency, (res, completed, total) => {
-    const r = res as unknown as TestResult;
-    if (r.status === "passed") livePassed++;
-    else if (r.status === "failed") {
-      liveFailed++;
-      // Print failure immediately during run
-      if (process.stdout.isTTY) {
-        readline.clearLine(process.stdout, 0);
-        readline.cursorTo(process.stdout, 0);
+  let workerResults: TestResult[];
+  try {
+    workerResults = await runWithConcurrency(tasks, concurrency, (res, completed, total) => {
+      const r = res as unknown as TestResult;
+      if (r.status === "passed") livePassed++;
+      else if (r.status === "failed") {
+        liveFailed++;
+        // Print failure immediately during run
+        if (process.stdout.isTTY) {
+          readline.clearLine(process.stdout, 0);
+          readline.cursorTo(process.stdout, 0);
+        }
+        const q = allQueued.find((x) => x.testCase.file === r.file);
+        const suiteStr = q ? `${DIM}[${q.suiteName}]${RESET} ` : "";
+        console.log(`  ${RED}✗${RESET} ${suiteStr}${r.name}`);
+        if (r.message) {
+          console.log(
+            r.message
+              .split("\n")
+              .map((l) => `      ${l}`)
+              .join("\n"),
+          );
+        }
       }
-      const q = allQueued.find((x) => x.testCase.file === r.file);
-      const suiteStr = q ? `${DIM}[${q.suiteName}]${RESET} ` : "";
-      console.log(`  ${RED}✗${RESET} ${suiteStr}${r.name}`);
-      if (r.message) {
-        console.log(
-          r.message
-            .split("\n")
-            .map((l) => `      ${l}`)
-            .join("\n"),
-        );
-      }
-    }
 
-    updateProgressBar(completed, total);
-  });
+      updateProgressBar(completed, total);
+    });
+  } finally {
+    if (pool) {
+      await pool.shutdown();
+    }
+  }
 
   if (process.stdout.isTTY && allQueued.length > 0) {
     process.stdout.write("\n");

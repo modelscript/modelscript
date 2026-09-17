@@ -15,8 +15,7 @@ import {
 } from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { initBltWasm } from "@modelscript/runtime";
-import { ArenaSimulator } from "@modelscript/simulate";
+import { ExprKind, foldArenaConstants, initBltWasm, scalarizeArena } from "@modelscript/runtime";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -148,7 +147,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
 
     // Flatten the model
     profiler.start("flattening");
-    const arena = context.flattenArena(args.name);
+    let arena = context.flattenArena(args.name, undefined, undefined, { arrayMode: "scalarize" });
     profiler.end("flattening");
 
     if (!arena) {
@@ -156,15 +155,30 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       return;
     }
 
+    let hasArrays = false;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.getVarShape(i).length > 0) {
+        hasArrays = true;
+        break;
+      }
+    }
+    if (hasArrays) {
+      arena = scalarizeArena(arena);
+      foldArenaConstants(arena);
+    }
+
     await initBltWasm();
 
-    // Prepare simulator to get state variable info
-    const simulator = new ArenaSimulator(arena);
-    simulator.prepare();
-
+    // Identify state variables from der() expressions
     const stateVars = new Set<string>();
-    for (const varIdx of simulator.stateVars) {
-      stateVars.add(arena.getVarName(varIdx));
+    for (let i = 0; i < arena.exprCount; i++) {
+      if (arena.getExprKind(i) === ExprKind.Der) {
+        const argId = arena.getExprData1(i);
+        if (arena.getExprKind(argId) === ExprKind.Name) {
+          const name = arena.interner.resolve(arena.getExprData1(argId));
+          if (name) stateVars.add(name);
+        }
+      }
     }
 
     // Extract experiment annotation from the DAE as fallback for CLI flags

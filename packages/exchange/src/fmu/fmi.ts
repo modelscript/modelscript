@@ -11,7 +11,18 @@
  * FMI 2.0 specification: https://fmi-standard.org/
  */
 
-import { type DAEBuilder, Causality, EqKind, ExprKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  type DAEBuilder,
+  BinOp,
+  Causality,
+  EqKind,
+  ExprKind,
+  foldArenaConstants,
+  scalarizeArena,
+  UnaryOp,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
 import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──
@@ -105,10 +116,148 @@ export interface FmuResult {
 }
 
 /**
+ * Extract event indicators (zero-crossing expressions) from when/if equations and conditions.
+ * In continuous simulation / Model Exchange, integrators require real-valued zero-crossing
+ * functions z_i(t) = lhs - rhs whose sign changes trigger event mode.
+ */
+export function extractEventIndicatorsFromDae(dae: DAEBuilder): void {
+  if (dae.eventIndicatorExprIds.length > 0) return;
+
+  const seen = new Set<string>();
+  const nameToIdx = new Map<string, number>();
+  for (let i = 0; i < dae.varCount; i++) {
+    if (!dae.isVarRemoved(i)) {
+      nameToIdx.set(dae.getVarName(i), i);
+    }
+  }
+
+  function isContinuousExpr(exprId: number): boolean {
+    if (exprId < 0) return false;
+    const kind = dae.getExprKind(exprId);
+    if (kind === ExprKind.Pre) {
+      return false;
+    }
+    if (kind === ExprKind.Name) {
+      const name = dae.interner.resolve(dae.getExprData1(exprId));
+      if (name === "time") return true;
+      const vIdx = nameToIdx.get(name);
+      if (vIdx !== undefined && vIdx >= 0) {
+        return dae.getVarVariability(vIdx) === Variability.Continuous;
+      }
+      return false;
+    }
+    if (kind === ExprKind.Binary) {
+      return isContinuousExpr(dae.getExprLeft(exprId)) || isContinuousExpr(dae.getExprRight(exprId));
+    }
+    if (kind === ExprKind.Unary) {
+      return isContinuousExpr(dae.getExprLeft(exprId));
+    }
+    if (kind === ExprKind.Der) {
+      return true;
+    }
+    if (kind === ExprKind.Call) {
+      const count = dae.getExprRight(exprId);
+      const first = dae.getExprLeft(exprId);
+      for (let i = 0; i < count; i++) {
+        if (isContinuousExpr(first + i)) return true;
+      }
+    }
+    return false;
+  }
+
+  function exprKey(id: number): string {
+    if (id < 0) return "";
+    const kind = dae.getExprKind(id);
+    if (kind === ExprKind.Name) return dae.interner.resolve(dae.getExprData1(id));
+    if (kind === ExprKind.RealLiteral) return String(dae.getExprRealValue(id));
+    if (kind === ExprKind.IntLiteral) return String(dae.getExprData1(id));
+    if (kind === ExprKind.Binary) {
+      return `(${exprKey(dae.getExprLeft(id))} op${dae.getExprData1(id)} ${exprKey(dae.getExprRight(id))})`;
+    }
+    if (kind === ExprKind.Unary) {
+      return `(op${dae.getExprData1(id)} ${exprKey(dae.getExprLeft(id))})`;
+    }
+    return String(id);
+  }
+
+  function processCondition(condExprId: number): void {
+    if (condExprId < 0) return;
+    const kind = dae.getExprKind(condExprId);
+    if (kind === ExprKind.Binary) {
+      const op = dae.getExprData1(condExprId) as BinOp;
+      if (op === BinOp.And || op === BinOp.Or) {
+        processCondition(dae.getExprLeft(condExprId));
+        processCondition(dae.getExprRight(condExprId));
+        return;
+      }
+      if (
+        op === BinOp.Lt ||
+        op === BinOp.Lte ||
+        op === BinOp.Gt ||
+        op === BinOp.Gte ||
+        op === BinOp.Eq ||
+        op === BinOp.Neq
+      ) {
+        const lhs = dae.getExprLeft(condExprId);
+        const rhs = dae.getExprRight(condExprId);
+        if (isContinuousExpr(lhs) || isContinuousExpr(rhs)) {
+          const key = `${exprKey(lhs)} - ${exprKey(rhs)}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            const zcExprId = dae.addBinaryExpr(BinOp.Sub, lhs, rhs);
+            dae.addEventIndicator(zcExprId);
+          }
+        }
+      }
+    } else if (kind === ExprKind.Unary) {
+      if (dae.getExprData1(condExprId) === UnaryOp.Not) {
+        processCondition(dae.getExprLeft(condExprId));
+      }
+    }
+  }
+
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    const eqKind = dae.getEqKind(idx);
+    if (eqKind === EqKind.When) {
+      const meta = dae.getWhenEquationMeta(idx);
+      if (meta) {
+        processCondition(meta.conditionExprId);
+        for (const clause of meta.elseWhenClauses) {
+          processCondition(clause.conditionExprId);
+        }
+      }
+    } else if (eqKind === EqKind.If) {
+      const meta = dae.getIfEquationMeta(idx);
+      if (meta) {
+        processCondition(meta.conditionExprId);
+        for (const clause of meta.elseIfClauses) {
+          processCondition(clause.conditionExprId);
+        }
+      }
+    }
+  }
+}
+
+/**
  * Generate FMU 2.0 model description from an Arena DAE.
  */
 export function generateFmu(dae: DAEBuilder, options: FmuOptions, _stateVars?: Set<string>): FmuResult {
   void _stateVars;
+
+  let hasArrays = false;
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.getVarShape(i).length > 0) {
+      hasArrays = true;
+      break;
+    }
+  }
+  if (hasArrays) {
+    dae = scalarizeArena(dae);
+    foldArenaConstants(dae);
+  }
+
+  extractEventIndicatorsFromDae(dae);
+
   const guid = options.guid ?? generateGuid();
   const scalarVariables: FmiScalarVariable[] = [];
   let valueRef = 0;

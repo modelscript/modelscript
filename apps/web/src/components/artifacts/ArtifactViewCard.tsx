@@ -4,6 +4,7 @@ import { Spinner, Text, useTheme } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { API_BASE_URL } from "../../config";
 import Box from "../Box";
+import AasPackageViewer from "./AasPackageViewer";
 import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
 import CfdAnimationViewer from "./CfdAnimationViewer";
@@ -185,6 +186,10 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             <GCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
+      case "aas-package":
+      case "cyber-physical-system":
+      case "hardware-project":
+        return <AasPackageViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       default:
         return (
           <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">

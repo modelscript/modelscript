@@ -486,6 +486,21 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     if (val.length === 1) {
       if (val === "/") {
         lexerCode += `  if (char0 == 47 && !(lexPos + char0Len < inputLength && (peekChar(lexPos + char0Len) == 42 || peekChar(lexPos + char0Len) == 47))) {\n`;
+      } else if (val === "'") {
+        lexerCode += `  let hasClosingQuote: bool = false;\n`;
+        lexerCode += `  let scanPos: u32 = lexPos + char0Len;\n`;
+        lexerCode += `  while (scanPos < inputLength) {\n`;
+        lexerCode += `    let sc: i32 = peekChar(scanPos);\n`;
+        lexerCode += `    if (sc == 92) {\n`;
+        lexerCode += `      scanPos += peekCharLen(scanPos);\n`;
+        lexerCode += `      if (scanPos < inputLength) scanPos += peekCharLen(scanPos);\n`;
+        lexerCode += `      continue;\n`;
+        lexerCode += `    }\n`;
+        lexerCode += `    if (sc == 39) { hasClosingQuote = true; break; }\n`;
+        lexerCode += `    if (sc == 10 || sc == 13 || sc == 59) break;\n`;
+        lexerCode += `    scanPos += peekCharLen(scanPos);\n`;
+        lexerCode += `  }\n`;
+        lexerCode += `  if (char0 == 39 && !hasClosingQuote) {\n`;
       } else {
         lexerCode += `  if (char0 == ${val.charCodeAt(0)}) {\n`;
       }

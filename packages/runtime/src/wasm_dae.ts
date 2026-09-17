@@ -340,6 +340,30 @@ export interface IDaeBuilder {
 /**
  * Universal DAE Builder backed directly by WebAssembly `DaeBuilder` in linear memory.
  */
+export function matchVarPath(vn: string, baseName: string): number[] | null {
+  const baseParts = baseName.split(".");
+  const vnParts = vn.split(".");
+  if (vnParts.length !== baseParts.length) return null;
+  const indices: number[] = [];
+  for (let i = 0; i < baseParts.length; i++) {
+    const bp = baseParts[i]!;
+    const vp = vnParts[i]!;
+    if (bp === vp) continue;
+    const prefix = `${bp}[`;
+    if (vp.startsWith(prefix) && vp.endsWith("]")) {
+      const idxStrs = vp.slice(prefix.length, -1).split(",");
+      for (const s of idxStrs) {
+        const num = parseInt(s.trim(), 10);
+        if (isNaN(num)) return null;
+        indices.push(num);
+      }
+    } else {
+      return null;
+    }
+  }
+  return indices;
+}
+
 export class WasmDaeBridge implements IDaeBuilder {
   public readonly exports: any;
   public ptr = 0;
@@ -350,6 +374,8 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   classKind = "class";
   isImpure = false;
+  hasAlgorithmSection = false;
+  hasInitialAlgorithmSection = false;
   externalDecl: string | null = null;
   jsSource?: string;
   jsPath?: string;
@@ -406,6 +432,10 @@ export class WasmDaeBridge implements IDaeBuilder {
       dragForceVariable?: string;
     }[];
     mbse?: { sysml?: any[]; owl?: any[]; telemetry?: any[] };
+    expandableBuses?: string[];
+    outputVars?: Set<string>;
+    isOperatorRecord?: boolean;
+    [key: string]: any;
   } = {};
 
   public functions = new Map<string | number, WasmDaeBridge>();
@@ -786,6 +816,12 @@ export class WasmDaeBridge implements IDaeBuilder {
     for (let i = 0; i < this.varCount; i++) {
       if (this.getVarName(i).startsWith(prefix)) return true;
     }
+    if (baseName.includes(".")) {
+      for (let i = 0; i < this.varCount; i++) {
+        const idxs = matchVarPath(this.getVarName(i), baseName);
+        if (idxs && idxs.length > 0) return true;
+      }
+    }
     return false;
   }
 
@@ -794,6 +830,12 @@ export class WasmDaeBridge implements IDaeBuilder {
     const indices: number[] = [];
     for (let i = 0; i < this.varCount; i++) {
       if (this.getVarName(i).startsWith(prefix)) indices.push(i);
+    }
+    if (indices.length === 0 && baseName.includes(".")) {
+      for (let i = 0; i < this.varCount; i++) {
+        const idxs = matchVarPath(this.getVarName(i), baseName);
+        if (idxs && idxs.length > 0) indices.push(i);
+      }
     }
     return indices;
   }
@@ -892,6 +934,12 @@ export class WasmDaeBridge implements IDaeBuilder {
       this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
       if (this.getExprKind(exprId) === ExprKind.RealLiteral) {
         this.setVarStartValue(varIdx, this.getExprRealValue(exprId));
+      } else if (
+        this.getExprKind(exprId) === ExprKind.IntLiteral ||
+        this.getExprKind(exprId) === ExprKind.BoolLiteral ||
+        this.getExprKind(exprId) === ExprKind.EnumLiteral
+      ) {
+        this.setVarStartValue(varIdx, this.getExprData1(exprId));
       }
     }
   }
@@ -1324,9 +1372,21 @@ export class WasmDaeBridge implements IDaeBuilder {
     return this.addRange(startId, arg2, -1);
   }
 
-  addComprehensionExpr(funcName: string, bodyId: number, iteratorCount: number): number {
+  addComprehensionExpr(
+    funcName: string,
+    bodyId: number,
+    iterators: { name: string; rangeId: number }[] | number,
+  ): number {
     const sId = this.interner.intern(funcName);
-    return this.addExpression(ExprKind.Comprehension, sId, bodyId, iteratorCount);
+    if (typeof iterators === "number") {
+      return this.addExpression(ExprKind.Comprehension, sId, bodyId, iterators);
+    }
+    const compId = this.addExpression(ExprKind.Comprehension, sId, bodyId, iterators.length);
+    for (const iter of iterators) {
+      const varId = this.interner.intern(iter.name);
+      this.addExpression(ExprKind.Tuple, varId, iter.rangeId, 0);
+    }
+    return compId;
   }
 
   addPartialFuncExpr(funcName: string, argIds: number[]): number {
@@ -1747,6 +1807,8 @@ export class WasmDaeBridge implements IDaeBuilder {
     copy.descriptionId = this.descriptionId;
     copy.classKind = this.classKind;
     copy.isImpure = this.isImpure;
+    copy.hasAlgorithmSection = this.hasAlgorithmSection;
+    copy.hasInitialAlgorithmSection = this.hasInitialAlgorithmSection;
     copy.externalDecl = this.externalDecl;
     copy.jsSource = this.jsSource;
     copy.jsPath = this.jsPath;

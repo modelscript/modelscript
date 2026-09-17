@@ -24,7 +24,7 @@ Values are reported as `Max Absolute Error (NRMSE %)`. A simulation passes if th
 | Model        | FMI | Mode | Native msc        | msc-FMU (fmusim)  | msc-FMU (omsim)   |
 | ------------ | --- | ---- | ----------------- | ----------------- | ----------------- |
 | BouncingBall | 2.0 | CS   | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) |
-| BouncingBall | 2.0 | ME   | ✅ 2.7e-4 (0.01%) | ✅ 5.3e-5 (0.00%) | ✅ 2.3e-4 (0.01%) |
+| BouncingBall | 2.0 | ME   | ✅ 2.7e-4 (0.01%) | ✅ 5.3e-5 (0.00%) | ✅ 2.5e-4 (0.01%) |
 | BouncingBall | 3.0 | CS   | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) | Not Supported     |
 | BouncingBall | 3.0 | ME   | ✅ 2.7e-4 (0.01%) | ✅ 5.3e-5 (0.00%) | Not Supported     |
 | VanDerPol    | 2.0 | CS   | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%) |

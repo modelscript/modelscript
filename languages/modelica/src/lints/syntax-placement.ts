@@ -1122,8 +1122,12 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           if (cond != 0) {
             const varb = getExpressionVariability(db, cond, $);
             if (varb == VARIABILITY_CONTINUOUS) {
-              db.diagnostic(node);
-              return;
+              for (const conn of db.ast.getDescendants(anc, $.connect_equation)) {
+                if (conn === node) {
+                  db.diagnostic(node);
+                }
+                return;
+              }
             }
           }
         }

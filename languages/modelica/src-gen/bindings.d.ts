@@ -1201,14 +1201,14 @@ export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export enum SyntaxKind {
   ERROR = 0,
-  Identifier = 327,
-  identifier = 327,
-  StringLiteral = 328,
-  string_literal = 328,
-  UnsignedInteger = 329,
-  unsigned_integer = 329,
-  UnsignedReal = 330,
-  unsigned_real = 330,
+  Identifier = 342,
+  identifier = 342,
+  StringLiteral = 343,
+  string_literal = 343,
+  UnsignedInteger = 344,
+  unsigned_integer = 344,
+  UnsignedReal = 345,
+  unsigned_real = 345,
   Program = 103,
   program = 103,
   StoredDefinition = 104,
@@ -1337,50 +1337,54 @@ export enum SyntaxKind {
   expression = 165,
   Primary = 166,
   primary = 166,
-  UnsignedNumber = 167,
-  unsigned_number = 167,
-  TypeSpecifier = 168,
-  type_specifier = 168,
-  Name = 169,
-  name = 169,
-  ComponentReference = 170,
-  component_reference = 170,
-  ResultReference = 171,
-  result_reference = 171,
-  FunctionCallArgs = 172,
-  function_call_args = 172,
-  FunctionArguments = 173,
-  function_arguments = 173,
-  FunctionArgumentsNonFirst = 174,
-  function_arguments_non_first = 174,
-  ArrayArguments = 175,
-  array_arguments = 175,
-  ArrayArgumentsNonFirst = 176,
-  array_arguments_non_first = 176,
-  NamedArguments = 177,
-  named_arguments = 177,
-  NamedArgument = 178,
-  named_argument = 178,
-  FunctionArgument = 179,
-  function_argument = 179,
-  FunctionPartialApplication = 180,
-  function_partial_application = 180,
-  OutputExpressionList = 181,
-  output_expression_list = 181,
-  ExpressionList = 182,
-  expression_list = 182,
-  ArraySubscripts = 183,
-  array_subscripts = 183,
-  Subscript = 184,
-  subscript = 184,
-  Description = 185,
-  description = 185,
-  DescriptionString = 186,
-  description_string = 186,
-  AnnotationClause = 187,
-  annotation_clause = 187,
-  START = 188,
-  _START = 188,
+  LhsExpression = 167,
+  lhs_expression = 167,
+  LhsPrimary = 168,
+  lhs_primary = 168,
+  UnsignedNumber = 169,
+  unsigned_number = 169,
+  TypeSpecifier = 170,
+  type_specifier = 170,
+  Name = 171,
+  name = 171,
+  ComponentReference = 172,
+  component_reference = 172,
+  ResultReference = 173,
+  result_reference = 173,
+  FunctionCallArgs = 174,
+  function_call_args = 174,
+  FunctionArguments = 175,
+  function_arguments = 175,
+  FunctionArgumentsNonFirst = 176,
+  function_arguments_non_first = 176,
+  ArrayArguments = 177,
+  array_arguments = 177,
+  ArrayArgumentsNonFirst = 178,
+  array_arguments_non_first = 178,
+  NamedArguments = 179,
+  named_arguments = 179,
+  NamedArgument = 180,
+  named_argument = 180,
+  FunctionArgument = 181,
+  function_argument = 181,
+  FunctionPartialApplication = 182,
+  function_partial_application = 182,
+  OutputExpressionList = 183,
+  output_expression_list = 183,
+  ExpressionList = 184,
+  expression_list = 184,
+  ArraySubscripts = 185,
+  array_subscripts = 185,
+  Subscript = 186,
+  subscript = 186,
+  Description = 187,
+  description = 187,
+  DescriptionString = 188,
+  description_string = 188,
+  AnnotationClause = 189,
+  annotation_clause = 189,
+  START = 190,
+  _START = 190,
   EOF = 1023,
 }
 
@@ -1730,6 +1734,14 @@ export interface PrimaryNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Primary;
 }
 export declare function isPrimary(node: SyntaxNode | null | undefined): node is PrimaryNode;
+export interface LhsExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LhsExpression;
+}
+export declare function isLhsExpression(node: SyntaxNode | null | undefined): node is LhsExpressionNode;
+export interface LhsPrimaryNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LhsPrimary;
+}
+export declare function isLhsPrimary(node: SyntaxNode | null | undefined): node is LhsPrimaryNode;
 export interface UnsignedNumberNode extends SyntaxNode {
   readonly typeId: SyntaxKind.UnsignedNumber;
 }
@@ -2302,6 +2314,22 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is PrimaryNode;
+  };
+  export const LhsExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LhsExpressionNode;
+    left(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    leftList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    right(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rightList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    operand(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operandList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const LhsPrimary: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LhsPrimaryNode;
   };
   export const UnsignedNumber: {
     readonly typeId: number;

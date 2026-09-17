@@ -173,6 +173,111 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
     },
   ],
 
+  // §16 Synchronous Language Elements (Clocks)
+  [
+    "Clock",
+    {
+      inputs: [],
+      outputType: "Clock",
+      overloads: [
+        { inputs: [], outputType: "Clock" },
+        { inputs: [{ name: "interval", type: "Real" }], outputType: "Clock" },
+        {
+          inputs: [
+            { name: "interval", type: "Integer" },
+            { name: "resolution", type: "Integer" },
+          ],
+          outputType: "Clock",
+        },
+        {
+          inputs: [
+            { name: "c", type: "Real" },
+            { name: "solverMethod", type: "String" },
+          ],
+          outputType: "Clock",
+        },
+        {
+          inputs: [
+            { name: "condition", type: "Boolean" },
+            { name: "interval", type: "Real" },
+          ],
+          outputType: "Clock",
+        },
+      ],
+    },
+  ],
+  [
+    "subSample",
+    {
+      inputs: [
+        { name: "u", type: "Real" },
+        { name: "factor", type: "Integer", defaultValue: 0 },
+      ],
+      outputType: "Real",
+      preserveIntegerType: true,
+    },
+  ],
+  [
+    "superSample",
+    {
+      inputs: [
+        { name: "u", type: "Real" },
+        { name: "factor", type: "Integer", defaultValue: 0 },
+      ],
+      outputType: "Real",
+      preserveIntegerType: true,
+    },
+  ],
+  [
+    "shiftSample",
+    {
+      inputs: [
+        { name: "u", type: "Real" },
+        { name: "shift", type: "Integer" },
+        { name: "resolution", type: "Integer", defaultValue: 1 },
+      ],
+      outputType: "Real",
+      preserveIntegerType: true,
+    },
+  ],
+  [
+    "backSample",
+    {
+      inputs: [
+        { name: "u", type: "Real" },
+        { name: "back", type: "Integer" },
+        { name: "resolution", type: "Integer", defaultValue: 1 },
+      ],
+      outputType: "Real",
+      preserveIntegerType: true,
+    },
+  ],
+  ["previous", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", preserveIntegerType: true }],
+  ["hold", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", preserveIntegerType: true }],
+  ["interval", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
+  ["noClock", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", preserveIntegerType: true }],
+
+  // §17 State Machines
+  ["activeState", { inputs: [{ name: "state", type: "TypeName" }], outputType: "Boolean" }],
+  ["ticksInState", { inputs: [], outputType: "Integer" }],
+  ["timeInState", { inputs: [], outputType: "Real" }],
+  ["initialState", { inputs: [{ name: "state", type: "TypeName" }], outputType: null }],
+  [
+    "transition",
+    {
+      inputs: [
+        { name: "from", type: "TypeName" },
+        { name: "to", type: "TypeName" },
+        { name: "condition", type: "Boolean" },
+        { name: "immediate", type: "Boolean", defaultValue: false },
+        { name: "reset", type: "Boolean", defaultValue: true },
+        { name: "synchronize", type: "Boolean", defaultValue: false },
+        { name: "priority", type: "Integer", defaultValue: 1 },
+      ],
+      outputType: null,
+    },
+  ],
+
   // §3.7.4 Mathematical Functions
   ["sin", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.sin }],
   ["cos", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.cos }],

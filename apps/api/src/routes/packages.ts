@@ -6,6 +6,13 @@ import fs from "node:fs";
 import path from "node:path";
 import semver from "semver";
 
+import {
+  type AasxFileEntry,
+  type CanonicalWorkspaceManifest,
+  ManifestLensEngine,
+  OpcAasxPackager,
+  VariantResolver,
+} from "@modelscript/exchange";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import type { LibraryStorage } from "../storage.js";
@@ -24,6 +31,104 @@ function walkDir(dir: string, callback: (relPath: string, content: string) => vo
       callback(relPath, content);
     }
   }
+}
+
+async function resolveCanonicalManifest(
+  storage: LibraryStorage,
+  database: LibraryDatabase,
+  name: string,
+  version: string,
+): Promise<{ manifest: CanonicalWorkspaceManifest; extractedDir: string | null }> {
+  let extractedDir: string | null = null;
+  try {
+    extractedDir = await storage.extractLibrary(name, version);
+  } catch {
+    const p = storage.getExtractedPath(name, version);
+    if (fs.existsSync(p)) extractedDir = p;
+  }
+
+  // 1. Look for modelscript.json in extracted dir
+  if (extractedDir) {
+    const msJsonPath = path.join(extractedDir, "modelscript.json");
+    if (fs.existsSync(msJsonPath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(msJsonPath, "utf-8")) as CanonicalWorkspaceManifest;
+        return { manifest: parsed, extractedDir };
+      } catch {
+        // Fall through
+      }
+    }
+
+    const okhJsonPath = path.join(extractedDir, "okh.json");
+    if (fs.existsSync(okhJsonPath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(okhJsonPath, "utf-8"));
+        return {
+          manifest: {
+            globalAssetId: parsed.globalAssetId ?? `urn:modelscript:${name}`,
+            idShort: parsed.name ?? name,
+            title: parsed.title ?? name,
+            version: parsed.version ?? version,
+            description: parsed.description,
+            license: parsed.license,
+            bom: Array.isArray(parsed.bom) ? parsed.bom : undefined,
+            makingInstructions: parsed["making-instructions"],
+          },
+          extractedDir,
+        };
+      } catch {
+        // Fall through
+      }
+    }
+
+    const pkgJsonPath = path.join(extractedDir, "package.json");
+    if (fs.existsSync(pkgJsonPath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+        const scope = parsed.name?.startsWith("@") ? parsed.name.split("/")[0] : undefined;
+        const idShort = parsed.name?.startsWith("@") ? parsed.name.split("/")[1] : (parsed.name ?? name);
+        return {
+          manifest: {
+            globalAssetId: parsed.modelscript?.globalAssetId ?? `urn:modelscript:${parsed.name ?? name}`,
+            idShort,
+            title: parsed.title ?? parsed.description ?? idShort,
+            version: parsed.version ?? version,
+            scope,
+            description: parsed.description,
+            license: parsed.license,
+            homepage: parsed.homepage,
+            repository: parsed.repository,
+            scripts: parsed.scripts,
+          },
+          extractedDir,
+        };
+      } catch {
+        // Fall through
+      }
+    }
+  }
+
+  // Fallback: Synthesize from package record
+  const pkgRecord = database.getPackage(name);
+  const scope = name.startsWith("@") ? name.split("/")[0] : undefined;
+  const idShort = (name.startsWith("@") ? name.split("/")[1] : name) || name;
+
+  return {
+    manifest: {
+      globalAssetId: `urn:modelscript:${name}`,
+      idShort,
+      title: pkgRecord?.description ?? idShort,
+      version,
+      scope,
+      description: pkgRecord?.description ?? undefined,
+      license: pkgRecord?.license ?? "UNLICENSED",
+      homepage: pkgRecord?.homepage ?? undefined,
+      repository: pkgRecord?.repository_url
+        ? { type: pkgRecord.repository_type ?? "git", url: pkgRecord.repository_url }
+        : undefined,
+    },
+    extractedDir,
+  };
 }
 
 export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, database: LibraryDatabase): Router {
@@ -286,6 +391,141 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     res.setHeader("Content-Length", file.size);
     res.send(file.buffer);
   });
+
+  function extractPkgAndVersion(req: Request): { name: string; version: string } {
+    if (req.params["scope"] && req.params["name"]) {
+      const scope = Array.isArray(req.params["scope"]) ? req.params["scope"][0] : req.params["scope"];
+      const baseName = Array.isArray(req.params["name"]) ? req.params["name"][0] : req.params["name"];
+      const version = Array.isArray(req.params["version"]) ? req.params["version"][0] : req.params["version"];
+      return { name: `${scope}/${baseName}`, version: version ?? "" };
+    }
+    const rawName = Array.isArray(req.params["name"]) ? req.params["name"][0] : req.params["name"];
+    const rawVersion = Array.isArray(req.params["version"]) ? req.params["version"][0] : req.params["version"];
+    return { name: decodeURIComponent(rawName ?? ""), version: rawVersion ?? "" };
+  }
+
+  /**
+   * GET /api/v1/libraries/:name/:version/manifest
+   * GET /api/v1/libraries/:scope/:name/:version/manifest
+   * Multi-projection manifest endpoint.
+   * Supports ?lens=npm|aas|okh (default: npm) and optional ?variant=<variantId>.
+   */
+  router.get(
+    ["/:name/:version/manifest", "/:scope/:name/:version/manifest"],
+    async (req: Request, res: Response): Promise<void> => {
+      const { name, version } = extractPkgAndVersion(req);
+      const lens = (req.query["lens"] as string) || "npm";
+      const variant = req.query["variant"] as string | undefined;
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      try {
+        const { manifest } = await resolveCanonicalManifest(storage, database, name, version);
+        const { resolvedManifest } = VariantResolver.resolveVariant(manifest, variant);
+
+        if (lens === "aas") {
+          res.json(ManifestLensEngine.projectToAasJson(resolvedManifest));
+          return;
+        }
+        if (lens === "okh") {
+          res.json(ManifestLensEngine.projectToOkhJson(resolvedManifest));
+          return;
+        }
+        res.json(ManifestLensEngine.projectToPackageJson(resolvedManifest));
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/export/aasx
+   * GET /api/v1/libraries/:scope/:name/:version/export/aasx
+   * Materialize and export an Open Packaging Conventions (OPC) compliant .aasx container.
+   * Cached on demand. Supports optional ?variant=<variantId>.
+   */
+  router.get(
+    ["/:name/:version/export/aasx", "/:scope/:name/:version/export/aasx"],
+    async (req: Request, res: Response): Promise<void> => {
+      const { name, version } = extractPkgAndVersion(req);
+      const variant = req.query["variant"] as string | undefined;
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      // Check cache if standard variant
+      if (!variant) {
+        const cached = storage.readCachedAasx(name, version);
+        if (cached) {
+          res.setHeader("Content-Type", "application/asset-administration-shell-package+json");
+          res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.aasx"`);
+          res.setHeader("Content-Length", cached.length);
+          res.send(cached);
+          return;
+        }
+      }
+
+      try {
+        const { manifest, extractedDir } = await resolveCanonicalManifest(storage, database, name, version);
+        const { resolvedManifest } = VariantResolver.resolveVariant(manifest, variant);
+        const aasJson = ManifestLensEngine.projectToAasJson(resolvedManifest);
+
+        // Collect files from extracted directory
+        const files: AasxFileEntry[] = [];
+        if (extractedDir && fs.existsSync(extractedDir)) {
+          walkDir(extractedDir, (relPath, content) => {
+            files.push({ path: relPath, data: content });
+          });
+        }
+
+        const aasxU8 = OpcAasxPackager.buildAasx({ aasJson, files });
+        const nodeBuf = Buffer.from(aasxU8);
+
+        if (!variant) {
+          storage.storeCachedAasx(name, version, nodeBuf);
+        }
+
+        res.setHeader("Content-Type", "application/asset-administration-shell-package");
+        res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.aasx"`);
+        res.setHeader("Content-Length", nodeBuf.length);
+        res.send(nodeBuf);
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/export/okh
+   * GET /api/v1/libraries/:scope/:name/:version/export/okh
+   * Export an Open Know-How (DIN SPEC 3105) compliant okh.json.
+   */
+  router.get(
+    ["/:name/:version/export/okh", "/:scope/:name/:version/export/okh"],
+    async (req: Request, res: Response): Promise<void> => {
+      const { name, version } = extractPkgAndVersion(req);
+      const variant = req.query["variant"] as string | undefined;
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      try {
+        const { manifest } = await resolveCanonicalManifest(storage, database, name, version);
+        const { resolvedManifest } = VariantResolver.resolveVariant(manifest, variant);
+        const okhJson = ManifestLensEngine.projectToOkhJson(resolvedManifest);
+        res.json(okhJson);
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/lsp-bundle

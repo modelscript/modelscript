@@ -205,6 +205,31 @@ export class LibraryStorage {
   }
 
   /**
+   * Get the path to the cached .aasx container for this library version.
+   */
+  getCachedAasxPath(name: string, version: string): string {
+    return path.join(this.#dataDir, this.#safe(name), this.#safe(version), "package.aasx");
+  }
+
+  /**
+   * Read the cached .aasx buffer if available.
+   */
+  readCachedAasx(name: string, version: string): Buffer | null {
+    const p = this.getCachedAasxPath(name, version);
+    if (!fs.existsSync(p)) return null;
+    return fs.readFileSync(p);
+  }
+
+  /**
+   * Store a generated .aasx container into cache.
+   */
+  storeCachedAasx(name: string, version: string, buffer: Buffer): void {
+    const p = this.getCachedAasxPath(name, version);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, buffer);
+  }
+
+  /**
    * Delete a specific library version.
    * Removes the zip file and all version data (SVGs, extracted files).
    * If no other versions remain, removes the library directory entirely.

@@ -898,7 +898,7 @@ function evalTranspose(args: ArenaValue[]): ArenaValue | null {
   if (args.length < 1 || !Array.isArray(args[0])) return null;
   const A = args[0] as ArenaValue[][];
   const shape = getArenaArrayShape(A);
-  if (shape.length !== 2) return null;
+  if (shape.length < 2) return null;
   const [nRows, nCols] = shape;
   if (nRows == null || nCols == null) return null;
   const rows: ArenaValue[] = [];

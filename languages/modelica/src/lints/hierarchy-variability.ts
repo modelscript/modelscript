@@ -10,6 +10,7 @@ import {
   isClassKind,
   isDescendantOfInnerClass,
   isDottedVariableDeclared,
+  isExpandableConnector,
   isPrimitiveAttribute,
   isTopLevelClassName,
   isVariableDeclaredInClass,
@@ -30,7 +31,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["component_reference"],
     severity: "error",
     code: 2002,
-    message: (target) => `Variable '${target.text}' not found in scope.`,
+    message: (target, className) =>
+      className && className.text
+        ? `Variable ${target.text} not found in scope ${className.text}.`
+        : `Variable ${target.text} not found in scope.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let rootId: u32 = 0;
       for (const id of db.ast.getDescendants(node, $.identifier)) {
@@ -47,6 +51,24 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
+      // Skip if this component_reference is a function call callee
+      const nextSib = db.ast.getNextSibling(node);
+      if (
+        nextSib != 0 &&
+        (($.function_call_args != 0 && db.ast.getType(nextSib) == $.function_call_args) ||
+          db.ast.textEquals(nextSib, "("))
+      ) {
+        return;
+      }
+      if ($.function_call != 0) {
+        for (const parentNode of db.ast.getAncestors(node, 0)) {
+          if (db.ast.getType(parentNode) == $.function_call) {
+            return;
+          }
+          break;
+        }
+      }
+
       if (
         db.ast.textEquals(rootId, "time") ||
         db.ast.textEquals(rootId, "der") ||
@@ -54,6 +76,20 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(rootId, "Integer") ||
         db.ast.textEquals(rootId, "Boolean") ||
         db.ast.textEquals(rootId, "String") ||
+        db.ast.textEquals(rootId, "Clock") ||
+        db.ast.textEquals(rootId, "subSample") ||
+        db.ast.textEquals(rootId, "superSample") ||
+        db.ast.textEquals(rootId, "shiftSample") ||
+        db.ast.textEquals(rootId, "backSample") ||
+        db.ast.textEquals(rootId, "previous") ||
+        db.ast.textEquals(rootId, "hold") ||
+        db.ast.textEquals(rootId, "interval") ||
+        db.ast.textEquals(rootId, "noClock") ||
+        db.ast.textEquals(rootId, "initialState") ||
+        db.ast.textEquals(rootId, "transition") ||
+        db.ast.textEquals(rootId, "activeState") ||
+        db.ast.textEquals(rootId, "ticksInState") ||
+        db.ast.textEquals(rootId, "timeInState") ||
         db.ast.textEquals(rootId, "initial") ||
         db.ast.textEquals(rootId, "terminal") ||
         db.ast.textEquals(rootId, "sample") ||
@@ -168,9 +204,40 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         currClass = parentClass;
       }
 
-      if (isTopLevelClassName(db, rootId, $)) return;
+      let identCount = 0;
+      for (const _ of db.ast.getDescendants(node, $.identifier)) {
+        identCount++;
+      }
+      if (identCount <= 1 && isTopLevelClassName(db, rootId, $)) return;
+      if (identCount > 1 && isTopLevelClassName(db, rootId, $)) {
+        const docRoot = db.ast.getRootNode();
+        let topClassNode: u32 = 0;
+        for (const cDef of db.ast.getDescendants(docRoot, $.class_definition)) {
+          for (const spec of db.ast.getDescendants(cDef, $.long_class_specifier)) {
+            const cName = db.ast.getChildByFieldId(spec, "name");
+            if (cName != 0 && db.ast.textEqualsNode(rootId, cName)) {
+              topClassNode = cDef;
+              break;
+            }
+          }
+          if (topClassNode != 0) break;
+        }
+        if (
+          topClassNode != 0 &&
+          !isExpandableConnector(db, topClassNode, $) &&
+          isDottedVariableDeclared(db, topClassNode, node, $)
+        ) {
+          return;
+        }
+      }
 
-      db.diagnostic(node);
+      let classNameNode: u32 = 0;
+      for (const id of db.ast.getDescendants(enclosingClass, $.identifier)) {
+        classNameNode = id;
+        break;
+      }
+
+      db.diagnostic(node, classNameNode);
     },
   },
 
@@ -181,7 +248,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["component_reference"],
     severity: "error",
     code: 2001,
-    message: (target) => `Variable '${target.text}' not found in scope.`,
+    message: (target, className) =>
+      className && className.text
+        ? `Variable ${target.text} not found in scope ${className.text}.`
+        : `Variable ${target.text} not found in scope.`,
     query: () => {
       // Handled by variableNotFound
     },
@@ -1283,7 +1353,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             }
 
             // b) Is outerName an inner class or type alias in targetClass?
-            const innerCls = resolveComponentClassDefinition(db, targetClass, outerName, $);
+            const innerCls = resolveComponentClassDefinition(db, targetClass, outerName, $, 0);
             if (innerCls != 0) {
               let aliasPrim: u16 = TYPE_UNKNOWN;
               for (const spec of db.ast.getDescendants(innerCls, $.short_class_specifier)) {
@@ -1358,7 +1428,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
               }
               currClass = nextClass;
             } else {
-              const innerCls = resolveComponentClassDefinition(db, currClass, id, $);
+              const innerCls = resolveComponentClassDefinition(db, currClass, id, $, 0);
               if (innerCls != 0) {
                 currClass = innerCls;
               } else {
