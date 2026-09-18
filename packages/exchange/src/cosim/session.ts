@@ -195,6 +195,9 @@ export class SessionManager {
     // Start periodic cleanup
     const intervalMs = options?.cleanupIntervalMs ?? 5 * 60 * 1000; // 5 minutes
     this.cleanupTimer = setInterval(() => this.cleanupStaleSessions(), intervalMs);
+    if (typeof this.cleanupTimer?.unref === "function") {
+      this.cleanupTimer.unref();
+    }
   }
 
   /** Create a new session. */
@@ -204,6 +207,12 @@ export class SessionManager {
     this.sessions.set(sessionId, session);
     this.sessionTimestamps.set(sessionId, Date.now());
     return session;
+  }
+
+  /** Register an existing session (e.g. imported from SSP). */
+  registerSession(session: CoSimSession): void {
+    this.sessions.set(session.sessionId, session);
+    this.sessionTimestamps.set(session.sessionId, Date.now());
   }
 
   /** Get a session by ID. */

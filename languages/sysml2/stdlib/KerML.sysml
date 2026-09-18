@@ -64,3 +64,35 @@ package Collections {
     abstract item def Set :> Collection;
 }
 
+package Base {
+    abstract item def Anything;
+    abstract item def Element :> Anything;
+    abstract item def Feature :> Element;
+    abstract item def Type :> Element;
+    abstract item def Classifier :> Type;
+    abstract item def DataType :> Classifier;
+    abstract item def Class :> Classifier;
+    abstract item def Structure :> Class;
+    abstract item def Behavior :> Class;
+}
+
+package Control {
+    abstract action def ControlNode;
+    abstract action def MergeNode :> ControlNode;
+    abstract action def DecisionNode :> ControlNode;
+    abstract action def ForkNode :> ControlNode;
+    abstract action def JoinNode :> ControlNode;
+}
+
+package Transfers {
+    abstract item def Transfer;
+    abstract item def Flow :> Transfer;
+    abstract item def Message :> Transfer;
+}
+
+package Performances {
+    abstract action def Performance;
+    abstract action def Evaluation :> Performance;
+    abstract action def Execution :> Performance;
+}
+

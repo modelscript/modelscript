@@ -35,15 +35,20 @@ let ModelicaClassInstance: any = undefined;
 export class ParserService {
   public parserReady = false;
   public parser: any = null;
+  public facade: any = null;
   public sysml2ParserReady = false;
   public sysml2Parser: any = null;
+  public sysml2Facade: any = null;
   public stepParserReady = false;
   public stepParser: any = null;
+  public stepFacade: any = null;
   public sharedContext: any = null;
   public owl2ParserReady = false;
   public owl2Parser: any = null;
+  public owl2Facade: any = null;
   public csvParserReady = false;
   public csvParser: any = null;
+  public csvFacade: any = null;
 
   constructor(
     private connection: Connection,
@@ -178,7 +183,9 @@ export class ParserService {
       const tEdit0 = performance.now();
       const edit = computeTreeEdit(cached.text, newText);
       const tEdit1 = performance.now();
-      cached.tree.edit(edit as never);
+      if (typeof (cached.tree as any)?.edit === "function") {
+        cached.tree.edit(edit as never);
+      }
       const tEdit2 = performance.now();
 
       // Attempt to set timeout to 100ms if supported
@@ -186,7 +193,7 @@ export class ParserService {
         (this.parser as any).setTimeoutMicros(100000);
       }
       try {
-        tree = this.parser.parse(newText, cached.tree);
+        tree = this.parser.parse(newText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex);
       } finally {
         if (typeof (this.parser as any).setTimeoutMicros === "function") {
           (this.parser as any).setTimeoutMicros(0);
@@ -290,6 +297,7 @@ export class ParserService {
       { name: "SysML", version: "2026.3.0" },
     ],
     useLocalMsl = false,
+    onParsersReady?: () => void,
   ): Promise<void> {
     try {
       // Construct absolute URLs for WASM files using the extension URI.
@@ -321,6 +329,7 @@ export class ParserService {
         syntaxNames: modelicaSyntaxNames,
       });
       this.parser = modelicaResult.parser;
+      this.facade = modelicaResult.facade;
       this.parserReady = true;
       this.connection.console.info("ModelScript Modelica parser initialized");
 
@@ -345,6 +354,7 @@ export class ParserService {
           syntaxNames: sysml2SyntaxNames,
         });
         this.sysml2Parser = sysmlResult.parser;
+        this.sysml2Facade = sysmlResult.facade;
         this.sysml2ParserReady = true;
         this.connection.console.info("ModelScript SysML2 parser initialized");
       } catch (e) {
@@ -357,6 +367,7 @@ export class ParserService {
           syntaxNames: stepSyntaxNames,
         });
         this.stepParser = stepResult.parser;
+        this.stepFacade = stepResult.facade;
         this.stepParserReady = true;
         this.connection.console.info("ModelScript STEP parser initialized");
       } catch (e) {
@@ -369,6 +380,7 @@ export class ParserService {
           syntaxNames: owl2SyntaxNames,
         });
         this.owl2Parser = owl2Result.parser;
+        this.owl2Facade = owl2Result.facade;
         this.owl2ParserReady = true;
         this.connection.console.info("ModelScript OWL2 parser initialized");
       } catch (e) {
@@ -381,6 +393,7 @@ export class ParserService {
           syntaxNames: csvSyntaxNames,
         });
         this.csvParser = csvResult.parser;
+        this.csvFacade = csvResult.facade;
         this.csvParserReady = true;
         this.connection.console.info("ModelScript CSV parser initialized");
       } catch (e) {
@@ -411,6 +424,15 @@ export class ParserService {
       };
       (globalThis as any).sharedContext = this.sharedContext;
       this.workspaceManager.globalModelicaQueryEngine!.updateTree(this.getSharedCstTreeWrapper());
+
+      // Early callback: notify that all parsers and query engines are ready
+      if (typeof onParsersReady === "function") {
+        try {
+          onParsersReady();
+        } catch (cbErr) {
+          this.connection.console.error(`[lsp] onParsersReady callback error: ${cbErr}`);
+        }
+      }
       const loaderCtx: LoaderContext = {
         connectionState: this.connection,
         logger: {
@@ -568,8 +590,16 @@ export class ParserService {
         ) as any;
         this.workspaceManager.globalModelicaQueryEngine = engine;
         if (this.sharedContext) {
-          this.sharedContext.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine!);
-          this.sharedContext.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
+          if (typeof this.sharedContext.setQueryEngine === "function") {
+            this.sharedContext.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine!);
+          } else {
+            this.sharedContext.queryEngine = this.workspaceManager.globalModelicaQueryEngine;
+          }
+          if (typeof this.sharedContext.setWorkspaceIndex === "function") {
+            this.sharedContext.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
+          } else {
+            this.sharedContext.workspaceIndex = this.workspaceManager.globalWorkspaceIndex;
+          }
         }
       }
     }

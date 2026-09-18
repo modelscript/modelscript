@@ -304,49 +304,55 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
 
   const useLocalMsl = (params.initializationOptions?.useLocalMsl as boolean) ?? false;
 
+  const registerBuiltinLanguages = () => {
+    globalLanguageRegistry.register({
+      id: "modelica",
+      name: "Modelica",
+      extensions: [".mo", ".mos", ".msim"],
+      parser: parserService.parser,
+      facade: parserService.facade,
+      languageDef: modelicaLanguage,
+      handlers: modelicaLanguage.lsp?.handlers,
+      actionHandlers: modelicaActionHandlers,
+    });
+    globalLanguageRegistry.register({
+      id: "sysml2",
+      name: "SysML v2",
+      extensions: [".sysml"],
+      parser: parserService.sysml2Parser,
+      facade: parserService.sysml2Facade,
+    });
+    globalLanguageRegistry.register({
+      id: "step",
+      name: "STEP",
+      extensions: [".step", ".stp", ".p21"],
+      parser: parserService.stepParser,
+      languageDef: stepLanguage,
+      handlers: stepLanguage.lsp?.handlers,
+    });
+    globalLanguageRegistry.register({
+      id: "owl2",
+      name: "OWL2",
+      extensions: [".owl", ".ttl"],
+      parser: parserService.owl2Parser,
+      facade: parserService.owl2Facade,
+    });
+    globalLanguageRegistry.register({
+      id: "csv",
+      name: "CSV",
+      extensions: [".csv"],
+      parser: parserService.csvParser,
+      facade: parserService.csvFacade,
+    });
+    connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
+  };
+
   if (extensionUri) {
     connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
     parserService
-      .initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl)
+      .initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl, registerBuiltinLanguages)
       .then(() => {
-        globalLanguageRegistry.register({
-          id: "modelica",
-          name: "Modelica",
-          extensions: [".mo", ".mos", ".msim"],
-          parser: parserService.parser,
-          facade: (parserService as any).facade,
-          languageDef: modelicaLanguage,
-          handlers: modelicaLanguage.lsp?.handlers,
-          actionHandlers: modelicaActionHandlers,
-        });
-        globalLanguageRegistry.register({
-          id: "sysml2",
-          name: "SysML v2",
-          extensions: [".sysml"],
-          parser: parserService.sysml2Parser,
-          facade: (parserService as any).sysml2Facade,
-        });
-        globalLanguageRegistry.register({
-          id: "step",
-          name: "STEP",
-          extensions: [".step", ".stp", ".p21"],
-          parser: parserService.stepParser,
-          languageDef: stepLanguage,
-          handlers: stepLanguage.lsp?.handlers,
-        });
-        globalLanguageRegistry.register({
-          id: "owl2",
-          name: "OWL2",
-          extensions: [".owl", ".ttl"],
-          parser: parserService.owl2Parser,
-        });
-        globalLanguageRegistry.register({
-          id: "csv",
-          name: "CSV",
-          extensions: [".csv"],
-          parser: parserService.csvParser,
-        });
-        connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
+        registerBuiltinLanguages();
       })
       .catch((e) => {
         connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);
@@ -515,7 +521,9 @@ documents.onDidChangeContent((change) => {
       let tree: any;
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
-        oldCached.tree.edit(edit as never);
+        if (typeof (oldCached.tree as any)?.edit === "function") {
+          oldCached.tree.edit(edit as never);
+        }
         tree = parserService.sysml2Parser.parse(text, oldCached.tree);
       } else if (oldCached) {
         tree = oldCached.tree;
@@ -555,7 +563,9 @@ documents.onDidChangeContent((change) => {
         let tree: any;
         if (oldCached && oldCached.text !== text) {
           const edit = computeTreeEdit(oldCached.text, text);
-          oldCached.tree.edit(edit as never);
+          if (typeof (oldCached.tree as any)?.edit === "function") {
+            oldCached.tree.edit(edit as never);
+          }
           tree = plugin.parser.parse(text, oldCached.tree);
         } else if (oldCached) {
           tree = oldCached.tree;

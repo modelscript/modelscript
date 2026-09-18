@@ -35,6 +35,10 @@
       "types": "./dist/transformers/modelica-transformer.d.ts",
       "default": "./dist/transformers/modelica-transformer.js"
     },
+    "./transformers/generic-modelica": {
+      "types": "./dist/transformers/generic-modelica-bridge.d.ts",
+      "default": "./dist/transformers/generic-modelica-bridge.js"
+    },
     "./diagram": {
       "types": "./dist/src/diagram/index.d.ts",
       "default": "./dist/src/diagram/index.js"
@@ -64,6 +68,7 @@
   "dependencies": {
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/runtime": "*",
     "vscode-languageserver": "^9.0.1"
   },

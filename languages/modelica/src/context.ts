@@ -954,7 +954,7 @@ export class Context {
     const tree = this.parse(".mo", input, oldTree, editBounds);
     this.#trees.set(uri, tree);
 
-    this.#workspaceIndex.register(uri, () => tree.rootNode as any, undefined, editRanges);
+    this.#workspaceIndex.indexDocument(uri, () => tree.rootNode as any, undefined, editRanges, false);
     const unified = this.#workspaceIndex.toUnified();
     injectPredefinedTypes(unified);
     const changedInfo = this.#workspaceIndex.takeGlobalChangedIds();

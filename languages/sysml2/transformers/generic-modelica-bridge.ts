@@ -24,12 +24,20 @@ export interface SysML2Port {
   name: string;
   type: string;
   direction?: "in" | "out" | "inout";
+  isConjugated?: boolean;
 }
 
 export interface SysML2Connection {
   source: string;
   target: string;
   kind?: "flow" | "binding" | "physical";
+}
+
+export interface SysML2PartUsage {
+  name: string;
+  type: string;
+  multiplicity?: string;
+  attributes?: Record<string, string | number>;
 }
 
 export interface SysML2GenericDefinition {
@@ -39,6 +47,7 @@ export interface SysML2GenericDefinition {
   superclasses?: string[];
   attributes: SysML2Attribute[];
   ports: SysML2Port[];
+  parts?: SysML2PartUsage[];
   connections: SysML2Connection[];
   constraints?: string[];
 }
@@ -69,8 +78,15 @@ export class GenericModelicaBridge {
 
     // Ports / connectors
     for (const port of sysml.ports) {
-      const connType = mapSysMLPortToModelica(port.type);
+      const connType = mapSysMLPortToModelica(port.type, port.isConjugated, port.direction);
       lines.push(`  ${connType} ${port.name};`);
+    }
+
+    // Subparts / components
+    if (sysml.parts) {
+      for (const part of sysml.parts) {
+        lines.push(`  ${part.type} ${part.name};`);
+      }
     }
 
     // Equations
@@ -96,6 +112,163 @@ export class GenericModelicaBridge {
   }
 
   /**
+   * Generates a complete composite Modelica package containing subcomponent models
+   * and a top-level assembly model.
+   */
+  static emitCompositeModelica(sysml: SysML2GenericDefinition, componentModels?: Map<string, string>): string {
+    const lines: string[] = [];
+    lines.push(`package ${sysml.name}_Package`);
+
+    // Emit subcomponent definitions if provided
+    if (componentModels) {
+      for (const [, modelCode] of componentModels) {
+        lines.push(modelCode);
+      }
+    }
+
+    // Emit top-level system model
+    lines.push(GenericModelicaBridge.emitModelica(sysml));
+
+    lines.push(`end ${sysml.name}_Package;`);
+    return lines.join("\n\n");
+  }
+
+  /**
+   * Parses standard SysML v2 text into a SysML v2 Generic Definition.
+   */
+  static parseSysML2(sysmlSource: string): SysML2GenericDefinition {
+    // Extract definition name (prioritizing composite part defs containing subpart usages)
+    const defMatches = Array.from(
+      sysmlSource.matchAll(/(?:part|item|action|constraint)\s+def\s+([A-Za-z_][A-Za-z0-9_]*)/g),
+    );
+    let name = "SysML2Translation";
+    let targetSource = sysmlSource;
+    if (defMatches.length > 0) {
+      let foundComposite = false;
+      for (const m of defMatches) {
+        const defName = m[1]!;
+        const bodyStart = sysmlSource.indexOf(defName) + defName.length;
+        const openBrace = sysmlSource.indexOf("{", bodyStart);
+        if (openBrace !== -1) {
+          let depth = 1;
+          let closeBrace = openBrace + 1;
+          while (closeBrace < sysmlSource.length && depth > 0) {
+            if (sysmlSource[closeBrace] === "{") depth++;
+            else if (sysmlSource[closeBrace] === "}") depth--;
+            closeBrace++;
+          }
+          const body = sysmlSource.slice(openBrace + 1, closeBrace - 1);
+          if (/\bpart\s+[A-Za-z_][A-Za-z0-9_]*\s*:/.test(body)) {
+            name = defName;
+            targetSource = body;
+            foundComposite = true;
+            break;
+          }
+        }
+      }
+      if (!foundComposite) {
+        name = defMatches[defMatches.length - 1]![1]!;
+      }
+    } else {
+      const pkgMatch = sysmlSource.match(/package\s+([A-Za-z_][A-Za-z0-9_]*)/);
+      name = pkgMatch ? pkgMatch[1]! : "SysML2Translation";
+    }
+    const isAbstract = /\babstract\s+(?:part|item|action|constraint)\s+def\b/.test(sysmlSource);
+
+    const attributes: SysML2Attribute[] = [];
+    const ports: SysML2Port[] = [];
+    const parts: SysML2PartUsage[] = [];
+    const connections: SysML2Connection[] = [];
+    const constraints: string[] = [];
+
+    // Extract attributes
+    const attrRegex = /attribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\s*=\s*([^;]+))?;/g;
+    let aMatch: RegExpExecArray | null;
+    while ((aMatch = attrRegex.exec(targetSource)) !== null) {
+      attributes.push({
+        name: aMatch[1],
+        type: aMatch[2],
+        defaultValue: aMatch[3]?.trim(),
+        isParameter: true,
+      });
+    }
+
+    // Extract ports (supporting port p : Type, port ~p : Type, port p : ~Type)
+    const portRegex = /port\s+(~)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(~)?\s*([A-Za-z0-9_.]+);/g;
+    let pMatch: RegExpExecArray | null;
+    while ((pMatch = portRegex.exec(targetSource)) !== null) {
+      const isConjugated = Boolean(pMatch[1] || pMatch[3]);
+      const portName = pMatch[2];
+      const portType = pMatch[4];
+      const isInput = portType.toLowerCase().includes("in") && !portType.toLowerCase().includes("pin");
+      const isOutput = portType.toLowerCase().includes("out");
+
+      ports.push({
+        name: portName,
+        type: portType,
+        isConjugated,
+        direction: isInput ? "in" : isOutput ? "out" : "inout",
+      });
+    }
+
+    // Extract part usages (e.g., part batt : Battery; or part m1 : Motor;)
+    const partUsageRegex =
+      /\bpart\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\[([0-9.]+)\])?(?:\s*\{([^}]*)\})?(?:\s*=\s*([^;]+))?;/g;
+    let puMatch: RegExpExecArray | null;
+    while ((puMatch = partUsageRegex.exec(targetSource)) !== null) {
+      const partName = puMatch[1];
+      const partType = puMatch[2];
+      const multiplicity = puMatch[3];
+      const body = puMatch[4];
+      const inlineAttributes: Record<string, string | number> = {};
+      if (body) {
+        const bodyAttrRegex = /attribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/g;
+        let baMatch: RegExpExecArray | null;
+        while ((baMatch = bodyAttrRegex.exec(body)) !== null) {
+          const valStr = baMatch[2].trim();
+          const num = parseFloat(valStr);
+          inlineAttributes[baMatch[1]] = Number.isNaN(num) ? valStr : num;
+        }
+      }
+      parts.push({
+        name: partName,
+        type: partType,
+        ...(multiplicity ? { multiplicity } : {}),
+        ...(Object.keys(inlineAttributes).length > 0 ? { attributes: inlineAttributes } : {}),
+      });
+    }
+
+    // Extract connections
+    const connRegex = /connection\s+(?:[A-Za-z0-9_]+\s+)?connect\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+);/g;
+    let cMatch: RegExpExecArray | null;
+    while ((cMatch = connRegex.exec(targetSource)) !== null) {
+      connections.push({
+        source: cMatch[1],
+        target: cMatch[2],
+        kind: "physical",
+      });
+    }
+
+    // Extract constraints
+    const constrRegex = /assert\s+constraint\s*\{([^}]+)\}/g;
+    let constrMatch: RegExpExecArray | null;
+    while ((constrMatch = constrRegex.exec(targetSource)) !== null) {
+      constraints.push(constrMatch[1].trim());
+    }
+
+    return {
+      name,
+      kind: "part def",
+      isAbstract,
+      attributes,
+      ports,
+      parts,
+      connections,
+      constraints,
+    };
+  }
+
+  /**
    * Parses standard Modelica model text into a SysML v2 Part Definition.
    */
   static parseModelicaToSysML2(modelicaSource: string): SysML2GenericDefinition {
@@ -109,7 +282,8 @@ export class GenericModelicaBridge {
     const constraints: string[] = [];
 
     // Extract parameters and variables
-    const declRegex = /(parameter\s+)?(Real|Integer|Boolean|String)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;]+))?;/g;
+    const declRegex =
+      /(?:^|\s)(parameter\s+)?\b(Real|Integer|Boolean|String)\b\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;]+))?;/g;
     let dMatch: RegExpExecArray | null;
     while ((dMatch = declRegex.exec(modelicaSource)) !== null) {
       attributes.push({
@@ -120,15 +294,27 @@ export class GenericModelicaBridge {
       });
     }
 
-    // Extract connectors / ports (e.g., Flange_a, Pin, HeatPort)
+    // Extract connectors / ports (e.g., Flange_a, Flange_b, Pin, PositivePin, NegativePin, HeatPort_a, RealInput, RealOutput)
     const portRegex =
-      /(?:Interfaces\.)?([A-Za-z_][A-Za-z0-9_]*(?:Pin|Flange|Port|Terminal|Plug))\s+([A-Za-z_][A-Za-z0-9_]*);/g;
+      /(?:[A-Za-z0-9_]+\.)*([A-Za-z0-9_]*?(?:Pin|Flange|Flange_[ab]|Port|HeatPort_[ab]|Terminal|Plug|RealInput|RealOutput))\s+([A-Za-z_][A-Za-z0-9_]*);/g;
     let pMatch: RegExpExecArray | null;
     while ((pMatch = portRegex.exec(modelicaSource)) !== null) {
+      const rawType = pMatch[1];
+      const name = pMatch[2];
+      const isConjugated = rawType.endsWith("_b") || rawType.includes("NegativePin") || rawType === "RealOutput";
+
+      let baseType = rawType;
+      if (rawType.endsWith("_a") || rawType.endsWith("_b")) {
+        baseType = rawType.slice(0, -2);
+      } else if (rawType === "PositivePin" || rawType === "NegativePin") {
+        baseType = "Pin";
+      }
+
       ports.push({
-        type: pMatch[1],
-        name: pMatch[2],
-        direction: "inout",
+        type: baseType,
+        name,
+        direction: rawType === "RealInput" ? "in" : rawType === "RealOutput" ? "out" : "inout",
+        isConjugated,
       });
     }
 
@@ -178,7 +364,8 @@ export class GenericModelicaBridge {
     }
 
     for (const port of sysml.ports) {
-      lines.push(`  port ${port.name} : ${port.type};`);
+      const typePrefix = port.isConjugated ? "~" : "";
+      lines.push(`  port ${port.name} : ${typePrefix}${port.type};`);
     }
 
     if (sysml.connections.length > 0) {
@@ -208,9 +395,49 @@ function mapSysMLTypeToModelica(type: string): string {
   return type;
 }
 
-function mapSysMLPortToModelica(portType: string): string {
-  if (portType.includes("Pin")) return "Modelica.Electrical.Analog.Interfaces.Pin";
-  if (portType.includes("Flange")) return "Modelica.Mechanics.Translational.Interfaces.Flange_a";
-  if (portType.includes("Heat")) return "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a";
+function mapSysMLPortToModelica(portType: string, isConjugated = false, direction?: "in" | "out" | "inout"): string {
+  // 1. Causal Signal Ports (in/out)
+  if (direction === "in" || portType === "InPort" || portType === "RealInput") {
+    return isConjugated ? "Modelica.Blocks.Interfaces.RealOutput" : "Modelica.Blocks.Interfaces.RealInput";
+  }
+  if (direction === "out" || portType === "OutPort" || portType === "RealOutput") {
+    return isConjugated ? "Modelica.Blocks.Interfaces.RealInput" : "Modelica.Blocks.Interfaces.RealOutput";
+  }
+
+  // 2. Physical Acausal Connectors (Flange, HeatPort, Pin)
+  if (portType.includes("RotationalFlange") || portType.includes("Flange_rot")) {
+    return isConjugated
+      ? "Modelica.Mechanics.Rotational.Interfaces.Flange_b"
+      : "Modelica.Mechanics.Rotational.Interfaces.Flange_a";
+  }
+  if (portType.includes("Flange")) {
+    return isConjugated
+      ? "Modelica.Mechanics.Translational.Interfaces.Flange_b"
+      : "Modelica.Mechanics.Translational.Interfaces.Flange_a";
+  }
+  if (portType.includes("HeatPort") || portType.includes("Heat")) {
+    return isConjugated
+      ? "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_b"
+      : "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a";
+  }
+  if (portType.includes("NegativePin")) {
+    return isConjugated
+      ? "Modelica.Electrical.Analog.Interfaces.PositivePin"
+      : "Modelica.Electrical.Analog.Interfaces.NegativePin";
+  }
+  if (portType.includes("PositivePin") || portType.includes("Pin")) {
+    return isConjugated
+      ? "Modelica.Electrical.Analog.Interfaces.NegativePin"
+      : "Modelica.Electrical.Analog.Interfaces.PositivePin";
+  }
+
+  // 3. General complementary suffix inversion if custom connector
+  if (isConjugated) {
+    if (portType.endsWith("_a")) return portType.slice(0, -2) + "_b";
+    if (portType.endsWith("_b")) return portType.slice(0, -2) + "_a";
+    if (portType.endsWith("In")) return portType.slice(0, -2) + "Out";
+    if (portType.endsWith("Out")) return portType.slice(0, -3) + "In";
+  }
+
   return portType;
 }

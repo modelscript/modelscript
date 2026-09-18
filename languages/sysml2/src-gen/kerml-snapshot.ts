@@ -1506,5 +1506,713 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "exports": [],
     "inherits": [],
     "metadata": {}
+  },
+  {
+    "id": 86,
+    "kind": "Package",
+    "name": "Base",
+    "ruleName": "Package",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": null,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2109,
+    "endByte": 2497,
+    "exports": [
+      "package Base {\n    abstract item def Anything;\n    abstract item def Element :> Anything;\n    abstract item def Feature :> Element;\n    abstract item def Type :> Element;\n    abstract item def Classifier :> Type;\n    abstract item def DataType :> Classifier;\n    abstract item def Class :> Classifier;\n    abstract item def Structure :> Class;\n    abstract item def Behavior :> Class;\n}"
+    ],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 87,
+    "kind": "Definition",
+    "name": "Anything",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2130,
+    "endByte": 2157,
+    "exports": [
+      "abstract item def Anything;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 88,
+    "kind": "Definition",
+    "name": "Element",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2162,
+    "endByte": 2200,
+    "exports": [
+      "abstract item def Element :> Anything;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 89,
+    "kind": "Reference",
+    "name": "Anything",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 88,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2190,
+    "endByte": 2199,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 90,
+    "kind": "Definition",
+    "name": "Feature",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2205,
+    "endByte": 2242,
+    "exports": [
+      "abstract item def Feature :> Element;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 91,
+    "kind": "Reference",
+    "name": "Element",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 90,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2233,
+    "endByte": 2241,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 92,
+    "kind": "Definition",
+    "name": "Type",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2247,
+    "endByte": 2281,
+    "exports": [
+      "abstract item def Type :> Element;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 93,
+    "kind": "Reference",
+    "name": "Element",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 92,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2272,
+    "endByte": 2280,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 94,
+    "kind": "Definition",
+    "name": "Classifier",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2286,
+    "endByte": 2323,
+    "exports": [
+      "abstract item def Classifier :> Type;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 95,
+    "kind": "Reference",
+    "name": "Type",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 94,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2317,
+    "endByte": 2322,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 96,
+    "kind": "Definition",
+    "name": "DataType",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2328,
+    "endByte": 2369,
+    "exports": [
+      "abstract item def DataType :> Classifier;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 97,
+    "kind": "Reference",
+    "name": "Classifier",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 96,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2357,
+    "endByte": 2368,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 98,
+    "kind": "Definition",
+    "name": "Class",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2374,
+    "endByte": 2412,
+    "exports": [
+      "abstract item def Class :> Classifier;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 99,
+    "kind": "Reference",
+    "name": "Classifier",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 98,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2400,
+    "endByte": 2411,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 100,
+    "kind": "Definition",
+    "name": "Structure",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2417,
+    "endByte": 2454,
+    "exports": [
+      "abstract item def Structure :> Class;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 101,
+    "kind": "Reference",
+    "name": "Class",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 100,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2447,
+    "endByte": 2453,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 102,
+    "kind": "Definition",
+    "name": "Behavior",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 86,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2459,
+    "endByte": 2495,
+    "exports": [
+      "abstract item def Behavior :> Class;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 103,
+    "kind": "Reference",
+    "name": "Class",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 102,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2488,
+    "endByte": 2494,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 104,
+    "kind": "Package",
+    "name": "Control",
+    "ruleName": "Package",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": null,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2497,
+    "endByte": 2756,
+    "exports": [
+      "package Control {\n    abstract action def ControlNode;\n    abstract action def MergeNode :> ControlNode;\n    abstract action def DecisionNode :> ControlNode;\n    abstract action def ForkNode :> ControlNode;\n    abstract action def JoinNode :> ControlNode;\n}"
+    ],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 105,
+    "kind": "Definition",
+    "name": "ControlNode",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 104,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2521,
+    "endByte": 2553,
+    "exports": [
+      "abstract action def ControlNode;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 106,
+    "kind": "Definition",
+    "name": "MergeNode",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 104,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2558,
+    "endByte": 2603,
+    "exports": [
+      "abstract action def MergeNode :> ControlNode;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 107,
+    "kind": "Reference",
+    "name": "ControlNode",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 106,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2590,
+    "endByte": 2602,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 108,
+    "kind": "Definition",
+    "name": "DecisionNode",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 104,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2608,
+    "endByte": 2656,
+    "exports": [
+      "abstract action def DecisionNode :> ControlNode;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 109,
+    "kind": "Reference",
+    "name": "ControlNode",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 108,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2643,
+    "endByte": 2655,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 110,
+    "kind": "Definition",
+    "name": "ForkNode",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 104,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2661,
+    "endByte": 2705,
+    "exports": [
+      "abstract action def ForkNode :> ControlNode;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 111,
+    "kind": "Reference",
+    "name": "ControlNode",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 110,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2692,
+    "endByte": 2704,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 112,
+    "kind": "Definition",
+    "name": "JoinNode",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 104,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2710,
+    "endByte": 2754,
+    "exports": [
+      "abstract action def JoinNode :> ControlNode;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 113,
+    "kind": "Reference",
+    "name": "ControlNode",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 112,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2741,
+    "endByte": 2753,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 114,
+    "kind": "Package",
+    "name": "Transfers",
+    "ruleName": "Package",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": null,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2756,
+    "endByte": 2894,
+    "exports": [
+      "package Transfers {\n    abstract item def Transfer;\n    abstract item def Flow :> Transfer;\n    abstract item def Message :> Transfer;\n}"
+    ],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 115,
+    "kind": "Definition",
+    "name": "Transfer",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 114,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2782,
+    "endByte": 2809,
+    "exports": [
+      "abstract item def Transfer;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 116,
+    "kind": "Definition",
+    "name": "Flow",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 114,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2814,
+    "endByte": 2849,
+    "exports": [
+      "abstract item def Flow :> Transfer;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 117,
+    "kind": "Reference",
+    "name": "Transfer",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 116,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2839,
+    "endByte": 2848,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 118,
+    "kind": "Definition",
+    "name": "Message",
+    "ruleName": "ItemDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 114,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2854,
+    "endByte": 2892,
+    "exports": [
+      "abstract item def Message :> Transfer;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 119,
+    "kind": "Reference",
+    "name": "Transfer",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 118,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2882,
+    "endByte": 2891,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 120,
+    "kind": "Package",
+    "name": "Performances",
+    "ruleName": "Package",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": null,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2894,
+    "endByte": 3058,
+    "exports": [
+      "package Performances {\n    abstract action def Performance;\n    abstract action def Evaluation :> Performance;\n    abstract action def Execution :> Performance;\n}"
+    ],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 121,
+    "kind": "Definition",
+    "name": "Performance",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 120,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2923,
+    "endByte": 2955,
+    "exports": [
+      "abstract action def Performance;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 122,
+    "kind": "Definition",
+    "name": "Evaluation",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 120,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2960,
+    "endByte": 3006,
+    "exports": [
+      "abstract action def Evaluation :> Performance;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 123,
+    "kind": "Reference",
+    "name": "Performance",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 122,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 2993,
+    "endByte": 3005,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
+  },
+  {
+    "id": 124,
+    "kind": "Definition",
+    "name": "Execution",
+    "ruleName": "ActionDefinition",
+    "namePath": "declaredName",
+    "fieldName": null,
+    "parentId": 120,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 3011,
+    "endByte": 3056,
+    "exports": [
+      "abstract action def Execution :> Performance;"
+    ],
+    "inherits": [],
+    "metadata": {
+      "isAbstract": "abstract",
+      "isVariation": null
+    }
+  },
+  {
+    "id": 125,
+    "kind": "Reference",
+    "name": "Performance",
+    "ruleName": "OwnedSubclassification",
+    "namePath": "superclassifier",
+    "fieldName": null,
+    "parentId": 124,
+    "resourceId": "sysml2://stdlib/KerML.sysml",
+    "startByte": 3043,
+    "endByte": 3055,
+    "exports": [],
+    "inherits": [],
+    "metadata": {}
   }
 ];

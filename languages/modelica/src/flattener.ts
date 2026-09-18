@@ -48,6 +48,7 @@ export interface FlattenOptions {
   omcCompatibility?: boolean;
   eliminateAliases?: boolean;
   useWasmKernel?: boolean;
+  scalarizeBindings?: boolean;
 }
 
 function inferArenaExprShapeAndType(dae: DAEBuilder, exprId: number): { shape: number[]; typeName: string } {
@@ -3255,6 +3256,16 @@ function lowerCSTExpression(
       node.child(node.childCount - 1)?.text === "]" ||
       node.child(node.childCount - 1)?.type === '"]"')
   ) {
+    let hasSemicolons = false;
+    for (let i = 1; i < node.childCount - 1; i++) {
+      const c = node.child(i);
+      const text = c.text?.trim() ?? c.type;
+      if (text === ";" || c.type === ";" || c.type === '";"') {
+        hasSemicolons = true;
+        break;
+      }
+    }
+
     const rows: number[] = [];
     let currentRow: number[] = [];
     const addCurrentRow = () => {
@@ -3285,6 +3296,9 @@ function lowerCSTExpression(
         };
         collect(c);
       }
+    }
+    if (!hasSemicolons) {
+      return dae.addArrayCtorExpr(currentRow);
     }
     addCurrentRow();
     return dae.addArrayCtorExpr(rows);
@@ -5451,6 +5465,7 @@ export class ModelicaFlattener {
       omcCompatibility,
       eliminateAliases: options?.eliminateAliases ?? !omcCompatibility,
       useWasmKernel: options?.useWasmKernel,
+      scalarizeBindings: options?.scalarizeBindings ?? false,
     };
   }
 
@@ -5469,6 +5484,7 @@ export class ModelicaFlattener {
       }
       if (options.eliminateAliases !== undefined) this.options.eliminateAliases = options.eliminateAliases;
       if (options.useWasmKernel !== undefined) this.options.useWasmKernel = options.useWasmKernel;
+      if (options.scalarizeBindings !== undefined) this.options.scalarizeBindings = options.scalarizeBindings;
     }
 
     const dae = this.flattenClass(rootClassId, cachedArena);
@@ -5509,6 +5525,10 @@ export class ModelicaFlattener {
     dae.extensionMetadata.isOldFrontend = Boolean(
       classCst?.text?.includes("-d=-newInst") || (this.options as any)?.isOldFrontend,
     );
+    const hasScalarizeBindings = Boolean(
+      classCst?.text?.includes("+scalarizeBindings") || this.options.scalarizeBindings,
+    );
+    dae.extensionMetadata.scalarizeBindings = hasScalarizeBindings;
     this.validateOperatorRecords(dae, rootClassId);
 
     // Check for non-instantiable class specializations (package, function, etc.)
@@ -8994,7 +9014,12 @@ export class ModelicaFlattener {
               }
             }
 
-            if (variability === Variability.Continuous && arrayDims && arrayDims.length > 0) {
+            if (
+              variability === Variability.Continuous &&
+              arrayDims &&
+              arrayDims.length > 0 &&
+              !dae.extensionMetadata?.scalarizeBindings
+            ) {
               // Continuous array binding is emitted as an equation, not a variable expression
               if (!effectiveBinding?.text && exprId !== null && exprId >= 0) {
                 const lhsExprId = dae.addNameExpr(dae.getVarName(varIdx));
@@ -9860,7 +9885,8 @@ export class ModelicaFlattener {
           }
           if (
             (variability === Variability.Continuous || variability === Variability.Discrete) &&
-            effectiveBinding?.text
+            effectiveBinding?.text &&
+            !dae.extensionMetadata?.scalarizeBindings
           ) {
             const bText = effectiveBinding.text.trim();
             let rhsExprId: number | null = null;

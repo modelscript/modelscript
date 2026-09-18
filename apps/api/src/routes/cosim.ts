@@ -9,6 +9,7 @@
 
 import type { CosimMqttClient } from "@modelscript/exchange/cosim";
 import { FmuJsParticipant, FmuStorage, Orchestrator, SessionManager } from "@modelscript/exchange/cosim";
+import { applySspParameters, importSsp, wireSspCouplings } from "@modelscript/exchange/ssp";
 import express from "express";
 
 const sessionManager = new SessionManager();
@@ -25,6 +26,73 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
   const router = express.Router();
 
   // ── Session Management ──
+
+  // POST /api/v1/cosim/ssp/import — Import an SSP archive to initialize a co-simulation session
+  router.post(
+    "/ssp/import",
+    express.raw({
+      type: ["application/octet-stream", "application/zip", "application/x-zip-compressed"],
+      limit: "100mb",
+    }),
+    (req, res) => {
+      try {
+        let buffer: Buffer | null = null;
+        if (Buffer.isBuffer(req.body)) {
+          buffer = req.body;
+        } else if (req.body && typeof req.body === "object") {
+          const bodyObj = req.body as { data?: string; sspBase64?: string; archive?: string };
+          const base64 = bodyObj.data ?? bodyObj.sspBase64 ?? bodyObj.archive;
+          if (base64) {
+            buffer = Buffer.from(base64, "base64");
+          }
+        }
+
+        if (!buffer || buffer.length === 0) {
+          return res
+            .status(400)
+            .json({ error: "Missing SSP archive payload (send binary ZIP or JSON with base64 data)" });
+        }
+
+        const { session, system, fmuIds, warnings } = importSsp(buffer, fmuStorage);
+
+        // Enroll participants for each imported FMU
+        for (const [componentName, fmuId] of fmuIds.entries()) {
+          try {
+            const participant = new FmuJsParticipant({
+              id: componentName,
+              fmuId,
+              storage: fmuStorage,
+            });
+            session.addParticipant(participant);
+          } catch (err: unknown) {
+            warnings.push(
+              `Failed to create participant for '${componentName}': ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        // Wire couplings & apply parameters
+        const couplingWarnings = wireSspCouplings(session, system);
+        warnings.push(...couplingWarnings);
+        applySspParameters(session, system);
+
+        // Register session in session manager
+        sessionManager.registerSession(session);
+
+        res.status(201).json({
+          ok: true,
+          sessionId: session.sessionId,
+          systemName: system.name,
+          participants: session.participants.size,
+          couplings: session.coupling.getAll().length,
+          warnings,
+          session: session.toJSON(),
+        });
+      } catch (err: unknown) {
+        res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
 
   // POST /api/v1/cosim/sessions — Create a new co-simulation session
   router.post("/sessions", (req, res) => {

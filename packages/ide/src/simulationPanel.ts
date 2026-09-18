@@ -35,7 +35,15 @@ export class SimulationPanel {
   private readonly extensionUri: vscode.Uri;
   private readonly liveMode: boolean;
   public sourceUri?: string;
-  private client?: LanguageClient;
+  public client?: LanguageClient;
+  private isReady = false;
+  private lastResult?: SimulationResult;
+  private lastLiveConfig?: {
+    type: "live" | "liveLocal";
+    mqttWsUrl?: string;
+    sessionId?: string;
+    participantId?: string;
+  };
   private disposables: vscode.Disposable[] = [];
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
@@ -98,9 +106,15 @@ export class SimulationPanel {
   /**
    * Render a plot for externally generated data (like client-side FMU JS evaluations).
    */
-  static createOrShowWithData(extensionUri: vscode.Uri, result: SimulationResult, uri: string): void {
+  static createOrShowWithData(
+    extensionUri: vscode.Uri,
+    result: SimulationResult,
+    uri: string,
+    client?: LanguageClient,
+  ): void {
     if (SimulationPanel.currentPanel) {
       SimulationPanel.currentPanel.sourceUri = uri;
+      if (client) SimulationPanel.currentPanel.client = client;
       SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
       SimulationPanel.currentPanel.postResults(result);
       return;
@@ -119,6 +133,7 @@ export class SimulationPanel {
 
     SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, false);
     SimulationPanel.currentPanel.sourceUri = uri;
+    if (client) SimulationPanel.currentPanel.client = client;
     SimulationPanel.currentPanel.postResults(result);
   }
 
@@ -201,7 +216,22 @@ export class SimulationPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
       async (msg) => {
-        if (msg.type === "simulateRequest" && this.client) {
+        if (msg.type === "ready") {
+          this.isReady = true;
+          if (this.lastResult) {
+            this.postResults(this.lastResult);
+          } else if (this.lastLiveConfig) {
+            if (this.lastLiveConfig.type === "live") {
+              this.postLiveConfig(
+                this.lastLiveConfig.mqttWsUrl || "",
+                this.lastLiveConfig.sessionId,
+                this.lastLiveConfig.participantId,
+              );
+            } else {
+              this.postLiveLocalConfig(this.lastLiveConfig.sessionId);
+            }
+          }
+        } else if (msg.type === "simulateRequest" && this.client) {
           const uri = this.sourceUri;
           if (!uri) return;
 
@@ -213,39 +243,70 @@ export class SimulationPanel {
             },
             async () => {
               if (!this.client) return;
-              const result: SimulationResult = await this.client.sendRequest("modelscript/simulate", {
-                uri,
-                startTime: msg.payload.startTime,
-                stopTime: msg.payload.stopTime,
-                interval: msg.payload.interval,
-                parameterOverrides: msg.payload.parameterOverrides,
-              });
+              let result: SimulationResult;
+              try {
+                result = await this.client.sendRequest("modelscript/simulate", {
+                  uri,
+                  startTime: msg.payload?.startTime,
+                  stopTime: msg.payload?.stopTime,
+                  interval: msg.payload?.interval,
+                  parameterOverrides: msg.payload?.parameterOverrides,
+                });
+              } catch {
+                // Fallback to executeAction if modelscript/simulate fails
+                const res: any = await this.client.sendRequest("modelscript/executeAction", {
+                  actionId: "simulate",
+                  languageId: "modelica",
+                  uri,
+                  inputs: {
+                    startTime: msg.payload?.startTime,
+                    stopTime: msg.payload?.stopTime,
+                    interval: msg.payload?.interval,
+                    parameterOverrides: msg.payload?.parameterOverrides,
+                  },
+                });
+                result = {
+                  t: Array.isArray(res?.t) ? res.t : Object.values(res?.t || {}),
+                  y: Array.isArray(res?.y) ? res.y : Object.values(res?.y || {}),
+                  states: res?.states || [],
+                  parameters: res?.parameters,
+                  experiment: res?.experiment,
+                  error: res?.error,
+                };
+              }
+
+              if (result && result.t) {
+                result.t = Array.isArray(result.t) ? result.t : Object.values(result.t);
+              }
+              if (result && result.y) {
+                result.y = Array.isArray(result.y) ? result.y : Object.values(result.y);
+              }
 
               if (result.error) {
                 vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
                 return;
               }
-              if (result.t.length === 0) {
+              if (!result.t || result.t.length === 0) {
                 vscode.window.showWarningMessage("Simulation produced no data.");
                 return;
               }
 
               // Inject user requested overrides back into the result so the webview preserves them
               if (result.experiment) {
-                if (msg.payload.startTime !== undefined) result.experiment.startTime = msg.payload.startTime;
-                if (msg.payload.stopTime !== undefined) result.experiment.stopTime = msg.payload.stopTime;
-                if (msg.payload.interval !== undefined) result.experiment.interval = msg.payload.interval;
-                if (msg.payload.tolerance !== undefined) result.experiment.tolerance = msg.payload.tolerance;
+                if (msg.payload?.startTime !== undefined) result.experiment.startTime = msg.payload.startTime;
+                if (msg.payload?.stopTime !== undefined) result.experiment.stopTime = msg.payload.stopTime;
+                if (msg.payload?.interval !== undefined) result.experiment.interval = msg.payload.interval;
+                if (msg.payload?.tolerance !== undefined) result.experiment.tolerance = msg.payload.tolerance;
               } else {
                 result.experiment = {
-                  startTime: msg.payload.startTime,
-                  stopTime: msg.payload.stopTime,
-                  interval: msg.payload.interval,
-                  tolerance: msg.payload.tolerance,
+                  startTime: msg.payload?.startTime,
+                  stopTime: msg.payload?.stopTime,
+                  interval: msg.payload?.interval,
+                  tolerance: msg.payload?.tolerance,
                 };
               }
 
-              if (result.parameters && msg.payload.parameterOverrides) {
+              if (result.parameters && msg.payload?.parameterOverrides) {
                 for (const p of result.parameters) {
                   if (msg.payload.parameterOverrides[p.name] !== undefined) {
                     p.defaultValue = msg.payload.parameterOverrides[p.name];
@@ -272,6 +333,7 @@ export class SimulationPanel {
   }
 
   public postResults(result: SimulationResult) {
+    this.lastResult = result;
     const isDark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
@@ -284,6 +346,7 @@ export class SimulationPanel {
   }
 
   private postLiveConfig(mqttWsUrl: string, sessionId?: string, participantId?: string) {
+    this.lastLiveConfig = { type: "live", mqttWsUrl, sessionId, participantId };
     const isDark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
@@ -297,6 +360,7 @@ export class SimulationPanel {
   }
 
   private postLiveLocalConfig(sessionId?: string) {
+    this.lastLiveConfig = { type: "liveLocal", sessionId };
     const isDark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;

@@ -264,13 +264,6 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
-          context.connection.sendNotification("modelscript/status", {
-            state: "loading",
-            message: "Indexing dependencies for optimization...",
-          });
-          await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
-          context.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-
           const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
           injectPredefinedTypes(fullIndex);
           const engine = params.uri.endsWith(".sysml")

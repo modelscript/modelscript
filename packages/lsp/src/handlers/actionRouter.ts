@@ -99,11 +99,34 @@ export function registerActionRouter(context: LspContext): void {
         );
       }
 
-      const doc = params.uri ? context.documents.get(params.uri) : undefined;
+      let doc = params.uri ? context.documents.get(params.uri) : undefined;
+      if (!doc && params.uri) {
+        for (const d of context.documents.all()) {
+          if (d.uri === params.uri || decodeURIComponent(d.uri) === decodeURIComponent(params.uri)) {
+            doc = d;
+            break;
+          }
+        }
+      }
+      let docText = doc?.getText();
+      if (!docText && params.uri) {
+        const cached = (context.workspaceManager as any)?.documentManager?.documentTrees?.get(params.uri);
+        if (cached?.text) {
+          docText = cached.text;
+        } else if ((globalThis as any).sharedFs) {
+          const fsPath = params.uri.replace(/^[a-z0-9+-]+:\/\/?/, "/");
+          try {
+            docText = (globalThis as any).sharedFs.read(fsPath);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
       const executionContext: ActionExecutionContext = {
         uri: params.uri,
         languageId: plugin.id,
-        documentText: doc?.getText(),
+        documentText: docText,
         queryEngine: plugin.queryEngine ?? (context.workspaceManager as any)?.globalModelicaQueryEngine,
         workspaceManager: context.workspaceManager,
         connection: context.connection,

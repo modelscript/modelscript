@@ -133,17 +133,6 @@ export function registerSimulationEndpoints(context: LspContext) {
       }
 
       try {
-        // Ensure MSL index is ready if dependencies are pending
-        if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
-          context.connection.console.info(`[simulate] MSL not fully indexed — forcing full index...`);
-          context.connection.sendNotification("modelscript/status", {
-            state: "loading",
-            message: "Indexing MSL for simulation...",
-          });
-          await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
-          context.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-        }
-
         const flat = flattenTargetClass(context, params.uri, params.className);
         if ("error" in flat) {
           return { t: [], y: [], states: [], error: flat.error };

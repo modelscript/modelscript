@@ -338,8 +338,35 @@ export class LSPBridge {
     // Collect only symbols belonging to this document
     const docSymbols = new Set<SymbolId>();
 
+    const normalize = (u: string) => {
+      try {
+        return decodeURIComponent(u).replace(/^[a-z0-9+-]+:\/\/?/, "/");
+      } catch {
+        return u;
+      }
+    };
+    const targetNorm = normalize(this.documentUri);
+
+    let docSymbolIds: SymbolId[] | undefined;
     if (this.index.symbolsByResource) {
-      const docSymbolIds = this.index.symbolsByResource.get(this.documentUri) || [];
+      docSymbolIds = this.index.symbolsByResource.get(this.documentUri);
+      if (!docSymbolIds || docSymbolIds.length === 0) {
+        for (const [k, v] of this.index.symbolsByResource.entries()) {
+          const kNorm = normalize(k);
+          if (
+            k === this.documentUri ||
+            kNorm === targetNorm ||
+            kNorm.endsWith(targetNorm) ||
+            targetNorm.endsWith(kNorm)
+          ) {
+            docSymbolIds = v;
+            break;
+          }
+        }
+      }
+    }
+
+    if (docSymbolIds && docSymbolIds.length > 0) {
       for (const id of docSymbolIds) {
         const entry = this.index.symbols.get(id);
         if (!entry || entry.kind === "Reference" || entry.kind === "ConnectEquation" || entry.kind === "FunctionCall")
@@ -347,9 +374,14 @@ export class LSPBridge {
         docSymbols.add(entry.id);
       }
     } else {
-      // Fallback for older index format
+      // Fallback for older index format or if symbolsByResource missed it
       for (const entry of this.index.symbols.values()) {
-        if (entry.resourceId !== this.documentUri) continue;
+        const resNorm = entry.resourceId ? normalize(entry.resourceId) : "";
+        const matches =
+          entry.resourceId === this.documentUri ||
+          resNorm === targetNorm ||
+          (resNorm && (resNorm.endsWith(targetNorm) || targetNorm.endsWith(resNorm)));
+        if (!matches) continue;
         if (entry.kind === "Reference" || entry.kind === "ConnectEquation" || entry.kind === "FunctionCall") continue;
         docSymbols.add(entry.id);
       }
@@ -953,13 +985,41 @@ export class LSPBridge {
    * falling back to a full scan for older indices that lack it.
    */
   private getDocumentSymbolIds(): Iterable<SymbolId> {
+    const normalize = (u: string) => {
+      try {
+        return decodeURIComponent(u).replace(/^[a-z0-9+-]+:\/\/?/, "/");
+      } catch {
+        return u;
+      }
+    };
+    const targetNorm = normalize(this.documentUri);
+
     if (this.index.symbolsByResource) {
-      return this.index.symbolsByResource.get(this.documentUri) ?? [];
+      let ids = this.index.symbolsByResource.get(this.documentUri);
+      if (ids && ids.length > 0) return ids;
+      for (const [k, v] of this.index.symbolsByResource.entries()) {
+        const kNorm = normalize(k);
+        if (
+          k === this.documentUri ||
+          kNorm === targetNorm ||
+          kNorm.endsWith(targetNorm) ||
+          targetNorm.endsWith(kNorm)
+        ) {
+          return v;
+        }
+      }
     }
     // Fallback: filter from all symbols (legacy path)
     const ids: SymbolId[] = [];
     for (const entry of this.index.symbols.values()) {
-      if (entry.resourceId === this.documentUri) ids.push(entry.id);
+      const resNorm = entry.resourceId ? normalize(entry.resourceId) : "";
+      if (
+        entry.resourceId === this.documentUri ||
+        resNorm === targetNorm ||
+        (resNorm && (resNorm.endsWith(targetNorm) || targetNorm.endsWith(resNorm)))
+      ) {
+        ids.push(entry.id);
+      }
     }
     return ids;
   }

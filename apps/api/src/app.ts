@@ -33,6 +33,7 @@ import { simulateRouter } from "./routes/simulate.js";
 import { socialRouter } from "./routes/social.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
+import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
 import { usersRouter } from "./routes/users.js";
 import { seedCadAssembly } from "./seed-cad-assembly.js";
 import { seedCfdAnimation } from "./seed-cfd-animation.js";
@@ -74,7 +75,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   // Initialize the extensible artifact system (FMU, Dataset, etc.)
   initializeArtifactSystem();
 
-  if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
+  if (
+    (process.env["NODE_ENV"] !== "production" && process.env["NODE_ENV"] !== "test") ||
+    process.env["SEED_EXAMPLES"] === "true"
+  ) {
     console.log("[DevServer] Development mode detected. Running auto-seeding...");
 
     // Seed dev users
@@ -273,33 +277,32 @@ graph TD
     });
   }
 
-  // ── Trending Topics Periodic Worker ──
-  // Run every 15 minutes (900,000 ms)
-  const decayWorkerInterval = setInterval(
-    () => {
-      try {
-        database.decayTrendingTopics();
-      } catch (err) {
-        console.error("Failed to decay trending topics:", err);
-      }
-    },
-    15 * 60 * 1000,
-  );
-  app.locals.decayWorkerInterval = decayWorkerInterval;
+  // ── Periodic Workers (disabled in test environment) ──
+  if (process.env["NODE_ENV"] !== "test") {
+    const decayWorkerInterval = setInterval(
+      () => {
+        try {
+          database.decayTrendingTopics();
+        } catch (err) {
+          console.error("Failed to decay trending topics:", err);
+        }
+      },
+      15 * 60 * 1000,
+    );
+    app.locals.decayWorkerInterval = decayWorkerInterval;
 
-  // ── RSS Worker ──
-  // Run immediately on startup, then every 15 minutes
-  const runRssWorker = () => {
-    import("./util/rss-worker.js")
-      .then(({ processRssFeeds }) => {
-        void processRssFeeds(database);
-      })
-      .catch(console.error);
-  };
+    const runRssWorker = () => {
+      import("./util/rss-worker.js")
+        .then(({ processRssFeeds }) => {
+          void processRssFeeds(database);
+        })
+        .catch(console.error);
+    };
 
-  runRssWorker();
-  const rssWorkerInterval = setInterval(runRssWorker, 15 * 60 * 1000);
-  app.locals.rssWorkerInterval = rssWorkerInterval;
+    runRssWorker();
+    const rssWorkerInterval = setInterval(runRssWorker, 15 * 60 * 1000);
+    app.locals.rssWorkerInterval = rssWorkerInterval;
+  }
 
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
   app.use(express.json({ limit: "50mb" }));
@@ -364,6 +367,11 @@ graph TD
   if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
     app.use("/static-examples", express.static(path.resolve(process.cwd(), "../../packages/examples")));
   }
+
+  // ── OMG Systems Modeling REST API (SysML v2 - ptc/2024-02-03) ──
+  const omgRouter = sysml2OmgRouter();
+  app.use("/api/v1/sysml2", omgRouter);
+  app.use("/", omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
 
   // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
   app.use("/", npmAuthRouter(database));

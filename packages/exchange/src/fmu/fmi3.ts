@@ -161,6 +161,8 @@ export interface Fmi3Options {
   stepSize?: number | undefined;
   /** FMU type flags. */
   fmuType?: Fmi3TypeFlags | undefined;
+  /** Explicit FMI 3.0 terminals to include (e.g. from SysML v2 architectural ports). */
+  explicitTerminals?: Fmi3Terminal[] | undefined;
 }
 
 /** Result of FMI 3.0 FMU generation. */
@@ -307,7 +309,14 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
 
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
-  const terminals = detectTerminals3(groupedVariables);
+  const detectedTerminals = detectTerminals3(groupedVariables);
+  const terminals =
+    options.explicitTerminals && options.explicitTerminals.length > 0
+      ? [
+          ...options.explicitTerminals,
+          ...detectedTerminals.filter((d) => !options.explicitTerminals!.some((e) => e.name === d.name)),
+        ]
+      : detectedTerminals;
   const xml = generateModelDescriptionXml3(groupedVariables, {
     ...options,
     guid,

@@ -60,6 +60,10 @@ export interface WasmLanguageInstance {
 function findDescendantByFieldName(node: any, fieldName: string): any | null {
   const direct = node.childForFieldName ? node.childForFieldName(fieldName) : null;
   if (direct) return direct;
+  if (fieldName === "name" && node.children) {
+    const directId = node.children.find((c: any) => c.type === "identifier" || c.type === "IDENT");
+    if (directId) return directId;
+  }
   for (const child of node.children || []) {
     const found = findDescendantByFieldName(child, fieldName);
     if (found) return found;
@@ -159,6 +163,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   private fileStructuralRevisions = new Map<string, number>();
   private hookMap = new Map<string, IndexerHook>();
   private fileSymbols = new Map<string, SymbolId[]>();
+  private fileLoaders = new Map<string, { loader: () => any; parentFQN?: string; editRanges?: any }>();
+  private fqnToUri = new Map<string, string>();
   private unifiedIndex: SymbolIndex = {
     symbols: new Map<SymbolId, SymbolEntry>(),
     byName: new Map<string, SymbolId[]>(),
@@ -239,29 +245,108 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   /**
    * Indexes a document's CST into the symbol table.
    */
-  indexDocument(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any): number {
+  indexDocument(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any, lazy = false): number {
     const fileId = this.registerFile(uri, parentFQN);
     if (editRanges && Array.isArray(editRanges)) {
       this.fileDirtyRanges.set(uri, editRanges);
     }
+    if (parentFQN) {
+      const filename = uri
+        .split("/")
+        .pop()
+        ?.replace(/\.(mo|sysml|csv|step)$/i, "");
+      if (filename && filename !== "package") {
+        this.fqnToUri.set(`${parentFQN}.${filename}`, uri);
+      } else {
+        this.fqnToUri.set(parentFQN, uri);
+      }
+    }
     if (typeof loader === "function") {
-      const rootNode = loader();
-      if (rootNode) {
-        this.indexCst(uri, rootNode, parentFQN);
+      if (lazy) {
+        this.fileLoaders.set(uri, { loader, parentFQN, editRanges });
+      } else {
+        this.fileLoaders.delete(uri);
+        const rootNode = loader();
+        if (rootNode) {
+          this.indexCst(uri, rootNode, parentFQN);
+        }
       }
     }
     return fileId;
   }
 
   /**
-   * Backwards-compatible alias for indexDocument.
+   * Backwards-compatible alias for indexDocument. Defaults to lazy loading when a loader function is supplied.
    */
   register(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any): number {
-    return this.indexDocument(uri, loader, parentFQN, editRanges);
+    return this.indexDocument(uri, loader, parentFQN, editRanges, true);
+  }
+
+  /**
+   * Evaluates the lazy loader for the given URI if it has not yet been indexed.
+   */
+  ensureIndexed(uri: string): void {
+    const entry = this.fileLoaders.get(uri);
+    if (entry) {
+      this.fileLoaders.delete(uri);
+      const rootNode = entry.loader();
+      if (rootNode) {
+        this.indexCst(uri, rootNode, entry.parentFQN);
+      }
+    }
+  }
+
+  /**
+   * Returns count of files registered with a pending lazy loader.
+   */
+  get pendingFileCount(): number {
+    return this.fileLoaders.size;
+  }
+
+  /**
+   * Progressively indexes remaining lazy-registered files in the background, yielding to the event loop.
+   */
+  async indexRemainingInBackground(
+    batchSize = 20,
+    onProgress?: (indexed: number, total: number) => void,
+  ): Promise<void> {
+    const uris = Array.from(this.fileLoaders.keys());
+    const total = uris.length;
+    let indexed = 0;
+    for (const uri of uris) {
+      this.ensureIndexed(uri);
+      indexed++;
+      if (indexed % batchSize === 0) {
+        onProgress?.(indexed, total);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
+    onProgress?.(total, total);
+  }
+
+  /**
+   * Resolves a fully qualified class name to its backing file URI, evaluating lazy loader if needed.
+   */
+  getFileUriForFQN(fqn: string): string | undefined {
+    let uri = this.fqnToUri.get(fqn);
+    if (!uri) {
+      const parts = fqn.split(".");
+      for (let i = parts.length - 1; i >= 1; i--) {
+        const prefix = parts.slice(0, i).join(".");
+        if (this.fqnToUri.has(prefix)) {
+          uri = this.fqnToUri.get(prefix);
+          break;
+        }
+      }
+    }
+    if (uri) {
+      this.ensureIndexed(uri);
+    }
+    return uri;
   }
 
   has(uri: string): boolean {
-    return this.uriToId.has(uri) || this.fileSymbols.has(uri);
+    return this.uriToId.has(uri) || this.fileSymbols.has(uri) || this.fileLoaders.has(uri);
   }
 
   private fileDirtyRanges = new Map<string, { startByte: number; endByte: number }[]>();
@@ -278,6 +363,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Re-indexes a document or marks it dirty upon edit.
    */
   reindexDocument(uri: string, loader?: () => any, editRanges?: any, _totalDelta?: number): void {
+    this.fileLoaders.delete(uri);
     if (editRanges && Array.isArray(editRanges)) {
       this.fileDirtyRanges.set(uri, editRanges);
     }
@@ -646,7 +732,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  getFileIndex(_uri: string): SymbolIndex {
+  getFileIndex(uri: string): SymbolIndex {
+    this.ensureIndexed(uri);
     return this.toSymbolIndex();
   }
 
@@ -751,6 +838,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   toSymbolIndex(): SymbolIndex {
+    if (this.fileLoaders.size > 0) {
+      const uris = Array.from(this.fileLoaders.keys());
+      for (const uri of uris) {
+        this.ensureIndexed(uri);
+      }
+    }
     return this.unifiedIndex;
   }
 

@@ -285,12 +285,22 @@ window.addEventListener("message", (event) => {
     currentData = msg.data;
     isDark = msg.isDark;
 
-    msg.data.states.forEach((state: string) => {
+    const hadNoVisible = msg.data.states.every((state: string) => hiddenVars.has(state));
+    msg.data.states.forEach((state: string, idx: number) => {
       if (!seenVars.has(state)) {
-        hiddenVars.add(state);
         seenVars.add(state);
+        if (idx < 5) {
+          hiddenVars.delete(state);
+        } else {
+          hiddenVars.add(state);
+        }
       }
     });
+    if (hadNoVisible && msg.data.states.length > 0) {
+      for (let i = 0; i < Math.min(5, msg.data.states.length); i++) {
+        hiddenVars.delete(msg.data.states[i]);
+      }
+    }
 
     placeholderEl.style.display = "none";
     containerEl.style.display = "flex";
@@ -349,6 +359,8 @@ window.addEventListener("message", (event) => {
     currentLimits = []; // Clear old verification limits
 
     draw();
+    requestAnimationFrame(() => draw());
+    setTimeout(() => draw(), 50);
   } else if (msg.type === "surrogateTrainingProgress") {
     const progressEl = document.getElementById("surrogate-progress");
     const progressBar = document.getElementById("surrogate-progress-bar");
@@ -413,12 +425,22 @@ window.addEventListener("message", (event) => {
       states: varNames,
     };
 
-    varNames.forEach((state: string) => {
+    const hadNoVisibleMC = varNames.every((state: string) => hiddenVars.has(state));
+    varNames.forEach((state: string, idx: number) => {
       if (!seenVars.has(state)) {
-        hiddenVars.add(state);
         seenVars.add(state);
+        if (idx < 5) {
+          hiddenVars.delete(state);
+        } else {
+          hiddenVars.add(state);
+        }
       }
     });
+    if (hadNoVisibleMC && varNames.length > 0) {
+      for (let i = 0; i < Math.min(5, varNames.length); i++) {
+        hiddenVars.delete(varNames[i]);
+      }
+    }
 
     placeholderEl.style.display = "none";
     containerEl.style.display = "flex";
@@ -848,7 +870,11 @@ function addLivePoint(variableKey: string, time: number, value: number): void {
     liveBuffer.variableNames.push(variableKey);
     liveBuffer.values.set(variableKey, []);
     if (!seenVars.has(variableKey)) {
-      hiddenVars.add(variableKey);
+      if (seenVars.size < 5) {
+        hiddenVars.delete(variableKey);
+      } else {
+        hiddenVars.add(variableKey);
+      }
       seenVars.add(variableKey);
     }
     // Rebuild tree
@@ -1594,6 +1620,10 @@ function formatTick(v: number): string {
   }
   // Remove trailing zeros
   return parseFloat(v.toPrecision(4)).toString();
+}
+
+if (vscodeApi) {
+  vscodeApi.postMessage({ type: "ready" });
 }
 
 export {};

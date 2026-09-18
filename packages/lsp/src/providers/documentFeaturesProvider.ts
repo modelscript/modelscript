@@ -17,7 +17,29 @@ export function registerDocumentFeaturesProvider(
   /* Document symbols — enables Outline panel and breadcrumb navigation */
   connection.onDocumentSymbol((params) => {
     try {
-      const bridge = documentLSPBridges.get(params.textDocument.uri);
+      let bridge = documentLSPBridges.get(params.textDocument.uri);
+      if (!bridge) {
+        const normalize = (u: string) => {
+          try {
+            return decodeURIComponent(u).replace(/^[a-z0-9+-]+:\/\/?/, "/");
+          } catch {
+            return u;
+          }
+        };
+        const targetNorm = normalize(params.textDocument.uri);
+        for (const [k, b] of documentLSPBridges.entries()) {
+          const kNorm = normalize(k);
+          if (
+            k === params.textDocument.uri ||
+            kNorm === targetNorm ||
+            kNorm.endsWith(targetNorm) ||
+            targetNorm.endsWith(kNorm)
+          ) {
+            bridge = b;
+            break;
+          }
+        }
+      }
       if (!bridge) {
         const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
         if (plugin) {

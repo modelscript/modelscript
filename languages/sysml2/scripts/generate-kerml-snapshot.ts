@@ -38,6 +38,8 @@ async function main() {
     return tree ? (tree.rootNode as any) : null;
   });
 
+  workspaceIndex.ensureIndexed(uri);
+
   const entries = workspaceIndex.exportFileEntries(uri);
   console.log(`[sysml2] Indexed ${entries.length} standard library symbols from KerML.sysml`);
 

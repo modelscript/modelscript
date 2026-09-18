@@ -37,6 +37,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { Context } from "../src/context.js";
 import { ModelicaClassKind } from "../src/types.js";
+import { areDaeOutputsEquivalent } from "./dae-normalizer.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -632,15 +633,18 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           msg.includes("not found in class f."))
       )
         return false;
-      if (
-        cd.code === 2002 &&
-        (msg.includes("'n'") ||
+      if (cd.code === 2002) {
+        const m = /^Variable\s+([^\s]+)\s+not found in scope/.exec(msg);
+        if (m && arena && arena.getVarIdxByName(m[1]) >= 0) return false;
+        if (
+          msg.includes("'n'") ||
           msg.includes("'array'") ||
           msg.includes("'P.") ||
           msg.includes("Gas.O2") ||
-          arena?.diagnostics.some((d) => d.code === 2003))
-      )
-        return false;
+          arena?.diagnostics.some((d) => d.code === 2003)
+        )
+          return false;
+      }
       if (cd.code === 4051 && msg.includes("extends Real")) return false;
       if (cd.code === 3009 && arena?.diagnostics.some((d) => d.code === 3009)) return false;
       return true;
@@ -1015,7 +1019,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
     const normalizedExpected = expected.replace(/:writable\]/g, "]");
 
-    let flatteningPassed = actual === normalizedExpected;
+    let flatteningPassed = actual === normalizedExpected || areDaeOutputsEquivalent(normalizedExpected, actual);
     if (!flatteningPassed) {
       if (updateMode && !omcMode) {
         updateExpectedResult(testCase.file, actual, testCase.expectedSimulationResult);

@@ -67,6 +67,50 @@ export class ValidationService {
   public collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnostic[] {
     const t0 = performance.now();
     const diagnostics: Diagnostic[] = [];
+    if (!rootNode) return diagnostics;
+
+    // 1. Native WASM GLR parser diagnostics
+    if (rootNode?.tree?.facade && typeof rootNode.tree.facade.getDiagnostics === "function") {
+      try {
+        const rootPtr = rootNode.ptr || rootNode.tree.rootPtr || 0;
+        const wasmDiags = rootNode.tree.facade.getDiagnostics(rootPtr);
+        if (Array.isArray(wasmDiags) && wasmDiags.length > 0) {
+          for (const d of wasmDiags) {
+            // Severity 1 = Error (Syntax Error).
+            // Linter warnings (severity 2 / lintId >= 1000) are handled by the semantic pipeline.
+            if (d.severity === 1 || !d.code || d.code === "ERROR") {
+              let range = d.range;
+              if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
+                range = {
+                  start: textDocument.positionAt(d.startCharOffset),
+                  end: textDocument.positionAt(d.endCharOffset),
+                };
+              }
+              if (range.start.line === range.end.line && range.start.character === range.end.character) {
+                range = {
+                  start: range.start,
+                  end: { line: range.start.line, character: range.start.character + 1 },
+                };
+              }
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range,
+                message: d.message || "Syntax error",
+                source: "modelscript",
+              });
+            }
+          }
+          if (diagnostics.length > 0) {
+            return diagnostics;
+          }
+        }
+      } catch (e) {
+        this.connection.console.error(`[collectSyntaxErrors] error calling facade.getDiagnostics: ${e}`);
+      }
+    }
+
+    // 2. Fallback: CST tree walk
+    if (typeof rootNode.walk !== "function") return diagnostics;
     const cursor = rootNode.walk();
     let didDescend = true;
 
@@ -393,7 +437,9 @@ export class ValidationService {
 
         if (oldCached && oldCached.text !== text) {
           const edit = computeTreeEdit(oldCached.text, text);
-          oldCached.tree.edit(edit as never);
+          if (typeof (oldCached.tree as any)?.edit === "function") {
+            oldCached.tree.edit(edit as never);
+          }
           tree = this.parserService.owl2Parser.parse(text, oldCached.tree as never);
         } else if (oldCached) {
           tree = oldCached.tree;
@@ -605,7 +651,9 @@ export class ValidationService {
 
         if (oldCached && oldCached.text !== text) {
           const edit = computeTreeEdit(oldCached.text, text);
-          oldCached.tree.edit(edit as never);
+          if (typeof (oldCached.tree as any)?.edit === "function") {
+            oldCached.tree.edit(edit as never);
+          }
           tree = this.parserService.sysml2Parser.parse(text, oldCached.tree as never);
         } else if (oldCached) {
           tree = oldCached.tree;
@@ -846,8 +894,14 @@ export class ValidationService {
       let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
-        oldCached.tree.edit(edit as never);
-        tree = context.parse(".mo", processedText, oldCached.tree as never);
+        if (typeof (oldCached.tree as any)?.edit === "function") {
+          oldCached.tree.edit(edit as never);
+        }
+        tree = context.parse(".mo", processedText, oldCached.tree as never, {
+          editStart: edit.startIndex,
+          editOldEnd: edit.oldEndIndex,
+          editNewEnd: edit.newEndIndex,
+        });
         // Capture edit byte ranges for incremental indexing
         editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
       } else if (oldCached) {
@@ -1085,8 +1139,16 @@ export class ValidationService {
         }
       }
       this.connection.console.info(`[perf] Step 1 (Index): ${(performance.now() - t0).toFixed(2)}ms`);
-      context.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine);
-      context.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
+      if (typeof (context as any)?.setQueryEngine === "function") {
+        context.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine);
+      } else if (context) {
+        context.queryEngine = this.workspaceManager.globalModelicaQueryEngine;
+      }
+      if (typeof (context as any)?.setWorkspaceIndex === "function") {
+        context.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
+      } else if (context) {
+        context.workspaceIndex = this.workspaceManager.globalWorkspaceIndex;
+      }
       const engine = this.workspaceManager.globalModelicaQueryEngine;
 
       const currentDoc = this.documentManager.documents.get(uri);

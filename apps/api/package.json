@@ -31,6 +31,7 @@
     "clean": "rimraf dist",
     "dev": "PORT=3000 NODE_OPTIONS='--max-old-space-size=8192 --dns-result-order=ipv4first' tsx watch src/main.ts",
     "lint": "eslint src",
+    "test": "npx tsx --test tests/*.test.ts",
     "watch": "tsc --watch"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "@modelscript/exchange": "*",
     "@modelscript/modelica": "*",
     "@modelscript/runtime": "*",
+    "@modelscript/sysml2": "*",
     "@svgdotjs/svg.js": "^3.2.5",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",

@@ -71,6 +71,8 @@ export interface FmuArchiveResult {
   archive: Uint8Array;
   /** The FMU metadata result. */
   fmuResult: FmuResult;
+  /** FMI 3.0 result if generated. */
+  fmi3Result?: any;
   /** File listing inside the archive. */
   files: string[];
 }
@@ -332,6 +334,7 @@ export function buildFmuArchive(
   const fmiVersion = options.fmiVersion ?? "both";
   const fmuResult = generateFmu(dae, options, stateVars);
   const fmi3Result = generateFmi3(dae, options, stateVars);
+  fmuResult.fmi3Result = fmi3Result;
   const id = options.modelIdentifier;
 
   const files = new Map<string, Uint8Array>();
@@ -346,6 +349,7 @@ export function buildFmuArchive(
   if (fmiVersion === "3" || fmiVersion === "both") {
     // If we only want FMI 3, we still need a modelDescription.xml at the root
     if (fmiVersion === "3") {
+      fmuResult.modelDescriptionXml = fmi3Result.modelDescriptionXml;
       files.set("modelDescription.xml", encoder.encode(fmi3Result.modelDescriptionXml));
     }
     if (fmi3Result.terminalsAndIconsXml) {
@@ -480,9 +484,13 @@ export function buildFmuArchive(
   return {
     archive,
     fmuResult,
+    fmi3Result,
     files: Array.from(files.keys()),
   };
 }
+
+/** Alias for buildFmuArchive */
+export const generateFmuArchive = buildFmuArchive;
 
 // ── ZIP file builder (pure TypeScript, no external deps beyond pako) ──
 

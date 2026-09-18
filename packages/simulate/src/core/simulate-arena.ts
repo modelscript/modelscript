@@ -916,7 +916,13 @@ export class ArenaSimulator {
             if (fnName === "sign") return `Math.sign(${arg})`;
             if (fnName === "ceil") return `Math.ceil(${arg})`;
             if (fnName === "floor") return `Math.floor(${arg})`;
-            if (fnName === "noEvent" || fnName === "/*Real*/" || fnName === "/*Integer*/" || fnName === "/*Boolean*/")
+            if (
+              fnName === "noEvent" ||
+              fnName === "homotopy" ||
+              fnName === "/*Real*/" ||
+              fnName === "/*Integer*/" ||
+              fnName === "/*Boolean*/"
+            )
               return `(${arg})`;
             return "0";
           }

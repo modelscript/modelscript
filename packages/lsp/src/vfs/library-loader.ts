@@ -521,91 +521,81 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       message: "Processing MSL classes...",
     });
 
-    ctx.sharedFs.readdir("/lib");
+    const moFiles: { fullPath: string; uri: string; parentFQN: string }[] = [];
+    let modelicaPkgUri: string | null = null;
+    let complexUri: string | null = null;
 
-    const registeredUris: string[] = [];
-    let registeredCount = 0;
-
-    const registerDirLazy = (dir: string) => {
-      try {
-        const entries = ctx.sharedFs.readdir(dir);
-        for (const entry of entries) {
-          const fullPath = ctx.sharedFs.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            registerDirLazy(fullPath);
-          } else if (entry.name.endsWith(".mo")) {
-            const uri = `modelica:/${fullPath}`;
-            let parentFQN = "";
-            const relPath = fullPath.substring(5); // strip "/lib/"
-            const parts = relPath.split("/");
-            if (parts[parts.length - 1] === "package.mo") {
-              parts.pop(); // Remove "package.mo"
-              parts.pop(); // Remove the package dir name itself
-            } else {
-              parts.pop(); // Remove "Filename.mo"
-            }
-            if (parts.length > 0) {
-              parts[0] = parts[0].split(" ")[0];
-            }
-            parentFQN = parts.join(".");
-
-            ctx.globalWorkspaceIndex.register(
-              uri,
-              () => {
-                let tree: Tree | null = null;
-                try {
-                  const text = ctx.sharedFs.read(fullPath);
-                  if (text) {
-                    tree = ctx.sharedContext.parse(".mo", text);
-                  }
-                } catch {
-                  /* ignore */
-                }
-                if (tree) {
-                  // WorkspaceIndex uses the node synchronously.
-                  // Schedule deletion to avoid WASM memory leaks.
-                  setTimeout(() => {
-                    try {
-                      (tree as any).delete?.();
-                    } catch {
-                      /* ignore */
-                    }
-                  }, 0);
-                }
-                return (tree?.rootNode ?? null) as any;
-              },
-              parentFQN,
-            );
-            registeredUris.push(uri);
-            registeredCount++;
-          }
+    for (const name of Object.keys(fileEntries)) {
+      if (name.endsWith(".mo")) {
+        const fullPath = `/lib/${name}`;
+        const uri = `modelica:/${fullPath}`;
+        let parentFQN = "";
+        const parts = name.split("/");
+        if (parts[parts.length - 1] === "package.mo") {
+          parts.pop(); // Remove "package.mo"
+          parts.pop(); // Remove the package dir name itself
+        } else {
+          parts.pop(); // Remove "Filename.mo"
         }
-      } catch {
-        /* ignore */
-      }
-    };
-    registerDirLazy("/lib");
+        if (parts.length > 0) {
+          parts[0] = parts[0].split(" ")[0]; // "Modelica 4.1.0" -> "Modelica"
+        }
+        parentFQN = parts.join(".");
+        moFiles.push({ fullPath, uri, parentFQN });
 
-    let indexedCount = 0;
-    for (let i = 0; i < registeredUris.length; i++) {
-      try {
-        ctx.globalWorkspaceIndex.getFileIndex(registeredUris[i]);
-        indexedCount++;
-      } catch {
-        /* ignore */
-      }
-      if (i % 5 === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        ctx.connectionState.sendNotification("modelscript/status", {
-          state: "loading",
-          message: `Indexing MSL classes (${indexedCount}/${registeredUris.length})...`,
-        });
+        if (name === "Modelica 4.1.0/package.mo" || name === "Modelica/package.mo") {
+          modelicaPkgUri = uri;
+        } else if (name === "Complex.mo") {
+          complexUri = uri;
+        }
       }
     }
 
-    ctx.logger.log(
-      `[polyglot] Registered ${registeredCount} MSL files, indexed ${indexedCount} in globalWorkspaceIndex`,
-    );
+    for (const file of moFiles) {
+      ctx.globalWorkspaceIndex.register(
+        file.uri,
+        () => {
+          let tree: Tree | null = null;
+          try {
+            const text = ctx.sharedFs.read(file.fullPath);
+            if (text) {
+              tree = ctx.sharedContext.parse(".mo", text);
+            }
+          } catch {
+            /* ignore */
+          }
+          if (tree) {
+            setTimeout(() => {
+              try {
+                (tree as any).delete?.();
+              } catch {
+                /* ignore */
+              }
+            }, 0);
+          }
+          return (tree?.rootNode ?? null) as any;
+        },
+        file.parentFQN,
+      );
+    }
+
+    // Eagerly index root packages so "Modelica" and "Complex" exist in byName immediately
+    if (modelicaPkgUri) {
+      try {
+        ctx.globalWorkspaceIndex.ensureIndexed(modelicaPkgUri);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (complexUri) {
+      try {
+        ctx.globalWorkspaceIndex.ensureIndexed(complexUri);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    ctx.logger.log(`[polyglot] Registered ${moFiles.length} MSL files in globalWorkspaceIndex`);
   } catch (e) {
     ctx.logger.error("Failed to load MSL zip:", e);
   }
@@ -693,21 +683,8 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
       fileCount++;
     }
 
-    let indexedCount = 0;
-    for (let i = 0; i < registeredUris.length; i++) {
-      try {
-        ctx.sysml2WorkspaceIndex.getFileIndex(registeredUris[i]);
-        indexedCount++;
-      } catch {
-        /* ignore */
-      }
-      if (i % 50 === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    }
-
     ctx.logger.log(
-      `SysML2 Standard Library loaded: ${fileCount} files registered, ${indexedCount} indexed in sysml2WorkspaceIndex.`,
+      `SysML2 Standard Library loaded: ${fileCount} files registered and indexed in sysml2WorkspaceIndex.`,
     );
   } catch (e) {
     ctx.logger.error("Failed to load SysML2 standard library:", e);

@@ -85,6 +85,8 @@ export interface SspSystem {
   description?: string | undefined;
   /** SSP version. */
   version: string;
+  /** Top-level boundary connectors on the system. */
+  connectors?: SspConnector[] | undefined;
   /** Components in the system. */
   components: SspComponent[];
   /** Connections between components. */

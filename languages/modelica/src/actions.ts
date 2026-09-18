@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { ActionExecutionContext } from "@modelscript/dsl";
-import { printArenaDAE } from "@modelscript/runtime";
+import { printArenaDAE, Variability, VarType } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
 import { ModelicaFlattener } from "./flattener.js";
 
@@ -36,6 +36,41 @@ function resolveClassId(queryEngine: any, queryDB: any, className: string): numb
   return firstId;
 }
 
+function ensureClassIndexed(
+  context: ActionExecutionContext,
+  className: string,
+  queryEngine: any,
+): { firstId: number | undefined; queryDB: any } {
+  let queryDB = queryEngine.toQueryDB();
+  let firstId = resolveClassId(queryEngine, queryDB, className);
+  if (
+    firstId === undefined &&
+    context.uri &&
+    context.documentText &&
+    (context.workspaceManager as any)?.globalWorkspaceIndex
+  ) {
+    try {
+      const ws = (context.workspaceManager as any).globalWorkspaceIndex;
+      const sharedCtx = (globalThis as any).sharedContext;
+      if (sharedCtx) {
+        const tree = sharedCtx.parse(".mo", context.documentText);
+        if (tree) {
+          ws.indexDocument(context.uri, () => tree.rootNode);
+          const unified = ws.toUnified();
+          if (typeof queryEngine.updateIndex === "function") {
+            queryEngine.updateIndex(unified);
+            queryDB = queryEngine.toQueryDB();
+            firstId = resolveClassId(queryEngine, queryDB, className);
+          }
+        }
+      }
+    } catch {
+      /* ignore fallback indexing error */
+    }
+  }
+  return { firstId, queryDB };
+}
+
 /**
  * Host-side execution handlers for Modelica actions.
  * Decoupled from the declarative language syntax grammar.
@@ -59,13 +94,12 @@ export const modelicaActionHandlers: Record<
       throw new Error("QueryEngine not available in execution context.");
     }
 
-    const queryDB = queryEngine.toQueryDB();
-    const flattener = new ModelicaFlattener(queryDB);
-    const firstId = resolveClassId(queryEngine, queryDB, className);
+    const { firstId, queryDB } = ensureClassIndexed(context, className, queryEngine);
     if (firstId === undefined) {
       throw new Error(`Class '${className}' not found in index.`);
     }
 
+    const flattener = new ModelicaFlattener(queryDB);
     context.notifyProgress?.(`Flattening ${className}...`, 50);
     const arena = flattener.flatten(firstId);
     const text = printArenaDAE(arena);
@@ -91,13 +125,12 @@ export const modelicaActionHandlers: Record<
       throw new Error("QueryEngine not available in execution context.");
     }
 
-    const queryDB = queryEngine.toQueryDB();
-    const flattener = new ModelicaFlattener(queryDB);
-    const firstId = resolveClassId(queryEngine, queryDB, className);
+    const { firstId, queryDB } = ensureClassIndexed(context, className, queryEngine);
     if (firstId === undefined) {
       throw new Error(`Class '${className}' not found in index.`);
     }
 
+    const flattener = new ModelicaFlattener(queryDB);
     context.notifyProgress?.(`Flattening ${className}...`, 30);
     const arena = flattener.flatten(firstId);
 
@@ -109,30 +142,63 @@ export const modelicaActionHandlers: Record<
     if (inputs?.stopTime !== undefined) simOpts.stopTime = inputs.stopTime;
     if (inputs?.interval !== undefined) simOpts.step = inputs.interval;
 
+    if (inputs?.parameterOverrides) {
+      simOpts.parameterOverrides = new Map(Object.entries(inputs.parameterOverrides));
+    }
+
     const result = simulateArena(arena as any, simOpts);
     context.notifyProgress?.("Simulation complete", 100);
+
+    const tArr = Array.from(result.t);
+    const yArr = (result.y || []).map((row: any) => (Array.isArray(row) ? row : Array.from(row)));
+
+    function extractArenaParameters(ar: any): any[] {
+      const infos: any[] = [];
+      for (let i = 0; i < ar.varCount; i++) {
+        if (ar.isVarRemoved(i)) continue;
+        if (ar.getVarVariability(i) !== Variability.Parameter) continue;
+        const name = ar.getVarName(i);
+        const startVal = ar.getVarStartValue(i);
+        const varType = ar.getVarType(i);
+        let type: "real" | "integer" | "boolean" | "enumeration" = "real";
+        let step = 0.1;
+        if (varType === VarType.Boolean) {
+          type = "boolean";
+          step = 1;
+        } else if (varType === VarType.Integer) {
+          type = "integer";
+          step = 1;
+        }
+        infos.push({ name, type, defaultValue: startVal, step });
+      }
+      return infos;
+    }
 
     if ((inputs?.format ?? "json") === "csv") {
       const states = result.states || [];
       const lines = [`time,${states.join(",")}`];
-      for (let i = 0; i < result.t.length; i++) {
-        const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
+      for (let i = 0; i < tArr.length; i++) {
+        const values = [tArr[i], ...states.map((_: string, vi: number) => yArr[i]?.[vi] ?? 0)];
         lines.push(values.join(","));
       }
       return {
         format: "csv",
         text: lines.join("\n"),
-        t: result.t,
+        t: tArr,
         states,
+        parameters: extractArenaParameters(arena),
+        experiment: (arena as any).experiment,
       };
     }
 
     return {
       name: className,
-      t: result.t,
-      y: result.y,
-      states: result.states,
-      text: `Simulation of ${className} completed: ${result.t.length} steps, states: [${(result.states || []).join(", ")}]`,
+      t: tArr,
+      y: yArr,
+      states: result.states || [],
+      parameters: extractArenaParameters(arena),
+      experiment: (arena as any).experiment,
+      text: `Simulation of ${className} completed: ${tArr.length} steps, states: [${(result.states || []).join(", ")}]`,
     };
   },
 

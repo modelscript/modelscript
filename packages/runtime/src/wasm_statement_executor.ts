@@ -6,6 +6,7 @@
  * using the DAEBuilder AST and dense environment vectors.
  */
 
+import { evaluateMslCFunction, isMslCFunction } from "./msl_ffi.js";
 import type { QueryDB, SymbolId } from "./runtime.js";
 import { DAEBuilder, ExprKind, StmtKind, VarType } from "./wasm_dae.js";
 import { evaluateArenaExpression, evaluateArenaRuntime, type ArenaValue } from "./wasm_evaluator.js";
@@ -1403,6 +1404,11 @@ export function evaluateArenaFunctionCall(
   db?: QueryDB,
   scopeId?: SymbolId,
 ): ArenaValue | null {
+  const funcName = dae.interner.resolve(funcNameId) ?? "";
+  if (isMslCFunction(funcName)) {
+    return evaluateMslCFunction(funcName, argValues);
+  }
+
   const funcArena = dae.functions.get(funcNameId);
   if (!funcArena) return null;
 

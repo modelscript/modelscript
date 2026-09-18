@@ -10,6 +10,7 @@
 
 import { deflateRawSync } from "zlib";
 import type { CoSimSession } from "../cosim/session.js";
+import type { SspParameterValue, SspSystem } from "./types.js";
 
 /** Options for SSP export. */
 export interface SspExportOptions {
@@ -20,6 +21,45 @@ export interface SspExportOptions {
 }
 
 /**
+ * Export an SspSystem to an SSP archive buffer directly from the system model.
+ *
+ * @param system       The SspSystem specification
+ * @param fmuArchives  Map of participant ID or relative path → raw FMU archive bytes
+ * @param options      Optional export settings
+ * @returns Buffer containing the .ssp ZIP archive
+ */
+export function exportSspFromSystem(
+  system: SspSystem,
+  fmuArchives: Map<string, Buffer | Uint8Array>,
+  options?: SspExportOptions,
+): Buffer {
+  if (options?.version) system.version = options.version;
+  if (options?.description) system.description = options.description;
+
+  const ssdXml = generateSsdFromSystem(system);
+  const files = new Map<string, Buffer | Uint8Array>();
+  files.set("SystemStructure.ssd", Buffer.from(ssdXml, "utf-8"));
+
+  // Check if any parameter bindings reference external .ssv files and have inline values
+  if (system.parameterBindings) {
+    for (const pb of system.parameterBindings) {
+      if (pb.source && pb.values && pb.values.length > 0) {
+        const ssvXml = generateSsv(pb.values, pb.prefix ?? "parameters");
+        files.set(pb.source, Buffer.from(ssvXml, "utf-8"));
+      }
+    }
+  }
+
+  // Add FMU resources
+  for (const [name, fmuData] of fmuArchives) {
+    const path = name.startsWith("resources/") ? name : `resources/${name.endsWith(".fmu") ? name : `${name}.fmu`}`;
+    files.set(path, fmuData);
+  }
+
+  return buildZip(files);
+}
+
+/**
  * Export a CoSimSession to an SSP archive buffer.
  *
  * @param session      The session to export
@@ -27,7 +67,11 @@ export interface SspExportOptions {
  * @param options      Optional export settings
  * @returns Buffer containing the .ssp ZIP archive
  */
-export function exportSsp(session: CoSimSession, fmuArchives: Map<string, Buffer>, options?: SspExportOptions): Buffer {
+export function exportSsp(
+  session: CoSimSession,
+  fmuArchives: Map<string, Buffer | Uint8Array>,
+  options?: SspExportOptions,
+): Buffer {
   const version = options?.version ?? "1.0";
   const description = options?.description ?? "";
 
@@ -35,7 +79,7 @@ export function exportSsp(session: CoSimSession, fmuArchives: Map<string, Buffer
   const ssdXml = generateSsd(session, version, description);
 
   // Build the ZIP archive
-  const files = new Map<string, Buffer>();
+  const files = new Map<string, Buffer | Uint8Array>();
   files.set("SystemStructure.ssd", Buffer.from(ssdXml, "utf-8"));
 
   // Add FMU resources
@@ -126,6 +170,129 @@ function generateSsd(session: CoSimSession, version: string, description: string
   return lines.join("\n") + "\n";
 }
 
+/**
+ * Generate SystemStructure.ssd XML string directly from an SspSystem specification.
+ */
+export function generateSsdFromSystem(system: SspSystem): string {
+  const lines: string[] = [];
+  const version = system.version || "1.0";
+  const description = system.description ? ` description="${escapeXml(system.description)}"` : "";
+
+  lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  lines.push(`<ssd:SystemStructureDescription`);
+  lines.push(`  xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"`);
+  lines.push(`  xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"`);
+  lines.push(`  xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"`);
+  lines.push(`  version="${escapeXml(version)}"`);
+  lines.push(`  name="${escapeXml(system.name)}"${description}>`);
+
+  lines.push(`  <ssd:System name="${escapeXml(system.name)}">`);
+
+  // System-level boundary connectors
+  if (system.connectors && system.connectors.length > 0) {
+    lines.push(`    <ssd:Connectors>`);
+    for (const conn of system.connectors) {
+      lines.push(`      <ssd:Connector name="${escapeXml(conn.name)}" kind="${escapeXml(conn.kind)}">`);
+      lines.push(`        <ssc:${conn.type ?? "Real"} />`);
+      lines.push(`      </ssd:Connector>`);
+    }
+    lines.push(`    </ssd:Connectors>`);
+  }
+
+  // Elements (components)
+  lines.push(`    <ssd:Elements>`);
+  for (const comp of system.components) {
+    const compType = comp.type ?? "application/x-fmu-sharedlibrary";
+    lines.push(
+      `      <ssd:Component name="${escapeXml(comp.name)}" type="${escapeXml(compType)}" source="${escapeXml(comp.source)}">`,
+    );
+
+    if (comp.connectors && comp.connectors.length > 0) {
+      lines.push(`        <ssd:Connectors>`);
+      for (const conn of comp.connectors) {
+        lines.push(`          <ssd:Connector name="${escapeXml(conn.name)}" kind="${escapeXml(conn.kind)}">`);
+        lines.push(`            <ssc:${conn.type ?? "Real"} />`);
+        lines.push(`          </ssd:Connector>`);
+      }
+      lines.push(`        </ssd:Connectors>`);
+    }
+
+    lines.push(`      </ssd:Component>`);
+  }
+  lines.push(`    </ssd:Elements>`);
+
+  // Connections
+  if (system.connections && system.connections.length > 0) {
+    lines.push(`    <ssd:Connections>`);
+    for (const c of system.connections) {
+      lines.push(
+        `      <ssd:Connection` +
+          ` startElement="${escapeXml(c.startElement)}"` +
+          ` startConnector="${escapeXml(c.startConnector)}"` +
+          ` endElement="${escapeXml(c.endElement)}"` +
+          ` endConnector="${escapeXml(c.endConnector)}" />`,
+      );
+    }
+    lines.push(`    </ssd:Connections>`);
+  }
+
+  // Parameter bindings
+  if (system.parameterBindings && system.parameterBindings.length > 0) {
+    lines.push(`    <ssd:ParameterBindings>`);
+    for (const pb of system.parameterBindings) {
+      const prefixAttr = pb.prefix ? ` prefix="${escapeXml(pb.prefix)}"` : "";
+      if (pb.source) {
+        lines.push(`      <ssd:ParameterBinding${prefixAttr} source="${escapeXml(pb.source)}" />`);
+      } else if (pb.values && pb.values.length > 0) {
+        lines.push(`      <ssd:ParameterBinding${prefixAttr}>`);
+        lines.push(`        <ssd:ParameterValues>`);
+        for (const pv of pb.values) {
+          lines.push(`          <ssv:Parameter name="${escapeXml(pv.name)}">`);
+          lines.push(`            <ssv:${pv.type} value="${pv.value}" />`);
+          lines.push(`          </ssv:Parameter>`);
+        }
+        lines.push(`        </ssd:ParameterValues>`);
+        lines.push(`      </ssd:ParameterBinding>`);
+      }
+    }
+    lines.push(`    </ssd:ParameterBindings>`);
+  }
+
+  lines.push(`  </ssd:System>`);
+
+  // Default experiment
+  if (system.defaultExperiment) {
+    const start = system.defaultExperiment.startTime ?? 0;
+    const stop = system.defaultExperiment.stopTime ?? 1;
+    lines.push(`  <ssd:DefaultExperiment startTime="${start}" stopTime="${stop}" />`);
+  }
+
+  lines.push(`</ssd:SystemStructureDescription>`);
+  return lines.join("\n") + "\n";
+}
+
+/**
+ * Generate SSV (System Structure Parameter Values) XML string from parameter values.
+ */
+export function generateSsv(parameters: SspParameterValue[], name = "parameters"): string {
+  const lines: string[] = [];
+  lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  lines.push(`<ssv:ParameterSet`);
+  lines.push(`  xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"`);
+  lines.push(`  xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"`);
+  lines.push(`  version="1.0"`);
+  lines.push(`  name="${escapeXml(name)}">`);
+  lines.push(`  <ssv:Parameters>`);
+  for (const p of parameters) {
+    lines.push(`    <ssv:Parameter name="${escapeXml(p.name)}">`);
+    lines.push(`      <ssv:${p.type} value="${p.value}" />`);
+    lines.push(`    </ssv:Parameter>`);
+  }
+  lines.push(`  </ssv:Parameters>`);
+  lines.push(`</ssv:ParameterSet>`);
+  return lines.join("\n") + "\n";
+}
+
 // ── ZIP builder ─────────────────────────────────────────────────────
 
 /**
@@ -134,12 +301,13 @@ function generateSsd(session: CoSimSession, version: string, description: string
  * Minimal ZIP builder generating DEFLATED entries with a proper central
  * directory. Compatible with standard ZIP tools.
  */
-function buildZip(files: Map<string, Buffer>): Buffer {
+function buildZip(files: Map<string, Buffer | Uint8Array>): Buffer {
   const localHeaders: Buffer[] = [];
   const centralEntries: Buffer[] = [];
   let offset = 0;
 
-  for (const [name, data] of files) {
+  for (const [name, rawData] of files) {
+    const data = Buffer.isBuffer(rawData) ? rawData : Buffer.from(rawData);
     const nameBuffer = Buffer.from(name, "utf-8");
     const compressed = deflateRawSync(data);
     const crc = crc32(data);

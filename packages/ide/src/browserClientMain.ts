@@ -1059,6 +1059,7 @@ END-ISO-10303-21;`;
               y,
             },
             editor.document.uri.toString(),
+            client,
           );
           outputChannel.appendLine("FMU (JS) Simulation complete.");
         } catch (e) {
@@ -1077,31 +1078,50 @@ END-ISO-10303-21;`;
       if (args && typeof args === "object") {
         if ("scheme" in args && "path" in args) {
           uri = args.toString();
+        } else if (typeof args.toString === "function" && args.scheme) {
+          uri = args.toString();
         } else {
           inputs = args;
         }
       }
+      if (!uri && editor?.document) {
+        uri = editor.document.uri.toString();
+      }
       try {
-        const res = await client.sendRequest<any>("modelscript/executeAction", {
-          actionId: "simulate",
-          languageId: "modelica",
-          uri,
-          inputs,
-        });
-        if (res?.t && res?.y) {
-          SimulationPanel.createOrShowWithData(
-            context.extensionUri,
-            {
-              t: res.t,
-              states: res.states || [],
-              y: res.y,
-            },
-            uri || "",
-          );
-        } else if (res?.text) {
-          outputChannel.appendLine(res.text);
-          outputChannel.show(true);
-        }
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Running simulation...",
+            cancellable: false,
+          },
+          async () => {
+            const res = await client.sendRequest<any>("modelscript/executeAction", {
+              actionId: "simulate",
+              languageId: "modelica",
+              uri,
+              inputs,
+            });
+            if (res?.t && res?.y) {
+              const tArr = Array.isArray(res.t) ? res.t : Object.values(res.t);
+              const yArr = Array.isArray(res.y) ? res.y : Object.values(res.y);
+              SimulationPanel.createOrShowWithData(
+                context.extensionUri,
+                {
+                  t: tArr,
+                  states: res.states || [],
+                  y: yArr,
+                  parameters: res.parameters,
+                  experiment: res.experiment,
+                },
+                uri || "",
+                client,
+              );
+            } else if (res?.text) {
+              outputChannel.appendLine(res.text);
+              outputChannel.show(true);
+            }
+          },
+        );
       } catch (e: any) {
         vscode.window.showErrorMessage(`Simulation failed: ${e?.message ?? e}`);
       }

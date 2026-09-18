@@ -267,13 +267,6 @@ export function registerClassQueryEndpoints(context: LspContext) {
       try {
         // Ensure the full index is available before flattening
         if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
-          context.connection.sendNotification("modelscript/status", {
-            state: "loading",
-            message: "Indexing dependencies for flattening...",
-          });
-          await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
-          context.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-
           const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
           injectPredefinedTypes(fullIndex);
           const engine = params.uri?.endsWith(".sysml")
