@@ -10,13 +10,22 @@ import { join, resolve } from "path";
 
 const __dirname = import.meta.dirname;
 const PORT = parseInt(process.env.PORT || "3003", 10);
-const HOST = process.env.HOST || "localhost";
+const HOST = process.env.HOST || "0.0.0.0";
 
 // Paths
-const VSCODE_WEB_DIR = resolve(__dirname, "..", "vscode-web");
-const MODELSCRIPT_EXT_DIR = resolve(__dirname, "..", "..", "..", "extensions", "vscode");
-const GITHUB_FS_EXT_DIR = resolve(__dirname, "..", "github-fs");
-const VIEWS_DIR = resolve(__dirname, "views");
+const APP_ROOT = existsSync(resolve(__dirname, "package.json")) ? __dirname : resolve(__dirname, "..");
+const VSCODE_WEB_DIR = resolve(APP_ROOT, "vscode-web");
+const MODELSCRIPT_EXT_DIR = resolve(APP_ROOT, "dist", "extension");
+const GITHUB_FS_EXT_DIR = resolve(APP_ROOT, "github-fs");
+const VIEWS_DIR = existsSync(resolve(APP_ROOT, "src", "views"))
+  ? resolve(APP_ROOT, "src", "views")
+  : resolve(APP_ROOT, "views");
+const TEST_WEB_DIR =
+  [
+    resolve(APP_ROOT, "..", "..", "node_modules", "@vscode", "test-web"),
+    resolve(APP_ROOT, "node_modules", "@vscode", "test-web"),
+    resolve(__dirname, "..", "..", "..", "node_modules", "@vscode", "test-web"),
+  ].find(existsSync) || resolve(APP_ROOT, "..", "..", "node_modules", "@vscode", "test-web");
 
 // ── Validate prerequisites ──
 
@@ -25,19 +34,22 @@ if (!existsSync(VSCODE_WEB_DIR)) {
   process.exit(1);
 }
 
+if (!existsSync(MODELSCRIPT_EXT_DIR)) {
+  console.error(`ModelScript extension not found at ${MODELSCRIPT_EXT_DIR}. Run: npm run build-extension`);
+  process.exit(1);
+}
+
 // ── Read and cache the workbench template ──
 
 function getWorkbenchTemplate(): string {
-  const testWebDir = resolve(__dirname, "..", "..", "..", "node_modules", "@vscode", "test-web");
-
   // Prefer ESM template (VS Code >= 1.112)
-  const esmPath = join(testWebDir, "views", "workbench-esm.html");
+  const esmPath = join(TEST_WEB_DIR, "views", "workbench-esm.html");
   if (existsSync(esmPath)) {
     return readFileSync(esmPath, "utf-8");
   }
 
   // Fallback to AMD template
-  const amdPath = join(testWebDir, "views", "workbench.html");
+  const amdPath = join(TEST_WEB_DIR, "views", "workbench.html");
   if (existsSync(amdPath)) {
     return readFileSync(amdPath, "utf-8");
   }
@@ -75,13 +87,15 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   // No UUID for webview content since we are same-origin
   productConfiguration.webviewContentExternalBaseUrlTemplate = `${protocol}://${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`;
 
+  const extList = [
+    { scheme: protocol, authority: host, path: "/static/devextensions" },
+    { scheme: protocol, authority: host, path: "/static/extensions/github-fs" },
+  ];
+
   const config: Record<string, unknown> = {
-    additionalBuiltinExtensions: [],
+    additionalBuiltinExtensions: extList,
     developmentOptions: {
-      extensions: [
-        { scheme: protocol, authority: host, path: "/static/devextensions" },
-        { scheme: protocol, authority: host, path: "/static/extensions/github-fs" },
-      ],
+      extensions: extList,
     },
     productConfiguration,
   };
@@ -93,8 +107,7 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   const template = getWorkbenchTemplate();
 
   // main.js lives inside @vscode/test-web, not in the downloaded build
-  const testWebDir = resolve(__dirname, "..", "..", "..", "node_modules", "@vscode", "test-web");
-  const esmMainPath = join(testWebDir, "out", "browser", "esm", "main.js");
+  const esmMainPath = join(TEST_WEB_DIR, "out", "browser", "esm", "main.js");
   let mainScript: string;
 
   if (existsSync(esmMainPath)) {
@@ -112,7 +125,7 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
       case "WORKBENCH_WEB_BASE_URL":
         return baseUrl;
       case "WORKBENCH_BUILTIN_EXTENSIONS":
-        return escapeJSON([]);
+        return escapeJSON(extList);
       case "WORKBENCH_MAIN":
         return mainScript;
       default:
@@ -132,11 +145,18 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   if (!el) return;
   var config = JSON.parse(el.getAttribute('data-settings'));
   
-  // Patch extensions to use the current host (handles UUID subdomains)
-  if (config.developmentOptions && config.developmentOptions.extensions) {
-    config.developmentOptions.extensions.forEach(function(ext) {
-       ext.authority = location.host;
-    });
+  var scheme = location.protocol.replace(':', '');
+  var host = location.host;
+  var extensions = [
+    { scheme: scheme, authority: host, path: '/static/devextensions' },
+    { scheme: scheme, authority: host, path: '/static/extensions/github-fs' }
+  ];
+  config.additionalBuiltinExtensions = extensions;
+  config.developmentOptions = { extensions: extensions };
+  
+  var builtinEl = document.getElementById('vscode-workbench-builtin-extensions');
+  if (builtinEl) {
+    builtinEl.setAttribute('data-settings', JSON.stringify(extensions));
   }
   
   var hash = location.hash.slice(1);
@@ -194,6 +214,13 @@ app.use((req, res, next) => {
   } else if (coi === "3" || coi === "" || isWorkerOrStatic) {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
     res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+  }
+  next();
+});
+
+app.use((req, _res, next) => {
+  if (!req.url.startsWith("/vscode-static/out/vs/")) {
+    console.log(`[HTTP] ${req.method} ${req.url}`);
   }
   next();
 });

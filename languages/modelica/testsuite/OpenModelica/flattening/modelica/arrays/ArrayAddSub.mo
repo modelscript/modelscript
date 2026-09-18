@@ -25,7 +25,8 @@ end AddSub;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/arrays/ArrayAddSub.mo:9:3-9:28:writable] Error: Cannot resolve type of expression {1, 2, 3} + 1. The operands have types Integer[3], Integer in component <NO COMPONENT>.
+// [OpenModelica/flattening/modelica/arrays/ArrayAddSub.mo:9:15-9:28:writable] Error: Cannot resolve type of expression {1, 2, 3} + 1. The operands have types Integer[3], Integer in component <NO COMPONENT>.
+// [OpenModelica/flattening/modelica/arrays/ArrayAddSub.mo:10:15-10:33:writable] Error: Cannot resolve type of expression {1, 2, 3} + {1, 2}. The operands have types Integer[3], Integer[2] in component <NO COMPONENT>.
 // Error: Error occurred while flattening model AddSub
 //
 // Execution failed!

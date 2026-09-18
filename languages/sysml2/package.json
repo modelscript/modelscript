@@ -43,6 +43,10 @@
       "types": "./dist/src/diagram/*.d.ts",
       "default": "./dist/src/diagram/*.js"
     },
+    "./parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    },
     "./parser.wasm": "./dist/parser.wasm",
     "./dist/parser.wasm": "./dist/parser.wasm"
   },
@@ -54,7 +58,8 @@
   ],
   "scripts": {
     "build": "node build.js && tsc",
-    "clean": "rimraf dist *.wasm"
+    "clean": "rimraf dist *.wasm",
+    "test": "npx tsx --test tests/*.test.ts && npx tsx tests/test-imports-and-stdlib.ts && npx tsx tests/test-reasoner-multiplicity-disjoint.ts"
   },
   "dependencies": {
     "@modelscript/diagram": "*",

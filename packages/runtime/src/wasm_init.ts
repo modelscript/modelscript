@@ -21,7 +21,8 @@ import {
   differentiateArenaExpressionWrt,
 } from "./wasm_dae.js";
 import { evaluateArenaRuntime } from "./wasm_evaluator.js";
-import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "./wasm_tape.js";
+import { type DomainBox, Interval, solveSBB } from "./wasm_interval.js";
+import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "./wasm_tape.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public Types: Initialization BLT
@@ -434,6 +435,14 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
 
   // 7. Convert SCCs to init blocks
   const blocks: InitBlock[] = [];
+  const solvedVars = new Set<string>();
+
+  const hasUnsolvedDeps = (deps: Set<string>, exclude: string): boolean => {
+    for (const d of deps) {
+      if (d !== exclude && !solvedVars.has(d)) return true;
+    }
+    return false;
+  };
 
   for (const scc of sccs) {
     if (scc.length === 1) {
@@ -448,14 +457,18 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
       const derLhs = extractDerName(eq.lhs, dae);
       const derRhs = extractDerName(eq.rhs, dae);
 
-      if (lhsName === varName && !depsExcluding(deps, varName)) {
+      if (lhsName === varName && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.rhs });
-      } else if (rhsName === varName && !depsExcluding(deps, varName)) {
+        solvedVars.add(varName);
+      } else if (rhsName === varName && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.lhs });
-      } else if (derLhs && `der(${derLhs})` === varName && !depsExcluding(deps, varName)) {
+        solvedVars.add(varName);
+      } else if (derLhs && `der(${derLhs})` === varName && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.rhs });
-      } else if (derRhs && `der(${derRhs})` === varName && !depsExcluding(deps, varName)) {
+        solvedVars.add(varName);
+      } else if (derRhs && `der(${derRhs})` === varName && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.lhs });
+        solvedVars.add(varName);
       } else {
         blocks.push({
           type: "implicit",
@@ -463,6 +476,7 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
           equations: [{ lhs: eq.lhs, rhs: eq.rhs }],
           hasDiscreteVars: discreteVarNames.has(varName),
         });
+        solvedVars.add(varName);
       }
     } else {
       const loopEqs: { lhs: number; rhs: number }[] = [];
@@ -474,6 +488,7 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
           loopEqs.push({ lhs: eq.lhs, rhs: eq.rhs });
         }
         if (discreteVarNames.has(v)) hasDiscrete = true;
+        solvedVars.add(v);
       }
       blocks.push({
         type: "implicit",
@@ -680,6 +695,325 @@ function collectExprNameIds(arena: DAEBuilder, exprId: number, nameIds: Set<numb
  * @param initialValues A Float64Array populated with start values and parameters.
  * @returns Solver result with computed initial values.
  */
+function containsHomotopyCall(arena: DAEBuilder, exprId: number): boolean {
+  if (exprId < 0) return false;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.Call) {
+    const nameId = arena.getExprData1(exprId);
+    if (arena.interner.resolve(nameId) === "homotopy") return true;
+    const firstArgId = arena.getExprLeft(exprId);
+    const argCount = arena.getExprRight(exprId);
+    for (let i = 0; i < argCount; i++) {
+      if (containsHomotopyCall(arena, firstArgId + i)) return true;
+    }
+    return false;
+  }
+  if (kind === ExprKind.Binary) {
+    return (
+      containsHomotopyCall(arena, arena.getExprLeft(exprId)) || containsHomotopyCall(arena, arena.getExprRight(exprId))
+    );
+  }
+  if (kind === ExprKind.Negate || kind === ExprKind.Unary || kind === ExprKind.Der) {
+    return containsHomotopyCall(arena, arena.getExprLeft(exprId));
+  }
+  if (kind === ExprKind.IfElse) {
+    return (
+      containsHomotopyCall(arena, arena.getExprData1(exprId)) ||
+      containsHomotopyCall(arena, arena.getExprLeft(exprId)) ||
+      containsHomotopyCall(arena, arena.getExprRight(exprId))
+    );
+  }
+  return false;
+}
+
+function runOperatorHomotopy(
+  arena: DAEBuilder,
+  result: ArenaInitSolverResult,
+  residualExprIds: number[],
+  jacobianExprIds: (number | -1)[][],
+  sparsityPattern: Set<number>[],
+  unknownList: number[],
+  nSolve: number,
+  tol: number,
+): boolean {
+  let lambda = 0.0;
+  let lambdaStep = 0.1;
+  const maxTotalIter = 100;
+  let totalIter = 0;
+
+  try {
+    arena.homotopyLambda = 0.0;
+    while (lambda < 1.0 && totalIter < maxTotalIter) {
+      const targetLambda = Math.min(lambda + lambdaStep, 1.0);
+      arena.homotopyLambda = targetLambda;
+
+      let convergedAtLambda = false;
+      const maxNewtonIter = 15;
+
+      for (let iter = 0; iter < maxNewtonIter && totalIter < maxTotalIter; iter++) {
+        totalIter++;
+        result.iterations++;
+
+        const R = new Array(nSolve).fill(0) as number[];
+        for (let i = 0; i < nSolve; i++) {
+          const exprId = residualExprIds[i] ?? -1;
+          if (exprId !== -1) {
+            R[i] = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
+          }
+        }
+
+        let norm = 0;
+        for (let i = 0; i < nSolve; i++) norm += Math.abs(R[i] ?? 0);
+        result.residualNorm = norm;
+
+        if (norm < tol) {
+          convergedAtLambda = true;
+          break;
+        }
+
+        const J: number[][] = [];
+        for (let i = 0; i < nSolve; i++) {
+          const row = new Array(nSolve).fill(0) as number[];
+          const pattern = sparsityPattern[i] as Set<number>;
+          const jRow = jacobianExprIds[i];
+          if (jRow) {
+            for (const j of pattern) {
+              const jExprId = jRow[j] ?? -1;
+              if (jExprId !== -1) {
+                row[j] = evaluateArenaRuntime(arena, jExprId, result.valuesByStringId);
+              }
+            }
+          }
+          J.push(row);
+        }
+
+        const negR = R.map((r) => -r);
+        const dz = solveLU(J, negR, nSolve);
+        for (let i = 0; i < nSolve; i++) {
+          const zj = unknownList[i] ?? -1;
+          if (zj !== -1) {
+            result.valuesByStringId[zj] = (result.valuesByStringId[zj] ?? 0) + 0.8 * (dz[i] ?? 0);
+          }
+        }
+      }
+
+      if (convergedAtLambda) {
+        lambda = targetLambda;
+        lambdaStep = Math.min(lambdaStep * 1.5, 0.5);
+      } else {
+        lambdaStep *= 0.5;
+        if (lambdaStep < 1e-5) break;
+      }
+    }
+  } finally {
+    arena.homotopyLambda = undefined;
+  }
+
+  return lambda >= 1.0 - 1e-6;
+}
+
+function runSbbFallback(
+  arena: DAEBuilder,
+  result: ArenaInitSolverResult,
+  residualExprIds: number[],
+  unknownList: number[],
+  nSolve: number,
+  tol = 1e-4,
+): boolean {
+  if (nSolve === 0 || nSolve > 8) return false;
+
+  const unknownNames = unknownList.map((id) => arena.interner.resolve(id));
+  const box: DomainBox = new Map();
+
+  for (let i = 0; i < nSolve; i++) {
+    const nameId = unknownList[i]!;
+    const name = unknownNames[i]!;
+    const currentVal = result.valuesByStringId[nameId] ?? 0;
+    const varIdx = arena.getVarIdxByName(name);
+    let min = -1e4;
+    let max = 1e4;
+    if (varIdx >= 0) {
+      const minAttr = arena.getVarAttr(varIdx, "min");
+      const maxAttr = arena.getVarAttr(varIdx, "max");
+      if (typeof minAttr === "number" && isFinite(minAttr)) min = minAttr;
+      if (typeof maxAttr === "number" && isFinite(maxAttr)) max = maxAttr;
+    }
+    if (min === -1e4 && max === 1e4) {
+      min = currentVal - 1000;
+      max = currentVal + 1000;
+    }
+    box.set(name, new Interval(min, max));
+  }
+
+  const objTape = new StaticTapeBuilder(arena.interner);
+  let sumSqIdx = -1;
+  const constraintTapes: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
+
+  for (let i = 0; i < nSolve; i++) {
+    const exprId = residualExprIds[i] ?? -1;
+    if (exprId === -1) continue;
+    const rIdx = objTape.addExpression(exprId, arena);
+    const sqIdx = objTape.pushScalarOp(TapeOpKind.Mul, rIdx, rIdx);
+    if (sumSqIdx === -1) {
+      sumSqIdx = sqIdx;
+    } else {
+      sumSqIdx = objTape.pushScalarOp(TapeOpKind.Add, sumSqIdx, sqIdx);
+    }
+
+    const cTape = new StaticTapeBuilder(arena.interner);
+    const cIdx = cTape.addExpression(exprId, arena);
+    constraintTapes.push({ ops: cTape, outputIndex: cIdx });
+  }
+
+  if (sumSqIdx === -1) return false;
+
+  const sbbRes = solveSBB({ ops: objTape, outputIndex: sumSqIdx }, constraintTapes, unknownNames, box, {
+    absTol: tol,
+    maxNodes: 500,
+  });
+
+  if (sbbRes.objectiveValue < tol || sbbRes.optimal) {
+    for (let i = 0; i < nSolve; i++) {
+      const name = unknownNames[i]!;
+      const nameId = unknownList[i]!;
+      const val = sbbRes.solution.get(name);
+      if (val !== undefined && isFinite(val)) {
+        result.valuesByStringId[nameId] = val;
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Solve an implicit algebraic loop block using sparse Newton with Armijo line search,
+ * operator homotopy, auto homotopy, and sBB fallback.
+ */
+export function solveImplicitBlock(
+  arena: DAEBuilder,
+  block: ImplicitInitBlock,
+  valuesByStringId: Float64Array,
+  tol = 1e-10,
+): { converged: boolean; iterations: number; residualNorm: number } {
+  const result: ArenaInitSolverResult = {
+    valuesByStringId,
+    iterations: 0,
+    residualNorm: 0,
+    converged: false,
+  };
+
+  const unknownList = block.unknowns.map((name) => arena.interner.intern(name));
+  const residualExprIds = block.equations.map((eq) => arena.addBinaryExpr(BinOp.Sub, eq.lhs, eq.rhs));
+  const nSolve = Math.min(unknownList.length, residualExprIds.length);
+  if (nSolve === 0) return { converged: true, iterations: 0, residualNorm: 0 };
+
+  const initialValuesSnapshot = new Float64Array(nSolve);
+  for (let i = 0; i < nSolve; i++) {
+    initialValuesSnapshot[i] = valuesByStringId[unknownList[i]!] ?? 0;
+  }
+
+  const sparsityPattern: Set<number>[] = [];
+  for (let i = 0; i < nSolve; i++) {
+    const exprId = residualExprIds[i] ?? -1;
+    const deps = new Set<number>();
+    collectExprNameIds(arena, exprId, deps);
+    const nonzeroCols = new Set<number>();
+    for (let j = 0; j < nSolve; j++) {
+      if (deps.has(unknownList[j]!)) nonzeroCols.add(j);
+    }
+    sparsityPattern.push(nonzeroCols);
+  }
+
+  const jacobianExprIds: (number | -1)[][] = [];
+  for (let i = 0; i < nSolve; i++) {
+    const row: (number | -1)[] = new Array(nSolve).fill(-1);
+    const Ri = residualExprIds[i] ?? -1;
+    if (Ri !== -1) {
+      for (const j of sparsityPattern[i]!) {
+        row[j] = differentiateArenaExpressionWrt(arena, Ri, unknownList[j]!);
+      }
+    }
+    jacobianExprIds.push(row);
+  }
+
+  // Tier 1: Sparse Damped Newton with Armijo Line Search
+  let converged = runNewton(
+    arena,
+    result,
+    residualExprIds,
+    jacobianExprIds,
+    sparsityPattern,
+    unknownList,
+    nSolve,
+    50,
+    tol,
+  );
+
+  // Tier 2A: Operator Homotopy Continuation
+  if (
+    !converged &&
+    block.equations.some((eq) => containsHomotopyCall(arena, eq.lhs) || containsHomotopyCall(arena, eq.rhs))
+  ) {
+    converged = runOperatorHomotopy(
+      arena,
+      result,
+      residualExprIds,
+      jacobianExprIds,
+      sparsityPattern,
+      unknownList,
+      nSolve,
+      tol,
+    );
+    if (converged) {
+      runNewton(arena, result, residualExprIds, jacobianExprIds, sparsityPattern, unknownList, nSolve, 5, tol);
+    }
+  }
+
+  // Tier 2B: Auto Homotopy Fallback
+  if (!converged) {
+    const snapshotF64 = new Float64Array(arena.interner.size + 16);
+    for (let i = 0; i < nSolve; i++) {
+      const zj = unknownList[i]!;
+      snapshotF64[zj] = initialValuesSnapshot[i]!;
+    }
+    converged = runHomotopy(
+      arena,
+      result,
+      residualExprIds,
+      jacobianExprIds,
+      sparsityPattern,
+      unknownList,
+      nSolve,
+      tol,
+      snapshotF64,
+    );
+    if (converged) {
+      runNewton(arena, result, residualExprIds, jacobianExprIds, sparsityPattern, unknownList, nSolve, 5, tol);
+    }
+  }
+
+  // Tier 3: sBB Fallback (for small stubborn loops <= 8 variables)
+  if (!converged && nSolve <= 8) {
+    converged = runSbbFallback(arena, result, residualExprIds, unknownList, nSolve, 1e-4);
+    if (converged) {
+      runNewton(arena, result, residualExprIds, jacobianExprIds, sparsityPattern, unknownList, nSolve, 5, tol);
+    }
+  }
+
+  result.converged = converged;
+  return { converged, iterations: result.iterations, residualNorm: result.residualNorm };
+}
+
+/**
+ * Solve the initial equations natively on the DAEBuilder using block-decomposed Init BLT,
+ * sparse analytical Newton with Armijo backtracking line search, operator homotopy, and sBB fallback.
+ *
+ * @param arena The DAEBuilder containing the equations.
+ * @param initialValues A Float64Array populated with start values and parameters.
+ * @returns Solver result with computed initial values.
+ */
 export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Float64Array): ArenaInitSolverResult {
   const result: ArenaInitSolverResult = {
     valuesByStringId: new Float64Array(initialValues),
@@ -688,7 +1022,32 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
     converged: true,
   };
 
-  // 1. Collect initial equations
+  // 0. Attempt block-by-block BLT initialization first
+  try {
+    const initBlt = buildInitBLT(arena);
+    if (initBlt.blocks.length > 0) {
+      let allConverged = true;
+      for (const block of initBlt.blocks) {
+        if (block.type === "explicit") {
+          const targetId = arena.interner.intern(block.target);
+          result.valuesByStringId[targetId] = evaluateArenaRuntime(arena, block.expr, result.valuesByStringId);
+        } else if (block.type === "implicit") {
+          const blockRes = solveImplicitBlock(arena, block, result.valuesByStringId, 1e-10);
+          result.iterations += blockRes.iterations;
+          result.residualNorm = Math.max(result.residualNorm, blockRes.residualNorm);
+          if (!blockRes.converged) allConverged = false;
+        }
+      }
+      if (allConverged) {
+        result.converged = true;
+        return result;
+      }
+    }
+  } catch {
+    // If BLT encounters an unsupported structure, fall back to monolithic solver below
+  }
+
+  // 1. Collect initial equations (Monolithic fallback)
   const initialEqIndices: number[] = [];
   for (let i = 0; i < arena.eqCount; i++) {
     const kind = arena.getEqKind(i);
@@ -799,11 +1158,11 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
     jacobianExprIds.push(row);
   }
 
-  // 6. Newton-Raphson iteration
+  // 6. Tier 1: Newton-Raphson iteration with Armijo line search
   const maxIter = 50;
   const tol = 1e-10;
 
-  const converged = runNewton(
+  let converged = runNewton(
     arena,
     result,
     residualExprIds,
@@ -815,7 +1174,24 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
     tol,
   );
 
-  // 7. Homotopy continuation fallback
+  // 7. Tier 2A: Operator Homotopy continuation
+  if (!converged && residualExprIds.some((exprId) => containsHomotopyCall(arena, exprId))) {
+    converged = runOperatorHomotopy(
+      arena,
+      result,
+      residualExprIds,
+      jacobianExprIds,
+      sparsityPattern,
+      unknownList,
+      nSolve,
+      tol,
+    );
+    if (converged) {
+      runNewton(arena, result, residualExprIds, jacobianExprIds, sparsityPattern, unknownList, nSolve, 5, tol);
+    }
+  }
+
+  // 8. Tier 2B: Multi-strategy Homotopy continuation fallback
   if (!converged) {
     const homotopyConverged = runHomotopy(
       arena,
@@ -828,9 +1204,22 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
       tol,
       initialValues,
     );
-    result.converged = homotopyConverged;
+    converged = homotopyConverged;
+    if (converged) {
+      runNewton(arena, result, residualExprIds, jacobianExprIds, sparsityPattern, unknownList, nSolve, 5, tol);
+    }
   }
 
+  // 9. Tier 3: sBB fallback (for small loops <= 8 unknowns)
+  if (!converged && nSolve <= 8) {
+    const sbbConverged = runSbbFallback(arena, result, residualExprIds, unknownList, nSolve, 1e-4);
+    converged = sbbConverged;
+    if (converged) {
+      runNewton(arena, result, residualExprIds, jacobianExprIds, sparsityPattern, unknownList, nSolve, 5, tol);
+    }
+  }
+
+  result.converged = converged;
   return result;
 }
 
@@ -884,10 +1273,48 @@ function runNewton(
     const negR = R.map((r) => -r);
     const dz = solveLU(J, negR, nSolve);
 
+    // Armijo Backtracking Line Search
+    let alpha = 1.0;
+    const minAlpha = 1e-4;
+    const c1 = 1e-4;
+    const currentNorm = norm;
+    let stepAccepted = false;
+
+    const origZ = new Float64Array(nSolve);
     for (let i = 0; i < nSolve; i++) {
       const zj = unknownList[i] ?? -1;
-      if (zj !== -1) {
-        result.valuesByStringId[zj] = (result.valuesByStringId[zj] ?? 0) + (dz[i] ?? 0);
+      origZ[i] = zj !== -1 ? (result.valuesByStringId[zj] ?? 0) : 0;
+    }
+
+    while (alpha >= minAlpha) {
+      for (let i = 0; i < nSolve; i++) {
+        const zj = unknownList[i] ?? -1;
+        if (zj !== -1) {
+          result.valuesByStringId[zj] = (origZ[i] ?? 0) + alpha * (dz[i] ?? 0);
+        }
+      }
+
+      let trialNorm = 0;
+      for (let i = 0; i < nSolve; i++) {
+        const exprId = residualExprIds[i] ?? -1;
+        if (exprId !== -1) {
+          trialNorm += Math.abs(evaluateArenaRuntime(arena, exprId, result.valuesByStringId));
+        }
+      }
+
+      if (trialNorm <= currentNorm * (1 - c1 * alpha) || trialNorm < tol) {
+        stepAccepted = true;
+        break;
+      }
+      alpha *= 0.5;
+    }
+
+    if (!stepAccepted) {
+      for (let i = 0; i < nSolve; i++) {
+        const zj = unknownList[i] ?? -1;
+        if (zj !== -1) {
+          result.valuesByStringId[zj] = (origZ[i] ?? 0) + alpha * (dz[i] ?? 0);
+        }
       }
     }
 

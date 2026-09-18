@@ -335,6 +335,7 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
       outputType: "Integer",
     },
   ],
+  ["array", { inputs: [{ name: "elements", type: "Real" }], outputType: "Real" }],
   ["scalar", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
   ["vector", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
   ["matrix", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],

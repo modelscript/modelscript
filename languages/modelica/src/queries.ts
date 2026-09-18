@@ -5,10 +5,12 @@
  * Semantic query definitions for QueryEngine.
  */
 
-import { error } from "@modelscript/dsl";
+import { error, info } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
 import { Cst } from "../src-gen/bindings.js";
 import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
+import { ModelicaErrorCode } from "./errors.js";
+import { findNonlinearTermsInCst } from "./lints/homotopy-synthesis.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 import type { OperatorOverload, OperatorOverloadParam } from "./types.js";
 
@@ -1382,6 +1384,21 @@ export const classDefinitionQueries: Record<string, any> = {
   /** All direct children of this class. */
 
   members: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id),
+
+  /** Recommends homotopy operator for steep nonlinear equations. */
+  lint__homotopyRecommended: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    if (!cst) return null;
+    const nonlinear = findNonlinearTermsInCst(cst);
+    if (!nonlinear || nonlinear.length === 0) return null;
+    return nonlinear.map((item) =>
+      info(ModelicaErrorCode.HOMOTOPY_RECOMMENDED.message(item.termText), {
+        startByte: item.startByte,
+        endByte: item.endByte,
+        code: ModelicaErrorCode.HOMOTOPY_RECOMMENDED.code,
+      }),
+    );
+  },
 
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
@@ -2897,7 +2914,6 @@ export const componentDeclarationQueries: Record<string, any> = {
         const typeClassDims = db.query<any[] | null>("arrayDimensions", currentClassId);
         if (typeClassDims && typeClassDims.length > 0) {
           subscripts.push(...typeClassDims);
-          break;
         }
 
         // Check Extends

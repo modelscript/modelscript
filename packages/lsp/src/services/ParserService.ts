@@ -1,9 +1,14 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // ts-check
 
+import { SYNTAX_NAMES as csvSyntaxNames } from "@modelscript/csv/parser";
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
+import { SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
+import { SYNTAX_NAMES as owl2SyntaxNames } from "@modelscript/owl2/parser";
 import { FederatedQueryCacheStore, IndexedDBQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
+import { SYNTAX_NAMES as stepSyntaxNames } from "@modelscript/step/parser";
+import { SYNTAX_NAMES as sysml2SyntaxNames } from "@modelscript/sysml2/parser";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { computeTreeEdit } from "../utils/astUtils.js";
@@ -312,7 +317,9 @@ export class ParserService {
         message: "Initializing this.parser...",
       });
 
-      const modelicaResult = await createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`);
+      const modelicaResult = await createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`, {
+        syntaxNames: modelicaSyntaxNames,
+      });
       this.parser = modelicaResult.parser;
       this.parserReady = true;
       this.connection.console.info("ModelScript Modelica parser initialized");
@@ -334,7 +341,9 @@ export class ParserService {
 
       // Initialize SysML2 parser (non-blocking — WASM load is fast)
       try {
-        const sysmlResult = await createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`);
+        const sysmlResult = await createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`, {
+          syntaxNames: sysml2SyntaxNames,
+        });
         this.sysml2Parser = sysmlResult.parser;
         this.sysml2ParserReady = true;
         this.connection.console.info("ModelScript SysML2 parser initialized");
@@ -344,7 +353,9 @@ export class ParserService {
 
       // Initialize STEP parser
       try {
-        const stepResult = await createWasmParser(`${serverDistBase}/tree-sitter-step.wasm`);
+        const stepResult = await createWasmParser(`${serverDistBase}/tree-sitter-step.wasm`, {
+          syntaxNames: stepSyntaxNames,
+        });
         this.stepParser = stepResult.parser;
         this.stepParserReady = true;
         this.connection.console.info("ModelScript STEP parser initialized");
@@ -354,7 +365,9 @@ export class ParserService {
 
       // Initialize OWL2 parser
       try {
-        const owl2Result = await createWasmParser(`${serverDistBase}/tree-sitter-owl2.wasm`);
+        const owl2Result = await createWasmParser(`${serverDistBase}/tree-sitter-owl2.wasm`, {
+          syntaxNames: owl2SyntaxNames,
+        });
         this.owl2Parser = owl2Result.parser;
         this.owl2ParserReady = true;
         this.connection.console.info("ModelScript OWL2 parser initialized");
@@ -364,7 +377,9 @@ export class ParserService {
 
       // Initialize CSV parser
       try {
-        const csvResult = await createWasmParser(`${serverDistBase}/tree-sitter-csv.wasm`);
+        const csvResult = await createWasmParser(`${serverDistBase}/tree-sitter-csv.wasm`, {
+          syntaxNames: csvSyntaxNames,
+        });
         this.csvParser = csvResult.parser;
         this.csvParserReady = true;
         this.connection.console.info("ModelScript CSV parser initialized");

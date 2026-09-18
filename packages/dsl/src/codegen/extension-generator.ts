@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { LanguageOptions } from "../dsl/language.js";
+import type { ActionCategory, LanguageAction, LanguageOptions } from "../dsl/language.js";
 import { generateTextMate } from "./textmate.js";
 
 /**
@@ -118,7 +118,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const contributesLanguages: any[] = [];
   const contributesGrammars: any[] = [];
   const customEditors: any[] = [];
-  const activationEvents: string[] = [];
+  const activationEvents: string[] = ["*", "onStartupFinished", "onFileSystem:memfs"];
 
   for (const lang of languages) {
     activationEvents.push(`onLanguage:${lang.id}`);
@@ -162,22 +162,260 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     });
   }
 
+  // Collect commands, menus, language model tools, and keybindings from language actions
+  const commands: any[] = [
+    {
+      command: "modelscript.openDiagram",
+      title: "ModelScript: Open Diagram",
+      icon: "$(open-preview)",
+    },
+    {
+      command: "modelscript.openDiagramSource",
+      title: "ModelScript: Open Source",
+      icon: "$(go-to-file)",
+    },
+  ];
+
+  const editorTitleMenus: any[] = [];
+  const editorContextMenus: any[] = [];
+  const explorerContextMenus: any[] = [];
+  const commandPaletteMenus: any[] = [];
+  const languageModelTools: any[] = [];
+  const keybindings: any[] = [];
+
+  const registeredToolNames = new Set<string>();
+
+  for (const lang of languages) {
+    const actions: LanguageAction[] = [...(lang.options.actions || [])];
+
+    // Bridge mcp.tools to actions if not explicitly present
+    if (lang.options.mcp?.tools) {
+      for (const tool of lang.options.mcp.tools) {
+        if (
+          !actions.some(
+            (a) => a.id === tool.name || `modelscript_${a.id}` === tool.name || `${lang.id}_${a.id}` === tool.name,
+          )
+        ) {
+          const cleanId = tool.name.replace(new RegExp(`^${lang.id}_`), "").replace(/^modelscript_/, "");
+          actions.push({
+            id: cleanId,
+            title: tool.description,
+            description: tool.description,
+            category: (tool.category === "simulation"
+              ? "simulate"
+              : tool.category === "transformation"
+                ? "transform"
+                : "query") as ActionCategory,
+            inputs: tool.inputSchema as any,
+            ui: {
+              languageModelTool: {
+                name: tool.name.startsWith("modelscript_") ? tool.name : `modelscript_${cleanId}`,
+                displayName: tool.description,
+                modelDescription: tool.description,
+              },
+            },
+          });
+        }
+      }
+    }
+
+    for (const action of actions) {
+      const commandId = `modelscript.${lang.id}.${action.id}`;
+      const category = action.ui?.commandPalette?.category || lang.displayName;
+
+      const cmdEntry: any = {
+        command: commandId,
+        title: action.title,
+        category,
+      };
+      if (action.ui?.editorTitle?.icon) {
+        cmdEntry.icon = action.ui.editorTitle.icon;
+      }
+      commands.push(cmdEntry);
+
+      // 1. Editor title toolbar menu
+      if (action.ui?.editorTitle) {
+        editorTitleMenus.push({
+          command: commandId,
+          when: action.ui.editorTitle.when || `editorLangId == ${lang.id} || resourceLangId == ${lang.id}`,
+          group: action.ui.editorTitle.group || "navigation",
+        });
+      }
+
+      // 2. Editor context menu
+      if (action.ui?.editorContextMenu) {
+        editorContextMenus.push({
+          command: commandId,
+          when: action.ui.editorContextMenu.when || `editorLangId == ${lang.id} || resourceLangId == ${lang.id}`,
+          group: action.ui.editorContextMenu.group || "1_modification",
+        });
+      }
+
+      // 3. Explorer context menu
+      if (action.ui?.explorerContextMenu) {
+        const defaultWhen =
+          lang.fileExtensions.length > 0
+            ? lang.fileExtensions.map((ext) => `resourceExt == ${ext}`).join(" || ")
+            : `resourceLangId == ${lang.id}`;
+        explorerContextMenus.push({
+          command: commandId,
+          when: action.ui.explorerContextMenu.when || defaultWhen,
+          group: action.ui.explorerContextMenu.group || "navigation",
+        });
+      }
+
+      // 4. Command palette filtering
+      if (action.ui?.commandPalette?.when) {
+        commandPaletteMenus.push({
+          command: commandId,
+          when: action.ui.commandPalette.when,
+        });
+      }
+
+      // 5. Keybindings
+      if (action.ui?.keybinding) {
+        keybindings.push({
+          command: commandId,
+          key: action.ui.keybinding.key,
+          mac: action.ui.keybinding.mac,
+          when: action.ui.keybinding.when || `editorLangId == ${lang.id}`,
+        });
+      }
+
+      // 6. Language Model Tools
+      const toolName = action.ui?.languageModelTool?.name || `modelscript_${action.id}`;
+      if (!registeredToolNames.has(toolName)) {
+        registeredToolNames.add(toolName);
+
+        const properties: Record<string, any> = {};
+        const required: string[] = [];
+        if (action.inputs) {
+          for (const [propName, propDef] of Object.entries(action.inputs)) {
+            properties[propName] = {
+              type: propDef.type,
+              description: propDef.description,
+              default: propDef.default,
+              enum: propDef.enum,
+            };
+            if (propDef.required) required.push(propName);
+          }
+        }
+
+        languageModelTools.push({
+          name: toolName,
+          displayName: action.ui?.languageModelTool?.displayName || action.title,
+          modelDescription: action.ui?.languageModelTool?.modelDescription || action.description,
+          inputSchema: {
+            type: "object",
+            properties,
+            ...(required.length > 0 ? { required } : {}),
+          },
+        });
+      }
+    }
+  }
+
+  // Defensively ensure standard built-in modelscript LM tools are always contributed
+  const standardLmTools = [
+    {
+      name: "modelscript_flatten",
+      displayName: "Flatten Modelica Model to DAE",
+      modelDescription: "Flattens a Modelica model or component into its lower-level DAE equation representation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fully qualified Modelica class name" },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "modelscript_simulate",
+      displayName: "Simulate Modelica Model",
+      modelDescription: "Flattens and simulates a Modelica model with initial conditions and numerical integration.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fully qualified Modelica class name" },
+          startTime: { type: "number", description: "Simulation start time in seconds" },
+          stopTime: { type: "number", description: "Simulation stop time in seconds" },
+          solver: { type: "string", description: "Numerical ODE solver" },
+          format: { type: "string", description: "Output format ('json' or 'csv')" },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "modelscript_query",
+      displayName: "Query Model Structure",
+      modelDescription: "Queries semantic structure, components, parameters, and extends hierarchy.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Class or component name to query" },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "modelscript_parse",
+      displayName: "Parse Modelica Source Code",
+      modelDescription: "Parses Modelica code into CST/AST and returns syntax diagnostics.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "Modelica source code" },
+        },
+        required: ["code"],
+      },
+    },
+    {
+      name: "modelscript_add_component",
+      displayName: "Add Component to Model",
+      modelDescription: "Adds a subcomponent instance or equation to a Modelica class.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          className: { type: "string", description: "Target class name" },
+          classKind: { type: "string", description: "Kind of class (model, block, package, etc.)" },
+        },
+        required: ["className"],
+      },
+    },
+    {
+      name: "modelscript_simulate_and_plot",
+      displayName: "Simulate and Plot Modelica Model",
+      modelDescription: "Simulates a Modelica model and renders interactive visual plots in the simulation panel.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Modelica class name" },
+        },
+        required: ["name"],
+      },
+    },
+  ];
+
+  for (const stdTool of standardLmTools) {
+    if (!registeredToolNames.has(stdTool.name)) {
+      registeredToolNames.add(stdTool.name);
+      languageModelTools.push(stdTool);
+    }
+  }
+
   const contributes: Record<string, any> = {
     languages: contributesLanguages,
     grammars: contributesGrammars,
     customEditors,
-    commands: [
-      {
-        command: "modelscript.openDiagram",
-        title: "ModelScript: Open Diagram",
-        icon: "$(open-preview)",
-      },
-      {
-        command: "modelscript.openDiagramSource",
-        title: "ModelScript: Open Source",
-        icon: "$(go-to-file)",
-      },
-    ],
+    commands,
+    menus: {
+      "editor/title": editorTitleMenus,
+      "editor/context": editorContextMenus,
+      "explorer/context": explorerContextMenus,
+      ...(commandPaletteMenus.length > 0 ? { commandPalette: commandPaletteMenus } : {}),
+    },
+    languageModelTools,
+    ...(keybindings.length > 0 ? { keybindings } : {}),
   };
 
   // Add notebook controller if enabled
@@ -191,6 +429,55 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     ];
   }
+
+  contributes.debuggers = [
+    {
+      type: "modelscript",
+      label: "ModelScript Simulator",
+      languages: ["modelica"],
+      configurationAttributes: {
+        launch: {
+          required: ["program"],
+          properties: {
+            program: {
+              type: "string",
+              description: "Absolute path to the Modelica source file.",
+              default: "${file}",
+            },
+            stopOnEntry: {
+              type: "boolean",
+              description: "Automatically stop after launch.",
+              default: true,
+            },
+          },
+        },
+      },
+    },
+  ];
+  contributes.views = {
+    explorer: [
+      {
+        id: "modelscript.libraryTree",
+        name: "Modelica Library",
+      },
+      {
+        id: "modelscript.mqttTree",
+        name: "MQTT Participants",
+      },
+      {
+        id: "modelscript.experimentsView",
+        name: "Experiments",
+      },
+      {
+        id: "modelscript.owl2ClassHierarchy",
+        name: "OWL2 Classes",
+      },
+      {
+        id: "modelscript.owl2PropertyHierarchy",
+        name: "OWL2 Properties",
+      },
+    ],
+  };
 
   const manifest: Record<string, any> = {
     name,
@@ -650,6 +937,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   // Set browser client entry point
   pkg.browser = "./dist/browserClientMain.js";
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkg, null, 2), "utf-8");
+  fs.writeFileSync(path.join(outDir, "package.nls.json"), "{}", "utf-8");
 
   // 3. Write language configs and syntaxes
   for (const lang of languages) {
@@ -751,7 +1039,16 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   }
 
   // 5. Copy WASM and library assets
-  const repoRoot = path.resolve(currentDir, "../../../..");
+  let repoRoot = currentDir;
+  while (repoRoot !== path.dirname(repoRoot)) {
+    if (fs.existsSync(path.join(repoRoot, "package.json"))) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+        if (pkg.name === "modelscript") break;
+      } catch {}
+    }
+    repoRoot = path.dirname(repoRoot);
+  }
   const candidateAssets = [
     [path.join(repoRoot, "languages/modelica/tree-sitter-modelica.wasm"), "server/dist/tree-sitter-modelica.wasm"],
     [path.join(repoRoot, "languages/modelica/dist/parser.wasm"), "server/dist/tree-sitter-modelica.wasm"],
@@ -767,6 +1064,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     ],
     [path.join(repoRoot, "scripts/SysML-v2-Release-2026-03.zip"), "server/dist/SysML-v2-Release-2026-03.zip"],
     [path.join(repoRoot, "packages/lsp/dist"), "server/dist"],
+    [path.join(repoRoot, "languages/modelica/assets"), "assets"],
   ];
 
   for (const [src, dest] of candidateAssets) {
@@ -774,6 +1072,92 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     if (fs.existsSync(src)) {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.cpSync(src, destPath, { recursive: true });
+    }
+  }
+
+  // 6. Bundle LSP browser server into standalone IIFE
+  const lspDir = path.join(repoRoot, "packages/lsp");
+  const browserServerMain = path.join(lspDir, "src/browserServerMain.ts");
+  if (fs.existsSync(browserServerMain)) {
+    const builtins = [
+      "assert",
+      "buffer",
+      "child_process",
+      "crypto",
+      "diagnostics_channel",
+      "events",
+      "fs",
+      "fs/promises",
+      "http",
+      "https",
+      "module",
+      "net",
+      "os",
+      "path",
+      "process",
+      "readline",
+      "stream",
+      "string_decoder",
+      "tls",
+      "url",
+      "util",
+      "worker_threads",
+      "zlib",
+      "tty",
+      "esbuild",
+      "assemblyscript",
+      "assemblyscript/asc",
+      "assemblyscript/dist/asc.js",
+      "binaryen",
+    ];
+    const filter = new RegExp(
+      `^(node:)?(?:${builtins.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`,
+    );
+    const ignorePlugin = {
+      name: "node-builtins-ignore",
+      setup(build: any) {
+        build.onResolve({ filter }, (args: any) => ({ path: args.path, namespace: "ignore" }));
+        build.onLoad({ filter: /.*/, namespace: "ignore" }, () => ({ contents: "", loader: "js" }));
+      },
+    };
+
+    await esbuild.build({
+      entryPoints: [browserServerMain],
+      outfile: path.join(outDir, "server/dist/browserServerMain.js"),
+      bundle: true,
+      format: "iife",
+      platform: "browser",
+      target: "es2022",
+      minify: false,
+      keepNames: true,
+      sourcemap: "inline",
+      define: {
+        "process.env": "{}",
+        "process.browser": "true",
+        "import.meta.url": "''",
+      },
+      plugins: [ignorePlugin],
+    });
+
+    const indexerWorker = path.join(lspDir, "src/workers/indexer.worker.ts");
+    if (fs.existsSync(indexerWorker)) {
+      await esbuild.build({
+        entryPoints: [indexerWorker],
+        outfile: path.join(outDir, "server/dist/workers/indexer.worker.js"),
+        bundle: true,
+        format: "iife",
+        platform: "browser",
+        target: "es2022",
+        minify: false,
+        keepNames: true,
+        sourcemap: "inline",
+        define: {
+          "process.env": "{}",
+          "process.browser": "true",
+          "import.meta.url": "''",
+        },
+        plugins: [ignorePlugin],
+      });
     }
   }
 }

@@ -12,7 +12,13 @@ export function registerTreeHandlers(context: LspContext) {
     "modelscript/getLibraryTree",
     (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
       // Use the unified workspace — merges all language indices
-      const unifiedIndex = context.workspaceManager.unifiedWorkspace.toTreeIndex();
+      const uw = context.workspaceManager.unifiedWorkspace;
+      const unifiedIndex =
+        typeof uw?.toUnified === "function"
+          ? uw.toUnified()
+          : typeof uw?.toTreeIndex === "function"
+            ? uw.toTreeIndex()
+            : null;
       if (!unifiedIndex) return [];
 
       injectPredefinedTypes(unifiedIndex);
@@ -30,12 +36,23 @@ export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string }): ProjectTreeNodeInfo[] => {
     const nodes: ProjectTreeNodeInfo[] = [];
 
-    const globalUnified = context.workspaceManager.globalWorkspaceIndex.toTreeIndex();
-    const sysmlUnified = context.workspaceManager.sysml2WorkspaceIndex.toTreeIndex();
+    const getIndex = (ws: any) =>
+      typeof ws?.toTreeIndex === "function"
+        ? ws.toTreeIndex()
+        : typeof ws?.toUnified === "function"
+          ? ws.toUnified()
+          : (ws?.toSymbolIndex?.() ?? { symbols: new Map(), byName: new Map(), childrenOf: new Map() });
+
+    const globalUnified = getIndex(context.workspaceManager?.globalWorkspaceIndex);
+    const sysmlUnified = getIndex(context.workspaceManager?.sysml2WorkspaceIndex);
 
     const allSymbols = new Map<string, any>();
-    for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
-    for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
+    if (globalUnified?.symbols) {
+      for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
+    }
+    if (sysmlUnified?.symbols) {
+      for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
+    }
 
     // Group top-level elements by resourceId
     const files = new Map<string, any[]>();

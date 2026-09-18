@@ -1048,7 +1048,10 @@ export class ValidationService {
         step1T = performance.now();
 
         if (this.workspaceManager.globalModelicaQueryEngine) {
-          injectPredefinedTypes(unifiedIndex);
+          const injectFn = (globalThis as any).injectPredefinedTypes ?? injectPredefinedTypes;
+          if (typeof injectFn === "function") {
+            injectFn(unifiedIndex);
+          }
           this.connection.console.info(
             `[perf] Step 1.2 (injectPredefinedTypes): ${(performance.now() - step1T).toFixed(2)}ms`,
           );
@@ -1151,7 +1154,13 @@ export class ValidationService {
           let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
           if (d.severity === "error") severity = DiagnosticSeverity.Error;
           if (d.severity === "info") severity = DiagnosticSeverity.Information;
-          newSemanticDiagnostics.push({ severity, range: { start, end }, message: d.message, source: "modelscript" });
+          newSemanticDiagnostics.push({
+            severity,
+            range: { start, end },
+            message: d.message,
+            source: "modelscript",
+            code: d.code ?? d.lintName,
+          });
         }
       }
       this.connection.console.info(`[perf] Step 3 (Lints): ${(performance.now() - t0).toFixed(2)}ms`);
@@ -1364,7 +1373,9 @@ export class ValidationService {
 
         const context = this.parserService.sharedContext;
         if (!context) return { ok: false, error: "Context not initialized" };
-        const arena = flattenArenaFromInstance(targetModel, context);
+        const flattenFn = (globalThis as any).flattenArenaFromInstance ?? flattenArenaFromInstance;
+        if (typeof flattenFn !== "function") return { ok: false, error: "Flattener not available" };
+        const arena = flattenFn(targetModel, context);
 
         const arenaSimResult = simulateArena(arena, {
           startTime: 0,

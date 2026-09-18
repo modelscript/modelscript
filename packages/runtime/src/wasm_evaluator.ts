@@ -539,8 +539,16 @@ export function evaluateArenaRuntime(
             return evaluateArenaRuntime(arena, secondArgId, valuesByStringId, preValuesByStringId);
           }
           return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
-        case "homotopy":
+        case "homotopy": {
+          if (argCount >= 2 && typeof arena.homotopyLambda === "number" && arena.homotopyLambda < 1.0) {
+            const lambda = Math.max(0, Math.min(1, arena.homotopyLambda));
+            const actualVal = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+            const secondArgId = arena.getExprLeft(exprId + 1);
+            const simplifiedVal = evaluateArenaRuntime(arena, secondArgId, valuesByStringId, preValuesByStringId);
+            return lambda * actualVal + (1.0 - lambda) * simplifiedVal;
+          }
           return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
+        }
       }
 
       if (argCount === 1) {
@@ -1134,6 +1142,25 @@ export function evaluateArenaExpression(
       if (!name) return null;
       const paramVal = parameters.get(name);
       if (paramVal !== undefined) return paramVal;
+      if (name === ":") return ":";
+      if (name.startsWith("size(") && name.endsWith(")")) {
+        const inner = name.slice(5, -1).trim();
+        const parts = inner.split(",").map((s) => s.trim());
+        const vName = parts[0];
+        const dNum = parts.length > 1 ? Number(parts[1]) : 1;
+        if (vName && parameters.has(vName)) {
+          const pVal = parameters.get(vName);
+          if (Array.isArray(pVal)) {
+            let cur: any = pVal;
+            let d = 1;
+            while (d < dNum && Array.isArray(cur) && cur.length > 0 && Array.isArray(cur[0])) {
+              cur = cur[0];
+              d++;
+            }
+            if (Array.isArray(cur)) return cur.length;
+          }
+        }
+      }
 
       const match = name.match(/^([^[\]]+)\[([\d,]+)\]$/);
       if (match && match[1] && match[2]) {
@@ -1610,6 +1637,17 @@ export function evaluateArenaExpression(
       if (funcName === "Integer" && args.length === 1) {
         if (typeof args[0] === "number") return Math.floor(args[0]);
         return args[0];
+      }
+      if (
+        funcName === "homotopy" &&
+        args.length >= 2 &&
+        typeof (dae as any)?.homotopyLambda === "number" &&
+        (dae as any).homotopyLambda < 1.0
+      ) {
+        const lambda = Math.max(0, Math.min(1, (dae as any).homotopyLambda));
+        const actualVal = typeof args[0] === "number" ? args[0] : 0;
+        const simplifiedVal = typeof args[1] === "number" ? args[1] : 0;
+        return lambda * actualVal + (1.0 - lambda) * simplifiedVal;
       }
       if (funcName === "homotopy" && args.length >= 1) return args[0];
       if (funcName === "smooth" && args.length >= 2) return args[1];

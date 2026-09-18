@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./actions.js";
 export * from "./cad.js";
 export * from "./connections.js";
 export * from "./csg.js";
@@ -13,6 +14,7 @@ export * from "./errors.js";
 export * from "./factory.js";
 export * from "./flattener.js";
 export * from "./geometry.js";
+export * from "./lints/index.js";
 export * from "./multibody-generator.js";
 export * from "./po.js";
 export * from "./scripting.js";

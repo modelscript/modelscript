@@ -44,19 +44,21 @@ const ascPath = [
 ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
 
 console.log("[sysml2] Compiling WebAssembly parser with asc...");
-execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads --optimize --runtime stub\`, {
+execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads -O --runtime stub\`, {
   stdio: "inherit",
   cwd: __dirname,
 });
 console.log("[sysml2] WebAssembly parser built successfully -> " + outWasm);
 
 // Cleanup as-gen after WASM compilation
-fs.rmSync(asGenDir, { recursive: true, force: true });
+// fs.rmSync(asGenDir, { recursive: true, force: true });
 `;
 
 fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
 try {
   execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+  console.log("[sysml2] Generating KerML stdlib pre-compiled snapshot...");
+  execSync(`npx tsx scripts/generate-kerml-snapshot.ts`, { stdio: "inherit", cwd: __dirname });
 } finally {
   if (fs.existsSync(buildScriptPath)) fs.unlinkSync(buildScriptPath);
 }

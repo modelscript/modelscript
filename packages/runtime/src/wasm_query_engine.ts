@@ -32,6 +32,7 @@ export interface LintResult {
   startByte?: number;
   endByte?: number;
   field?: string;
+  code?: number;
 }
 
 export class QueryCancelledError extends Error {
@@ -48,6 +49,7 @@ export interface LintDiagnostic {
   message: string;
   severity: "error" | "warning" | "info" | "hint";
   lintName: string;
+  code?: number;
 }
 
 // -- Dependency Tracker --
@@ -489,6 +491,7 @@ export class WasmQueryEngine {
           message: result.message,
           severity: result.severity,
           lintName,
+          code: result.code,
         });
       }
     }
@@ -563,6 +566,7 @@ export class WasmQueryEngine {
           message: result.message,
           severity: result.severity,
           lintName,
+          code: result.code,
         });
       }
       perSymbolCache.set(id, diags);

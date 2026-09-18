@@ -64,6 +64,43 @@ function evalMathBuiltin(funcName: string, arg1: number, arg2: number): number |
   }
 }
 
+function evalMatrixPow(A: any[], p: number): any[][] | null {
+  if (!Array.isArray(A) || A.length === 0 || !Array.isArray(A[0])) return null;
+  const N = A.length;
+  if (!A.every((row) => Array.isArray(row) && row.length === N)) return null;
+  if (!Number.isInteger(p) || p < 0) return null;
+
+  if (p === 0) {
+    const res: number[][] = [];
+    for (let i = 0; i < N; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < N; j++) {
+        row.push(i === j ? 1.0 : 0.0);
+      }
+      res.push(row);
+    }
+    return res;
+  }
+
+  let current: number[][] = A.map((row) => row.map((v: any) => (typeof v === "number" ? v : Number(v))));
+  for (let step = 1; step < p; step++) {
+    const next: number[][] = [];
+    for (let i = 0; i < N; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < N; j++) {
+        let sum = 0;
+        for (let k = 0; k < N; k++) {
+          sum += current[i]![k]! * Number(A[k]![j]!);
+        }
+        row.push(sum);
+      }
+      next.push(row);
+    }
+    current = next;
+  }
+  return current;
+}
+
 /**
  * Evaluates an expression node in DAEBuilder to a scalar constant if possible.
  */
@@ -76,7 +113,7 @@ export function evaluateConstantArenaExpression(
   db?: QueryDB,
   scopeId?: SymbolId,
   onlyConstants = false,
-): number | boolean | number[] | null {
+): number | boolean | any[] | null {
   if (exprId < 0 || exprId >= arena.exprCount || visitedDepth > 100) {
     return null;
   }
@@ -264,6 +301,11 @@ export function evaluateConstantArenaExpression(
 
     if (lVal === null || rVal === null) return null;
 
+    if (op === BinOp.Pow && Array.isArray(lVal) && typeof rVal === "number") {
+      const matPow = evalMatrixPow(lVal, rVal);
+      if (matPow !== null) return matPow;
+    }
+
     if (Array.isArray(lVal) || Array.isArray(rVal)) {
       const evalElemBinOp = (op: BinOp, a: any, b: any): any => {
         if (Array.isArray(a) && Array.isArray(b)) {
@@ -289,7 +331,6 @@ export function evaluateConstantArenaExpression(
             case BinOp.Div:
             case BinOp.ElemDiv:
               return b !== 0 ? a / b : 0;
-            case BinOp.Pow:
             case BinOp.ElemPow:
               return Math.pow(a, b);
           }
@@ -748,7 +789,7 @@ export function substituteArenaConstants(
           true,
         );
         if (typeof folded === "number") {
-          if (op === BinOp.Div) {
+          if (op === BinOp.Div || op === BinOp.ElemDiv) {
             return arena.addRealLiteral(folded);
           }
           return Number.isInteger(folded) ? arena.addIntLiteral(folded) : arena.addRealLiteral(folded);
@@ -913,7 +954,7 @@ export function foldSingleArenaEquation(
     let lhsExpr = arena.getEqLhs(eq);
     const origRhs = (arena as any).getOrigEqRhs ? (arena as any).getOrigEqRhs(eq) : arena.getEqRhs(eq);
     let rhsExpr = origRhs >= 0 ? origRhs : arena.getEqRhs(eq);
-    if (rhsExpr >= 0) {
+    if (rhsExpr >= 0 && (arena.getExprKind(rhsExpr) !== ExprKind.ArrayCtor || !omcCompatibility)) {
       const foldedRhs = evaluateConstantArenaExpression(arena, rhsExpr, paramMap, nameToIdx, 0, db, scopeId);
       if (foldedRhs !== null) {
         let varType = VarType.Real;
@@ -1185,7 +1226,7 @@ export function foldArenaConstants(
       if (eqKind === EqKind.Simple || eqKind === EqKind.InitialSimple || eqKind === EqKind.Array) {
         let lhsExpr = arena.getEqLhs(eq);
         let rhsExpr = arena.getEqRhs(eq);
-        if (rhsExpr >= 0) {
+        if (rhsExpr >= 0 && (arena.getExprKind(rhsExpr) !== ExprKind.ArrayCtor || !omcCompatibility)) {
           let foldedRhs = evaluateConstantArenaExpression(
             arena,
             rhsExpr,

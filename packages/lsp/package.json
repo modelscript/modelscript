@@ -94,7 +94,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "npm run clean && tsc",
+    "build": "npm run clean && tsc && tsx scripts/build-browser.ts",
     "clean": "rimraf dist",
     "lint": "eslint src --no-warn-ignored"
   },

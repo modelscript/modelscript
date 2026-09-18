@@ -39,6 +39,106 @@ const PRECEDENCE = {
 export const modelicaLanguage = language({
   name: "Modelica",
 
+  actions: [
+    {
+      id: "flatten",
+      title: "Flatten Model to DAE",
+      description: "Flattens a Modelica model or component into its lower-level DAE equation representation.",
+      category: "transform",
+      inputs: {
+        name: { type: "string", description: "Fully qualified Modelica class name" },
+      },
+      ui: {
+        editorTitle: {
+          icon: "$(symbol-structure)",
+          group: "navigation@2",
+        },
+        editorContextMenu: {
+          group: "1_transform",
+        },
+        languageModelTool: {
+          name: "modelscript_flatten",
+          displayName: "Flatten Modelica Model to DAE",
+          modelDescription: "Flattens a Modelica model or component into its lower-level DAE equation representation.",
+        },
+      },
+    },
+    {
+      id: "simulate",
+      title: "Simulate Model",
+      description: "Flattens and simulates a Modelica model, returning time-series results.",
+      category: "simulate",
+      inputs: {
+        name: { type: "string", description: "Fully qualified Modelica class name" },
+        startTime: { type: "number", description: "Simulation start time in seconds", default: 0 },
+        stopTime: { type: "number", description: "Simulation stop time in seconds", default: 10 },
+        interval: { type: "number", description: "Output interval" },
+        solver: {
+          type: "string",
+          description: "Numerical ODE solver",
+          enum: ["rk4", "dopri5", "bdf", "auto"],
+          default: "dopri5",
+        },
+        format: {
+          type: "string",
+          description: "Output format ('json' or 'csv')",
+          enum: ["json", "csv"],
+          default: "json",
+        },
+      },
+      ui: {
+        editorTitle: {
+          icon: "$(play)",
+          group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "1_run",
+        },
+        keybinding: {
+          key: "f5",
+        },
+        languageModelTool: {
+          name: "modelscript_simulate",
+          displayName: "Simulate Modelica Model",
+          modelDescription:
+            "Flattens and simulates a Modelica model with initial conditions and numerical integration.",
+        },
+      },
+    },
+    {
+      id: "query",
+      title: "Query Model Structure",
+      description: "Queries Modelica class structure, components, parameters, and extends hierarchy.",
+      category: "query",
+      inputs: {
+        name: { type: "string", description: "Class or component name to query", required: true },
+      },
+      ui: {
+        languageModelTool: {
+          name: "modelscript_query",
+          displayName: "Query Model Structure",
+          modelDescription: "Queries semantic structure, components, parameters, and extends hierarchy.",
+        },
+      },
+    },
+    {
+      id: "parse",
+      title: "Parse Modelica Source Code",
+      description: "Parses Modelica code and returns class declarations and syntax errors.",
+      category: "query",
+      inputs: {
+        code: { type: "string", description: "Modelica source code", required: true },
+      },
+      ui: {
+        languageModelTool: {
+          name: "modelscript_parse",
+          displayName: "Parse Modelica Source Code",
+          modelDescription: "Parses Modelica code into CST/AST and returns syntax diagnostics.",
+        },
+      },
+    },
+  ],
+
   mcp: {
     serverName: "modelica-mcp",
     serverVersion: "1.0.0",
@@ -150,12 +250,15 @@ export const modelicaLanguage = language({
     ],
   },
 
-  runtimeFiles: [
-    {
-      filename: "flattener.ts",
-      path: new URL("../assembly/flattener.ts", import.meta.url).pathname,
-    },
-  ],
+  runtimeFiles:
+    typeof import.meta !== "undefined" && import.meta.url
+      ? [
+          {
+            filename: "flattener.ts",
+            path: new URL("../assembly/flattener.ts", import.meta.url).pathname,
+          },
+        ]
+      : [],
 
   word: ($) => $.identifier,
 

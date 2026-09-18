@@ -7,13 +7,19 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 
 const __dirname = import.meta.dirname;
-const OUT_DIR = resolve(__dirname, "..", "dist", "static");
-const VSCODE_WEB_DIR = resolve(__dirname, "..", "vscode-web");
-const MODELSCRIPT_EXT_DIR = resolve(__dirname, "..", "..", "..", "extensions", "vscode");
-const GITHUB_FS_EXT_DIR = resolve(__dirname, "..", "github-fs");
+const APP_ROOT = existsSync(resolve(__dirname, "package.json")) ? __dirname : resolve(__dirname, "..");
+const OUT_DIR = resolve(APP_ROOT, "dist", "static");
+const VSCODE_WEB_DIR = resolve(APP_ROOT, "vscode-web");
+const MODELSCRIPT_EXT_DIR = resolve(APP_ROOT, "dist", "extension");
+const GITHUB_FS_EXT_DIR = resolve(APP_ROOT, "github-fs");
 
 if (!existsSync(VSCODE_WEB_DIR)) {
   console.error("VS Code Web not found. Run: npm run download-vscode");
+  process.exit(1);
+}
+
+if (!existsSync(MODELSCRIPT_EXT_DIR)) {
+  console.error(`ModelScript extension not found at ${MODELSCRIPT_EXT_DIR}. Run: npm run build-extension`);
   process.exit(1);
 }
 
@@ -30,24 +36,7 @@ cpSync(VSCODE_WEB_DIR, join(OUT_DIR, "vscode-static"), { recursive: true });
 console.log("  Copying ModelScript extension...");
 const extDestDir = join(OUT_DIR, "static", "devextensions");
 mkdirSync(extDestDir, { recursive: true });
-// Copy essential root files
-for (const file of ["package.json", "language-configuration.json", "sysml-language-configuration.json"]) {
-  const src = join(MODELSCRIPT_EXT_DIR, file);
-  if (existsSync(src)) {
-    cpSync(src, join(extDestDir, file));
-  }
-}
-// Copy webpack output directories (client bundle, webview bundles, server bundle + assets)
-for (const dir of ["dist", "server", "syntaxes", "images"]) {
-  const src = join(MODELSCRIPT_EXT_DIR, dir);
-  if (existsSync(src)) {
-    cpSync(src, join(extDestDir, dir), { recursive: true });
-  }
-}
-// Create empty package.nls.json if it doesn't exist (VS Code requests it)
-if (!existsSync(join(extDestDir, "package.nls.json"))) {
-  writeFileSync(join(extDestDir, "package.nls.json"), "{}");
-}
+cpSync(MODELSCRIPT_EXT_DIR, extDestDir, { recursive: true });
 
 // Ensure Modelica parser wasm is explicitly present and copied
 const modelicaWasmSrc = [
@@ -131,12 +120,17 @@ cpSync(GITHUB_FS_EXT_DIR, join(OUT_DIR, "static", "extensions", "github-fs"), {
 
 // 4. Generate the workbench HTML
 console.log("  Generating workbench HTML...");
-const testWebDir = resolve(__dirname, "..", "..", "..", "node_modules", "@vscode", "test-web");
+const TEST_WEB_DIR =
+  [
+    resolve(APP_ROOT, "..", "..", "node_modules", "@vscode", "test-web"),
+    resolve(APP_ROOT, "node_modules", "@vscode", "test-web"),
+    resolve(__dirname, "..", "..", "..", "node_modules", "@vscode", "test-web"),
+  ].find(existsSync) || resolve(APP_ROOT, "..", "..", "node_modules", "@vscode", "test-web");
 
 function getWorkbenchTemplate(): string {
-  const esmPath = join(testWebDir, "views", "workbench-esm.html");
+  const esmPath = join(TEST_WEB_DIR, "views", "workbench-esm.html");
   if (existsSync(esmPath)) return readFileSync(esmPath, "utf-8");
-  const amdPath = join(testWebDir, "views", "workbench.html");
+  const amdPath = join(TEST_WEB_DIR, "views", "workbench.html");
   if (existsSync(amdPath)) return readFileSync(amdPath, "utf-8");
   throw new Error("No workbench template found in @vscode/test-web");
 }
@@ -175,7 +169,7 @@ function renderStaticWorkbench(): string {
 
   const template = getWorkbenchTemplate();
 
-  const esmMainPath = join(testWebDir, "out", "browser", "esm", "main.js");
+  const esmMainPath = join(TEST_WEB_DIR, "out", "browser", "esm", "main.js");
   let mainScript: string;
   if (existsSync(esmMainPath)) {
     let mainJs = readFileSync(esmMainPath, "utf-8");

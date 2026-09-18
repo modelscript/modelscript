@@ -45,6 +45,7 @@ const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { KERML_STDLIB_URI, kermlStdlibEntries } from "../src-gen/kerml-snapshot.js";
 
 /**
  * Creates a configured WorkspaceIndex for SysML2.
@@ -56,22 +57,34 @@ export function createSysML2WorkspaceIndex(): WorkspaceIndex {
 /**
  * Loads and registers the embedded KerML standard library stubs (ScalarValues, ISQ)
  * into a SysML2 WorkspaceIndex.
+ *
+ * Uses the pre-compiled snapshot for instant 0ms startup without CST parsing,
+ * falling back to parser.parse() if the snapshot is unavailable.
  */
-export function loadEmbeddedKerMLStdlib(workspaceIndex: WorkspaceIndex, parser: any): string | null {
-  try {
-    const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    const kermlPath = path.resolve(currentDir, "../stdlib/KerML.sysml");
-    if (fs.existsSync(kermlPath)) {
-      const text = fs.readFileSync(kermlPath, "utf-8");
-      const uri = "sysml2://stdlib/KerML.sysml";
-      workspaceIndex.register(uri, () => {
-        const tree = parser.parse(text);
-        return tree ? (tree.rootNode as any) : null;
-      });
-      return uri;
+export function loadEmbeddedKerMLStdlib(workspaceIndex: WorkspaceIndex, parser?: any): string | null {
+  // Fast path: Ingest pre-compiled snapshot without parsing (0ms cold start, browser-safe)
+  if (Array.isArray(kermlStdlibEntries) && kermlStdlibEntries.length > 0) {
+    workspaceIndex.registerPrecompiledEntries(KERML_STDLIB_URI, kermlStdlibEntries);
+    return KERML_STDLIB_URI;
+  }
+
+  // Fallback: Read and parse KerML.sysml dynamically if parser is provided
+  if (parser) {
+    try {
+      const currentDir = path.dirname(fileURLToPath(import.meta.url));
+      const kermlPath = path.resolve(currentDir, "../stdlib/KerML.sysml");
+      if (fs.existsSync(kermlPath)) {
+        const text = fs.readFileSync(kermlPath, "utf-8");
+        const uri = "sysml2://stdlib/KerML.sysml";
+        workspaceIndex.register(uri, () => {
+          const tree = parser.parse(text);
+          return tree ? (tree.rootNode as any) : null;
+        });
+        return uri;
+      }
+    } catch {
+      /* ignore in non-filesystem environments */
     }
-  } catch {
-    /* ignore in non-filesystem environments */
   }
   return null;
 }

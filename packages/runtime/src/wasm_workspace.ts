@@ -758,6 +758,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return this.toSymbolIndex();
   }
 
+  toTreeIndex(): SymbolIndex {
+    return this.toSymbolIndex();
+  }
+
   async toUnifiedAsync(): Promise<SymbolIndex> {
     return this.toSymbolIndex();
   }
@@ -905,6 +909,72 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       this._structuralRevision++;
     }
     return count;
+  }
+
+  /**
+   * Exports all SymbolEntry items associated with a given document URI.
+   */
+  exportFileEntries(uri: string): SymbolEntry[] {
+    const ids = this.fileSymbols.get(uri);
+    if (!ids) return [];
+    const result: SymbolEntry[] = [];
+    for (const id of ids) {
+      const entry = this.unifiedIndex.symbols.get(id);
+      if (entry) {
+        result.push(entry);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Directly ingests a pre-compiled array of SymbolEntry items for a URI without CST parsing.
+   */
+  registerPrecompiledEntries(uri: string, entries: SymbolEntry[]): number {
+    const fileId = this.registerFile(uri);
+    const newIds: SymbolId[] = [];
+
+    // Remove existing entries for this URI if any
+    const existingIds = this.fileSymbols.get(uri);
+    if (existingIds) {
+      for (const id of existingIds) {
+        const entry = this.unifiedIndex.symbols.get(id);
+        if (entry) {
+          const list = this.unifiedIndex.byName.get(entry.name);
+          if (list) {
+            this.unifiedIndex.byName.set(
+              entry.name,
+              list.filter((symId) => symId !== id),
+            );
+          }
+        }
+        this.unifiedIndex.symbols.delete(id);
+        this.unifiedIndex.childrenOf.delete(id);
+      }
+    }
+
+    for (const entry of entries) {
+      this.unifiedIndex.symbols.set(entry.id, entry);
+      newIds.push(entry.id);
+
+      const list = this.unifiedIndex.byName.get(entry.name) || [];
+      list.push(entry.id);
+      this.unifiedIndex.byName.set(entry.name, list);
+
+      const parentId = entry.parentId ?? 0;
+      const childList = this.unifiedIndex.childrenOf.get(parentId) || [];
+      childList.push(entry.id);
+      this.unifiedIndex.childrenOf.set(parentId, childList);
+
+      if (entry.id >= this.nextSymbolId) {
+        this.nextSymbolId = entry.id + 1;
+      }
+    }
+
+    this.fileSymbols.set(uri, newIds);
+    this._version++;
+    this._structuralRevision++;
+    return fileId;
   }
 }
 
@@ -1330,6 +1400,10 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   toUnified(): SymbolIndex {
+    return this.toSymbolIndex();
+  }
+
+  toTreeIndex(): SymbolIndex {
     return this.toSymbolIndex();
   }
 

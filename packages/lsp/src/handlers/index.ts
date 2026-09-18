@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./actionRouter.js";
 export * from "./analysisEndpoints.js";
 export * from "./classqueryEndpoints.js";
 export * from "./diagramHandler.js";

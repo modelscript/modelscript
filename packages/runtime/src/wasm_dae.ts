@@ -469,6 +469,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     varCount: number;
     eqCount: number;
   };
+  public homotopyLambda?: number;
 
   constructor(wasmExportsOrInterner?: any, nameOrPtr: string | number = "Model", desc = "", interner?: StringInterner) {
     if (
@@ -2091,6 +2092,50 @@ export function differentiateArenaExpressionWrt(arena: WasmDaeBridge, exprId: nu
       }
     }
 
+    case ExprKind.Call: {
+      const funcNameId = arena.getExprData1(exprId);
+      const funcName = arena.interner.resolve(funcNameId);
+      const argCount = arena.getExprRight(exprId);
+      const firstArgId = arena.getExprLeft(exprId);
+
+      if (funcName === "homotopy" && argCount >= 2) {
+        const dActual = differentiateArenaExpressionWrt(arena, firstArgId, wrtVarId);
+        const secondArgId = arena.getExprLeft(exprId + 1);
+        const dSimplified = differentiateArenaExpressionWrt(arena, secondArgId, wrtVarId);
+        return arena.addCallExpr("homotopy", [dActual, dSimplified]);
+      }
+      if (funcName === "sin" && argCount === 1) {
+        const du = differentiateArenaExpressionWrt(arena, firstArgId, wrtVarId);
+        const cosU = arena.addCallExpr("cos", [firstArgId]);
+        return arena.addBinaryExpr(BinOp.Mul, cosU, du);
+      }
+      if (funcName === "cos" && argCount === 1) {
+        const du = differentiateArenaExpressionWrt(arena, firstArgId, wrtVarId);
+        const sinU = arena.addCallExpr("sin", [firstArgId]);
+        const negSinU = arena.addExpression(ExprKind.Negate, 0, sinU);
+        return arena.addBinaryExpr(BinOp.Mul, negSinU, du);
+      }
+      if (funcName === "exp" && argCount === 1) {
+        const du = differentiateArenaExpressionWrt(arena, firstArgId, wrtVarId);
+        const expU = arena.addCallExpr("exp", [firstArgId]);
+        return arena.addBinaryExpr(BinOp.Mul, expU, du);
+      }
+      if (funcName === "log" && argCount === 1) {
+        const du = differentiateArenaExpressionWrt(arena, firstArgId, wrtVarId);
+        return arena.addBinaryExpr(BinOp.Div, du, firstArgId);
+      }
+      if (funcName === "sqrt" && argCount === 1) {
+        const du = differentiateArenaExpressionWrt(arena, firstArgId, wrtVarId);
+        const twoSqrtU = arena.addBinaryExpr(
+          BinOp.Mul,
+          arena.addRealLiteral(2.0),
+          arena.addCallExpr("sqrt", [firstArgId]),
+        );
+        return arena.addBinaryExpr(BinOp.Div, du, twoSqrtU);
+      }
+      return arena.addRealLiteral(0.0);
+    }
+
     default:
       return arena.addRealLiteral(0.0);
   }
@@ -2170,6 +2215,50 @@ function differentiateArenaExpressionWrtSet(arena: WasmDaeBridge, exprId: number
         default:
           return arena.addRealLiteral(0.0);
       }
+    }
+
+    case ExprKind.Call: {
+      const funcNameId = arena.getExprData1(exprId);
+      const funcName = arena.interner.resolve(funcNameId);
+      const argCount = arena.getExprRight(exprId);
+      const firstArgId = arena.getExprLeft(exprId);
+
+      if (funcName === "homotopy" && argCount >= 2) {
+        const dActual = differentiateArenaExpressionWrtSet(arena, firstArgId, wrtVarIds);
+        const secondArgId = arena.getExprLeft(exprId + 1);
+        const dSimplified = differentiateArenaExpressionWrtSet(arena, secondArgId, wrtVarIds);
+        return arena.addCallExpr("homotopy", [dActual, dSimplified]);
+      }
+      if (funcName === "sin" && argCount === 1) {
+        const du = differentiateArenaExpressionWrtSet(arena, firstArgId, wrtVarIds);
+        const cosU = arena.addCallExpr("cos", [firstArgId]);
+        return arena.addBinaryExpr(BinOp.Mul, cosU, du);
+      }
+      if (funcName === "cos" && argCount === 1) {
+        const du = differentiateArenaExpressionWrtSet(arena, firstArgId, wrtVarIds);
+        const sinU = arena.addCallExpr("sin", [firstArgId]);
+        const negSinU = arena.addExpression(ExprKind.Negate, 0, sinU);
+        return arena.addBinaryExpr(BinOp.Mul, negSinU, du);
+      }
+      if (funcName === "exp" && argCount === 1) {
+        const du = differentiateArenaExpressionWrtSet(arena, firstArgId, wrtVarIds);
+        const expU = arena.addCallExpr("exp", [firstArgId]);
+        return arena.addBinaryExpr(BinOp.Mul, expU, du);
+      }
+      if (funcName === "log" && argCount === 1) {
+        const du = differentiateArenaExpressionWrtSet(arena, firstArgId, wrtVarIds);
+        return arena.addBinaryExpr(BinOp.Div, du, firstArgId);
+      }
+      if (funcName === "sqrt" && argCount === 1) {
+        const du = differentiateArenaExpressionWrtSet(arena, firstArgId, wrtVarIds);
+        const twoSqrtU = arena.addBinaryExpr(
+          BinOp.Mul,
+          arena.addRealLiteral(2.0),
+          arena.addCallExpr("sqrt", [firstArgId]),
+        );
+        return arena.addBinaryExpr(BinOp.Div, du, twoSqrtU);
+      }
+      return arena.addRealLiteral(0.0);
     }
 
     default:
@@ -2402,7 +2491,7 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
           if (lType === null || rType === null) return null;
           if (lType === VarType.Real || rType === VarType.Real) return VarType.Real;
           if (lType === VarType.Integer && rType === VarType.Integer) {
-            return op === BinOp.Div ? VarType.Real : VarType.Integer;
+            return op === BinOp.Div || op === BinOp.ElemDiv ? VarType.Real : VarType.Integer;
           }
           return lType;
         }

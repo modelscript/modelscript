@@ -20,12 +20,21 @@ async function main() {
 
   for (const tc of testCases) {
     const tree = parser.parse(tc);
-    const hasErr = tree.rootNode.hasError;
+    const hasErr = tree.rootNode.hasError();
     const str = tree.rootNode.toString();
     console.log(`\n--- Test: ${tc} ---`);
-    console.log("hasError:", hasErr);
+    console.log("hasError():", hasErr);
     console.log("CST:", str.length > 200 ? str.slice(0, 200) + "..." : str);
   }
+
+  const kermlContent = (await import("node:fs")).readFileSync(
+    path.resolve(__dirname, "../stdlib/KerML.sysml"),
+    "utf-8",
+  );
+  const treeKerml = parser.parse(kermlContent);
+  console.log("\n--- Test: KerML.sysml ---");
+  console.log("hasError():", treeKerml.rootNode.hasError());
+  console.log("CST length:", treeKerml.rootNode.toString().length);
 }
 
 main().catch(console.error);

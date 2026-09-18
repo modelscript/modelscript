@@ -8,6 +8,13 @@
  * @license LGPL-3.0-or-later
  */
 
+import {
+  areDimensionsEqual,
+  getDimensionLabel,
+  inferExpressionDimension,
+  isDimensionless,
+  resolveTypeDimension,
+} from "./dimensions.js";
 import { emitAxioms } from "./reasoner-bridge.js";
 
 import {
@@ -1485,6 +1492,58 @@ const usageLints = {
 
     return null;
   },
+  dimensionalAssignment: (db: QueryDB, self: SymbolEntry) => {
+    let typeName: string | null = null;
+    for (const child of db.childrenOf(self.id)) {
+      if (child.ruleName === "OwnedFeatureTyping" && child.name) {
+        typeName = child.name;
+        break;
+      }
+    }
+    if (!typeName && self.metadata?.typeSpecifier) {
+      typeName = String(self.metadata.typeSpecifier);
+    }
+    if (!typeName) return null;
+
+    const targetDim = resolveTypeDimension(db, typeName);
+    if (!targetDim || isDimensionless(targetDim)) return null;
+
+    const cst = db.cstNode(self.id) as any;
+    if (!cst) return null;
+
+    let exprNode: any = null;
+    for (const child of cst.children || []) {
+      if (child.type === "OwnedExpression" || child.type === "ResultExpressionMember") {
+        exprNode = child.type === "ResultExpressionMember" ? child.childForFieldName("ownedRelatedElement") : child;
+        break;
+      }
+      if (child.type === "FeatureValue" || child.type === "_ValuePart" || child.type === "ValuePart") {
+        exprNode =
+          child.children?.find((c: any) => c.type === "OwnedExpression") ||
+          child.childForFieldName?.("ownedRelatedElement") ||
+          child;
+        break;
+      }
+    }
+    if (!exprNode) return null;
+
+    const inferRes = inferExpressionDimension(db, exprNode, self.parentId);
+    if (inferRes.error) {
+      return error(inferRes.error.message, {
+        startByte: inferRes.error.startByte ?? self.startByte,
+        endByte: inferRes.error.endByte ?? self.endByte,
+      });
+    }
+
+    if (inferRes.dimension && !areDimensionsEqual(targetDim, inferRes.dimension)) {
+      return error(
+        `Dimensional mismatch: cannot assign value of dimension '${getDimensionLabel(inferRes.dimension)}' to feature '${self.name || "<anonymous>"}' with declared dimension '${getDimensionLabel(targetDim)}'.`,
+        { startByte: self.startByte, endByte: self.endByte },
+      );
+    }
+
+    return null;
+  },
 };
 
 /** Lint rules for Constraint Definition/Usage — report violated constraints */
@@ -1493,6 +1552,35 @@ const constraintLints = {
     const result = evaluateConstraintBody(db, self);
     if (result === false) {
       return error(`Constraint '${self.name || "<anonymous>"}' evaluates to false`);
+    }
+    return null;
+  },
+  dimensionalConstraint: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    if (!cst) return null;
+
+    let exprNode: any = null;
+    for (const child of cst.children || []) {
+      if (child.type === "OwnedExpression" || child.type === "ExpressionBody") {
+        exprNode = child;
+        break;
+      }
+      if (child.type === "ResultExpressionMember") {
+        exprNode =
+          child.children?.find((c: any) => c.type === "OwnedExpression") ||
+          child.childForFieldName?.("ownedRelatedElement") ||
+          child;
+        break;
+      }
+    }
+    if (!exprNode) return null;
+
+    const inferRes = inferExpressionDimension(db, exprNode, self.parentId ?? self.id);
+    if (inferRes.error) {
+      return error(inferRes.error.message, {
+        startByte: inferRes.error.startByte ?? self.startByte,
+        endByte: inferRes.error.endByte ?? self.endByte,
+      });
     }
     return null;
   },
@@ -1748,7 +1836,80 @@ const allocationLints = {
     return null;
   },
   portInterfaceMismatch: (db: QueryDB, self: SymbolEntry) => {
-    // Basic lint for port-interface matching (stubbed for future deeper types)
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    if (refs.length >= 2) {
+      const getEndpointName = (ref: SymbolEntry) => {
+        if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
+          return ref.name.trim();
+        }
+        return (db.cstText(ref.startByte, ref.endByte) || "").trim();
+      };
+      const sourceName = getEndpointName(refs[0]);
+      const targetName = getEndpointName(refs[1]);
+      const sourceEntry = resolveFeatureInScope(db, self.parentId, sourceName);
+      const targetEntry = resolveFeatureInScope(db, self.parentId, targetName);
+      if (sourceEntry && targetEntry) {
+        const sourceType = resolveTypeOf(db, sourceEntry);
+        const targetType = resolveTypeOf(db, targetEntry);
+        if (sourceType && targetType) {
+          const sourceDim = resolveTypeDimension(db, sourceType);
+          const targetDim = resolveTypeDimension(db, targetType);
+          if (
+            sourceDim &&
+            targetDim &&
+            !isDimensionless(sourceDim) &&
+            !isDimensionless(targetDim) &&
+            !areDimensionsEqual(sourceDim, targetDim)
+          ) {
+            return error(
+              `Dimensional mismatch in allocation between '${sourceName}' (${getDimensionLabel(sourceDim)}) and '${targetName}' (${getDimensionLabel(targetDim)}).`,
+              { startByte: self.startByte, endByte: self.endByte },
+            );
+          }
+        }
+      }
+    }
+    return null;
+  },
+};
+
+/** Lint rules for ConnectionUsage and BindingConnectorAsUsage */
+const connectionLints = {
+  ...usageLints,
+  connectionDimensionalConsistency: (db: QueryDB, self: SymbolEntry) => {
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    if (refs.length >= 2) {
+      const getEndpointName = (ref: SymbolEntry) => {
+        if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
+          return ref.name.trim();
+        }
+        return (db.cstText(ref.startByte, ref.endByte) || "").trim();
+      };
+      const sourceName = getEndpointName(refs[0]);
+      const targetName = getEndpointName(refs[1]);
+      const sourceEntry = resolveFeatureInScope(db, self.parentId, sourceName);
+      const targetEntry = resolveFeatureInScope(db, self.parentId, targetName);
+      if (sourceEntry && targetEntry) {
+        const sourceType = resolveTypeOf(db, sourceEntry);
+        const targetType = resolveTypeOf(db, targetEntry);
+        if (sourceType && targetType) {
+          const sourceDim = resolveTypeDimension(db, sourceType);
+          const targetDim = resolveTypeDimension(db, targetType);
+          if (
+            sourceDim &&
+            targetDim &&
+            !isDimensionless(sourceDim) &&
+            !isDimensionless(targetDim) &&
+            !areDimensionsEqual(sourceDim, targetDim)
+          ) {
+            return error(
+              `Dimensional mismatch in connection between '${sourceName}' (${getDimensionLabel(sourceDim)}) and '${targetName}' (${getDimensionLabel(targetDim)}).`,
+              { startByte: self.startByte, endByte: self.endByte },
+            );
+          }
+        }
+      }
+    }
     return null;
   },
 };
@@ -2007,6 +2168,22 @@ const packageTraceabilityLints = {
     }
     return null;
   },
+  ontologicalInconsistency: (db: QueryDB, self: SymbolEntry) => {
+    const axioms = emitAxioms(db, self);
+    if (!axioms || axioms.length === 0) return null;
+    const reasoner = new TableauReasoner();
+    reasoner.loadOntology(axioms);
+    reasoner.classify();
+    const consistency = reasoner.checkConsistency();
+    if (!consistency.isConsistent) {
+      const core = consistency.minimalConflictCore;
+      const detail = core && core.length > 0 ? `: conflicting axioms [${core.map((a: any) => a.type).join(", ")}]` : "";
+      return error(`Ontological inconsistency detected in '${self.name || "package"}'${detail}`, {
+        field: "declaredName",
+      });
+    }
+    return null;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -2174,6 +2351,71 @@ const sysmlEdgeGraphics = (opts: {
 export const sysml2Language = language({
   name: "sysml2",
 
+  actions: [
+    {
+      id: "extract_topology",
+      title: "Extract Part Topology",
+      description: "Extracts physical connection and port topology from a SysML v2 part definition.",
+      category: "query",
+      inputs: {
+        name: { type: "string", description: "Fully qualified part name" },
+      },
+      ui: {
+        editorTitle: {
+          icon: "$(type-hierarchy)",
+          group: "navigation@2",
+        },
+        languageModelTool: {
+          name: "sysml2_extract_topology",
+          displayName: "Extract SysML v2 Part Topology",
+          modelDescription: "Extracts physical connection and port topology from a SysML v2 part definition.",
+        },
+      },
+    },
+    {
+      id: "verify_requirements",
+      title: "Verify Requirements",
+      description: "Evaluates requirement satisfaction matrices and constraint checks across a SysML v2 model.",
+      category: "verify",
+      inputs: {
+        partName: { type: "string", description: "Part name to verify" },
+      },
+      ui: {
+        editorTitle: {
+          icon: "$(checklist)",
+          group: "navigation@1",
+        },
+        languageModelTool: {
+          name: "sysml2_verify_requirements",
+          displayName: "Verify SysML v2 Requirements",
+          modelDescription:
+            "Evaluates requirement satisfaction matrices and constraint checks across a SysML v2 model.",
+        },
+      },
+    },
+    {
+      id: "hybrid_simulate",
+      title: "Hybrid Simulation",
+      description: "Flatten and simulate a hybrid SysML v2 / Modelica system.",
+      category: "simulate",
+      inputs: {
+        name: { type: "string", description: "Fully qualified part/class name to simulate" },
+        startTime: { type: "number", description: "Simulation start time", default: 0 },
+        stopTime: { type: "number", description: "Simulation stop time", default: 10 },
+      },
+      ui: {
+        editorContextMenu: {
+          group: "1_run",
+        },
+        languageModelTool: {
+          name: "sysml2_hybrid_simulate",
+          displayName: "Simulate Hybrid SysML v2 / Modelica System",
+          modelDescription: "Flatten and simulate a hybrid SysML v2 / Modelica system.",
+        },
+      },
+    },
+  ],
+
   mcp: {
     serverName: "sysml2-mcp",
     serverVersion: "1.0.0",
@@ -2298,7 +2540,6 @@ export const sysml2Language = language({
       $.RenderingDefinition,
       $.RenderingUsage,
       $.MetadataDefinition,
-      $.MetadataUsage,
       $.MergeNode,
       $.DecisionNode,
       $.JoinNode,
@@ -2314,10 +2555,14 @@ export const sysml2Language = language({
     [$.OwnedReferenceSubsetting, $.OwnedFeatureChaining],
     [$.OwnedFeatureTyping, $.OwnedFeatureChaining],
     [$.OwnedSubsetting, $.OwnedFeatureChaining],
+    [$.OwnedSubclassification, $.OwnedSubsetting, $.OwnedFeatureChaining],
+    [$.OwnedSubclassification, $.OwnedFeatureChaining],
     [$.OwnedRedefinition, $.OwnedFeatureChaining],
     [$.OwnedCrossSubsetting, $.OwnedFeatureChaining],
     [$.Qualification, $.QualifiedName],
     [$._FeatureSpecializationPart],
+    [$._SubclassificationPart, $._FeatureSpecializationPart],
+    [$._SubclassificationPart, $._Subsettings],
     [$.MetadataUsage, $.ClassificationTestOperator],
     [$._Identification, $.QualifiedName],
     [$._Identification],
@@ -2433,7 +2678,7 @@ export const sysml2Language = language({
     MetadataUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($.PrefixMetadataMember),
           choice("metadata", "@"),
           optional(seq(optional($._Identification), optional(seq(choice(":", seq("defined", "by")))))),
           field("ownedRelationship", $.MetadataTyping),
@@ -2632,7 +2877,6 @@ export const sysml2Language = language({
       choice(
         $.Package,
         $.LibraryPackage,
-        $._AnnotatingElement,
         $.Dependency,
         $.AttributeDefinition,
         $.EnumerationDefinition,
@@ -3173,7 +3417,7 @@ export const sysml2Language = language({
         symbol: usageAttrs("connection"),
         queries: usageQueries,
         model: usageModel,
-        lints: usageLints,
+        lints: connectionLints,
         graphics: () => sysmlEdgeGraphics({ stroke: "#546e7a", label: "«connect»" }),
         diff: {
           identity: (self) => self.name || `connection_${self.id}`,
@@ -3201,7 +3445,7 @@ export const sysml2Language = language({
         symbol: usageAttrs("binding"),
         queries: usageQueries,
         model: usageModel,
-        lints: usageLints,
+        lints: connectionLints,
         graphics: () => sysmlEdgeGraphics({ label: "«bind»", stroke: "#37474f" }),
       }),
 

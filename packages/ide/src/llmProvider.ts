@@ -26,8 +26,9 @@ async function ensureEngine(): Promise<void> {
       progress.report({ message: "Loading WebLLM runtime..." });
 
       // Dynamic import — WebLLM is an ESM package bundled by webpack
+      webllm = await import("@mlc-ai/web-llm").catch(() => null);
       if (!webllm) {
-        webllm = await import("@mlc-ai/web-llm");
+        throw new Error("Failed to load @mlc-ai/web-llm");
       }
 
       progress.report({ message: `Downloading ${MODEL_ID}...` });

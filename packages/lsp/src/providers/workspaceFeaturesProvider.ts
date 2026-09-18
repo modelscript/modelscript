@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-useless-assignment */
+import { deriveSimplification } from "@modelscript/modelica";
 import {
   CodeAction,
   CodeActionKind,
@@ -235,6 +236,63 @@ export function registerWorkspaceFeaturesProvider(
               },
             },
           });
+        }
+      }
+
+      // Suggest homotopy operator wrapping for steep nonlinearities
+      if (
+        diagnostic.code === 5010 ||
+        diagnostic.code === "homotopyRecommended" ||
+        (diagnostic.message && diagnostic.message.includes("without homotopy"))
+      ) {
+        const text = document.getText();
+        const startOffset = document.offsetAt(diagnostic.range.start);
+        const endOffset = document.offsetAt(diagnostic.range.end);
+        const termText = text.substring(startOffset, endOffset).trim();
+
+        if (termText) {
+          let simplified: string | null = null;
+          const powMatch = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\^\s*([0-9]+(?:\.[0-9]+)?)$/);
+          if (powMatch) {
+            const varName = powMatch[1];
+            const power = parseFloat(powMatch[2]);
+            simplified = deriveSimplification("power", varName, { power });
+          } else if (/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*abs\(\s*\1\s*\)$/.test(termText)) {
+            const varName = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/)?.[1] || "v";
+            simplified = deriveSimplification("quadratic_drag", varName);
+          } else if (/^abs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s*\*\s*\1$/.test(termText)) {
+            const varName = termText.match(/abs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/)?.[1] || "v";
+            simplified = deriveSimplification("quadratic_drag", varName);
+          } else if (/^exp\(\s*([^()]+)\s*\)$/.test(termText)) {
+            const arg = termText.match(/^exp\(\s*([^()]+)\s*\)$/)?.[1] || "x";
+            const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
+            simplified = deriveSimplification("exp", varName, { arg });
+          } else if (/^sqrt\(\s*([^()]+)\s*\)$/.test(termText)) {
+            const arg = termText.match(/^sqrt\(\s*([^()]+)\s*\)$/)?.[1] || "x";
+            const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
+            simplified = deriveSimplification("sqrt", varName, { arg });
+          } else {
+            simplified = `/* linear proxy */ ${termText}`;
+          }
+
+          if (simplified) {
+            actions.push({
+              title: `Wrap '${termText}' with homotopy (Taylor linearization at start)`,
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: diagnostic.range,
+                      newText: `homotopy(${termText}, ${simplified})`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
         }
       }
     }

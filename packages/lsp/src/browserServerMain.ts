@@ -27,7 +27,7 @@ import { createDiagramDispatch } from "./diagramApi.js";
 
 import type { SyntaxNode, Tree as TreeSitterTree } from "./utils/tree-sitter.js";
 
-import { ArenaQueryFlattener, modelicaLanguage } from "@modelscript/modelica";
+import { ArenaQueryFlattener, modelicaActionHandlers, modelicaLanguage } from "@modelscript/modelica";
 import { DAEBuilder, QueryEngine, initBltWasm } from "@modelscript/runtime";
 import { LineIndex } from "./utils/line-index.js";
 
@@ -199,6 +199,7 @@ import modelicaLangFallback from "@modelscript/modelica/language";
 import { UnifiedWorkspace } from "@modelscript/runtime";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
+import { registerActionRouter } from "./handlers/actionRouter.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
 import { registerDiagramHandlers } from "./handlers/diagramHandler.js";
@@ -316,6 +317,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
           facade: (parserService as any).facade,
           languageDef: modelicaLanguage,
           handlers: modelicaLanguage.lsp?.handlers,
+          actionHandlers: modelicaActionHandlers,
         });
         globalLanguageRegistry.register({
           id: "sysml2",
@@ -960,6 +962,7 @@ const lspContext: LspContext = {
   },
 };
 
+registerActionRouter(lspContext);
 registerDiagramHandlers(lspContext);
 registerTreeHandlers(lspContext);
 registerSimulationEndpoints(lspContext);

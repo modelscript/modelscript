@@ -44,6 +44,8 @@ export {
   resolveComponentClassDefinition,
 };
 
+export { deriveSimplification, findNonlinearTermsInCst, type NonlinearTermInfo } from "./homotopy-synthesis.js";
+
 export const allModelicaLints: Record<string, CompilerLint> = {
   ...modelicaSyntaxLints,
   ...modelicaTypeLints,

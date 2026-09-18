@@ -2431,7 +2431,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
   }
 
   // Case A: Linear path (no DAG diamonds along the pop chain)
-  if (!hasMultiLink && curr != null) {
+  if (!hasMultiLink && curr != null && curr.firstEdge == 0) {
     if (curr.state < 0 || curr.state >= goto_offsets.length) return null;
     let gOffset = goto_offsets[curr.state];
     if (gOffset < 0 || gOffset >= goto_data.length) return null;
@@ -3889,9 +3889,6 @@ export function advanceGLR(): void {
             didAct = true;
             break;
           } else if (aType == ACTION_REDUCE) {
-            if (head.state == 0 && prod_lengths[aTarget] == 0 && tok != TOKEN_EOF) {
-              break;
-            }
             let reducedHead = processReduceAction(head, aTarget, frontierPos);
             if (reducedHead != null) {
               head = reducedHead;
@@ -3911,12 +3908,10 @@ export function advanceGLR(): void {
               processShiftAction(head, aTarget, tok, frontierPos, false, false);
               didAct = true;
             } else if (aType == ACTION_REDUCE) {
-              if (!(head.state == 0 && prod_lengths[aTarget] == 0 && tok != TOKEN_EOF)) {
-                let redHead = processReduceAction(head, aTarget, frontierPos, true);
-                if (redHead != null) {
-                  pushActiveHead(changetype<u32>(redHead));
-                  didAct = true;
-                }
+              let redHead = processReduceAction(head, aTarget, frontierPos, true);
+              if (redHead != null) {
+                pushActiveHead(changetype<u32>(redHead));
+                didAct = true;
               }
             }
           }
@@ -4017,17 +4012,6 @@ export function advanceGLR(): void {
             }
             resumedCount++;
           }
-        }
-      }
-    } else if (bestPausedHead != null && nextHeadsCount > 0) {
-      // Healthy heads advanced, but preserve top paused heads into nextHeads as fallback
-      let preservedCount: u32 = 0;
-      for (let p: u32 = 0; p < pausedHeadsCount && preservedCount < 2 && nextHeadsCount < MAX_PARALLEL_HEADS * 2; p++) {
-        let cand = changetype<ParseHead>(t_pausedHeads[p]);
-        if (cand.errorCost <= minNextCost + 1000) {
-          cand.isPaused = false;
-          pushNextHead(changetype<u32>(cand));
-          preservedCount++;
         }
       }
     }

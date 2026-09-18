@@ -44,6 +44,8 @@ export interface LanguagePlugin {
   languageDef?: any;
   /** Custom JSON-RPC request and notification handlers */
   handlers?: Record<string, (context: any, params: any) => Promise<any> | any>;
+  /** Domain action execution handlers (decoupled from AST grammar) */
+  actionHandlers?: Record<string, (context: any, inputs: any) => Promise<any> | any>;
 }
 
 /**

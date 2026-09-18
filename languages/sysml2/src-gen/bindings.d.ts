@@ -1201,25 +1201,25 @@ export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export enum SyntaxKind {
   ERROR = 0,
-  MetaClassificationTestOperator = 641,
-  CastOperator = 642,
-  MetaCastOperator = 643,
-  LiteralInfinity = 678,
-  DECIMALVALUE = 683,
-  DECIMAL_VALUE = 683,
-  EXPVALUE = 684,
-  EXP_VALUE = 684,
-  ID = 685,
-  UNRESTRICTEDNAME = 686,
-  UNRESTRICTED_NAME = 686,
-  STRINGVALUE = 687,
-  STRING_VALUE = 687,
-  REGULARCOMMENT = 688,
-  REGULAR_COMMENT = 688,
-  MLNOTE = 689,
-  ML_NOTE = 689,
-  SLNOTE = 690,
-  SL_NOTE = 690,
+  MetaClassificationTestOperator = 642,
+  CastOperator = 643,
+  MetaCastOperator = 644,
+  LiteralInfinity = 679,
+  DECIMALVALUE = 684,
+  DECIMAL_VALUE = 684,
+  EXPVALUE = 685,
+  EXP_VALUE = 685,
+  ID = 686,
+  UNRESTRICTEDNAME = 687,
+  UNRESTRICTED_NAME = 687,
+  STRINGVALUE = 688,
+  STRING_VALUE = 688,
+  REGULARCOMMENT = 689,
+  REGULAR_COMMENT = 689,
+  MLNOTE = 690,
+  ML_NOTE = 690,
+  SLNOTE = 691,
+  SL_NOTE = 691,
   RootNamespace = 190,
   PackageBodyElement = 191,
   _PackageBodyElement = 191,
@@ -2782,24 +2782,6 @@ export namespace Cst {
     declaredShortNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declaredName(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaredNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isEnd(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isEndList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    direction(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    directionList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isDerived(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isDerivedList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isAbstract(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isAbstractList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isVariation(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isVariationList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isConstant(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isConstantList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isRef(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isRefList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isRedefine(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isRedefineList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    isSubsetting(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    isSubsettingList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const MetadataTyping: {
     readonly typeId: number;

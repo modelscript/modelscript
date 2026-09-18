@@ -254,23 +254,42 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register in-memory filesystem for blank project mode (memfs:// scheme)
   // Must be registered synchronously before any await to avoid ENOPRO race conditions during workspace validation.
-  const folders = workspace.workspaceFolders;
-  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
-    const memFs = new MemoryFileSystemProvider();
-    memFs.createDirectory(folders[0].uri);
-    context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
-    console.log("[blank-project] Registered memfs:// filesystem provider");
+  const memFs = new MemoryFileSystemProvider();
+  context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
+  console.log("[blank-project] Registered memfs:// filesystem provider");
 
+  const folders = workspace.workspaceFolders;
+  let memfsRootUri: vscode.Uri | undefined;
+  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
+    memfsRootUri = folders[0].uri;
+  } else {
+    try {
+      const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
+      if (hash.startsWith("memfs")) {
+        const template = hash.split(":")[1] || "empty";
+        memfsRootUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (memfsRootUri) {
+    memFs.createDirectory(memfsRootUri);
     // Scaffold template files SYNCHRONOUSLY into the memfs store so they exist
     // before VS Code attempts to restore previously-open editors (including
     // diagram custom editors) from a prior session. Without this, restored editors
     // trigger FileNotFound because initWorkspaceAndTree runs asynchronously later.
-    scaffoldTemplateFiles(memFs, folders[0].uri);
+    scaffoldTemplateFiles(memFs, memfsRootUri);
   }
 
-  context.subscriptions.push(
-    vscode.debug.registerDebugAdapterDescriptorFactory("modelscript", new InlineDebugAdapterFactory()),
-  );
+  try {
+    context.subscriptions.push(
+      vscode.debug.registerDebugAdapterDescriptorFactory("modelscript", new InlineDebugAdapterFactory()),
+    );
+  } catch (e) {
+    console.warn("Failed to register debug adapter factory:", e);
+  }
 
   // Register URI handler for vscode://modelscript.modelscript/install?package=xyz
   context.subscriptions.push(
@@ -482,52 +501,73 @@ export async function activate(context: vscode.ExtensionContext) {
   treeProvider.onDragStart = (data) => {
     diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
   };
-  const treeView = vscode.window.createTreeView("modelscript.libraryTree", {
-    treeDataProvider: treeProvider,
-    dragAndDropController: treeProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(treeView);
+  let treeView: vscode.TreeView<any> | undefined;
+  try {
+    treeView = vscode.window.createTreeView("modelscript.libraryTree", {
+      treeDataProvider: treeProvider,
+      dragAndDropController: treeProvider,
+      canSelectMany: false,
+    });
+    context.subscriptions.push(treeView);
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand("modelscript.libraryView.refresh", () => {
-      treeProvider.refresh();
-    }),
-  );
+    context.subscriptions.push(
+      vscode.commands.registerCommand("modelscript.libraryView.refresh", () => {
+        treeProvider.refresh();
+      }),
+    );
+  } catch (e) {
+    console.warn("Could not register modelscript.libraryTree view:", e);
+  }
 
   // Register MQTT participant tree view
-  const mqttTreeProvider = new MqttTreeProvider(client, context);
-  const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
-    treeDataProvider: mqttTreeProvider,
-    dragAndDropController: mqttTreeProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(mqttTreeView);
-  mqttTreeProvider.startPolling();
+  try {
+    const mqttTreeProvider = new MqttTreeProvider(client, context);
+    const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
+      treeDataProvider: mqttTreeProvider,
+      dragAndDropController: mqttTreeProvider,
+      canSelectMany: false,
+    });
+    context.subscriptions.push(mqttTreeView);
+    mqttTreeProvider.startPolling();
+  } catch (e) {
+    console.warn("Could not register modelscript.mqttTree view:", e);
+  }
 
   // Register experiments tree view (discovers experiment annotations)
-  const experimentsTreeProvider = new ExperimentsTreeProvider(client);
-  const experimentsTreeView = vscode.window.createTreeView("modelscript.experimentsView", {
-    treeDataProvider: experimentsTreeProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(experimentsTreeView);
+  try {
+    const experimentsTreeProvider = new ExperimentsTreeProvider(client);
+    const experimentsTreeView = vscode.window.createTreeView("modelscript.experimentsView", {
+      treeDataProvider: experimentsTreeProvider,
+      canSelectMany: false,
+    });
+    context.subscriptions.push(experimentsTreeView);
+  } catch (e) {
+    console.warn("Could not register modelscript.experimentsView view:", e);
+  }
 
   // Register OWL2 Protégé-style class hierarchy tree view
-  const owl2ClassProvider = new OWL2ClassHierarchyProvider(client);
-  const owl2ClassTreeView = vscode.window.createTreeView("modelscript.owl2ClassHierarchy", {
-    treeDataProvider: owl2ClassProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(owl2ClassTreeView);
+  try {
+    const owl2ClassProvider = new OWL2ClassHierarchyProvider(client);
+    const owl2ClassTreeView = vscode.window.createTreeView("modelscript.owl2ClassHierarchy", {
+      treeDataProvider: owl2ClassProvider,
+      canSelectMany: false,
+    });
+    context.subscriptions.push(owl2ClassTreeView);
+  } catch (e) {
+    console.warn("Could not register modelscript.owl2ClassHierarchy view:", e);
+  }
 
   // Register OWL2 Protégé-style property hierarchy tree view
-  const owl2PropProvider = new OWL2PropertyHierarchyProvider(client);
-  const owl2PropTreeView = vscode.window.createTreeView("modelscript.owl2PropertyHierarchy", {
-    treeDataProvider: owl2PropProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(owl2PropTreeView);
+  try {
+    const owl2PropProvider = new OWL2PropertyHierarchyProvider(client);
+    const owl2PropTreeView = vscode.window.createTreeView("modelscript.owl2PropertyHierarchy", {
+      treeDataProvider: owl2PropProvider,
+      canSelectMany: false,
+    });
+    context.subscriptions.push(owl2PropTreeView);
+  } catch (e) {
+    console.warn("Could not register modelscript.owl2PropertyHierarchy view:", e);
+  }
 
   // Register ModelScript package registry tree view (Extensions-bar style)
   registerRegistryView(context, client);
@@ -1027,6 +1067,73 @@ END-ISO-10303-21;`;
         }
       } else {
         SimulationPanel.createOrShow(context.extensionUri, client);
+      }
+    }),
+    commands.registerCommand("modelscript.modelica.simulate", async (args?: any) => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      let uri = editor?.document.uri.toString();
+      let inputs: any = {};
+      if (args && typeof args === "object") {
+        if ("scheme" in args && "path" in args) {
+          uri = args.toString();
+        } else {
+          inputs = args;
+        }
+      }
+      try {
+        const res = await client.sendRequest<any>("modelscript/executeAction", {
+          actionId: "simulate",
+          languageId: "modelica",
+          uri,
+          inputs,
+        });
+        if (res?.t && res?.y) {
+          SimulationPanel.createOrShowWithData(
+            context.extensionUri,
+            {
+              t: res.t,
+              states: res.states || [],
+              y: res.y,
+            },
+            uri || "",
+          );
+        } else if (res?.text) {
+          outputChannel.appendLine(res.text);
+          outputChannel.show(true);
+        }
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Simulation failed: ${e?.message ?? e}`);
+      }
+    }),
+    commands.registerCommand("modelscript.modelica.flatten", async (args?: any) => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      let uri = editor?.document.uri.toString();
+      let inputs: any = {};
+      if (args && typeof args === "object") {
+        if ("scheme" in args && "path" in args) {
+          uri = args.toString();
+        } else {
+          inputs = args;
+        }
+      }
+      try {
+        const res = await client.sendRequest<any>("modelscript/executeAction", {
+          actionId: "flatten",
+          languageId: "modelica",
+          uri,
+          inputs,
+        });
+        if (res?.text) {
+          const doc = await vscode.workspace.openTextDocument({
+            content: res.text,
+            language: "modelica",
+          });
+          await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+        }
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Flatten failed: ${e?.message ?? e}`);
       }
     }),
     commands.registerCommand("modelscript.openCalibration", (uri?: string) => {
@@ -2946,6 +3053,179 @@ end Manufacturing;
         '  method = "lhs"',
         ");",
         "",
+      ].join("\n"),
+    },
+    notebook: {
+      "demo.monb": JSON.stringify(
+        {
+          cells: [
+            {
+              cell_type: "markdown",
+              source: [
+                "# Modelica Notebooks",
+                "",
+                "Welcome to ModelScript Notebooks! Create models and simulate them directly.",
+              ],
+            },
+            {
+              cell_type: "code",
+              source: ["model Simple", "  Real x(start = 1);", "equation", "  der(x) = -x;", "end Simple;"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    },
+    surrogate: {
+      "BouncingBall.mo": [
+        'model BouncingBall "A classic bouncing ball model"',
+        '  parameter Real e = 0.8 "Coefficient of restitution";',
+        '  parameter Real g = 9.81 "Gravity";',
+        '  parameter Real v_0 = 0.0 "Initial velocity";',
+        '  Real h(start = 1.0) "Height";',
+        '  Real v(start = v_0) "Velocity";',
+        "equation",
+        "  der(h) = v;",
+        "  der(v) = -g;",
+        "  when h <= 0.0 and v < 0.0 then",
+        "    reinit(v, -e * pre(v));",
+        "  end when;",
+        "end BouncingBall;",
+        "",
+      ].join("\n"),
+      "README.md": [
+        "# AI Surrogate Modeling",
+        "",
+        "This workspace demonstrates how to orchestrate Design of Experiments (DoE) and train AI surrogate models (Reduced Order Models) directly from Modelica.",
+        "",
+        "## Training a Surrogate",
+        "",
+        "1. Open `BouncingBall.mo`",
+        "2. Click the **Train Surrogate** icon (robot) in the editor title bar",
+        "3. Choose a **DoE Strategy** (e.g., Latin Hypercube) and number of samples",
+        "4. Choose an **Architecture** (e.g., MLP Neural Network)",
+        "5. Click **Train Surrogate**",
+        "",
+        "The platform will orchestrate headless simulations to build a dataset, train the neural network, and report the R² accuracy.",
+        "",
+        "## Exporting to WebAssembly",
+        "",
+        "Once training is complete, click **Generate WASM** in the Surrogate Editor.",
+        "This will instantly generate a self-contained C source code array of the neural network weights and biases, ready for edge deployment!",
+      ].join("\n"),
+    },
+    "assembly-to-multibody": {
+      "SimplePendulum.step": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('STEP AP242 Assembly'),'2;1');",
+        "FILE_NAME('SimplePendulum.step','2026-05-13',('ModelScript'),(''),(''),'','');",
+        "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));",
+        "ENDSEC;",
+        "DATA;",
+        "#1=PRODUCT('Assembly','Assembly','',(#2));",
+        "#2=PRODUCT_CONTEXT('',#3,'mechanical');",
+        "#3=APPLICATION_CONTEXT('automotive design');",
+        "#10=PRODUCT('Link','Link','',(#2));",
+        "#20=PRODUCT('Bob','Bob','',(#2));",
+        "#30=NEXT_ASSEMBLY_USAGE_OCCURRENCE('NAUO1','Link to Bob','',#10,#20,$);",
+        "#40=REVOLUTE_PAIR('RevJoint','Joint between Link and Bob',#10,#20);",
+        "ENDSEC;",
+        "END-ISO-10303-21;",
+      ].join("\n"),
+      "README.md": [
+        "# STEP AP242 to Modelica Multi-Body",
+        "",
+        "This workspace demonstrates the automated conversion of a 3D CAD assembly into a Modelica Multi-Body simulation.",
+        "",
+        "## Workflow",
+        "",
+        "1. Open `SimplePendulum.step`.",
+        "2. The 3D Viewer will render the geometric bodies (if OCCT WASM is loaded).",
+        "3. Click the **⚙️ Generate Multi-Body Model** button in the top left of the 3D Viewer, or run the command from the Command Palette.",
+        "4. A new `SimplePendulum.mo` file will be generated automatically, containing `Parts.Body` and `Joints.Revolute` components.",
+        "5. Open `SimplePendulum.mo` and click **Run Simulation** to simulate the dynamics!",
+      ].join("\n"),
+      "generate.mos": [
+        "// Generate a Multi-Body model from a STEP assembly",
+        'loadStepAssembly("SimplePendulum.step");',
+        "generateMultiBody(density = 7800);",
+        "simulate(SimplePendulum_Assembly, stopTime = 10);",
+      ].join("\n"),
+    },
+    cosim: {
+      "Controller.mo": [
+        'model Controller "Simple PI controller"',
+        '  Modelica.Blocks.Interfaces.RealInput u "Measurement input";',
+        '  Modelica.Blocks.Interfaces.RealOutput y "Control output";',
+        '  parameter Real Kp = 2.0 "Proportional gain";',
+        '  parameter Real Ki = 0.5 "Integral gain";',
+        '  parameter Real setpoint = 1.0 "Reference setpoint";',
+        '  Real error "Tracking error";',
+        '  Real integral(start = 0) "Integral of error";',
+        "equation",
+        "  error = setpoint - u;",
+        "  der(integral) = error;",
+        "  y = Kp * error + Ki * integral;",
+        "end Controller;",
+        "",
+      ].join("\n"),
+      "CosimSetup.mo": [
+        'model CosimSetup "Co-simulation wiring diagram"',
+        "  Controller controller;",
+        "  SineWave sineWave;",
+        "equation",
+        "  connect(controller.y, sineWave.phase);",
+        "  connect(sineWave.y, controller.u);",
+        "end CosimSetup;",
+        "",
+      ].join("\n"),
+      "README.md": [
+        "# Co-Simulation Example",
+        "",
+        "This workspace demonstrates co-simulation between a **Modelica model** and a **WASM FMU**.",
+        "",
+        "## Files",
+        "",
+        "| File | Type | Description |",
+        "|------|------|-------------|",
+        "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
+        "| `CosimSetup.mo` | Modelica | Wiring diagram connecting Controller ↔ SineWave |",
+        "",
+        "## Running the Co-Simulation",
+        "",
+        "1. Open the **Co-Simulation** panel in the sidebar",
+        '2. Click **"Browser-Local"** to enable local mode',
+        "3. Create a new session (start=0, stop=10, step=0.01)",
+        "4. Open `Controller.mo` and click **Publish Model**",
+        "5. Start the coupled simulation",
+      ].join("\n"),
+    },
+    "uns-mqtt": {
+      "DigitalTwin.mo": [
+        'model DigitalTwin "Real-Time Digital Twin with UNS/MQTT"',
+        '  parameter Real target_speed = 10.0 "Override via: .../cmd/DigitalTwin/target_speed";',
+        '  Real speed(start=0) "Telemetry published to: .../data/DigitalTwin/speed";',
+        "equation",
+        "  der(speed) = (target_speed - speed) * 1.5;",
+        "end DigitalTwin;\n",
+      ].join("\n"),
+      "hmi.html": [
+        "<!DOCTYPE html>",
+        "<html><head><title>HMI</title>",
+        '<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>',
+        "<style>body{font-family:sans-serif;text-align:center;padding-top:50px;} h1{font-size:3rem;}</style>",
+        "</head><body>",
+        "<h2>Conveyor Speed</h2>",
+        '<h1 id="speed">0.00</h1>',
+        "<p>Live telemetry via MQTT Unified Namespace</p>",
+        "</body></html>",
+      ].join("\n"),
+      "README.md": [
+        "# UNS / Real-Time MQTT Example",
+        "",
+        "This workspace demonstrates how to stream live telemetry from a Modelica simulation directly to an external HMI web app.",
       ].join("\n"),
     },
   };

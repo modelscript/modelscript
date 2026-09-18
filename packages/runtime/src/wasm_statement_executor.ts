@@ -863,22 +863,70 @@ function getSequenceElementsLocal(dae: DAEBuilder, baseExprId: number, count: nu
   return elements;
 }
 
+function createDefaultArray(dims: number[], defaultScalar: ArenaValue = 0.0): ArenaValue {
+  if (dims.length === 0) return defaultScalar;
+  if (dims.length === 1) {
+    const len = dims[0]! > 0 ? dims[0]! : 0;
+    return new Array(len).fill(defaultScalar);
+  }
+  const len = dims[0]! > 0 ? dims[0]! : 0;
+  const result: ArenaValue[] = [];
+  for (let k = 0; k < len; k++) {
+    result.push(createDefaultArray(dims.slice(1), defaultScalar));
+  }
+  return result;
+}
+
 function updateNestedArray(arr: ArenaValue, indices: ArenaValue[], value: ArenaValue): ArenaValue {
   if (indices.length === 0) return value;
-  const idx = indices[0];
-  if (typeof idx !== "number" || !Number.isInteger(idx)) return arr;
-  const arrayIndex = idx - 1;
+  const head = indices[0];
+  const tail = indices.slice(1);
   const currentArr = Array.isArray(arr) ? [...arr] : [];
-  while (currentArr.length <= arrayIndex) {
-    currentArr.push(indices.length > 1 ? [] : 0);
+
+  if (tail.length === 0) {
+    if (head === ":") {
+      return Array.isArray(value) ? [...value] : value;
+    } else if (Array.isArray(head)) {
+      for (let k = 0; k < head.length; k++) {
+        const targetIdx = (head[k] as number) - 1;
+        while (currentArr.length <= targetIdx) currentArr.push(0);
+        currentArr[targetIdx] = Array.isArray(value) ? value[k] : value;
+      }
+      return currentArr;
+    } else if (typeof head === "number" && Number.isInteger(head)) {
+      const targetIdx = head - 1;
+      while (currentArr.length <= targetIdx) currentArr.push(0);
+      currentArr[targetIdx] = value;
+      return currentArr;
+    }
+    return arr;
   }
-  if (indices.length === 1) {
-    currentArr[arrayIndex] = value;
-  } else {
-    const element = currentArr[arrayIndex] ?? [];
-    currentArr[arrayIndex] = updateNestedArray(element, indices.slice(1), value);
+
+  // tail.length > 0
+  if (head === ":") {
+    const len = Array.isArray(value) ? value.length : currentArr.length;
+    while (currentArr.length < len) currentArr.push([]);
+    for (let k = 0; k < len; k++) {
+      const elemVal = Array.isArray(value) ? value[k] : value;
+      currentArr[k] = updateNestedArray(currentArr[k] ?? [], tail, elemVal);
+    }
+    return currentArr;
+  } else if (Array.isArray(head)) {
+    for (let k = 0; k < head.length; k++) {
+      const targetIdx = (head[k] as number) - 1;
+      while (currentArr.length <= targetIdx) currentArr.push([]);
+      const elemVal = Array.isArray(value) ? value[k] : value;
+      currentArr[targetIdx] = updateNestedArray(currentArr[targetIdx] ?? [], tail, elemVal);
+    }
+    return currentArr;
+  } else if (typeof head === "number" && Number.isInteger(head)) {
+    const targetIdx = head - 1;
+    while (currentArr.length <= targetIdx) currentArr.push(tail.length > 0 ? [] : 0);
+    currentArr[targetIdx] = updateNestedArray(currentArr[targetIdx] ?? [], tail, value);
+    return currentArr;
   }
-  return currentArr;
+
+  return arr;
 }
 
 /**
@@ -919,12 +967,16 @@ export function executeArenaCEvalStatements(
             if (match && match[1] && match[2]) {
               const baseName = match[1];
               const rawIndices = match[2].split(",").map((s) => s.trim());
-              const subscripts: number[] = [];
+              const subscripts: (number | string | number[])[] = [];
               let ok = true;
               for (const rawIdx of rawIndices) {
-                if (env.has(rawIdx)) {
+                if (rawIdx === ":") {
+                  subscripts.push(":");
+                } else if (env.has(rawIdx)) {
                   const ev = env.get(rawIdx);
                   if (typeof ev === "number") subscripts.push(ev);
+                  else if (ev === ":") subscripts.push(":");
+                  else if (Array.isArray(ev) && ev.every((x) => typeof x === "number")) subscripts.push(ev as number[]);
                   else {
                     ok = false;
                     break;
@@ -949,20 +1001,30 @@ export function executeArenaCEvalStatements(
           }
         } else if (targetKind === ExprKind.Subscript) {
           let currentExprId = targetExprId;
-          const subscripts: number[] = [];
+          const subscripts: (number | string | number[])[] = [];
           let ok = true;
           while (arena.getExprKind(currentExprId) === ExprKind.Subscript) {
             const idxCount = arena.getExprRight(currentExprId);
             const firstIdx = arena.getExprLeft(currentExprId);
             const idxIds = getSequenceElementsLocal(arena, currentExprId, idxCount, firstIdx);
-            const currentSubscripts: number[] = [];
+            const currentSubscripts: (number | string | number[])[] = [];
             for (const id of idxIds) {
+              const k = arena.getExprKind(id);
+              if (k === ExprKind.Name && arena.interner.resolve(arena.getExprData1(id)) === ":") {
+                currentSubscripts.push(":");
+                continue;
+              }
               const val = evaluateArenaExpression(arena, id, env, db, scopeId, undefined, false, functionLookup);
-              if (typeof val !== "number") {
+              if (typeof val === "number") {
+                currentSubscripts.push(val);
+              } else if (val === ":") {
+                currentSubscripts.push(":");
+              } else if (Array.isArray(val) && val.every((x) => typeof x === "number")) {
+                currentSubscripts.push(val as number[]);
+              } else {
                 ok = false;
                 break;
               }
-              currentSubscripts.push(val);
             }
             subscripts.unshift(...currentSubscripts);
             if (!ok) break;
@@ -1446,12 +1508,35 @@ export function evaluateArenaFunctionCall(
 
       let defaultVal: ArenaValue = 0;
       const shape = funcArena.getVarShape(i);
-      if (shape && shape.length > 0) {
-        defaultVal = [];
+      const shapeExprs = funcArena.getVarShapeExprs(i);
+      const type = funcArena.getVarType(i);
+      const defaultScalar: ArenaValue = type === VarType.Boolean ? false : type === VarType.String ? "" : 0.0;
+      if (shapeExprs && shapeExprs.length > 0) {
+        const concreteShape: number[] = [];
+        for (let sIdx = 0; sIdx < shapeExprs.length; sIdx++) {
+          const sId = shapeExprs[sIdx]!;
+          const dimVal = evaluateArenaExpression(funcArena, sId, env, db, scopeId, undefined, false, functionLookup);
+          if (typeof dimVal === "number" && dimVal > 0) {
+            concreteShape.push(dimVal);
+          } else if (shape && shape[sIdx]! > 0) {
+            concreteShape.push(shape[sIdx]!);
+          } else {
+            concreteShape.push(-1);
+          }
+        }
+        if (concreteShape.length > 0 && concreteShape.every((d) => d > 0)) {
+          defaultVal = createDefaultArray(concreteShape, defaultScalar);
+        } else {
+          defaultVal = [];
+        }
+      } else if (shape && shape.length > 0) {
+        if (shape.every((d) => d > 0)) {
+          defaultVal = createDefaultArray(shape, defaultScalar);
+        } else {
+          defaultVal = [];
+        }
       } else {
-        const type = funcArena.getVarType(i);
-        if (type === VarType.Boolean) defaultVal = false;
-        else if (type === VarType.String) defaultVal = "";
+        defaultVal = defaultScalar;
       }
 
       if (causality === 1 /* Input */) {

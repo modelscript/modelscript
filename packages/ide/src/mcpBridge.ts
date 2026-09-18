@@ -17,84 +17,126 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
   }
 
   // modelscript_flatten
-  context.subscriptions.push(
-    vscode.lm.registerTool("modelscript_flatten", {
-      async invoke(
-        options: vscode.LanguageModelToolInvocationOptions<{ name: string }>,
-      ): Promise<vscode.LanguageModelToolResult> {
-        const name = options.input.name;
-        const result = await client.sendRequest<{ text: string | null; error?: string }>("modelscript/flatten", {
-          name,
-        });
-        if (result.error) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${result.error}`)]);
-        }
-        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(result.text ?? "")]);
-      },
-    }),
-  );
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("modelscript_flatten", {
+        async invoke(
+          options: vscode.LanguageModelToolInvocationOptions<{ name: string }>,
+        ): Promise<vscode.LanguageModelToolResult> {
+          const name = options.input.name;
+          let result: { text?: string | null; error?: string };
+          try {
+            result = await client.sendRequest<{ text?: string | null; error?: string }>("modelscript/executeAction", {
+              actionId: "flatten",
+              languageId: "modelica",
+              inputs: { name },
+            });
+          } catch {
+            result = await client.sendRequest<{ text?: string | null; error?: string }>("modelscript/flatten", {
+              name,
+            });
+          }
+          if (result?.error) {
+            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${result.error}`)]);
+          }
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(result?.text ?? "")]);
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
 
   // modelscript_simulate
-  context.subscriptions.push(
-    vscode.lm.registerTool("modelscript_simulate", {
-      async invoke(
-        options: vscode.LanguageModelToolInvocationOptions<{
-          name: string;
-          startTime?: number;
-          stopTime?: number;
-          solver?: string;
-          format?: string;
-        }>,
-      ): Promise<vscode.LanguageModelToolResult> {
-        const result = await client.sendRequest<{ text: string | null; error?: string }>(
-          "modelscript/simulate",
-          options.input,
-        );
-        if (result.error) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${result.error}`)]);
-        }
-        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(result.text ?? "")]);
-      },
-    }),
-  );
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("modelscript_simulate", {
+        async invoke(
+          options: vscode.LanguageModelToolInvocationOptions<{
+            name: string;
+            startTime?: number;
+            stopTime?: number;
+            solver?: string;
+            format?: string;
+          }>,
+        ): Promise<vscode.LanguageModelToolResult> {
+          let result: any;
+          try {
+            result = await client.sendRequest<any>("modelscript/executeAction", {
+              actionId: "simulate",
+              languageId: "modelica",
+              inputs: options.input,
+            });
+          } catch {
+            result = await client.sendRequest<any>("modelscript/simulate", options.input);
+          }
+          if (result?.error) {
+            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${result.error}`)]);
+          }
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(result?.text ?? JSON.stringify(result ?? {})),
+          ]);
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
 
   // modelscript_query
-  context.subscriptions.push(
-    vscode.lm.registerTool("modelscript_query", {
-      async invoke(
-        options: vscode.LanguageModelToolInvocationOptions<{ name: string }>,
-      ): Promise<vscode.LanguageModelToolResult> {
-        const result = await client.sendRequest<{
-          name: string;
-          kind: string;
-          description: string;
-          components: { name: string; type: string; description: string }[];
-          childClasses: { name: string; kind: string }[];
-        } | null>("modelscript/query", { name: options.input.name });
-        if (!result) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Class '${options.input.name}' not found.`),
-          ]);
-        }
-        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
-      },
-    }),
-  );
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("modelscript_query", {
+        async invoke(
+          options: vscode.LanguageModelToolInvocationOptions<{ name: string }>,
+        ): Promise<vscode.LanguageModelToolResult> {
+          let result: any;
+          try {
+            result = await client.sendRequest<any>("modelscript/executeAction", {
+              actionId: "query",
+              languageId: "modelica",
+              inputs: { name: options.input.name },
+            });
+          } catch {
+            result = await client.sendRequest<any>("modelscript/query", { name: options.input.name });
+          }
+          if (!result || result.error) {
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(result?.error ?? `Class '${options.input.name}' not found.`),
+            ]);
+          }
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
 
   // modelscript_parse
-  context.subscriptions.push(
-    vscode.lm.registerTool("modelscript_parse", {
-      async invoke(
-        options: vscode.LanguageModelToolInvocationOptions<{ code: string }>,
-      ): Promise<vscode.LanguageModelToolResult> {
-        const result = await client.sendRequest<{
-          classes: { name: string; kind: string }[];
-          syntaxErrors: string[];
-        }>("modelscript/parse", { code: options.input.code });
-        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
-      },
-    }),
-  );
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("modelscript_parse", {
+        async invoke(
+          options: vscode.LanguageModelToolInvocationOptions<{ code: string }>,
+        ): Promise<vscode.LanguageModelToolResult> {
+          let result: any;
+          try {
+            result = await client.sendRequest<any>("modelscript/executeAction", {
+              actionId: "parse",
+              languageId: "modelica",
+              inputs: { code: options.input.code },
+            });
+          } catch {
+            result = await client.sendRequest<any>("modelscript/parse", { code: options.input.code });
+          }
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
 
   // modelscript_add_component (not in package.json languageModelTools — register defensively)
   try {

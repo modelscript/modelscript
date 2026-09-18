@@ -17,6 +17,7 @@ import {
   TextDocuments,
   TextDocumentSyncKind,
 } from "vscode-languageserver/node.js";
+import { registerActionRouter } from "./handlers/actionRouter.js";
 import { registerPolyglotEndpoints } from "./handlers/polyglotEndpoints.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
 import { registerDefinitionProvider } from "./providers/definitionProvider.js";
@@ -164,8 +165,18 @@ export function startNodeServer() {
     () => parserService.sysml2Parser,
   );
 
-  // 4. Register Dynamic Polyglot Endpoints
+  // 4. Register Dynamic Polyglot Endpoints and Actions
   registerPolyglotEndpoints(connection, documents, validationService, documentManager, workspaceManager);
+  registerActionRouter({
+    connection,
+    documents,
+    validationService,
+    documentManager,
+    workspaceManager,
+    parserService,
+    diagramService,
+    state: {},
+  } as any);
 
   // Listen on the document manager and connection
   documents.listen(connection);

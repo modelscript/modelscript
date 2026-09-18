@@ -238,6 +238,14 @@ export class Interval {
   }
 }
 
+/** Intersect two intervals, returning null if disjoint. */
+export function intersectInterval(a: Interval, b: Interval): Interval | null {
+  const lo = Math.max(a.lo, b.lo);
+  const hi = Math.min(a.hi, b.hi);
+  if (lo > hi) return null;
+  return new Interval(lo, hi);
+}
+
 export interface McCormickResult {
   cv: number;
   cc: number;
@@ -408,6 +416,114 @@ interface SbbNode {
 }
 
 /**
+ * Contract domain box bounds using Interval Constraint Propagation (ICP / HC4).
+ * For each constraint R_i = 0, evaluates intervals forward and projects back to tighten variable domains.
+ * Returns false if the box is proved infeasible (empty intersection).
+ */
+export function contractBoxICP(
+  constraintTapes: { ops: StaticTapeBuilder; outputIndex: number }[],
+  box: DomainBox,
+  maxPasses = 3,
+): boolean {
+  if (constraintTapes.length === 0) return true;
+
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let contracted = false;
+    for (const ct of constraintTapes) {
+      const intervals = evaluateTapeInterval(ct.ops, box);
+      const outIv = intervals[ct.outputIndex];
+      if (!outIv) continue;
+
+      // Target for constraint equation R_i = 0 is [0, 0]
+      const revOut = intersectInterval(outIv, new Interval(0, 0));
+      if (!revOut) return false;
+      intervals[ct.outputIndex] = revOut;
+
+      // Reverse pass
+      const nodeCount = ct.ops.length;
+      for (let i = nodeCount - 1; i >= 0; i--) {
+        const curIv = intervals[i];
+        if (!curIv) continue;
+        const offset = i * 4;
+        const kind = ct.ops.opData[offset] as TapeOpKind;
+        const data1 = ct.ops.opData[offset + 1] ?? 0;
+        const data2 = ct.ops.opData[offset + 2] ?? 0;
+
+        switch (kind) {
+          case TapeOpKind.Var: {
+            const name = ct.ops.interner.resolve(data1);
+            const orig = box.get(name);
+            if (orig) {
+              const intersected = intersectInterval(orig, curIv);
+              if (!intersected) return false;
+              if (intersected.width < orig.width - 1e-12) {
+                box.set(name, intersected);
+                contracted = true;
+              }
+            }
+            break;
+          }
+          case TapeOpKind.Add: {
+            const l = intervals[data1] ?? new Interval(-Infinity, Infinity);
+            const r = intervals[data2] ?? new Interval(-Infinity, Infinity);
+            const newL = intersectInterval(l, new Interval(curIv.lo - r.hi, curIv.hi - r.lo));
+            if (!newL) return false;
+            intervals[data1] = newL;
+            const newR = intersectInterval(r, new Interval(curIv.lo - l.hi, curIv.hi - l.lo));
+            if (!newR) return false;
+            intervals[data2] = newR;
+            break;
+          }
+          case TapeOpKind.Sub: {
+            const l = intervals[data1] ?? new Interval(-Infinity, Infinity);
+            const r = intervals[data2] ?? new Interval(-Infinity, Infinity);
+            const newL = intersectInterval(l, new Interval(curIv.lo + r.lo, curIv.hi + r.hi));
+            if (!newL) return false;
+            intervals[data1] = newL;
+            const newR = intersectInterval(r, new Interval(l.lo - curIv.hi, l.hi - curIv.lo));
+            if (!newR) return false;
+            intervals[data2] = newR;
+            break;
+          }
+          case TapeOpKind.Neg: {
+            const l = intervals[data1] ?? new Interval(-Infinity, Infinity);
+            const newL = intersectInterval(l, new Interval(-curIv.hi, -curIv.lo));
+            if (!newL) return false;
+            intervals[data1] = newL;
+            break;
+          }
+          case TapeOpKind.Mul: {
+            const l = intervals[data1] ?? new Interval(-Infinity, Infinity);
+            const r = intervals[data2] ?? new Interval(-Infinity, Infinity);
+            if (r.lo > 0 || r.hi < 0) {
+              const q1 = curIv.lo / r.lo,
+                q2 = curIv.lo / r.hi,
+                q3 = curIv.hi / r.lo,
+                q4 = curIv.hi / r.hi;
+              const newL = intersectInterval(l, new Interval(Math.min(q1, q2, q3, q4), Math.max(q1, q2, q3, q4)));
+              if (!newL) return false;
+              intervals[data1] = newL;
+            }
+            if (l.lo > 0 || l.hi < 0) {
+              const q1 = curIv.lo / l.lo,
+                q2 = curIv.lo / l.hi,
+                q3 = curIv.hi / l.lo,
+                q4 = curIv.hi / l.hi;
+              const newR = intersectInterval(r, new Interval(Math.min(q1, q2, q3, q4), Math.max(q1, q2, q3, q4)));
+              if (!newR) return false;
+              intervals[data2] = newR;
+            }
+            break;
+          }
+        }
+      }
+    }
+    if (!contracted) break;
+  }
+  return true;
+}
+
+/**
  * Solve a global optimization problem using spatial branch-and-bound.
  *
  * Minimizes `objective(z)` subject to `constraints_i(z) = 0`.
@@ -423,6 +539,18 @@ export function solveSBB(
   const relTol = options.relTol ?? 1e-4;
   const maxNodes = options.maxNodes ?? 10000;
   const maxNewtonIter = options.maxNewtonIter ?? 50;
+
+  // Initial pass: contract initial box via ICP
+  const isInitialFeasible = contractBoxICP(constraintTapes, initialBox);
+  if (!isInitialFeasible) {
+    return {
+      solution: boxMidpoint(initialBox, variables),
+      objectiveValue: Infinity,
+      lowerBound: Infinity,
+      nodesExplored: 1,
+      optimal: false,
+    };
+  }
 
   let incumbent: Map<string, number> | null = null;
   let upperBound = Infinity;
@@ -484,17 +612,21 @@ export function solveSBB(
     // Left child: [lo, mid]
     const leftBox: DomainBox = new Map(node.box);
     leftBox.set(splitVar, new Interval(splitInterval.lo, splitMid));
-    const leftLB = Math.max(tighterLB, evaluateIntervalLB(objectiveTape, leftBox));
-    if (leftLB < upperBound - absTol) {
-      queue.push({ box: leftBox, lowerBound: leftLB });
+    if (contractBoxICP(constraintTapes, leftBox)) {
+      const leftLB = Math.max(tighterLB, evaluateIntervalLB(objectiveTape, leftBox));
+      if (leftLB < upperBound - absTol) {
+        queue.push({ box: leftBox, lowerBound: leftLB });
+      }
     }
 
     // Right child: [mid, hi]
     const rightBox: DomainBox = new Map(node.box);
     rightBox.set(splitVar, new Interval(splitMid, splitInterval.hi));
-    const rightLB = Math.max(tighterLB, evaluateIntervalLB(objectiveTape, rightBox));
-    if (rightLB < upperBound - absTol) {
-      queue.push({ box: rightBox, lowerBound: rightLB });
+    if (contractBoxICP(constraintTapes, rightBox)) {
+      const rightLB = Math.max(tighterLB, evaluateIntervalLB(objectiveTape, rightBox));
+      if (rightLB < upperBound - absTol) {
+        queue.push({ box: rightBox, lowerBound: rightLB });
+      }
     }
   }
 

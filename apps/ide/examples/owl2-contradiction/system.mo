@@ -13,7 +13,7 @@ model MechanicalDevice
 end MechanicalDevice;
 
 model Motor
-  "Motor extends BOTH device types — this violates the disjointness
+  "Motor extends BOTH device types -- this violates the disjointness
    constraint defined in constraints.owl"
   extends ElectricalDevice(V_nominal = 380);
   extends MechanicalDevice(J = 0.05);

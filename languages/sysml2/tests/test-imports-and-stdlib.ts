@@ -24,10 +24,16 @@ async function runTests() {
     package VehicleModel {
       import ScalarValues::*;
       import ISQ::Time;
+      import SIBaseUnits::Second;
+      import SIDerivedUnits::Newton;
+      import Collections::List;
 
       part def Engine {
         attribute power : Real;
         attribute duration : Time;
+        attribute timeout : Second;
+        attribute force : Newton;
+        item partsList : List;
       }
     }
   `;
@@ -48,6 +54,15 @@ async function runTests() {
 
   const timeDefs = db.byName("Time");
   assert.ok(timeDefs.length > 0, "ISQ::Time should be present in the index");
+
+  const secondDefs = db.byName("Second");
+  assert.ok(secondDefs.length > 0, "SIBaseUnits::Second should be present in the index");
+
+  const newtonDefs = db.byName("Newton");
+  assert.ok(newtonDefs.length > 0, "SIDerivedUnits::Newton should be present in the index");
+
+  const listDefs = db.byName("List");
+  assert.ok(listDefs.length > 0, "Collections::List should be present in the index");
 
   // Check that VehicleModel definitions were indexed
   const vehiclePkgs = db.byName("VehicleModel");
@@ -76,8 +91,30 @@ async function runTests() {
   assert.ok(durationType, "duration attribute type should resolve");
   assert.strictEqual((durationType as any).name, "Time", "duration attribute type should resolve to Time");
 
+  // Verify type resolution of timeout -> Second
+  const timeoutAttr = engineChildren.find((c: any) => c.name === "timeout");
+  assert.ok(timeoutAttr, "timeout attribute should be indexed");
+  const timeoutType = queryEngine.fetch("resolvedType", timeoutAttr.id);
+  assert.ok(timeoutType, "timeout attribute type should resolve");
+  assert.strictEqual((timeoutType as any).name, "Second", "timeout attribute type should resolve to Second");
+
+  // Verify type resolution of force -> Newton
+  const forceAttr = engineChildren.find((c: any) => c.name === "force");
+  assert.ok(forceAttr, "force attribute should be indexed");
+  const forceType = queryEngine.fetch("resolvedType", forceAttr.id);
+  assert.ok(forceType, "force attribute type should resolve");
+  assert.strictEqual((forceType as any).name, "Newton", "force attribute type should resolve to Newton");
+
+  // Verify type resolution of partsList -> List
+  const listAttr = engineChildren.find((c: any) => c.name === "partsList");
+  assert.ok(listAttr, "partsList item should be indexed");
+  const listType = queryEngine.fetch("resolvedType", listAttr.id);
+  assert.ok(listType, "partsList type should resolve");
+  assert.strictEqual((listType as any).name, "List", "partsList type should resolve to List");
+
   console.log("✓ SysML v2 namespace and membership import resolution passed");
   console.log("✓ Embedded KerML stdlib auto-resolution passed");
+  console.log("✓ Hydrated SIBaseUnits, SIDerivedUnits, and Collections resolution passed");
   console.log("\nAll SysML v2 library tests passed successfully!");
 }
 

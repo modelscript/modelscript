@@ -315,7 +315,7 @@ export const ModelicaErrorCode = {
     rule: "equation-type-mismatch",
     severity: "error",
     message: (lhsExpanded: string, rhsExpanded: string, lhsType: string, rhsType: string) =>
-      `Type mismatch in equation ${lhsExpanded} = ${rhsExpanded} of type ${lhsType} = ${rhsType}.`,
+      `Type mismatch in equation ${lhsExpanded}=${rhsExpanded} of type ${lhsType}=${rhsType}.`,
   },
   CONSTRAINEDBY_TYPE_MISMATCH: {
     code: 5002,
@@ -419,6 +419,13 @@ export const ModelicaErrorCode = {
     rule: "assignment-to-input",
     severity: "error",
     message: (componentName: string) => `Trying to assign to input component '${componentName}'.`,
+  },
+  HOMOTOPY_RECOMMENDED: {
+    code: 5010,
+    rule: "homotopy-recommended",
+    severity: "info",
+    message: (term: string) =>
+      `Equation contains steep nonlinearity '${term}' without homotopy. Consider wrapping with homotopy(actual, simplified).`,
   },
   NESTED_WHEN: {
     code: 4013,
