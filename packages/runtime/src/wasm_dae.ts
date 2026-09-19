@@ -340,9 +340,26 @@ export interface IDaeBuilder {
 /**
  * Universal DAE Builder backed directly by WebAssembly `DaeBuilder` in linear memory.
  */
-export function matchVarPath(vn: string, baseName: string): number[] | null {
-  const baseParts = baseName.split(".");
-  const vnParts = vn.split(".");
+function splitPath(path: string): string[] {
+  const parts: string[] = [];
+  let bracketDepth = 0;
+  let last = 0;
+  for (let i = 0; i < path.length; i++) {
+    const ch = path[i];
+    if (ch === "[") bracketDepth++;
+    else if (ch === "]") bracketDepth--;
+    else if (ch === "." && bracketDepth === 0) {
+      parts.push(path.substring(last, i));
+      last = i + 1;
+    }
+  }
+  parts.push(path.substring(last));
+  return parts;
+}
+
+export function matchVarPath(vn: string, baseName: string, labelMaps?: Map<string, number>[]): number[] | null {
+  const baseParts = splitPath(baseName);
+  const vnParts = splitPath(vn);
   if (vnParts.length !== baseParts.length) return null;
   const indices: number[] = [];
   for (let i = 0; i < baseParts.length; i++) {
@@ -352,10 +369,22 @@ export function matchVarPath(vn: string, baseName: string): number[] | null {
     const prefix = `${bp}[`;
     if (vp.startsWith(prefix) && vp.endsWith("]")) {
       const idxStrs = vp.slice(prefix.length, -1).split(",");
-      for (const s of idxStrs) {
-        const num = parseInt(s.trim(), 10);
-        if (isNaN(num)) return null;
-        indices.push(num);
+      for (let subIdx = 0; subIdx < idxStrs.length; subIdx++) {
+        const s = idxStrs[subIdx]!.trim();
+        const dim = indices.length;
+        if (/^\d+$/.test(s)) {
+          indices.push(parseInt(s, 10));
+        } else if (labelMaps) {
+          if (!labelMaps[dim]) labelMaps[dim] = new Map<string, number>();
+          let mapped = labelMaps[dim]!.get(s);
+          if (mapped === undefined) {
+            mapped = labelMaps[dim]!.size + 1;
+            labelMaps[dim]!.set(s, mapped);
+          }
+          indices.push(mapped);
+        } else {
+          return null;
+        }
       }
     } else {
       return null;
@@ -818,8 +847,9 @@ export class WasmDaeBridge implements IDaeBuilder {
       if (this.getVarName(i).startsWith(prefix)) return true;
     }
     if (baseName.includes(".")) {
+      const labelMaps: Map<string, number>[] = [];
       for (let i = 0; i < this.varCount; i++) {
-        const idxs = matchVarPath(this.getVarName(i), baseName);
+        const idxs = matchVarPath(this.getVarName(i), baseName, labelMaps);
         if (idxs && idxs.length > 0) return true;
       }
     }
@@ -833,8 +863,9 @@ export class WasmDaeBridge implements IDaeBuilder {
       if (this.getVarName(i).startsWith(prefix)) indices.push(i);
     }
     if (indices.length === 0 && baseName.includes(".")) {
+      const labelMaps: Map<string, number>[] = [];
       for (let i = 0; i < this.varCount; i++) {
-        const idxs = matchVarPath(this.getVarName(i), baseName);
+        const idxs = matchVarPath(this.getVarName(i), baseName, labelMaps);
         if (idxs && idxs.length > 0) indices.push(i);
       }
     }

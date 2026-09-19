@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { ActionExecutionContext } from "@modelscript/dsl";
-import { printArenaDAE, Variability, VarType } from "@modelscript/runtime";
+import { initBltWasm, printArenaDAE, Variability, VarType } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
 import { ModelicaFlattener } from "./flattener.js";
 
@@ -144,6 +144,17 @@ export const modelicaActionHandlers: Record<
 
     if (inputs?.parameterOverrides) {
       simOpts.parameterOverrides = new Map(Object.entries(inputs.parameterOverrides));
+    }
+
+    try {
+      const serverDist = (globalThis as any).serverDistBase;
+      if (serverDist) {
+        await initBltWasm(`${serverDist}/release.wasm`);
+      } else {
+        await initBltWasm();
+      }
+    } catch {
+      // ignore if already initialized
     }
 
     const result = simulateArena(arena as any, simOpts);

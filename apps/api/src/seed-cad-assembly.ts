@@ -23,9 +23,14 @@ export async function seedCadAssembly(db: LibraryDatabase) {
     return;
   }
 
-  const stepSourcePath = "/home/omar/git/modelscript/packages/examples/drone-chassis/cad/drone.step";
-  if (!fs.existsSync(stepSourcePath)) {
-    console.error(`STEP file not found at ${stepSourcePath}`);
+  const candidatePaths = [
+    path.resolve(process.cwd(), "packages/examples/drone-chassis/cad/drone.step"),
+    path.resolve(process.cwd(), "../../packages/examples/drone-chassis/cad/drone.step"),
+    path.resolve(import.meta.dirname, "../../../packages/examples/drone-chassis/cad/drone.step"),
+  ];
+  const stepSourcePath = candidatePaths.find((p) => fs.existsSync(p));
+  if (!stepSourcePath) {
+    console.warn("[seedCadAssembly] drone.step not found in candidate paths, skipping CAD seed.");
     return;
   }
 
@@ -35,12 +40,14 @@ export async function seedCadAssembly(db: LibraryDatabase) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
-  // Generate unique filename for the public URL
-  const filename = `drone_${Date.now()}.step`;
+  // Use deterministic filename to avoid recreating files with timestamps on every boot
+  const filename = "drone_assembly.step";
   const destPath = path.join(uploadsDir, filename);
 
-  // Copy file so it can be served
-  fs.copyFileSync(stepSourcePath, destPath);
+  // Copy file so it can be served if not already present
+  if (!fs.existsSync(destPath)) {
+    fs.copyFileSync(stepSourcePath, destPath);
+  }
 
   // Create the artifact view
   const viewId = db.createArtifactView(

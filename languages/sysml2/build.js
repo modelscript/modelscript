@@ -5,9 +5,68 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// Step 1: Run builder via tsx to compile parser and WASM
-const buildScriptPath = path.join(__dirname, "build-parser.ts");
-const buildScriptContent = `import fs from "node:fs";
+const forceRebuild = process.argv.includes("--force");
+const outWasm = path.join(__dirname, "dist", "parser.wasm");
+const bindingsJs = path.join(__dirname, "src-gen", "bindings.js");
+const languagePath = path.join(__dirname, "src", "language.ts");
+const dslDistPath = path.resolve(__dirname, "../../packages/dsl/dist/index.js");
+const kermlPath = path.join(__dirname, "stdlib", "KerML.sysml");
+const snapshotTs = path.join(__dirname, "src-gen", "kerml-snapshot.ts");
+
+const cacheDir = path.join(__dirname, ".cache");
+const cacheWasm = path.join(cacheDir, "parser.wasm");
+
+function isParserUpToDate() {
+  if (forceRebuild) return false;
+  // If outWasm is missing (e.g. wiped by Nx task runner), restore from .cache if valid
+  if (!fs.existsSync(outWasm) && fs.existsSync(cacheWasm) && fs.existsSync(bindingsJs)) {
+    const cacheStat = fs.statSync(cacheWasm);
+    if (cacheStat.size > 0) {
+      const cacheTime = cacheStat.mtimeMs;
+      const langTime = fs.existsSync(languagePath) ? fs.statSync(languagePath).mtimeMs : 0;
+      const dslTime = fs.existsSync(dslDistPath) ? fs.statSync(dslDistPath).mtimeMs : 0;
+      if (cacheTime > langTime && cacheTime > dslTime) {
+        fs.mkdirSync(path.dirname(outWasm), { recursive: true });
+        fs.copyFileSync(cacheWasm, outWasm);
+        return true;
+      }
+    }
+  }
+
+  if (!fs.existsSync(outWasm) || !fs.existsSync(bindingsJs)) return false;
+  const wasmStat = fs.statSync(outWasm);
+  if (wasmStat.size === 0) return false;
+  const wasmTime = wasmStat.mtimeMs;
+
+  if (fs.existsSync(languagePath) && fs.statSync(languagePath).mtimeMs > wasmTime) return false;
+  if (fs.existsSync(dslDistPath) && fs.statSync(dslDistPath).mtimeMs > wasmTime) return false;
+
+  // Keep .cache in sync with valid outWasm
+  if (!fs.existsSync(cacheWasm) || fs.statSync(cacheWasm).mtimeMs < wasmTime) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.copyFileSync(outWasm, cacheWasm);
+  }
+  return true;
+}
+
+function isSnapshotUpToDate() {
+  if (forceRebuild) return false;
+  if (!fs.existsSync(snapshotTs)) return false;
+  const snapStat = fs.statSync(snapshotTs);
+  if (snapStat.size === 0) return false;
+  const snapTime = snapStat.mtimeMs;
+
+  if (fs.existsSync(kermlPath) && fs.statSync(kermlPath).mtimeMs > snapTime) return false;
+  if (fs.existsSync(outWasm) && fs.statSync(outWasm).mtimeMs > snapTime) return false;
+  return true;
+}
+
+if (isParserUpToDate()) {
+  console.log("[sysml2] WebAssembly parser is up to date, skipping GLR & asc build. (use --force to rebuild)");
+} else {
+  // Step 1: Run builder via tsx to compile parser and WASM
+  const buildScriptPath = path.join(__dirname, "build-parser.ts");
+  const buildScriptContent = `import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
@@ -49,16 +108,23 @@ execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable thre
   cwd: __dirname,
 });
 console.log("[sysml2] WebAssembly parser built successfully -> " + outWasm);
-
-// Cleanup as-gen after WASM compilation
-// fs.rmSync(asGenDir, { recursive: true, force: true });
 `;
 
-fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
-try {
-  execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+  fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
+  try {
+    execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+    if (fs.existsSync(outWasm)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+      fs.copyFileSync(outWasm, cacheWasm);
+    }
+  } finally {
+    if (fs.existsSync(buildScriptPath)) fs.unlinkSync(buildScriptPath);
+  }
+}
+
+if (isSnapshotUpToDate()) {
+  console.log("[sysml2] KerML snapshot is up to date, skipping snapshot generation.");
+} else {
   console.log("[sysml2] Generating KerML stdlib pre-compiled snapshot...");
   execSync(`npx tsx scripts/generate-kerml-snapshot.ts`, { stdio: "inherit", cwd: __dirname });
-} finally {
-  if (fs.existsSync(buildScriptPath)) fs.unlinkSync(buildScriptPath);
 }

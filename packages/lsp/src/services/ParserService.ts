@@ -3,6 +3,7 @@
 
 import { SYNTAX_NAMES as csvSyntaxNames } from "@modelscript/csv/parser";
 import { createWasmParser } from "@modelscript/dsl/bindings";
+import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import { SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
 import { SYNTAX_NAMES as owl2SyntaxNames } from "@modelscript/owl2/parser";
@@ -319,6 +320,7 @@ export class ParserService {
 
       // Set this EARLY so that occt-import-js has the right path during early validation pass
       this.workspaceManager.stepWorkspaceIndex.serverDistBase = serverDistBase;
+      (globalThis as any).serverDistBase = serverDistBase;
 
       this.connection.sendNotification("modelscript/status", {
         state: "loading",
@@ -332,6 +334,39 @@ export class ParserService {
       this.facade = modelicaResult.facade;
       this.parserReady = true;
       this.connection.console.info("ModelScript Modelica parser initialized");
+
+      // Early callback: notify as soon as Modelica parser is ready
+      if (typeof onParsersReady === "function") {
+        try {
+          onParsersReady();
+        } catch (cbErr) {
+          this.connection.console.error(`[lsp] onParsersReady early callback error: ${cbErr}`);
+        }
+      }
+
+      this.sharedContext = {
+        fs: (globalThis as any).sharedFs,
+        parse: (ext: string, input: string, ...rest: any[]) => {
+          if (ext === ".sysml") return (this.sysml2Parser as any)?.parse(input, ...rest);
+          return (this.parser as any)?.parse(input, ...rest);
+        },
+        flattenArena: (name: string, classId?: any, uri?: string) => {
+          const engine = this.workspaceManager.globalModelicaQueryEngine;
+          if (!engine) return null;
+          let targetId = classId;
+          if (targetId === undefined) {
+            const candidates = (engine as any).index?.byName.get(name);
+            if (candidates && candidates.length > 0) {
+              targetId = candidates[0];
+            }
+          }
+          if (targetId === undefined) return null;
+          const queryDB = engine.toQueryDB();
+          const flattener = new ArenaQueryFlattener(queryDB);
+          return flattener.flatten(targetId);
+        },
+      };
+      (globalThis as any).sharedContext = this.sharedContext;
 
       // === EARLY VALIDATION PASS ===
       // Validate open documents NOW — before any library loading.
@@ -500,7 +535,11 @@ export class ParserService {
       (globalThis as any).diagramCache?.clear();
 
       for (const doc of this.documents.all()) {
-        await (globalThis as any).validateTextDocument?.(doc);
+        try {
+          await (globalThis as any).validateTextDocument?.(doc);
+        } catch (err) {
+          this.connection.console.warn(`[lsp] Failed to validate open document on init: ${err}`);
+        }
       }
 
       this.connection.sendNotification("modelscript/status", {

@@ -487,7 +487,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               c.type === "ShortClassDefinition",
           );
         if (classDef) {
-          const shortClass =
+          let shortClass =
             Cst.ClassDefinition.classSpecifier(classDef) ??
             classDef.children?.find(
               (c: any) =>
@@ -498,14 +498,20 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
             ) ??
             (classDef.type === "short_class_specifier" || classDef.type === "ShortClassSpecifier" ? classDef : null);
           if (shortClass) {
+            if (shortClass.type === "class_specifier" || shortClass.type === "ClassSpecifier") {
+              const innerShort = shortClass.children?.find(
+                (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+              );
+              if (innerShort) shortClass = innerShort;
+            }
             const ident =
               Cst.ShortClassSpecifier.name(shortClass) ??
               shortClass.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
             const typeSpec =
               Cst.ShortClassSpecifier.typeSpecifier(shortClass) ??
               shortClass.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
-            const name = ident ? ident.text : "";
-            const typeName = typeSpec ? typeSpec.text : "";
+            const name = ident ? ident.text?.trim() : "";
+            const typeName = typeSpec ? typeSpec.text?.trim() : "";
             const modNode =
               Cst.ShortClassSpecifier.classModification(shortClass) ??
               shortClass.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");

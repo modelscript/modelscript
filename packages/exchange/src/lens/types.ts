@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+import type { DdpManifest } from "../ddp/types.js";
 
 /**
  * Common types and data contracts for the ModelScript Multi-Projection Lens Engine.
  * Supports projecting a canonical cyber-physical workspace into NPM (package.json),
- * Industrie 4.0 Asset Administration Shell (aas.json / .aasx), and Open Know-How (okh.json).
+ * Industrie 4.0 Asset Administration Shell (aas.json / .aasx), Open Know-How (okh.json),
+ * and Digital Data Package (ddp-manifest.json / .ddp).
  */
 
 export interface CanonicalSubmodelDescriptor {
@@ -84,6 +85,14 @@ export interface CanonicalWorkspaceManifest {
         tools?: string[] | undefined;
       }[]
     | undefined;
+  /** Engineering requirements models (SysML v2, ReqIF) */
+  requirements?: { id: string; path: string; format?: string; description?: string }[] | undefined;
+  /** 3D CAD/MBD geometry models (STEP AP242, JT) */
+  geometry?: { id: string; path: string; format?: string; description?: string }[] | undefined;
+  /** Behavioral and physics simulation models (SSP, FMU, Modelica) */
+  behavior?: { id: string; path: string; format?: string; description?: string }[] | undefined;
+  /** Semantic traceability relationships across domains */
+  relations?: { relationType: string; source: string; target: string; description?: string }[] | undefined;
 }
 
 /** NPM-compatible package.json projection */
@@ -174,3 +183,6 @@ export interface OkhJsonProjection {
     | undefined;
   [key: string]: unknown;
 }
+
+/** Digital Data Package (DDP - prostep ivip PSI 21 / OMG CASCaRA) projection */
+export type DdpProjection = DdpManifest;

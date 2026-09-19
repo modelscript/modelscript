@@ -991,15 +991,7 @@ export class ValidationService {
   ): Promise<void> {
     const newSemanticDiagnostics: Diagnostic[] = [];
 
-    // If the tree has syntax errors, skip the semantic pipeline to preserve the cache
-    // and prevent massive index invalidation cascades when the this.parserService.parser fails to recover.
     const hasError = typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError;
-    if (hasError) {
-      this.connection.console.info(
-        `[pipeline] Syntax errors present in ${uri}, skipping semantic pipeline to preserve cache and latency`,
-      );
-      return;
-    }
 
     const startVersion = this.workspaceManager.globalWorkspaceIndex.version;
     /** Returns true if a newer edit has arrived, meaning we should abandon this pipeline run. */
@@ -1196,8 +1188,8 @@ export class ValidationService {
       // A file is a "workspace file" if it's tracked by the TextDocuments manager
       // (i.e., currently open in the editor). Library files loaded via loadMSL
       // or background indexing are not tracked by this.documentManager.documents.
-      const hasSyntaxErrors = baseDiagnostics.length > 0;
-      const skipHeavyLints = !isWorkspaceFile && docSymbolCount > 1000;
+      const hasSyntaxErrors = baseDiagnostics.length > 0 || hasError;
+      const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
 
       if (hasSyntaxErrors) {
         // Retain existing semantic diagnostics if the AST is broken to prevent flashing

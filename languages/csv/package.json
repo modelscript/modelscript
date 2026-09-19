@@ -20,6 +20,7 @@
   },
   "scripts": {
     "build": "node build.js && tsc",
+    "build:parser": "node build.js --force",
     "clean": "rimraf dist build src-gen as-gen *.wasm"
   },
   "dependencies": {

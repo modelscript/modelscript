@@ -233,6 +233,14 @@ await yargs(rawArgs)
       "ReqIf",
     ),
   )
+  .command(
+    lazy(
+      "ddp <action>",
+      "Digital Data Package (prostep ivip PSI 21 / OMG CASCaRA) packaging, inspection, and AASX bridging",
+      () => import("./commands/ddp.js"),
+      "Ddp",
+    ),
+  )
   // Language Engineering & DSL Tooling
   .command(
     lazy(

@@ -7,7 +7,7 @@ import {
   Orchestrator,
   WasmOpenFoamProvider,
 } from "@modelscript/exchange/cosim";
-import { generateFmuWasmSource, generateMultiModelWrapper } from "@modelscript/exchange/fmu";
+import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { Causality, DAEBuilder } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@modelscript/simulate";
@@ -75,10 +75,23 @@ function flattenTargetClass(
     return { error: `No class definition found for '${className || uri}'` };
   }
   const sharedContext = context.parserService.sharedContext;
-  if (!sharedContext) {
-    return { error: "Shared Context not ready." };
+  let arena: DAEBuilder | null = null;
+  if (sharedContext && typeof (sharedContext as any).flattenArena === "function") {
+    try {
+      arena = (sharedContext as any).flattenArena(target.className, target.symbolId, uri);
+    } catch {
+      arena = null;
+    }
   }
-  const arena = sharedContext.flattenArena(target.className, target.symbolId, uri);
+  if (!arena && context.workspaceManager.globalModelicaQueryEngine) {
+    try {
+      const queryDB = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
+      const flattener = new ArenaQueryFlattener(queryDB);
+      arena = flattener.flatten(target.symbolId);
+    } catch (e: any) {
+      return { error: `Failed to flatten class '${target.className}': ${e?.message ?? e}` };
+    }
+  }
   if (!arena) {
     return { error: `Failed to flatten class '${target.className}'` };
   }

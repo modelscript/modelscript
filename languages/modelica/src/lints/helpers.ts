@@ -241,6 +241,28 @@ export function findInnerClassInClass(db: CodeGraph, classNode: u32, targetId: u
   return 0;
 }
 
+function getCallArguments(db: CodeGraph, sib: u32, $: Record<string, u16>): u32[] {
+  const args: u32[] = [];
+  if (sib == 0) return args;
+  for (const fa of db.ast.getDescendants(sib, $.function_argument)) {
+    if (fa != 0) {
+      let isDirect = true;
+      for (const anc of db.ast.getAncestors(fa)) {
+        if (anc == sib) break;
+        if (db.ast.getType(anc) == $.function_call_args) {
+          isDirect = false;
+          break;
+        }
+      }
+      if (isDirect) {
+        const expr = db.ast.getFirstChild(fa);
+        args.push(expr != 0 ? expr : fa);
+      }
+    }
+  }
+  return args;
+}
+
 /**
  * Infers the basic variable type of an AST expression node.
  */
@@ -429,8 +451,62 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         if (db.ast.textEquals(cr, "der")) {
           return TYPE_REAL;
         }
-        if (db.ast.textEquals(cr, "sample") || db.ast.textEquals(cr, "initial") || db.ast.textEquals(cr, "terminal")) {
+        if (db.ast.textEquals(cr, "initial") || db.ast.textEquals(cr, "terminal")) {
           return TYPE_BOOLEAN;
+        }
+        if (db.ast.textEquals(cr, "sample")) {
+          const args = getCallArguments(db, sib, $);
+          if (args.length === 1) {
+            const uType = inferExprType(db, args[0]!, $);
+            if (uType !== TYPE_UNKNOWN) return uType;
+          } else if (args.length === 2) {
+            const secType = inferExprType(db, args[1]!, $);
+            let isClockArg = secType === TYPE_CLOCK;
+            if (!isClockArg) {
+              const secNodeType = db.ast.getType(args[1]!);
+              if (
+                secNodeType === $.component_reference ||
+                secNodeType === $.identifier ||
+                secNodeType === $.name ||
+                db.ast.startsWith(args[1]!, "Clock")
+              ) {
+                isClockArg = true;
+              } else {
+                for (const cr of db.ast.getDescendants(args[1]!, $.component_reference)) {
+                  isClockArg = true;
+                  break;
+                }
+              }
+            }
+            if (isClockArg) {
+              const uType = inferExprType(db, args[0]!, $);
+              if (uType !== TYPE_UNKNOWN) return uType;
+            } else {
+              return TYPE_BOOLEAN;
+            }
+          }
+          return TYPE_BOOLEAN;
+        }
+        if (
+          db.ast.textEquals(cr, "backSample") ||
+          db.ast.textEquals(cr, "subSample") ||
+          db.ast.textEquals(cr, "superSample") ||
+          db.ast.textEquals(cr, "shiftSample") ||
+          db.ast.textEquals(cr, "hold") ||
+          db.ast.textEquals(cr, "previous") ||
+          db.ast.textEquals(cr, "noClock")
+        ) {
+          const args = getCallArguments(db, sib, $);
+          if (args.length > 0) {
+            const uType = inferExprType(db, args[0]!, $);
+            if (uType !== TYPE_UNKNOWN) return uType;
+          }
+        }
+        if (db.ast.textEquals(cr, "interval") || db.ast.textEquals(cr, "timeInState")) {
+          return TYPE_REAL;
+        }
+        if (db.ast.textEquals(cr, "ticksInState")) {
+          return TYPE_INTEGER;
         }
         if (
           db.ast.textEquals(cr, "sin") ||

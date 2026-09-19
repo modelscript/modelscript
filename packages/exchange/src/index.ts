@@ -10,6 +10,7 @@
 
 export * as aasx from "./aasx/index.js";
 export * as cosim from "./cosim/index.js";
+export * as ddp from "./ddp/index.js";
 export * as fmu from "./fmu/index.js";
 export * as lens from "./lens/index.js";
 export * as ssp from "./ssp/index.js";
@@ -17,6 +18,7 @@ export * as variants from "./variants/index.js";
 
 export * from "./aasx/index.js";
 export * from "./cosim/index.js";
+export * from "./ddp/index.js";
 export * from "./fmu/index.js";
 export * from "./lens/index.js";
 export * from "./ssp/index.js";

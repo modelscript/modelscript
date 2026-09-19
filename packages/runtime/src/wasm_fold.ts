@@ -2151,7 +2151,7 @@ export function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number
       const funcNameId = dae.getExprData1(exprId);
       const fnName = dae.interner.resolve(funcNameId) || "";
       const argCount = dae.getExprRight(exprId);
-      if (fnName === "/*Real*/" || fnName === "Real") {
+      if (fnName === "/*Real*/" || fnName === "Real" || fnName.startsWith("/*Real[")) {
         const inner = dae.getExprLeft(exprId);
         const innerElem = getNthExpr(dae, inner, k, n);
         if (dae.getExprKind(innerElem) === ExprKind.RealLiteral) {
@@ -2160,7 +2160,7 @@ export function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number
         if (dae.getExprKind(innerElem) === ExprKind.IntLiteral) {
           return dae.addRealLiteral(dae.getExprData1(innerElem));
         }
-        return dae.addCallExpr(fnName, [innerElem]);
+        return dae.addCallExpr("/*Real*/", [innerElem]);
       }
       if (fnName === "linspace" && argCount >= 2) {
         const startExpr = dae.getExprLeft(exprId);

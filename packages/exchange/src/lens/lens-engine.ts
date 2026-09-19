@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
+import { OpcAasxPackager } from "../aasx/opc-packager.js";
+import { DdpPackager } from "../ddp/packager.js";
+import type { DdpArtifactDescriptor, DdpManifest, DdpPackageContent } from "../ddp/types.js";
 import type {
   AasJsonProjection,
   CanonicalWorkspaceManifest,
@@ -271,5 +272,211 @@ export class ManifestLensEngine {
       "tool-list": tools.size > 0 ? Array.from(tools) : undefined,
       software,
     };
+  }
+
+  /**
+   * Project canonical workspace into a prostep ivip PSI 21 / OMG CASCaRA DDP manifest.
+   */
+  static projectToDdp(
+    manifest: CanonicalWorkspaceManifest,
+    options?: {
+      creator?: DdpManifest["creator"];
+      recipient?: DdpManifest["recipient"];
+      securityClassification?: string;
+    },
+  ): DdpManifest {
+    const requirements: DdpArtifactDescriptor[] = [];
+    if (manifest.requirements) {
+      for (const req of manifest.requirements) {
+        requirements.push({
+          id: req.id,
+          path: req.path,
+          contentType: req.path.endsWith(".sysml") ? "text/x-sysml2" : "application/x-reqif+xml",
+          domain: "requirements",
+          format: req.format ?? (req.path.endsWith(".sysml") ? "SysML v2" : "ReqIF 1.2"),
+          description: req.description,
+        });
+      }
+    }
+
+    const geometry: DdpArtifactDescriptor[] = [];
+    if (manifest.geometry) {
+      for (const geom of manifest.geometry) {
+        geometry.push({
+          id: geom.id,
+          path: geom.path,
+          contentType: geom.path.endsWith(".stp") || geom.path.endsWith(".step") ? "application/step" : "model/jt",
+          domain: "geometry",
+          format: geom.format ?? "STEP AP242",
+          description: geom.description,
+        });
+      }
+    }
+
+    const behavior: DdpArtifactDescriptor[] = [];
+    if (manifest.behavior) {
+      for (const beh of manifest.behavior) {
+        behavior.push({
+          id: beh.id,
+          path: beh.path,
+          contentType: beh.path.endsWith(".fmu")
+            ? "application/x-fmu"
+            : beh.path.endsWith(".ssp")
+              ? "application/x-ssp"
+              : "text/x-modelica",
+          domain: "behavior",
+          format:
+            beh.format ??
+            (beh.path.endsWith(".fmu") ? "FMI 3.0" : beh.path.endsWith(".ssp") ? "SSP 1.0" : "Modelica 3.6"),
+          description: beh.description,
+        });
+      }
+    }
+
+    return {
+      "@context": "https://w3id.org/cascara/v1/context.jsonld",
+      ddpVersion: "1.0",
+      packageId: manifest.globalAssetId,
+      title: manifest.title,
+      version: manifest.version,
+      description: manifest.description,
+      creator:
+        options?.creator ??
+        (manifest.author
+          ? {
+              name: manifest.author.name,
+              email: manifest.author.email,
+              organization: manifest.author.organization,
+            }
+          : undefined),
+      recipient: options?.recipient,
+      createdAt: new Date().toISOString(),
+      securityClassification: options?.securityClassification ?? "Unclassified",
+      license: manifest.license,
+      artifacts: {
+        requirements,
+        geometry,
+        behavior,
+        parameters: [],
+        documentation: [],
+      },
+      relations: manifest.relations?.map((r, i) => ({
+        id: `rel_${i + 1}`,
+        relationType: r.relationType,
+        source: r.source,
+        target: r.target,
+        description: r.description,
+      })),
+    };
+  }
+
+  /**
+   * Parse a CanonicalWorkspaceManifest from a DdpManifest.
+   */
+  static parseFromDdp(ddp: DdpManifest): CanonicalWorkspaceManifest {
+    return {
+      globalAssetId: ddp.packageId,
+      idShort: ddp.packageId.split(/[:/]/).pop() || "ddp-package",
+      title: ddp.title,
+      version: ddp.version,
+      description: ddp.description,
+      author: ddp.creator
+        ? {
+            name: ddp.creator.name,
+            email: ddp.creator.email,
+            organization: ddp.creator.organization,
+          }
+        : undefined,
+      license: ddp.license,
+      requirements: ddp.artifacts.requirements?.map((r) => ({
+        id: r.id,
+        path: r.path,
+        format: r.format,
+        description: r.description,
+      })),
+      geometry: ddp.artifacts.geometry?.map((g) => ({
+        id: g.id,
+        path: g.path,
+        format: g.format,
+        description: g.description,
+      })),
+      behavior: ddp.artifacts.behavior?.map((b) => ({
+        id: b.id,
+        path: b.path,
+        format: b.format,
+        description: b.description,
+      })),
+      relations: ddp.relations?.map((r) => ({
+        relationType: String(r.relationType),
+        source: r.source,
+        target: r.target,
+        description: r.description,
+      })),
+    };
+  }
+
+  /**
+   * Cross-compile an engineering Digital Data Package (.ddp) into an
+   * operational Asset Administration Shell (.aasx) container with IDTA submodels.
+   */
+  static bridgeDdpToAasx(
+    ddpPackage: Uint8Array | DdpPackageContent,
+    options?: { assetKind?: "Type" | "Instance" },
+  ): Uint8Array {
+    const content = ddpPackage instanceof Uint8Array ? DdpPackager.extractDdp(ddpPackage) : ddpPackage;
+    const canonical = ManifestLensEngine.parseFromDdp(content.manifest);
+
+    // Build custom engineering submodels for AAS
+    const submodels = canonical.submodels ?? [];
+
+    // CAD Submodel (IDTA standard)
+    if (content.manifest.artifacts.geometry && content.manifest.artifacts.geometry.length > 0) {
+      for (const geom of content.manifest.artifacts.geometry) {
+        submodels.push({
+          idShort: `CAD_${geom.id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+          semanticId: SUBMODEL_SEMANTIC_IDS.CAD,
+          description: geom.description ?? `CAD Geometry for ${geom.id}`,
+          data: {
+            FileReference: geom.path,
+            Format: geom.format ?? "STEP AP242",
+          },
+        });
+      }
+    }
+
+    // Simulation Submodel (IDTA standard)
+    if (content.manifest.artifacts.behavior && content.manifest.artifacts.behavior.length > 0) {
+      for (const beh of content.manifest.artifacts.behavior) {
+        submodels.push({
+          idShort: `Sim_${beh.id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+          semanticId: SUBMODEL_SEMANTIC_IDS.SIMULATION,
+          description: beh.description ?? `Simulation model for ${beh.id}`,
+          data: {
+            ModelReference: beh.path,
+            Format: beh.format ?? "SSP / FMU",
+          },
+        });
+      }
+    }
+
+    canonical.submodels = submodels;
+
+    // Project canonical to AAS JSON
+    const aasJson = ManifestLensEngine.projectToAasJson(canonical, options);
+
+    // Map files from DDP into supplementary AASX files
+    const supplementaryFiles: { path: string; data: Uint8Array }[] = [];
+    for (const [filePath, data] of content.files.entries()) {
+      supplementaryFiles.push({
+        path: filePath,
+        data,
+      });
+    }
+
+    // Build .aasx OPC container
+    return OpcAasxPackager.buildAasx({
+      aasJson,
+      files: supplementaryFiles,
+    });
   }
 }

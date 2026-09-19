@@ -534,8 +534,9 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   // Register experiments tree view (discovers experiment annotations)
+  let experimentsTreeProvider: ExperimentsTreeProvider | undefined;
   try {
-    const experimentsTreeProvider = new ExperimentsTreeProvider(client);
+    experimentsTreeProvider = new ExperimentsTreeProvider(client);
     const experimentsTreeView = vscode.window.createTreeView("modelscript.experimentsView", {
       treeDataProvider: experimentsTreeProvider,
       canSelectMany: false,
@@ -613,7 +614,7 @@ export async function activate(context: vscode.ExtensionContext) {
         hideTimeout = setTimeout(() => statusItem.hide(), 5000);
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
-        experimentsTreeProvider.refresh();
+        experimentsTreeProvider?.refresh();
 
         // Register integrations only once
         if (!isScmRegistered) {
@@ -1173,7 +1174,7 @@ END-ISO-10303-21;`;
       SurrogatePanel.createOrShow(context.extensionUri, client, uri);
     }),
     commands.registerCommand("modelscript.refreshExperiments", () => {
-      experimentsTreeProvider.refresh();
+      experimentsTreeProvider?.refresh();
     }),
     commands.registerCommand("modelscript.flatten", async () => {
       if (!client) return;

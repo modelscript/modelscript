@@ -62,6 +62,7 @@
   ],
   "scripts": {
     "build": "node build.js && tsc",
+    "build:parser": "node build.js --force",
     "clean": "rimraf dist *.wasm",
     "test": "npx tsx --test tests/*.test.ts && npx tsx tests/test-imports-and-stdlib.ts && npx tsx tests/test-reasoner-multiplicity-disjoint.ts"
   },

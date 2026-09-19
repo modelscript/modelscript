@@ -596,8 +596,16 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     }
 
     ctx.logger.log(`[polyglot] Registered ${moFiles.length} MSL files in globalWorkspaceIndex`);
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "ready",
+      message: "ModelScript",
+    });
   } catch (e) {
     ctx.logger.error("Failed to load MSL zip:", e);
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "ready",
+      message: "ModelScript",
+    });
   }
 }
 
@@ -686,7 +694,15 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
     ctx.logger.log(
       `SysML2 Standard Library loaded: ${fileCount} files registered and indexed in sysml2WorkspaceIndex.`,
     );
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "ready",
+      message: "ModelScript",
+    });
   } catch (e) {
     ctx.logger.error("Failed to load SysML2 standard library:", e);
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "ready",
+      message: "ModelScript",
+    });
   }
 }

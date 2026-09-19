@@ -79,6 +79,8 @@ project-graph.json
 # API data (published libraries and sqlite databases)
 /data/
 /results/
+uploads/
+apps/api/uploads/
 apps/api/data/
 apps/api/public/thumbnails
 

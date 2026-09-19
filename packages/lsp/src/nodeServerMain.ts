@@ -163,6 +163,7 @@ export function startNodeServer() {
     () => parserService.parserReady,
     () => parserService.sysml2ParserReady,
     () => parserService.sysml2Parser,
+    validationService,
   );
 
   // 4. Register Dynamic Polyglot Endpoints and Actions

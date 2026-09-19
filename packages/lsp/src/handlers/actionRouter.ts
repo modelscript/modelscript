@@ -50,6 +50,9 @@ export function registerActionRouter(context: LspContext): void {
       uri?: string;
       inputs?: Record<string, any>;
     }): Promise<any> => {
+      console.log(
+        `[LSP-WORKER][executeAction] START: actionId=${params.actionId}, uri=${params.uri}, lang=${params.languageId}`,
+      );
       let plugin = params.languageId ? globalLanguageRegistry.getPluginById(params.languageId) : undefined;
       if (!plugin && params.uri) {
         plugin = globalLanguageRegistry.getPluginForUri(params.uri);

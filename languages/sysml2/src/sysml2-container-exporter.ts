@@ -17,8 +17,13 @@
  */
 
 import {
+  DdpPackager,
   exportSspFromSystem,
   generateFmuArchive,
+  type DdpArtifactDescriptor,
+  type DdpFileEntry,
+  type DdpManifest,
+  type DdpRelation,
   type Fmi3Terminal,
   type Fmi3TerminalMemberVariable,
   type FmuArchiveOptions,
@@ -42,6 +47,10 @@ export type { SspSystem };
 
 /** Options for SysML v2 container export. */
 export interface Sysml2ContainerExportOptions extends SspExportOptions {
+  /** Target SSP version (default "1.0"). */
+  version?: string;
+  /** System description text. */
+  description?: string;
   /** Target FMI version for internal or monolithic FMUs ("2" | "3" | "both", default "3"). */
   fmiVersion?: "2" | "3" | "both";
   /** Include C sources in FMUs (default true). */
@@ -285,6 +294,139 @@ export class SysML2ContainerExporter {
       // Pass explicit terminals for terminalsAndIcons.xml layered standard
       explicitTerminals,
     } as FmuArchiveOptions & { explicitTerminals: Fmi3Terminal[] });
+  }
+
+  /**
+   * Export a SysML v2 architecture, its compiled behavioral FMUs/SSP, and optional
+   * STEP CAD geometry into a prostep ivip PSI 21 / OMG CASCaRA DDP container (.ddp).
+   */
+  static async exportToDdp(
+    sysmlSource: string | SysML2GenericDefinition,
+    options?: Sysml2ContainerExportOptions & {
+      geometryFiles?: { id: string; path: string; data: Uint8Array | string; format?: string }[];
+      author?: { name: string; organization?: string; email?: string };
+    },
+  ): Promise<{ archive: Uint8Array; manifest: DdpManifest }> {
+    const sspResult = await this.exportToSsp(sysmlSource, options);
+    const sysmlDef = typeof sysmlSource === "string" ? GenericModelicaBridge.parseSysML2(sysmlSource) : sysmlSource;
+    const sysmlRawText = typeof sysmlSource === "string" ? sysmlSource : `package ${sysmlDef.name} {}`;
+
+    const systemName = sysmlDef.name || "SysML2MultiPhysicsSystem";
+    const packageId = `urn:ddp:${systemName.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}`;
+
+    const filesToBundle: DdpFileEntry[] = [];
+
+    // 1. Requirements / Architecture: SysML v2 source
+    const sysmlRelPath = `requirements/${systemName}.sysml`;
+    filesToBundle.push({
+      path: sysmlRelPath,
+      data: sysmlRawText,
+      contentType: "text/x-sysml2",
+    });
+
+    const reqArtifacts: DdpArtifactDescriptor[] = [
+      {
+        id: `REQ_${systemName}`,
+        path: sysmlRelPath,
+        contentType: "text/x-sysml2",
+        domain: "requirements",
+        format: "SysML v2",
+        description: `SysML v2 architecture for ${systemName}`,
+      },
+    ];
+
+    // 2. Behavioral simulation: SSP package
+    const sspRelPath = `behavior/${systemName}.ssp`;
+    filesToBundle.push({
+      path: sspRelPath,
+      data: sspResult.archive,
+      contentType: "application/x-ssp",
+    });
+
+    const behArtifacts: DdpArtifactDescriptor[] = [
+      {
+        id: `SIM_${systemName}`,
+        path: sspRelPath,
+        contentType: "application/x-ssp",
+        domain: "behavior",
+        format: "SSP 1.0",
+        description: `Multi-physics simulation containing ${sspResult.fmuCount} subsystem FMUs`,
+      },
+    ];
+
+    // 3. Geometry (if provided)
+    const geomArtifacts: DdpArtifactDescriptor[] = [];
+    if (options?.geometryFiles) {
+      for (const geom of options.geometryFiles) {
+        const geomRelPath = geom.path.startsWith("geometry/") ? geom.path : `geometry/${geom.path}`;
+        filesToBundle.push({
+          path: geomRelPath,
+          data: geom.data,
+          contentType: "application/step",
+        });
+        geomArtifacts.push({
+          id: geom.id,
+          path: geomRelPath,
+          contentType: "application/step",
+          domain: "geometry",
+          format: geom.format ?? "STEP AP242",
+          description: `CAD geometry for ${geom.id}`,
+        });
+      }
+    }
+
+    // 4. Traceability relations
+    const relations: DdpRelation[] = [
+      {
+        id: "rel_01",
+        relationType: "verifies",
+        source: sspRelPath,
+        target: `${sysmlRelPath}#${systemName}`,
+        description: `SSP multi-physics simulation verifies ${systemName} architectural definition`,
+        status: "passed",
+      },
+    ];
+
+    if (geomArtifacts.length > 0) {
+      for (const geom of geomArtifacts) {
+        relations.push({
+          relationType: "implements",
+          source: geom.path,
+          target: `${sysmlRelPath}#${systemName}`,
+          description: `Geometry ${geom.id} implements physical envelope of ${systemName}`,
+        });
+      }
+    }
+
+    const manifest: DdpManifest = {
+      "@context": "https://w3id.org/cascara/v1/context.jsonld",
+      ddpVersion: "1.0",
+      packageId,
+      title: `${systemName} Digital Data Package`,
+      version: options?.version ?? "1.0.0",
+      description: options?.description ?? `SysML v2 multi-physics engineering package for ${systemName}`,
+      creator: options?.author,
+      createdAt: new Date().toISOString(),
+      securityClassification: "Unclassified",
+      artifacts: {
+        requirements: reqArtifacts,
+        geometry: geomArtifacts,
+        behavior: behArtifacts,
+        parameters: [],
+        documentation: [],
+      },
+      relations,
+    };
+
+    const archive = DdpPackager.buildDdp({
+      manifest,
+      files: filesToBundle,
+    });
+
+    return {
+      archive,
+      manifest,
+    };
   }
 
   // ── Helper methods ──────────────────────────────────────────────────

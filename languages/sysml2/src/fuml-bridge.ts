@@ -123,6 +123,7 @@ export class SysML2FumlBridge {
               context[asgn.target] = asgn.expr;
             }
           }
+          return undefined;
         };
       }
 

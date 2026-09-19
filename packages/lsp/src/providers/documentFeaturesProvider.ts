@@ -1,5 +1,6 @@
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { nodeRange } from "../utils/astUtils.js";
 import type { SyntaxNode } from "../utils/tree-sitter.js";
@@ -13,33 +14,114 @@ export function registerDocumentFeaturesProvider(
   isParserReady: () => boolean,
   isSysml2ParserReady: () => boolean,
   getSysml2Parser: () => any,
+  validationService?: any,
 ) {
   /* Document symbols — enables Outline panel and breadcrumb navigation */
-  connection.onDocumentSymbol((params) => {
+  connection.onDocumentSymbol(async (params) => {
     try {
-      let bridge = documentLSPBridges.get(params.textDocument.uri);
-      if (!bridge) {
-        const normalize = (u: string) => {
-          try {
-            return decodeURIComponent(u).replace(/^[a-z0-9+-]+:\/\/?/, "/");
-          } catch {
-            return u;
-          }
-        };
-        const targetNorm = normalize(params.textDocument.uri);
-        for (const [k, b] of documentLSPBridges.entries()) {
+      const normalize = (u: string) => {
+        try {
+          return decodeURIComponent(u).replace(/^[a-z0-9+-]+:\/\/?/, "/");
+        } catch {
+          return u;
+        }
+      };
+
+      const findBridge = (targetUri: string) => {
+        let b = documentLSPBridges.get(targetUri);
+        if (b) return b;
+        const targetNorm = normalize(targetUri);
+        for (const [k, val] of documentLSPBridges.entries()) {
           const kNorm = normalize(k);
-          if (
-            k === params.textDocument.uri ||
-            kNorm === targetNorm ||
-            kNorm.endsWith(targetNorm) ||
-            targetNorm.endsWith(kNorm)
-          ) {
-            bridge = b;
-            break;
+          if (k === targetUri || kNorm === targetNorm || kNorm.endsWith(targetNorm) || targetNorm.endsWith(kNorm)) {
+            return val;
+          }
+        }
+        return null;
+      };
+
+      const getDoc = (targetUri: string) => {
+        let d = documents.get(targetUri);
+        if (d) return d;
+        const norm = normalize(targetUri);
+        for (const doc of documents.all()) {
+          if (doc.uri === targetUri || normalize(doc.uri) === norm) {
+            return doc;
+          }
+        }
+        return undefined;
+      };
+
+      // Wait up to 10 seconds for parser to be ready if currently initializing
+      if (!isParserReady()) {
+        const start = Date.now();
+        while (!isParserReady() && Date.now() - start < 10000) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+
+      let bridge = findBridge(params.textDocument.uri);
+
+      if (!bridge && validationService && isParserReady()) {
+        const doc = getDoc(params.textDocument.uri);
+        if (doc) {
+          try {
+            await validationService.validateTextDocument(doc);
+            const inflight =
+              validationService.activeValidationPromises?.get(params.textDocument.uri) ??
+              validationService.activeValidationPromises?.get(doc.uri);
+            if (inflight) await inflight;
+            bridge = findBridge(params.textDocument.uri);
+          } catch (valErr) {
+            connection.console.warn(`[onDocumentSymbol] On-demand validation failed: ${valErr}`);
           }
         }
       }
+
+      if (!bridge && validationService?.workspaceManager && isParserReady()) {
+        const wm = validationService.workspaceManager;
+        const doc = getDoc(params.textDocument.uri);
+        const treeWrapper = getDocumentTree(params.textDocument.uri);
+        let tree = treeWrapper?.tree;
+        const text = doc ? doc.getText() : treeWrapper?.text;
+        if (!tree && text && (validationService as any)?.parserService?.parser) {
+          try {
+            tree = (validationService as any).parserService.parser.parse(text);
+          } catch {}
+        }
+        if (tree && wm.globalWorkspaceIndex && text) {
+          wm.globalWorkspaceIndex.register(params.textDocument.uri, () => tree.rootNode);
+          wm.globalWorkspaceIndex.getFileIndex(params.textDocument.uri);
+          const unified = wm.unifiedWorkspace?.toUnifiedPartial?.() ?? wm.globalWorkspaceIndex.toUnified();
+          let eng = wm.globalModelicaQueryEngine;
+          if (!eng) {
+            const createEngine = (globalThis as any).createModelicaQueryEngine;
+            if (typeof createEngine === "function") {
+              eng = createEngine(unified, (validationService as any).parserService?.getSharedCstTreeWrapper?.());
+              wm.globalModelicaQueryEngine = eng;
+            }
+          } else if (typeof eng.updateIndex === "function") {
+            eng.updateIndex(unified);
+          }
+          if (unified && eng) {
+            bridge = new LSPBridge(unified, eng, new PositionIndex(text), params.textDocument.uri);
+            documentLSPBridges.set(params.textDocument.uri, bridge);
+          }
+        }
+      }
+
+      if (!bridge) {
+        const doc = getDoc(params.textDocument.uri);
+        const treeWrapper = getDocumentTree(params.textDocument.uri);
+        const text = doc?.getText() ?? treeWrapper?.text;
+        const unifiedIndex = validationService?.workspaceManager?.unifiedWorkspace?.toUnifiedPartial();
+        const engine = validationService?.workspaceManager?.globalModelicaQueryEngine;
+        if (text && unifiedIndex && engine) {
+          bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), params.textDocument.uri);
+          documentLSPBridges.set(params.textDocument.uri, bridge);
+        }
+      }
+
       if (!bridge) {
         const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
         if (plugin) {

@@ -290,7 +290,22 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   connection.console.info("[lsp] onInitialize called");
   // Get the extension URI from initializationOptions
   const extensionUri = params.initializationOptions?.extensionUri as string;
-  await initBltWasm(`${extensionUri}/server/dist/release.wasm`);
+
+  let serverDistBase = `${extensionUri}/server/dist`;
+  if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
+    const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
+    if (origin && (origin.startsWith("http://") || origin.startsWith("https://"))) {
+      serverDistBase = `${origin}/static/devextensions/server/dist`;
+    }
+  }
+  (globalThis as any).serverDistBase = serverDistBase;
+
+  try {
+    await initBltWasm(`${serverDistBase}/release.wasm`);
+    connection.console.info(`[blt] BLT wasm initialized from ${serverDistBase}/release.wasm`);
+  } catch (bltErr) {
+    connection.console.warn(`[blt] initBltWasm warning/deferred: ${bltErr}`);
+  }
 
   // Read the registry URL from client settings (sent via initializationOptions)
   if (params.initializationOptions?.registryUrl) {
@@ -449,6 +464,17 @@ Object.defineProperty(globalThis, "projectTreeChangedPending", {
   set: (v) => (projectTreeChangedPending = v),
   configurable: true,
 });
+documents.onDidOpen(async (event) => {
+  connection.console.info(`[documents] onDidOpen: ${event.document.uri}`);
+  if (parserService.parserReady) {
+    try {
+      await validationService.validateTextDocument(event.document);
+    } catch (e: any) {
+      connection.console.warn(`[onDidOpen] Validation error for ${event.document.uri}: ${e?.message}`);
+    }
+  }
+});
+
 documents.onDidChangeContent((change) => {
   const tKeypressStart = performance.now();
   const uri = change.document.uri;
@@ -687,6 +713,7 @@ registerDocumentFeaturesProvider(
   () => parserService.parserReady && !!parserService.parser,
   () => parserService.sysml2ParserReady && !!parserService.sysml2Parser,
   () => parserService.sysml2Parser,
+  validationService,
 );
 
 /* Signature Help — shows function parameter info on ( and , */

@@ -345,6 +345,20 @@ export const ModelicaErrorCode = {
     message: (flowComp: string, nonFlowComp: string) =>
       `Cannot connect flow component ${flowComp} to non-flow component ${nonFlowComp}.`,
   },
+  REINIT_TYPE_MISMATCH: {
+    code: 5007,
+    rule: "reinit-type-mismatch",
+    severity: "error",
+    message: (varName: string, actualType: string) =>
+      `The first argument to reinit must be a subtype of Real, but ${varName} has type ${actualType}.`,
+  },
+  REINIT_NOT_CONTINUOUS: {
+    code: 5008,
+    rule: "reinit-not-continuous",
+    severity: "error",
+    message: (varName: string, variability: string) =>
+      `The first argument to reinit must be a continuous time variable, but ${varName} is ${variability}.`,
+  },
   PROTECTED_MODIFICATION: {
     code: 4005,
     rule: "protected-modification",
