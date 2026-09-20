@@ -144,6 +144,34 @@ export class LanguageRegistry {
   }
 
   /**
+   * Resolves the WASM parser instance for a given file URI.
+   */
+  getParserForUri(uri: string): any | undefined {
+    return this.getPluginForUri(uri)?.parser;
+  }
+
+  /**
+   * Resolves the WASM LspFacade instance for a given file URI.
+   */
+  getFacadeForUri(uri: string): any | undefined {
+    return this.getPluginForUri(uri)?.facade;
+  }
+
+  /**
+   * Resolves the WorkspaceIndex for a given file URI.
+   */
+  getWorkspaceIndexForUri(uri: string): any | undefined {
+    return this.getPluginForUri(uri)?.workspaceIndex;
+  }
+
+  /**
+   * Resolves the QueryEngine for a given file URI.
+   */
+  getQueryEngineForUri(uri: string): QueryEngine | undefined {
+    return this.getPluginForUri(uri)?.queryEngine;
+  }
+
+  /**
    * Returns all currently active language plugins.
    */
   getAllPlugins(): LanguagePlugin[] {

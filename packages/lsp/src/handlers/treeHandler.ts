@@ -11,17 +11,25 @@ export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getLibraryTree",
     (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
+      console.log(`[LSP treeHandler] getLibraryTree parentId=${params.parentId}`);
       // Use the unified workspace — merges all language indices
       const uw = context.workspaceManager.unifiedWorkspace;
-      const unifiedIndex =
-        typeof uw?.toUnified === "function"
-          ? uw.toUnified()
-          : typeof uw?.toTreeIndex === "function"
-            ? uw.toTreeIndex()
-            : null;
-      if (!unifiedIndex) return [];
 
-      injectPredefinedTypes(unifiedIndex);
+      if (typeof (uw as any)?.ensureChildrenIndexed === "function") {
+        if (!params.parentId || params.parentId.startsWith("__LIB__:")) {
+          (uw as any).ensureChildrenIndexed("");
+        } else {
+          (uw as any).ensureChildrenIndexed(params.parentId);
+        }
+      }
+
+      const unifiedIndex =
+        typeof uw?.toTreeIndex === "function"
+          ? uw.toTreeIndex()
+          : typeof uw?.toUnifiedPartial === "function"
+            ? uw.toUnifiedPartial()
+            : uw?.toUnified?.();
+      if (!unifiedIndex) return [];
 
       // Invalidate FQN cache when the index changes
       if (fqnCacheState.index !== unifiedIndex) {
@@ -29,7 +37,12 @@ export function registerTreeHandlers(context: LspContext) {
         fqnCacheState.index = unifiedIndex;
       }
 
-      return getTreeChildrenFast(unifiedIndex, params.parentId);
+      const res = getTreeChildrenFast(unifiedIndex, params.parentId, uw);
+      console.log(
+        `[LSP treeHandler] getLibraryTree parentId=${params.parentId} returning ${res.length} nodes:`,
+        res.map((n) => n.name),
+      );
+      return res;
     },
   );
 
@@ -39,19 +52,17 @@ export function registerTreeHandlers(context: LspContext) {
     const getIndex = (ws: any) =>
       typeof ws?.toTreeIndex === "function"
         ? ws.toTreeIndex()
-        : typeof ws?.toUnified === "function"
-          ? ws.toUnified()
-          : (ws?.toSymbolIndex?.() ?? { symbols: new Map(), byName: new Map(), childrenOf: new Map() });
+        : typeof ws?.toUnifiedPartial === "function"
+          ? ws.toUnifiedPartial()
+          : typeof ws?.toUnified === "function"
+            ? ws.toUnified()
+            : (ws?.toSymbolIndex?.() ?? { symbols: new Map(), byName: new Map(), childrenOf: new Map() });
 
-    const globalUnified = getIndex(context.workspaceManager?.globalWorkspaceIndex);
-    const sysmlUnified = getIndex(context.workspaceManager?.sysml2WorkspaceIndex);
+    const unified = getIndex(context.workspaceManager?.unifiedWorkspace);
 
     const allSymbols = new Map<string, any>();
-    if (globalUnified?.symbols) {
-      for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
-    }
-    if (sysmlUnified?.symbols) {
-      for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
+    if (unified?.symbols) {
+      for (const [id, entry] of unified.symbols) allSymbols.set(id.toString(), entry);
     }
 
     // Group top-level elements by resourceId
@@ -191,12 +202,12 @@ export function registerTreeHandlers(context: LspContext) {
       const classes: { name: string; kind: string; uri: string }[] = [];
       const seen = new Set<string>();
 
-      const globalUnified = context.workspaceManager.globalWorkspaceIndex.toTreeIndex();
-      const sysmlUnified = context.workspaceManager.sysml2WorkspaceIndex.toTreeIndex();
+      const unified = context.workspaceManager.unifiedWorkspace.toTreeIndex();
 
       const allSymbols = new Map<string, any>();
-      for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
-      for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
+      if (unified?.symbols) {
+        for (const [id, entry] of unified.symbols) allSymbols.set(id.toString(), entry);
+      }
 
       for (const entry of allSymbols.values()) {
         if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {

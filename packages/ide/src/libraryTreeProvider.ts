@@ -211,10 +211,17 @@ export class LibraryTreeProvider
 
   async getChildren(element?: LibraryTreeItem): Promise<LibraryTreeItem[]> {
     try {
+      console.log(
+        `[library-tree-provider] getChildren called for element: ${element?.info?.name} (id: ${element?.info?.id})`,
+      );
       const nodes: TreeNodeInfo[] = await this.client.sendRequest("modelscript/getLibraryTree", {
         uri: this.documentUri ?? "modelica:/",
         parentId: element?.info.id,
       });
+      console.log(
+        `[library-tree-provider] getChildren got ${nodes.length} nodes for ${element?.info?.id}:`,
+        nodes.map((n) => n.name),
+      );
 
       // Apply cached icons to nodes that have them
       for (const node of nodes) {
@@ -232,9 +239,13 @@ export class LibraryTreeProvider
           ),
       );
 
-      // Lazily fetch icons for nodes that don't have them yet.
+      // Lazily fetch icons for components (models, blocks, connectors, etc.) that don't have them yet.
+      // Skip packages to keep hierarchy expansion instantaneous and prevent LSP queue saturation.
       const nodesNeedingIcons = nodes.filter(
-        (n) => !this.iconCache.has(n.compositeName) && !this.iconFetchPending.has(n.compositeName),
+        (n) =>
+          n.classKind !== "package" &&
+          !this.iconCache.has(n.compositeName) &&
+          !this.iconFetchPending.has(n.compositeName),
       );
 
       if (nodesNeedingIcons.length > 0) {
@@ -265,7 +276,11 @@ export class LibraryTreeProvider
             className,
             uri: this.documentUri,
           })
-          .catch(() => null);
+          .catch((err) => {
+            console.error(`[library-tree-provider] getClassIcon error for ${className}:`, err);
+            return null;
+          });
+        console.log(`[library-tree-provider] getClassIcon for ${className}: ${svg ? `${svg.length} bytes` : "null"}`);
 
         this.iconCache.set(className, svg || "");
         if (svg) {

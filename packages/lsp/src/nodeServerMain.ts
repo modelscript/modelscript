@@ -69,6 +69,7 @@ export function startNodeServer() {
     createWasmParser(modelicaWasm)
       .then(({ parser, facade }) => {
         parserService.parser = parser;
+        (globalThis as any).modelicaParser = parser;
         parserService.parserReady = true;
         globalLanguageRegistry.register({
           id: "modelica",

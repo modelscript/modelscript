@@ -893,7 +893,8 @@ export function evaluateMacroExpression(
   const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument(name)?.expression;
   const compVal = formatPropertyValue(compArgExpr);
 
-  const namedElement = classInstance?.resolveName(name.split("."));
+  const namedElement =
+    typeof classInstance?.resolveName === "function" ? classInstance.resolveName(name.split(".")) : null;
 
   // 2. Check if the class provides a default value for this parameter
   const elemExpr = (namedElement as any)?.modification?.expression;

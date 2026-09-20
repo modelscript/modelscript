@@ -11,7 +11,19 @@
 export interface Writer {
   write(string: string): void;
 }
-import { BinOp, Causality, DAEBuilder, EqKind, ExprKind, StmtKind, UnaryOp, Variability, VarType } from "./wasm_dae.js";
+import {
+  ArenaStateMachine,
+  ArenaStateMachineState,
+  BinOp,
+  Causality,
+  DAEBuilder,
+  EqKind,
+  ExprKind,
+  StmtKind,
+  UnaryOp,
+  Variability,
+  VarType,
+} from "./wasm_dae.js";
 
 // ── Inlined Modelica operator strings ──
 
@@ -65,6 +77,7 @@ export class ArenaDAEPrinter {
   private omcCompatibility: boolean;
   private visitedFunctions = new Set<DAEBuilder>();
   private isInsideAlgorithm = false;
+  private insideState = false;
 
   constructor(out: Writer, arena: DAEBuilder, omcCompatibility = false) {
     this.out = out;
@@ -165,6 +178,7 @@ export class ArenaDAEPrinter {
     }
     let s: string;
     if (Number.isInteger(v) && Math.abs(v) >= 1e7) s = v.toExponential();
+    else if (!Number.isInteger(v) && Math.abs(v) >= 1e6) s = v.toExponential();
     else if (Math.abs(v) < 0.0001 && Math.abs(v) > 0) s = v.toExponential();
     else s = v.toString();
     this.out.write(s.replace(/e\+/g, "e"));
@@ -222,6 +236,7 @@ export class ArenaDAEPrinter {
         }
         let s: string;
         if (Number.isInteger(v) && Math.abs(v) >= 1e5) s = v.toExponential();
+        else if (!Number.isInteger(v) && Math.abs(v) >= 1e6) s = v.toExponential();
         else if (Math.abs(v) < 0.001 && Math.abs(v) > 0) s = v.toExponential();
         else s = v.toString();
         this.out.write(s.replace(/e\+/g, "e"));
@@ -284,6 +299,10 @@ export class ArenaDAEPrinter {
           if (isRhs && (op === BinOp.Div || op === BinOp.ElemDiv) && ck === ExprKind.Binary) {
             const childOp = a.getExprData1(childId) as BinOp;
             if (childOp !== BinOp.Pow && childOp !== BinOp.ElemPow) return true;
+          }
+          if (isRhs && (op === BinOp.Sub || op === BinOp.ElemSub) && ck === ExprKind.Binary) {
+            const childOp = a.getExprData1(childId) as BinOp;
+            if (LOW_PREC_OPS.has(childOp)) return true;
           }
           if (ck === ExprKind.IfElse) return true;
           return false;
@@ -504,18 +523,20 @@ export class ArenaDAEPrinter {
           if (
             this.omcCompatibility &&
             !isStringConcat &&
-            (op === BinOp.Mul || (op === BinOp.Add && !this.isInsideAlgorithm))
+            (op === BinOp.Add || (!this.isInsideAlgorithm && op === BinOp.Mul))
           ) {
             // OMC canonicalization: bubble literals to the front, UNLESS the chain
             // contains a function call, derivative, or pre. OMC preserves order
             // when functions are involved.
             let hasCall = false;
-            for (const childId of operands) {
-              if (childId < 0) continue;
-              const kind = a.getExprKind(childId);
-              if (kind === ExprKind.Call) {
-                hasCall = true;
-                break;
+            if (op === BinOp.Add) {
+              for (const childId of operands) {
+                if (childId < 0) continue;
+                const kind = a.getExprKind(childId);
+                if (kind === ExprKind.Call) {
+                  hasCall = true;
+                  break;
+                }
               }
             }
 
@@ -541,7 +562,8 @@ export class ArenaDAEPrinter {
                 }
               }
               const getOperandRank = (nid: number): number => {
-                if (a.getExprKind(nid) === ExprKind.Name) {
+                const kind = a.getExprKind(nid);
+                if (kind === ExprKind.Name) {
                   const nameId = a.getExprData1(nid);
                   let vIdx = a.lookupVariable(nameId);
                   if (vIdx < 0) {
@@ -554,21 +576,32 @@ export class ArenaDAEPrinter {
                     if (v === Variability.Parameter) return 2;
                     return 3;
                   }
+                  return 4;
                 }
-                return 4;
+                if (kind === ExprKind.Call) {
+                  return 10;
+                }
+                return 5;
               };
-              if (op === BinOp.Mul && nonLiterals.every((nid) => a.getExprKind(nid) === ExprKind.Name)) {
-                const names = nonLiterals.map((nid) => a.interner.resolve(a.getExprData1(nid)) || "");
-                if (names.every((n) => !n.includes("["))) {
-                  nonLiterals.sort((x, y) => {
+              if (op === BinOp.Mul) {
+                nonLiterals.sort((x, y) => {
+                  const xKind = a.getExprKind(x);
+                  const yKind = a.getExprKind(y);
+                  if (xKind === ExprKind.Name && yKind === ExprKind.Name) {
                     const rx = getOperandRank(x);
                     const ry = getOperandRank(y);
                     if (rx !== ry) return rx - ry;
                     const nx = a.interner.resolve(a.getExprData1(x)) || "";
                     const ny = a.interner.resolve(a.getExprData1(y)) || "";
-                    return nx.localeCompare(ny);
-                  });
-                }
+                    if (!nx.includes("[") && !ny.includes("[")) {
+                      return nx.localeCompare(ny);
+                    }
+                    return 0;
+                  }
+                  if (xKind === ExprKind.Call && yKind === ExprKind.Name) return 1;
+                  if (xKind === ExprKind.Name && yKind === ExprKind.Call) return -1;
+                  return 0;
+                });
               }
               operands.length = 0;
               operands.push(...literals, ...nonLiterals);
@@ -595,7 +628,7 @@ export class ArenaDAEPrinter {
         const rhs = a.getExprRight(id);
         let finalLhs = lhs;
         let finalRhs = rhs;
-        if (this.omcCompatibility && (op === BinOp.Mul || (op === BinOp.Add && !this.isInsideAlgorithm))) {
+        if (this.omcCompatibility && (op === BinOp.Add || (!this.isInsideAlgorithm && op === BinOp.Mul))) {
           const lKind = a.getExprKind(lhs);
           const rKind = a.getExprKind(rhs);
           const lIsLit =
@@ -642,6 +675,9 @@ export class ArenaDAEPrinter {
                 finalRhs = lhs;
               }
             }
+          } else if (op === BinOp.Mul && lKind === ExprKind.Call && rKind === ExprKind.Name) {
+            finalLhs = rhs;
+            finalRhs = lhs;
           }
         }
 
@@ -877,8 +913,12 @@ export class ArenaDAEPrinter {
     else if (variability === Variability.Constant) this.out.write("constant ");
 
     const causality = a.getVarCausality(idx);
+    const rawVarName = a.getVarName(idx);
+    const isStateOutput = Boolean(
+      this.insideState && (a.extensionMetadata?.outputVars as Set<string> | undefined)?.has(rawVarName),
+    );
     if (causality === 1) this.out.write("input ");
-    else if (causality === 2) this.out.write("output ");
+    else if (causality === 2 || isStateOutput) this.out.write("output ");
 
     const rawCustomType = a.getVarCustomType(idx);
     const customType = rawCustomType && rawCustomType.startsWith(".") ? rawCustomType.slice(1) : rawCustomType;
@@ -920,7 +960,7 @@ export class ArenaDAEPrinter {
       this.out.write("[" + shapeStr + "]");
     }
 
-    let varName = a.getVarName(idx);
+    let varName = rawVarName;
     if (varName.startsWith("\0")) {
       const parts = varName.split("\0");
       if (parts.length >= 3) {
@@ -1313,10 +1353,76 @@ export class ArenaDAEPrinter {
 
   // ── Top-level DAE printing ──
 
+  printStateMachine(sm: ArenaStateMachine, indentLevel = 0): void {
+    const ind = " ".repeat(indentLevel);
+    this.out.write(`${ind}stateMachine ${sm.name}\n`);
+    for (let i = 0; i < sm.states.length; i++) {
+      const state = sm.states[i]!;
+      if (i > 0) this.out.write("\n");
+      this.printState(state, indentLevel + 2);
+    }
+    const hasTransitions = Boolean(sm.transitionEqIndices && sm.transitionEqIndices.length > 0);
+    const hasInitial = sm.initialStateEqIdx !== undefined && sm.initialStateEqIdx >= 0;
+    if (hasInitial || hasTransitions) {
+      this.out.write(`${ind}  equation\n`);
+      const oldDepth = this.depth;
+      this.depth = Math.floor(indentLevel / 2) + 2;
+      const smEqs: number[] = [];
+      if (hasInitial) smEqs.push(sm.initialStateEqIdx!);
+      if (hasTransitions) smEqs.push(...sm.transitionEqIndices!);
+      smEqs.sort((a, b) => a - b);
+      for (const eqIdx of smEqs) {
+        this.printEq(eqIdx);
+      }
+      this.depth = oldDepth;
+    }
+    this.out.write(`${ind}end ${sm.name};\n`);
+  }
+
+  printState(state: ArenaStateMachineState, indentLevel: number): void {
+    const ind = " ".repeat(indentLevel);
+    this.out.write(`${ind}state ${state.name}\n`);
+    const oldDepth = this.depth;
+    const oldInsideState = this.insideState;
+    this.insideState = true;
+    if (state.varIndices && state.varIndices.length > 0) {
+      this.depth = Math.floor(indentLevel / 2) + 2;
+      for (const vIdx of state.varIndices) {
+        this.printVar(vIdx);
+      }
+    }
+    if (state.stateMachines && state.stateMachines.length > 0) {
+      for (const childSm of state.stateMachines) {
+        this.printStateMachine(childSm, indentLevel + 2);
+      }
+    }
+    const hasEqs = Boolean(state.eqIndices && state.eqIndices.length > 0);
+    const hasMux = Boolean(state.multiplexerEqIndices && state.multiplexerEqIndices.length > 0);
+    if (hasEqs || hasMux) {
+      this.out.write(`${ind}  equation\n`);
+      this.depth = Math.floor(indentLevel / 2) + 2;
+      if (hasEqs) {
+        for (const eqIdx of state.eqIndices!) {
+          this.printEq(eqIdx);
+        }
+      }
+      if (hasMux) {
+        for (const eqIdx of state.multiplexerEqIndices!) {
+          this.printEq(eqIdx);
+        }
+      }
+    }
+    this.insideState = oldInsideState;
+    this.depth = oldDepth;
+    this.out.write(`${ind}end ${state.name};\n`);
+  }
+
   printDAE(dae: DAEBuilder): void {
     this.visitedFunctions.clear();
     // Emit function definitions
-    const uniqueFns = Array.from(new Set(dae.functions.values()));
+    const uniqueFns = Array.from(new Set(dae.functions.values())).filter(
+      (fn) => !(fn as any).wasInlined && !(fn as any).isEarlyInline,
+    );
     const getOmcFnRank = (fn: DAEBuilder): [number, number, string] => {
       const name = fn.name;
       if (name.includes("DummyFunctions")) {
@@ -1359,10 +1465,43 @@ export class ArenaDAEPrinter {
     if (dae.description) this.out.write(' "' + dae.description + '"');
     this.out.write("\n");
 
+    // Collect state machine variables and equations to avoid duplicate printing at top level
+    const stateVarIndices = new Set<number>();
+    const stateEqIndices = new Set<number>();
+    if ((dae as any).ignoredEqIndices) {
+      for (const eqIdx of (dae as any).ignoredEqIndices) {
+        stateEqIndices.add(eqIdx);
+      }
+    }
+    const collectStateElements = (sm: ArenaStateMachine) => {
+      if (sm.initialStateEqIdx !== undefined && sm.initialStateEqIdx >= 0) {
+        stateEqIndices.add(sm.initialStateEqIdx);
+      }
+      if (sm.transitionEqIndices) {
+        for (const eqIdx of sm.transitionEqIndices) stateEqIndices.add(eqIdx);
+      }
+      for (const st of sm.states) {
+        if (st.varIndices) {
+          for (const vIdx of st.varIndices) stateVarIndices.add(vIdx);
+        }
+        if (st.eqIndices) {
+          for (const eqIdx of st.eqIndices) stateEqIndices.add(eqIdx);
+        }
+        if (st.stateMachines) {
+          for (const childSm of st.stateMachines) collectStateElements(childSm);
+        }
+      }
+    };
+    if (dae.stateMachines) {
+      for (const sm of dae.stateMachines) {
+        collectStateElements(sm);
+      }
+    }
+
     // Variables (order matches definition order, inline protected flags)
     const varIndices: number[] = [];
     for (let i = 0; i < dae.varCount; i++) {
-      if (!dae.isVarRemoved(i)) varIndices.push(i);
+      if (!dae.isVarRemoved(i) && !stateVarIndices.has(i)) varIndices.push(i);
     }
     if (this.omcCompatibility) {
       const virtualVars: number[] = [];
@@ -1422,6 +1561,13 @@ export class ArenaDAEPrinter {
       }
     }
 
+    // State machines
+    if (dae.stateMachines && dae.stateMachines.length > 0) {
+      for (const sm of dae.stateMachines) {
+        this.printStateMachine(sm, 0);
+      }
+    }
+
     // Equations
     let hasEq = false;
     const isConnEq = (eqIdx: number): boolean => {
@@ -1432,6 +1578,7 @@ export class ArenaDAEPrinter {
     for (let i = 0; i < dae.eqCount; i++) eqIndices.push(i);
 
     for (const i of eqIndices) {
+      if (stateEqIndices.has(i)) continue;
       const ek = dae.getEqKind(i);
       if (
         ek === EqKind.InitialSimple ||
@@ -1511,16 +1658,38 @@ export class ArenaDAEPrinter {
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");
 
-    for (let i = 0; i < fn.varCount; i++) {
-      if (fn.isVarRemoved(i)) continue;
-      if (this.omcCompatibility) {
+    if (this.omcCompatibility) {
+      const inputs: number[] = [];
+      const outputs: number[] = [];
+      const protNoBinding: number[] = [];
+      const protWithBinding: number[] = [];
+
+      for (let i = 0; i < fn.varCount; i++) {
+        if (fn.isVarRemoved(i)) continue;
         const causality = fn.getVarCausality(i);
         const isProtected = fn.isVarProtected(i);
-        if (causality !== Causality.Input && causality !== Causality.Output && !isProtected) {
-          continue;
+        if (causality === Causality.Input) {
+          inputs.push(i);
+        } else if (causality === Causality.Output) {
+          outputs.push(i);
+        } else if (isProtected) {
+          const hasBinding = fn.getVarExpression(i) >= 0;
+          if (hasBinding) {
+            protWithBinding.push(i);
+          } else {
+            protNoBinding.push(i);
+          }
         }
       }
-      this.printVar(i);
+
+      for (const i of [...inputs, ...outputs, ...protNoBinding, ...protWithBinding]) {
+        this.printVar(i);
+      }
+    } else {
+      for (let i = 0; i < fn.varCount; i++) {
+        if (fn.isVarRemoved(i)) continue;
+        this.printVar(i);
+      }
     }
 
     let hasEq = false;

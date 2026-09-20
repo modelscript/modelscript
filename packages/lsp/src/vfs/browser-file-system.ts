@@ -73,6 +73,10 @@ export class BrowserFileSystem implements FileSystem {
     const joined = paths.join("/");
     return this.#norm(joined);
   }
+  exists(path: string): boolean {
+    const p = this.#norm(path);
+    return this.#files.has(p) || this.#dirs.has(p);
+  }
   read(path: string): string {
     const p = this.#norm(path);
     const file = this.#files.get(p);

@@ -993,29 +993,6 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4036: Variable in package is not constant.
-   */
-  packageVariableNotConstant: {
-    nodes: ["component_clause"],
-    severity: "error",
-    code: 4036,
-    message: (target) => `Variable '${target.text}' in package must be declared as constant.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const cls of db.ast.getAncestors(node, 0)) {
-        if (db.ast.getType(cls) == $.class_definition) {
-          if (isClassKind(db, cls, "package")) {
-            const isConst = hasTypePrefix(db, node, "constant", $);
-            if (!isConst) {
-              db.diagnostic(node);
-            }
-          }
-          break;
-        }
-      }
-    },
-  },
-
-  /**
    * M4038: Prefix 'flow' used outside connector declaration.
    */
   flowOutsideConnector: {

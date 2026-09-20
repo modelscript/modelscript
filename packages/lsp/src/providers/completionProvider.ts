@@ -49,8 +49,20 @@ export function registerCompletionProvider(
       return items;
     }
 
-    // Fallback: keyword completions (language-specific)
-    if (params.textDocument.uri.endsWith(".sysml")) {
+    // Fallback: keyword completions (generic from plugin or language-specific)
+    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+    if (plugin?.languageDef?.keywords || plugin?.monarch?.keywords) {
+      const kws = plugin.languageDef?.keywords ?? plugin.monarch?.keywords ?? [];
+      if (Array.isArray(kws) && kws.length > 0) {
+        return kws.map((kw: string, index: number) => ({
+          label: kw,
+          kind: CompletionItemKind.Keyword,
+          data: index,
+        }));
+      }
+    }
+
+    if (plugin?.id === "sysml2" || params.textDocument.uri.endsWith(".sysml")) {
       const sysml2Keywords = [
         // Structural
         "package",

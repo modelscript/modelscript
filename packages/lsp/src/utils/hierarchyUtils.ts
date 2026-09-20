@@ -65,6 +65,7 @@ export function classKindFromEntry(entry: any): string {
 
 export function isTreeVisible(entry: any): boolean {
   if (entry.metadata?.isPredefined) return false;
+  if (entry.name?.startsWith("'") || entry.name?.startsWith('"')) return false;
   if (entry.language === "sysml2") {
     return SYSML2_TREE_KINDS.has(entry.kind);
   }
@@ -83,24 +84,30 @@ export function getCompositeName(entry: any, index: any, visited = new Set<strin
 
 function getLibraryName(resourceId?: string): string | null {
   if (!resourceId) return null;
-  if (resourceId.startsWith("modelica:/")) {
-    const withoutPrefix = resourceId.substring("modelica:/".length);
-    const parts = withoutPrefix.split("/").filter((p: string) => p !== "" && p !== "lib");
-    if (parts.length > 0) return parts[0];
+  if (
+    resourceId.startsWith("modelica:/") ||
+    resourceId.includes("/lib/Modelica") ||
+    resourceId.includes("/lib/Complex")
+  ) {
+    return "Modelica Standard Library";
   }
   if (resourceId.startsWith("sysml2://stdlib/")) {
     return "SysML2 Standard Library";
   }
+  if (resourceId.startsWith("library-bundle:/")) {
+    const parts = resourceId.substring("library-bundle:/".length).split("/");
+    return parts[0] || "External Library";
+  }
   return null;
 }
 
-export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
+export function getTreeChildrenFast(index: any, parentId?: string, workspace?: any): TreeNodeInfo[] {
   const nodes: TreeNodeInfo[] = [];
   const seen = new Set<string>();
 
   if (!parentId) {
     // Root level: group by library or show workspace files directly
-    const rootChildIds = index.childrenOf.get(0) ?? [];
+    const rootChildIds = [...(index.childrenOf.get(0) ?? []), ...(index.childrenOf.get(null) ?? [])];
     const libraryNames = new Set<string>();
 
     for (const id of rootChildIds) {
@@ -120,7 +127,7 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
           name: entry.name,
           compositeName,
           classKind: classKindFromEntry(entry),
-          hasChildren: hasClassChildren(index, id),
+          hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
         });
         fqnCacheState.cache.set(compositeName, id);
@@ -140,7 +147,7 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
   } else if (parentId.startsWith("__LIB__:")) {
     // Return root children belonging to this library
     const libName = parentId.substring("__LIB__:".length);
-    const rootChildIds = index.childrenOf.get(0) ?? [];
+    const rootChildIds = [...(index.childrenOf.get(0) ?? []), ...(index.childrenOf.get(null) ?? [])];
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);
       if (!entry || !isTreeVisible(entry)) continue;
@@ -155,7 +162,7 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
           name: entry.name,
           compositeName,
           classKind: classKindFromEntry(entry),
-          hasChildren: hasClassChildren(index, id),
+          hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
         });
         fqnCacheState.cache.set(compositeName, id);
@@ -190,7 +197,7 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
           name: entry.name,
           compositeName,
           classKind: classKindFromEntry(entry),
-          hasChildren: hasClassChildren(index, id),
+          hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
         });
         fqnCacheState.cache.set(compositeName, id);
@@ -203,12 +210,16 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
   return nodes;
 }
 
-export function hasClassChildren(index: any, symbolId: number): boolean {
+export function hasClassChildren(index: any, symbolId: number, compositeName?: string, workspace?: any): boolean {
   const childIds = index.childrenOf.get(symbolId);
-  if (!childIds) return false;
-  for (const id of childIds) {
-    const entry = index.symbols.get(id);
-    if (entry && isTreeVisible(entry)) return true;
+  if (childIds && childIds.length > 0) {
+    for (const id of childIds) {
+      const entry = index.symbols.get(id);
+      if (entry && isTreeVisible(entry)) return true;
+    }
+  }
+  if (compositeName && workspace && typeof workspace.hasPendingChildren === "function") {
+    if (workspace.hasPendingChildren(compositeName)) return true;
   }
   return false;
 }

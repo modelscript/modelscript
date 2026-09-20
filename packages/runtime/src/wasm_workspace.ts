@@ -297,6 +297,32 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   /**
+   * Evaluates lazy loaders for all files whose parentFQN matches targetParent.
+   * Passing "" or undefined indexes root-level files.
+   */
+  ensureChildrenIndexed(parentFQN?: string): void {
+    const norm = !parentFQN || parentFQN === "" ? "" : parentFQN;
+    for (const [uri, entry] of Array.from(this.fileLoaders.entries())) {
+      const entryParent = !entry.parentFQN || entry.parentFQN === "" ? "" : entry.parentFQN;
+      if (entryParent === norm) {
+        this.ensureIndexed(uri);
+      }
+    }
+  }
+
+  /**
+   * Checks if there are any unindexed lazy loaders whose parentFQN matches targetParent.
+   */
+  hasPendingChildren(parentFQN?: string): boolean {
+    const norm = !parentFQN || parentFQN === "" ? "" : parentFQN;
+    for (const entry of this.fileLoaders.values()) {
+      const entryParent = !entry.parentFQN || entry.parentFQN === "" ? "" : entry.parentFQN;
+      if (entryParent === norm) return true;
+    }
+    return false;
+  }
+
+  /**
    * Returns count of files registered with a pending lazy loader.
    */
   get pendingFileCount(): number {
@@ -734,7 +760,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
   getFileIndex(uri: string): SymbolIndex {
     this.ensureIndexed(uri);
-    return this.toSymbolIndex();
+    return this.toUnifiedPartial();
   }
 
   hydrate(uri: string, indexData: any, parentFQN?: string, mapResourceId?: (path: string) => string): void {
@@ -848,19 +874,19 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   toUnified(): SymbolIndex {
-    return this.toSymbolIndex();
+    return this.toUnifiedPartial();
   }
 
   toTreeIndex(): SymbolIndex {
-    return this.toSymbolIndex();
+    return this.toUnifiedPartial();
   }
 
   async toUnifiedAsync(): Promise<SymbolIndex> {
-    return this.toSymbolIndex();
+    return this.toUnifiedPartial();
   }
 
   toUnifiedPartial(): SymbolIndex {
-    return this.toSymbolIndex();
+    return this.unifiedIndex;
   }
 
   getSkeletonIndex(): SymbolIndex {
@@ -1492,12 +1518,29 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return merged;
   }
 
+  ensureChildrenIndexed(parentFQN?: string): void {
+    for (const ws of this.workspaces.values()) {
+      if (ws && typeof (ws as any).ensureChildrenIndexed === "function") {
+        (ws as any).ensureChildrenIndexed(parentFQN);
+      }
+    }
+  }
+
+  hasPendingChildren(parentFQN?: string): boolean {
+    for (const ws of this.workspaces.values()) {
+      if (ws && typeof (ws as any).hasPendingChildren === "function") {
+        if ((ws as any).hasPendingChildren(parentFQN)) return true;
+      }
+    }
+    return false;
+  }
+
   toUnified(): SymbolIndex {
-    return this.toSymbolIndex();
+    return this.toUnifiedPartial();
   }
 
   toTreeIndex(): SymbolIndex {
-    return this.toSymbolIndex();
+    return this.toUnifiedPartial();
   }
 
   async toSymbolIndexAsync(): Promise<SymbolIndex> {
@@ -1561,7 +1604,49 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   toUnifiedPartial(): SymbolIndex {
-    return this.toSymbolIndex();
+    if (this.workspaces.size === 0) {
+      return {
+        symbols: new Map<SymbolId, SymbolEntry>(),
+        byName: new Map<string, SymbolId[]>(),
+        childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+      };
+    }
+    if (this.workspaces.size === 1) {
+      for (const ws of this.workspaces.values()) {
+        if (ws && typeof ws.toUnifiedPartial === "function") {
+          return ws.toUnifiedPartial();
+        }
+        if (ws && typeof ws.toSymbolIndex === "function") {
+          return ws.toSymbolIndex();
+        }
+      }
+    }
+    const merged: SymbolIndex = {
+      symbols: new Map<SymbolId, SymbolEntry>(),
+      byName: new Map<string, SymbolId[]>(),
+      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+    };
+    for (const [lang, ws] of this.workspaces.entries()) {
+      const idx =
+        typeof ws.toUnifiedPartial === "function"
+          ? ws.toUnifiedPartial()
+          : typeof ws.toSymbolIndex === "function"
+            ? ws.toSymbolIndex()
+            : null;
+      if (!idx) continue;
+      for (const [id, entry] of idx.symbols.entries()) {
+        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
+      }
+      for (const [name, ids] of idx.byName.entries()) {
+        const existing = merged.byName.get(name) || [];
+        merged.byName.set(name, existing.concat(ids));
+      }
+      for (const [parentId, childIds] of idx.childrenOf.entries()) {
+        const existing = merged.childrenOf.get(parentId) || [];
+        merged.childrenOf.set(parentId, existing.concat(childIds));
+      }
+    }
+    return merged;
   }
 
   getSkeletonIndex(): SymbolIndex {

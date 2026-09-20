@@ -1,3 +1,4 @@
+import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -52,60 +53,41 @@ export function registerDocumentFeaturesProvider(
         return undefined;
       };
 
-      // Wait up to 10 seconds for parser to be ready if currently initializing
+      // Wait up to 5 seconds for parser to be ready if currently initializing
       if (!isParserReady()) {
         const start = Date.now();
-        while (!isParserReady() && Date.now() - start < 10000) {
+        while (!isParserReady() && Date.now() - start < 5000) {
           await new Promise((r) => setTimeout(r, 50));
         }
       }
 
       let bridge = findBridge(params.textDocument.uri);
 
-      if (!bridge && validationService && isParserReady()) {
+      // Fast instant bridge creation for immediate Outline response (0-5ms)
+      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+      const parser = plugin?.parser ?? (validationService as any)?.parserService?.parser;
+      if (!bridge && parser) {
         const doc = getDoc(params.textDocument.uri);
-        if (doc) {
+        const text = doc ? doc.getText() : getDocumentTree(params.textDocument.uri)?.text;
+        const wm = validationService?.workspaceManager;
+        if (text) {
           try {
-            await validationService.validateTextDocument(doc);
-            const inflight =
-              validationService.activeValidationPromises?.get(params.textDocument.uri) ??
-              validationService.activeValidationPromises?.get(doc.uri);
-            if (inflight) await inflight;
-            bridge = findBridge(params.textDocument.uri);
-          } catch (valErr) {
-            connection.console.warn(`[onDocumentSymbol] On-demand validation failed: ${valErr}`);
-          }
-        }
-      }
-
-      if (!bridge && validationService?.workspaceManager && isParserReady()) {
-        const wm = validationService.workspaceManager;
-        const doc = getDoc(params.textDocument.uri);
-        const treeWrapper = getDocumentTree(params.textDocument.uri);
-        let tree = treeWrapper?.tree;
-        const text = doc ? doc.getText() : treeWrapper?.text;
-        if (!tree && text && (validationService as any)?.parserService?.parser) {
-          try {
-            tree = (validationService as any).parserService.parser.parse(text);
-          } catch {}
-        }
-        if (tree && wm.globalWorkspaceIndex && text) {
-          wm.globalWorkspaceIndex.register(params.textDocument.uri, () => tree.rootNode);
-          wm.globalWorkspaceIndex.getFileIndex(params.textDocument.uri);
-          const unified = wm.unifiedWorkspace?.toUnifiedPartial?.() ?? wm.globalWorkspaceIndex.toUnified();
-          let eng = wm.globalModelicaQueryEngine;
-          if (!eng) {
-            const createEngine = (globalThis as any).createModelicaQueryEngine;
-            if (typeof createEngine === "function") {
-              eng = createEngine(unified, (validationService as any).parserService?.getSharedCstTreeWrapper?.());
-              wm.globalModelicaQueryEngine = eng;
-            }
-          } else if (typeof eng.updateIndex === "function") {
-            eng.updateIndex(unified);
-          }
-          if (unified && eng) {
-            bridge = new LSPBridge(unified, eng, new PositionIndex(text), params.textDocument.uri);
+            const tree = parser.parse(text);
+            const ws = plugin?.workspaceIndex ?? wm?.globalWorkspaceIndex ?? createModelicaWorkspaceIndex();
+            ws.register(params.textDocument.uri, () => tree.rootNode);
+            ws.getFileIndex(params.textDocument.uri);
+            const unified =
+              wm?.unifiedWorkspace?.toUnifiedPartial?.() ??
+              (typeof ws.toUnifiedPartial === "function" ? ws.toUnifiedPartial() : ws.toUnified());
+            const engine = plugin?.queryEngine ??
+              wm?.globalModelicaQueryEngine ?? {
+                toQueryDB: () => ({ index: unified }),
+                index: unified,
+              };
+            bridge = new LSPBridge(unified as any, engine as any, new PositionIndex(text), params.textDocument.uri);
             documentLSPBridges.set(params.textDocument.uri, bridge);
+          } catch (fastErr) {
+            connection.console.warn(`[onDocumentSymbol] Fast bridge build error: ${fastErr}`);
           }
         }
       }
@@ -115,7 +97,7 @@ export function registerDocumentFeaturesProvider(
         const treeWrapper = getDocumentTree(params.textDocument.uri);
         const text = doc?.getText() ?? treeWrapper?.text;
         const unifiedIndex = validationService?.workspaceManager?.unifiedWorkspace?.toUnifiedPartial();
-        const engine = validationService?.workspaceManager?.globalModelicaQueryEngine;
+        const engine = plugin?.queryEngine ?? validationService?.workspaceManager?.globalModelicaQueryEngine;
         if (text && unifiedIndex && engine) {
           bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), params.textDocument.uri);
           documentLSPBridges.set(params.textDocument.uri, bridge);
@@ -123,15 +105,22 @@ export function registerDocumentFeaturesProvider(
       }
 
       if (!bridge) {
-        const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
         if (plugin) {
           if (plugin.customHandlers?.symbols) {
             return plugin.customHandlers.symbols(getDocumentTree(params.textDocument.uri));
           }
-          if (plugin.facade?.getDocumentSymbols) {
+          if (plugin.facade?.getDocumentSymbols && parser) {
             try {
-              const symbols = plugin.facade.getDocumentSymbols(0);
-              if (symbols && symbols.length > 0) return symbols;
+              const doc = getDoc(params.textDocument.uri);
+              const text = doc?.getText() ?? getDocumentTree(params.textDocument.uri)?.text;
+              if (text) {
+                const tree = parser.parse(text);
+                const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+                if (rootPtr) {
+                  const symbols = plugin.facade.getDocumentSymbols(rootPtr);
+                  if (symbols && symbols.length > 0) return symbols;
+                }
+              }
             } catch {}
           }
         }
@@ -150,60 +139,28 @@ export function registerDocumentFeaturesProvider(
     if (!document) return [];
 
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
-    if (plugin?.facade?.getFoldingRanges) {
+    const parser = plugin?.parser ?? (isParserReady() ? (validationService as any)?.parserService?.parser : undefined);
+
+    let treeWrapper = getDocumentTree(document.uri);
+    let tree = treeWrapper?.tree ?? treeWrapper;
+    if (!tree && parser) {
       try {
-        const folds = plugin.facade.getFoldingRanges(0);
+        tree = parser.parse(document.getText());
+      } catch {}
+    }
+    if (!tree) return [];
+
+    const rootNode = tree.rootNode ?? tree;
+    const rootPtr = rootNode?.id ?? rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+
+    if (plugin?.facade?.getFoldingRanges && rootPtr) {
+      try {
+        const folds = plugin.facade.getFoldingRanges(rootPtr);
         if (folds && folds.length > 0) return folds;
       } catch {}
     }
 
-    // SysML2 folding ranges
-    if (params.textDocument.uri.endsWith(".sysml")) {
-      if (!isSysml2ParserReady()) return [];
-      const sysml2Parser = getSysml2Parser();
-      if (!sysml2Parser) return [];
-      const text = document.getText();
-      const tree = sysml2Parser.parse(text);
-      if (!tree) return [];
-
-      const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
-      // Fold any node whose type ends in Definition, Usage, or is a package/body block
-      const collectFolds = (node: SyntaxNode) => {
-        const t = node.type;
-        if (
-          t.endsWith("Definition") ||
-          t.endsWith("Usage") ||
-          t === "Package" ||
-          t === "LibraryPackage" ||
-          t === "Namespace" ||
-          t === "Comment"
-        ) {
-          const startLine = node.startPosition.row;
-          const endLine = node.endPosition.row;
-          if (endLine > startLine) {
-            ranges.push({
-              startLine,
-              endLine,
-              kind: t === "Comment" ? "comment" : undefined,
-            });
-          }
-        }
-        const children = node.children || [];
-        for (const child of children) {
-          if (child) collectFolds(child);
-        }
-      };
-      collectFolds(tree.rootNode);
-      return ranges as any[];
-    }
-
-    // Modelica folding ranges
-    if (!isParserReady()) return [];
-
-    const tree = getDocumentTree(document.uri);
-    if (!tree) return [];
     const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
-
     const FOLDABLE_NODES = new Set([
       "ClassDefinition",
       "EquationSection",
@@ -218,31 +175,37 @@ export function registerDocumentFeaturesProvider(
       "WhileStatement",
       "WhenStatement",
       "AnnotationClause",
+      "Package",
+      "LibraryPackage",
+      "Namespace",
     ]);
 
-    const collectFolds = (node: SyntaxNode) => {
-      if (FOLDABLE_NODES.has(node.type)) {
-        const startLine = node.startPosition.row;
-        const endLine = node.endPosition.row;
+    const collectFolds = (node: any) => {
+      if (!node) return;
+      const t = node.type || "";
+      const isComment = t === "Comment" || t === "comment";
+      const isFoldable =
+        FOLDABLE_NODES.has(t) || t.endsWith("Definition") || t.endsWith("Usage") || t.endsWith("Block") || isComment;
+
+      if (isFoldable && node.startPosition && node.endPosition) {
+        const startLine = node.startPosition.row ?? node.startPosition.line;
+        const endLine = node.endPosition.row ?? node.endPosition.line;
         if (endLine > startLine) {
-          ranges.push({ startLine, endLine });
+          ranges.push({
+            startLine,
+            endLine,
+            kind: isComment ? "comment" : undefined,
+          });
         }
       }
-      // Block comments
-      if (node.type === "Comment" || node.type === "comment") {
-        const startLine = node.startPosition.row;
-        const endLine = node.endPosition.row;
-        if (endLine > startLine) {
-          ranges.push({ startLine, endLine, kind: "comment" });
-        }
-      }
+
       const children = node.children || [];
-      for (const child of children) {
-        if (child) collectFolds(child);
+      for (let i = 0; i < children.length; i++) {
+        collectFolds(children[i]);
       }
     };
 
-    collectFolds(tree.rootNode);
+    collectFolds(rootNode);
     return ranges as any[];
   });
 

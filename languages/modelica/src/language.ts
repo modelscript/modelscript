@@ -997,6 +997,7 @@ export const modelicaLanguage = language({
         "false",
         "true",
         "time",
+        "end",
         seq($.component_reference, $.function_call_args),
         seq("der", "(", $.expression_list, ")"),
         seq("initial", "(", ")"),

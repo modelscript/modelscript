@@ -1162,17 +1162,50 @@ export function evaluateArenaExpression(
         }
       }
 
-      const match = name.match(/^([^[\]]+)\[([\d,]+)\]$/);
+      const match = name.match(/^([^[\]]+)\[([^\]]+)\]$/);
       if (match && match[1] && match[2]) {
         const root = match[1];
-        const indices = match[2].split(",").map(Number);
+        const rawIndices = match[2].split(",").map((s) => s.trim());
         const rootVal = parameters.get(root);
         if (rootVal !== undefined && Array.isArray(rootVal)) {
           let current: ArenaValue = rootVal;
           let ok = true;
-          for (const idx of indices) {
-            if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
-              current = current[idx - 1] as ArenaValue;
+          for (const rawIdx of rawIndices) {
+            let idxNum: number | undefined;
+            if (parameters.has(rawIdx)) {
+              const pv = parameters.get(rawIdx);
+              if (typeof pv === "number") idxNum = pv;
+            } else {
+              const n = Number(rawIdx);
+              if (!isNaN(n)) idxNum = n;
+            }
+            if (idxNum === undefined) {
+              const effectiveDb = db ?? (dae as any).db;
+              if (effectiveDb && rawIdx.includes(".")) {
+                const parts = rawIdx.split(".");
+                const litName = parts.pop()!;
+                const typeName = parts.length > 0 ? parts.pop()! : null;
+                const candidateSyms = typeName
+                  ? effectiveDb.byName(typeName)
+                  : effectiveDb.index?.symbols
+                    ? Array.from(effectiveDb.index.symbols.values()).filter((s: any) => (s as any).kind === "Class")
+                    : [];
+                for (const s of candidateSyms as any[]) {
+                  const cstText = (effectiveDb.cstNode(s.id) as any)?.text ?? "";
+                  const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+                  if (match && match[1]) {
+                    const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
+                    const idx = lits.indexOf(litName);
+                    if (idx >= 0) {
+                      idxNum = idx + 1;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+            if (idxNum !== undefined && Array.isArray(current) && idxNum >= 1 && idxNum <= current.length) {
+              current = current[idxNum - 1] as ArenaValue;
             } else {
               ok = false;
               break;
@@ -1359,7 +1392,12 @@ export function evaluateArenaExpression(
       );
       if (left === null || right === null) return null;
 
-      if (Array.isArray(left) || Array.isArray(right) || (typeof left === "number" && typeof right === "number")) {
+      if (
+        Array.isArray(left) ||
+        Array.isArray(right) ||
+        (typeof left === "number" && typeof right === "number") ||
+        (typeof left === "string" && typeof right === "string")
+      ) {
         const applyBinOp = (a: ArenaValue, b: ArenaValue, op: BinOp): ArenaValue | null => {
           if (Array.isArray(a) && Array.isArray(b)) {
             if (a.length !== b.length) return null;
@@ -1378,6 +1416,18 @@ export function evaluateArenaExpression(
             const res = b.map((val) => applyBinOp(a, val, op));
             if (res.includes(null)) return null;
             return res as ArenaValue;
+          }
+
+          if (typeof a === "string" && typeof b === "string") {
+            switch (op) {
+              case BinOp.Add:
+              case BinOp.ElemAdd:
+                return a + b;
+              case BinOp.Eq:
+                return a === b;
+              case BinOp.Neq:
+                return a !== b;
+            }
           }
 
           if (typeof a === "number" && typeof b === "number") {
@@ -1511,25 +1561,31 @@ export function evaluateArenaExpression(
               }
             }
             if (!shape) {
-              const varIdx = dae.getVarIdxByName(varName);
-              if (varIdx >= 0) {
-                const varShape = dae.getVarShape(varIdx);
-                if (varShape && varShape.length > 0 && !varShape.includes(0)) shape = varShape;
-              } else if (dae.hasArrayElements(varName)) {
-                const elements = dae.getArrayElementIndices(varName);
-                if (elements.length > 0) {
-                  const lastIdx = elements[elements.length - 1];
-                  if (lastIdx !== undefined) {
-                    const lastElemName = dae.getVarName(lastIdx);
-                    const match = lastElemName.match(/\[([\d,]+)\]$/);
-                    if (match && match[1]) {
-                      shape = match[1].split(",").map(Number);
+              const namedShape =
+                (dae as any).getNamedArrayShape?.(varName) ?? (dae as any).namedArrayShapes?.get(varName);
+              if (namedShape && namedShape.length > 0) {
+                shape = namedShape;
+              } else {
+                const varIdx = dae.getVarIdxByName(varName);
+                if (varIdx >= 0) {
+                  const varShape = dae.getVarShape(varIdx);
+                  if (varShape && varShape.length > 0) shape = varShape;
+                } else if (dae.hasArrayElements(varName)) {
+                  const elements = dae.getArrayElementIndices(varName);
+                  if (elements.length > 0) {
+                    const lastIdx = elements[elements.length - 1];
+                    if (lastIdx !== undefined) {
+                      const lastElemName = dae.getVarName(lastIdx);
+                      const match = lastElemName.match(/\[([\d,]+)\]$/);
+                      if (match && match[1]) {
+                        shape = match[1].split(",").map(Number);
+                      }
                     }
                   }
                 }
               }
             }
-            if (shape && shape.length > 0 && !shape.includes(0)) {
+            if (shape && shape.length > 0) {
               if (funcName === "ndims") return shape.length;
               if (funcName === "size") {
                 if (argCount === 1) return shape;
@@ -1546,7 +1602,8 @@ export function evaluateArenaExpression(
                     functionLookup,
                   );
                   if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
-                    return shape[dim - 1] ?? null;
+                    const s = shape[dim - 1];
+                    return typeof s === "number" && s > 0 ? s : null;
                   }
                 }
               }

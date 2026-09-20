@@ -97,6 +97,12 @@ export interface ArenaStateMachineState {
   variables: { nameId: number; startValue: number }[];
   /** Nested sub-state machines within this state (for hierarchical SM composition). */
   stateMachines: ArenaStateMachine[];
+  /** Indices of variables belonging to this state. */
+  varIndices?: number[];
+  /** Indices of equations internal to this state. */
+  eqIndices?: number[];
+  /** Synthesized multiplexer equations belonging to this state scope. */
+  multiplexerEqIndices?: number[];
 }
 
 /** An arena-native state machine. */
@@ -109,6 +115,10 @@ export interface ArenaStateMachine {
   transitions: ArenaStateMachineTransition[];
   /** Name of the initial state. */
   initialState: string;
+  /** EqIndex of the initialState call equation. */
+  initialStateEqIdx?: number;
+  /** EqIndices of the transition equations belonging to this state machine. */
+  transitionEqIndices?: number[];
 }
 
 // ── Structured Equation Meta Types ──
@@ -474,6 +484,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   public boundaryNodes: any[] = [];
 
   // Host-side maps for metadata and structured equations
+  public namedArrayShapes = new Map<string, number[]>();
   private varShapes = new Map<number, number[]>();
   private varShapeExprs = new Map<number, number[]>();
   private varAttrs = new Map<number, Map<string, number>>();
@@ -841,7 +852,16 @@ export class WasmDaeBridge implements IDaeBuilder {
     this.varEnumLiterals.set(varIdx, lits as any);
   }
 
+  setNamedArrayShape(name: string, shape: number[]): void {
+    this.namedArrayShapes.set(name, [...shape]);
+  }
+
+  getNamedArrayShape(name: string): number[] | undefined {
+    return this.namedArrayShapes.get(name);
+  }
+
   hasArrayElements(baseName: string): boolean {
+    if (this.namedArrayShapes.has(baseName)) return true;
     const prefix = `${baseName}[`;
     for (let i = 0; i < this.varCount; i++) {
       if (this.getVarName(i).startsWith(prefix)) return true;
@@ -2492,6 +2512,14 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
       if (nameStr) {
         const vIdx2 = dae.getVarIdxByName(nameStr);
         if (vIdx2 >= 0) return dae.getVarType(vIdx2);
+        if (nameStr.includes("[")) {
+          const baseName = nameStr.split("[")[0]!;
+          const baseIdx = dae.getVarIdxByName(baseName);
+          if (baseIdx >= 0) return dae.getVarType(baseIdx);
+          const baseId = dae.interner.intern(baseName);
+          const baseIdx2 = dae.lookupVariable(baseId);
+          if (baseIdx2 >= 0) return dae.getVarType(baseIdx2);
+        }
       }
       return null;
     }
@@ -2522,7 +2550,9 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
           if (lType === null || rType === null) return null;
           if (lType === VarType.Real || rType === VarType.Real) return VarType.Real;
           if (lType === VarType.Integer && rType === VarType.Integer) {
-            return op === BinOp.Div || op === BinOp.ElemDiv ? VarType.Real : VarType.Integer;
+            return op === BinOp.Div || op === BinOp.ElemDiv || op === BinOp.Pow || op === BinOp.ElemPow
+              ? VarType.Real
+              : VarType.Integer;
           }
           return lType;
         }
@@ -2565,7 +2595,24 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
       ) {
         return VarType.Integer;
       }
-      if (fnName === "Boolean" || fnName === "/*Boolean*/") return VarType.Boolean;
+      if (fnName === "Boolean" || fnName === "/*Boolean*/" || fnName === "initial" || fnName === "terminal")
+        return VarType.Boolean;
+      if (fnName === "sample") {
+        const argCount = dae.getExprRight(exprId);
+        if (argCount === 1) return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+        if (argCount === 2) {
+          const arg1 = dae.getExprLeft(exprId + 1);
+          const t1 = inferArenaExprVarType(dae, arg1);
+          if (t1 === VarType.Real || t1 === VarType.Integer) {
+            return VarType.Boolean;
+          }
+          const k1 = dae.getExprKind(arg1);
+          if (k1 === ExprKind.RealLiteral || k1 === ExprKind.IntLiteral) {
+            return VarType.Boolean;
+          }
+          return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+        }
+      }
       if (fnName === "String" || fnName === "/*String*/" || fnName === "getInstanceName" || fnName === "typeName") {
         return VarType.String;
       }

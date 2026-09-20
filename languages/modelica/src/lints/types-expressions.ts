@@ -76,7 +76,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.description != 0 && t == $.description) ||
                 ($.description_string != 0 && t == $.description_string) ||
                 ($.comment != 0 && t == $.comment) ||
-                ($.string_comment != 0 && t == $.string_comment)
+                ($.string_comment != 0 && t == $.string_comment) ||
+                ($.annotation != 0 && t == $.annotation) ||
+                ($.annotation_clause != 0 && t == $.annotation_clause)
               ) {
                 isDesc = true;
                 break;
@@ -118,7 +120,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.description != 0 && t == $.description) ||
                 ($.description_string != 0 && t == $.description_string) ||
                 ($.comment != 0 && t == $.comment) ||
-                ($.string_comment != 0 && t == $.string_comment)
+                ($.string_comment != 0 && t == $.string_comment) ||
+                ($.annotation != 0 && t == $.annotation) ||
+                ($.annotation_clause != 0 && t == $.annotation_clause)
               ) {
                 isDesc = true;
                 break;
@@ -140,7 +144,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.description != 0 && t == $.description) ||
                 ($.description_string != 0 && t == $.description_string) ||
                 ($.comment != 0 && t == $.comment) ||
-                ($.string_comment != 0 && t == $.string_comment)
+                ($.string_comment != 0 && t == $.string_comment) ||
+                ($.annotation != 0 && t == $.annotation) ||
+                ($.annotation_clause != 0 && t == $.annotation_clause)
               ) {
                 isDesc = true;
                 break;
@@ -165,6 +171,12 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 3002,
     message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      for (const anc of db.ast.getAncestors(node)) {
+        const t = db.ast.getType(anc);
+        if (($.annotation != 0 && t == $.annotation) || ($.annotation_clause != 0 && t == $.annotation_clause)) {
+          return;
+        }
+      }
       let modClause = db.ast.getChildByFieldId(node, "modification");
       if (modClause == 0) {
         for (const m of db.ast.getDescendants(node, $.modification)) {

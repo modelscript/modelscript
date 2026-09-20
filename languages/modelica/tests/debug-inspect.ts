@@ -17,13 +17,18 @@ async function main() {
   const base = path.basename(testFile, ".mo");
   const models = Array.from(content.matchAll(/(?:model|class)\s+([A-Za-z0-9_]+)/g)).map((m) => m[1]);
   const modelName = models.includes(base) ? base : (models[models.length - 1] ?? "Test07");
-  console.log("modelName:", modelName, "testFile:", testFile);
+  const lines = content.split("\n");
+  const resultStartIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
+  const sourceEnd = resultStartIdx >= 0 ? resultStartIdx : lines.length;
+  const source = lines.slice(0, sourceEnd).join("\n").trim();
+  console.log("sourceLen:", source.length);
   const context = new Context(new NodeFileSystem());
-  context.load(content, testFile);
+  context.load(source, testFile);
 
   const lints = Array.from(context.queryEngine.runAllLints());
   console.log("Lints:", lints);
 
+  /*
   const db = context.queryEngine.toQueryDB();
   const rootSym = db.byName(modelName).find((s) => s.kind === "Class");
   if (rootSym) {
@@ -34,6 +39,7 @@ async function main() {
       console.log(`compInst[${eid}]:`, JSON.stringify(ci, null, 2));
     }
   }
+  */
 
   const arena = context.flattenArena(modelName, undefined, undefined, { omcCompatibility: true });
   console.log("Arena diagnostics:", arena?.diagnostics);
@@ -83,6 +89,7 @@ async function main() {
 
     const actLines = actual.split("\n");
     const expLines = expected.split("\n");
+    console.log("ACTUAL:\n" + actual);
     console.log(`actLines: ${actLines.length}, expLines: ${expLines.length}`);
     for (let i = 0; i < Math.max(actLines.length, expLines.length); i++) {
       if (actLines[i] !== expLines[i]) {

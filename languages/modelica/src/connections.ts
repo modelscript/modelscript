@@ -635,22 +635,32 @@ export class ModelicaPortBalancer {
       if (!isFlow) {
         let potRoot = root;
         let orderedGroup = group;
+        const countDots = (name: string) => (name.match(/\./g) || []).length;
+        const minDots = Math.min(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
+        const maxDots = Math.max(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
+        const isGroupOutside = (vIdx: number) => {
+          if (minDots < maxDots) return countDots(dae.getVarName(vIdx)) === minDots;
+          return isOutsideOrOuter(dae.getVarName(vIdx));
+        };
+        const hasOutside =
+          options?.isOldFrontend && (minDots < maxDots || group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx))));
         if (
           options?.omcCompatibility &&
           group.length > 2 &&
-          group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."))
+          (hasOutside || group.some((vIdx) => dae.getVarName(vIdx).startsWith("world.")))
         ) {
-          const firstInside = group.find((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)));
+          const firstInside = group.find((vIdx) => !isGroupOutside(vIdx));
           if (firstInside !== undefined) {
             potRoot = firstInside;
-            const insideVars = group.filter((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)) && vIdx !== potRoot);
-            const outsideVars = group.filter((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
+            const insideVars = group.filter((vIdx) => !isGroupOutside(vIdx) && vIdx !== potRoot);
+            insideVars.sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
+            const outsideVars = group.filter((vIdx) => isGroupOutside(vIdx));
             outsideVars.sort((a, b) => {
               const nameA = dae.getVarName(a);
               const nameB = dae.getVarName(b);
               if (nameA.startsWith("topPin.") && nameB.startsWith("world.")) return -1;
               if (nameB.startsWith("topPin.") && nameA.startsWith("world.")) return 1;
-              return 0;
+              return dae.getVarName(a).localeCompare(dae.getVarName(b));
             });
             orderedGroup = [potRoot, ...insideVars, ...outsideVars];
           }
@@ -711,7 +721,7 @@ export class ModelicaPortBalancer {
               let finalRhsIdx = vIdx;
 
               const isVIdxSource = resolvedPairs.some(([s, t]) => s === vIdx && t === potRoot);
-              if (isVIdxSource) {
+              if (isVIdxSource && !(options?.isOldFrontend && isGroupOutside(vIdx) && !isGroupOutside(potRoot))) {
                 finalLhs = vExpr;
                 finalRhs = rootExpr;
                 finalLhsIdx = vIdx;
@@ -796,7 +806,9 @@ export class ModelicaPortBalancer {
                 return 0;
               });
             }
-            const orderedVars = [...insideVars, ...outsideVars];
+            const orderedVars = options?.isOldFrontend
+              ? [...outsideVars, ...insideVars]
+              : [...insideVars, ...outsideVars];
             const first = orderedVars[0]!;
             const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(first));
             sumExpr = isOutsideOrOuter(dae.getVarName(first))
@@ -829,7 +841,7 @@ export class ModelicaPortBalancer {
               targets.push(vIdx);
             }
           }
-          const ordered = [...targets, source];
+          const ordered = [source, ...targets];
           sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[0]!));
           for (let i = 1; i < ordered.length; i++) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[i]!));
@@ -1102,7 +1114,37 @@ export class ModelicaPortBalancer {
               }
             } else {
               const emittedFlowSums = new Set<any>();
+              const emittedZeroFlows = new Set<any>();
+
+              // 1. First, emit top-level zero flows and flow sums
+              const topZeroFlows = zeroFlows.filter(
+                (z) => !ooGroupData.some((gd) => gd.group.some((p) => z.varName.startsWith(p.split(".")[0]! + "."))),
+              );
+              topZeroFlows.sort((a, b) => dae.getVarIdxByName(a.varName) - dae.getVarIdxByName(b.varName));
+              topZeroFlows.forEach((eq) => {
+                dae.addEquation(eq.kind, eq.lhs, eq.rhs);
+                emittedZeroFlows.add(eq);
+              });
+
+              for (const fEq of flowSumEqs) {
+                const parts = fEq.str.split(".");
+                if (parts.length <= 2) {
+                  dae.addEquation(fEq.kind, fEq.lhs, fEq.rhs);
+                  emittedFlowSums.add(fEq);
+                }
+              }
+
               for (const gd of ooGroupData) {
+                const compPrefixes = Array.from(new Set(gd.group.map((p) => p.split(".")[0]!)));
+                const compZeroFlows = zeroFlows.filter(
+                  (z) => !emittedZeroFlows.has(z) && compPrefixes.some((p) => z.varName.startsWith(p + ".")),
+                );
+                compZeroFlows.sort((a, b) => dae.getVarIdxByName(a.varName) - dae.getVarIdxByName(b.varName));
+                compZeroFlows.forEach((eq) => {
+                  dae.addEquation(eq.kind, eq.lhs, eq.rhs);
+                  emittedZeroFlows.add(eq);
+                });
+
                 for (const fEq of flowSumEqs) {
                   if (emittedFlowSums.has(fEq)) continue;
                   const matches = gd.group.some((p) => fEq.str.startsWith(p));
@@ -1111,9 +1153,9 @@ export class ModelicaPortBalancer {
                     emittedFlowSums.add(fEq);
                   }
                 }
-                gd.internalPotentials.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
                 if (gd.internalFlowSum)
                   dae.addEquation(gd.internalFlowSum.kind, gd.internalFlowSum.lhs, gd.internalFlowSum.rhs);
+                gd.internalPotentials.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
                 gd.internalStreams.forEach((eq) => {
                   const eqIdx = dae.addEquation(eq.kind, eq.lhs, eq.rhs);
                   if (eq.desc && eqIdx >= 0) {
@@ -1121,6 +1163,13 @@ export class ModelicaPortBalancer {
                   }
                 });
               }
+
+              zeroFlows
+                .filter((z) => !emittedZeroFlows.has(z))
+                .forEach((eq) => {
+                  dae.addEquation(eq.kind, eq.lhs, eq.rhs);
+                });
+
               for (const fEq of flowSumEqs) {
                 if (!emittedFlowSums.has(fEq)) {
                   dae.addEquation(fEq.kind, fEq.lhs, fEq.rhs);
@@ -1185,6 +1234,17 @@ export class ModelicaPortBalancer {
                   dae.getExprKind(b.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(b.rhs)) : "";
                 if (rankA === 1 && rankB === 1) return rhsB.localeCompare(rhsA);
                 return rhsA.localeCompare(rhsB);
+              });
+            }
+
+            if (options?.omcCompatibility && options?.isOldFrontend) {
+              flowSumEqs.sort((a, b) => {
+                const mA = a.str.match(/\[(\d+)\]/);
+                const mB = b.str.match(/\[(\d+)\]/);
+                if (mA && mB) {
+                  return parseInt(mB[1]!, 10) - parseInt(mA[1]!, 10);
+                }
+                return 0;
               });
             }
 

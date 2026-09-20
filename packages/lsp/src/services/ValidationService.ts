@@ -17,10 +17,11 @@ import { computeTreeEdit } from "../utils/astUtils.js";
 import type { SyntaxNode } from "../utils/tree-sitter.js";
 import { ReasonerService } from "./ReasonerService.js";
 
-let createSysML2QueryEngine: any = undefined;
-let createModelicaQueryEngine: any = undefined;
+import { createModelicaQueryEngine, injectPredefinedTypes } from "@modelscript/modelica/factory";
+import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
+import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
+
 let verificationTimer: any = undefined;
-let injectPredefinedTypes: any = undefined;
 let activeVerification: any = undefined;
 let flattenArenaFromInstance: any = undefined;
 
@@ -64,44 +65,47 @@ export class ValidationService {
     this.reasonerService = new ReasonerService(connection, workspaceManager);
   }
 
-  public collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnostic[] {
+  public collectSyntaxErrors(rootNode: any, textDocument: TextDocument, plugin?: LanguagePlugin): Diagnostic[] {
     const t0 = performance.now();
     const diagnostics: Diagnostic[] = [];
     if (!rootNode) return diagnostics;
 
     // 1. Native WASM GLR parser diagnostics
-    if (rootNode?.tree?.facade && typeof rootNode.tree.facade.getDiagnostics === "function") {
+    const facade = plugin?.facade ?? rootNode?.tree?.facade ?? this.parserService.facade;
+    if (facade && typeof facade.getDiagnostics === "function") {
       try {
-        const rootPtr = rootNode.ptr || rootNode.tree.rootPtr || 0;
-        const wasmDiags = rootNode.tree.facade.getDiagnostics(rootPtr);
-        if (Array.isArray(wasmDiags) && wasmDiags.length > 0) {
-          for (const d of wasmDiags) {
-            // Severity 1 = Error (Syntax Error).
-            // Linter warnings (severity 2 / lintId >= 1000) are handled by the semantic pipeline.
-            if (d.severity === 1 || !d.code || d.code === "ERROR") {
-              let range = d.range;
-              if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
-                range = {
-                  start: textDocument.positionAt(d.startCharOffset),
-                  end: textDocument.positionAt(d.endCharOffset),
-                };
+        const rootPtr = rootNode.id ?? rootNode.ptr ?? rootNode?.tree?.rootPtr ?? 0;
+        if (rootPtr) {
+          const wasmDiags = facade.getDiagnostics(rootPtr);
+          if (Array.isArray(wasmDiags) && wasmDiags.length > 0) {
+            for (const d of wasmDiags) {
+              // Severity 1 = Error (Syntax Error).
+              // Linter warnings (severity 2 / lintId >= 1000) are handled by the semantic pipeline.
+              if (d.severity === 1 || !d.code || d.code === "ERROR") {
+                let range = d.range;
+                if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
+                  range = {
+                    start: textDocument.positionAt(d.startCharOffset),
+                    end: textDocument.positionAt(d.endCharOffset),
+                  };
+                }
+                if (range.start.line === range.end.line && range.start.character === range.end.character) {
+                  range = {
+                    start: range.start,
+                    end: { line: range.start.line, character: range.start.character + 1 },
+                  };
+                }
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  range,
+                  message: d.message || "Syntax error",
+                  source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
+                });
               }
-              if (range.start.line === range.end.line && range.start.character === range.end.character) {
-                range = {
-                  start: range.start,
-                  end: { line: range.start.line, character: range.start.character + 1 },
-                };
-              }
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                range,
-                message: d.message || "Syntax error",
-                source: "modelscript",
-              });
             }
-          }
-          if (diagnostics.length > 0) {
-            return diagnostics;
+            if (diagnostics.length > 0) {
+              return diagnostics;
+            }
           }
         }
       } catch (e) {
@@ -920,7 +924,8 @@ export class ValidationService {
       // Collect syntax errors from the tree using the shared pure function.
       // These were likely already sent instantly by the onDidChangeContent handler,
       // but we recompute them here to ensure consistency with the current tree.
-      const syntaxDiags = this.collectSyntaxErrors(tree.rootNode, textDocument);
+      const plugin = globalLanguageRegistry.getPluginForUri(textDocument.uri);
+      const syntaxDiags = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
       diagnostics.push(...syntaxDiags);
 
       this.connection.console.info(

@@ -331,6 +331,7 @@ export class ParserService {
         syntaxNames: modelicaSyntaxNames,
       });
       this.parser = modelicaResult.parser;
+      (globalThis as any).modelicaParser = this.parser;
       this.facade = modelicaResult.facade;
       this.parserReady = true;
       this.connection.console.info("ModelScript Modelica parser initialized");

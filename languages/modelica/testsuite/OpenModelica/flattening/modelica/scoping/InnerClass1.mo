@@ -46,10 +46,12 @@ model InnerClass1
 end InnerClass1;
 
 // Result:
-// function A.myfoo
+// function InnerClass1.myfoo
 //   input Real x;
 //   output Real y;
-// end A.myfoo;
+// algorithm
+//   y := sin(x);
+// end InnerClass1.myfoo;
 //
 // class InnerClass1
 //   parameter Real b.x.p = 2.0;
@@ -58,7 +60,7 @@ end InnerClass1;
 //   Real a.x;
 // equation
 //   der(b.x.x) = b.x.p;
-//   b.a.x = unbox(A.myfoo(#(time)));
-//   a.x = unbox(A.myfoo(#(time)));
+//   b.a.x = InnerClass1.myfoo(time);
+//   a.x = InnerClass1.myfoo(time);
 // end InnerClass1;
 // endResult

@@ -40,6 +40,7 @@ import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-inter
 // @ts-ignore
 // @ts-ignore
 // @ts-ignore
+import csvLangFallback from "@modelscript/csv/language";
 import { clearIconCache } from "@modelscript/modelica/diagram";
 import owl2LangFallback from "@modelscript/owl2/language";
 import { registerColorProvider } from "./providers/colorProvider.js";
@@ -147,6 +148,10 @@ Object.defineProperty(globalThis, "parserReady", {
   set: (v) => (parserService.parserReady = v),
 });
 Object.defineProperty(globalThis, "parser", {
+  get: () => parserService.parser,
+  set: (v) => (parserService.parser = v),
+});
+Object.defineProperty(globalThis, "modelicaParser", {
   get: () => parserService.parser,
   set: (v) => (parserService.parser = v),
 });
@@ -326,6 +331,10 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       extensions: [".mo", ".mos", ".msim"],
       parser: parserService.parser,
       facade: parserService.facade,
+      workspaceIndex: workspaceManager.globalWorkspaceIndex,
+      get queryEngine() {
+        return workspaceManager.globalModelicaQueryEngine ?? undefined;
+      },
       languageDef: modelicaLanguage,
       handlers: modelicaLanguage.lsp?.handlers,
       actionHandlers: modelicaActionHandlers,
@@ -333,24 +342,38 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     globalLanguageRegistry.register({
       id: "sysml2",
       name: "SysML v2",
-      extensions: [".sysml"],
+      extensions: [".sysml", ".sysml2"],
       parser: parserService.sysml2Parser,
       facade: parserService.sysml2Facade,
+      workspaceIndex: workspaceManager.sysml2WorkspaceIndex,
+      get queryEngine() {
+        return workspaceManager.globalSysML2QueryEngine ?? undefined;
+      },
+      languageDef: sysml2LangFallback,
     });
     globalLanguageRegistry.register({
       id: "step",
       name: "STEP",
       extensions: [".step", ".stp", ".p21"],
       parser: parserService.stepParser,
+      workspaceIndex: workspaceManager.stepWorkspaceIndex,
+      get queryEngine() {
+        return workspaceManager.globalStepQueryEngine ?? undefined;
+      },
       languageDef: stepLanguage,
       handlers: stepLanguage.lsp?.handlers,
     });
     globalLanguageRegistry.register({
       id: "owl2",
       name: "OWL2",
-      extensions: [".owl", ".ttl"],
+      extensions: [".owl", ".ttl", ".ofn"],
       parser: parserService.owl2Parser,
       facade: parserService.owl2Facade,
+      workspaceIndex: workspaceManager.owl2WorkspaceIndex,
+      get queryEngine() {
+        return workspaceManager.globalOWL2QueryEngine ?? undefined;
+      },
+      languageDef: owl2LangFallback,
     });
     globalLanguageRegistry.register({
       id: "csv",
@@ -358,6 +381,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       extensions: [".csv"],
       parser: parserService.csvParser,
       facade: parserService.csvFacade,
+      languageDef: csvLangFallback,
     });
     connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
   };
@@ -502,63 +526,30 @@ documents.onDidChangeContent((change) => {
 
   // === TIER 1: Instant parse + syntax errors (0ms) ===
   // Parse and send syntax errors immediately — before any debounce.
-  // Tree-sitter incremental parse is ~2ms even for large files.
-  const isModelica = uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim");
-  const isSysml = uri.endsWith(".sysml");
-  const isStep = /\.(step|stp|p21)$/i.test(uri);
+  const plugin = globalLanguageRegistry.getPluginForUri(uri);
+  const parser = plugin?.parser ?? (parserService.parserReady ? parserService.parser : undefined);
 
-  if (isModelica && parserService.parserReady && parserService.parser) {
-    try {
-      const tTextStart = performance.now();
-      const text = change.document.getText();
-      const tTextEnd = performance.now();
-      connection.console.info(`[perf][keypress] getText: ${(tTextEnd - tTextStart).toFixed(2)}ms`);
-
-      const tTreeStart = performance.now();
-      const tree = parserService.updateDocumentTree(uri, text);
-      const tTreeEnd = performance.now();
-      connection.console.info(`[perf][keypress] updateDocumentTree: ${(tTreeEnd - tTreeStart).toFixed(2)}ms`);
-
-      const tErrorsStart = performance.now();
-      const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document);
-      const tErrorsEnd = performance.now();
-      connection.console.info(`[perf][keypress] collectSyntaxErrors: ${(tErrorsEnd - tErrorsStart).toFixed(2)}ms`);
-
-      connection.console.info(
-        `[instant] Tier 1 fired for ${uri}. text=${text.length}B, syntaxDiags=${syntaxDiags.length}`,
-      );
-
-      // Merge with last known semantic diagnostics to prevent flashing —
-      // semantic squigglies stay visible until the next semantic pass replaces them.
-      const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
-      const tDiagsStart = performance.now();
-      const allDiags = [...syntaxDiags, ...cachedSemantic];
-      if (allDiags.length > 1000) allDiags.length = 1000;
-      connection.sendDiagnostics({ uri, diagnostics: allDiags });
-      const tDiagsEnd = performance.now();
-      connection.console.info(`[perf][keypress] sendDiagnostics: ${(tDiagsEnd - tDiagsStart).toFixed(2)}ms`);
-    } catch (e: any) {
-      connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
-    }
-  } else if (isSysml && parserService.sysml2ParserReady && parserService.sysml2Parser) {
+  if (parser) {
     try {
       const text = change.document.getText();
       const oldCached = documentManager.documentTrees.get(uri);
       let tree: any;
+
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
         if (typeof (oldCached.tree as any)?.edit === "function") {
           oldCached.tree.edit(edit as never);
         }
-        tree = parserService.sysml2Parser.parse(text, oldCached.tree);
+        tree = parser.parse(text, oldCached.tree);
       } else if (oldCached) {
         tree = oldCached.tree;
       } else {
-        tree = parserService.sysml2Parser.parse(text);
+        tree = parser.parse(text);
       }
+
       if (tree) {
-        documentManager.documentTrees.set(uri, { text, tree, classCache: new Map() });
-        const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document);
+        documentManager.documentTrees.set(uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
+        const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
         const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
         const allDiags = [...syntaxDiags, ...cachedSemantic];
         if (allDiags.length > 1000) allDiags.length = 1000;
@@ -566,49 +557,6 @@ documents.onDidChangeContent((change) => {
       }
     } catch (e: any) {
       connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
-    }
-  } else if (isStep && parserService.stepParserReady && parserService.stepParser) {
-    try {
-      const text = change.document.getText();
-      const tree = parserService.stepParser.parse(text);
-      if (tree) {
-        documentManager.documentTrees.set(uri, { text, tree, classCache: new Map() });
-        const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document);
-        const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
-        connection.sendDiagnostics({ uri, diagnostics: [...syntaxDiags, ...cachedSemantic] });
-      }
-    } catch (e: any) {
-      connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
-    }
-  } else {
-    const plugin = globalLanguageRegistry.getPluginForUri(uri);
-    if (plugin?.parser) {
-      try {
-        const text = change.document.getText();
-        const oldCached = documentManager.documentTrees.get(uri);
-        let tree: any;
-        if (oldCached && oldCached.text !== text) {
-          const edit = computeTreeEdit(oldCached.text, text);
-          if (typeof (oldCached.tree as any)?.edit === "function") {
-            oldCached.tree.edit(edit as never);
-          }
-          tree = plugin.parser.parse(text, oldCached.tree);
-        } else if (oldCached) {
-          tree = oldCached.tree;
-        } else {
-          tree = plugin.parser.parse(text);
-        }
-        if (tree) {
-          documentManager.documentTrees.set(uri, { text, tree, classCache: new Map() });
-          const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document);
-          const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
-          const allDiags = [...syntaxDiags, ...cachedSemantic];
-          if (allDiags.length > 1000) allDiags.length = 1000;
-          connection.sendDiagnostics({ uri, diagnostics: allDiags });
-        }
-      } catch (e: any) {
-        connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
-      }
     }
   }
 
@@ -626,17 +574,12 @@ documents.onDidChangeContent((change) => {
       connection.console.info(`[timer] 300ms elapsed for ${uri}`);
       validationService.activeValidationTimers.delete(uri);
       // Wait for any in-flight validation to finish before starting a new one.
-      // This prevents concurrent pipelines for the same URI from stacking up.
+      // Guard with a 2-second timeout to prevent deadlocks from stuck background tasks.
       const inflight = validationService.activeValidationPromises.get(uri);
-      connection.console.info(`[timer] inflight is ${!!inflight}`);
       if (inflight) {
         try {
-          connection.console.info(`[timer] awaiting inflight`);
-          await inflight;
-          connection.console.info(`[timer] inflight resolved`);
-        } catch {
-          connection.console.info(`[timer] inflight rejected`);
-        }
+          await Promise.race([inflight, new Promise((r) => setTimeout(r, 2000))]);
+        } catch {}
       }
       // Re-check staleness: if another edit arrived while we waited, bail out.
       if ((validationService.documentRevisions.get(uri) ?? 0) !== expectedRevision) {
@@ -644,7 +587,6 @@ documents.onDidChangeContent((change) => {
         return;
       }
       const doc = documents.get(uri);
-      connection.console.info(`[timer] doc exists: ${!!doc}`);
       if (doc) validationService.validateTextDocument(doc);
     }, 300),
   );

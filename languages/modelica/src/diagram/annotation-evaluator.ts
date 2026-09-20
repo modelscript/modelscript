@@ -62,6 +62,62 @@ function resolveAnnotationName(name: string, evalScope: any): any {
   return undefined;
 }
 
+export function parseModelicaArrayLiteral(text: string, evalScope?: any): any[] {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return [];
+  const inner = trimmed.slice(1, -1).trim();
+  if (!inner) return [];
+  const elements: string[] = [];
+  let current = "";
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < inner.length; i++) {
+    const char = inner[i];
+    if (char === '"' && inner[i - 1] !== "\\") {
+      inString = !inString;
+      current += char;
+    } else if (inString) {
+      current += char;
+    } else if (char === "{" || char === "(" || char === "[") {
+      depth++;
+      current += char;
+    } else if (char === "}" || char === ")" || char === "]") {
+      depth--;
+      current += char;
+    } else if (char === "," && depth === 0) {
+      elements.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) {
+    elements.push(current.trim());
+  }
+
+  return elements.map((item) => {
+    if (item.startsWith("{") && item.endsWith("}")) {
+      return parseModelicaArrayLiteral(item, evalScope);
+    }
+    if (item.startsWith('"') && item.endsWith('"')) {
+      return item.slice(1, -1);
+    }
+    if (/^[+-]?\d+$/.test(item)) {
+      return parseInt(item, 10);
+    }
+    if (/^[+-]?\d+\.?\d*(?:[eE][+-]?\d+)?$/.test(item) && !isNaN(Number(item))) {
+      return parseFloat(item);
+    }
+    if (item === "true") return true;
+    if (item === "false") return false;
+    const resolved = resolveAnnotationName(item, evalScope);
+    if (resolved !== undefined) return resolved;
+    const dotIdx = item.indexOf(".");
+    if (dotIdx > 0) return item.substring(dotIdx + 1);
+    return item;
+  });
+}
+
 export function evaluateCSTExpression(node: any, evalScope?: any): any {
   if (!node) return null;
 
@@ -82,14 +138,22 @@ export function evaluateCSTExpression(node: any, evalScope?: any): any {
     return parseFloat(rawText);
   }
   if (rawText.startsWith("{") && rawText.endsWith("}")) {
-    const inner = rawText.slice(1, -1).trim();
-    if (!inner) return [];
-    return inner.split(",").map((s) => {
-      const trimmed = s.trim();
-      if (trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed.slice(1, -1);
-      if (!isNaN(Number(trimmed))) return Number(trimmed);
-      return trimmed;
-    });
+    return parseModelicaArrayLiteral(rawText, evalScope);
+  }
+
+  const resolvedEnum = resolveAnnotationName(rawText, evalScope);
+  if (resolvedEnum !== undefined) return resolvedEnum;
+
+  if (
+    node.type === "component_reference" ||
+    node.type === "ComponentReference" ||
+    node.type === "identifier" ||
+    node.type === "Identifier"
+  ) {
+    if (rawText.includes(".")) {
+      return rawText.split(".").pop()!;
+    }
+    return rawText;
   }
 
   if (node.type === "unsigned_integer" || node.type === "IntegerLiteral") {
@@ -653,9 +717,64 @@ export class AnnotationEvaluator {
     return this.toJSON(evaluateCSTExpression(expr, this.scope));
   }
 
+  private extractCstFunctionArgs(node: any): { named: [string, any][]; positional: any[] } {
+    const named: [string, any][] = [];
+    const positional: any[] = [];
+
+    const callArgs = node.children?.find((c: any) => c.type === "function_call_args" || c.type === "FunctionCallArgs");
+    if (!callArgs) return { named, positional };
+
+    const walkArgs = (n: any) => {
+      if (!n) return;
+      if (n.type === "named_argument" || n.type === "NamedArgument") {
+        const identNode = n.children?.find(
+          (c: any) => c.type === "identifier" || c.type === "Identifier" || c.type?.includes("identifier"),
+        );
+        const funcArg = n.children?.find(
+          (c: any) =>
+            c.type === "function_argument" ||
+            c.type === "FunctionArgument" ||
+            c.type === "expression" ||
+            c.type === "Expression",
+        );
+        if (identNode && funcArg) {
+          named.push([identNode.text?.trim() ?? "", funcArg]);
+        }
+        return;
+      }
+      if (
+        (n.type === "expression" || n.type === "Expression") &&
+        (n.parent?.type === "expression_list" || n.parent?.type === "function_arguments")
+      ) {
+        positional.push(n);
+        return;
+      }
+      for (const child of n.children || []) {
+        walkArgs(child);
+      }
+    };
+    walkArgs(callArgs);
+    return { named, positional };
+  }
+
   private parseFunctionCall(node: any, propertyName?: string): any {
-    const funcNameParts = node.functionReference?.parts?.map((p: any) => p.identifier?.text ?? p.name ?? p.text ?? p);
-    const funcName = funcNameParts ? funcNameParts[funcNameParts.length - 1] : "Unknown";
+    let funcName = "Unknown";
+    if (node.functionReference) {
+      const funcNameParts = node.functionReference?.parts?.map((p: any) => p.identifier?.text ?? p.name ?? p.text ?? p);
+      funcName = funcNameParts ? funcNameParts[funcNameParts.length - 1] : "Unknown";
+    } else {
+      const compRef =
+        node.children?.find((c: any) => c.type === "component_reference" || c.type === "ComponentReference") ??
+        (node.type === "component_reference" || node.type === "ComponentReference" ? node : null);
+      if (compRef) {
+        funcName = compRef.text?.trim() ?? "Unknown";
+      } else {
+        const ident = node.children?.find(
+          (c: any) => c.type === "identifier" || c.type === "Identifier" || c.type?.includes("identifier"),
+        );
+        if (ident) funcName = ident.text?.trim() ?? "Unknown";
+      }
+    }
 
     if (funcName === "DynamicSelect") {
       const posArgs = node.functionCallArguments?.arguments ?? [];
@@ -673,19 +792,53 @@ export class AnnotationEvaluator {
         }
         return staticVal;
       }
+      const rawArgs = this.extractCstFunctionArgs(node);
+      if (rawArgs.positional.length > 0) {
+        const staticVal = this.parseValueForExpr(rawArgs.positional[0]);
+        if (rawArgs.positional.length > 1) {
+          const dynExpr = rawArgs.positional[1];
+          const varName = dynExpr.text?.trim() ?? "";
+          this.dynamicBindings.push({
+            property: propertyName,
+            staticExpr: staticVal,
+            dynamicExpr: dynExpr,
+            variableName: varName,
+          });
+        }
+        return staticVal;
+      }
       return null;
     }
 
     const obj: any = { "@type": funcName };
 
-    for (const arg of node.functionCallArguments?.namedArguments ?? []) {
-      const argIdent = arg.identifier?.text ?? arg.name;
-      if (argIdent && arg.argument?.expression) {
+    // Named arguments (AST)
+    if (node.functionCallArguments?.namedArguments) {
+      for (const arg of node.functionCallArguments.namedArguments) {
+        const argIdent = arg.identifier?.text ?? arg.name;
+        if (argIdent && arg.argument?.expression) {
+          let argName = argIdent;
+          if (funcName === "Rectangle" && argName === "cornerRadius") {
+            argName = "radius";
+          }
+          obj[argName] = this.parseValueForExpr(arg.argument.expression);
+        }
+      }
+    } else {
+      // Named arguments (CST)
+      const rawArgs = this.extractCstFunctionArgs(node);
+      for (const [argIdent, argExpr] of rawArgs.named) {
         let argName = argIdent;
         if (funcName === "Rectangle" && argName === "cornerRadius") {
           argName = "radius";
         }
-        obj[argName] = this.parseValueForExpr(arg.argument.expression);
+        obj[argName] = this.parseValueForExpr(argExpr);
+      }
+      if (rawArgs.positional.length > 0 && obj.visible === undefined) {
+        const val = evaluateCSTExpression(rawArgs.positional[0], this.scope);
+        if (typeof val === "boolean") {
+          obj.visible = val;
+        }
       }
     }
 
@@ -701,7 +854,17 @@ export class AnnotationEvaluator {
   }
 
   private parseValueForExpr(expr: any): any {
-    if (expr && "functionReference" in expr) return this.parseFunctionCall(expr);
+    if (!expr) return null;
+    if ("functionReference" in expr) return this.parseFunctionCall(expr);
+    if (expr.type === "primary" || expr.type === "Primary") {
+      const compRef = expr.children?.find(
+        (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+      );
+      const callArgs = expr.children?.find(
+        (c: any) => c.type === "function_call_args" || c.type === "FunctionCallArgs",
+      );
+      if (compRef && callArgs) return this.parseFunctionCall(expr);
+    }
     return this.toJSON(evaluateCSTExpression(expr, this.scope));
   }
 
@@ -711,15 +874,39 @@ export class AnnotationEvaluator {
       if (!node) return;
       if ("functionReference" in node) {
         graphics.push(this.parseFunctionCall(node));
-      } else if ("expressionLists" in node && Array.isArray(node.expressionLists)) {
+        return;
+      }
+      if (node.type === "primary" || node.type === "Primary") {
+        const compRef = node.children?.find(
+          (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+        );
+        const callArgs = node.children?.find(
+          (c: any) => c.type === "function_call_args" || c.type === "FunctionCallArgs",
+        );
+        if (compRef && callArgs) {
+          graphics.push(this.parseFunctionCall(node));
+          return;
+        }
+      }
+      if ("expressionLists" in node && Array.isArray(node.expressionLists)) {
         for (const list of node.expressionLists) {
           for (const e of list.expressions ?? []) {
             if (e) walkGraphics(e);
           }
         }
-      } else if ("expressionList" in node) {
+        return;
+      }
+      if ("expressionList" in node) {
         for (const e of node.expressionList?.expressions ?? []) {
           if (e) walkGraphics(e);
+        }
+        return;
+      }
+      const children = node.children || node.namedChildren;
+      if (Array.isArray(children)) {
+        for (const child of children) {
+          if (child.type === "{" || child.type === "}" || child.type === ",") continue;
+          walkGraphics(child);
         }
       }
     };

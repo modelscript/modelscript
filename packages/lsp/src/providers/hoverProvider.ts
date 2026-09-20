@@ -107,12 +107,13 @@ export function registerHoverProvider(
     let hoverContent = hoverDef.contents;
 
     // Enhance hover with reasoner inferences if this is SysML2 and reasonerService is available
-    if (document.uri.endsWith(".sysml")) {
+    const plugin = globalLanguageRegistry.getPluginForUri(document.uri);
+    if (plugin?.id === "sysml2" || document.uri.endsWith(".sysml")) {
       const bridgePos = (bridge as any).positions;
       const resolver = (bridge as any).resolver;
       if (resolver && bridgePos) {
         // find symbol at offset
-        const queryEngine = validationService.workspaceManager.globalSysML2QueryEngine;
+        const queryEngine = plugin?.queryEngine ?? validationService.workspaceManager.globalSysML2QueryEngine;
         if (queryEngine && validationService.reasonerService) {
           const id = (resolver as any).findSymbolAtPosition(document.uri, offset);
           if (id !== undefined) {

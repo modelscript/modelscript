@@ -54,7 +54,7 @@ function canonicalizeExpression(expr: string): string {
 
   // Canonicalize simple binary commutative multiplications: `a * b` where neither contains nested parens
   // Matches simple identifier / number factors like `R1.i * R1.R` -> `R1.R * R1.i`
-  const multRegex = /^([a-zA-Z0-9_.[\\],]+)\s*\*\s*([a-zA-Z0-9_.[\\],]+)$/;
+  const multRegex = /^([a-zA-Z0-9_.[\](),]+)\s*\*\s*([a-zA-Z0-9_.[\](),]+)$/;
   const m = s.match(multRegex);
   if (m && m[1] && m[2]) {
     const f1 = m[1].trim();
@@ -71,7 +71,7 @@ function canonicalizeExpression(expr: string): string {
 /**
  * Canonicalizes a single equation `LHS = RHS`.
  */
-function canonicalizeEquation(eqStr: string): string {
+export function canonicalizeEquation(eqStr: string): string {
   let s = eqStr.trim();
   if (s.endsWith(";")) s = s.slice(0, -1).trim();
 
@@ -135,8 +135,8 @@ function canonicalizeEquation(eqStr: string): string {
   rhs = canonicalizeExpression(rhs);
 
   // If both sides are simple expressions, enforce deterministic order (e.g. p1.v = p2.v vs p2.v = p1.v for connection voltage equality)
-  const isSimpleLhs = /^[a-zA-Z0-9_.[\\],]+$/.test(lhs);
-  const isSimpleRhs = /^[a-zA-Z0-9_.[\\],]+$/.test(rhs);
+  const isSimpleLhs = /^[a-zA-Z0-9_.[\](),]+$/.test(lhs);
+  const isSimpleRhs = /^[a-zA-Z0-9_.[\](),]+$/.test(rhs);
   if (isSimpleLhs && isSimpleRhs) {
     if (lhs > rhs) {
       const tmp = lhs;
@@ -224,7 +224,7 @@ function cleanTerm(term: string): string {
 /**
  * Parses flat Modelica text into structured classes.
  */
-function parseFlatModelica(text: string): ParsedClass[] {
+export function parseFlatModelica(text: string): ParsedClass[] {
   const classes: ParsedClass[] = [];
   const lines = text
     .split("\n")
@@ -252,8 +252,22 @@ function parseFlatModelica(text: string): ParsedClass[] {
     }
 
     if (line.startsWith("end ") && line.endsWith(";")) {
-      currentClass = null;
-      continue;
+      const endTarget = line.slice(4, -1).trim();
+      if (
+        currentClass &&
+        (endTarget === currentClass.name ||
+          endTarget === currentClass.name.split(".").pop() ||
+          endTarget === currentClass.kind)
+      ) {
+        currentClass = null;
+        continue;
+      }
+      if (endTarget === "when" || endTarget === "if" || endTarget === "for") {
+        // Block closing within equation/algorithm section; do not reset currentClass
+      } else if (!currentClass || endTarget !== "") {
+        currentClass = null;
+        continue;
+      }
     }
 
     if (!currentClass) continue;

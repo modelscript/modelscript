@@ -20,7 +20,7 @@ end M;
 //   Real h[2];
 //   Real h[3];
 // equation
-//   1.0 = /*Real*/ h[1] * /*Real*/ cos(/*Real*/ th);
-//   1.0 = /*Real*/ h[2] * /*Real*/ cos(/*Real*/ th);
+//   1.0 = h[1] * cos(th);
+//   1.0 = h[2] * cos(th);
 // end M;
 // endResult

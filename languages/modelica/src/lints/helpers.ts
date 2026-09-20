@@ -332,8 +332,34 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
     return TYPE_INTEGER;
   }
 
+  // 1a. If wrapped in parentheses `( expr )`, unwrap and infer the inner expression
   const c1 = db.ast.getFirstChild(unwrapped);
   if (c1 != 0) {
+    if (db.ast.textEquals(c1, "(")) {
+      const c2 = db.ast.getNextSibling(c1);
+      if (c2 != 0) {
+        let last = c2;
+        let sib = db.ast.getNextSibling(c2);
+        while (sib != 0) {
+          last = sib;
+          sib = db.ast.getNextSibling(sib);
+        }
+        if (db.ast.textEquals(last, ")")) {
+          return inferExprType(db, c2, $);
+        }
+      }
+    }
+
+    // 1b. If node has an `operand` field (e.g. unary minus `-x` or `not b`)
+    const operandChild = db.ast.getChildByFieldId(unwrapped, "operand");
+    if (operandChild != 0) {
+      const op = db.ast.getFirstChild(unwrapped);
+      if (op != 0 && (db.ast.textEquals(op, "not") || db.ast.getType(op) == 77)) {
+        return TYPE_BOOLEAN;
+      }
+      return inferExprType(db, operandChild, $);
+    }
+
     const c2 = db.ast.getNextSibling(c1);
     if (c2 != 0) {
       const c3 = db.ast.getNextSibling(c2);
@@ -461,22 +487,13 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
             if (uType !== TYPE_UNKNOWN) return uType;
           } else if (args.length === 2) {
             const secType = inferExprType(db, args[1]!, $);
-            let isClockArg = secType === TYPE_CLOCK;
-            if (!isClockArg) {
-              const secNodeType = db.ast.getType(args[1]!);
-              if (
-                secNodeType === $.component_reference ||
-                secNodeType === $.identifier ||
-                secNodeType === $.name ||
-                db.ast.startsWith(args[1]!, "Clock")
-              ) {
-                isClockArg = true;
-              } else {
-                for (const cr of db.ast.getDescendants(args[1]!, $.component_reference)) {
-                  isClockArg = true;
-                  break;
-                }
-              }
+            let isClockArg = false;
+            if (secType === TYPE_CLOCK) {
+              isClockArg = true;
+            } else if (secType === TYPE_REAL || secType === TYPE_INTEGER) {
+              isClockArg = false;
+            } else if (db.ast.startsWith(args[1]!, "Clock") || db.ast.startsWith(args[1]!, "clock")) {
+              isClockArg = true;
             }
             if (isClockArg) {
               const uType = inferExprType(db, args[0]!, $);
@@ -584,8 +601,15 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
   }
 
   // If expression: if ... then ... else ...
-  if (db.ast.startsWith(exprNode, "if") || db.ast.textEquals(exprNode, "if")) {
-    let curr = db.ast.getFirstChild(exprNode);
+  const fcIf = db.ast.getFirstChild(unwrapped);
+  const fcType = fcIf != 0 ? db.ast.getType(fcIf) : 0;
+  if (
+    fcType == 58 ||
+    (fcIf != 0 && db.ast.textEquals(fcIf, "if")) ||
+    db.ast.startsWith(unwrapped, "if") ||
+    db.ast.textEquals(unwrapped, "if")
+  ) {
+    let curr = fcIf;
     let checkNext = false;
     let resultType = TYPE_UNKNOWN;
     while (curr != 0) {
@@ -597,7 +621,8 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         }
         checkNext = false;
       }
-      if (db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
+      const currType = db.ast.getType(curr);
+      if (currType == 65 || currType == 67 || db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
         checkNext = true;
       }
       curr = db.ast.getNextSibling(curr);
@@ -626,6 +651,27 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
       }
     }
     if (compRef != 0) {
+      if ($.for_index != 0) {
+        for (const anc of db.ast.getAncestors(compRef, 0)) {
+          const ancType = db.ast.getType(anc);
+          if (
+            ($.for_equation != 0 && ancType == $.for_equation) ||
+            ($.for_statement != 0 && ancType == $.for_statement) ||
+            ($.function_arguments != 0 && ancType == $.function_arguments) ||
+            ($.array_arguments != 0 && ancType == $.array_arguments)
+          ) {
+            for (const fi of db.ast.getDescendants(anc, $.for_index)) {
+              for (const id of db.ast.getDescendants(fi, $.identifier)) {
+                if (db.ast.textEqualsNode(id, compRef)) {
+                  return TYPE_INTEGER;
+                }
+                break;
+              }
+            }
+          }
+          if (ancType == $.class_definition || ancType == $.class_specifier) break;
+        }
+      }
       const resolvedType = getDottedVariableType(db, enclosingClass, compRef, $);
       if (resolvedType != TYPE_UNKNOWN) return resolvedType;
     }
@@ -1276,7 +1322,25 @@ export function isDottedVariableDeclared(
       if (idx == nonSubscriptCount - 1) {
         return isVariableDeclaredInClass(db, currClass, id, $);
       }
-      const nextClass = resolveComponentClassDefinition(db, currClass, id, $, 0);
+      let nextClass = resolveComponentClassDefinition(db, currClass, id, $, 0);
+      if (nextClass == 0 && idx == 0) {
+        for (const anc of db.ast.getAncestors(enclosingClass)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            for (const spec of db.ast.getDescendants(anc, $.long_class_specifier)) {
+              const nameId = db.ast.getChildByFieldId(spec, "name");
+              if (nameId != 0 && db.ast.textEqualsNode(id, nameId)) {
+                nextClass = anc;
+                break;
+              }
+              break;
+            }
+            if (nextClass != 0) break;
+          }
+        }
+        if (nextClass == 0) {
+          nextClass = findClassByName(db, id, $);
+        }
+      }
       if (nextClass == 0) return false;
       currClass = nextClass;
       idx++;

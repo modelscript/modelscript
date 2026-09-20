@@ -40,6 +40,12 @@ function isParserUpToDate() {
 
   if (fs.existsSync(languagePath) && fs.statSync(languagePath).mtimeMs > wasmTime) return false;
   if (fs.existsSync(dslDistPath) && fs.statSync(dslDistPath).mtimeMs > wasmTime) return false;
+  const lintsDir = path.join(__dirname, "src", "lints");
+  if (fs.existsSync(lintsDir)) {
+    for (const f of fs.readdirSync(lintsDir)) {
+      if (fs.statSync(path.join(lintsDir, f)).mtimeMs > wasmTime) return false;
+    }
+  }
 
   // Keep .cache in sync with valid outWasm
   if (!fs.existsSync(cacheWasm) || fs.statSync(cacheWasm).mtimeMs < wasmTime) {
@@ -104,7 +110,7 @@ const ascPath = [
 ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
 
 console.log("[modelica] Compiling WebAssembly parser with asc...");
-execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads --optimize --runtime stub --initialMemory 128 --maximumMemory 1024\`, {
+execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads --optimize --runtime stub --initialMemory 512 --maximumMemory 32768\`, {
   stdio: "inherit",
   cwd: __dirname,
 });

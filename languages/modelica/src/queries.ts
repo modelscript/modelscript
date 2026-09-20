@@ -1257,7 +1257,7 @@ function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number 
   activeDimQueriesStack.push({ symbolId: resolved.id, dimIndex: dimIndex - 1 });
   try {
     const res = getOrEvaluateSingleDimension(db, resolved, dimIndex - 1);
-    return res;
+    return res !== null && res > 0 ? res : null;
   } finally {
     activeDimQueriesStack.pop();
   }

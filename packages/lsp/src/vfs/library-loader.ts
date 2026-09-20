@@ -27,6 +27,22 @@ export interface LoaderContext {
   registryUrl?: string;
   federatedEndpoints: string[];
 }
+function getSafePackageSource(text: string, fullPath: string): string {
+  if (text.length < 30000) return text;
+  const match = text.match(/package\s+([A-Za-z0-9_]+)/);
+  if (!match) return text;
+  const pkgName = match[1];
+
+  const afterMatch = text.slice(match.index! + match[0].length);
+  const nestedMatch = afterMatch.match(/\n\s*(model|block|connector|function|package|record|type)\s+[A-Za-z0-9_]+/);
+  if (nestedMatch && nestedMatch.index !== undefined) {
+    const cutPos = match.index! + match[0].length + nestedMatch.index;
+    const header = text.slice(0, cutPos);
+    return `${header}\nend ${pkgName};`;
+  }
+  return text;
+}
+
 // ── Registry package loading ────────────────────────────────────
 // Loads ModelScript packages installed via npm (from node_modules/)
 // into the global workspace index for cross-file resolution.
@@ -189,8 +205,11 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
               () => {
                 let tree: Tree | null = null;
                 try {
-                  const text = ctx.sharedFs.read(fullPath);
+                  let text = ctx.sharedFs.read(fullPath);
                   if (text) {
+                    if (text.length > 30000) {
+                      text = getSafePackageSource(text, fullPath);
+                    }
                     tree = ctx.sharedContext.parse(".mo", text);
                   }
                 } catch {
@@ -527,6 +546,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
 
     for (const name of Object.keys(fileEntries)) {
       if (name.endsWith(".mo")) {
+        if (name.startsWith("ModelicaReference")) continue;
         const fullPath = `/lib/${name}`;
         const uri = `modelica:/${fullPath}`;
         let parentFQN = "";
@@ -557,8 +577,11 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
         () => {
           let tree: Tree | null = null;
           try {
-            const text = ctx.sharedFs.read(file.fullPath);
+            let text = ctx.sharedFs.read(file.fullPath);
             if (text) {
+              if (text.length > 30000) {
+                text = getSafePackageSource(text, file.fullPath);
+              }
               tree = ctx.sharedContext.parse(".mo", text);
             }
           } catch {

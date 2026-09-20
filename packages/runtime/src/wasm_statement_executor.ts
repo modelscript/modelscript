@@ -34,6 +34,101 @@ const MAX_CALL_DEPTH = 256;
 let currentCallDepth = 0;
 
 /**
+ * Calculate the index of the statement following the statement at `idx`,
+ * including any nested child statements (e.g. for `For`, `While`, `If`, `When`).
+ */
+export function skipArenaStatement(arena: DAEBuilder, idx: number): number {
+  const kind = arena.getStmtKind(idx);
+  switch (kind) {
+    case StmtKind.Assignment:
+    case StmtKind.Return:
+    case StmtKind.Break:
+    case StmtKind.ProcedureCall:
+      return idx + 1;
+
+    case StmtKind.ComplexAssignment: {
+      const numTargets = arena.getStmtData1(idx);
+      return idx + 1 + numTargets;
+    }
+
+    case StmtKind.For: {
+      const bodyCount = arena.getStmtRight(idx);
+      let next = idx + 1;
+      for (let s = 0; s < bodyCount; s++) {
+        next = skipArenaStatement(arena, next);
+      }
+      return next;
+    }
+
+    case StmtKind.While: {
+      const bodyCount = arena.getStmtLeft(idx);
+      let next = idx + 1;
+      for (let s = 0; s < bodyCount; s++) {
+        next = skipArenaStatement(arena, next);
+      }
+      return next;
+    }
+
+    case StmtKind.If: {
+      const thenCount = arena.getStmtLeft(idx);
+      const branchCount = arena.getStmtRight(idx);
+      let next = idx + 1;
+      for (let s = 0; s < thenCount; s++) {
+        next = skipArenaStatement(arena, next);
+      }
+      for (let b = 0; b < branchCount; b++) {
+        const branchStmtCount = arena.getStmtLeft(next);
+        next++; // skip StmtKind.Block marker
+        for (let s = 0; s < branchStmtCount; s++) {
+          next = skipArenaStatement(arena, next);
+        }
+      }
+      return next;
+    }
+
+    case StmtKind.When: {
+      const bodyCount = arena.getStmtLeft(idx);
+      const elseWhenCount = arena.getStmtRight(idx);
+      let next = idx + 1;
+      for (let s = 0; s < bodyCount; s++) {
+        next = skipArenaStatement(arena, next);
+      }
+      for (let b = 0; b < elseWhenCount; b++) {
+        const branchStmtCount = arena.getStmtLeft(next);
+        next++; // skip StmtKind.Block marker
+        for (let s = 0; s < branchStmtCount; s++) {
+          next = skipArenaStatement(arena, next);
+        }
+      }
+      return next;
+    }
+
+    case StmtKind.Block: {
+      const stmtCount = arena.getStmtLeft(idx);
+      let next = idx + 1;
+      for (let s = 0; s < stmtCount; s++) {
+        next = skipArenaStatement(arena, next);
+      }
+      return next;
+    }
+
+    default:
+      return idx + 1;
+  }
+}
+
+/**
+ * Calculate the number of arena statement slots spanned by `stmtCount` logical statements starting at `startIdx`.
+ */
+export function countArenaStatementSlots(arena: DAEBuilder, startIdx: number, stmtCount: number): number {
+  let next = startIdx;
+  for (let s = 0; s < stmtCount; s++) {
+    next = skipArenaStatement(arena, next);
+  }
+  return next - startIdx;
+}
+
+/**
  * Execute a range of statements from the DAEBuilder.
  */
 export function executeArenaStatements(
@@ -70,26 +165,20 @@ export function executeArenaStatements(
         const indexNameId = data1;
         const rangeExprId = left;
         const bodyStmtCount = right;
-        nextIdx += bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, i + 1, bodyStmtCount);
+        nextIdx = i + 1 + bodySlots;
 
-        executeArenaForStatement(
-          arena,
-          indexNameId,
-          rangeExprId,
-          i + 1,
-          bodyStmtCount,
-          valuesByStringId,
-          functionLookup,
-        );
+        executeArenaForStatement(arena, indexNameId, rangeExprId, i + 1, bodySlots, valuesByStringId, functionLookup);
         break;
       }
 
       case StmtKind.While: {
         const condExprId = data1;
         const bodyStmtCount = left;
-        nextIdx += bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, i + 1, bodyStmtCount);
+        nextIdx = i + 1 + bodySlots;
 
-        executeArenaWhileStatement(arena, condExprId, i + 1, bodyStmtCount, valuesByStringId, functionLookup);
+        executeArenaWhileStatement(arena, condExprId, i + 1, bodySlots, valuesByStringId, functionLookup);
         break;
       }
 
@@ -99,13 +188,14 @@ export function executeArenaStatements(
         const branchCount = right;
 
         const blockStartIdx = i + 1;
-        nextIdx = blockStartIdx + thenStmtCount;
+        const thenSlots = countArenaStatementSlots(arena, blockStartIdx, thenStmtCount);
+        nextIdx = blockStartIdx + thenSlots;
 
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
         let executed = false;
 
         if (condVal !== 0) {
-          executeArenaStatements(arena, blockStartIdx, thenStmtCount, valuesByStringId, functionLookup);
+          executeArenaStatements(arena, blockStartIdx, thenSlots, valuesByStringId, functionLookup);
           executed = true;
         }
 
@@ -114,17 +204,18 @@ export function executeArenaStatements(
           const branchKind = arena.getStmtKind(branchStmtIdx);
           const branchCondExprId = arena.getStmtData1(branchStmtIdx);
           const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+          const branchSlots = countArenaStatementSlots(arena, branchStmtIdx + 1, branchStmtCount);
 
-          nextIdx += 1 + branchStmtCount;
+          nextIdx = branchStmtIdx + 1 + branchSlots;
 
           if (!executed && branchKind === StmtKind.Block) {
             if (branchCondExprId === -1) {
-              executeArenaStatements(arena, branchStmtIdx + 1, branchStmtCount, valuesByStringId, functionLookup);
+              executeArenaStatements(arena, branchStmtIdx + 1, branchSlots, valuesByStringId, functionLookup);
               executed = true;
             } else {
               const elseIfCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
               if (elseIfCondVal !== 0) {
-                executeArenaStatements(arena, branchStmtIdx + 1, branchStmtCount, valuesByStringId, functionLookup);
+                executeArenaStatements(arena, branchStmtIdx + 1, branchSlots, valuesByStringId, functionLookup);
                 executed = true;
               }
             }
@@ -139,13 +230,14 @@ export function executeArenaStatements(
         const elseWhenCount = right;
 
         const blockStartIdx = i + 1;
-        nextIdx = blockStartIdx + bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
+        nextIdx = blockStartIdx + bodySlots;
 
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
         let executed = false;
 
         if (condVal !== 0) {
-          executeArenaStatements(arena, blockStartIdx, bodyStmtCount, valuesByStringId, functionLookup);
+          executeArenaStatements(arena, blockStartIdx, bodySlots, valuesByStringId, functionLookup);
           executed = true;
         }
 
@@ -153,13 +245,14 @@ export function executeArenaStatements(
           const branchStmtIdx = nextIdx;
           const branchCondExprId = arena.getStmtData1(branchStmtIdx);
           const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+          const branchSlots = countArenaStatementSlots(arena, branchStmtIdx + 1, branchStmtCount);
 
-          nextIdx += 1 + branchStmtCount;
+          nextIdx = branchStmtIdx + 1 + branchSlots;
 
           if (!executed) {
             const elseWhenCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
             if (elseWhenCondVal !== 0) {
-              executeArenaStatements(arena, branchStmtIdx + 1, branchStmtCount, valuesByStringId, functionLookup);
+              executeArenaStatements(arena, branchStmtIdx + 1, branchSlots, valuesByStringId, functionLookup);
               executed = true;
             }
           }
@@ -442,14 +535,15 @@ export async function executeArenaStatementsAsync(
         const indexNameId = data1;
         const rangeExprId = left;
         const bodyStmtCount = right;
-        nextIdx += bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, i + 1, bodyStmtCount);
+        nextIdx = i + 1 + bodySlots;
 
         await executeArenaForStatementAsync(
           arena,
           indexNameId,
           rangeExprId,
           i + 1,
-          bodyStmtCount,
+          bodySlots,
           valuesByStringId,
           functionLookup,
           debuggerHook,
@@ -460,13 +554,14 @@ export async function executeArenaStatementsAsync(
       case StmtKind.While: {
         const condExprId = data1;
         const bodyStmtCount = left;
-        nextIdx += bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, i + 1, bodyStmtCount);
+        nextIdx = i + 1 + bodySlots;
 
         await executeArenaWhileStatementAsync(
           arena,
           condExprId,
           i + 1,
-          bodyStmtCount,
+          bodySlots,
           valuesByStringId,
           functionLookup,
           debuggerHook,
@@ -480,7 +575,8 @@ export async function executeArenaStatementsAsync(
         const branchCount = right;
 
         const blockStartIdx = i + 1;
-        nextIdx = blockStartIdx + thenStmtCount;
+        const thenSlots = countArenaStatementSlots(arena, blockStartIdx, thenStmtCount);
+        nextIdx = blockStartIdx + thenSlots;
 
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
         let executed = false;
@@ -489,7 +585,7 @@ export async function executeArenaStatementsAsync(
           await executeArenaStatementsAsync(
             arena,
             blockStartIdx,
-            thenStmtCount,
+            thenSlots,
             valuesByStringId,
             functionLookup,
             debuggerHook,
@@ -502,15 +598,16 @@ export async function executeArenaStatementsAsync(
           const branchKind = arena.getStmtKind(branchStmtIdx);
           const branchCondExprId = arena.getStmtData1(branchStmtIdx);
           const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+          const branchSlots = countArenaStatementSlots(arena, branchStmtIdx + 1, branchStmtCount);
 
-          nextIdx += 1 + branchStmtCount;
+          nextIdx = branchStmtIdx + 1 + branchSlots;
 
           if (!executed && branchKind === StmtKind.Block) {
             if (branchCondExprId === -1) {
               await executeArenaStatementsAsync(
                 arena,
                 branchStmtIdx + 1,
-                branchStmtCount,
+                branchSlots,
                 valuesByStringId,
                 functionLookup,
                 debuggerHook,
@@ -522,7 +619,7 @@ export async function executeArenaStatementsAsync(
                 await executeArenaStatementsAsync(
                   arena,
                   branchStmtIdx + 1,
-                  branchStmtCount,
+                  branchSlots,
                   valuesByStringId,
                   functionLookup,
                   debuggerHook,
@@ -541,7 +638,8 @@ export async function executeArenaStatementsAsync(
         const elseWhenCount = right;
 
         const blockStartIdx = i + 1;
-        nextIdx = blockStartIdx + bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
+        nextIdx = blockStartIdx + bodySlots;
 
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
         let executed = false;
@@ -550,7 +648,7 @@ export async function executeArenaStatementsAsync(
           await executeArenaStatementsAsync(
             arena,
             blockStartIdx,
-            bodyStmtCount,
+            bodySlots,
             valuesByStringId,
             functionLookup,
             debuggerHook,
@@ -562,8 +660,9 @@ export async function executeArenaStatementsAsync(
           const branchStmtIdx = nextIdx;
           const branchCondExprId = arena.getStmtData1(branchStmtIdx);
           const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+          const branchSlots = countArenaStatementSlots(arena, branchStmtIdx + 1, branchStmtCount);
 
-          nextIdx += 1 + branchStmtCount;
+          nextIdx = branchStmtIdx + 1 + branchSlots;
 
           if (!executed) {
             const elseWhenCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
@@ -571,7 +670,7 @@ export async function executeArenaStatementsAsync(
               await executeArenaStatementsAsync(
                 arena,
                 branchStmtIdx + 1,
-                branchStmtCount,
+                branchSlots,
                 valuesByStringId,
                 functionLookup,
                 debuggerHook,
@@ -986,8 +1085,37 @@ export function executeArenaCEvalStatements(
                   const num = Number(rawIdx);
                   if (!isNaN(num)) subscripts.push(num);
                   else {
-                    ok = false;
-                    break;
+                    const effectiveDb = db ?? (arena as any).db;
+                    let enumResolved = false;
+                    if (effectiveDb && rawIdx.includes(".")) {
+                      const parts = rawIdx.split(".");
+                      const litName = parts.pop()!;
+                      const typeName = parts.length > 0 ? parts.pop()! : null;
+                      const candidateSyms = typeName
+                        ? effectiveDb.byName(typeName)
+                        : effectiveDb.index?.symbols
+                          ? Array.from(effectiveDb.index.symbols.values()).filter(
+                              (s: any) => (s as any).kind === "Class",
+                            )
+                          : [];
+                      for (const s of candidateSyms as any[]) {
+                        const cstText = (effectiveDb.cstNode(s.id) as any)?.text ?? "";
+                        const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+                        if (match && match[1]) {
+                          const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
+                          const idx = lits.indexOf(litName);
+                          if (idx >= 0) {
+                            subscripts.push(idx + 1);
+                            enumResolved = true;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                    if (!enumResolved) {
+                      ok = false;
+                      break;
+                    }
                   }
                 }
               }
@@ -1048,7 +1176,8 @@ export function executeArenaCEvalStatements(
         const indexNameId = data1;
         const rangeExprId = left;
         const bodyStmtCount = right;
-        nextIdx += bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, i + 1, bodyStmtCount);
+        nextIdx = i + 1 + bodySlots;
 
         const indexName = arena.interner.resolve(indexNameId);
         if (!indexName) break;
@@ -1073,7 +1202,7 @@ export function executeArenaCEvalStatements(
             if (++iterCount > MAX_FOR_ITERATIONS) break;
             env.set(indexName, v);
             try {
-              executeArenaCEvalStatements(arena, i + 1, bodyStmtCount, env, functionLookup, db, scopeId);
+              executeArenaCEvalStatements(arena, i + 1, bodySlots, env, functionLookup, db, scopeId);
             } catch (e) {
               if (e === ArenaCEvalBreakSignal) break;
               throw e;
@@ -1092,7 +1221,8 @@ export function executeArenaCEvalStatements(
       case StmtKind.While: {
         const condExprId = data1;
         const bodyStmtCount = left;
-        nextIdx += bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, i + 1, bodyStmtCount);
+        nextIdx = i + 1 + bodySlots;
 
         let iterCount = 0;
         while (true) {
@@ -1109,7 +1239,7 @@ export function executeArenaCEvalStatements(
           );
           if (condVal !== true) break;
           try {
-            executeArenaCEvalStatements(arena, i + 1, bodyStmtCount, env, functionLookup, db, scopeId);
+            executeArenaCEvalStatements(arena, i + 1, bodySlots, env, functionLookup, db, scopeId);
           } catch (e) {
             if (e === ArenaCEvalBreakSignal) break;
             throw e;
@@ -1124,13 +1254,14 @@ export function executeArenaCEvalStatements(
         const branchCount = right;
 
         const blockStartIdx = i + 1;
-        nextIdx = blockStartIdx + thenStmtCount;
+        const thenSlots = countArenaStatementSlots(arena, blockStartIdx, thenStmtCount);
+        nextIdx = blockStartIdx + thenSlots;
 
         const condVal = evaluateArenaExpression(arena, condExprId, env, db, scopeId, undefined, false, functionLookup);
         let executed = false;
 
         if (condVal === true) {
-          executeArenaCEvalStatements(arena, blockStartIdx, thenStmtCount, env, functionLookup, db, scopeId);
+          executeArenaCEvalStatements(arena, blockStartIdx, thenSlots, env, functionLookup, db, scopeId);
           executed = true;
         }
 
@@ -1139,12 +1270,13 @@ export function executeArenaCEvalStatements(
           const branchKind = arena.getStmtKind(branchStmtIdx);
           const branchCondExprId = arena.getStmtData1(branchStmtIdx);
           const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+          const branchSlots = countArenaStatementSlots(arena, branchStmtIdx + 1, branchStmtCount);
 
-          nextIdx += 1 + branchStmtCount;
+          nextIdx = branchStmtIdx + 1 + branchSlots;
 
           if (!executed && branchKind === StmtKind.Block) {
             if (branchCondExprId === -1) {
-              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup, db, scopeId);
+              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchSlots, env, functionLookup, db, scopeId);
               executed = true;
             } else {
               const elseIfCondVal = evaluateArenaExpression(
@@ -1158,15 +1290,7 @@ export function executeArenaCEvalStatements(
                 functionLookup,
               );
               if (elseIfCondVal === true) {
-                executeArenaCEvalStatements(
-                  arena,
-                  branchStmtIdx + 1,
-                  branchStmtCount,
-                  env,
-                  functionLookup,
-                  db,
-                  scopeId,
-                );
+                executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchSlots, env, functionLookup, db, scopeId);
                 executed = true;
               }
             }
@@ -1181,13 +1305,14 @@ export function executeArenaCEvalStatements(
         const elseWhenCount = right;
 
         const blockStartIdx = i + 1;
-        nextIdx = blockStartIdx + bodyStmtCount;
+        const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
+        nextIdx = blockStartIdx + bodySlots;
 
         const condVal = evaluateArenaExpression(arena, condExprId, env, db, scopeId, undefined, false, functionLookup);
         let executed = false;
 
         if (condVal === true) {
-          executeArenaCEvalStatements(arena, blockStartIdx, bodyStmtCount, env, functionLookup, db, scopeId);
+          executeArenaCEvalStatements(arena, blockStartIdx, bodySlots, env, functionLookup, db, scopeId);
           executed = true;
         }
 
@@ -1195,8 +1320,9 @@ export function executeArenaCEvalStatements(
           const branchStmtIdx = nextIdx;
           const branchCondExprId = arena.getStmtData1(branchStmtIdx);
           const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+          const branchSlots = countArenaStatementSlots(arena, branchStmtIdx + 1, branchStmtCount);
 
-          nextIdx += 1 + branchStmtCount;
+          nextIdx = branchStmtIdx + 1 + branchSlots;
 
           if (!executed) {
             const elseWhenCondVal = evaluateArenaExpression(
@@ -1210,7 +1336,7 @@ export function executeArenaCEvalStatements(
               functionLookup,
             );
             if (elseWhenCondVal === true) {
-              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup, db, scopeId);
+              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchSlots, env, functionLookup, db, scopeId);
               executed = true;
             }
           }

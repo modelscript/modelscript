@@ -152,6 +152,10 @@ function parseTestFile(filePath: string): TestCase | null {
     if (fmiMatch && fmiMatch[1]) fmiVersion = fmiMatch[1] as "2.0" | "3.0";
     const simMatch = line.match(/^\/\/\s*simulate:\s*(true|false)/);
     if (simMatch && simMatch[1] === "true") simulate = true;
+    const omcOptsMatch = line.match(/__OpenModelica_commandLineOptions\s*=\s*"([^"]+)"/);
+    if (omcOptsMatch && omcOptsMatch[1] && /\+a\b/.test(omcOptsMatch[1])) {
+      arrayMode = "preserve";
+    }
   }
 
   // Find the Result: / endResult block
@@ -587,6 +591,7 @@ async function main(): Promise<void> {
           updateMode,
           omcMode,
           timeoutMs: WORKER_TIMEOUT_MS,
+          maxTestsPerWorker: 25,
         })
       : null;
 

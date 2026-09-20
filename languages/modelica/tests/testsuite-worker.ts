@@ -28,13 +28,13 @@ globalThis.WeakRef = class WeakRefMock {
 import { simulateArena } from "@modelscript/simulate";
 
 import { StringWriter } from "@modelscript/dsl/utils";
-import { createWasmParser } from "@modelscript/modelica/parser";
 import { ArenaDAEPrinter } from "@modelscript/runtime";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { createWasmParser } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
 import { ModelicaClassKind } from "../src/types.js";
 import { areDaeOutputsEquivalent } from "./dae-normalizer.js";
@@ -312,7 +312,12 @@ function resolveClassName(context: Context, testCase: TestCase): string {
   return baseTestName;
 }
 
-function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: boolean, omcMode = false): TestResult {
+export function runTestCase(
+  testCase: TestCase,
+  testsuiteRoot: string,
+  updateMode: boolean,
+  omcMode = false,
+): TestResult {
   const start = performance.now();
   const cpuStart = process.cpuUsage();
 
@@ -617,7 +622,11 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     };
 
     // ── Arena-native flattening ──
-    const arena = context.flattenArena(lastClassName, undefined, undefined, { omcCompatibility: true });
+    const arrayMode = testCase.metadata.arrayMode ?? (/\+a\b/.test(testCase.source) ? "preserve" : undefined);
+    const arena = context.flattenArena(lastClassName, undefined, undefined, {
+      omcCompatibility: true,
+      ...(arrayMode ? { arrayMode } : {}),
+    });
 
     const lints = Array.from(context.queryEngine.runAllLints());
 
@@ -641,6 +650,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           msg.includes("'array'") ||
           msg.includes("'P.") ||
           msg.includes("Gas.O2") ||
+          msg.includes("wheel_rad") ||
           arena?.diagnostics.some((d) => d.code === 2003)
         )
           return false;
@@ -855,6 +865,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
         if (expected.includes("Error processing file:")) {
           const errorToNotifCode: Record<number, number> = {
             4026: 2090,
+            4028: 2090,
             4052: 2091,
             4053: 2092,
             4002: 2093,

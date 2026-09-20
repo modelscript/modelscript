@@ -301,10 +301,8 @@ export class Context {
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
-        let tree = entry?.resourceId ? this.#trees.get(entry.resourceId) : undefined;
-        if (!tree && this.#trees.size === 1) {
-          tree = this.#trees.values().next().value;
-        }
+        if (!entry || !entry.resourceId || entry.id < 0) return null;
+        let tree = this.#trees.get(entry.resourceId);
         if (!tree && entry?.resourceId) {
           try {
             const text = this.#fs.read(entry.resourceId);

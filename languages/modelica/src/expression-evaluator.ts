@@ -122,6 +122,27 @@ function getComponentEvaluatedValue(resolved: SymbolEntry, db: QueryDB): unknown
   return resolved;
 }
 
+function getEnumLiteralIndex(text: string, db: QueryDB): number | null {
+  const parts = text.split(".");
+  const litName = parts.pop()!;
+  const typeName = parts.length > 0 ? parts.pop()! : null;
+  const candidateSyms = typeName
+    ? db.byName(typeName)
+    : (db as any).index?.symbols
+      ? Array.from((db as any).index.symbols.values()).filter((s: any) => (s as any).kind === "Class")
+      : [];
+  for (const s of candidateSyms as any[]) {
+    const cstText = (db.cstNode(s.id) as any)?.text ?? "";
+    const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+    if (match && match[1]) {
+      const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
+      const idx = lits.indexOf(litName);
+      if (idx >= 0) return idx + 1;
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Text-Based Expression Evaluation (Lightweight)
 // ---------------------------------------------------------------------------
@@ -156,17 +177,85 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   if (subscriptMatch) {
     const baseName = subscriptMatch[1];
     const subText = subscriptMatch[2].trim();
-    const baseVal = evaluateExprText(baseName, scope, db);
+    let baseVal = evaluateExprText(baseName, scope, db);
+    if (!Array.isArray(baseVal) && baseVal && typeof baseVal === "object" && "id" in baseVal) {
+      const sym = baseVal as SymbolEntry;
+      const dims = db.query<number[] | null>("resolvedArrayDimensions", sym.id);
+      if (dims && dims.length > 0 && dims[0]! > 0) {
+        baseVal = Array.from({ length: dims[0]! }, (_, i) => i + 1);
+      }
+    }
     if (Array.isArray(baseVal)) {
       if (subText.includes(":")) {
-        const rangeParts = subText.split(":").map((p) => evaluateExprText(p.trim(), scope, db));
-        if (typeof rangeParts[0] === "number" && typeof rangeParts[1] === "number") {
-          const start = rangeParts[0] - 1; // 1-based to 0-based
-          const stop = rangeParts[1];
-          return baseVal.slice(start, stop);
+        const parts = subText.split(":").map((p) => {
+          let pt = p.trim();
+          pt = pt.replace(/\bend\b/g, String(baseVal.length));
+          if (pt === "false") return 1;
+          if (pt === "true") return 2;
+          const ev = evaluateExprText(pt, scope, db);
+          if (typeof ev === "number") return ev;
+          try {
+            if (/^[0-9+\-*/().\s]+$/.test(pt)) {
+              const val = Function(`"use strict"; return (${pt})`)();
+              if (typeof val === "number" && !isNaN(val)) return Math.round(val);
+            }
+          } catch {}
+          if (db) {
+            const enumIdx = getEnumLiteralIndex(pt, db);
+            if (enumIdx !== null) return enumIdx;
+          }
+          return null;
+        });
+        let start: number | null = null;
+        let step = 1;
+        let stop: number | null = null;
+        if (parts.length === 2 && typeof parts[0] === "number" && typeof parts[1] === "number") {
+          start = parts[0];
+          stop = parts[1];
+        } else if (
+          parts.length === 3 &&
+          typeof parts[0] === "number" &&
+          typeof parts[1] === "number" &&
+          typeof parts[2] === "number"
+        ) {
+          start = parts[0];
+          step = parts[1];
+          stop = parts[2];
+        }
+        if (start !== null && stop !== null && step !== 0) {
+          const sliced: unknown[] = [];
+          if (step > 0) {
+            for (let idx = start; idx <= stop; idx += step) {
+              if (idx >= 1 && idx <= baseVal.length) {
+                sliced.push(baseVal[idx - 1]);
+              }
+            }
+          } else {
+            for (let idx = start; idx >= stop; idx += step) {
+              if (idx >= 1 && idx <= baseVal.length) {
+                sliced.push(baseVal[idx - 1]);
+              }
+            }
+          }
+          return sliced;
         }
       } else {
-        const idx = evaluateExprText(subText, scope, db);
+        let cleanSub = subText.replace(/\bend\b/g, String(baseVal.length));
+        let idx: unknown = evaluateExprText(cleanSub, scope, db);
+        if (cleanSub === "false") idx = 1;
+        if (cleanSub === "true") idx = 2;
+        if (typeof idx !== "number") {
+          try {
+            if (/^[0-9+\-*/().\s]+$/.test(cleanSub)) {
+              const val = Function(`"use strict"; return (${cleanSub})`)();
+              if (typeof val === "number" && !isNaN(val)) idx = Math.round(val);
+            }
+          } catch {}
+        }
+        if (typeof idx !== "number" && db) {
+          const enumIdx = getEnumLiteralIndex(cleanSub, db);
+          if (enumIdx !== null) idx = enumIdx;
+        }
         if (typeof idx === "number") {
           return baseVal[idx - 1]; // 1-based indexing
         }
@@ -216,7 +305,12 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     if (resolver) {
       const resolved = resolver(trimmed);
       if (resolved) {
-        if (resolved.ruleName === "EnumerationLiteral" && resolved.name) {
+        if (resolved.kind === "EnumerationLiteral" || resolved.ruleName === "EnumerationLiteral") {
+          if (resolved.parentId) {
+            const siblings = db.childrenOf(resolved.parentId);
+            const idx = siblings.findIndex((c: any) => c.id === resolved.id);
+            if (idx >= 0) return idx + 1;
+          }
           return resolved.name;
         }
         return getComponentEvaluatedValue(resolved, db);
@@ -228,7 +322,12 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     if (resolvedFallback && resolvedFallback.length > 0) {
       const resolved = resolvedFallback[0];
       if (resolved) {
-        if (resolved.ruleName === "EnumerationLiteral" && resolved.name) {
+        if (resolved.kind === "EnumerationLiteral" || resolved.ruleName === "EnumerationLiteral") {
+          if (resolved.parentId) {
+            const siblings = db.childrenOf(resolved.parentId);
+            const idx = siblings.findIndex((c: any) => c.id === resolved.id);
+            if (idx >= 0) return idx + 1;
+          }
           return resolved.name;
         }
         return getComponentEvaluatedValue(resolved, db);
@@ -242,9 +341,66 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     if (typeof inner === "number") return -inner;
   }
 
-  // Array constructor: {a, b, c}
+  // Stand-alone range expression: start:stop or start:step:stop
+  if (trimmed.includes(":") && !trimmed.includes("{") && !trimmed.includes("[") && !trimmed.includes("(")) {
+    const colonParts = splitTopLevel(trimmed, ":");
+    if (colonParts.length === 2 || colonParts.length === 3) {
+      const evalParts = colonParts.map((p) => {
+        const pt = p.trim();
+        if (pt === "false") return 1;
+        if (pt === "true") return 2;
+        return evaluateExprText(pt, scope, db);
+      });
+      let start: number | null = null;
+      let step = 1;
+      let stop: number | null = null;
+      if (colonParts.length === 2 && typeof evalParts[0] === "number" && typeof evalParts[1] === "number") {
+        start = evalParts[0];
+        stop = evalParts[1];
+      } else if (
+        colonParts.length === 3 &&
+        typeof evalParts[0] === "number" &&
+        typeof evalParts[1] === "number" &&
+        typeof evalParts[2] === "number"
+      ) {
+        start = evalParts[0];
+        step = evalParts[1];
+        stop = evalParts[2];
+      }
+      if (start !== null && stop !== null && step !== 0) {
+        const rangeArr: number[] = [];
+        if (step > 0) {
+          for (let v = start; v <= stop; v += step) rangeArr.push(v);
+        } else {
+          for (let v = start; v >= stop; v += step) rangeArr.push(v);
+        }
+        return rangeArr;
+      }
+    }
+  }
+
+  // Array constructor: {a, b, c} or array comprehension: {expr for x in range}
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    const inner = trimmed.slice(1, -1);
+    const inner = trimmed.slice(1, -1).trim();
+    const compMatch = inner.match(/^(.+?)\s+for\s+([a-zA-Z_]\w*)\s+in\s+(.+)$/);
+    if (compMatch) {
+      const bodyExpr = compMatch[1]!.trim();
+      const iterVar = compMatch[2]!.trim();
+      const rangeExpr = compMatch[3]!.trim();
+      const rangeVals = evaluateExprText(rangeExpr, scope, db);
+      if (Array.isArray(rangeVals)) {
+        const result: unknown[] = [];
+        for (const v of rangeVals) {
+          if (bodyExpr === iterVar) {
+            result.push(v);
+          } else {
+            const replaced = bodyExpr.replace(new RegExp(`\\b${iterVar}\\b`, "g"), String(v));
+            result.push(evaluateExprText(replaced, scope, db));
+          }
+        }
+        return result;
+      }
+    }
     const elements = splitTopLevel(inner, ",");
     return elements.map((e) => evaluateExprText(e.trim(), scope, db));
   }
