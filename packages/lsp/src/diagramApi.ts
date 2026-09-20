@@ -8,20 +8,6 @@
 import { buildDiagramFromDSL, buildPolyglotDiagram } from "@modelscript/diagram/builder";
 import { SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
 import { compileDiagramConfigToPolyglot } from "@modelscript/dsl";
-import {
-  buildComponentProperties,
-  buildDiagramData,
-  computeComponentInsert,
-  computeComponentsDelete,
-  computeConnectInsert,
-  computeConnectRemove,
-  computeDescriptionEdit,
-  computeEdgePointEdits,
-  computeNameEdit,
-  computeParameterEdit,
-  computePlacementEdits,
-  deduplicateAndSort,
-} from "@modelscript/modelica/diagram";
 import type { TextEdit } from "vscode-languageserver";
 import type {
   ComponentPropertyData,
@@ -39,6 +25,30 @@ import type {
   PropertyGroupConfig,
   PropertyTabConfig,
 } from "./diagramProtocol.js";
+import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
+
+function getModelicaDiagramOps(): any {
+  return (globalThis as any).modelicaDiagramOps ?? {};
+}
+
+export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
+  edits.sort((a, b) => {
+    if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
+    return a.range.start.character - b.range.start.character;
+  });
+
+  return edits.filter((edit, i) => {
+    if (i === 0) return true;
+    const prev = edits[i - 1];
+    if (
+      edit.range.start.line < prev.range.end.line ||
+      (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
 
 // ── Backend Interface ──
 
@@ -84,7 +94,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     if (!classInstance) return null;
 
     try {
-      return await buildDiagramData(classInstance);
+      const ops = getModelicaDiagramOps();
+      return ops.buildDiagramData ? await ops.buildDiagramData(classInstance) : null;
     } catch (e: unknown) {
       console.error(`[diagram] Error building diagram data: ${e}`);
       return null;
@@ -96,7 +107,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     if (!classInstance) return null;
 
     try {
-      return buildComponentProperties(classInstance, params.componentName);
+      const ops = getModelicaDiagramOps();
+      return ops.buildComponentProperties ? ops.buildComponentProperties(classInstance, params.componentName) : null;
     } catch (e: unknown) {
       console.error(`[diagram] Error building component properties: ${e}`);
       return null;
@@ -119,7 +131,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     if (!targetName) return null;
     const classInstance = this.deps.resolveClassInstance(params.uri, targetName);
     if (!classInstance) return null;
-    const childData = await buildDiagramData(classInstance);
+    const ops = getModelicaDiagramOps();
+    const childData = ops.buildDiagramData ? await ops.buildDiagramData(classInstance) : null;
     return {
       targetUri: params.uri,
       targetClassName: targetName,
@@ -136,21 +149,15 @@ export class ModelicaDiagramBackend implements DiagramBackend {
 
 export interface SysML2BackendDeps {
   getDocumentText: (uri: string) => string | undefined;
-  getLayout: (uri: string) => import("@modelscript/sysml2/diagram").SysML2Layout | undefined;
-  setLayout: (uri: string, layout: import("@modelscript/sysml2/diagram").SysML2Layout) => void;
-  createEmptyLayout: () => import("@modelscript/sysml2/diagram").SysML2Layout;
+  getLayout: (uri: string) => any;
+  setLayout: (uri: string, layout: any) => void;
+  createEmptyLayout: () => any;
   updateElementPositions: (
-    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
+    layout: any,
     items: { name: string; x: number; y: number; width: number; height: number; rotation?: number }[],
-  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
-  updateConnectionVertices: (
-    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
-    updates: { id: string; vertices: { x: number; y: number }[] }[],
-  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
-  removeElements: (
-    layout: import("@modelscript/sysml2/diagram").SysML2Layout,
-    names: string[],
-  ) => import("@modelscript/sysml2/diagram").SysML2Layout;
+  ) => any;
+  updateConnectionVertices: (layout: any, updates: { id: string; vertices: { x: number; y: number }[] }[]) => any;
+  removeElements: (layout: any, names: string[]) => any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   buildDiagramData: (params: DiagramGetDataParams) => any;
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;
@@ -1141,8 +1148,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 // ── Dispatch Factory ──
 
 export interface DiagramDispatchDeps {
-  modelica: DiagramBackend;
-  sysml2: DiagramBackend;
+  modelica?: DiagramBackend;
+  sysml2?: DiagramBackend;
   generic?: DiagramBackend;
   customBackends?: Map<string | RegExp, DiagramBackend>;
 }
@@ -1159,9 +1166,13 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       if (typeof matcher === "string" && uri.endsWith(matcher)) return backend;
       if (matcher instanceof RegExp && matcher.test(uri)) return backend;
     }
-    if (uri.endsWith(".sysml")) return backends.sysml2;
-    if (uri.endsWith(".mo")) return backends.modelica;
-    return backends.generic ?? backends.modelica;
+    const plugin = globalLanguageRegistry.getPluginForUri(uri);
+    if (plugin?.diagramBackend) {
+      return plugin.diagramBackend;
+    }
+    if (uri.endsWith(".sysml") && backends.sysml2) return backends.sysml2;
+    if (uri.endsWith(".mo") && backends.modelica) return backends.modelica;
+    return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);
   }
 
   return {
@@ -1202,38 +1213,48 @@ export function processDiagramEditBatch(
   classInstance: any,
   docText: string,
 ): DiagramApplyEditsResult {
+  const ops = getModelicaDiagramOps();
   const allEdits: TextEdit[] = [];
   let needsRender: "none" | "immediate" | "debounced" = "none";
 
   for (const action of request.actions) {
     switch (action.type) {
       case "move":
-        allEdits.push(...computePlacementEdits(docText, classInstance, action.items));
+        if (ops.computePlacementEdits)
+          allEdits.push(...ops.computePlacementEdits(docText, classInstance, action.items));
         if (needsRender === "none") needsRender = "none"; // spatial
         break;
       case "resize":
       case "rotate":
-        allEdits.push(...computePlacementEdits(docText, classInstance, [action.item]));
+        if (ops.computePlacementEdits)
+          allEdits.push(...ops.computePlacementEdits(docText, classInstance, [action.item]));
         if (needsRender === "none") needsRender = "none"; // spatial
         break;
       case "moveEdge":
         {
           const lines = docText.split("\n");
-          allEdits.push(...computeEdgePointEdits(lines, classInstance, action.edges));
+          if (ops.computeEdgePointEdits)
+            allEdits.push(...ops.computeEdgePointEdits(lines, classInstance, action.edges));
         }
         if (needsRender === "none") needsRender = "none"; // spatial
         break;
       case "connect":
-        allEdits.push(...computeConnectInsert(docText, classInstance, action.source, action.target, action.points));
+        if (ops.computeConnectInsert)
+          allEdits.push(
+            ...ops.computeConnectInsert(docText, classInstance, action.source, action.target, action.points),
+          );
         needsRender = "immediate";
         break;
       case "disconnect":
-        allEdits.push(...computeConnectRemove(docText, classInstance, action.source, action.target));
+        if (ops.computeConnectRemove)
+          allEdits.push(...ops.computeConnectRemove(docText, classInstance, action.source, action.target));
         needsRender = "immediate";
         break;
       case "reconnect":
-        allEdits.push(...computeConnectRemove(docText, classInstance, action.oldSource, action.oldTarget));
-        allEdits.push(...computeConnectInsert(docText, classInstance, action.newSource, action.newTarget));
+        if (ops.computeConnectRemove)
+          allEdits.push(...ops.computeConnectRemove(docText, classInstance, action.oldSource, action.oldTarget));
+        if (ops.computeConnectInsert)
+          allEdits.push(...ops.computeConnectInsert(docText, classInstance, action.newSource, action.newTarget));
         needsRender = "immediate";
         break;
       case "addComponent": {
@@ -1241,45 +1262,50 @@ export function processDiagramEditBatch(
         let uniqueName = baseName + "1";
         let counter = 1;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const existingNames = new Set(Array.from(classInstance.components).map((c: any) => c.name));
+        const existingNames = new Set(Array.from(classInstance.components || []).map((c: any) => c.name));
         while (existingNames.has(uniqueName)) {
           counter++;
           uniqueName = baseName + counter;
         }
-        allEdits.push(
-          ...computeComponentInsert(classInstance, action.className, uniqueName, action.x, action.y, docText),
-        );
+        if (ops.computeComponentInsert) {
+          allEdits.push(
+            ...ops.computeComponentInsert(classInstance, action.className, uniqueName, action.x, action.y, docText),
+          );
+        }
         needsRender = "immediate";
         break;
       }
       case "deleteComponents":
-        allEdits.push(...computeComponentsDelete(docText, classInstance, action.names));
+        if (ops.computeComponentsDelete)
+          allEdits.push(...ops.computeComponentsDelete(docText, classInstance, action.names));
         needsRender = "immediate";
         break;
       case "updateName":
-        allEdits.push(...computeNameEdit(classInstance, action.oldName, action.newName));
+        if (ops.computeNameEdit) allEdits.push(...ops.computeNameEdit(classInstance, action.oldName, action.newName));
         needsRender = "debounced";
         break;
       case "updateDescription":
-        allEdits.push(...computeDescriptionEdit(docText, classInstance, action.name, action.description));
+        if (ops.computeDescriptionEdit)
+          allEdits.push(...ops.computeDescriptionEdit(docText, classInstance, action.name, action.description));
         needsRender = "debounced";
         break;
       case "updateParameter":
-        allEdits.push(...computeParameterEdit(classInstance, action.name, action.parameter, action.value));
-        // Parameter edits are treated as optimistic — the webview patches the
-        // diagram text in-place without a full re-render.
+        if (ops.computeParameterEdit)
+          allEdits.push(...ops.computeParameterEdit(classInstance, action.name, action.parameter, action.value));
         if (needsRender === "none") needsRender = "none";
         break;
       case "updateProperty":
-        allEdits.push(...computeParameterEdit(classInstance, action.name, action.key, String(action.value)));
+        if (ops.computeParameterEdit)
+          allEdits.push(...ops.computeParameterEdit(classInstance, action.name, action.key, String(action.value)));
         if (needsRender === "none") needsRender = "none";
         break;
     }
   }
 
+  const sortFn = ops.deduplicateAndSort ?? ((edits: TextEdit[]) => edits);
   return {
     seq: request.seq,
-    edits: deduplicateAndSort(allEdits),
+    edits: sortFn(allEdits),
     renderHint: needsRender,
   };
 }

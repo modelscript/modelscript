@@ -2350,6 +2350,12 @@ const sysmlEdgeGraphics = (opts: {
 
 export const sysml2Language = language({
   name: "sysml2",
+  displayName: "SysML v2",
+  fileExtensions: [".sysml", ".sysml2"],
+
+  lsp: {
+    fileExtensions: [".sysml", ".sysml2"],
+  },
 
   actions: [
     {

@@ -3,8 +3,7 @@ import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { AnalysisPanel } from "./analysisPanel";
-import { boxTexturedBase64, foxBase64 } from "./cadModels";
-import { droneStepContent } from "./droneStepContent";
+import { getTemplatePrimaryFile, scaffoldTemplateFiles } from "./templates/catalog";
 
 import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
@@ -38,7 +37,6 @@ import { GCodeEditorProvider } from "./gcodeEditorProvider";
 import { OptimizationPanel } from "./optimizationPanel";
 import { SimulationViewPanel } from "./physicsSetupEditorProvider";
 import { SimulationPanel } from "./simulationPanel";
-import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
 import { StepEditorProvider } from "./stepEditorProvider";
 import { SurrogatePanel } from "./surrogatePanel";
@@ -392,9 +390,12 @@ export async function activate(context: vscode.ExtensionContext) {
   const documentSelector = [
     { language: "modelica" },
     { language: "sysml" },
+    { language: "sysml2" },
     { language: "step" },
     { language: "owl2" },
+    { language: "csv" },
     { pattern: "**/*.{js,ts}" },
+    { pattern: "**/*.{mo,mos,sysml,sysml2,step,stp,p21,owl,ttl,ofn,csv}" },
   ];
 
   // Options to control the language client
@@ -421,6 +422,34 @@ export async function activate(context: vscode.ExtensionContext) {
     await client.start();
     console.log("ModelScript language server is ready");
     lspOutputChannel.appendLine("[client] Language server started successfully");
+
+    // Dynamically register language actions from the server Action Router
+    try {
+      const actions = await client.sendRequest<any[]>("modelscript/listActions", {});
+      if (Array.isArray(actions)) {
+        for (const action of actions) {
+          if (!action.id) continue;
+          const cmdId = `modelscript.action.${action.id}`;
+          const handler = async (args?: any) => {
+            const activeDoc = vscode.window.activeTextEditor?.document;
+            return await client?.sendRequest("modelscript/executeAction", {
+              actionId: action.id,
+              uri: args?.uri ?? activeDoc?.uri.toString(),
+              languageId: action.languageId ?? activeDoc?.languageId,
+              inputs: args,
+            });
+          };
+          context.subscriptions.push(vscode.commands.registerCommand(cmdId, handler));
+          if (action.languageId) {
+            context.subscriptions.push(
+              vscode.commands.registerCommand(`modelscript.${action.languageId}.${action.id}`, handler),
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[client] Could not register dynamic language actions:", err);
+    }
 
     // Register 3D CAD step viewer
     const stepEditor = new StepEditorProvider(context, client);
@@ -672,7 +701,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Update tree when active editor changes to a .mo or .owl2 file
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor?.document.languageId === "modelica") {
+      if (editor?.document && editor.document.uri.scheme !== "output") {
         treeProvider.setDocumentUri(editor.document.uri.toString());
       }
       // Refresh OWL2 hierarchy views when an OWL2 file is active
@@ -682,8 +711,17 @@ export async function activate(context: vscode.ExtensionContext) {
         owl2PropProvider.setDocumentUri(uri);
       }
       // Set context keys for palette visibility
-      vscode.commands.executeCommand("setContext", "modelscript.sysml2Active", editor?.document.languageId === "sysml");
-      vscode.commands.executeCommand("setContext", "modelscript.owl2Active", editor?.document.languageId === "owl2");
+      const langId = editor?.document.languageId;
+      vscode.commands.executeCommand("setContext", "modelscript.activeLanguage", langId);
+      vscode.commands.executeCommand(
+        "setContext",
+        "modelscript.sysml2Active",
+        langId === "sysml" || langId === "sysml2",
+      );
+      vscode.commands.executeCommand("setContext", "modelscript.owl2Active", langId === "owl2");
+      if (langId) {
+        vscode.commands.executeCommand("setContext", `modelscript.${langId}Active`, true);
+      }
     }),
   );
 
@@ -694,9 +732,6 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
       if (!client) return;
-      const langId = e.textEditor.document.languageId;
-      if (langId !== "modelica" && langId !== "sysml" && langId !== "sysml2") return;
-
       clearTimeout(visibleRangeTimer);
       visibleRangeTimer = setTimeout(() => {
         const uri = e.textEditor.document.uri.toString();
@@ -710,7 +745,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // Trigger once for the initially active editor (since the event doesn't fire for the first tab)
-  if (vscode.window.activeTextEditor?.document.languageId === "modelica") {
+  if (vscode.window.activeTextEditor?.document && vscode.window.activeTextEditor.document.uri.scheme !== "output") {
     treeProvider.setDocumentUri(vscode.window.activeTextEditor.document.uri.toString());
   }
 
@@ -718,10 +753,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("modelscript.openDiagram", async () => {
       const activeEditor = vscode.window.activeTextEditor;
-      if (
-        activeEditor &&
-        (activeEditor.document.languageId === "modelica" || activeEditor.document.languageId === "sysml")
-      ) {
+      if (activeEditor?.document && activeEditor.document.uri.scheme !== "output") {
         try {
           // Ensure the file exists on the filesystem before opening the custom editor.
           // In memfs workspaces, files created in the text editor buffer may not be persisted
@@ -756,8 +788,8 @@ export async function activate(context: vscode.ExtensionContext) {
     commands.registerCommand("modelscript.exportShapeToStep", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
-      if (!editor || editor.document.languageId !== "modelica") {
-        vscode.window.showErrorMessage("Please open a Modelica file containing a shape class.");
+      if (!editor) {
+        vscode.window.showErrorMessage("Please open a file containing a shape class.");
         return;
       }
 
@@ -1098,7 +1130,7 @@ END-ISO-10303-21;`;
           async () => {
             const res = await client.sendRequest<any>("modelscript/executeAction", {
               actionId: "simulate",
-              languageId: "modelica",
+              languageId: editor?.document.languageId ?? "modelica",
               uri,
               inputs,
             });
@@ -1140,16 +1172,17 @@ END-ISO-10303-21;`;
         }
       }
       try {
+        const lang = editor?.document.languageId ?? "modelica";
         const res = await client.sendRequest<any>("modelscript/executeAction", {
           actionId: "flatten",
-          languageId: "modelica",
+          languageId: lang,
           uri,
           inputs,
         });
         if (res?.text) {
           const doc = await vscode.workspace.openTextDocument({
             content: res.text,
-            language: "modelica",
+            language: lang,
           });
           await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
         }
@@ -1188,8 +1221,8 @@ END-ISO-10303-21;`;
           uri = tab.input.uri.toString();
         }
       }
-      if (!uri || !uri.endsWith(".mo")) {
-        vscode.window.showErrorMessage("Open a Modelica (.mo) file to flatten it.");
+      if (!uri) {
+        vscode.window.showErrorMessage("Open a file to flatten it.");
         return;
       }
 
@@ -1217,7 +1250,11 @@ END-ISO-10303-21;`;
       // Actually, modelscript/flatten takes `{ name: string, uri?: string }`.
       // I'll parse the file name as a fallback.
       if (!name) {
-        name = uri.split("/").pop()?.replace(".mo", "") ?? "Model";
+        name =
+          uri
+            .split("/")
+            .pop()
+            ?.replace(/\.[^.]+$/, "") ?? "Model";
       }
 
       vscode.window.withProgress(
@@ -1251,8 +1288,8 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.exportFmi2", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
-      if (!editor || !editor.document.fileName.endsWith(".mo")) {
-        vscode.window.showErrorMessage("Open a Modelica (.mo) file to export an FMU.");
+      if (!editor) {
+        vscode.window.showErrorMessage("Open a model file to export an FMU.");
         return;
       }
       vscode.window.withProgress(
@@ -1277,8 +1314,8 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.exportFmi3", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
-      if (!editor || !editor.document.fileName.endsWith(".mo")) {
-        vscode.window.showErrorMessage("Open a Modelica (.mo) file to export an FMU.");
+      if (!editor) {
+        vscode.window.showErrorMessage("Open a model file to export an FMU.");
         return;
       }
       vscode.window.withProgress(
@@ -1339,8 +1376,8 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.compileWasm", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
-      if (!editor || !editor.document.fileName.endsWith(".mo")) {
-        vscode.window.showErrorMessage("Open a Modelica (.mo) file to compile to WebAssembly.");
+      if (!editor) {
+        vscode.window.showErrorMessage("Open a model file to compile to WebAssembly.");
         return;
       }
       vscode.window.withProgress(
@@ -1412,127 +1449,69 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.runVerification", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
-      if (editor?.document.languageId === "sysml") {
-        await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: "Running SysML Requirements Verification..." },
-          async () => {
-            try {
-              if (client && editor) {
-                await client.sendRequest("modelscript/runVerification", { uri: editor.document.uri.toString() });
-                // Refresh markdown preview to update requirement statuses
-                refreshMarkdownData();
-
-                // Forward verification limits to the Simulation Panel for chart overlay
-                try {
-                  const reqs: {
-                    peakValue?: number;
-                    limitValue?: number;
-                    lhsName?: string;
-                    status: string;
-                  }[] = await client.sendRequest("modelscript/getRequirements", {
-                    uri: editor.document.uri.toString(),
-                  });
-                  const limits = reqs
-                    .filter((r): r is typeof r & { limitValue: number } => r.limitValue !== undefined)
-                    .map((r) => ({
-                      variable: r.lhsName ?? "value",
-                      value: r.limitValue,
-                      label: `max: ${r.limitValue.toFixed(1)}`,
-                      violated: r.status === "Failed",
-                    }));
-                  if (limits.length > 0) {
-                    SimulationPanel.postVerificationLimits(limits);
-                  }
-                } catch {
-                  // Ignore — limit overlay is best-effort
-                }
-              }
-            } catch (e: unknown) {
-              vscode.window.showErrorMessage(`Verification failed: ${(e as Error).message}`);
-            }
-          },
-        );
+      if (!editor) {
+        vscode.window.showWarningMessage("Open a file first to run requirements verification.");
+        return;
       }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "Running Requirements Verification..." },
+        async () => {
+          try {
+            if (client && editor) {
+              await client.sendRequest("modelscript/runVerification", { uri: editor.document.uri.toString() });
+              // Refresh markdown preview to update requirement statuses
+              refreshMarkdownData();
+
+              // Forward verification limits to the Simulation Panel for chart overlay
+              try {
+                const reqs: {
+                  peakValue?: number;
+                  limitValue?: number;
+                  lhsName?: string;
+                  status: string;
+                }[] = await client.sendRequest("modelscript/getRequirements", {
+                  uri: editor.document.uri.toString(),
+                });
+                const limits = reqs
+                  .filter((r): r is typeof r & { limitValue: number } => r.limitValue !== undefined)
+                  .map((r) => ({
+                    variable: r.lhsName ?? "value",
+                    value: r.limitValue,
+                    label: `max: ${r.limitValue.toFixed(1)}`,
+                    violated: r.status === "Failed",
+                  }));
+                if (limits.length > 0) {
+                  SimulationPanel.postVerificationLimits(limits);
+                }
+              } catch {
+                // Ignore — limit overlay is best-effort
+              }
+            }
+          } catch (e: unknown) {
+            vscode.window.showErrorMessage(`Verification failed: ${(e as Error).message}`);
+          }
+        },
+      );
     }),
     commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, secondArg?: string) => {
       if (!client) return;
 
-      // Support both context menu (LibraryTreeItem) and direct call
-      let className: string;
-      let classKind: string;
+      // Support context menu (LibraryTreeItem), palette item, and direct call
+      let className: string | undefined;
       if (firstArg && typeof firstArg === "object" && "info" in firstArg) {
-        // Called from Modelica tree item context menu
         const item = firstArg as { info: { compositeName: string; classKind: string; iconSvg?: string } };
         className = item.info.compositeName;
-        classKind = item.info.classKind;
       } else if (firstArg && typeof firstArg === "object" && "elementInfo" in firstArg) {
-        // Called from SysML2 palette item context menu
         const item = firstArg as { elementInfo: { type: string; element?: { elementType: string } } };
         if (item.elementInfo.type === "element" && item.elementInfo.element) {
           className = item.elementInfo.element.elementType;
-          classKind = "sysml2";
-        } else {
-          return;
         }
-      } else {
-        className = firstArg as string;
-        classKind = secondArg ?? "";
+      } else if (typeof firstArg === "string") {
+        className = firstArg;
       }
 
-      // SysML2 element handling
-      if (classKind === "sysml2") {
-        let docUri = vscode.window.activeTextEditor?.document.uri.toString();
-        if (!docUri) {
-          const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-          if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
-            docUri = tab.input.uri.toString();
-          }
-        }
-        if (!docUri || !docUri.endsWith(".sysml")) {
-          vscode.window.showWarningMessage("Open a SysML2 file first.");
-          return;
-        }
+      if (!className) return;
 
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const response: any = await client.sendRequest("modelscript/diagram.applyEdits", {
-            uri: docUri,
-            seq: 0,
-            actions: [{ type: "addComponent", className, x: 0, y: 0 }],
-          });
-          const edits = response?.edits;
-          if (edits && edits.length > 0) {
-            const workspaceEdit = new vscode.WorkspaceEdit();
-            const uri = vscode.Uri.parse(docUri);
-            for (const edit of edits) {
-              const range = new vscode.Range(
-                edit.range.start.line,
-                edit.range.start.character,
-                edit.range.end.line,
-                edit.range.end.character,
-              );
-              workspaceEdit.replace(uri, range, edit.newText);
-            }
-            await vscode.workspace.applyEdit(workspaceEdit);
-            // Format the type name for display
-            const displayName = className.replace(/([A-Z])/g, " $1").trim();
-            vscode.window.showInformationMessage(`Added ${displayName} to model.`);
-            setTimeout(() => {
-              vscode.commands.executeCommand("modelscript.autoLayout");
-            }, 600);
-          }
-        } catch (e) {
-          console.error("[addToDiagram] SysML2 Error:", e);
-          vscode.window.showErrorMessage(`Failed to add element: ${e}`);
-        }
-        return;
-      }
-
-      // Modelica element handling (fallback for text editor only)
-      // Only allow models, blocks, and connectors
-      if (classKind !== "model" && classKind !== "block" && classKind !== "connector") return;
-
-      // Find the active .mo document
       let docUri = vscode.window.activeTextEditor?.document.uri.toString();
       if (!docUri) {
         const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
@@ -1541,7 +1520,7 @@ END-ISO-10303-21;`;
         }
       }
       if (!docUri) {
-        vscode.window.showWarningMessage("Open a Modelica file first.");
+        vscode.window.showWarningMessage("Open a diagram or model file first.");
         return;
       }
 
@@ -1566,7 +1545,8 @@ END-ISO-10303-21;`;
             workspaceEdit.replace(uri, range, edit.newText);
           }
           await vscode.workspace.applyEdit(workspaceEdit);
-          vscode.window.showInformationMessage(`Added ${className.split(".").pop()} to model.`);
+          const displayName = className.split(".").pop() || className;
+          vscode.window.showInformationMessage(`Added ${displayName} to model.`);
           setTimeout(() => {
             vscode.commands.executeCommand("modelscript.autoLayout");
           }, 600);
@@ -1628,14 +1608,14 @@ END-ISO-10303-21;`;
     // ── MBSE views: Requirements & V&V ──
     commands.registerCommand("modelscript.openRequirements", async () => {
       const editor = vscode.window.activeTextEditor;
-      if (editor?.document.languageId === "sysml") {
+      if (editor?.document) {
         await vscode.commands.executeCommand(
           "vscode.openWith",
           editor.document.uri,
           RequirementsEditorProvider.viewType,
         );
       } else {
-        vscode.window.showWarningMessage("Open a SysML file first.");
+        vscode.window.showWarningMessage("Open a model file first.");
       }
     }),
     commands.registerCommand("modelscript.openVerificationDashboard", () => {
@@ -1890,13 +1870,13 @@ end ${studyName};
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((e) => {
       const lang = e.document.languageId;
-      if (lang === "sysml" || lang === "modelica") {
+      if (lang !== "markdown") {
         scheduleMarkdownRefresh();
       }
     }),
     vscode.workspace.onDidOpenTextDocument((doc) => {
       const lang = doc.languageId;
-      if (lang === "sysml" || lang === "modelica") {
+      if (lang !== "markdown") {
         scheduleMarkdownRefresh();
       }
     }),
@@ -1933,1363 +1913,8 @@ async function createWorkerLanguageClient(context: vscode.ExtensionContext, clie
 }
 
 /**
- * Scaffold template files synchronously into the MemoryFileSystemProvider.
- * Called immediately after registering the memfs provider, before any async
- * operations, so that VS Code's editor restoration can find the files.
+ * Template scaffolding externalized to ./templates/catalog.ts
  */
-function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vscode.Uri): void {
-  const encoder = new TextEncoder();
-  const template = workspaceUri.path.substring(1) || "empty";
-
-  const templates: Record<string, Record<string, string>> = {
-    "drone-chassis": {
-      "DroneSimulation.mo": [
-        'model DroneSimulation "Propeller dynamics linked to procedural CAD geometry"',
-        "  // ── Geometry (compiles to STEP for FEA/CFD) ─────────────────────────",
-        "  // Propeller prop(",
-        "  //   radius = 100,",
-        "  //   hubRadius = 10,",
-        "  //   bladeWidth = 15,",
-        "  //   thickness = 2",
-        '  // ) annotation(Shape(export = "drone.step"));',
-        "",
-        "  // ── Derived physical properties from geometry ───────────────────────",
-        '  parameter Real bladeVolume = (100 - 10) * 15 * 2 "Blade volume [mm³]";',
-        '  parameter Real hubVolume = 3.14159 * 10^2 * 4 "Hub volume [mm³]";',
-        '  parameter Real mass = (2 * bladeVolume + hubVolume) * 1e-9 * 1600 "Propeller mass [kg]";',
-        '  parameter Real inertia = (1.0/12.0) * mass * (2 * 100 * 1e-3)^2 "Moment of inertia [kg*m²]";',
-        "",
-        "  // ── Simulation state ────────────────────────────────────────────────",
-        '  Real w(start = 0) "Rotational velocity [rad/s]";',
-        '  Real thrust "Thrust generated [N]";',
-        "  ",
-        '  parameter Real motor_tau = 0.5 "Applied motor torque [N*m]";',
-        '  parameter Real torque_coeff = 0.015 "Aerodynamic torque coefficient";',
-        '  parameter Real thrust_coeff = 0.11 "Aerodynamic thrust coefficient";',
-        "",
-        "equation",
-        "  inertia * der(w) = motor_tau - torque_coeff * w * abs(w);",
-        "  thrust = thrust_coeff * w * abs(w);",
-        "end DroneSimulation;",
-      ].join("\n"),
-      "chassis.sysml": [
-        "package DroneArchitecture {",
-        "  part def DroneAssembly {",
-        "    part chassis : Chassis;",
-        "    part rotor1 : Rotor;",
-        "    part rotor2 : Rotor;",
-        "    part rotor3 : Rotor;",
-        "    part rotor4 : Rotor;",
-        "",
-        "    // Reference CAD geometry",
-        "    ref chassisGeometry = DroneCAD::DroneChassis;",
-        "  }",
-        "",
-        "  part def Chassis {}",
-        "  part def Rotor {}",
-        "}",
-      ].join("\n"),
-      "DroneCAD.mo": [
-        'package DroneCAD "Procedural CAD model of a quadcopter drone chassis"',
-        "",
-        "  import ModelScript.Geometry.*;",
-        "",
-        '  shape Propeller "Propeller geometry"',
-        '    parameter Real radius = 100 "Propeller radius [mm]";',
-        '    parameter Real hubRadius = 10 "Hub radius [mm]";',
-        '    parameter Real bladeWidth = 15 "Blade width [mm]";',
-        '    parameter Real thickness = 2 "Blade thickness [mm]";',
-        "",
-        "    // Hub",
-        "    Cylinder hub(radius = hubRadius, height = thickness*2)",
-        "      annotation(material = ABS);",
-        "",
-        "    // Blade 1",
-        "    Box blade1(width = radius - hubRadius, height = thickness, depth = bladeWidth)",
-        "      annotation(Placement(origin = {(radius + hubRadius)/2, 0, 0}), material = CarbonFiber);",
-        "",
-        "    // Blade 2",
-        "    Box blade2(width = radius - hubRadius, height = thickness, depth = bladeWidth)",
-        "      annotation(Placement(origin = {-(radius + hubRadius)/2, 0, 0}), material = CarbonFiber);",
-        "  end Propeller;",
-        "",
-        '  shape DroneChassis "Complete quadcopter drone chassis"',
-        "    parameter Real bodySize = 10;",
-        "    parameter Real bodyHeight = 3;",
-        "    Box body(width = bodySize, height = bodyHeight, depth = bodySize)",
-        "      annotation(material = CarbonFiber);",
-        "  end DroneChassis;",
-        "",
-        "end DroneCAD;",
-      ].join("\n"),
-      "DroneFEA.mo": [
-        "model DroneFEA",
-        "  extends ModelScript.Studies.StaticStructuralFEA(",
-        "    meshResolution = 0.05",
-        "  );",
-        "  extends DroneSimulation;",
-        "end DroneFEA;",
-      ].join("\n"),
-      "DroneCFD.mo": [
-        "model DroneCFD",
-        "  extends ModelScript.Studies.SteadyStateCFD(",
-        "    meshResolution = 0.05",
-        "  );",
-        "  extends DroneSimulation;",
-        "end DroneCFD;",
-      ].join("\n"),
-    },
-    empty: {
-      "HelloWorld.mo": `model HelloWorld "A simple Modelica model"\n  Real x(start = 1);\n  parameter Real a = -1;\nequation\n  der(x) = a * x;\nend HelloWorld;\n`,
-    },
-    blank: {
-      "HelloWorld.mo": `model HelloWorld "A simple Modelica model"\n  Real x(start = 1);\n  parameter Real a = -1;\nequation\n  der(x) = a * x;\nend HelloWorld;\n`,
-    },
-    "bouncing-ball": {
-      "BouncingBall.mo": `model BouncingBall "A bouncing ball"\n  parameter Real e = 0.8 "Coefficient of restitution";\n  parameter Real g = 9.81 "Gravity";\n  Real h(start = 1) "Height";\n  Real v "Velocity";\nequation\n  der(h) = v;\n  der(v) = -g;\n  when h < 0 then\n    reinit(v, -e * pre(v));\n  end when;\nend BouncingBall;\n`,
-    },
-    "injection-molding-cosim": {
-      "Manufacturing.mo": `package Manufacturing
-  import Modelica.Fluid.Interfaces.FluidPort_a;
-  import Modelica.Fluid.Sources.MassFlowSource_T;
-  import ModelScript.Geometry;
-  
-  // 1. Define the 3D CAD Geometry
-  shape SnesTopShell extends Geometry.Box
-    parameter Real width = 150;
-    parameter Real height = 60;
-    parameter Real depth = 20;
-  end SnesTopShell;
-
-  // 2. Define the 3D CFD Interface Block using a new 'field' class kind
-  field InjectionCavity "A boundary node that proxies the 3D OpenFOAM solver"
-    parameter Geometry.Shape geometry;
-    parameter String material = "ABS";
-    parameter Real moldTemp = 40.0;
-    FluidPort_a gateInlet;
-  end InjectionCavity;
-
-  // 3. Define the 1D System Dynamics
-  model HydraulicInjectionUnit "1D Lumped parameter model of the injection machine"
-    parameter Real targetPressure = 150e6;
-    parameter Real barrelTemp = 493.15;
-    Modelica.Fluid.Sources.MassFlowSource_T ram(nPorts = 1, m_flow = 0.05, T = barrelTemp);
-    FluidPort_a fluidOut;
-  equation
-    connect(ram.ports[1], fluidOut);
-  end HydraulicInjectionUnit;
-
-  // 4. The Full System Orchestration
-  process SnesMoldProcess
-    HydraulicInjectionUnit injectionMachine(targetPressure = 150e6);
-    InjectionCavity mold(
-      geometry = SnesTopShell(),
-      material = "ABS",
-      moldTemp = 40.0
-    );
-  equation
-    connect(injectionMachine.fluidOut, mold.gateInlet);
-  end SnesMoldProcess;
-end Manufacturing;
-`,
-    },
-    rlc: {
-      "RLC.mo": [
-        'model RLC "RLC circuit with MSL components"',
-        "  Modelica.Electrical.Analog.Sources.SineVoltage Vb(V = 10, f = 50)",
-        "    annotation(Placement(transformation(origin = {-70, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
-        "  Modelica.Electrical.Analog.Basic.Inductor L(L = 0.5)",
-        "    annotation(Placement(transformation(origin = {0, 40}, extent = {{-10, -10}, {10, 10}})));",
-        "  Modelica.Electrical.Analog.Basic.Capacitor C(C = 1e-4)",
-        "    annotation(Placement(transformation(origin = {20, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
-        "  Modelica.Electrical.Analog.Basic.Resistor R(R = 100)",
-        "    annotation(Placement(transformation(origin = {60, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
-        "  Modelica.Electrical.Analog.Basic.Ground ground",
-        "    annotation(Placement(transformation(origin = {-70, -40}, extent = {{-10, -10}, {10, 10}})));",
-        "equation",
-        "  connect(Vb.p, L.p)",
-        "    annotation(Line(points = {{-70, 10}, {-70, 40}, {-10, 40}}, color = {0, 0, 255}));",
-        "  connect(L.n, C.p)",
-        "    annotation(Line(points = {{10, 40}, {20, 40}, {20, 10}}, color = {0, 0, 255}));",
-        "  connect(L.n, R.p)",
-        "    annotation(Line(points = {{10, 40}, {60, 40}, {60, 10}}, color = {0, 0, 255}));",
-        "  connect(R.n, Vb.n)",
-        "    annotation(Line(points = {{60, -10}, {60, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
-        "  connect(C.n, Vb.n)",
-        "    annotation(Line(points = {{20, -10}, {20, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
-        "  connect(Vb.n, ground.p)",
-        "    annotation(Line(points = {{-70, -10}, {-70, -30}}, color = {0, 0, 255}));",
-        "end RLC;",
-        "",
-      ].join("\n"),
-    },
-    "cad-assembly": {
-      "RobotAssembly.mo": [
-        'model RobotAssembly "3D CAD Robot Assembly"',
-        "  // Base of the robot",
-        '  Real base_angle = 0 "Base rotation angle";',
-        '  Real base annotation(CAD(uri="Fox.glb", position={0, 0, 0}, scale={0.02, 0.02, 0.02}));',
-        "",
-        "  // A payload block",
-        '  Real payload annotation(CAD(uri="BoxTextured.glb", position={2, 0, 2}, scale={0.5, 0.5, 0.5}));',
-        "",
-        "  // An interactive port attachment point",
-        '  Real target annotation(CADPort(feature="TargetArea", offsetPosition={2, 1, 2}));',
-        "equation",
-        "  base = 0;",
-        "  payload = 1;",
-        "  target = 2;",
-        "end RobotAssembly;",
-        "",
-      ].join("\n"),
-    },
-    sysml2: {
-      "VehicleSystem.sysml": [
-        "package VehicleSystem {",
-        "",
-        "  // ── Port Definitions ──",
-        "  port def TorquePort {",
-        "    attribute torqueValue : Real;",
-        "  }",
-        "",
-        "  port def ElectricalPort {",
-        "    attribute voltage : Real;",
-        "    attribute current : Real;",
-        "  }",
-        "",
-        "  port def FuelPort {",
-        "    attribute flowRate : Real;",
-        "  }",
-        "",
-        "  // ── Part Definitions ──",
-        "  part def Engine {",
-        "    attribute horsePower : Real;",
-        "    attribute displacement : Real;",
-        "",
-        "    port torqueOut : TorquePort;",
-        "    port fuelIn : FuelPort;",
-        "  }",
-        "",
-        "  part def Transmission {",
-        "    attribute gearRatio : Real;",
-        "    attribute numberOfGears : Integer;",
-        "",
-        "    port torqueIn : TorquePort;",
-        "    port torqueOut : TorquePort;",
-        "  }",
-        "",
-        "  part def Battery {",
-        "    attribute capacity : Real;",
-        "    attribute voltage : Real;",
-        "",
-        "    port electricalOut : ElectricalPort;",
-        "  }",
-        "",
-        "  part def BrakeSystem {",
-        "    attribute maxBrakingForce : Real;",
-        "    attribute absEnabled : Boolean;",
-        "  }",
-        "",
-        "  part def Wheel {",
-        "    attribute diameter : Real;",
-        "    attribute tirePressure : Real;",
-        "  }",
-        "",
-        "  part def FuelTank {",
-        "    attribute capacity : Real;",
-        "",
-        "    port fuelOut : FuelPort;",
-        "  }",
-        "",
-        "  // ── Top-Level Vehicle ──",
-        "  part def Vehicle {",
-        "    attribute mass : Real;",
-        "    attribute topSpeed : Real;",
-        "",
-        "    part engine : Engine;",
-        "    part transmission : Transmission;",
-        "    part battery : Battery;",
-        "    part brakes : BrakeSystem;",
-        "    part frontLeft : Wheel;",
-        "    part fuelTank : FuelTank;",
-        "",
-        "    connect engine.torqueOut to transmission.torqueIn;",
-        "    connect fuelTank.fuelOut to engine.fuelIn;",
-        "  }",
-        "",
-        "  // ── Actors & Use Cases ──",
-        "",
-        "  part def Driver { doc /* Primary operator. */ }",
-        "  part def Mechanic { doc /* Service technician. */ }",
-        "  part def FleetManager { doc /* Oversees fleet. */ }",
-        "  part def Passenger { doc /* Rides vehicle. */ }",
-        "  part def ChargingStation { doc /* Recharges battery. */ }",
-        "  part def Pedestrian { doc /* External actor. */ }",
-        "",
-        "  use case def DriveVehicle {",
-        "    subject vehicle : Vehicle;",
-        "    actor driver : Driver;",
-        "    include use case startUp : StartVehicle;",
-        "    include use case navigate : NavigateRoute;",
-        "  }",
-        "",
-        "  use case def StartVehicle {",
-        "    subject vehicle : Vehicle;",
-        "    actor driver : Driver;",
-        "  }",
-        "",
-        "  use case def NavigateRoute {",
-        "    subject vehicle : Vehicle;",
-        "    actor driver : Driver;",
-        "  }",
-        "",
-        "  use case def PerformMaintenance {",
-        "    subject vehicle : Vehicle;",
-        "    actor mechanic : Mechanic;",
-        "  }",
-        "",
-        "  use case def MonitorFleet {",
-        "    actor manager : FleetManager;",
-        "  }",
-        "",
-        "  use case def ChargeVehicle {",
-        "    subject vehicle : Vehicle;",
-        "    actor driver : Driver;",
-        "    actor station : ChargingStation;",
-        "  }",
-        "",
-        "  use case def UpdateSoftware {",
-        "    subject vehicle : Vehicle;",
-        "    actor mechanic : Mechanic;",
-        "  }",
-        "",
-        "  use case def AdjustClimateControl {",
-        "    subject vehicle : Vehicle;",
-        "    actor passenger : Passenger;",
-        "  }",
-        "",
-        "  use case def DetectObstacle {",
-        "    subject vehicle : Vehicle;",
-        "    actor pedestrian : Pedestrian;",
-        "    actor driver : Driver;",
-        "  }",
-        "}",
-        "",
-        "// ── Behavior ──",
-        "package VehicleBehavior {",
-        "",
-        "  action def StartEngine {",
-        "    in ignitionSignal : Boolean;",
-        "    out engineRunning : Boolean;",
-        "  }",
-        "",
-        "  action def Accelerate {",
-        "    in throttlePosition : Real;",
-        "    out newSpeed : Real;",
-        "  }",
-        "",
-        "  action def Brake {",
-        "    in brakeForce : Real;",
-        "    out newSpeed : Real;",
-        "  }",
-        "",
-        "  state def VehicleStates {",
-        "    state off;",
-        "    state idle;",
-        "    state driving;",
-        "",
-        "    transition off_to_idle",
-        "      first off",
-        "      then idle;",
-        "",
-        "    transition idle_to_driving",
-        "      first idle",
-        "      then driving;",
-        "  }",
-        "",
-        "}",
-        "",
-        "// ── Requirements ──",
-        "package VehicleRequirements {",
-        "",
-        "  requirement def MassRequirement {",
-        "    doc /* Total mass shall not exceed 2000 kg. */",
-        "    attribute maxMass : Real;",
-        "  }",
-        "",
-        "  requirement def SafetyRequirement {",
-        "    doc /* Vehicle shall pass NCAP 5-star rating. */",
-        "    attribute minRating : Integer;",
-        "  }",
-        "",
-        "  requirement def PerformanceRequirement {",
-        "    doc /* 0-100 km/h in under 6 seconds. */",
-        "    attribute targetTime : Real;",
-        "  }",
-        "",
-        "}",
-        "",
-        "// ── Analysis ──",
-        "package VehicleAnalysis {",
-        "",
-        "  calc def TotalMass {",
-        "    in bodyMass : Real;",
-        "    in drivetrainMass : Real;",
-        "    return : Real;",
-        "    bodyMass + drivetrainMass",
-        "  }",
-        "",
-        "  constraint def MaxMassConstraint {",
-        "    1500 + 200 <= 2000",
-        "  }",
-        "",
-        "}",
-        "",
-
-        "// ── Integration ──",
-        "package VehicleIntegration {",
-        "  part vehicle : VehicleSystem::Vehicle;",
-        "  satisfy VehicleRequirements::MassRequirement by vehicle;",
-        "  satisfy VehicleRequirements::SafetyRequirement by vehicle;",
-        "}",
-        "",
-      ].join("\n"),
-    },
-    fmi2: {
-      "System.mo":
-        [
-          "model System",
-          "  Real x(start=1.0);",
-          "  Real v(start=0.0);",
-          "equation",
-          "  der(x) = v;",
-          "  der(v) = -x;",
-          "end System;",
-        ].join("\n") + "\n",
-    },
-    fmi3: {
-      "System.mo":
-        [
-          "model System",
-          "  Real x(start=1.0);",
-          "  Real v(start=0.0);",
-          "equation",
-          "  der(x) = v;",
-          "  der(v) = -x;",
-          "end System;",
-        ].join("\n") + "\n",
-    },
-    script: {
-      "simulate.mos": `// A simple Modelica script\nloadString("\nmodel HelloWorld\n  Real x(start=1);\nequation\n  der(x) = -x;\nend HelloWorld;\n");\n\nsimulate(HelloWorld, stopTime=5);\n`,
-    },
-    "simulation-verification": {
-      "BatteryArchitecture.sysml": [
-        "package BatteryArchitecture {",
-        "  requirement def MaxTempReq {",
-        "    doc /* Battery cells shall not exceed 65.0 degC */",
-        "    attribute maxTemp : Real = 65.0;",
-        "  }",
-        "",
-        "  part def BatteryCell {",
-        "    // Bound to Modelica thermal model",
-        "  }",
-        "",
-        "  analysis def VerifyThermalLimit {",
-        "    subject cell : BatteryCell;",
-        "    objective req : MaxTempReq;",
-        "",
-        "    constraint cellTempLimit {",
-        "      cell.T <= req.maxTemp",
-        "    }",
-        "  }",
-        "}",
-      ].join("\n"),
-      "BatteryCell.mo": [
-        'model BatteryCell "Battery cell thermal model"',
-        '  annotation(SysML(implements="BatteryArchitecture::BatteryCell"));',
-        "  ",
-        '  parameter Real R = 0.1 "Thermal resistance";',
-        '  parameter Real C = 50.0 "Thermal capacitance";',
-        '  parameter Real P_heat = 500.0 "Heat generation";',
-        '  parameter Real T_amb = 25.0 "Ambient temp";',
-        "  ",
-        '  Real T(start=25.0) "Cell temperature";',
-        "equation",
-        "  C * der(T) = P_heat - (T - T_amb) / R;",
-        "end BatteryCell;",
-      ].join("\n"),
-    },
-    "multi-fidelity-binding": {
-      "PropellerDynamics.mo": [
-        'model PropellerDynamics "1D Modelica dynamics bound to 3D CFD"',
-        '  parameter Real drag_coeff = 0.05 annotation(Binding(source="drone_geometry.step", feature="DragCoefficient", tool="CFD_Extraction"));',
-        '  parameter Real inertia = 0.001 annotation(Binding(source="drone_geometry.step", feature="MomentOfInertia", tool="CAD_Extraction"));',
-        "",
-        '  Real w(start=0.0) "Angular velocity";',
-        '  parameter Real torque = 0.5 "Applied torque";',
-        "equation",
-        "  inertia * der(w) = torque - drag_coeff * w^2;",
-        "end PropellerDynamics;",
-      ].join("\n"),
-    },
-    "data-driven-calibration": {
-      "Suspension.mo": [
-        'model Suspension "Vehicle suspension model for calibration"',
-        "  parameter Real stiffness = 15000.0 annotation(calibrate(min=10000.0, max=30000.0));",
-        "  parameter Real damping = 1000.0 annotation(calibrate(min=500.0, max=2000.0));",
-        "  parameter Real mass = 300.0;",
-        "",
-        "  Real position(start=0.1);",
-        "  Real velocity(start=0.0);",
-        "equation",
-        "  der(position) = velocity;",
-        "  mass * der(velocity) = -stiffness * position - damping * velocity;",
-        "end Suspension;",
-      ].join("\n"),
-      "telemetry_data.csv": [
-        "time,position",
-        "0.0,0.1",
-        "0.1,0.08",
-        "0.2,0.03",
-        "0.3,-0.02",
-        "0.4,-0.05",
-        "0.5,-0.04",
-        "0.6,-0.01",
-        "0.7,0.02",
-        "0.8,0.03",
-        "0.9,0.02",
-        "1.0,0.0",
-      ].join("\n"),
-    },
-    "hardware-ci": {
-      "SystemIntegration.mo": [
-        'model SystemIntegration "Top-level integration prone to structural singularities"',
-        "  // Assume MechanicalComponents.MotorDrive and ElectricalComponents.MechanicalLoad exist",
-        "  // MotorDrive drive;",
-        "  // MechanicalLoad load;",
-        "equation",
-        "  // Structural over-constraint: connecting two fixed speed sources",
-        "  // connect(drive.flange, load.flange);",
-        "end SystemIntegration;",
-      ].join("\n"),
-      ".github/workflows/ci.yml": [
-        "name: Hardware CI",
-        "on: [push, pull_request]",
-        "jobs:",
-        "  verify:",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - uses: actions/checkout@v3",
-        "      - name: Run ModelScript Lint",
-        "        run: msc lint",
-        "      - name: Verify Structural Constraints",
-        "        run: msc verify",
-      ].join("\n"),
-    },
-    "mbse-verification": {
-      "ThermalVerification.sysml": [
-        "package ThermalVerification {",
-        "",
-        "  requirement def MaxTemperatureReq {",
-        "    doc /* Motor temperature shall not exceed 85 °C */",
-        "    attribute maxTemp : Real = 85.0;",
-        "  }",
-        "",
-        "  part def MotorSystem {",
-        "    // Allocated to Modelica class 'HeatedMotor'",
-        "  }",
-        "",
-        "  analysis def VerifyTemperature {",
-        "    subject motor : MotorSystem;",
-        "    objective req : MaxTemperatureReq;",
-        "",
-        "    constraint tempLimit {",
-        "      motor.T <= req.maxTemp",
-        "    }",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-      "HeatedMotor.mo": [
-        'model HeatedMotor "Motor with thermal dynamics"',
-        '  annotation(SysML(implements="ThermalVerification::MotorSystem"));',
-        "  ",
-        '  parameter Real R = 0.5 "Thermal resistance (K/W)";',
-        '  parameter Real C_th = 10.0 "Thermal capacitance (J/K)";',
-        '  parameter Real P = 200.0 "Power dissipation (W)";',
-        '  parameter Real T_amb = 25.0 "Ambient temperature (degC)";',
-        "  ",
-        '  Real T(start = 25.0) "Motor temperature (degC)";',
-        "equation",
-        "  C_th * der(T) = P - (T - T_amb) / R;",
-        "end HeatedMotor;",
-        "",
-      ].join("\n"),
-      "VerificationReport.md": [
-        "# Motor Thermal Verification",
-        "",
-        "Automated verification of motor thermal constraints.",
-        "",
-        "## System Requirements",
-        '::requirements{target="ThermalVerification"}',
-        "",
-        "## System Architecture",
-        '::diagram{target="HeatedMotor"}',
-        "",
-        "The maximum allowable motor temperature is: {{ ThermalVerification.MaxTemperatureReq.maxTemp }} °C.",
-        "",
-      ].join("\n"),
-    },
-    cad: {
-      "drone_architecture.sysml": [
-        "package DroneArchitecture {",
-        "  import DroneCAD::*;",
-        "",
-        "  part def DroneAssembly {",
-        "    part chassis : Chassis;",
-        "    part rotor1 : Rotor;",
-        "    part rotor2 : Rotor;",
-        "    part rotor3 : Rotor;",
-        "    part rotor4 : Rotor;",
-        "",
-        "    // Reference CAD geometry directly from the STEP file!",
-        "    ref chassisGeometry = DroneCAD::ChassisShape;",
-        "  }",
-        "",
-        "  part def Chassis {}",
-        "  part def Rotor {}",
-        "}",
-      ].join("\n"),
-      "drone.step": droneStepContent,
-    },
-    "drone-meshing": {
-      "drone.step": droneStepContent,
-      "README.md":
-        "# Drone Chassis Meshing\n\nRight-click `drone.step` and select **Create FEA Setup** or **Create CFD Setup** to begin configuring your mesh and physical simulation.",
-    },
-    "drone-fea": {
-      "drone.step": droneStepContent,
-      "DroneFEA.mo": [
-        'model DroneFEA "Static Structural FEA of Drone Chassis"',
-        "  extends ModelScript.Studies.StaticStructuralFEA(",
-        "    meshResolution = 0.05,",
-        "    elementOrder = 2",
-        "  );",
-        "",
-        '  parameter String stepFile = "drone.step" annotation(Dialog(loadSelector=true, filter="STEP Files (*.step *.stp)"));',
-        "",
-        "  Real maxDisplacementZ;",
-        "  Real maxVonMisesStress;",
-        "end DroneFEA;",
-      ].join("\n"),
-      "DroneDynamics.mo": [
-        'model DroneDynamics "Drone dynamics consuming FEA results"',
-        "  import DroneFEA;",
-        '  parameter Real max_displacement = DroneFEA.maxDisplacementZ "Imported from FEA";',
-        '  parameter Real max_stress = DroneFEA.maxVonMisesStress "Imported from FEA";',
-        "equation",
-        "  // Logic using FEA results",
-        "end DroneDynamics;",
-      ].join("\n"),
-    },
-    "drone-cfd": {
-      "drone.step": droneStepContent,
-      "DroneCFD.msim": [
-        "{",
-        '  "type": "CFD",',
-        '  "solver": "OpenFOAM",',
-        '  "stepFile": "drone.step",',
-        '  "mesh": {',
-        '    "size": 0.05',
-        "  },",
-        '  "exposeProperties": [',
-        '    { "name": "maxVelocityMagnitude", "type": "Real" },',
-        '    { "name": "maxPressure", "type": "Real" }',
-        "  ]",
-        "}",
-      ].join("\n"),
-      "DroneFlight.mo": [
-        'model DroneFlight "Drone flight consuming CFD results"',
-        "  import DroneCFD;",
-        '  parameter Real max_velocity = DroneCFD.maxVelocityMagnitude "Imported from CFD";',
-        '  parameter Real max_pressure = DroneCFD.maxPressure "Imported from CFD";',
-        "equation",
-        "  // Logic using CFD results",
-        "end DroneFlight;",
-      ].join("\n"),
-    },
-    "modelica-procedural-cad": {
-      "DroneCAD.mo": [
-        'package DroneCAD "Procedural CAD model of a quadcopter drone chassis"',
-        "",
-        "  import Geometry.*;",
-        "",
-        "  // ─── Reusable sub-assemblies ──────────────────────────────────────────",
-        "",
-        '  shape MotorMount "Cylindrical motor mount with propeller guard ring"',
-        '    parameter Real radius = 1.5 "Motor housing radius [mm]";',
-        '    parameter Real height = 2 "Motor housing height [mm]";',
-        "",
-        "    replaceable Cylinder housing(radius = radius, height = height)",
-        "      annotation(material = Aluminum);",
-        "",
-        "    Torus guard(major = radius * 2, minor = 0.1)",
-        "      annotation(Placement(origin = {0, height, 0}));",
-        "  end MotorMount;",
-        "",
-        '  shape DroneArm "Single arm extending from the body to a motor"',
-        '    parameter Real length = 12 "Arm length [mm]";',
-        '    parameter Real thickness = 1 "Arm thickness [mm]";',
-        '    parameter Real width = 1.5 "Arm width [mm]";',
-        '    parameter Real motorRadius = 1.5 "Motor mount radius [mm]";',
-        "",
-        "    Box beam(width = length, height = thickness, depth = width)",
-        "      annotation(material = CarbonFiber);",
-        "",
-        "    replaceable MotorMount motor(radius = motorRadius)",
-        "      annotation(Placement(origin = {length/2, thickness/2 + 0.5, 0}));",
-        "  end DroneArm;",
-        "",
-        '  shape LandingGear "Two-skid landing gear with vertical struts"',
-        '    parameter Real span = 8 "Distance between skids [mm]";',
-        '    parameter Real skidLength = 10 "Skid bar length [mm]";',
-        '    parameter Real strutHeight = 4 "Strut height from body to skid [mm]";',
-        "",
-        "    // Horizontal skid bars",
-        "    Box skidL(width = 0.5, height = 0.3, depth = skidLength)",
-        "      annotation(",
-        "        Placement(origin = {-span/2, -strutHeight, 0}),",
-        "        material = Aluminum",
-        "      );",
-        "    Box skidR(width = 0.5, height = 0.3, depth = skidLength)",
-        "      annotation(",
-        "        Placement(origin = {span/2, -strutHeight, 0}),",
-        "        material = Aluminum",
-        "      );",
-        "",
-        "    // Vertical struts",
-        "    Box strutLF(width = 0.3, height = strutHeight, depth = 0.3)",
-        "      annotation(Placement(origin = {-span/2, -strutHeight/2, skidLength/3}));",
-        "    Box strutLR(width = 0.3, height = strutHeight, depth = 0.3)",
-        "      annotation(Placement(origin = {-span/2, -strutHeight/2, -skidLength/3}));",
-        "    Box strutRF(width = 0.3, height = strutHeight, depth = 0.3)",
-        "      annotation(Placement(origin = {span/2, -strutHeight/2, skidLength/3}));",
-        "    Box strutRR(width = 0.3, height = strutHeight, depth = 0.3)",
-        "      annotation(Placement(origin = {span/2, -strutHeight/2, -skidLength/3}));",
-        "  end LandingGear;",
-        "",
-        '  shape CameraAssembly "Front-mounted camera with gimbal bracket"',
-        '    parameter Real gimbalWidth = 2 "Gimbal bracket width [mm]";',
-        '    parameter Real lensSize = 1.5 "Camera lens diameter [mm]";',
-        "",
-        "    Box mount(width = gimbalWidth, height = 0.8, depth = 3)",
-        "      annotation(material = ABS);",
-        "",
-        "    Box lens(width = lensSize, height = lensSize, depth = 1)",
-        "      annotation(",
-        "        Placement(origin = {0, -0.4, 2}),",
-        "        material = ABS",
-        "      );",
-        "  end CameraAssembly;",
-        "",
-        "  // ─── Main chassis assembly ────────────────────────────────────────────",
-        "",
-        '  shape DroneChassis "Complete quadcopter drone chassis"',
-        '    parameter Real bodySize = 10 "Central body width/depth [mm]";',
-        '    parameter Real bodyHeight = 3 "Central body height [mm]";',
-        '    parameter Real armLength = 12 "Arm length [mm]";',
-        '    parameter Real armAngle = 45 "Diagonal angle from X axis [deg]";',
-        "",
-        "    // ── Central body ──────────────────────────────────────────",
-        "    Box body(width = bodySize, height = bodyHeight, depth = bodySize)",
-        "      annotation(material = CarbonFiber);",
-        "",
-        "    Box topCover(width = bodySize - 2, height = 0.6, depth = bodySize - 2)",
-        "      annotation(",
-        "        Placement(origin = {0, bodyHeight/2 + 0.3, 0}),",
-        "        material = CarbonFiber",
-        "      );",
-        "",
-        "    Box electronicsBay(width = 6, height = 1, depth = 6)",
-        "      annotation(",
-        "        Placement(origin = {0, -bodyHeight/2 - 0.5, 0}),",
-        "        material = ABS",
-        "      );",
-        "",
-        "    // ── Four diagonal arms ────────────────────────────────────",
-        "    DroneArm armFR(length = armLength)",
-        "      annotation(Placement(origin = {6, 0, 6}, rotation = {0, armAngle, 0}));",
-        "",
-        "    DroneArm armFL(length = armLength)",
-        "      annotation(Placement(origin = {-6, 0, 6}, rotation = {0, -armAngle, 0}));",
-        "",
-        "    DroneArm armRR(length = armLength)",
-        "      annotation(Placement(origin = {6, 0, -6}, rotation = {0, 180 - armAngle, 0}));",
-        "",
-        "    DroneArm armRL(length = armLength)",
-        "      annotation(Placement(origin = {-6, 0, -6}, rotation = {0, -(180 - armAngle), 0}));",
-        "",
-        "    // ── Landing gear ──────────────────────────────────────────",
-        "    LandingGear gear(span = bodySize - 2, strutHeight = 4);",
-        "",
-        "    // ── Camera ────────────────────────────────────────────────",
-        "    CameraAssembly camera",
-        "      annotation(Placement(origin = {0, -1, bodySize/2 + 1.5}));",
-        "",
-        "    // ── Battery ───────────────────────────────────────────────",
-        "    Box battery(width = 5, height = 1.2, depth = 8)",
-        "      annotation(",
-        "        Placement(origin = {0, -bodyHeight/2 - 1.5, 0}),",
-        "        material = LiPo",
-        "      );",
-        "  end DroneChassis;",
-        "",
-        "  // ─── Parametric variants ──────────────────────────────────────────────",
-        "",
-        '  shape CargoDrone "Heavy-lift drone with larger body and longer arms"',
-        "    extends DroneChassis(",
-        "      bodySize = 15,",
-        "      bodyHeight = 4,",
-        "      armLength = 18",
-        "    );",
-        "  end CargoDrone;",
-        "",
-        '  shape RacingDrone "Lightweight racing drone with compact form"',
-        "    extends DroneChassis(",
-        "      bodySize = 8,",
-        "      bodyHeight = 2,",
-        "      armLength = 9,",
-        "      armAngle = 50",
-        "    );",
-        "  end RacingDrone;",
-        "",
-        "  // Demonstration of redeclare — swap motor mounts for tapered cones",
-        "  shape TaperedMotorMount",
-        "    extends MotorMount(",
-        "      redeclare Cone housing(",
-        "        radiusBottom = radius * 1.2,",
-        "        radiusTop = radius * 0.8,",
-        "        height = 2.5",
-        "      )",
-        "    );",
-        "  end TaperedMotorMount;",
-        "",
-        '  shape StealthDrone "Drone with tapered motor housings for aerodynamics"',
-        "    extends DroneChassis(",
-        "      bodySize = 9,",
-        "      armLength = 11,",
-        "      // Redeclare the motor mount type inside each arm",
-        "      redeclare DroneArm armFR(",
-        "        redeclare TaperedMotorMount motor",
-        "      ),",
-        "      redeclare DroneArm armFL(",
-        "        redeclare TaperedMotorMount motor",
-        "      ),",
-        "      redeclare DroneArm armRR(",
-        "        redeclare TaperedMotorMount motor",
-        "      ),",
-        "      redeclare DroneArm armRL(",
-        "        redeclare TaperedMotorMount motor",
-        "      )",
-        "    );",
-        "  end StealthDrone;",
-        "",
-        "end DroneCAD;",
-        "",
-      ].join("\n"),
-      "README.md":
-        "# Modelica Procedural CAD\n\nThis example demonstrates how to build 3D CAD geometries using the Modelica `shape` language extension.\n\nRight click on `DroneCAD.mo` and select **Generate STEP** to compile the procedural design into a standard 3D CAD model.",
-    },
-    "cfd-verification": {
-      "AirflowROM.mo": [
-        'model AirflowROM "Reduced-order CFD surrogate for heat exchanger airflow"',
-        '  input Real T_inlet(start = 25) "Inlet air temperature [°C]";',
-        '  input Real massFlow(start = 0.5) "Mass flow rate [kg/s]";',
-        '  output Real T_outlet "Outlet air temperature [°C]";',
-        '  output Real pressure_drop "Pressure drop [Pa]";',
-        '  parameter Real efficiency = 0.85 "Heat transfer efficiency";',
-        '  parameter Real k_drop = 200 "Pressure loss coefficient";',
-        "equation",
-        "  T_outlet = T_inlet + efficiency * (100 - T_inlet) * (1 - exp(-massFlow));",
-        "  pressure_drop = k_drop * massFlow^2;",
-        "end AirflowROM;",
-        "",
-      ].join("\n"),
-      "ThermalSystem.mo": [
-        'model ThermalSystem "Thermal system with embedded CFD surrogate"',
-        '  annotation(SysML(implements="ThermalVerification::ThermalSys"));',
-        "",
-        "  AirflowROM airflow;",
-        '  Real T_room(start = 20) "Room temperature [°C]";',
-        '  parameter Real C_room = 5000 "Thermal capacitance [J/°C]";',
-        '  parameter Real h_conv = 10 "Convective heat transfer coeff [W/°C]";',
-        '  parameter Real A_surface = 2.0 "Heat exchange surface [m²]";',
-        "equation",
-        "  airflow.T_inlet = 25 + 5 * sin(2 * 3.14159 * time / 3600);",
-        "  airflow.massFlow = 0.3 + 0.2 * sin(2 * 3.14159 * time / 1800);",
-        "  C_room * der(T_room) = h_conv * A_surface * (airflow.T_outlet - T_room);",
-        "end ThermalSystem;",
-        "",
-      ].join("\n"),
-      "ThermalVerification.sysml": [
-        "package ThermalVerification {",
-        "",
-        "  requirement def MaxOutletTempReq {",
-        "    doc /* Outlet temperature shall not exceed 85 °C */",
-        "    attribute maxTemp : Real = 85.0;",
-        "  }",
-        "",
-        "  requirement def MaxPressureDropReq {",
-        "    doc /* Pressure drop shall not exceed 500 Pa */",
-        "    attribute maxDrop : Real = 500.0;",
-        "  }",
-        "",
-        "  part def ThermalSys {",
-        "    // Allocated to Modelica class ThermalSystem",
-        "  }",
-        "",
-        "  analysis def VerifyThermal {",
-        "    subject system : ThermalSys;",
-        "    objective tempReq : MaxOutletTempReq;",
-        "",
-        "    constraint outlet_temp {",
-        "      system.airflow.T_outlet <= tempReq.maxTemp",
-        "    }",
-        "  }",
-        "",
-        "  analysis def VerifyPressure {",
-        "    subject system : ThermalSys;",
-        "    objective dropReq : MaxPressureDropReq;",
-        "",
-        "    constraint max_drop {",
-        "      system.airflow.pressure_drop <= dropReq.maxDrop",
-        "    }",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-      "VerificationReport.md": [
-        "# Thermal System Verification",
-        "",
-        "Automated verification of a thermal system with an embedded reduced-order CFD model.",
-        "",
-        "## Requirements",
-        '::requirements{target="ThermalVerification"}',
-        "",
-        "## System Architecture",
-        '::diagram{target="ThermalSystem"}',
-        "",
-        "Maximum outlet temperature limit: {{ ThermalVerification.MaxOutletTempReq.maxTemp }} °C.",
-        "",
-      ].join("\n"),
-    },
-    calibration: {
-      "SpringDamper.mo": [
-        'model SpringDamper "Mass-spring-damper system for parameter calibration"',
-        '  parameter Real m = 1.0 "Mass [kg]";',
-        '  parameter Real k = 50.0 "Spring stiffness [N/m] (to calibrate)";',
-        '  parameter Real c = 2.0 "Damping coefficient [Ns/m] (to calibrate)";',
-        '  Real x(start = 1.0) "Displacement [m]";',
-        '  Real v(start = 0.0) "Velocity [m/s]";',
-        "equation",
-        "  der(x) = v;",
-        "  m * der(v) = -k * x - c * v;",
-        "end SpringDamper;",
-        "",
-      ].join("\n"),
-      "measurements.csv": (() => {
-        // Generate synthetic measurement data:
-        // True params: k=80, c=5. Simulate manually + add noise.
-        const rows = ["time,x"];
-        const dt = 0.05;
-        const N = 100;
-        const k_true = 80,
-          c_true = 5,
-          m = 1.0;
-        let x = 1.0,
-          v = 0.0;
-        // Simple Euler integration to generate ground truth
-        for (let i = 0; i <= N; i++) {
-          const t = i * dt;
-          // Add small pseudo-random noise (deterministic for reproducibility)
-          const noise = 0.02 * Math.sin(t * 137.035999 + 7) * Math.cos(t * 42.7 + 3);
-          rows.push(`${t.toFixed(3)},${(x + noise).toFixed(6)}`);
-          // Euler step
-          const a = (-k_true * x - c_true * v) / m;
-          v += a * dt;
-          x += v * dt;
-        }
-        return rows.join("\n") + "\n";
-      })(),
-      "calibrate.mos": [
-        "// Parameter calibration of a spring-damper system",
-        "// True parameters: k=80, c=5 — initial guesses: k=50, c=2",
-        "//",
-        "// METHOD 1: Script-based calibration (this file)",
-        "//   Right-click → Run Script, or press the ▶ button.",
-        "//",
-        "// METHOD 2: Interactive UI panel (recommended)",
-        '//   Open SpringDamper.mo, then Ctrl+Shift+P → "ModelScript: Open Calibration Dashboard".',
-        "//   The dashboard provides live convergence plots and parameter sliders.",
-        "",
-        'loadFile("SpringDamper.mo");',
-        "",
-        "calibrate(SpringDamper,",
-        "  stopTime = 5.0,",
-        '  parameters = {"k", "c"},',
-        "  parameterBounds = [10, 200; 0.1, 20],",
-        '  measurementFile = "measurements.csv",',
-        '  method = "lm"',
-        ");",
-        "",
-      ].join("\n"),
-      "README.md": [
-        "# Parameter Calibration Example",
-        "",
-        "This example demonstrates **parameter calibration** of a spring-damper system against synthetic measurement data.",
-        "",
-        "## The Model",
-        "",
-        "`SpringDamper.mo` defines a simple mass-spring-damper system with two unknown parameters:",
-        "- `k` — spring stiffness (initial guess: 50 N/m, true value: 80 N/m)",
-        "- `c` — damping coefficient (initial guess: 2 Ns/m, true value: 5 Ns/m)",
-        "",
-        "## Measurement Data",
-        "",
-        "`measurements.csv` contains synthetic displacement measurements generated from the true system with added noise.",
-        "",
-        "## Two Ways to Calibrate",
-        "",
-        "### 1. Script-Based (`calibrate.mos`)",
-        "Right-click `calibrate.mos` → **Run Script**. The `calibrate()` function runs the Levenberg–Marquardt optimizer and prints the optimal parameters to the console.",
-        "",
-        "### 2. Calibration Dashboard (Interactive UI)",
-        "1. Open `SpringDamper.mo`",
-        '2. `Ctrl+Shift+P` → **"ModelScript: Open Calibration Dashboard"**',
-        "3. The dashboard provides:",
-        "   - Live convergence plots",
-        "   - Measurement vs. simulated overlay",
-        "   - One-click export of the optimized parameters as a Modelica `extends` class",
-        "",
-        "Both methods use the same Levenberg–Marquardt / SQP optimizer under the hood.",
-        "",
-      ].join("\n"),
-    },
-    "optimica-polyglot": {
-      "RocketSled.mo": [
-        'optimization RocketSled "Energy-optimal rocket sled trajectory"',
-        '  Real x(start = 0) "Position [m]";',
-        '  Real v(start = 0) "Velocity [m/s]";',
-        '  input Real u(min = -5, max = 5) "Thrust force [N]";',
-        '  parameter Real m = 1.0 "Mass [kg]";',
-        '  parameter Real drag = 0.1 "Drag coefficient";',
-        "equation",
-        "  der(x) = v;",
-        "  m * der(v) = u - drag * v;",
-        "constraint",
-        "  v <= 10.0;",
-        "  x(finalTime) >= 50.0;",
-        "end RocketSled;",
-        "",
-      ].join("\n"),
-      "SafetyConstraints.sysml": [
-        "package SafetyConstraints {",
-        "",
-        "  requirement def MaxVelocityReq {",
-        "    doc /* Velocity shall not exceed 10 m/s for structural safety */",
-        "    attribute maxVelocity : Real = 10.0;",
-        "  }",
-        "",
-        "  requirement def MinFinalPositionReq {",
-        "    doc /* Final position shall be at least 50 m to reach the target */",
-        "    attribute minPosition : Real = 50.0;",
-        "  }",
-        "",
-        "  part def RocketSledSys {",
-        "    // Allocated to Modelica optimization class RocketSled",
-        "  }",
-        "",
-        "  analysis def OptimalTrajectory {",
-        "    subject sled : RocketSledSys;",
-        "    objective velReq : MaxVelocityReq;",
-        "",
-        "    constraint max_v {",
-        "      sled.v <= velReq.maxVelocity",
-        "    }",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-      "optimize.mos": [
-        "// Optimal control with Optimica + SysML2 constraints",
-        "",
-        'loadFile("RocketSled.mo");',
-        "",
-        "optimize(RocketSled,",
-        "  startTime = 0,",
-        "  stopTime = 20,",
-        "  numIntervals = 50,",
-        "  tolerance = 1e-6",
-        ");",
-        "",
-      ].join("\n"),
-    },
-    uncertainty: {
-      "Projectile.mo": [
-        'model Projectile "Projectile with uncertain drag and mass"',
-        '  parameter Real m = 1.0 "Mass [kg] (uncertain)";',
-        '  parameter Real Cd = 0.47 "Drag coefficient (uncertain)";',
-        '  parameter Real g = 9.81 "Gravitational acceleration [m/s²]";',
-        '  parameter Real rho = 1.225 "Air density [kg/m³]";',
-        '  parameter Real A = 0.01 "Cross-section area [m²]";',
-        '  Real x(start = 0) "Horizontal position [m]";',
-        '  Real y(start = 0) "Vertical position [m]";',
-        '  Real vx(start = 20) "Horizontal velocity [m/s]";',
-        '  Real vy(start = 30) "Vertical velocity [m/s]";',
-        '  Real speed "Total speed [m/s]";',
-        "equation",
-        "  speed = sqrt(vx^2 + vy^2);",
-        "  der(x) = vx;",
-        "  der(y) = vy;",
-        "  m * der(vx) = -0.5 * rho * Cd * A * speed * vx;",
-        "  m * der(vy) = -m * g - 0.5 * rho * Cd * A * speed * vy;",
-        "end Projectile;",
-        "",
-      ].join("\n"),
-      "uncertainty.mos": [
-        "// Monte Carlo uncertainty analysis for a projectile",
-        "// Uncertain parameters: drag coefficient (Gaussian) and mass (Uniform)",
-        "",
-        'loadFile("Projectile.mo");',
-        "",
-        "montecarlo(Projectile,",
-        "  stopTime = 5,",
-        "  numberOfIntervals = 200,",
-        "  parameters = {",
-        '    "Cd ~ normal(0.47, 0.05)",',
-        '    "m ~ uniform(0.9, 1.1)"',
-        "  },",
-        "  numSamples = 200,",
-        "  seed = 42,",
-        '  method = "lhs"',
-        ");",
-        "",
-      ].join("\n"),
-    },
-    notebook: {
-      "demo.monb": JSON.stringify(
-        {
-          cells: [
-            {
-              cell_type: "markdown",
-              source: [
-                "# Modelica Notebooks",
-                "",
-                "Welcome to ModelScript Notebooks! Create models and simulate them directly.",
-              ],
-            },
-            {
-              cell_type: "code",
-              source: ["model Simple", "  Real x(start = 1);", "equation", "  der(x) = -x;", "end Simple;"],
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-    },
-    surrogate: {
-      "BouncingBall.mo": [
-        'model BouncingBall "A classic bouncing ball model"',
-        '  parameter Real e = 0.8 "Coefficient of restitution";',
-        '  parameter Real g = 9.81 "Gravity";',
-        '  parameter Real v_0 = 0.0 "Initial velocity";',
-        '  Real h(start = 1.0) "Height";',
-        '  Real v(start = v_0) "Velocity";',
-        "equation",
-        "  der(h) = v;",
-        "  der(v) = -g;",
-        "  when h <= 0.0 and v < 0.0 then",
-        "    reinit(v, -e * pre(v));",
-        "  end when;",
-        "end BouncingBall;",
-        "",
-      ].join("\n"),
-      "README.md": [
-        "# AI Surrogate Modeling",
-        "",
-        "This workspace demonstrates how to orchestrate Design of Experiments (DoE) and train AI surrogate models (Reduced Order Models) directly from Modelica.",
-        "",
-        "## Training a Surrogate",
-        "",
-        "1. Open `BouncingBall.mo`",
-        "2. Click the **Train Surrogate** icon (robot) in the editor title bar",
-        "3. Choose a **DoE Strategy** (e.g., Latin Hypercube) and number of samples",
-        "4. Choose an **Architecture** (e.g., MLP Neural Network)",
-        "5. Click **Train Surrogate**",
-        "",
-        "The platform will orchestrate headless simulations to build a dataset, train the neural network, and report the R² accuracy.",
-        "",
-        "## Exporting to WebAssembly",
-        "",
-        "Once training is complete, click **Generate WASM** in the Surrogate Editor.",
-        "This will instantly generate a self-contained C source code array of the neural network weights and biases, ready for edge deployment!",
-      ].join("\n"),
-    },
-    "assembly-to-multibody": {
-      "SimplePendulum.step": [
-        "ISO-10303-21;",
-        "HEADER;",
-        "FILE_DESCRIPTION(('STEP AP242 Assembly'),'2;1');",
-        "FILE_NAME('SimplePendulum.step','2026-05-13',('ModelScript'),(''),(''),'','');",
-        "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));",
-        "ENDSEC;",
-        "DATA;",
-        "#1=PRODUCT('Assembly','Assembly','',(#2));",
-        "#2=PRODUCT_CONTEXT('',#3,'mechanical');",
-        "#3=APPLICATION_CONTEXT('automotive design');",
-        "#10=PRODUCT('Link','Link','',(#2));",
-        "#20=PRODUCT('Bob','Bob','',(#2));",
-        "#30=NEXT_ASSEMBLY_USAGE_OCCURRENCE('NAUO1','Link to Bob','',#10,#20,$);",
-        "#40=REVOLUTE_PAIR('RevJoint','Joint between Link and Bob',#10,#20);",
-        "ENDSEC;",
-        "END-ISO-10303-21;",
-      ].join("\n"),
-      "README.md": [
-        "# STEP AP242 to Modelica Multi-Body",
-        "",
-        "This workspace demonstrates the automated conversion of a 3D CAD assembly into a Modelica Multi-Body simulation.",
-        "",
-        "## Workflow",
-        "",
-        "1. Open `SimplePendulum.step`.",
-        "2. The 3D Viewer will render the geometric bodies (if OCCT WASM is loaded).",
-        "3. Click the **⚙️ Generate Multi-Body Model** button in the top left of the 3D Viewer, or run the command from the Command Palette.",
-        "4. A new `SimplePendulum.mo` file will be generated automatically, containing `Parts.Body` and `Joints.Revolute` components.",
-        "5. Open `SimplePendulum.mo` and click **Run Simulation** to simulate the dynamics!",
-      ].join("\n"),
-      "generate.mos": [
-        "// Generate a Multi-Body model from a STEP assembly",
-        'loadStepAssembly("SimplePendulum.step");',
-        "generateMultiBody(density = 7800);",
-        "simulate(SimplePendulum_Assembly, stopTime = 10);",
-      ].join("\n"),
-    },
-    cosim: {
-      "Controller.mo": [
-        'model Controller "Simple PI controller"',
-        '  Modelica.Blocks.Interfaces.RealInput u "Measurement input";',
-        '  Modelica.Blocks.Interfaces.RealOutput y "Control output";',
-        '  parameter Real Kp = 2.0 "Proportional gain";',
-        '  parameter Real Ki = 0.5 "Integral gain";',
-        '  parameter Real setpoint = 1.0 "Reference setpoint";',
-        '  Real error "Tracking error";',
-        '  Real integral(start = 0) "Integral of error";',
-        "equation",
-        "  error = setpoint - u;",
-        "  der(integral) = error;",
-        "  y = Kp * error + Ki * integral;",
-        "end Controller;",
-        "",
-      ].join("\n"),
-      "CosimSetup.mo": [
-        'model CosimSetup "Co-simulation wiring diagram"',
-        "  Controller controller;",
-        "  SineWave sineWave;",
-        "equation",
-        "  connect(controller.y, sineWave.phase);",
-        "  connect(sineWave.y, controller.u);",
-        "end CosimSetup;",
-        "",
-      ].join("\n"),
-      "README.md": [
-        "# Co-Simulation Example",
-        "",
-        "This workspace demonstrates co-simulation between a **Modelica model** and a **WASM FMU**.",
-        "",
-        "## Files",
-        "",
-        "| File | Type | Description |",
-        "|------|------|-------------|",
-        "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
-        "| `CosimSetup.mo` | Modelica | Wiring diagram connecting Controller ↔ SineWave |",
-        "",
-        "## Running the Co-Simulation",
-        "",
-        "1. Open the **Co-Simulation** panel in the sidebar",
-        '2. Click **"Browser-Local"** to enable local mode',
-        "3. Create a new session (start=0, stop=10, step=0.01)",
-        "4. Open `Controller.mo` and click **Publish Model**",
-        "5. Start the coupled simulation",
-      ].join("\n"),
-    },
-    "uns-mqtt": {
-      "DigitalTwin.mo": [
-        'model DigitalTwin "Real-Time Digital Twin with UNS/MQTT"',
-        '  parameter Real target_speed = 10.0 "Override via: .../cmd/DigitalTwin/target_speed";',
-        '  Real speed(start=0) "Telemetry published to: .../data/DigitalTwin/speed";',
-        "equation",
-        "  der(speed) = (target_speed - speed) * 1.5;",
-        "end DigitalTwin;\n",
-      ].join("\n"),
-      "hmi.html": [
-        "<!DOCTYPE html>",
-        "<html><head><title>HMI</title>",
-        '<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>',
-        "<style>body{font-family:sans-serif;text-align:center;padding-top:50px;} h1{font-size:3rem;}</style>",
-        "</head><body>",
-        "<h2>Conveyor Speed</h2>",
-        '<h1 id="speed">0.00</h1>',
-        "<p>Live telemetry via MQTT Unified Namespace</p>",
-        "</body></html>",
-      ].join("\n"),
-      "README.md": [
-        "# UNS / Real-Time MQTT Example",
-        "",
-        "This workspace demonstrates how to stream live telemetry from a Modelica simulation directly to an external HMI web app.",
-      ].join("\n"),
-    },
-  };
-
-  if (template === "stress-test") {
-    const massiveModelRows = [];
-    massiveModelRows.push('model MassiveModel "A massive model with thousands of elements"');
-    for (let i = 0; i < 5000; i++) {
-      massiveModelRows.push(`  Real v${i}(start = ${i});`);
-    }
-    massiveModelRows.push("equation");
-    for (let i = 0; i < 4999; i++) {
-      massiveModelRows.push(`  der(v${i}) = v${i + 1} - v${i};`);
-    }
-    massiveModelRows.push(`  der(v4999) = -v4999;`);
-    massiveModelRows.push("end MassiveModel;\n");
-
-    const entries: [vscode.Uri, Uint8Array][] = [];
-    entries.push([Uri.joinPath(workspaceUri, "MassiveModel.mo"), encoder.encode(massiveModelRows.join("\n"))]);
-
-    for (let i = 0; i < 5; i++) {
-      // Use SysML2 ':>' syntax for inheritance to avoid syntax errors
-      const extendsClause = i > 0 ? `:> Component_${String(i - 1).padStart(3, "0")} ` : "";
-      const content = `package Component_${String(i).padStart(3, "0")} {\n  part def Component_${String(i).padStart(3, "0")} ${extendsClause}{\n    attribute localValue : Real = ${i}.0;\n  }\n}\n`;
-      entries.push([
-        Uri.joinPath(workspaceUri, `Component_${String(i).padStart(3, "0")}.sysml`),
-        encoder.encode(content),
-      ]);
-    }
-    memFs.writeFiles(entries);
-    console.log("[blank-project] Scaffolded stress-test workspace files.");
-    return;
-  }
-
-  const files = templates[template];
-  if (files) {
-    for (const [name, content] of Object.entries(files)) {
-      const fileUri = Uri.joinPath(workspaceUri, name);
-      memFs.writeFile(fileUri, encoder.encode(content));
-    }
-    console.log(`[blank-project] Scaffolded ${Object.keys(files).length} template file(s) for '${template}'`);
-  }
-}
 
 /**
  * Initialize the workspace: scan for .mo files or create a blank project,
@@ -3309,809 +1934,39 @@ async function initWorkspaceAndTree(
     const workspaceUri = folders[0].uri;
     try {
       const template = workspaceUri.path.substring(1) || "empty";
-
-      let filename = "";
-      let content = "";
-
-      switch (template) {
-        case "empty":
-        case "blank":
-          filename = "HelloWorld.mo";
-          content = `model HelloWorld "A simple Modelica model"\n  Real x(start = 1);\n  parameter Real a = -1;\nequation\n  der(x) = a * x;\nend HelloWorld;\n`;
-          break;
-        case "bouncing-ball":
-          filename = "BouncingBall.mo";
-          content = `model BouncingBall "A bouncing ball"\n  parameter Real e = 0.8 "Coefficient of restitution";\n  parameter Real g = 9.81 "Gravity";\n  Real h(start = 1) "Height";\n  Real v "Velocity";\nequation\n  der(h) = v;\n  der(v) = -g;\n  when h < 0 then\n    reinit(v, -e * pre(v));\n  end when;\nend BouncingBall;\n`;
-          break;
-        case "injection-molding-cosim":
-          filename = "Manufacturing.mo";
-          content = `package Manufacturing
-  import Modelica.Fluid.Interfaces.FluidPort_a;
-  import Modelica.Fluid.Sources.MassFlowSource_T;
-  import ModelScript.Geometry;
-  
-  // 1. Define the 3D CAD Geometry
-  shape SnesTopShell extends Geometry.Box
-    parameter Real width = 150;
-    parameter Real height = 60;
-    parameter Real depth = 20;
-  end SnesTopShell;
-
-  // 2. Define the 3D CFD Interface Block using a new 'field' class kind
-  field InjectionCavity "A boundary node that proxies the 3D OpenFOAM solver"
-    parameter Geometry.Shape geometry;
-    parameter String material = "ABS";
-    parameter Real moldTemp = 40.0;
-    FluidPort_a gateInlet;
-  end InjectionCavity;
-
-  // 3. Define the 1D System Dynamics
-  model HydraulicInjectionUnit "1D Lumped parameter model of the injection machine"
-    parameter Real targetPressure = 150e6;
-    parameter Real barrelTemp = 493.15;
-    Modelica.Fluid.Sources.MassFlowSource_T ram(nPorts = 1, m_flow = 0.05, T = barrelTemp);
-    FluidPort_a fluidOut;
-  equation
-    connect(ram.ports[1], fluidOut);
-  end HydraulicInjectionUnit;
-
-  // 4. The Full System Orchestration
-  process SnesMoldProcess
-    HydraulicInjectionUnit injectionMachine(targetPressure = 150e6);
-    InjectionCavity mold(
-      geometry = SnesTopShell(),
-      material = "ABS",
-      moldTemp = 40.0
-    );
-  equation
-    connect(injectionMachine.fluidOut, mold.gateInlet);
-  end SnesMoldProcess;
-end Manufacturing;
-`;
-          break;
-        case "rlc":
-          filename = "RLC.mo";
-          content = [
-            'model RLC "RLC circuit with MSL components"',
-            "  Modelica.Electrical.Analog.Sources.SineVoltage Vb(V = 10, f = 50)",
-            "    annotation(Placement(transformation(origin = {-70, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
-            "  Modelica.Electrical.Analog.Basic.Inductor L(L = 0.5)",
-            "    annotation(Placement(transformation(origin = {0, 40}, extent = {{-10, -10}, {10, 10}})));",
-            "  Modelica.Electrical.Analog.Basic.Capacitor C(C = 1e-4)",
-            "    annotation(Placement(transformation(origin = {20, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
-            "  Modelica.Electrical.Analog.Basic.Resistor R(R = 100)",
-            "    annotation(Placement(transformation(origin = {60, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
-            "  Modelica.Electrical.Analog.Basic.Ground ground",
-            "    annotation(Placement(transformation(origin = {-70, -40}, extent = {{-10, -10}, {10, 10}})));",
-            "equation",
-            "  connect(Vb.p, L.p)",
-            "    annotation(Line(points = {{-70, 10}, {-70, 40}, {-10, 40}}, color = {0, 0, 255}));",
-            "  connect(L.n, C.p)",
-            "    annotation(Line(points = {{10, 40}, {20, 40}, {20, 10}}, color = {0, 0, 255}));",
-            "  connect(L.n, R.p)",
-            "    annotation(Line(points = {{10, 40}, {60, 40}, {60, 10}}, color = {0, 0, 255}));",
-            "  connect(R.n, Vb.n)",
-            "    annotation(Line(points = {{60, -10}, {60, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
-            "  connect(C.n, Vb.n)",
-            "    annotation(Line(points = {{20, -10}, {20, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
-            "  connect(Vb.n, ground.p)",
-            "    annotation(Line(points = {{-70, -10}, {-70, -30}}, color = {0, 0, 255}));",
-            "end RLC;",
-            "",
-          ].join("\n");
-          break;
-        case "cad-assembly":
-          filename = "RobotAssembly.mo";
-          content = [
-            'model RobotAssembly "3D CAD Robot Assembly"',
-            "  // Base of the robot",
-            '  Real base_angle = 0 "Base rotation angle";',
-            '  Real base annotation(CAD(uri="Fox.glb", position={0, 0, 0}, scale={0.02, 0.02, 0.02}));',
-            "",
-            "  // A payload block",
-            '  Real payload annotation(CAD(uri="BoxTextured.glb", position={2, 0, 2}, scale={0.5, 0.5, 0.5}));',
-            "",
-            "  // An interactive port attachment point",
-            '  Real target annotation(CADPort(feature="TargetArea", offsetPosition={2, 1, 2}));',
-            "equation",
-            "  base = 0;",
-            "  payload = 1;",
-            "  target = 2;",
-            "end RobotAssembly;",
-            "",
-          ].join("\n");
-
-          await workspace.fs.writeFile(Uri.joinPath(workspaceUri, "Fox.glb"), decodeBase64ToArray(foxBase64));
-          await workspace.fs.writeFile(
-            Uri.joinPath(workspaceUri, "BoxTextured.glb"),
-            decodeBase64ToArray(boxTexturedBase64),
-          );
-          break;
-        case "sysml2":
-          filename = "VehicleSystem.sysml";
-          content = [
-            "package VehicleSystem {",
-            "",
-            "  // ── Port Definitions ──",
-            "  port def TorquePort {",
-            "    attribute torqueValue : Real;",
-            "  }",
-            "",
-            "  port def ElectricalPort {",
-            "    attribute voltage : Real;",
-            "    attribute current : Real;",
-            "  }",
-            "",
-            "  port def FuelPort {",
-            "    attribute flowRate : Real;",
-            "  }",
-            "",
-            "  // ── Part Definitions ──",
-            "  part def Engine {",
-            "    attribute horsePower : Real;",
-            "    attribute displacement : Real;",
-            "",
-            "    port torqueOut : TorquePort;",
-            "    port fuelIn : FuelPort;",
-            "  }",
-            "",
-            "  part def Transmission {",
-            "    attribute gearRatio : Real;",
-            "    attribute numberOfGears : Integer;",
-            "",
-            "    port torqueIn : TorquePort;",
-            "    port torqueOut : TorquePort;",
-            "  }",
-            "",
-            "  part def Battery {",
-            "    attribute capacity : Real;",
-            "    attribute voltage : Real;",
-            "",
-            "    port electricalOut : ElectricalPort;",
-            "  }",
-            "",
-            "  part def BrakeSystem {",
-            "    attribute maxBrakingForce : Real;",
-            "    attribute absEnabled : Boolean;",
-            "  }",
-            "",
-            "  part def Wheel {",
-            "    attribute diameter : Real;",
-            "    attribute tirePressure : Real;",
-            "  }",
-            "",
-            "  part def FuelTank {",
-            "    attribute capacity : Real;",
-            "",
-            "    port fuelOut : FuelPort;",
-            "  }",
-            "",
-            "  // ── Top-Level Vehicle ──",
-            "  part def Vehicle {",
-            "    attribute mass : Real;",
-            "    attribute topSpeed : Real;",
-            "",
-            "    part engine : Engine;",
-            "    part transmission : Transmission;",
-            "    part battery : Battery;",
-            "    part brakes : BrakeSystem;",
-            "    part frontLeft : Wheel;",
-            "    part fuelTank : FuelTank;",
-            "",
-            "    connect engine.torqueOut to transmission.torqueIn;",
-            "    connect fuelTank.fuelOut to engine.fuelIn;",
-            "  }",
-            "",
-            "  // ── Actors & Use Cases ──",
-            "",
-            "  part def Driver { doc /* Primary operator. */ }",
-            "  part def Mechanic { doc /* Service technician. */ }",
-            "  part def FleetManager { doc /* Oversees fleet. */ }",
-            "  part def Passenger { doc /* Rides vehicle. */ }",
-            "  part def ChargingStation { doc /* Recharges battery. */ }",
-            "  part def Pedestrian { doc /* External actor. */ }",
-            "",
-            "  use case def DriveVehicle {",
-            "    subject vehicle : Vehicle;",
-            "    actor driver : Driver;",
-            "    include use case startUp : StartVehicle;",
-            "    include use case navigate : NavigateRoute;",
-            "  }",
-            "",
-            "  use case def StartVehicle {",
-            "    subject vehicle : Vehicle;",
-            "    actor driver : Driver;",
-            "  }",
-            "",
-            "  use case def NavigateRoute {",
-            "    subject vehicle : Vehicle;",
-            "    actor driver : Driver;",
-            "  }",
-            "",
-            "  use case def PerformMaintenance {",
-            "    subject vehicle : Vehicle;",
-            "    actor mechanic : Mechanic;",
-            "  }",
-            "",
-            "  use case def MonitorFleet {",
-            "    actor manager : FleetManager;",
-            "  }",
-            "",
-            "  use case def ChargeVehicle {",
-            "    subject vehicle : Vehicle;",
-            "    actor driver : Driver;",
-            "    actor station : ChargingStation;",
-            "  }",
-            "",
-            "  use case def UpdateSoftware {",
-            "    subject vehicle : Vehicle;",
-            "    actor mechanic : Mechanic;",
-            "  }",
-            "",
-            "  use case def AdjustClimateControl {",
-            "    subject vehicle : Vehicle;",
-            "    actor passenger : Passenger;",
-            "  }",
-            "",
-            "  use case def DetectObstacle {",
-            "    subject vehicle : Vehicle;",
-            "    actor pedestrian : Pedestrian;",
-            "    actor driver : Driver;",
-            "  }",
-            "}",
-            "",
-            "// ── Behavior ──",
-            "package VehicleBehavior {",
-            "",
-            "  action def StartEngine {",
-            "    in ignitionSignal : Boolean;",
-            "    out engineRunning : Boolean;",
-            "  }",
-            "",
-            "  action def Accelerate {",
-            "    in throttlePosition : Real;",
-            "    out newSpeed : Real;",
-            "  }",
-            "",
-            "  action def Brake {",
-            "    in brakeForce : Real;",
-            "    out newSpeed : Real;",
-            "  }",
-            "",
-            "  state def VehicleStates {",
-            "    state off;",
-            "    state idle;",
-            "    state driving;",
-            "",
-            "    transition off_to_idle",
-            "      first off",
-            "      then idle;",
-            "",
-            "    transition idle_to_driving",
-            "      first idle",
-            "      then driving;",
-            "  }",
-            "",
-            "}",
-            "",
-            "// ── Requirements ──",
-            "package VehicleRequirements {",
-            "",
-            "  requirement def MassRequirement {",
-            "    doc /* Total mass shall not exceed 2000 kg. */",
-            "    attribute maxMass : Real;",
-            "  }",
-            "",
-            "  requirement def SafetyRequirement {",
-            "    doc /* Vehicle shall pass NCAP 5-star rating. */",
-            "    attribute minRating : Integer;",
-            "  }",
-            "",
-            "  requirement def PerformanceRequirement {",
-            "    doc /* 0-100 km/h in under 6 seconds. */",
-            "    attribute targetTime : Real;",
-            "  }",
-            "",
-            "}",
-            "",
-            "// ── Analysis ──",
-            "package VehicleAnalysis {",
-            "",
-            "  calc def TotalMass {",
-            "    in bodyMass : Real;",
-            "    in drivetrainMass : Real;",
-            "    return : Real;",
-            "    bodyMass + drivetrainMass",
-            "  }",
-            "",
-            "  constraint def MaxMassConstraint {",
-            "    1500 + 200 <= 2000",
-            "  }",
-            "",
-            "}",
-            "",
-
-            "// ── Integration ──",
-            "package VehicleIntegration {",
-            "  part vehicle : VehicleSystem::Vehicle;",
-            "  satisfy VehicleRequirements::MassRequirement by vehicle;",
-            "  satisfy VehicleRequirements::SafetyRequirement by vehicle;",
-            "}",
-            "",
-          ].join("\n");
-          break;
-        case "mbse-verification":
-          filename = "SystemVerification.sysml";
-          content = [
-            "package SystemVerification {",
-            "  requirement def MaxVoltageReq {",
-            "    doc /* Maximum voltage across the capacitor shall not exceed 8.0 V */",
-            "    attribute maxLimit : Real = 8.0;",
-            "  }",
-            "",
-            "  // The actual constraint that is verified against the simulation results",
-            "  analysis def VerifyVoltage {",
-            "    subject circuit : Circuit;",
-            "    objective req : MaxVoltageReq;",
-            "    ",
-            "    constraint max_v {",
-            "      circuit.v <= req.maxLimit",
-            "    }",
-            "  }",
-            "}",
-            "",
-          ].join("\n");
-          // Write the second file directly here
-          await workspace.fs.writeFile(
-            Uri.joinPath(workspaceUri, "Circuit.mo"),
-            new TextEncoder().encode(
-              [
-                'model Circuit "RC Circuit implementation"',
-                "  ",
-                "  Real v(start=0);",
-                "  parameter Real R = 10;",
-                "  parameter Real C = 0.1;",
-                "  parameter Real V_source = 10;",
-                "equation",
-                "  der(v) = (V_source - v) / (R * C);",
-                "end Circuit;",
-                "",
-              ].join("\n"),
-            ),
-          );
-          await workspace.fs.writeFile(
-            Uri.joinPath(workspaceUri, "VerificationReport.md"),
-            new TextEncoder().encode(
-              [
-                "# RC Circuit Verification",
-                "",
-                "This is an automated verification report for the RC Circuit.",
-                "",
-                "## System Requirements",
-                '::requirements{target="SystemVerification"}',
-                "",
-                "## System Architecture",
-                '::diagram{target="Circuit"}',
-                "",
-                "The current maximum limit for the capacitor voltage is: {{ SystemVerification.MaxVoltageReq.maxLimit }} V.",
-                "",
-              ].join("\n"),
-            ),
-          );
-          break;
-        case "script":
-          filename = "simulate.mos";
-          content = `// A simple Modelica script\nloadString("\nmodel HelloWorld\n  Real x(start=1);\nequation\n  der(x) = -x;\nend HelloWorld;\n");\n\nsimulate(HelloWorld, stopTime=5);\n`;
-          break;
-        case "notebook":
-          filename = "demo.monb";
-          content = JSON.stringify(
-            {
-              cells: [
-                {
-                  cell_type: "markdown",
-                  source: [
-                    "# Modelica Notebooks",
-                    "",
-                    "Welcome to ModelScript Notebooks! Create models and simulate them directly.",
-                  ],
-                },
-                {
-                  cell_type: "code",
-                  source: ["model Simple", "  Real x(start = 1);", "equation", "  der(x) = -x;", "end Simple;"],
-                },
-              ],
-            },
-            null,
-            2,
-          );
-          break;
-        case "cosim": {
-          // Co-simulation example: Controller (Modelica) + SineWave (WASM FMU)
-          const encoder = new TextEncoder();
-
-          const controllerMo = [
-            'model Controller "Simple PI controller"',
-            '  Modelica.Blocks.Interfaces.RealInput u "Measurement input";',
-            '  Modelica.Blocks.Interfaces.RealOutput y "Control output";',
-            '  parameter Real Kp = 2.0 "Proportional gain";',
-            '  parameter Real Ki = 0.5 "Integral gain";',
-            '  parameter Real setpoint = 1.0 "Reference setpoint";',
-            '  Real error "Tracking error";',
-            '  Real integral(start = 0) "Integral of error";',
-            "equation",
-            "  error = setpoint - u;",
-            "  der(integral) = error;",
-            "  y = Kp * error + Ki * integral;",
-            "end Controller;",
-            "",
-          ].join("\n");
-
-          const readmeMd = [
-            "# Co-Simulation Example",
-            "",
-            "This workspace demonstrates co-simulation between a **Modelica model** and a **WASM FMU**.",
-            "",
-            "## Files",
-            "",
-            "| File | Type | Description |",
-            "|------|------|-------------|",
-            "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
-            "| `SineWave.fmu` | FMU 2.0 (WASM) | Sine wave generator compiled to WebAssembly |",
-            "| `CosimSetup.mo` | Modelica | Wiring diagram connecting Controller ↔ SineWave |",
-            "",
-            "## Running the Co-Simulation",
-            "",
-            "1. Open the **Co-Simulation** panel in the sidebar",
-            '2. Click **"Browser-Local"** to enable local mode',
-            "3. Create a new session (start=0, stop=10, step=0.01)",
-            "4. Open `Controller.mo` and click **Publish Model**",
-            "5. Click **Publish FMU** and select `SineWave.fmu`",
-            "6. Add couplings:",
-            "   - Controller.y → SineWave.phase (control signal)",
-            "   - SineWave.y → Controller.u (measurement feedback)",
-            "7. Click **Start** to run the coupled simulation",
-            "8. Open **Live Plot** to see real-time results",
-            "",
-            "## SineWave WASM FMU",
-            "",
-            "The `SineWave.fmu` is a real WebAssembly FMU containing compiled C code.",
-            "It demonstrates native WASM execution in the browser via the FMI 2.0 API.",
-            "",
-            "Model: `y(t) = amplitude * sin(2π * frequency * t + phase)`",
-            "",
-            "| Variable | Causality | Default |",
-            "|----------|-----------|---------|",
-            "| amplitude | parameter | 1.0 |",
-            "| frequency | parameter | 1.0 Hz |",
-            "| phase | input | 0.0 rad |",
-            "| y | output | — |",
-            "",
-          ].join("\n");
-
-          // Decode the embedded SineWave WASM FMU from base64
-          const sineWaveFmuBytes = Uint8Array.from(atob(SINE_WAVE_FMU_BASE64), (c) => c.charCodeAt(0));
-
-          // Write all files
-          const controllerUri = Uri.joinPath(workspaceUri, "Controller.mo");
-          const sineWaveFmuUri = Uri.joinPath(workspaceUri, "SineWave.fmu");
-          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
-
-          const cosimSetupMo = [
-            'model CosimSetup "Co-simulation wiring diagram"',
-            "  Controller controller;",
-            "  SineWave sineWave;",
-            "equation",
-            "  connect(controller.y, sineWave.phase);",
-            "  connect(sineWave.y, controller.u);",
-            "end CosimSetup;",
-            "",
-          ].join("\n");
-
-          const cosimSetupUri = Uri.joinPath(workspaceUri, "CosimSetup.mo");
-
-          await workspace.fs.writeFile(controllerUri, encoder.encode(controllerMo));
-          await workspace.fs.writeFile(sineWaveFmuUri, sineWaveFmuBytes);
-          await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
-          await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
-
-          // Register the SineWave FMU with the virtual document provider
-          fmuContentProvider?.registerFmu("SineWave", sineWaveFmuBytes);
-
-          // Register the SineWave FMU with the LSP after client is ready
-          // (deferred to allow LSP to finish initializing)
-          setTimeout(async () => {
-            if (client) {
-              try {
-                await client.sendRequest("modelscript/registerFmu", {
-                  name: "SineWave",
-                  data: SINE_WAVE_FMU_BASE64,
-                });
-                console.log("[cosim-template] Registered SineWave FMU with LSP");
-              } catch (e) {
-                console.warn("[cosim-template] Failed to register FMU:", e);
-              }
-            }
-          }, 2000);
-
-          // Open the co-sim setup model as the primary file
-          filename = "CosimSetup.mo";
-          content = cosimSetupMo;
-
-          // Also open the controller
-          const controllerDoc = await workspace.openTextDocument(controllerUri);
-          await vscode.window.showTextDocument(controllerDoc, { preview: false });
-          break;
-        }
-        case "uns-mqtt": {
-          const encoder = new TextEncoder();
-          filename = "DigitalTwin.mo";
-          content = [
-            'model DigitalTwin "Real-Time Digital Twin with UNS/MQTT"',
-            '  // 1. Open the Co-Simulation panel and check "Browser-Local" mode.',
-            '  // 2. Click "Custom..." and create a session with a huge Stop Time (e.g., 86400).',
-            '  // 3. Click "+ Add Participant", then "From Open .mo File".',
-            "  // 4. Connect the Vite/React HMI to ws://localhost:9001 or use the provided HTML HMI.",
-            "",
-            '  parameter Real target_speed = 10.0 "Override via: .../cmd/DigitalTwin/target_speed";',
-            '  Real speed(start=0) "Telemetry published to: .../data/DigitalTwin/speed";',
-            "equation",
-            "  der(speed) = (target_speed - speed) * 1.5;",
-            "end DigitalTwin;\n",
-          ].join("\n");
-
-          const hmiHtml = [
-            "<!DOCTYPE html>",
-            "<html><head><title>HMI</title>",
-            '<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>',
-            "<style>body{font-family:sans-serif;text-align:center;padding-top:50px;} h1{font-size:3rem;}</style>",
-            "</head><body>",
-            "<h2>Conveyor Speed</h2>",
-            '<h1 id="speed">0.00</h1>',
-            "<p>Live telemetry via MQTT Unified Namespace</p>",
-            "<script>",
-            "  // Connect to embedded ModelScript MQTT broker",
-            '  const client = mqtt.connect("ws://localhost:9001");',
-            '  client.on("connect", () => {',
-            '    console.log("Connected to broker");',
-            '    client.subscribe("modelscript/site/default/area/default/line/session1/cell/DigitalTwin/data/speed");',
-            "  });",
-            '  client.on("message", (t, m) => {',
-            '    document.getElementById("speed").innerText = parseFloat(m.toString()).toFixed(2);',
-            "  });",
-            "</script>",
-            "</body></html>",
-          ].join("\n");
-
-          const readmeMd = [
-            "# UNS / Real-Time MQTT Example",
-            "",
-            "This workspace demonstrates how to stream live telemetry from a Modelica simulation directly to an external HMI web app.",
-            "",
-            "## Running the Co-Simulation",
-            "",
-            "1. Open the **Co-Simulation** panel in the sidebar",
-            '2. Click **"Browser-Local"** to enable local mode (starts the embedded broker)',
-            "3. Click **Custom...** to create a new session:",
-            "   - Set **Stop Time** to `86400` (1 day) so it runs continuously",
-            "   - Click **Create**",
-            "4. With `DigitalTwin.mo` open in the editor, click **+ Add Participant** -> **From Open .mo File**",
-            "5. Click **Start**",
-            "",
-            "## Viewing the HMI",
-            "",
-            "Open `hmi.html` in your browser or run a live server. It connects directly to the embedded MQTT broker in the IDE and subscribes to the unified namespace.",
-          ].join("\n");
-
-          const hmiUri = Uri.joinPath(workspaceUri, "hmi.html");
-          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
-          await workspace.fs.writeFile(hmiUri, encoder.encode(hmiHtml));
-          await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
-          break;
-        }
-        case "surrogate": {
-          filename = "BouncingBall.mo";
-          content = [
-            'model BouncingBall "A classic bouncing ball model"',
-            '  parameter Real e = 0.8 "Coefficient of restitution";',
-            '  parameter Real g = 9.81 "Gravity";',
-            '  parameter Real v_0 = 0.0 "Initial velocity";',
-            '  Real h(start = 1.0) "Height";',
-            '  Real v(start = v_0) "Velocity";',
-            "equation",
-            "  der(h) = v;",
-            "  der(v) = -g;",
-            "  when h <= 0.0 and v < 0.0 then",
-            "    reinit(v, -e * pre(v));",
-            "  end when;",
-            "end BouncingBall;",
-            "",
-          ].join("\n");
-
-          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
-          await workspace.fs.writeFile(
-            readmeUri,
-            new TextEncoder().encode(
-              [
-                "# AI Surrogate Modeling",
-                "",
-                "This workspace demonstrates how to orchestrate Design of Experiments (DoE) and train AI surrogate models (Reduced Order Models) directly from Modelica.",
-                "",
-                "## Training a Surrogate",
-                "",
-                "1. Open `BouncingBall.mo`",
-                "2. Click the **Train Surrogate** icon (robot) in the editor title bar",
-                "3. Choose a **DoE Strategy** (e.g., Latin Hypercube) and number of samples",
-                "4. Choose an **Architecture** (e.g., MLP Neural Network)",
-                "5. Click **Train Surrogate**",
-                "",
-                "The platform will orchestrate headless simulations to build a dataset, train the neural network, and report the R² accuracy.",
-                "",
-                "## Exporting to WebAssembly",
-                "",
-                "Once training is complete, click **Generate WASM** in the Surrogate Editor.",
-                "This will instantly generate a self-contained C source code array of the neural network weights and biases, ready for edge deployment!",
-              ].join("\n"),
-            ),
-          );
-          break;
-        }
-        case "assembly-to-multibody": {
-          filename = "SimplePendulum.step";
-          content = [
-            "ISO-10303-21;",
-            "HEADER;",
-            "FILE_DESCRIPTION(('STEP AP242 Assembly'),'2;1');",
-            "FILE_NAME('SimplePendulum.step','2026-05-13',('ModelScript'),(''),(''),'','');",
-            "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));",
-            "ENDSEC;",
-            "DATA;",
-            "#1=PRODUCT('Assembly','Assembly','',(#2));",
-            "#2=PRODUCT_CONTEXT('',#3,'mechanical');",
-            "#3=APPLICATION_CONTEXT('automotive design');",
-            "#10=PRODUCT('Link','Link','',(#2));",
-            "#20=PRODUCT('Bob','Bob','',(#2));",
-            "#30=NEXT_ASSEMBLY_USAGE_OCCURRENCE('NAUO1','Link to Bob','',#10,#20,$);",
-            "#40=REVOLUTE_PAIR('RevJoint','Joint between Link and Bob',#10,#20);",
-            "ENDSEC;",
-            "END-ISO-10303-21;",
-          ].join("\n");
-
-          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
-          await workspace.fs.writeFile(
-            readmeUri,
-            new TextEncoder().encode(
-              [
-                "# STEP AP242 to Modelica Multi-Body",
-                "",
-                "This workspace demonstrates the automated conversion of a 3D CAD assembly into a Modelica Multi-Body simulation.",
-                "",
-                "## Workflow",
-                "",
-                "1. Open `SimplePendulum.step`.",
-                "2. The 3D Viewer will render the geometric bodies (if OCCT WASM is loaded).",
-                "3. Click the **⚙️ Generate Multi-Body Model** button in the top left of the 3D Viewer, or run the command from the Command Palette.",
-                "4. A new `SimplePendulum.mo` file will be generated automatically, containing `Parts.Body` and `Joints.Revolute` components.",
-                "5. Open `SimplePendulum.mo` and click **Run Simulation** to simulate the dynamics!",
-              ].join("\n"),
-            ),
-          );
-
-          const scriptUri = Uri.joinPath(workspaceUri, "generate.mos");
-          await workspace.fs.writeFile(
-            scriptUri,
-            new TextEncoder().encode(
-              [
-                "// Generate a Multi-Body model from a STEP assembly",
-                'loadStepAssembly("SimplePendulum.step");',
-                "generateMultiBody(density = 7800);",
-                "simulate(SimplePendulum_Assembly, stopTime = 10);",
-              ].join("\n"),
-            ),
-          );
-          break;
-        }
-        case "stress-test": {
-          filename = "MassiveModel.mo";
-          const massiveModelRows = [];
-          massiveModelRows.push('model MassiveModel "A massive model with thousands of elements"');
-          for (let i = 0; i < 5000; i++) {
-            massiveModelRows.push(`  Real v${i}(start = ${i});`);
-          }
-          massiveModelRows.push("equation");
-          for (let i = 0; i < 4999; i++) {
-            massiveModelRows.push(`  der(v${i}) = v${i + 1} - v${i};`);
-          }
-          massiveModelRows.push(`  der(v4999) = -v4999;`);
-          massiveModelRows.push("end MassiveModel;\n");
-          content = massiveModelRows.join("\n");
-          break;
-        }
-        case "modelica-procedural-cad": {
-          filename = "Drone.mo";
-          content = [
-            'model Drone "Procedural CAD Drone"',
-            "  // A drone model constructed entirely from Modelica procedural CAD primitives",
-            "",
-            "  Real chassis annotation(CAD(",
-            '    shapeType="box", length=0.2, width=0.1, height=0.05, color={50,50,50}',
-            "  ));",
-            "",
-            "  Real motor1 annotation(CAD(",
-            '    shapeType="cylinder", radius=0.02, length=0.05, position={0.1, 0.05, 0.02}, color={200,50,50}',
-            "  ));",
-            "",
-            "  Real motor2 annotation(CAD(",
-            '    shapeType="cylinder", radius=0.02, length=0.05, position={-0.1, 0.05, 0.02}, color={50,50,200}',
-            "  ));",
-            "",
-            "  Real motor3 annotation(CAD(",
-            '    shapeType="cylinder", radius=0.02, length=0.05, position={0.1, -0.05, 0.02}, color={200,50,50}',
-            "  ));",
-            "",
-            "  Real motor4 annotation(CAD(",
-            '    shapeType="cylinder", radius=0.02, length=0.05, position={-0.1, -0.05, 0.02}, color={50,50,200}',
-            "  ));",
-            "",
-            "  Real payload_camera annotation(CAD(",
-            '    shapeType="sphere", radius=0.025, position={0.12, 0, -0.01}, color={20,20,20}',
-            "  ));",
-            "equation",
-            "  chassis = 0;",
-            "  motor1 = 0; motor2 = 0; motor3 = 0; motor4 = 0;",
-            "  payload_camera = 0;",
-            "end Drone;",
-            "",
-          ].join("\n");
-          break;
-        }
-        case "cad": {
-          const sysmlUri = Uri.joinPath(workspaceUri, "drone_architecture.sysml");
-          const stepUri = Uri.joinPath(workspaceUri, "drone.step");
-          const doc = await workspace.openTextDocument(sysmlUri);
-          await vscode.window.showTextDocument(doc, { viewColumn: 1 });
-          setTimeout(() => {
-            vscode.commands.executeCommand("vscode.open", stepUri, { viewColumn: 2, preview: false });
-          }, 1000);
-          break;
-        }
-      }
-
-      if (filename && content) {
-        const fileUri = Uri.joinPath(workspaceUri, filename);
-        await workspace.fs.writeFile(fileUri, new TextEncoder().encode(content));
-        if (filename.endsWith(".monb")) {
+      const primaryFile = getTemplatePrimaryFile(template);
+      const fileUri = Uri.joinPath(workspaceUri, primaryFile);
+      try {
+        if (primaryFile.endsWith(".monb")) {
           await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
         } else {
           const doc = await workspace.openTextDocument(fileUri);
           await vscode.window.showTextDocument(doc);
-          if (filename.endsWith(".mo")) {
-            treeProvider.setDocumentUri(fileUri.toString());
-          }
+          treeProvider.setDocumentUri(fileUri.toString());
         }
+      } catch {
+        // File may be dynamically loaded or opened later
+      }
 
-        if (template === "mbse-verification") {
-          try {
-            const mdUri = Uri.joinPath(workspaceUri, "VerificationReport.md");
-            // Open the rendered preview (not just the source) in the second column.
-            // Use markdown.showPreviewToSide to get the native VS Code preview panel.
-            await vscode.commands.executeCommand("markdown.showPreviewToSide", mdUri);
-          } catch {
-            // Fallback: open as plain text if markdown preview isn't available
-            try {
-              const mdDoc = await workspace.openTextDocument(Uri.joinPath(workspaceUri, "VerificationReport.md"));
-              await vscode.window.showTextDocument(mdDoc, { viewColumn: 2, preview: false });
-            } catch {
-              console.warn("Could not open VerificationReport.md side-by-side");
-            }
-          }
+      if (template === "mbse-verification") {
+        try {
+          const mdUri = Uri.joinPath(workspaceUri, "VerificationReport.md");
+          await vscode.commands.executeCommand("markdown.showPreviewToSide", mdUri);
+        } catch {
+          // Fallback
+        }
+      } else if (template === "cad") {
+        try {
+          const stepUri = Uri.joinPath(workspaceUri, "drone.step");
+          setTimeout(() => {
+            vscode.commands.executeCommand("vscode.open", stepUri, { viewColumn: 2, preview: false });
+          }, 1000);
+        } catch {
+          // Fallback
         }
       }
     } catch (e: unknown) {
-      console.error("[blank-project] Failed to create template model:", e);
-      vscode.window.showErrorMessage(
-        "Workspace Init Error: " + (e instanceof Error ? e.stack || e.message : String(e)),
-      );
+      console.error("[blank-project] Failed to initialize workspace template:", e);
     }
   }
 
@@ -4146,10 +2001,10 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const moFiles = await workspace.findFiles(
-        "**/*.{mo,js,ts,sysml,step,stp,p21,owl,msim}",
+        "**/*.{mo,mos,sysml,sysml2,step,stp,p21,owl,ttl,ofn,csv,js,ts,msim}",
         "**/{node_modules,dist,.git,testsuite,packages/core/testsuite}/**",
       );
-      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.sysml/.js/.ts/.step/.msim rules`);
+      console.log(`[workspace-scan] Found ${moFiles.length} files matching ModelScript workspace rules`);
       for (const uri of moFiles) {
         try {
           await workspace.openTextDocument(uri);

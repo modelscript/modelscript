@@ -21,14 +21,15 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
     context.subscriptions.push(
       vscode.lm.registerTool("modelscript_flatten", {
         async invoke(
-          options: vscode.LanguageModelToolInvocationOptions<{ name: string }>,
+          options: vscode.LanguageModelToolInvocationOptions<{ name: string; languageId?: string; uri?: string }>,
         ): Promise<vscode.LanguageModelToolResult> {
           const name = options.input.name;
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
           let result: { text?: string | null; error?: string };
           try {
             result = await client.sendRequest<{ text?: string | null; error?: string }>("modelscript/executeAction", {
               actionId: "flatten",
-              languageId: "modelica",
+              languageId: lang,
               inputs: { name },
             });
           } catch {
@@ -54,17 +55,20 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
         async invoke(
           options: vscode.LanguageModelToolInvocationOptions<{
             name: string;
+            languageId?: string;
+            uri?: string;
             startTime?: number;
             stopTime?: number;
             solver?: string;
             format?: string;
           }>,
         ): Promise<vscode.LanguageModelToolResult> {
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
           let result: any;
           try {
             result = await client.sendRequest<any>("modelscript/executeAction", {
               actionId: "simulate",
-              languageId: "modelica",
+              languageId: lang,
               inputs: options.input,
             });
           } catch {
@@ -88,13 +92,14 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
     context.subscriptions.push(
       vscode.lm.registerTool("modelscript_query", {
         async invoke(
-          options: vscode.LanguageModelToolInvocationOptions<{ name: string }>,
+          options: vscode.LanguageModelToolInvocationOptions<{ name: string; languageId?: string; uri?: string }>,
         ): Promise<vscode.LanguageModelToolResult> {
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
           let result: any;
           try {
             result = await client.sendRequest<any>("modelscript/executeAction", {
               actionId: "query",
-              languageId: "modelica",
+              languageId: lang,
               inputs: { name: options.input.name },
             });
           } catch {
@@ -118,13 +123,14 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
     context.subscriptions.push(
       vscode.lm.registerTool("modelscript_parse", {
         async invoke(
-          options: vscode.LanguageModelToolInvocationOptions<{ code: string }>,
+          options: vscode.LanguageModelToolInvocationOptions<{ code: string; languageId?: string }>,
         ): Promise<vscode.LanguageModelToolResult> {
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
           let result: any;
           try {
             result = await client.sendRequest<any>("modelscript/executeAction", {
               actionId: "parse",
-              languageId: "modelica",
+              languageId: lang,
               inputs: { code: options.input.code },
             });
           } catch {

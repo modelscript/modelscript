@@ -67,13 +67,19 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
 
     // Extract file extensions
     let extensions: string[] = [];
-    if (lang.lsp?.fileExtensions && Array.isArray(lang.lsp.fileExtensions)) {
+    if (lang.extensions && Array.isArray(lang.extensions)) {
+      extensions = lang.extensions.map((e: string) => (e.startsWith(".") ? e : `.${e}`));
+    } else if (lang.lsp?.fileExtensions && Array.isArray(lang.lsp.fileExtensions)) {
       extensions = lang.lsp.fileExtensions.map((e: string) => (e.startsWith(".") ? e : `.${e}`));
     } else if (lang.lsp?.fileExtension) {
       const ext = lang.lsp.fileExtension.startsWith(".") ? lang.lsp.fileExtension : `.${lang.lsp.fileExtension}`;
       extensions = [ext];
     } else if (lang.fileExtensions && Array.isArray(lang.fileExtensions)) {
       extensions = lang.fileExtensions.map((e: string) => (e.startsWith(".") ? e : `.${e}`));
+    } else if (id === "sysml2" || id === "sysml") {
+      extensions = [".sysml", ".sysml2"];
+    } else if (id === "step") {
+      extensions = [".step", ".stp", ".p21"];
     } else {
       extensions = [`.${id}`];
     }
@@ -123,9 +129,16 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   for (const lang of languages) {
     activationEvents.push(`onLanguage:${lang.id}`);
 
+    const aliases = [lang.displayName, lang.name];
+    if (lang.id === "sysml2" || lang.id === "sysml") {
+      for (const a of ["SysML v2", "SysML", "sysml2", "sysml"]) {
+        if (!aliases.includes(a)) aliases.push(a);
+      }
+    }
+
     const langEntry: any = {
       id: lang.id,
-      aliases: [lang.displayName, lang.name],
+      aliases,
       extensions: lang.fileExtensions,
       configuration: `./language-configuration-${lang.id}.json`,
     };
@@ -141,6 +154,14 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       scopeName: `source.${lang.id}`,
       path: `./syntaxes/${lang.id}.tmLanguage.json`,
     });
+
+    if (lang.id === "sysml2") {
+      contributesGrammars.push({
+        language: "sysml",
+        scopeName: `source.sysml`,
+        path: `./syntaxes/${lang.id}.tmLanguage.json`,
+      });
+    }
 
     if (options?.features?.diagramEditor !== false) {
       customEditors.push({
@@ -161,6 +182,14 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       priority: "option",
     });
   }
+
+  // SysML Requirements Matrix Custom Editor
+  customEditors.push({
+    viewType: "modelscript.requirementsEditor",
+    displayName: "SysML Requirements Matrix",
+    selector: [{ filenamePattern: "*.sysml" }, { filenamePattern: "*.sysml2" }],
+    priority: "option",
+  });
 
   // Collect commands, menus, language model tools, and keybindings from language actions
   const commands: any[] = [

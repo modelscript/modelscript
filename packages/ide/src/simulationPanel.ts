@@ -48,8 +48,8 @@ export class SimulationPanel {
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      vscode.window.showWarningMessage("Open a Modelica file to run a simulation.");
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a model file to run a simulation.");
       return;
     }
 
@@ -256,7 +256,7 @@ export class SimulationPanel {
                 // Fallback to executeAction if modelscript/simulate fails
                 const res: any = await this.client.sendRequest("modelscript/executeAction", {
                   actionId: "simulate",
-                  languageId: "modelica",
+                  languageId: vscode.window.activeTextEditor?.document.languageId ?? "modelica",
                   uri,
                   inputs: {
                     startTime: msg.payload?.startTime,

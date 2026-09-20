@@ -983,16 +983,31 @@ function evalSkew(args: ArenaValue[]): ArenaValue | null {
 function evalCat(args: ArenaValue[]): ArenaValue | null {
   if (args.length < 2 || typeof args[0] !== "number") return null;
   const dim = args[0];
-  if (dim === 1) {
+  const arrays = args.slice(1);
+  const catHelper = (d: number, arrs: ArenaValue[]): ArenaValue | null => {
+    if (arrs.length === 0) return [];
+    if (arrs.length === 1) return arrs[0]!;
+    if (d === 1) {
+      const result: ArenaValue[] = [];
+      for (const a of arrs) {
+        if (Array.isArray(a)) result.push(...a);
+        else if (a != null) result.push(a);
+      }
+      return result;
+    }
+    if (!arrs.every((a) => Array.isArray(a))) return null;
+    const outerLen = (arrs[0] as ArenaValue[]).length;
+    if (!arrs.every((a) => (a as ArenaValue[]).length === outerLen)) return null;
     const result: ArenaValue[] = [];
-    for (let i = 1; i < args.length; i++) {
-      const a = args[i];
-      if (Array.isArray(a)) result.push(...a);
-      else if (a != null) result.push(a);
+    for (let r = 0; r < outerLen; r++) {
+      const rowSlice = arrs.map((a) => (a as ArenaValue[])[r]!);
+      const combined = catHelper(d - 1, rowSlice);
+      if (combined === null) return null;
+      result.push(combined);
     }
     return result;
-  }
-  return null;
+  };
+  return catHelper(dim, arrays);
 }
 
 function evalSize(args: ArenaValue[]): ArenaValue | null {
@@ -1072,6 +1087,9 @@ function evalPromote(args: ArenaValue[]): ArenaValue | null {
   let result = firstArg;
   const currentNdims = getArenaArrayShape(result).length;
   if (targetNdims <= currentNdims) return result;
+  if (currentNdims === 1 && targetNdims === 2 && Array.isArray(result)) {
+    return result.map((x) => [x]);
+  }
   for (let i = currentNdims; i < targetNdims; i++) result = [result];
   return result;
 }
@@ -1104,6 +1122,104 @@ function evalReduction(args: ArenaValue[], op: "sum" | "product" | "min" | "max"
   }
 }
 
+export function splitTopLevelIndices(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") depth--;
+    if (ch === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+export function evalRawSubscriptIndex(
+  rawIdx: string,
+  parameters: Map<string, ArenaValue>,
+  db?: QueryDB,
+  dae?: DAEBuilder,
+): number | undefined {
+  const trimmed = rawIdx.trim();
+  if (parameters.has(trimmed)) {
+    const pv = parameters.get(trimmed);
+    if (typeof pv === "number") return pv;
+  }
+  const n = Number(trimmed);
+  if (!isNaN(n)) return n;
+
+  if (trimmed.startsWith("size(") && trimmed.endsWith(")")) {
+    const inner = trimmed.slice(5, -1).trim();
+    const parts = splitTopLevelIndices(inner);
+    const vName = parts[0];
+    const dNum = parts.length > 1 ? Number(parts[1]) : 1;
+    if (vName && parameters.has(vName)) {
+      const pVal = parameters.get(vName);
+      if (Array.isArray(pVal)) {
+        let cur: any = pVal;
+        let d = 1;
+        while (d < dNum && Array.isArray(cur) && cur.length > 0 && Array.isArray(cur[0])) {
+          cur = cur[0];
+          d++;
+        }
+        if (Array.isArray(cur)) return cur.length;
+      }
+    }
+  }
+
+  let depth = 0;
+  let splitOpIdx = -1;
+  for (let i = trimmed.length - 1; i > 0; i--) {
+    const ch = trimmed[i];
+    if (ch === ")" || ch === "]" || ch === "}") depth++;
+    else if (ch === "(" || ch === "[" || ch === "{") depth--;
+    if (depth === 0 && (ch === "+" || ch === "-")) {
+      splitOpIdx = i;
+      break;
+    }
+  }
+  if (splitOpIdx > 0) {
+    const op = trimmed[splitOpIdx];
+    const leftStr = trimmed.slice(0, splitOpIdx).trim();
+    const rightStr = trimmed.slice(splitOpIdx + 1).trim();
+    const lVal = evalRawSubscriptIndex(leftStr, parameters, db, dae);
+    const rVal = evalRawSubscriptIndex(rightStr, parameters, db, dae);
+    if (lVal !== undefined && rVal !== undefined) {
+      return op === "+" ? lVal + rVal : lVal - rVal;
+    }
+  }
+
+  const effectiveDb = db ?? (dae as any)?.db;
+  if (effectiveDb && trimmed.includes(".")) {
+    const parts = trimmed.split(".");
+    const litName = parts.pop()!;
+    const typeName = parts.length > 0 ? parts.pop()! : null;
+    const candidateSyms = typeName
+      ? effectiveDb.byName(typeName)
+      : effectiveDb.index?.symbols
+        ? Array.from(effectiveDb.index.symbols.values()).filter((s: any) => (s as any).kind === "Class")
+        : [];
+    for (const s of candidateSyms as any[]) {
+      const cstText = (effectiveDb.cstNode(s.id) as any)?.text ?? "";
+      const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+      if (match && match[1]) {
+        const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
+        const idx = lits.indexOf(litName);
+        if (idx >= 0) return idx + 1;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * Evaluates an expression tree stored in an DAEBuilder symbolically.
  */
@@ -1113,9 +1229,11 @@ export function evaluateArenaExpression(
   parameters = new Map<string, ArenaValue>(),
   db?: QueryDB,
   scopeId?: SymbolId,
-  visitedVars = new Set<number>(),
+  visitedVars: Set<number> = new Set(),
   onlyConstants = false,
   functionLookup?: (funcNameId: number, args: ArenaValue[]) => ArenaValue | null,
+  callerDae?: DAEBuilder,
+  instancePrefix?: string,
 ): ArenaValue | null {
   if (exprId < 0) return null;
 
@@ -1162,48 +1280,16 @@ export function evaluateArenaExpression(
         }
       }
 
-      const match = name.match(/^([^[\]]+)\[([^\]]+)\]$/);
+      const match = name.match(/^([^[\]]+)\[(.*)\]$/);
       if (match && match[1] && match[2]) {
         const root = match[1];
-        const rawIndices = match[2].split(",").map((s) => s.trim());
+        const rawIndices = splitTopLevelIndices(match[2]);
         const rootVal = parameters.get(root);
         if (rootVal !== undefined && Array.isArray(rootVal)) {
           let current: ArenaValue = rootVal;
           let ok = true;
           for (const rawIdx of rawIndices) {
-            let idxNum: number | undefined;
-            if (parameters.has(rawIdx)) {
-              const pv = parameters.get(rawIdx);
-              if (typeof pv === "number") idxNum = pv;
-            } else {
-              const n = Number(rawIdx);
-              if (!isNaN(n)) idxNum = n;
-            }
-            if (idxNum === undefined) {
-              const effectiveDb = db ?? (dae as any).db;
-              if (effectiveDb && rawIdx.includes(".")) {
-                const parts = rawIdx.split(".");
-                const litName = parts.pop()!;
-                const typeName = parts.length > 0 ? parts.pop()! : null;
-                const candidateSyms = typeName
-                  ? effectiveDb.byName(typeName)
-                  : effectiveDb.index?.symbols
-                    ? Array.from(effectiveDb.index.symbols.values()).filter((s: any) => (s as any).kind === "Class")
-                    : [];
-                for (const s of candidateSyms as any[]) {
-                  const cstText = (effectiveDb.cstNode(s.id) as any)?.text ?? "";
-                  const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-                  if (match && match[1]) {
-                    const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
-                    const idx = lits.indexOf(litName);
-                    if (idx >= 0) {
-                      idxNum = idx + 1;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
+            const idxNum = evalRawSubscriptIndex(rawIdx, parameters, db, dae);
             if (idxNum !== undefined && Array.isArray(current) && idxNum >= 1 && idxNum <= current.length) {
               current = current[idxNum - 1] as ArenaValue;
             } else {
@@ -1247,24 +1333,47 @@ export function evaluateArenaExpression(
         }
       }
 
-      const vIdx = dae.getVarIdxByName(name);
-      if (vIdx < 0 && dae.hasArrayElements(name)) {
-        const elements = dae.getArrayElementIndices(name);
+      let effectiveName = name;
+      let targetDae = dae;
+      let vIdx = targetDae.getVarIdxByName(effectiveName);
+      if (vIdx < 0 && !targetDae.hasArrayElements(effectiveName)) {
+        const cDae = callerDae ?? (dae as any).parentDae;
+        if (cDae) {
+          if (instancePrefix) {
+            const prefixed = `${instancePrefix}.${name}`;
+            if (cDae.getVarIdxByName(prefixed) >= 0 || cDae.hasArrayElements(prefixed)) {
+              effectiveName = prefixed;
+              vIdx = cDae.getVarIdxByName(prefixed);
+              targetDae = cDae;
+            }
+          }
+          if (vIdx < 0 && !targetDae.hasArrayElements(effectiveName)) {
+            if (cDae.getVarIdxByName(name) >= 0 || cDae.hasArrayElements(name)) {
+              effectiveName = name;
+              vIdx = cDae.getVarIdxByName(name);
+              targetDae = cDae;
+            }
+          }
+        }
+      }
+
+      if (vIdx < 0 && targetDae.hasArrayElements(effectiveName)) {
+        const elements = targetDae.getArrayElementIndices(effectiveName);
         const result: any[] = [];
         for (const idx of elements) {
-          if (dae.isVarFixed(idx)) {
-            result.push(dae.getVarStartValue(idx));
+          if (targetDae.isVarFixed(idx)) {
+            result.push(targetDae.getVarStartValue(idx));
           } else {
-            const variability = dae.getVarVariability(idx);
+            const variability = targetDae.getVarVariability(idx);
             if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
-              const bindingExprId = dae.getVarExpression(idx);
+              const bindingExprId = targetDae.getVarExpression(idx);
               if (typeof bindingExprId === "number" && bindingExprId >= 0) {
                 if (!visitedVars.has(idx)) {
                   visitedVars.add(idx);
                   try {
                     result.push(
                       evaluateArenaExpression(
-                        dae,
+                        targetDae,
                         bindingExprId,
                         parameters,
                         db,
@@ -1272,6 +1381,8 @@ export function evaluateArenaExpression(
                         visitedVars,
                         onlyConstants,
                         functionLookup,
+                        callerDae,
+                        instancePrefix,
                       ),
                     );
                   } finally {
@@ -1281,7 +1392,7 @@ export function evaluateArenaExpression(
                   result.push(null);
                 }
               } else {
-                result.push(dae.getVarStartValue(idx));
+                result.push(targetDae.getVarStartValue(idx));
               }
             } else {
               result.push(null);
@@ -1292,18 +1403,18 @@ export function evaluateArenaExpression(
       }
 
       if (vIdx >= 0) {
-        if (dae.isVarFixed(vIdx)) {
-          return dae.getVarStartValue(vIdx);
+        if (targetDae.isVarFixed(vIdx)) {
+          return targetDae.getVarStartValue(vIdx);
         }
-        const variability = dae.getVarVariability(vIdx);
+        const variability = targetDae.getVarVariability(vIdx);
         if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
-          const bindingExprId = dae.getVarExpression(vIdx);
+          const bindingExprId = targetDae.getVarExpression(vIdx);
           if (typeof bindingExprId === "number" && bindingExprId >= 0) {
             if (visitedVars.has(vIdx)) return null;
             visitedVars.add(vIdx);
             try {
               return evaluateArenaExpression(
-                dae,
+                targetDae,
                 bindingExprId,
                 parameters,
                 db,
@@ -1311,12 +1422,14 @@ export function evaluateArenaExpression(
                 visitedVars,
                 onlyConstants,
                 functionLookup,
+                callerDae,
+                instancePrefix,
               );
             } finally {
               visitedVars.delete(vIdx);
             }
           }
-          return dae.getVarStartValue(vIdx);
+          return targetDae.getVarStartValue(vIdx);
         }
       }
 
@@ -1681,12 +1794,14 @@ export function evaluateArenaExpression(
 
       const mathRes = evaluateBuiltinMathFunction(funcName, args as ArenaValue[]);
       if (mathRes !== undefined) return mathRes;
-      if (funcName === "rem" && typeof args[0] === "number" && typeof args[1] === "number") {
-        const b = args[1];
-        return b !== 0 ? args[0] - Math.trunc(args[0] / b) * b : null;
-      }
       if (funcName === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
         return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;
+      }
+      if (funcName === "rem" && typeof args[0] === "number" && typeof args[1] === "number") {
+        return args[1] !== 0 ? args[0] - Math.trunc(args[0] / args[1]) * args[1] : null;
+      }
+      if (funcName === "mod" && typeof args[0] === "number" && typeof args[1] === "number") {
+        return args[1] !== 0 ? args[0] - Math.floor(args[0] / args[1]) * args[1] : null;
       }
       if (funcName === "String") return String(args[0]);
       if (funcName === "noEvent" && args.length === 1) return args[0];

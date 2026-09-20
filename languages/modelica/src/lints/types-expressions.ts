@@ -78,7 +78,11 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.comment != 0 && t == $.comment) ||
                 ($.string_comment != 0 && t == $.string_comment) ||
                 ($.annotation != 0 && t == $.annotation) ||
-                ($.annotation_clause != 0 && t == $.annotation_clause)
+                ($.annotation_clause != 0 && t == $.annotation_clause) ||
+                ($.function_call != 0 && t == $.function_call) ||
+                ($.function_call_args != 0 && t == $.function_call_args) ||
+                ($.function_arguments != 0 && t == $.function_arguments) ||
+                ($.named_argument != 0 && t == $.named_argument)
               ) {
                 isDesc = true;
                 break;
@@ -122,7 +126,11 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.comment != 0 && t == $.comment) ||
                 ($.string_comment != 0 && t == $.string_comment) ||
                 ($.annotation != 0 && t == $.annotation) ||
-                ($.annotation_clause != 0 && t == $.annotation_clause)
+                ($.annotation_clause != 0 && t == $.annotation_clause) ||
+                ($.function_call != 0 && t == $.function_call) ||
+                ($.function_call_args != 0 && t == $.function_call_args) ||
+                ($.function_arguments != 0 && t == $.function_arguments) ||
+                ($.named_argument != 0 && t == $.named_argument)
               ) {
                 isDesc = true;
                 break;
@@ -146,7 +154,11 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.comment != 0 && t == $.comment) ||
                 ($.string_comment != 0 && t == $.string_comment) ||
                 ($.annotation != 0 && t == $.annotation) ||
-                ($.annotation_clause != 0 && t == $.annotation_clause)
+                ($.annotation_clause != 0 && t == $.annotation_clause) ||
+                ($.function_call != 0 && t == $.function_call) ||
+                ($.function_call_args != 0 && t == $.function_call_args) ||
+                ($.function_arguments != 0 && t == $.function_arguments) ||
+                ($.named_argument != 0 && t == $.named_argument)
               ) {
                 isDesc = true;
                 break;
@@ -549,7 +561,15 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["simple_equation"],
     severity: "error",
     code: 5001,
-    message: (target) => `Type mismatch in equation '${target.text}'.`,
+    message: (target, lhsType, rhsType) => {
+      const typeNames = ["Real", "Integer", "Boolean", "String"];
+      const lIdx = lhsType && lhsType.asNumber ? lhsType.asNumber() : Number(lhsType);
+      const rIdx = rhsType && rhsType.asNumber ? rhsType.asNumber() : Number(rhsType);
+      const lName = lIdx >= 0 && lIdx < typeNames.length ? typeNames[lIdx] : "Unknown";
+      const rName = rIdx >= 0 && rIdx < typeNames.length ? typeNames[rIdx] : "Unknown";
+      const eqText = target.text.replace(/\s*=\s*/, "=").trim();
+      return `Type mismatch in equation ${eqText} of type ${lName}=${rName}.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let lhs = db.ast.getFirstChild(node);
       if (lhs == 0) return;
@@ -570,7 +590,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const rhsType = inferExprType(db, rhs, $);
         if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN) {
           if (!isTypeCompatible(rhsType, lhsType) && !isTypeCompatible(lhsType, rhsType)) {
-            db.diagnostic(node);
+            db.diagnostic(node, lhsType, rhsType);
           }
         }
       }

@@ -44,8 +44,8 @@ export class AnalysisPanel {
 
   static async createOrShowBlt(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      vscode.window.showWarningMessage("Open a Modelica file to analyze the equation system.");
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a model file to analyze the equation system.");
       return;
     }
 
@@ -90,8 +90,8 @@ export class AnalysisPanel {
 
   static async createOrShowHierarchy(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      vscode.window.showWarningMessage("Open a Modelica file to view class hierarchy.");
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a model file to view class hierarchy.");
       return;
     }
 
@@ -136,8 +136,8 @@ export class AnalysisPanel {
 
   static async createOrShowComponentTree(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      vscode.window.showWarningMessage("Open a Modelica file to view component tree.");
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a model file to view component tree.");
       return;
     }
 

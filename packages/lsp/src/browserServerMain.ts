@@ -31,9 +31,13 @@ import { ArenaQueryFlattener, modelicaActionHandlers, modelicaLanguage } from "@
 import { DAEBuilder, QueryEngine, initBltWasm } from "@modelscript/runtime";
 import { LineIndex } from "./utils/line-index.js";
 
-import { createModelicaQueryEngine, injectPredefinedTypes } from "@modelscript/modelica/factory";
+import {
+  createModelicaQueryEngine,
+  createModelicaWorkspaceIndex,
+  injectPredefinedTypes,
+} from "@modelscript/modelica/factory";
 
-import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
+import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 
@@ -41,8 +45,11 @@ import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-inter
 // @ts-ignore
 // @ts-ignore
 import csvLangFallback from "@modelscript/csv/language";
-import { clearIconCache } from "@modelscript/modelica/diagram";
+import * as modelicaDiagramOps from "@modelscript/modelica/diagram";
+import { AnnotationEvaluator, clearIconCache } from "@modelscript/modelica/diagram";
 import owl2LangFallback from "@modelscript/owl2/language";
+import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
+import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
 import { registerColorProvider } from "./providers/colorProvider.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
 import { registerDefinitionProvider } from "./providers/definitionProvider.js";
@@ -110,6 +117,15 @@ globalThis.clearIconCache = clearIconCache;
 globalThis.loadRegistryPackages = loadRegistryPackages;
 globalThis.createModelicaQueryEngine = createModelicaQueryEngine;
 globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
+(globalThis as any).create_modelica_query_engine = createModelicaQueryEngine;
+(globalThis as any).create_sysml2_query_engine = createSysML2QueryEngine;
+(globalThis as any).injectPredefinedTypes = injectPredefinedTypes;
+(globalThis as any).AnnotationEvaluator = AnnotationEvaluator;
+(globalThis as any).ArenaQueryFlattener = ArenaQueryFlattener;
+(globalThis as any).create_modelica_workspace_index = createModelicaWorkspaceIndex;
+(globalThis as any).create_sysml2_workspace_index = createSysML2WorkspaceIndex;
+(globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
+(globalThis as any).sysml2DiagramOps = { ...sysml2DiagramOps, buildSysML2DiagramData };
 
 /* Tree-sitter state */
 

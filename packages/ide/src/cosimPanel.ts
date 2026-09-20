@@ -66,7 +66,7 @@ interface LocalParticipant {
   id: string;
   modelName: string;
   uri: string;
-  type: "modelica" | "fmu" | "ssp";
+  type: string;
   variables: number;
   /** Backing participant (LSP-based Modelica or browser-based FMU). */
   participant: BrowserParticipant;
@@ -491,13 +491,17 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
 
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      vscode.window.showWarningMessage("Open a Modelica file to publish as a participant.");
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a model file to publish as a participant.");
       return;
     }
 
     const uri = editor.document.uri.toString();
-    const fileName = editor.document.uri.path.split("/").pop()?.replace(".mo", "") ?? "Model";
+    const fileName =
+      editor.document.uri.path
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "") ?? "Model";
     const participantId = `local-p-${Date.now().toString(36)}`;
 
     const lspParticipant = new LspSimulatorParticipant(this.client, participantId, fileName, uri);
@@ -506,7 +510,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       id: participantId,
       modelName: fileName,
       uri,
-      type: "modelica",
+      type: editor.document.languageId || "modelica",
       variables: 0, // Will be populated after initialization
       participant: lspParticipant,
     };
@@ -658,8 +662,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
 
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      vscode.window.showWarningMessage("Open a Modelica co-simulation wrapper model (.mo) to publish.");
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a co-simulation wrapper model to publish.");
       return;
     }
 
@@ -670,7 +674,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       // Call the LSP to extract the co-simulation graph
       const result = (await this.client.sendRequest("modelscript/extractCosimGraph", { uri, text })) as {
         ok: boolean;
-        participants?: { id: string; type: "modelica" | "fmu"; className: string; fileName?: string }[];
+        participants?: { id: string; type: string; className: string; fileName?: string }[];
         couplings?: {
           from: { participantId: string; variable: string };
           to: { participantId: string; variable: string };
@@ -891,8 +895,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
   private async publishCurrentModel(sessionId: string): Promise<void> {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      vscode.window.showWarningMessage("Open a Modelica file to publish as a participant.");
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a model file to publish as a participant.");
       return;
     }
 
@@ -1194,7 +1198,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
   /** Detect if the active editor contains a co-simulation wrapper model. */
   private detectCosimWrapper(editor: vscode.TextEditor | undefined): void {
-    if (!editor || editor.document.languageId !== "modelica") {
+    if (!editor) {
       this.postMessage({ type: "cosimWrapperDetected", detected: false });
       return;
     }

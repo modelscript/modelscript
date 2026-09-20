@@ -98,9 +98,18 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
   const explicitTypes = acc["type"] ? [...acc["type"]] : [];
   const explicitOperators = acc["operator"] ? [...acc["operator"]] : [];
 
-  const keywords = explicitKeywords.filter((s) => s.length > 1).sort();
+  // Also harvest word-like identifiers from grammar tokens in acc["other"]
+  const otherTokens = acc["other"] ? [...acc["other"]] : [];
+  const autoKeywords = otherTokens.filter(
+    (s) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) && s.length > 1 && !explicitTypes.includes(s),
+  );
+  const autoOperators = otherTokens.filter(
+    (s) => /^[^a-zA-Z0-9_\s]+$/.test(s) && !["{", "}", "(", ")", "[", "]", ";", ",", '"', "'"].includes(s),
+  );
+
+  const keywords = Array.from(new Set([...explicitKeywords, ...autoKeywords])).sort();
   const typeKeywords = explicitTypes.sort();
-  const operators = explicitOperators.sort();
+  const operators = Array.from(new Set([...explicitOperators, ...autoOperators])).sort();
 
   const langName = langConfig.name.toLowerCase();
 
@@ -109,13 +118,22 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
     name: langConfig.name,
     scopeName: `source.${langName}`,
     patterns: [
+      { include: "#comments" },
+      { include: "#strings" },
+      { include: "#numbers" },
       { include: "#keywords" },
       { include: "#types" },
       { include: "#operators" },
-      { include: "#strings" },
-      { include: "#comments" },
     ],
     repository: {
+      numbers: {
+        patterns: [
+          {
+            match: "\\b[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?\\b",
+            name: `constant.numeric.${langName}`,
+          },
+        ],
+      },
       keywords: {
         patterns:
           keywords.length > 0

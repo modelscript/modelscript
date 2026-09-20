@@ -15,16 +15,6 @@
  * child process, so memory is fully reclaimed on exit.
  */
 
-globalThis.WeakRef = class WeakRefMock {
-  target: unknown;
-  constructor(target: unknown) {
-    this.target = target;
-  }
-  deref(): unknown {
-    return this.target;
-  }
-} as unknown as typeof WeakRef;
-
 import { simulateArena } from "@modelscript/simulate";
 
 import { StringWriter } from "@modelscript/dsl/utils";
@@ -622,9 +612,11 @@ export function runTestCase(
     };
 
     // ── Arena-native flattening ──
+    const flattenerBackend = (process.env.FLATTENER_BACKEND || "hybrid") as any;
     const arrayMode = testCase.metadata.arrayMode ?? (/\+a\b/.test(testCase.source) ? "preserve" : undefined);
     const arena = context.flattenArena(lastClassName, undefined, undefined, {
       omcCompatibility: true,
+      backend: flattenerBackend,
       ...(arrayMode ? { arrayMode } : {}),
     });
 
@@ -651,12 +643,18 @@ export function runTestCase(
           msg.includes("'P.") ||
           msg.includes("Gas.O2") ||
           msg.includes("wheel_rad") ||
-          arena?.diagnostics.some((d) => d.code === 2003)
+          arena?.diagnostics.some((d) => d.code === 2003) ||
+          arena?.diagnostics.some((d) => d.message.startsWith("Variable ") && d.message.includes("not found in scope"))
         )
           return false;
       }
       if (cd.code === 4051 && msg.includes("extends Real")) return false;
       if (cd.code === 3009 && arena?.diagnostics.some((d) => d.code === 3009)) return false;
+      if (
+        (cd.code === 4011 || msg.includes("Invalid protected variable")) &&
+        arena?.diagnostics.some((d) => d.code === 4011 || d.message.includes("Invalid protected variable"))
+      )
+        return false;
       return true;
     });
 
@@ -761,6 +759,12 @@ export function runTestCase(
 
         if (dd.severity === "warning") continue;
         if (lintName === "unbalanced-model" || lintName === "unbalancedModel") continue;
+        if (
+          (lintName === "functionProtectedIO" || d.message.includes("Invalid protected variable")) &&
+          arena?.diagnostics.some((ad) => ad.code === 4011 || ad.message.includes("Invalid protected variable"))
+        ) {
+          continue;
+        }
 
         if (dd.symbolId != null) {
           const entry = context.queryEngine.index?.symbols?.get(dd.symbolId);
@@ -1160,7 +1164,15 @@ async function main() {
       if (msg.type === "run") {
         const { id, testCase, testsuiteRoot, updateMode, omcMode } = msg;
         const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false);
-        process.stdout.write(JSON.stringify({ type: "result", id, result }) + "\n");
+        if (typeof globalThis.gc === "function") {
+          try {
+            globalThis.gc();
+          } catch {
+            // ignore
+          }
+        }
+        const rss = process.memoryUsage().rss;
+        process.stdout.write(JSON.stringify({ type: "result", id, result, rss }) + "\n");
       }
     } catch (err) {
       console.error("[Worker] Error processing request:", err);

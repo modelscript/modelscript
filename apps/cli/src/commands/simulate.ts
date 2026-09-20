@@ -35,6 +35,7 @@ interface SimulateArgs {
   "memory-profile"?: boolean;
   memoryProfile?: boolean;
   jacobian: "dense" | "sparse" | "fd";
+  flattener?: "ts" | "wasm" | "hybrid" | "diff";
 }
 
 export const Simulate: CommandModule<{}, SimulateArgs> = {
@@ -107,6 +108,14 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         description: "Jacobian calculation method",
         choices: ["dense", "sparse", "fd"],
         default: "sparse",
+      })
+      .option("flattener", {
+        alias: "F",
+        choices: ["ts", "wasm", "hybrid", "diff"],
+        default: "hybrid",
+        description:
+          "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
+        type: "string",
       });
   }) as CommandModule<{}, SimulateArgs>["builder"],
   handler: async (args) => {
@@ -137,7 +146,9 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
     // Flatten the model
     profiler.start("flattening");
-    let arena = context.flattenArena(args.name);
+    let arena = context.flattenArena(args.name, undefined, undefined, {
+      backend: args.flattener,
+    });
     profiler.end("flattening");
 
     if (arena) {

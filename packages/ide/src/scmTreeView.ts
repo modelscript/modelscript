@@ -74,7 +74,7 @@ class SemanticDiffTreeProvider implements vscode.TreeDataProvider<SemanticDiffTr
 
     for (const change of changes) {
       const uri = change.uri;
-      if (!(uri.fsPath.endsWith(".mo") || uri.fsPath.endsWith(".sysml"))) {
+      if (!/\.(mo|mos|sysml|sysml2|step|stp|p21|owl|ttl|ofn|csv)$/i.test(uri.fsPath)) {
         continue;
       }
 

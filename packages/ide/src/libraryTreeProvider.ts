@@ -15,85 +15,62 @@ interface TreeNodeInfo {
   name: string;
   compositeName: string;
   classKind: string;
+  icon?: string;
   hasChildren: boolean;
   iconSvg?: string;
   language?: string;
 }
 
+const KIND_TO_ICON_MAP: Record<string, string> = {
+  model: "symbol-class",
+  block: "symbol-event",
+  connector: "symbol-interface",
+  record: "symbol-struct",
+  type: "symbol-type-parameter",
+  function: "symbol-function",
+  package: "package",
+  operator: "symbol-operator",
+  class: "symbol-class",
+  "part def": "symbol-class",
+  "attribute def": "symbol-property",
+  "port def": "symbol-interface",
+  "item def": "symbol-misc",
+  "occurrence def": "symbol-event",
+  "connection def": "git-compare",
+  "interface def": "symbol-interface",
+  "allocation def": "arrow-both",
+  "flow def": "arrow-right",
+  "action def": "run-all",
+  "state def": "circle-large-outline",
+  "calc def": "symbol-function",
+  "constraint def": "warning",
+  "requirement def": "shield",
+  "concern def": "bell",
+  "use case def": "account",
+  "case def": "folder",
+  "analysis case def": "graph",
+  "verification def": "verified",
+  "view def": "preview",
+  "viewpoint def": "target",
+  "rendering def": "paintcan",
+  "metadata def": "tag",
+  enumeration: "symbol-enum",
+};
+
 // Map classKind to codicon (fallback when no SVG icon is available)
 function classKindToIcon(kind: string): vscode.ThemeIcon {
-  switch (kind) {
-    // Modelica
-    case "model":
-      return new vscode.ThemeIcon("symbol-class");
-    case "block":
-      return new vscode.ThemeIcon("symbol-event");
-    case "connector":
-      return new vscode.ThemeIcon("symbol-interface");
-    case "record":
-      return new vscode.ThemeIcon("symbol-struct");
-    case "type":
-      return new vscode.ThemeIcon("symbol-type-parameter");
-    case "function":
-      return new vscode.ThemeIcon("symbol-function");
-    case "package":
-      return new vscode.ThemeIcon("package");
-    case "operator":
-      return new vscode.ThemeIcon("symbol-operator");
-    case "class":
-      return new vscode.ThemeIcon("symbol-class");
-    // SysML2 definitions
-    case "part def":
-      return new vscode.ThemeIcon("symbol-class");
-    case "attribute def":
-      return new vscode.ThemeIcon("symbol-property");
-    case "port def":
-      return new vscode.ThemeIcon("symbol-interface");
-    case "item def":
-      return new vscode.ThemeIcon("symbol-misc");
-    case "occurrence def":
-      return new vscode.ThemeIcon("symbol-event");
-    case "connection def":
-      return new vscode.ThemeIcon("git-compare");
-    case "interface def":
-      return new vscode.ThemeIcon("symbol-interface");
-    case "allocation def":
-      return new vscode.ThemeIcon("arrow-both");
-    case "flow def":
-      return new vscode.ThemeIcon("arrow-right");
-    case "action def":
-      return new vscode.ThemeIcon("run-all");
-    case "state def":
-      return new vscode.ThemeIcon("circle-large-outline");
-    case "calc def":
-      return new vscode.ThemeIcon("symbol-function");
-    case "constraint def":
-      return new vscode.ThemeIcon("warning");
-    case "requirement def":
-      return new vscode.ThemeIcon("shield");
-    case "concern def":
-      return new vscode.ThemeIcon("bell");
-    case "use case def":
-      return new vscode.ThemeIcon("account");
-    case "case def":
-      return new vscode.ThemeIcon("folder");
-    case "analysis case def":
-      return new vscode.ThemeIcon("graph");
-    case "verification def":
-      return new vscode.ThemeIcon("verified");
-    case "view def":
-      return new vscode.ThemeIcon("preview");
-    case "viewpoint def":
-      return new vscode.ThemeIcon("target");
-    case "rendering def":
-      return new vscode.ThemeIcon("paintcan");
-    case "metadata def":
-      return new vscode.ThemeIcon("tag");
-    case "enumeration":
-      return new vscode.ThemeIcon("symbol-enum");
-    default:
-      return new vscode.ThemeIcon("symbol-misc");
+  if (kind) {
+    if (kind.startsWith("symbol-") || !kind.includes(" ")) {
+      try {
+        return new vscode.ThemeIcon(kind);
+      } catch {}
+    }
+    const mapped = KIND_TO_ICON_MAP[kind.toLowerCase()];
+    if (mapped) {
+      return new vscode.ThemeIcon(mapped);
+    }
   }
+  return new vscode.ThemeIcon("symbol-misc");
 }
 
 // Convert raw SVG string to a data URI that VS Code can use as an icon
@@ -117,8 +94,14 @@ export class LibraryTreeItem extends vscode.TreeItem {
     this.description = info.classKind;
     this.contextValue = info.classKind;
 
-    // Use SVG icon from LSP if available, otherwise fall back to codicons
-    if (info.iconSvg) {
+    // Use explicit icon from DSL symbol config if present, or SVG icon from LSP, otherwise fall back to codicons
+    if (info.icon) {
+      try {
+        this.iconPath = new vscode.ThemeIcon(info.icon);
+      } catch {
+        this.iconPath = classKindToIcon(info.classKind);
+      }
+    } else if (info.iconSvg) {
       const iconUri = svgToIconUri(info.iconSvg);
       this.iconPath = iconUri;
     } else {
@@ -126,9 +109,8 @@ export class LibraryTreeItem extends vscode.TreeItem {
     }
 
     // For leaf items that can be added to a diagram, double-click triggers addToDiagram.
-    const modelicaAddable = info.classKind === "model" || info.classKind === "block" || info.classKind === "connector";
-    const sysml2Addable = info.language === "sysml2" && info.classKind.endsWith(" def");
-    const isAddable = modelicaAddable || sysml2Addable;
+    const nonAddableKinds = new Set(["package", "import", "comment", "file", "folder"]);
+    const isAddable = !nonAddableKinds.has(info.classKind.toLowerCase());
     if (isAddable && !info.hasChildren) {
       this.command = {
         command: "modelscript.addToDiagram",
@@ -188,10 +170,8 @@ export class LibraryTreeProvider
     const item = source[0];
     if (!item) return;
 
-    const modelicaAddable =
-      item.info.classKind === "model" || item.info.classKind === "block" || item.info.classKind === "connector";
-    const sysml2Addable = item.info.language === "sysml2" && item.info.classKind.endsWith(" def");
-    const isAddable = modelicaAddable || sysml2Addable;
+    const nonAddableKinds = new Set(["package", "import", "comment", "file", "folder"]);
+    const isAddable = !nonAddableKinds.has(item.info.classKind.toLowerCase()) && !item.info.hasChildren;
     if (!isAddable) return;
 
     const dragData = {
@@ -215,7 +195,7 @@ export class LibraryTreeProvider
         `[library-tree-provider] getChildren called for element: ${element?.info?.name} (id: ${element?.info?.id})`,
       );
       const nodes: TreeNodeInfo[] = await this.client.sendRequest("modelscript/getLibraryTree", {
-        uri: this.documentUri ?? "modelica:/",
+        uri: this.documentUri ?? "file:///",
         parentId: element?.info.id,
       });
       console.log(

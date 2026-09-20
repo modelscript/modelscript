@@ -689,6 +689,12 @@ export interface SymbolConfig<FieldName extends string = string> {
   extends?: FieldName;
   /** Field name containing the visibility modifier (e.g. 'public' / 'protected') */
   visibility?: FieldName;
+  /** VS Code Theme Codicon string (e.g. 'symbol-class', 'shield', 'plug') or SVG identifier */
+  icon?: string;
+  /** Whether this symbol should appear in the library/project sidebar tree (default: true for definitions) */
+  treeVisible?: boolean;
+  /** Category or grouping for tree display (e.g. 'Definitions', 'Requirements', 'Ports') */
+  group?: string;
 }
 
 /**
@@ -901,6 +907,12 @@ export interface LanguageOptions<
    */
   runtimeDir?: string;
 
+  /** Optional human-friendly display name (e.g. 'SysML v2'). Defaults to capitalized name. */
+  displayName?: string;
+
+  /** File extensions associated with this language (e.g. ['.sysml', '.sysml2']). */
+  fileExtensions?: string[];
+
   /** Dedicated Declaration & Stub Symbol Schema for Tier 1 Workspace Indexing and fast F12 */
   symbols?: Partial<Record<RuleName, SymbolConfig<FieldName>>>;
 
@@ -908,6 +920,8 @@ export interface LanguageOptions<
   lsp?: {
     /** The file extension associated with this language (e.g. '.mo'). Defaults to '.<name>' */
     fileExtension?: string;
+    /** File extensions associated with this language (e.g. ['.sysml', '.sysml2']). */
+    fileExtensions?: string[];
     /** Relative paths to light and dark mode file icons */
     icons?: {
       light: string;
@@ -1082,6 +1096,25 @@ export interface LanguageOptions<
    * Defines custom extractor lambdas, manifest routing, and polyglot target projections.
    */
   container?: ContainerDeclaration<RuleName>;
+
+  /**
+   * Starter / scaffolding project templates contributed by this language.
+   */
+  templates?: {
+    id: string;
+    title: string;
+    description: string;
+    category?: string;
+    files: Record<string, string>;
+  }[];
+
+  /**
+   * Requirements & traceability configuration for spreadsheet/matrix editors.
+   */
+  requirements?: {
+    requirementRules?: string[];
+    matrixRules?: string[];
+  };
 }
 
 /**

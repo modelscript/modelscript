@@ -21,12 +21,13 @@ interface CompileArgs {
   timing?: boolean;
   "memory-profile"?: boolean;
   memoryProfile?: boolean;
+  flattener?: "ts" | "wasm" | "hybrid" | "diff";
 }
 
 export const Compile: CommandModule<{}, CompileArgs> = {
   command: ["compile <name> <paths...>", "flatten <name> <paths...>"],
   describe: "Flatten a Modelica model to a flat DAE representation",
-  builder: (yargs) => {
+  builder: ((yargs: any) => {
     return yargs
       .positional("name", {
         demandOption: true,
@@ -44,6 +45,14 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         description: "directories to search for Modelica libraries (colon-separated)",
         type: "string",
       })
+      .option("flattener", {
+        alias: "F",
+        choices: ["ts", "wasm", "hybrid", "diff"],
+        default: "hybrid",
+        description:
+          "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
+        type: "string",
+      })
       .option("timing", {
         description: "report timing information for each stage as JSON to stderr",
         type: "boolean",
@@ -54,7 +63,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         type: "boolean",
         default: false,
       });
-  },
+  }) as CommandModule<{}, CompileArgs>["builder"],
   handler: async (args) => {
     const profiler = new Profiler();
 
@@ -183,7 +192,9 @@ export const Compile: CommandModule<{}, CompileArgs> = {
 
     // Flatten the model using Arena
     profiler.start("flattening");
-    const arena = context.flattenArena(args.name);
+    const arena = context.flattenArena(args.name, undefined, undefined, {
+      backend: args.flattener,
+    });
     profiler.end("flattening");
 
     Context.gcBetweenPhases();

@@ -1,17 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // ts-check
 
-import { SYNTAX_NAMES as csvSyntaxNames } from "@modelscript/csv/parser";
 import { createWasmParser } from "@modelscript/dsl/bindings";
-import { ArenaQueryFlattener } from "@modelscript/modelica";
-import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
-import { SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
-import { SYNTAX_NAMES as owl2SyntaxNames } from "@modelscript/owl2/parser";
 import { FederatedQueryCacheStore, IndexedDBQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
-import { SYNTAX_NAMES as stepSyntaxNames } from "@modelscript/step/parser";
-import { SYNTAX_NAMES as sysml2SyntaxNames } from "@modelscript/sysml2/parser";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
 import { LineIndex, TokenData } from "../utils/line-index.js";
@@ -34,22 +28,153 @@ let createSysML2QueryEngine: any = undefined;
 let ModelicaClassInstance: any = undefined;
 
 export class ParserService {
-  public parserReady = false;
-  public parser: any = null;
-  public facade: any = null;
-  public sysml2ParserReady = false;
-  public sysml2Parser: any = null;
-  public sysml2Facade: any = null;
-  public stepParserReady = false;
-  public stepParser: any = null;
-  public stepFacade: any = null;
+  private parserEntries = new Map<string, { parser: any; facade: any; ready: boolean }>();
   public sharedContext: any = null;
-  public owl2ParserReady = false;
-  public owl2Parser: any = null;
-  public owl2Facade: any = null;
-  public csvParserReady = false;
-  public csvParser: any = null;
-  public csvFacade: any = null;
+
+  public registerParser(langId: string, parser: any, facade: any = null): void {
+    const norm = langId.toLowerCase();
+    this.parserEntries.set(norm, { parser, facade, ready: !!parser });
+    const plugin = globalLanguageRegistry.getPluginById(norm);
+    if (plugin) {
+      plugin.parser = parser;
+      plugin.facade = facade;
+    }
+  }
+
+  public getParser(langId: string): any | null {
+    const norm = langId.toLowerCase();
+    return this.parserEntries.get(norm)?.parser ?? globalLanguageRegistry.getPluginById(norm)?.parser ?? null;
+  }
+
+  public getFacade(langId: string): any | null {
+    const norm = langId.toLowerCase();
+    return this.parserEntries.get(norm)?.facade ?? globalLanguageRegistry.getPluginById(norm)?.facade ?? null;
+  }
+
+  public isParserReady(langId: string): boolean {
+    const norm = langId.toLowerCase();
+    return this.parserEntries.get(norm)?.ready ?? !!globalLanguageRegistry.getPluginById(norm)?.parser;
+  }
+
+  public getParserForUri(uri: string): any | null {
+    const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(uri);
+    if (plugin?.id) {
+      const p = this.getParser(plugin.id);
+      if (p) return p;
+    }
+    return null;
+  }
+
+  // Compatibility getters/setters for legacy callers
+  get parser() {
+    return this.getParser("modelica");
+  }
+  set parser(val: any) {
+    this.registerParser("modelica", val, this.facade);
+  }
+  get facade() {
+    return this.getFacade("modelica");
+  }
+  set facade(val: any) {
+    const p = this.parser;
+    this.registerParser("modelica", p, val);
+  }
+  get parserReady() {
+    return this.isParserReady("modelica");
+  }
+  set parserReady(val: boolean) {
+    const entry = this.parserEntries.get("modelica");
+    if (entry) entry.ready = val;
+    else this.registerParser("modelica", null, null);
+  }
+
+  get sysml2Parser() {
+    return this.getParser("sysml2");
+  }
+  set sysml2Parser(val: any) {
+    this.registerParser("sysml2", val, this.sysml2Facade);
+  }
+  get sysml2Facade() {
+    return this.getFacade("sysml2");
+  }
+  set sysml2Facade(val: any) {
+    const p = this.sysml2Parser;
+    this.registerParser("sysml2", p, val);
+  }
+  get sysml2ParserReady() {
+    return this.isParserReady("sysml2");
+  }
+  set sysml2ParserReady(val: boolean) {
+    const entry = this.parserEntries.get("sysml2");
+    if (entry) entry.ready = val;
+    else this.registerParser("sysml2", null, null);
+  }
+
+  get stepParser() {
+    return this.getParser("step");
+  }
+  set stepParser(val: any) {
+    this.registerParser("step", val, this.stepFacade);
+  }
+  get stepFacade() {
+    return this.getFacade("step");
+  }
+  set stepFacade(val: any) {
+    const p = this.stepParser;
+    this.registerParser("step", p, val);
+  }
+  get stepParserReady() {
+    return this.isParserReady("step");
+  }
+  set stepParserReady(val: boolean) {
+    const entry = this.parserEntries.get("step");
+    if (entry) entry.ready = val;
+    else this.registerParser("step", null, null);
+  }
+
+  get owl2Parser() {
+    return this.getParser("owl2");
+  }
+  set owl2Parser(val: any) {
+    this.registerParser("owl2", val, this.owl2Facade);
+  }
+  get owl2Facade() {
+    return this.getFacade("owl2");
+  }
+  set owl2Facade(val: any) {
+    const p = this.owl2Parser;
+    this.registerParser("owl2", p, val);
+  }
+  get owl2ParserReady() {
+    return this.isParserReady("owl2");
+  }
+  set owl2ParserReady(val: boolean) {
+    const entry = this.parserEntries.get("owl2");
+    if (entry) entry.ready = val;
+    else this.registerParser("owl2", null, null);
+  }
+
+  get csvParser() {
+    return this.getParser("csv");
+  }
+  set csvParser(val: any) {
+    this.registerParser("csv", val, this.csvFacade);
+  }
+  get csvFacade() {
+    return this.getFacade("csv");
+  }
+  set csvFacade(val: any) {
+    const p = this.csvParser;
+    this.registerParser("csv", p, val);
+  }
+  get csvParserReady() {
+    return this.isParserReady("csv");
+  }
+  set csvParserReady(val: boolean) {
+    const entry = this.parserEntries.get("csv");
+    if (entry) entry.ready = val;
+    else this.registerParser("csv", null, null);
+  }
 
   constructor(
     private connection: Connection,
@@ -76,7 +201,10 @@ export class ParserService {
               text = this.sharedContext.fs?.read(stripped.startsWith("/") ? stripped : "/" + stripped);
             }
             if (text) {
-              const tree = this.sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              const tree = this.sharedContext.parse(
+                uri.endsWith(".sysml") || uri.endsWith(".sysml2") ? ".sysml" : ".mo",
+                text,
+              );
               lazyCache = { tree, text };
               this.documentManager.lazyLibTrees.set(uri, lazyCache);
               if (this.documentManager.lazyLibTrees.size > 50) {
@@ -126,7 +254,10 @@ export class ParserService {
               text = this.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
             }
             if (text) {
-              const tree = this.sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              const tree = this.sharedContext.parse(
+                uri.endsWith(".sysml") || uri.endsWith(".sysml2") ? ".sysml" : ".mo",
+                text,
+              );
               lazyCache = { tree, text };
               this.documentManager.lazyLibTrees.set(uri, lazyCache);
               if (this.documentManager.lazyLibTrees.size > 50) {
@@ -327,16 +458,73 @@ export class ParserService {
         message: "Initializing this.parser...",
       });
 
-      const modelicaResult = await createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`, {
-        syntaxNames: modelicaSyntaxNames,
-      });
+      const modelicaSyntaxNames = (globalThis as any).modelicaSyntaxNames;
+      const sysml2SyntaxNames = (globalThis as any).sysml2SyntaxNames;
+      const [modelicaResult, sysmlResult, stepResult, owl2Result, csvResult] = await Promise.all([
+        createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`, {
+          syntaxNames: modelicaSyntaxNames,
+        }),
+        createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`, {
+          syntaxNames: sysml2SyntaxNames,
+        }).catch((e) => {
+          this.connection.console.warn(`Failed to load SysML2 language: ${e}`);
+          return null;
+        }),
+        createWasmParser(`${serverDistBase}/tree-sitter-step.wasm`, {
+          syntaxNames: (globalThis as any).stepSyntaxNames,
+        }).catch((e) => {
+          this.connection.console.warn(`Failed to load Step language: ${e}`);
+          return null;
+        }),
+        createWasmParser(`${serverDistBase}/tree-sitter-owl2.wasm`, {
+          syntaxNames: (globalThis as any).owl2SyntaxNames,
+        }).catch((e) => {
+          this.connection.console.warn(`Failed to load Owl2 language: ${e}`);
+          return null;
+        }),
+        createWasmParser(`${serverDistBase}/tree-sitter-csv.wasm`, {
+          syntaxNames: (globalThis as any).csvSyntaxNames,
+        }).catch((e) => {
+          this.connection.console.warn(`Failed to load Csv language: ${e}`);
+          return null;
+        }),
+      ]);
+
       this.parser = modelicaResult.parser;
       (globalThis as any).modelicaParser = this.parser;
       this.facade = modelicaResult.facade;
       this.parserReady = true;
       this.connection.console.info("ModelScript Modelica parser initialized");
 
-      // Early callback: notify as soon as Modelica parser is ready
+      if (sysmlResult) {
+        this.sysml2Parser = sysmlResult.parser;
+        this.sysml2Facade = sysmlResult.facade;
+        this.sysml2ParserReady = true;
+        this.connection.console.info("ModelScript SysML2 parser initialized");
+      }
+
+      if (stepResult) {
+        this.stepParser = stepResult.parser;
+        this.stepFacade = stepResult.facade;
+        this.stepParserReady = true;
+        this.connection.console.info("ModelScript STEP parser initialized");
+      }
+
+      if (owl2Result) {
+        this.owl2Parser = owl2Result.parser;
+        this.owl2Facade = owl2Result.facade;
+        this.owl2ParserReady = true;
+        this.connection.console.info("ModelScript OWL2 parser initialized");
+      }
+
+      if (csvResult) {
+        this.csvParser = csvResult.parser;
+        this.csvFacade = csvResult.facade;
+        this.csvParserReady = true;
+        this.connection.console.info("ModelScript CSV parser initialized");
+      }
+
+      // Early callback: notify as soon as Modelica/SysML2 parser is ready
       if (typeof onParsersReady === "function") {
         try {
           onParsersReady();
@@ -348,7 +536,9 @@ export class ParserService {
       this.sharedContext = {
         fs: (globalThis as any).sharedFs,
         parse: (ext: string, input: string, ...rest: any[]) => {
-          if (ext === ".sysml") return (this.sysml2Parser as any)?.parse(input, ...rest);
+          const parser = this.getParserForUri(`file:///dummy${ext}`);
+          if (parser) return parser.parse(input, ...rest);
+          if (ext === ".sysml" || ext === ".sysml2") return (this.sysml2Parser as any)?.parse(input, ...rest);
           return (this.parser as any)?.parse(input, ...rest);
         },
         flattenArena: (name: string, classId?: any, uri?: string) => {
@@ -363,8 +553,10 @@ export class ParserService {
           }
           if (targetId === undefined) return null;
           const queryDB = engine.toQueryDB();
-          const flattener = new ArenaQueryFlattener(queryDB);
-          return flattener.flatten(targetId);
+          const flattenerClass = (globalThis as any).ArenaQueryFlattener;
+          if (!flattenerClass) return null;
+          const flattener = new flattenerClass(queryDB);
+          return flattener.flatten(targetId, uri);
         },
       };
       (globalThis as any).sharedContext = this.sharedContext;
@@ -384,58 +576,6 @@ export class ParserService {
         message: "ModelScript (loading libraries...)",
       });
 
-      // Initialize SysML2 parser (non-blocking — WASM load is fast)
-      try {
-        const sysmlResult = await createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`, {
-          syntaxNames: sysml2SyntaxNames,
-        });
-        this.sysml2Parser = sysmlResult.parser;
-        this.sysml2Facade = sysmlResult.facade;
-        this.sysml2ParserReady = true;
-        this.connection.console.info("ModelScript SysML2 parser initialized");
-      } catch (e) {
-        this.connection.console.warn(`Failed to load SysML2 language: ${e}`);
-      }
-
-      // Initialize STEP parser
-      try {
-        const stepResult = await createWasmParser(`${serverDistBase}/tree-sitter-step.wasm`, {
-          syntaxNames: stepSyntaxNames,
-        });
-        this.stepParser = stepResult.parser;
-        this.stepFacade = stepResult.facade;
-        this.stepParserReady = true;
-        this.connection.console.info("ModelScript STEP parser initialized");
-      } catch (e) {
-        this.connection.console.warn(`Failed to load STEP language: ${e}`);
-      }
-
-      // Initialize OWL2 parser
-      try {
-        const owl2Result = await createWasmParser(`${serverDistBase}/tree-sitter-owl2.wasm`, {
-          syntaxNames: owl2SyntaxNames,
-        });
-        this.owl2Parser = owl2Result.parser;
-        this.owl2Facade = owl2Result.facade;
-        this.owl2ParserReady = true;
-        this.connection.console.info("ModelScript OWL2 parser initialized");
-      } catch (e) {
-        this.connection.console.warn(`Failed to load OWL2 language: ${e}`);
-      }
-
-      // Initialize CSV parser
-      try {
-        const csvResult = await createWasmParser(`${serverDistBase}/tree-sitter-csv.wasm`, {
-          syntaxNames: csvSyntaxNames,
-        });
-        this.csvParser = csvResult.parser;
-        this.csvFacade = csvResult.facade;
-        this.csvParserReady = true;
-        this.connection.console.info("ModelScript CSV parser initialized");
-      } catch (e) {
-        this.connection.console.warn(`Failed to load CSV language: ${e}`);
-      }
-
       // Load the Modelica Standard Library from the bundled zip
       // Initialize FederatedCacheStore with local IndexedDB and (currently empty) federated endpoints
       const localStore = new IndexedDBQueryCacheStore("modelscript-lsp-cache");
@@ -445,16 +585,19 @@ export class ParserService {
       });
       const MAX_MEMOS = 2_000_000; // Limit in-memory memos
 
-      this.workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(
-        this.workspaceManager.globalWorkspaceIndex.toUnified(),
-        { getText: () => null, getNode: () => null },
-        cacheStore,
-        MAX_MEMOS,
-      ) as any;
+      const createModelicaQE = (globalThis as any).createModelicaQueryEngine;
+      if (createModelicaQE) {
+        this.workspaceManager.globalModelicaQueryEngine = createModelicaQE(
+          this.workspaceManager.globalWorkspaceIndex.toUnified(),
+          { getText: () => null, getNode: () => null },
+          cacheStore,
+          MAX_MEMOS,
+        ) as any;
+      }
       this.sharedContext = {
         fs: (globalThis as any).sharedFs,
         parse: (ext: string, input: string) => {
-          if (ext === ".sysml") return this.sysml2Parser?.parse(input);
+          if (ext === ".sysml" || ext === ".sysml2") return this.sysml2Parser?.parse(input);
           return this.parser?.parse(input);
         },
       };
@@ -614,21 +757,25 @@ export class ParserService {
 
     // Library class: get from polyglot index directly
     const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-    let engine = uri.endsWith(".sysml")
+    const isSysmlUri = uri.endsWith(".sysml") || uri.endsWith(".sysml2");
+    let engine = isSysmlUri
       ? this.workspaceManager.globalSysML2QueryEngine
       : this.workspaceManager.globalModelicaQueryEngine;
     if (!engine) {
-      if (uri.endsWith(".sysml")) {
+      if (isSysmlUri) {
         engine = createSysML2QueryEngine(unifiedIndex) as any;
         this.workspaceManager.globalSysML2QueryEngine = engine;
       } else {
-        engine = createModelicaQueryEngine(
-          unifiedIndex,
-          this.getSharedCstTreeWrapper(),
-          savedLoaderCtx?.cacheStore,
-          100_000,
-        ) as any;
-        this.workspaceManager.globalModelicaQueryEngine = engine;
+        const createModelicaQE = (globalThis as any).createModelicaQueryEngine;
+        if (createModelicaQE) {
+          engine = createModelicaQE(
+            unifiedIndex,
+            this.getSharedCstTreeWrapper(),
+            savedLoaderCtx?.cacheStore,
+            100_000,
+          ) as any;
+          this.workspaceManager.globalModelicaQueryEngine = engine;
+        }
         if (this.sharedContext) {
           if (typeof this.sharedContext.setQueryEngine === "function") {
             this.sharedContext.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine!);

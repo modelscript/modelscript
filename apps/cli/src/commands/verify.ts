@@ -34,6 +34,7 @@ interface VerifyArgs {
   format?: "terminal" | "json" | "ctrf" | "junit";
   report?: string;
   updateHypergraph?: boolean;
+  flattener?: "ts" | "wasm" | "hybrid" | "diff";
 }
 
 export const Verify: CommandModule<{}, VerifyArgs> = {
@@ -51,6 +52,14 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         array: true,
         demandOption: true,
         description: "paths of libraries, modules (.mo) and sysml files to load",
+        type: "string",
+      })
+      .option("flattener", {
+        alias: "F",
+        choices: ["ts", "wasm", "hybrid", "diff"],
+        default: "hybrid",
+        description:
+          "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
         type: "string",
       })
       .option("engine", {
@@ -210,7 +219,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     // Flatten the model
     profiler.start("flattening");
-    const arena = context.flattenArena(targetEntry?.name || "");
+    const arena = context.flattenArena(targetEntry?.name || "", undefined, undefined, {
+      backend: args.flattener,
+    });
     profiler.end("flattening");
 
     if (!arena) {

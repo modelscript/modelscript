@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
+import type { LanguageAction, LanguageOptions } from "@modelscript/dsl";
 import type { QueryEngine } from "@modelscript/runtime";
 import type { Disposable } from "vscode-languageserver";
 
@@ -34,6 +33,7 @@ export interface LanguagePlugin {
   /** Custom language-specific handler overrides */
   customHandlers?: {
     validate?: (doc: any) => Promise<any[]> | any[];
+    postValidate?: (doc: any, context: any, diagnostics: any[]) => Promise<void> | void;
     complete?: (offset: number, text: string) => any[];
     hover?: (offset: number, text: string) => any | null;
     definition?: (offset: number, text: string) => any | null;
@@ -41,11 +41,21 @@ export interface LanguagePlugin {
     folding?: (tree: any) => any[];
   };
   /** Full language definition options from @modelscript/dsl */
-  languageDef?: any;
+  languageDef?: LanguageOptions | any;
+  /** First-class declarative language actions (commands, toolbar buttons, LLM tools) */
+  actions?: LanguageAction[];
   /** Custom JSON-RPC request and notification handlers */
   handlers?: Record<string, (context: any, params: any) => Promise<any> | any>;
   /** Domain action execution handlers (decoupled from AST grammar) */
   actionHandlers?: Record<string, (context: any, inputs: any) => Promise<any> | any>;
+  /** Optional source text preprocessor hook (e.g. keyword aliases) */
+  preprocessText?: (text: string) => string;
+  /** Factory for creating a Salsa QueryEngine for this language */
+  createQueryEngine?: (unifiedIndex: any, cstTreeWrapper: any) => QueryEngine;
+  /** Diagram backend instance */
+  diagramBackend?: any;
+  /** Annotation evaluator class or constructor */
+  annotationEvaluator?: any;
 }
 
 /**
@@ -118,6 +128,27 @@ export class LanguageRegistry {
   }
 
   /**
+   * Alias for getPluginById.
+   */
+  getPluginByLanguageId(id: string): LanguagePlugin | undefined {
+    return this.plugins.get(id.toLowerCase());
+  }
+
+  /**
+   * Resolves a language plugin by either languageId or file URI extension.
+   */
+  getPluginForLanguageIdOrUri(languageId?: string, uri?: string): LanguagePlugin | undefined {
+    if (languageId) {
+      const byId = this.getPluginById(languageId);
+      if (byId) return byId;
+    }
+    if (uri) {
+      return this.getPluginForUri(uri);
+    }
+    return undefined;
+  }
+
+  /**
    * Resolves a language plugin by file URI extension.
    */
   getPluginForUri(uri: string): LanguagePlugin | undefined {
@@ -183,6 +214,13 @@ export class LanguageRegistry {
    */
   getAllExtensions(): string[] {
     return Array.from(this.extMap.keys());
+  }
+
+  /**
+   * Returns all currently registered language identifiers.
+   */
+  getAllLanguageIds(): string[] {
+    return Array.from(this.plugins.keys());
   }
 }
 

@@ -1,12 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-import { type ModelicaClassInstance, type ModelicaComponentInstance } from "@modelscript/modelica";
 import { type ClassHierarchyNode, type ComponentTreeNode, type TreeNodeInfo } from "@modelscript/runtime";
 import { Connection } from "vscode-languageserver";
 import {
-  CLASS_KIND_KEYWORDS,
-  SYSML2_RULE_TO_KIND,
-  SYSML2_TREE_KINDS,
   classKindFromEntry,
   fqnCacheState,
   getCompositeName,
@@ -24,24 +20,11 @@ export class HierarchyService {
   ) {}
 
   classKindFromEntry(entry: any): string {
-    if (entry.language === "sysml2") {
-      return SYSML2_RULE_TO_KIND[entry.ruleName] ?? entry.kind?.toLowerCase() ?? "definition";
-    }
-    // Modelica path
-    const prefixesText = entry.metadata?.classPrefixes;
-    if (typeof prefixesText !== "string" || !prefixesText) return "class";
-    const lower = prefixesText.toLowerCase();
-    for (let i = CLASS_KIND_KEYWORDS.length - 1; i >= 0; i--) {
-      if (lower.includes(CLASS_KIND_KEYWORDS[i])) return CLASS_KIND_KEYWORDS[i];
-    }
-    return "class";
+    return classKindFromEntry(entry);
   }
 
   isTreeVisible(entry: any): boolean {
-    if (entry.language === "sysml2") {
-      return SYSML2_TREE_KINDS.has(entry.kind);
-    }
-    return entry.kind === "Class";
+    return isTreeVisible(entry);
   }
 
   getCompositeName(entry: any, index: any): string {

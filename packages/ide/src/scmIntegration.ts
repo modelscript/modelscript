@@ -43,7 +43,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
             const stagedDiffs = [];
             for (const change of changes) {
               const uri = change.uri;
-              if (uri.fsPath.endsWith(".mo") || uri.fsPath.endsWith(".sysml")) {
+              if (/\.(mo|mos|sysml|sysml2|step|stp|p21|owl|ttl|ofn|csv)$/i.test(uri.fsPath)) {
                 try {
                   // Use git show to get HEAD version
                   const oldText = await repository.show("HEAD", uri.fsPath);

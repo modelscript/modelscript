@@ -1,21 +1,3 @@
-import { buildDiagramData } from "@modelscript/modelica/diagram";
-import {
-  computeSysML2ConnectionDelete,
-  computeSysML2ConnectionInsert,
-  computeSysML2DescriptionEdit,
-  computeSysML2ElementDelete,
-  computeSysML2ElementInsert,
-  computeSysML2NameEdit,
-  computeSysML2ParameterEdit,
-  createEmptyLayout,
-  generateUniqueName,
-  parseLayout,
-  removeElements,
-  serializeLayout,
-  updateConnectionVertices,
-  updateElementPositions,
-} from "@modelscript/sysml2/diagram";
-import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Connection } from "vscode-languageserver";
@@ -25,8 +7,17 @@ import {
   SysML2DiagramBackend,
   createDiagramDispatch,
 } from "../diagramApi.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { DocumentManager } from "./DocumentManager.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
+
+function getModelicaDiagramOps(): any {
+  return (globalThis as any).modelicaDiagramOps ?? {};
+}
+
+function getSysML2DiagramOps(): any {
+  return (globalThis as any).sysml2DiagramOps ?? {};
+}
 
 function simpleHash(str: string): number {
   let hash = 0;
@@ -86,7 +77,7 @@ export class DiagramService {
     }
 
     const t0 = performance.now();
-    const classInstance = this.workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
+    const classInstance = this.workspaceManager.resolveClassInstance(params.uri, params.className);
 
     if (!classInstance) {
       if (!dependenciesReady) {
@@ -112,7 +103,8 @@ export class DiagramService {
 
     try {
       const tBuild0 = performance.now();
-      const result = await buildDiagramData(classInstance);
+      const ops = getModelicaDiagramOps();
+      const result = ops.buildDiagramData ? await ops.buildDiagramData(classInstance) : null;
       const tBuild = performance.now() - tBuild0;
       if (result) {
         (result as any).isLoading = !dependenciesReady;
@@ -136,8 +128,7 @@ export class DiagramService {
       const modelicaBackend = new ModelicaDiagramBackend({
         getDocumentInstances: (uri) => this.workspaceManager.documentInstances.get(uri),
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
-        resolveClassInstance: (uri: string, name?: string) =>
-          this.workspaceManager.resolveModelicaClassInstance(uri, name),
+        resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
         flushValidation: async (uri: string) => {
           const f = (globalThis as any).validateTextDocument;
           if (f) {
@@ -147,6 +138,7 @@ export class DiagramService {
         },
       });
 
+      const sysmlOps = getSysML2DiagramOps();
       const sysml2Backend = new SysML2DiagramBackend({
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         getLayout: (uri) => {
@@ -156,7 +148,7 @@ export class DiagramService {
               const layoutPath = fileURLToPath(`${uri}.layout`);
               if (fs.existsSync(layoutPath)) {
                 const content = fs.readFileSync(layoutPath, "utf-8");
-                layout = parseLayout(content);
+                layout = sysmlOps.parseLayout ? sysmlOps.parseLayout(content) : undefined;
                 if (layout) this.sysml2Layouts.set(uri, layout);
               }
             } catch {
@@ -170,16 +162,19 @@ export class DiagramService {
           if (typeof uri === "string" && uri.startsWith("file://") && layout) {
             try {
               const layoutPath = fileURLToPath(`${uri}.layout`);
-              fs.writeFileSync(layoutPath, serializeLayout(layout), "utf-8");
+              if (sysmlOps.serializeLayout) {
+                fs.writeFileSync(layoutPath, sysmlOps.serializeLayout(layout), "utf-8");
+              }
             } catch {
               // ignore
             }
           }
         },
-        createEmptyLayout,
-        updateElementPositions,
-        updateConnectionVertices,
-        removeElements,
+        createEmptyLayout: () =>
+          sysmlOps.createEmptyLayout ? sysmlOps.createEmptyLayout() : { elements: {}, connections: {} },
+        updateElementPositions: (...args: any[]) => sysmlOps.updateElementPositions?.(...args),
+        updateConnectionVertices: (...args: any[]) => sysmlOps.updateConnectionVertices?.(...args),
+        removeElements: (...args: any[]) => sysmlOps.removeElements?.(...args),
         buildDiagramData: (params) => {
           // Delegate to the existing SysML2 diagram data builder inline
           try {
@@ -210,7 +205,9 @@ export class DiagramService {
                   | "Sequence"
                   | "Package")
               : "All";
-            const data = buildSysML2DiagramData(unified, params.uri, undefined, diagramType);
+            const data = sysmlOps.buildSysML2DiagramData
+              ? sysmlOps.buildSysML2DiagramData(unified, params.uri, undefined, diagramType)
+              : null;
 
             // Merge stored layout positions
             const layout = this.sysml2Layouts.get(params.uri);
@@ -246,14 +243,14 @@ export class DiagramService {
             ? (globalThis as any).sysml2Parser
             : null;
         },
-        computeConnectionInsert: computeSysML2ConnectionInsert,
-        computeConnectionDelete: computeSysML2ConnectionDelete,
-        computeElementInsert: computeSysML2ElementInsert,
-        computeElementDelete: computeSysML2ElementDelete,
-        generateUniqueName,
-        computeNameEdit: computeSysML2NameEdit,
-        computeDescriptionEdit: computeSysML2DescriptionEdit,
-        computeParameterEdit: computeSysML2ParameterEdit,
+        computeConnectionInsert: (...args: any[]) => sysmlOps.computeSysML2ConnectionInsert?.(...args) ?? [],
+        computeConnectionDelete: (...args: any[]) => sysmlOps.computeSysML2ConnectionDelete?.(...args) ?? [],
+        computeElementInsert: (...args: any[]) => sysmlOps.computeSysML2ElementInsert?.(...args) ?? [],
+        computeElementDelete: (...args: any[]) => sysmlOps.computeSysML2ElementDelete?.(...args) ?? [],
+        generateUniqueName: (...args: any[]) => sysmlOps.generateUniqueName?.(...args) ?? "element",
+        computeNameEdit: (...args: any[]) => sysmlOps.computeSysML2NameEdit?.(...args) ?? [],
+        computeDescriptionEdit: (...args: any[]) => sysmlOps.computeSysML2DescriptionEdit?.(...args) ?? [],
+        computeParameterEdit: (...args: any[]) => sysmlOps.computeSysML2ParameterEdit?.(...args) ?? [],
         getSymbolData: (uri, componentName) => {
           try {
             const unified = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
@@ -316,6 +313,8 @@ export class DiagramService {
         },
         getDiagramConfig: (uri) => {
           try {
+            const plugin = globalLanguageRegistry.getPluginForUri(uri);
+            if (plugin?.languageDef?.diagram) return plugin.languageDef.diagram;
             const lang = (this.workspaceManager as any).getLanguageForUri?.(uri);
             return lang?.diagram;
           } catch {

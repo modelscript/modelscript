@@ -31,11 +31,33 @@ import { ParserService } from "./services/ParserService.js";
 import { ValidationService } from "./services/ValidationService.js";
 import { WorkspaceManager } from "./services/WorkspaceManager.js";
 
+import * as modelicaDiagramOps from "@modelscript/modelica/diagram";
+import {
+  createModelicaQueryEngine,
+  createModelicaWorkspaceIndex,
+  injectPredefinedTypes,
+} from "@modelscript/modelica/factory";
+import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
+import {
+  buildSysML2DiagramData,
+  createSysML2QueryEngine,
+  createSysML2WorkspaceIndex,
+} from "@modelscript/sysml2/factory";
+
 /**
  * Starts a headless Language Server Protocol server over Node.js standard I/O or IPC.
  */
 export function startNodeServer() {
   globalThis.clearIconCache = clearIconCache;
+  (globalThis as any).create_modelica_workspace_index = createModelicaWorkspaceIndex;
+  (globalThis as any).create_sysml2_workspace_index = createSysML2WorkspaceIndex;
+  (globalThis as any).create_modelica_query_engine = createModelicaQueryEngine;
+  (globalThis as any).create_sysml2_query_engine = createSysML2QueryEngine;
+  (globalThis as any).createModelicaQueryEngine = createModelicaQueryEngine;
+  (globalThis as any).createSysML2QueryEngine = createSysML2QueryEngine;
+  (globalThis as any).injectPredefinedTypes = injectPredefinedTypes;
+  (globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
+  (globalThis as any).sysml2DiagramOps = { ...sysml2DiagramOps, buildSysML2DiagramData };
 
   const connection = createConnection(ProposedFeatures.all);
   const documents = new TextDocuments(TextDocument);

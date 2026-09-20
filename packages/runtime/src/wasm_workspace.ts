@@ -874,15 +874,15 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   toUnified(): SymbolIndex {
-    return this.toUnifiedPartial();
+    return this.toSymbolIndex();
   }
 
   toTreeIndex(): SymbolIndex {
-    return this.toUnifiedPartial();
+    return this.toSymbolIndex();
   }
 
   async toUnifiedAsync(): Promise<SymbolIndex> {
-    return this.toUnifiedPartial();
+    return this.toSymbolIndex();
   }
 
   toUnifiedPartial(): SymbolIndex {
@@ -1315,6 +1315,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
 
   private static languageExtensionMap = new Map<string, string>([
     [".sysml", "sysml2"],
+    [".sysml2", "sysml2"],
     [".mo", "modelica"],
     [".msim", "modelica"],
     [".mos", "modelica"],
@@ -1536,11 +1537,53 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   toUnified(): SymbolIndex {
-    return this.toUnifiedPartial();
+    if (this.workspaces.size === 0) {
+      return {
+        symbols: new Map<SymbolId, SymbolEntry>(),
+        byName: new Map<string, SymbolId[]>(),
+        childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+      };
+    }
+    if (this.workspaces.size === 1) {
+      for (const ws of this.workspaces.values()) {
+        if (ws && typeof ws.toUnified === "function") {
+          return ws.toUnified();
+        }
+        if (ws && typeof ws.toSymbolIndex === "function") {
+          return ws.toSymbolIndex();
+        }
+      }
+    }
+    const merged: SymbolIndex = {
+      symbols: new Map<SymbolId, SymbolEntry>(),
+      byName: new Map<string, SymbolId[]>(),
+      childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+    };
+    for (const [lang, ws] of this.workspaces.entries()) {
+      let idx: SymbolIndex | null = null;
+      if (typeof ws.toUnified === "function") {
+        idx = ws.toUnified();
+      } else if (typeof ws.toSymbolIndex === "function") {
+        idx = ws.toSymbolIndex();
+      }
+      if (!idx) continue;
+      for (const [id, entry] of idx.symbols.entries()) {
+        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
+      }
+      for (const [name, ids] of idx.byName.entries()) {
+        const existing = merged.byName.get(name) || [];
+        merged.byName.set(name, existing.concat(ids));
+      }
+      for (const [parentId, childIds] of idx.childrenOf.entries()) {
+        const existing = merged.childrenOf.get(parentId) || [];
+        merged.childrenOf.set(parentId, existing.concat(childIds));
+      }
+    }
+    return merged;
   }
 
   toTreeIndex(): SymbolIndex {
-    return this.toUnifiedPartial();
+    return this.toUnified();
   }
 
   async toSymbolIndexAsync(): Promise<SymbolIndex> {

@@ -14,11 +14,8 @@ import { parseStepReferences, STEP_SCHEMA } from "@modelscript/step";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
-import type { SyntaxNode } from "../utils/tree-sitter.js";
 import { ReasonerService } from "./ReasonerService.js";
 
-import { createModelicaQueryEngine, injectPredefinedTypes } from "@modelscript/modelica/factory";
-import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
 
 let verificationTimer: any = undefined;
@@ -207,806 +204,147 @@ export class ValidationService {
   }
 
   public async validateTextDocument(textDocument: TextDocument): Promise<void> {
-    const diagnostics: Diagnostic[] = [];
+    const uri = textDocument.uri;
     const text = textDocument.getText();
+    const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(textDocument.languageId, uri);
 
-    // Handle Javascript/TypeScript sidecar files natively via mock entity
-    if (textDocument.uri.endsWith(".js") || textDocument.uri.endsWith(".ts")) {
-      const context = this.parserService.sharedContext;
-      if (!context) return;
-      const entity = {
-        isClassInstance: true,
-        jsSource: text,
-        name: "",
-        context,
-        uri: textDocument.uri,
-        instantiate() {},
-      } as any;
-      // Derive name from generic path (e.g. file:///.../Test.js -> Test)
-      const filename = textDocument.uri.split("/").pop();
-      if (filename) {
-        entity.name = filename.replace(/\.[tj]s$/, "");
-      }
-      entity.instantiate(); // Regex parses and natively hydrates the parameters
-      this.workspaceManager.workspaceInstances.set(textDocument.uri, [entity]);
-      this.workspaceManager.documentInstances.set(textDocument.uri, [entity]);
-      this.workspaceManager.documentContexts.set(textDocument.uri, context);
-      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-      this.connection.sendNotification("modelscript/projectTreeChanged");
-      return;
-    }
-
-    // Handle STEP files
-    const isStep = textDocument.languageId === "step" || /\.(step|stp|p21)$/i.test(textDocument.uri);
-    if (isStep) {
-      const text = textDocument.getText();
-      const buffer = new TextEncoder().encode(text);
-
-      const stepDiagnostics: Diagnostic[] = [];
+    // 1. Check custom validation handler (e.g. for specialized formats)
+    if (plugin?.customHandlers?.validate) {
       try {
-        this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
-        this.connection.console.info(
-          `[step] this.parserService.stepParserReady=${this.parserService.stepParserReady}, this.parserService.stepParser=${!!this.parserService.stepParser}`,
-        );
-
-        // 1. Tree-sitter parsing for LSP features
-        let astIndex;
-        let tree;
-        if (this.parserService.stepParserReady && this.parserService.stepParser) {
-          tree = this.parserService.stepParser.parse(text);
-          if (tree) {
-            this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
-            astIndex = { symbols: new Map(), byName: new Map(), childrenOf: new Map() } as any;
-            this.connection.console.info(`[step] Parsed STEP tree successfully`);
-          }
-        } else {
-          this.connection.console.info(
-            `[step] Tree-sitter STEP this.parserService.parser not available, using regex-only extraction`,
-          );
-        }
-
-        // 2. Structural indexing (Regex + OCCT) + AST index merge
-        const stepIndex = await this.workspaceManager.stepWorkspaceIndex.parseStepFile(
-          textDocument.uri,
-          buffer,
-          astIndex,
-        );
-        this.connection.console.info(
-          `[step] StepWorkspaceIndex: ${stepIndex.symbols.size} symbols, ${this.workspaceManager.stepWorkspaceIndex.getMeshes(textDocument.uri).length} meshes`,
-        );
-        for (const [id, entry] of stepIndex.symbols) {
-          if (entry.ruleName === "step_product" || entry.ruleName === "step_shape") {
-            this.connection.console.info(
-              `[step]   ${entry.ruleName}: "${entry.name}" (${entry.startByte}-${entry.endByte})`,
-            );
-          }
-        }
-
-        // Invalidate the unified partial cache so cross-language resolvers pick up
-        // the new STEP symbols immediately.
-        const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-        this.connection.console.info(`[step] Unified index: ${unifiedIndex.symbols.size} symbols total`);
-        if (this.workspaceManager.globalModelicaQueryEngine)
-          this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
-        if (this.workspaceManager.globalSysML2QueryEngine) {
-          this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
-        }
-
-        // Create/update STEP query engine + resolver + bridge
-        // Always create a bridge, even without tree-sitter, so hover/completion
-        // work on the structural (regex-derived) symbols.
-        if (!this.workspaceManager.globalStepQueryEngine) {
-          this.workspaceManager.globalStepQueryEngine = new QueryEngine(unifiedIndex, {} as any);
-        } else {
-          this.workspaceManager.globalStepQueryEngine.updateIndex(unifiedIndex);
-        }
-
-        const engine = this.workspaceManager.globalStepQueryEngine;
-        const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
-        this.documentLSPBridges.set(textDocument.uri, bridge);
-        this.connection.console.info(`[step] LSPBridge created for ${textDocument.uri}`);
-
-        if (tree) {
-          const collectErrors = (node: any) => {
-            if (!node) return;
-            if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
-
-            if (node.isMissing || node.type === "ERROR") {
-              const start = bridge["positions"].offsetToPosition(node.startIndex);
-              const end = bridge["positions"].offsetToPosition(node.endIndex);
-              stepDiagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                range: { start, end },
-                message: node.isMissing ? `Missing syntax element` : `Syntax error`,
-                source: "step",
-              });
-            }
-            const children = node.children || [];
-            for (let i = 0; i < children.length; i++) {
-              collectErrors(children[i]);
-            }
-          };
-          collectErrors(tree.rootNode);
-        }
+        const res = await plugin.customHandlers.validate(textDocument);
+        if (res !== undefined) return;
       } catch (e: any) {
-        this.connection.console.error(
-          `[step] Error in STEP pipeline for ${textDocument.uri}: ${e.message}\n${e.stack}`,
-        );
-      }
-
-      // ── Always run regex-based reference checking (independent of tree-sitter/OCCT) ──
-      const { definitions, references } = parseStepReferences(text);
-      for (const ref of references) {
-        if (!definitions.has(ref.id)) {
-          const start = textDocument.positionAt(ref.startOffset);
-          const end = textDocument.positionAt(ref.endOffset);
-          stepDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            range: { start, end },
-            message: `Reference to undefined entity '${ref.id}'`,
-            source: "step",
-          });
-        }
-      }
-
-      // Schema arity checking
-      for (const [, def] of definitions.entries()) {
-        const schema = STEP_SCHEMA[def.type];
-        if (schema) {
-          let i = def.endOffset;
-          while (i < text.length && /\s/.test(text[i])) i++;
-          if (text[i] === "(") {
-            const argsStart = i;
-            let depth = 0;
-            let inStr = false;
-            let argCount = 0;
-            let hasContent = false;
-
-            for (i = argsStart; i < text.length; i++) {
-              const ch = text[i];
-              if (ch === "'") {
-                inStr = !inStr;
-                hasContent = true;
-              } else if (!inStr && ch === "(") {
-                if (depth > 0) hasContent = true;
-                depth++;
-              } else if (!inStr && ch === ")") {
-                depth--;
-                if (depth === 0) {
-                  if (hasContent || argCount > 0) argCount++;
-                  break;
-                }
-                hasContent = true;
-              } else if (!inStr && depth === 1 && ch === ",") {
-                argCount++;
-                hasContent = false;
-              } else if (depth > 0 && !/\s/.test(ch)) {
-                hasContent = true;
-              }
-            }
-
-            if (argCount !== schema.parameters.length) {
-              const start = textDocument.positionAt(def.startOffset);
-              const end = textDocument.positionAt(def.endOffset);
-              stepDiagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                range: { start, end },
-                message: `Schema violation for ${def.type}: expected ${schema.parameters.length} arguments, got ${argCount}.`,
-                source: "step",
-              });
-            }
-          }
-        } else if (def.type !== "COMPLEX_ENTITY") {
-          // Identify the exact position of the type name for a precise underline
-          // def.text contains the full match e.g. "#123 = AXIS2_PLACEMENT_3D"
-          // We want to highlight just the "AXIS2_PLACEMENT_3D" part.
-          const typeMatchIndex = def.text.indexOf(def.type);
-          const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
-
-          const start = textDocument.positionAt(typeStartOffset);
-          const end = textDocument.positionAt(typeStartOffset + def.type.length);
-          stepDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            range: { start, end },
-            message: `Undefined STEP entity type '${def.type}'`,
-            source: "step",
-          });
-        }
-      }
-
-      this.connection.console.info(`[step] Sending ${stepDiagnostics.length} diagnostics for ${textDocument.uri}`);
-      this.lastSemanticDiagnostics.set(textDocument.uri, stepDiagnostics);
-      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
-      this.connection.sendNotification("modelscript/projectTreeChanged");
-
-      // Trigger cross-file revalidation so SysML files referencing this STEP file
-      // will resolve the newly available CAD entities.
-      if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-      this.revalidationTimer = setTimeout(() => {
-        this.connection.console.info(`[step] Cross-file revalidation triggered`);
-        for (const doc of this.documentManager.documents.all()) {
-          if (doc.uri !== textDocument.uri) {
-            this.validateTextDocument(doc);
-          }
-        }
-      }, 300);
-      return;
-    }
-
-    // Handle OWL2 files via the polyglot reasoner pipeline
-    if (textDocument.uri.endsWith(".owl") && this.parserService.owl2ParserReady && this.parserService.owl2Parser) {
-      try {
-        const oldCached = this.documentManager.documentTrees.get(textDocument.uri);
-        let tree: any;
-
-        if (oldCached && oldCached.text !== text) {
-          const edit = computeTreeEdit(oldCached.text, text);
-          if (typeof (oldCached.tree as any)?.edit === "function") {
-            oldCached.tree.edit(edit as never);
-          }
-          tree = this.parserService.owl2Parser.parse(text, oldCached.tree as never);
-        } else if (oldCached) {
-          tree = oldCached.tree;
-        } else {
-          tree = this.parserService.owl2Parser.parse(text);
-        }
-
-        if (!tree) {
-          this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-          return;
-        }
-
-        // Store in this.documentManager.documentTrees
-        this.documentManager.documentTrees.set(textDocument.uri, {
-          text,
-          tree,
-          classCache: oldCached?.classCache ?? new Map(),
-        });
-
-        const textChanged = this.lastIndexedText.get(textDocument.uri) !== text;
-
-        // Register/update in OWL2 workspace index
-        if (textChanged) {
-          let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
-          let totalDelta = 0;
-          const lastText = this.lastIndexedText.get(textDocument.uri);
-          if (lastText) {
-            const edit = computeTreeEdit(lastText, text);
-            editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
-            totalDelta = edit.newEndIndex - edit.oldEndIndex;
-          }
-
-          if (this.workspaceManager.owl2WorkspaceIndex.has(textDocument.uri)) {
-            this.workspaceManager.owl2WorkspaceIndex.markDirty(
-              textDocument.uri,
-              () => tree.rootNode,
-              editRanges,
-              totalDelta,
-            );
-          } else {
-            this.workspaceManager.owl2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
-          }
-
-          this.workspaceManager.owl2WorkspaceIndex.getFileIndex(textDocument.uri);
-          this.lastIndexedText.set(textDocument.uri, text);
-        }
-
-        const changedIdsObj = this.workspaceManager.owl2WorkspaceIndex.takeGlobalChangedIds();
-        const changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
-        const changedNames = this.workspaceManager.owl2WorkspaceIndex.takeGlobalChangedNames();
-
-        const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-
-        if (changedNames && changedNames.size > 0) {
-          if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-          this.revalidationTimer = setTimeout(() => {
-            for (const doc of this.documentManager.documents.all()) {
-              if (doc.uri !== textDocument.uri) {
-                this.validateTextDocument(doc);
-              }
-            }
-          }, 500);
-        }
-
-        if (this.workspaceManager.globalOWL2QueryEngine) {
-          if (changedIds && typeof this.workspaceManager.globalOWL2QueryEngine.swapIndex === "function") {
-            this.workspaceManager.globalOWL2QueryEngine.swapIndex(unifiedIndex, changedIds);
-          } else {
-            this.workspaceManager.globalOWL2QueryEngine.updateIndex(unifiedIndex);
-          }
-        } else {
-          this.workspaceManager.globalOWL2QueryEngine = new QueryEngine(unifiedIndex, {} as any);
-        }
-        const engine = this.workspaceManager.globalOWL2QueryEngine;
-        const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
-        this.documentLSPBridges.set(textDocument.uri, bridge);
-
-        const owl2Diagnostics: Diagnostic[] = [];
-
-        // Collect parse errors from the tree
-        const collectErrors = (node: SyntaxNode | any) => {
-          if (!node) return;
-          if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
-          if (node.type === "ERROR" || node.isMissing) {
-            const start = bridge["positions"].offsetToPosition(node.startIndex);
-            const end = bridge["positions"].offsetToPosition(node.endIndex);
-            owl2Diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              range: { start, end },
-              message: node.isMissing ? `Missing syntax element` : `Syntax error`,
-              source: "owl2",
-            });
-          }
-          const children = node.children || [];
-          for (let i = 0; i < children.length; i++) {
-            collectErrors(children[i]);
-          }
-        };
-        collectErrors(tree.rootNode);
-
-        const hasSyntaxErrors = owl2Diagnostics.length > 0;
-
-        if (!hasSyntaxErrors) {
-          // Run Polyglot declarative lints from query hooks
-          const engineDiags = await (engine as any).runAllLintsAsync(textDocument.uri, async () => {
-            await new Promise<void>((r) => setTimeout(r, 0));
-            return false;
-          });
-          for (const d of engineDiags) {
-            const start = bridge["positions"].offsetToPosition(d.startByte);
-            const end = bridge["positions"].offsetToPosition(d.endByte);
-            let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-            if (d.severity === "error") severity = DiagnosticSeverity.Error;
-            if (d.severity === "info") severity = DiagnosticSeverity.Information;
-
-            owl2Diagnostics.push({
-              severity,
-              range: { start, end },
-              message: d.message,
-              source: "owl2",
-            });
-          }
-
-          // Run tableau reasoner check
-          try {
-            const axioms = lowerCstToAxioms(tree.rootNode, text);
-            const store = this.workspaceManager.unifiedWorkspace.owl2Store;
-            store.setAxioms(textDocument.uri, axioms);
-
-            const reasoner = new TableauReasoner();
-            await reasoner.init();
-            reasoner.loadOntology(store.axioms);
-            const consistency = reasoner.checkConsistency();
-
-            if (!consistency.isConsistent) {
-              const explanation = consistency.explanation || "Ontology inconsistency detected";
-
-              let reported = false;
-              if (consistency.conflictingAxioms) {
-                for (const axiom of consistency.conflictingAxioms) {
-                  let targetIri: string | null = null;
-                  if (axiom.type === "SubClassOf") {
-                    targetIri = axiom.subClassIri;
-                  } else if (axiom.type === "DisjointClasses" && axiom.classIris && axiom.classIris.length > 0) {
-                    for (const iri of axiom.classIris) {
-                      if (this.findRangeForIri(iri, textDocument.uri)) {
-                        targetIri = iri;
-                        break;
-                      }
-                    }
-                    if (!targetIri) targetIri = axiom.classIris[0];
-                  } else if (axiom.type === "ClassAssertion") {
-                    targetIri = axiom.individualIri;
-                  } else if (axiom.type === "ObjectPropertyAssertion") {
-                    targetIri = axiom.subjectIri;
-                  } else if ((axiom as any).iri) {
-                    targetIri = (axiom as any).iri;
-                  }
-
-                  if (targetIri) {
-                    const range = this.findRangeForIri(targetIri, textDocument.uri);
-                    if (range) {
-                      owl2Diagnostics.push({
-                        severity: DiagnosticSeverity.Error,
-                        range,
-                        message: `Ontology inconsistency: ${explanation}`,
-                        source: "owl2-reasoner",
-                      });
-                      reported = true;
-                    }
-                  }
-                }
-              }
-
-              if (!reported) {
-                owl2Diagnostics.push({
-                  severity: DiagnosticSeverity.Error,
-                  range: {
-                    start: { line: 0, character: 0 },
-                    end: { line: 0, character: 10 },
-                  },
-                  message: `Ontology inconsistency: ${explanation}`,
-                  source: "owl2-reasoner",
-                });
-              }
-            }
-          } catch (reasonerError: any) {
-            this.connection.console.error(`[owl2-reasoner] Reasoner failed: ${reasonerError.message}`);
-          }
-        }
-
-        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: owl2Diagnostics });
-        this.connection.sendNotification("modelscript/projectTreeChanged");
-      } catch (e: any) {
-        this.connection.console.error(`[owl2] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
-      }
-      return;
-    }
-
-    // Handle SysML2 files via the polyglot SysML2 pipeline
-    if (
-      textDocument.uri.endsWith(".sysml") &&
-      this.parserService.sysml2ParserReady &&
-      this.parserService.sysml2Parser
-    ) {
-      try {
-        const oldCached = this.documentManager.documentTrees.get(textDocument.uri);
-        let tree: any;
-
-        if (oldCached && oldCached.text !== text) {
-          const edit = computeTreeEdit(oldCached.text, text);
-          if (typeof (oldCached.tree as any)?.edit === "function") {
-            oldCached.tree.edit(edit as never);
-          }
-          tree = this.parserService.sysml2Parser.parse(text, oldCached.tree as never);
-        } else if (oldCached) {
-          tree = oldCached.tree;
-        } else {
-          tree = this.parserService.sysml2Parser.parse(text);
-        }
-
-        if (!tree) {
-          this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-          return;
-        }
-
-        // Store in this.documentManager.documentTrees so verification and other LSP operations can access the tree/text
-        this.documentManager.documentTrees.set(textDocument.uri, {
-          text,
-          tree,
-          classCache: oldCached?.classCache ?? new Map(),
-        });
-
-        const textChanged = this.lastIndexedText.get(textDocument.uri) !== text;
-
-        // Register/update in SysML2 workspace index
-        if (textChanged) {
-          let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
-          let totalDelta = 0;
-          const lastText = this.lastIndexedText.get(textDocument.uri);
-          if (lastText) {
-            const edit = computeTreeEdit(lastText, text);
-            editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
-            totalDelta = edit.newEndIndex - edit.oldEndIndex;
-          }
-
-          if (this.workspaceManager.sysml2WorkspaceIndex.has(textDocument.uri)) {
-            this.workspaceManager.sysml2WorkspaceIndex.markDirty(
-              textDocument.uri,
-              () => tree.rootNode,
-              editRanges,
-              totalDelta,
-            );
-          } else {
-            this.workspaceManager.sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
-          }
-
-          // Force index evaluation for active document AFTER it is registered/marked dirty
-          // so that it actually triggers processing and populates the partial index.
-          // Without this, toUnifiedPartial() skips the file (index stays null).
-          this.workspaceManager.sysml2WorkspaceIndex.getFileIndex(textDocument.uri);
-          this.lastIndexedText.set(textDocument.uri, text);
-        }
-
-        // Get ALL changed symbol IDs across the workspace since last check
-        const changedIdsObj = this.workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedIds();
-        const changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
-        const changedNames = this.workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedNames();
-
-        // Create or update query engine, resolver, and LSP bridge for the document
-        const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-
-        if (changedNames && changedNames.size > 0) {
-          if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-          this.revalidationTimer = setTimeout(() => {
-            for (const doc of this.documentManager.documents.all()) {
-              if (doc.uri !== textDocument.uri) {
-                this.validateTextDocument(doc);
-              }
-            }
-          }, 500);
-        }
-
-        if (this.workspaceManager.globalSysML2QueryEngine) {
-          if (changedIds && typeof this.workspaceManager.globalSysML2QueryEngine.swapIndex === "function") {
-            this.workspaceManager.globalSysML2QueryEngine.swapIndex(unifiedIndex, changedIds);
-          } else {
-            this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
-          }
-        } else {
-          this.workspaceManager.globalSysML2QueryEngine = createSysML2QueryEngine(unifiedIndex) as any;
-        }
-        const engine = this.workspaceManager.globalSysML2QueryEngine;
-        const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
-        this.documentLSPBridges.set(textDocument.uri, bridge as any);
-
-        // Collect parse errors from the tree
-        const sysmlDiagnostics: Diagnostic[] = [];
-        const collectErrors = (node: SyntaxNode | any) => {
-          if (!node) return;
-          if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
-          if (node.type === "ERROR" || node.isMissing) {
-            const start = bridge["positions"].offsetToPosition(node.startIndex);
-            const end = bridge["positions"].offsetToPosition(node.endIndex);
-            sysmlDiagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              range: { start, end },
-              message: node.isMissing ? `Missing ${node.type}` : `Syntax error`,
-              source: "sysml2",
-            });
-          }
-          const children = node.children || [];
-          for (let i = 0; i < children.length; i++) {
-            collectErrors(children[i]);
-          }
-        };
-        collectErrors(tree.rootNode);
-
-        const hasSyntaxErrors = sysmlDiagnostics.length > 0;
-
-        if (!hasSyntaxErrors) {
-          // Run Polyglot declarative lints (e.g. multiplicity bounds, usage matching)
-          const engineDiags = await (engine as any).runAllLintsAsync(textDocument.uri, async () => {
-            await new Promise<void>((r) => setTimeout(r, 0));
-            return false; // sysml2 side doesn't have isStale easily accessible here, but yielding prevents UI freeze
-          });
-          for (const d of engineDiags) {
-            const start = bridge["positions"].offsetToPosition(d.startByte);
-            const end = bridge["positions"].offsetToPosition(d.endByte);
-            let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-            if (d.severity === "error") severity = DiagnosticSeverity.Error;
-            if (d.severity === "info") severity = DiagnosticSeverity.Information;
-
-            sysmlDiagnostics.push({
-              severity,
-              range: { start, end },
-              message: d.message,
-              source: "sysml2",
-            });
-          }
-
-          // Run the incremental reasoner update for SysML2
-          try {
-            const versions = new Map<string, number>();
-            versions.set("sysml2", this.workspaceManager.sysml2WorkspaceIndex.version);
-            this.reasonerService.updateAndReason(versions);
-
-            const consistency = this.reasonerService.reasoner.checkConsistency();
-            if (!consistency.isConsistent) {
-              // Find any inconsistencies related to this file and map them
-              for (const axiom of consistency.conflictingAxioms || []) {
-                let targetIri: string | null = null;
-                if (axiom.type === "SubClassOf") targetIri = axiom.subClassIri;
-                else if (axiom.type === "ClassAssertion") targetIri = axiom.individualIri;
-                else if ((axiom as any).iri) targetIri = (axiom as any).iri;
-
-                if (targetIri) {
-                  const range = this.findRangeForIri(targetIri, textDocument.uri);
-                  if (range) {
-                    sysmlDiagnostics.push({
-                      severity: DiagnosticSeverity.Error,
-                      range,
-                      message: `Logical contradiction: ${this.reasonerService.reasoner.explain(targetIri, "satisfiability")}`,
-                      source: "sysml2-reasoner",
-                    });
-                  }
-                }
-              }
-            }
-          } catch (e: any) {
-            this.connection.console.error(`[sysml2-reasoner] Update failed: ${e.message}`);
-          }
-        } else {
-          // Retain existing semantic diagnostics if the AST is broken to prevent flashing
-          const cachedSemantic = this.lastSemanticDiagnostics.get(textDocument.uri) || [];
-          sysmlDiagnostics.push(...cachedSemantic);
-        }
-
-        const vDiags = this.verificationDiagnosticsByUri.get(textDocument.uri);
-        if (vDiags) {
-          sysmlDiagnostics.push(...vDiags);
-        }
-
-        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
-
-        // Notify UI that the project tree (and requirements index) has been updated
-        this.connection.sendNotification("modelscript/projectTreeChanged");
-
-        // Auto-trigger verification if this document contains verification/analysis cases.
-        // This makes the "compiler actively fails the build" behavior described in the paper
-        // happen automatically without requiring the user to run a command.
-        if (this.workspaceManager.unifiedWorkspace) {
-          try {
-            const udb = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-            // Use symbolsByResource for O(1) lookup instead of scanning all symbols
-            const docSymbolIds = udb.symbolsByResource?.get(textDocument.uri);
-            let hasVerifyCases = false;
-            if (docSymbolIds) {
-              for (const id of docSymbolIds) {
-                const s = udb.symbols.get(id);
-                if (
-                  s &&
-                  (s.ruleName === "VerifyRequirementUsage" ||
-                    s.ruleName === "AnalysisCaseDefinition" ||
-                    s.ruleName === "AnalysisCaseUsage" ||
-                    s.ruleName === "VerificationCaseDefinition" ||
-                    s.ruleName === "VerificationCaseUsage")
-                ) {
-                  hasVerifyCases = true;
-                  break;
-                }
-              }
-            }
-            if (hasVerifyCases) {
-              if (verificationTimer) clearTimeout(verificationTimer);
-              const verifyUri = textDocument.uri;
-              verificationTimer = setTimeout(() => {
-                this.connection.console.log(`[auto-verify] Triggering verification for ${verifyUri}`);
-                runVerificationForUri(verifyUri).catch(() => {
-                  // Ignore — errors surface as diagnostics
-                });
-              }, 1000);
-            }
-          } catch {
-            // Ignore — auto-verify is best-effort
-          }
-        }
-      } catch (e: any) {
-        this.connection.console.error(`[sysml2] Error processing ${textDocument.uri}: ${e.message}`);
-        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-      }
-      return;
-    }
-
-    if (this.parserService.parserReady && this.parserService.parser) {
-      this.connection.console.info(`[validate] Entering Modelica parsing`);
-      // Polyglot-only pipeline: tree-sitter parse → SymbolIndex → QueryEngine → diagnostics
-      const context = this.parserService.sharedContext;
-      if (!context) {
-        this.connection.console.info(`[validate] this.parserService.sharedContext is null!`);
+        this.connection.console.error(`[validate] Custom validation handler failed for ${uri}: ${e.message}`);
         return;
       }
+    }
 
-      // Pre-process Modelica text to replace the custom 'shape' keyword with 'model'
-      // Since both are 5 characters long, byte offsets remain perfectly aligned!
-      const processedText = text.replace(/\bshape\b/g, "model");
+    // Handle Javascript/TypeScript sidecar files natively if no plugin customHandler
+    if (uri.endsWith(".js") || uri.endsWith(".ts")) {
+      this.validateSidecarDocument(textDocument);
+      return;
+    }
 
-      // Parse with tree-sitter (incremental when possible)
-      const oldCached = this.documentManager.documentTrees.get(textDocument.uri);
+    // Handle STEP files natively if no plugin customHandler
+    const isStep = textDocument.languageId === "step" || /\.(step|stp|p21)$/i.test(uri);
+    if (isStep) {
+      await this.validateStepDocument(textDocument, plugin);
+      return;
+    }
 
-      let tree: any;
-      let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
+    // 2. Uniform Parsing Pipeline
+    const langId = plugin?.id ?? (textDocument.languageId || "modelica");
+    const parser = plugin?.parser ?? this.parserService.getParser(langId);
+
+    if (!parser && !this.parserService.sharedContext) {
+      this.fallbackRegexValidation(textDocument);
+      return;
+    }
+
+    // Pre-process text if needed (e.g. Modelica 'shape' keyword)
+    let processedText = text;
+    if (plugin?.preprocessText) {
+      processedText = plugin.preprocessText(text);
+    } else if (typeof (globalThis as any).preprocessLanguageText === "function") {
+      processedText = (globalThis as any).preprocessLanguageText(langId, text);
+    } else if (langId === "modelica" || uri.endsWith(".mo")) {
+      processedText = text.replace(/\bshape\b/g, "model");
+    }
+
+    const oldCached = this.documentManager.documentTrees.get(uri);
+    let tree: any;
+    let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
+
+    try {
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
         if (typeof (oldCached.tree as any)?.edit === "function") {
           oldCached.tree.edit(edit as never);
         }
-        tree = context.parse(".mo", processedText, oldCached.tree as never, {
-          editStart: edit.startIndex,
-          editOldEnd: edit.oldEndIndex,
-          editNewEnd: edit.newEndIndex,
-        });
-        // Capture edit byte ranges for incremental indexing
+        if (parser) {
+          tree = parser.parse(processedText, oldCached.tree as never);
+        } else if (this.parserService.sharedContext) {
+          tree = this.parserService.sharedContext.parse(".mo", processedText, oldCached.tree as never, {
+            editStart: edit.startIndex,
+            editOldEnd: edit.oldEndIndex,
+            editNewEnd: edit.newEndIndex,
+          });
+        }
         editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
       } else if (oldCached) {
         tree = oldCached.tree;
       } else {
-        tree = context.parse(".mo", processedText);
-      }
-      this.documentManager.documentTrees.set(textDocument.uri, {
-        text, // Keep the original text in the cache!
-        tree,
-        classCache: oldCached?.classCache ?? new Map(),
-      });
-
-      this.connection.console.info(`[validate] tree parsed`);
-
-      // Collect syntax errors from the tree using the shared pure function.
-      // These were likely already sent instantly by the onDidChangeContent handler,
-      // but we recompute them here to ensure consistency with the current tree.
-      const plugin = globalLanguageRegistry.getPluginForUri(textDocument.uri);
-      const syntaxDiags = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
-      diagnostics.push(...syntaxDiags);
-
-      this.connection.console.info(
-        `[validate] ${textDocument.uri}: text=${text.length}B, syntaxErrors=${diagnostics.length}, hasError=${typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError}`,
-      );
-
-      // Send syntax diagnostics immediately so the user gets instant feedback
-      // even if the semantic pipeline takes a long time.
-      const cachedSemantic = this.lastSemanticDiagnostics.get(textDocument.uri) || [];
-      const allDiags = [...diagnostics, ...cachedSemantic];
-      if (allDiags.length > 1000) allDiags.length = 1000;
-      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: allDiags });
-
-      // Always run the semantic pipeline with revision tracking — syntax errors
-      // were already sent instantly by the onDidChangeContent handler, so this
-      // pass focuses on producing the merged (syntax + semantic) diagnostic set.
-      // Passing the revision allows the pipeline to bail out early if a new edit
-      // arrives while it's running (staleness check at each expensive step).
-      const revisionAtStart = this.documentRevisions.get(textDocument.uri) ?? 0;
-
-      this.connection.console.info(`[validate] starting this.runSemanticPipeline`);
-      const promise = this.runSemanticPipeline(
-        textDocument.uri,
-        text,
-        tree,
-        editRanges,
-        diagnostics,
-        revisionAtStart,
-        context,
-      ).catch((e) => {
-        this.connection.console.error(
-          `[this.runSemanticPipeline] Failed for ${textDocument.uri}: ${e instanceof Error ? e.message + "\\n" + e.stack : String(e)}`,
-        );
-      });
-      this.activeValidationPromises.set(textDocument.uri, promise);
-      promise.finally(() => {
-        if (this.activeValidationPromises.get(textDocument.uri) === promise) {
-          this.activeValidationPromises.delete(textDocument.uri);
+        if (parser) {
+          tree = parser.parse(processedText);
+        } else if (this.parserService.sharedContext) {
+          tree = this.parserService.sharedContext.parse(".mo", processedText);
         }
-      });
-    } else {
-      // Fallback: basic regex validation when tree-sitter is not available
-      const openComments = (text.match(/\/\*/g) || []).length;
-      const closeComments = (text.match(/\*\//g) || []).length;
-      if (openComments > closeComments) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          range: {
-            start: textDocument.positionAt(text.lastIndexOf("/*")),
-            end: textDocument.positionAt(text.lastIndexOf("/*") + 2),
-          },
-          message: "Unclosed block comment.",
-          source: "modelscript",
-        });
       }
-      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+    } catch (err: any) {
+      this.connection.console.error(`[validate] Parser error for ${uri}: ${err.message}`);
     }
+
+    if (!tree) {
+      this.connection.sendDiagnostics({ uri, diagnostics: [] });
+      return;
+    }
+
+    this.documentManager.documentTrees.set(uri, {
+      text,
+      tree,
+      classCache: oldCached?.classCache ?? new Map(),
+    });
+
+    // 3. Collect syntax diagnostics immediately
+    const syntaxDiags = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
+    const cachedSemantic = this.lastSemanticDiagnostics.get(uri) || [];
+    const initialDiags = [...syntaxDiags, ...cachedSemantic];
+    if (initialDiags.length > 1000) initialDiags.length = 1000;
+    this.connection.sendDiagnostics({ uri, diagnostics: initialDiags });
+
+    // 4. Run Unified Semantic Pipeline
+    const revisionAtStart = this.documentRevisions.get(uri) ?? 0;
+    const promise = this.runUnifiedSemanticPipeline({
+      uri,
+      text,
+      tree,
+      editRanges,
+      baseDiagnostics: syntaxDiags,
+      revisionAtStart,
+      plugin,
+      langId,
+      textDocument,
+    }).catch((e) => {
+      this.connection.console.error(`[runUnifiedSemanticPipeline] Failed for ${uri}: ${e?.message ?? e}`);
+    });
+
+    this.activeValidationPromises.set(uri, promise);
+    promise.finally(() => {
+      if (this.activeValidationPromises.get(uri) === promise) {
+        this.activeValidationPromises.delete(uri);
+      }
+    });
   }
 
-  public async runSemanticPipeline(
-    uri: string,
-    text: string,
-    tree: any,
-    editRanges: Array<{ startByte: number; endByte: number }> | undefined,
-    baseDiagnostics: Diagnostic[],
-    revisionAtStart: number | null,
-    context: any,
-  ): Promise<void> {
+  public async runUnifiedSemanticPipeline(params: {
+    uri: string;
+    text: string;
+    tree: any;
+    editRanges?: Array<{ startByte: number; endByte: number }>;
+    baseDiagnostics: Diagnostic[];
+    revisionAtStart: number | null;
+    plugin?: LanguagePlugin;
+    langId: string;
+    textDocument?: TextDocument;
+  }): Promise<void> {
+    const { uri, text, tree, editRanges, baseDiagnostics, revisionAtStart, plugin, langId, textDocument } = params;
     const newSemanticDiagnostics: Diagnostic[] = [];
 
-    const hasError = typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError;
-
-    const startVersion = this.workspaceManager.globalWorkspaceIndex.version;
-    /** Returns true if a newer edit has arrived, meaning we should abandon this pipeline run. */
     const isStale = () => {
       if (revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart) return true;
       return false;
     };
-    /** Yields to the event loop so new edits can be processed. */
     const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
-    /** Yields and checks if pipeline is stale */
     const yieldAndCheckStale = async () => {
       await yieldToEventLoop();
       return isStale();
@@ -1014,195 +352,137 @@ export class ValidationService {
 
     try {
       const t0 = performance.now();
-      this.connection.console.info(`[perf] Starting this.runSemanticPipeline for ${uri}`);
       const effectiveUri = uri.startsWith("modelscript-lib://global")
         ? "file://" + uri.substring("modelscript-lib://global".length)
         : uri;
 
       // ── Step 1: Re-index ─────────────────────────────────────────────────
-      // Only update the workspace index if the text actually changed.
-      // Prevents infinite revalidation loops from revalidation calls.
+      const wsIndex = plugin?.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(langId);
       const textChanged = this.lastIndexedText.get(effectiveUri) !== text;
       let changedIds: Set<number> | null = null;
       let changedNames: Set<string> | null = null;
-      let unifiedIndex: any = null;
+      let structuralChangedIds: Set<number> | null = null;
 
-      if (textChanged) {
-        const step0t = performance.now();
-        let totalDelta = 0;
-        if (!editRanges) {
-          const lastText = this.lastIndexedText.get(effectiveUri);
-          if (lastText) {
-            const edit = computeTreeEdit(lastText, text);
-            editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
-            totalDelta = edit.newEndIndex - edit.oldEndIndex;
+      if (wsIndex) {
+        if (textChanged) {
+          let totalDelta = 0;
+          let actualEditRanges = editRanges;
+          if (!actualEditRanges) {
+            const lastText = this.lastIndexedText.get(effectiveUri);
+            if (lastText) {
+              const edit = computeTreeEdit(lastText, text);
+              actualEditRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+              totalDelta = edit.newEndIndex - edit.oldEndIndex;
+            }
           }
+
+          if (wsIndex.has(effectiveUri)) {
+            wsIndex.markDirty(effectiveUri, () => tree.rootNode, actualEditRanges, totalDelta);
+          } else {
+            wsIndex.register(effectiveUri, () => tree.rootNode);
+          }
+          wsIndex.getFileIndex(effectiveUri);
+          this.lastIndexedText.set(effectiveUri, text);
         }
 
-        if (this.workspaceManager.globalWorkspaceIndex.has(effectiveUri)) {
-          this.workspaceManager.globalWorkspaceIndex.markDirty(
-            effectiveUri,
-            () => tree.rootNode,
-            editRanges,
-            totalDelta,
-          );
-        } else {
-          this.workspaceManager.globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
-        }
-        const step0_1t = performance.now();
-        this.workspaceManager.globalWorkspaceIndex.getFileIndex(effectiveUri);
-        const step0_2t = performance.now();
-        this.lastIndexedText.set(effectiveUri, text);
-        this.connection.console.info(
-          `[perf] Step 1.0 (markDirty): ${(step0_1t - step0t).toFixed(2)}ms, (getFileIndex): ${(step0_2t - step0_1t).toFixed(2)}ms`,
-        );
+        const changedIdsObj =
+          typeof wsIndex.takeGlobalChangedIds === "function" ? wsIndex.takeGlobalChangedIds() : null;
+        changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
+        structuralChangedIds = changedIdsObj ? (changedIdsObj as any).structuralChangedIds : null;
+        changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
       }
-
-      changedNames = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
 
       if (isStale()) return;
 
-      // We ALWAYS need unifiedIndex for downstream steps (bridge, linting, etc.)
-      // It's very fast if there are no changes.
-      const step0_3t = performance.now();
-      unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-      const step0_4t = performance.now();
-      const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
-      this.connection.console.info(`[perf] Step 1.0 (toUnifiedPartial): ${(step0_4t - step0_3t).toFixed(2)}ms`);
-
-      const changedIdsObj = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
-      changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
-      const structuralChangedIds = (changedIdsObj as any) ? (changedIdsObj as any).structuralChangedIds : null;
-      const engineNeedsUpdate = textChanged || (changedIds && changedIds.size > 0);
-
-      if (engineNeedsUpdate) {
-        // ── Step 2: Unified index merge + QueryEngine update ─────────────────
-        let step1T = performance.now();
-        this.connection.console.info(
-          `[perf] Step 1.1 (toUnifiedPartial): ${(performance.now() - step1T).toFixed(2)}ms`,
-        );
-
-        if (changedNames && changedNames.size > 0) {
-          if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-          this.revalidationTimer = setTimeout(() => {
-            for (const doc of this.documentManager.documents.all()) {
-              const effectiveDocUri = doc.uri.startsWith("modelscript-lib://global")
-                ? "file://" + doc.uri.substring("modelscript-lib://global".length)
-                : doc.uri;
-              if (effectiveDocUri !== effectiveUri) {
-                this.validateTextDocument(doc);
-              }
+      // ── Step 2: Cross-File Revalidation Trigger ──────────────────────────
+      if (changedNames && changedNames.size > 0) {
+        if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+        this.revalidationTimer = setTimeout(() => {
+          for (const doc of this.documentManager.documents.all()) {
+            const eff = doc.uri.startsWith("modelscript-lib://global")
+              ? "file://" + doc.uri.substring("modelscript-lib://global".length)
+              : doc.uri;
+            if (eff !== effectiveUri) {
+              this.validateTextDocument(doc);
             }
-          }, 1000);
-        }
+          }
+        }, 500);
+      }
 
-        step1T = performance.now();
+      // ── Step 3: Unified Index & QueryEngine Update ───────────────────────
+      const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
 
-        if (this.workspaceManager.globalModelicaQueryEngine) {
-          const injectFn = (globalThis as any).injectPredefinedTypes ?? injectPredefinedTypes;
-          if (typeof injectFn === "function") {
-            injectFn(unifiedIndex);
-          }
-          this.connection.console.info(
-            `[perf] Step 1.2 (injectPredefinedTypes): ${(performance.now() - step1T).toFixed(2)}ms`,
-          );
-          step1T = performance.now();
-          if (changedIds && typeof this.workspaceManager.globalModelicaQueryEngine.swapIndex === "function") {
-            this.workspaceManager.globalModelicaQueryEngine.swapIndex(
-              unifiedIndex,
-              changedIds,
-              structuralChangedIds || undefined,
-            );
-            this.connection.console.info(`[perf] Step 1.3 (swapIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
-          } else {
-            this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
-            this.connection.console.info(`[perf] Step 1.3 (updateIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
-          }
-          if (typeof this.workspaceManager.globalModelicaQueryEngine.updateTree === "function") {
-            this.workspaceManager.globalModelicaQueryEngine.updateTree(cstTreeWrapper);
-          }
-        } else {
-          this.workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(
-            unifiedIndex,
-            cstTreeWrapper,
-          ) as any;
+      let engine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
+      if (!engine) {
+        engine = this.createDefaultQueryEngine(langId, unifiedIndex, cstTreeWrapper);
+        if (engine) {
+          this.workspaceManager.setQueryEngine(langId, engine);
         }
       } else {
-        if (!this.workspaceManager.globalModelicaQueryEngine) {
-          this.workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(
-            unifiedIndex,
-            cstTreeWrapper,
-          ) as any;
+        if (langId === "modelica") {
+          const injectFn = (globalThis as any).injectPredefinedTypes;
+          if (typeof injectFn === "function") injectFn(unifiedIndex);
+        }
+        if (changedIds && typeof (engine as any).swapIndex === "function") {
+          (engine as any).swapIndex(unifiedIndex, changedIds, structuralChangedIds || undefined);
+        } else if (typeof (engine as any).updateIndex === "function") {
+          (engine as any).updateIndex(unifiedIndex);
+        }
+        if (typeof (engine as any).updateTree === "function") {
+          (engine as any).updateTree(cstTreeWrapper);
         }
       }
-      this.connection.console.info(`[perf] Step 1 (Index): ${(performance.now() - t0).toFixed(2)}ms`);
-      if (typeof (context as any)?.setQueryEngine === "function") {
-        context.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine);
-      } else if (context) {
-        context.queryEngine = this.workspaceManager.globalModelicaQueryEngine;
-      }
-      if (typeof (context as any)?.setWorkspaceIndex === "function") {
-        context.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
-      } else if (context) {
-        context.workspaceIndex = this.workspaceManager.globalWorkspaceIndex;
-      }
-      const engine = this.workspaceManager.globalModelicaQueryEngine;
 
+      // Sync parser sharedContext if Modelica
+      const context = this.parserService.sharedContext;
+      if (context && langId === "modelica") {
+        if (typeof (context as any).setQueryEngine === "function") context.setQueryEngine(engine);
+        else context.queryEngine = engine;
+        if (typeof (context as any).setWorkspaceIndex === "function") context.setWorkspaceIndex(wsIndex);
+        else context.workspaceIndex = wsIndex;
+      }
+
+      // Create / update LSP bridge
       const currentDoc = this.documentManager.documents.get(uri);
       const currentText = currentDoc ? currentDoc.getText() : text;
       const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(currentText), uri);
       this.documentLSPBridges.set(uri, bridge as any);
-      this.connection.console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
 
-      // Yield before expensive linting
       await yieldToEventLoop();
       if (isStale()) return;
 
-      // ── Step 2.5: Preflight cache hydration ──────────────────────────────
-      // Before running synchronous queries, asynchronously hydrate memos for
-      // the symbols in this document from the cache store (IndexedDB / federated).
-      // This ensures evicted dependency memos are available for the synchronous
-      // fetch() calls inside linting and reference resolution.
+      // ── Step 4: Preflight Cache Hydration ────────────────────────────────
       const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
       const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
       const isWorkspaceFile = !!this.documentManager.documents.get(uri);
 
-      // We skip preflight for active workspace files because their memos are
-      // already hot in memory (or actively re-evaluated efficiently).
-      // Preflighting massive files triggers tens of thousands of IndexedDB reads
-      // on every keystroke, which can take 15+ seconds and destroy responsiveness.
       if (
         engine &&
         resourceSymbolIds &&
         resourceSymbolIds.length > 0 &&
-        engine.preflight &&
+        (engine as any).preflight &&
         !isWorkspaceFile &&
         docSymbolCount < 2000
       ) {
         try {
-          await engine.preflight(resourceSymbolIds, ["resolve", "members", "type_check"]);
+          await (engine as any).preflight(resourceSymbolIds, ["resolve", "members", "type_check"]);
         } catch {
-          // Best-effort — don't block validation if preflight fails
+          // Best-effort
         }
       }
-      this.connection.console.info(`[perf] Step 2.5 (Preflight): ${(performance.now() - t0).toFixed(2)}ms`);
 
-      // ── Step 3: Run lints ────────────────────────────────────────────────
-      // Skip for library files with >1000 symbols to avoid O(n²) on MSL.
-      // User-authored files always get full diagnostics regardless of size.
-      // A file is a "workspace file" if it's tracked by the TextDocuments manager
-      // (i.e., currently open in the editor). Library files loaded via loadMSL
-      // or background indexing are not tracked by this.documentManager.documents.
+      // ── Step 5: Declarative Lints ────────────────────────────────────────
+      const hasError = typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError;
       const hasSyntaxErrors = baseDiagnostics.length > 0 || hasError;
-      const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
 
       if (hasSyntaxErrors) {
-        // Retain existing semantic diagnostics if the AST is broken to prevent flashing
         const cachedSemantic = this.lastSemanticDiagnostics.get(uri) || [];
         newSemanticDiagnostics.push(...cachedSemantic);
       }
 
-      if (!skipHeavyLints) {
+      const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
+      if (!skipHeavyLints && engine && typeof (engine as any).runAllLintsAsync === "function") {
         const viewportRange = this.documentViewports.get(uri) ?? undefined;
         const engineDiags = await (engine as any).runAllLintsAsync(uri, yieldAndCheckStale, viewportRange);
         if (isStale()) return;
@@ -1217,72 +497,464 @@ export class ValidationService {
             severity,
             range: { start, end },
             message: d.message,
-            source: "modelscript",
+            source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
             code: d.code ?? d.lintName,
           });
         }
       }
-      this.connection.console.info(`[perf] Step 3 (Lints): ${(performance.now() - t0).toFixed(2)}ms`);
 
-      // ── Step 5 (moved before Step 4): Create class descriptors
-      // Wrappers are needed by the project tree and diagram rendering.
-      // They don't depend on reference resolution, so run them now.
-      const db = engine!.toQueryDB();
-      const thisDocInstances: any[] = [];
-      const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
-      const matchUri = normUri(effectiveUri);
-
-      const symbolsToCheck = resourceSymbolIds
-        ? (resourceSymbolIds.map((id: any) => [id, unifiedIndex.symbols.get(id)]) as Iterable<[any, any]>)
-        : unifiedIndex.symbols;
-
-      for (const [id, entry] of symbolsToCheck) {
-        if (!entry || !entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
-        if (entry.kind !== "Class") continue;
-        if (entry.parentId !== null) {
-          const parentEntry = unifiedIndex.symbols.get(entry.parentId);
-          if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) continue;
+      // ── Step 6: Domain Post-Validation Hooks ──────────────────────────────
+      if (plugin?.customHandlers?.postValidate && textDocument) {
+        await plugin.customHandlers.postValidate(textDocument, context, newSemanticDiagnostics);
+      } else {
+        if (langId === "owl2" && !hasSyntaxErrors) {
+          await this.postValidateOwl2(effectiveUri, tree, text, newSemanticDiagnostics);
+        } else if (langId === "sysml2") {
+          if (!hasSyntaxErrors) {
+            this.postValidateSysml2(effectiveUri, newSemanticDiagnostics);
+          }
+          this.checkAutoVerify(effectiveUri);
         }
-        const wrapper = {
-          id,
-          db,
-          entry,
-          name: entry.name ?? "",
-          kind: entry.kind ?? "Class",
-          classKind: (entry.metadata as any)?.classKind ?? "class",
-          compositeName: entry.name ?? "",
-          description: (entry.metadata as any)?.description ?? null,
-          isClassInstance: true,
-        };
-        thisDocInstances.push(wrapper);
       }
-      this.workspaceManager.workspaceInstances.set(uri, thisDocInstances);
-      this.workspaceManager.documentInstances.set(uri, thisDocInstances);
-      this.workspaceManager.documentContexts.set(uri, context);
-      this.connection.console.info(`[perf] Step 5 (Wrappers): ${(performance.now() - t0).toFixed(2)}ms`);
 
-      // ── Immediate delivery: publish lint diagnostics + wrappers now ─────
-      // The user sees lint errors and the project tree immediately.
+      const vDiags = this.verificationDiagnosticsByUri.get(uri) ?? this.verificationDiagnosticsByUri.get(effectiveUri);
+      if (vDiags) {
+        newSemanticDiagnostics.push(...vDiags);
+      }
+
+      // ── Step 7: Populate Class / Symbol Wrappers for Trees ───────────────
+      this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
+
+      // ── Step 8: Deliver Diagnostics and Notify UI ────────────────────────
       if (isStale()) return;
-
       this.lastSemanticDiagnostics.set(uri, newSemanticDiagnostics);
       const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
       if (diagnostics.length > 1000) diagnostics.length = 1000;
       this.connection.sendDiagnostics({ uri, diagnostics });
       this.connection.sendNotification("modelscript/projectTreeChanged");
-      this.connection.console.info(`[perf] Delivery for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`);
-
-      this.connection.console.info(
-        `[perf] Finished this.runSemanticPipeline for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`,
-      );
     } catch (e: any) {
-      this.connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
+      this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
         const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
         if (diagnostics.length > 1000) diagnostics.length = 1000;
         this.connection.sendDiagnostics({ uri, diagnostics });
       }
     }
+  }
+
+  /**
+   * Backward-compatible delegation for runSemanticPipeline.
+   */
+  public async runSemanticPipeline(
+    uri: string,
+    text: string,
+    tree: any,
+    editRanges: Array<{ startByte: number; endByte: number }> | undefined,
+    baseDiagnostics: Diagnostic[],
+    revisionAtStart: number | null,
+    context: any,
+  ): Promise<void> {
+    const plugin = globalLanguageRegistry.getPluginForUri(uri);
+    await this.runUnifiedSemanticPipeline({
+      uri,
+      text,
+      tree,
+      editRanges,
+      baseDiagnostics,
+      revisionAtStart,
+      plugin,
+      langId: plugin?.id ?? "modelica",
+    });
+  }
+
+  private createDefaultQueryEngine(langId: string, unifiedIndex: any, cstTreeWrapper: any): QueryEngine {
+    const plugin = globalLanguageRegistry.getPluginById(langId);
+    const factory =
+      plugin?.createQueryEngine ??
+      (globalThis as any)[`create_${langId}_query_engine`] ??
+      (globalThis as any)[`create${langId.charAt(0).toUpperCase() + langId.slice(1)}QueryEngine`];
+    if (typeof factory === "function") {
+      return factory(unifiedIndex, cstTreeWrapper) as any;
+    }
+    return new QueryEngine(unifiedIndex, cstTreeWrapper as any);
+  }
+
+  private validateSidecarDocument(textDocument: TextDocument): void {
+    const context = this.parserService.sharedContext;
+    if (!context) return;
+    const text = textDocument.getText();
+    const entity = {
+      isClassInstance: true,
+      jsSource: text,
+      name: "",
+      context,
+      uri: textDocument.uri,
+      instantiate() {},
+    } as any;
+    const filename = textDocument.uri.split("/").pop();
+    if (filename) {
+      entity.name = filename.replace(/\.[tj]s$/, "");
+    }
+    entity.instantiate();
+    this.workspaceManager.workspaceInstances.set(textDocument.uri, [entity]);
+    this.workspaceManager.documentInstances.set(textDocument.uri, [entity]);
+    this.workspaceManager.documentContexts.set(textDocument.uri, context);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+    this.connection.sendNotification("modelscript/projectTreeChanged");
+  }
+
+  private async validateStepDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const buffer = new TextEncoder().encode(text);
+    const stepDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
+      let astIndex;
+      let tree;
+      const stepParser = plugin?.parser ?? this.parserService.stepParser;
+      if (stepParser) {
+        tree = stepParser.parse(text);
+        if (tree) {
+          this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
+          astIndex = { symbols: new Map(), byName: new Map(), childrenOf: new Map() } as any;
+        }
+      }
+
+      const stepIndex = await this.workspaceManager.stepWorkspaceIndex.parseStepFile(
+        textDocument.uri,
+        buffer,
+        astIndex,
+      );
+
+      const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      if (this.workspaceManager.globalModelicaQueryEngine) {
+        this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
+      }
+      if (this.workspaceManager.globalSysML2QueryEngine) {
+        this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
+      }
+
+      if (!this.workspaceManager.globalStepQueryEngine) {
+        this.workspaceManager.globalStepQueryEngine = new QueryEngine(unifiedIndex, {} as any);
+      } else {
+        this.workspaceManager.globalStepQueryEngine.updateIndex(unifiedIndex);
+      }
+
+      const engine = this.workspaceManager.globalStepQueryEngine;
+      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
+      this.documentLSPBridges.set(textDocument.uri, bridge);
+
+      if (tree) {
+        const collectErrors = (node: any) => {
+          if (!node) return;
+          if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+          if (node.isMissing || node.type === "ERROR") {
+            const start = bridge["positions"].offsetToPosition(node.startIndex);
+            const end = bridge["positions"].offsetToPosition(node.endIndex);
+            stepDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start, end },
+              message: node.isMissing ? "Missing syntax element" : "Syntax error",
+              source: "step",
+            });
+          }
+          const children = node.children || [];
+          for (let i = 0; i < children.length; i++) {
+            collectErrors(children[i]);
+          }
+        };
+        collectErrors(tree.rootNode);
+      }
+    } catch (e: any) {
+      this.connection.console.error(`[step] Error in STEP pipeline for ${textDocument.uri}: ${e.message}\n${e.stack}`);
+    }
+
+    const { definitions, references } = parseStepReferences(text);
+    for (const ref of references) {
+      if (!definitions.has(ref.id)) {
+        const start = textDocument.positionAt(ref.startOffset);
+        const end = textDocument.positionAt(ref.endOffset);
+        stepDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: { start, end },
+          message: `Reference to undefined entity '${ref.id}'`,
+          source: "step",
+        });
+      }
+    }
+
+    for (const [, def] of definitions.entries()) {
+      const schema = STEP_SCHEMA[def.type];
+      if (schema) {
+        let i = def.endOffset;
+        while (i < text.length && /\s/.test(text[i])) i++;
+        if (text[i] === "(") {
+          const argsStart = i;
+          let depth = 0;
+          let inStr = false;
+          let argCount = 0;
+          let hasContent = false;
+
+          for (i = argsStart; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === "'") {
+              inStr = !inStr;
+              hasContent = true;
+            } else if (!inStr && ch === "(") {
+              if (depth > 0) hasContent = true;
+              depth++;
+            } else if (!inStr && ch === ")") {
+              depth--;
+              if (depth === 0) {
+                if (hasContent || argCount > 0) argCount++;
+                break;
+              }
+              hasContent = true;
+            } else if (!inStr && depth === 1 && ch === ",") {
+              argCount++;
+              hasContent = false;
+            } else if (depth > 0 && !/\s/.test(ch)) {
+              hasContent = true;
+            }
+          }
+
+          if (argCount !== schema.parameters.length) {
+            const start = textDocument.positionAt(def.startOffset);
+            const end = textDocument.positionAt(def.endOffset);
+            stepDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start, end },
+              message: `Schema violation for ${def.type}: expected ${schema.parameters.length} arguments, got ${argCount}.`,
+              source: "step",
+            });
+          }
+        }
+      } else if (def.type !== "COMPLEX_ENTITY") {
+        const typeMatchIndex = def.text.indexOf(def.type);
+        const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
+        const start = textDocument.positionAt(typeStartOffset);
+        const end = textDocument.positionAt(typeStartOffset + def.type.length);
+        stepDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: { start, end },
+          message: `Undefined STEP entity type '${def.type}'`,
+          source: "step",
+        });
+      }
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, stepDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
+    this.connection.sendNotification("modelscript/projectTreeChanged");
+
+    if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+    this.revalidationTimer = setTimeout(() => {
+      for (const doc of this.documentManager.documents.all()) {
+        if (doc.uri !== textDocument.uri) {
+          this.validateTextDocument(doc);
+        }
+      }
+    }, 300);
+  }
+
+  private async postValidateOwl2(
+    effectiveUri: string,
+    tree: any,
+    text: string,
+    diagnostics: Diagnostic[],
+  ): Promise<void> {
+    try {
+      const axioms = lowerCstToAxioms(tree.rootNode, text);
+      const store = this.workspaceManager.unifiedWorkspace.owl2Store;
+      store.setAxioms(effectiveUri, axioms);
+
+      const reasoner = new TableauReasoner();
+      await reasoner.init();
+      reasoner.loadOntology(store.axioms);
+      const consistency = reasoner.checkConsistency();
+
+      if (!consistency.isConsistent) {
+        const explanation = consistency.explanation || "Ontology inconsistency detected";
+        let reported = false;
+        if (consistency.conflictingAxioms) {
+          for (const axiom of consistency.conflictingAxioms) {
+            let targetIri: string | null = null;
+            if (axiom.type === "SubClassOf") {
+              targetIri = axiom.subClassIri;
+            } else if (axiom.type === "DisjointClasses" && axiom.classIris && axiom.classIris.length > 0) {
+              for (const iri of axiom.classIris) {
+                if (this.findRangeForIri(iri, effectiveUri)) {
+                  targetIri = iri;
+                  break;
+                }
+              }
+              if (!targetIri) targetIri = axiom.classIris[0];
+            } else if (axiom.type === "ClassAssertion") {
+              targetIri = axiom.individualIri;
+            } else if (axiom.type === "ObjectPropertyAssertion") {
+              targetIri = axiom.subjectIri;
+            } else if ((axiom as any).iri) {
+              targetIri = (axiom as any).iri;
+            }
+
+            if (targetIri) {
+              const range = this.findRangeForIri(targetIri, effectiveUri);
+              if (range) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  range,
+                  message: `Ontology inconsistency: ${explanation}`,
+                  source: "owl2-reasoner",
+                });
+                reported = true;
+              }
+            }
+          }
+        }
+
+        if (!reported) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: {
+              start: { line: 0, character: 0 },
+              end: { line: 0, character: 10 },
+            },
+            message: `Ontology inconsistency: ${explanation}`,
+            source: "owl2-reasoner",
+          });
+        }
+      }
+    } catch (reasonerError: any) {
+      this.connection.console.error(`[owl2-reasoner] Reasoner failed: ${reasonerError.message}`);
+    }
+  }
+
+  private postValidateSysml2(effectiveUri: string, diagnostics: Diagnostic[]): void {
+    try {
+      const versions = new Map<string, number>();
+      versions.set("sysml2", this.workspaceManager.sysml2WorkspaceIndex.version);
+      this.reasonerService.updateAndReason(versions);
+
+      const consistency = this.reasonerService.reasoner.checkConsistency();
+      if (!consistency.isConsistent) {
+        for (const axiom of consistency.conflictingAxioms || []) {
+          let targetIri: string | null = null;
+          if (axiom.type === "SubClassOf") targetIri = axiom.subClassIri;
+          else if (axiom.type === "ClassAssertion") targetIri = axiom.individualIri;
+          else if ((axiom as any).iri) targetIri = (axiom as any).iri;
+
+          if (targetIri) {
+            const range = this.findRangeForIri(targetIri, effectiveUri);
+            if (range) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range,
+                message: `Logical contradiction: ${this.reasonerService.reasoner.explain(targetIri, "satisfiability")}`,
+                source: "sysml2-reasoner",
+              });
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      this.connection.console.error(`[sysml2-reasoner] Update failed: ${e.message}`);
+    }
+  }
+
+  private checkAutoVerify(effectiveUri: string): void {
+    if (this.workspaceManager.unifiedWorkspace) {
+      try {
+        const udb = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const docSymbolIds = udb.symbolsByResource?.get(effectiveUri);
+        let hasVerifyCases = false;
+        if (docSymbolIds) {
+          for (const id of docSymbolIds) {
+            const s = udb.symbols.get(id);
+            if (
+              s &&
+              (s.ruleName === "VerifyRequirementUsage" ||
+                s.ruleName === "AnalysisCaseDefinition" ||
+                s.ruleName === "AnalysisCaseUsage" ||
+                s.ruleName === "VerificationCaseDefinition" ||
+                s.ruleName === "VerificationCaseUsage")
+            ) {
+              hasVerifyCases = true;
+              break;
+            }
+          }
+        }
+        if (hasVerifyCases) {
+          if (verificationTimer) clearTimeout(verificationTimer);
+          const verifyUri = effectiveUri;
+          verificationTimer = setTimeout(() => {
+            this.connection.console.log(`[auto-verify] Triggering verification for ${verifyUri}`);
+            this.runVerificationForUri(verifyUri).catch(() => {});
+          }, 1000);
+        }
+      } catch {
+        // Ignore — auto-verify is best-effort
+      }
+    }
+  }
+
+  private populateClassWrappers(effectiveUri: string, uri: string, unifiedIndex: any, engine: any, context: any): void {
+    const db = engine?.toQueryDB ? engine.toQueryDB() : null;
+    if (!db) return;
+
+    const thisDocInstances: any[] = [];
+    const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
+    const matchUri = normUri(effectiveUri);
+
+    const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
+    const symbolsToCheck = resourceSymbolIds
+      ? (resourceSymbolIds.map((id: any) => [id, unifiedIndex.symbols.get(id)]) as Iterable<[any, any]>)
+      : unifiedIndex.symbols;
+
+    for (const [id, entry] of symbolsToCheck) {
+      if (!entry || !entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
+      if (entry.kind !== "Class") continue;
+      if (entry.parentId !== null) {
+        const parentEntry = unifiedIndex.symbols.get(entry.parentId);
+        if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) continue;
+      }
+      const wrapper = {
+        id,
+        db,
+        entry,
+        name: entry.name ?? "",
+        kind: entry.kind ?? "Class",
+        classKind: (entry.metadata as any)?.classKind ?? "class",
+        compositeName: entry.name ?? "",
+        description: (entry.metadata as any)?.description ?? null,
+        isClassInstance: true,
+      };
+      thisDocInstances.push(wrapper);
+    }
+    this.workspaceManager.workspaceInstances.set(uri, thisDocInstances);
+    this.workspaceManager.documentInstances.set(uri, thisDocInstances);
+    if (context) {
+      this.workspaceManager.documentContexts.set(uri, context);
+    }
+  }
+
+  private fallbackRegexValidation(textDocument: TextDocument): void {
+    const text = textDocument.getText();
+    const diagnostics: Diagnostic[] = [];
+    const openComments = (text.match(/\/\*/g) || []).length;
+    const closeComments = (text.match(/\*\//g) || []).length;
+    if (openComments > closeComments) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: textDocument.positionAt(text.lastIndexOf("/*")),
+          end: textDocument.positionAt(text.lastIndexOf("/*") + 2),
+        },
+        message: "Unclosed block comment.",
+        source: "modelscript",
+      });
+    }
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
   }
 
   async runVerificationForUri(uri: string): Promise<{ ok: boolean; error?: string }> {
@@ -1366,7 +1038,7 @@ export class ValidationService {
           if (doc) {
             const text = doc.getText();
             let tree: any;
-            if (entryUri.endsWith(".sysml") && this.parserService.sysml2Parser) {
+            if ((entryUri.endsWith(".sysml") || entryUri.endsWith(".sysml2")) && this.parserService.sysml2Parser) {
               tree = this.parserService.sysml2Parser.parse(text);
             } else if (this.parserService.sharedContext) {
               tree = this.parserService.sharedContext.parse(".mo", text);
@@ -1380,7 +1052,12 @@ export class ValidationService {
         },
       };
 
-      const sysmlEngine = createSysML2QueryEngine(db, verifyCstTreeWrapper);
+      const sysmlFactory =
+        (globalThis as any).createSysML2QueryEngine ??
+        (globalThis as any).create_sysml2_query_engine ??
+        globalLanguageRegistry.getPluginForLanguageIdOrUri("sysml2")?.createQueryEngine;
+      const sysmlEngine = typeof sysmlFactory === "function" ? sysmlFactory(db, verifyCstTreeWrapper) : null;
+      if (!sysmlEngine) return { ok: false };
       const sysmlDB = sysmlEngine.toQueryDB();
       const newDiagnostics: Diagnostic[] = [];
       const allResults: any[] = [];
@@ -1417,7 +1094,13 @@ export class ValidationService {
             ? this.workspaceManager.globalSysML2QueryEngine
             : this.workspaceManager.globalModelicaQueryEngine;
           if (!targetEngine && finalEntry.resourceId.endsWith(".mo")) {
-            targetEngine = createModelicaQueryEngine(db, verifyCstTreeWrapper);
+            const moFactory =
+              (globalThis as any).createModelicaQueryEngine ??
+              (globalThis as any).create_modelica_query_engine ??
+              globalLanguageRegistry.getPluginForLanguageIdOrUri("modelica")?.createQueryEngine;
+            if (typeof moFactory === "function") {
+              targetEngine = moFactory(db, verifyCstTreeWrapper);
+            }
           }
         }
 

@@ -153,10 +153,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private sendActiveFileContext() {
     if (!this.view) return;
     let editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
-      editor = vscode.window.visibleTextEditors.find((e) => e.document.languageId === "modelica");
+    if (!editor || editor.document.uri.scheme === "output") {
+      editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.scheme !== "output");
     }
-    if (editor && editor.document.languageId === "modelica") {
+    if (editor && editor.document.uri.scheme !== "output") {
       this.view.webview.postMessage({
         type: "activeFileContext",
         fileName: editor.document.fileName.split("/").pop(),

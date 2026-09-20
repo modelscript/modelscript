@@ -28,7 +28,8 @@ end StatementCall;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/algorithms-functions/StatementCall.mo:15:3-15:39:writable] Error: Class Modelica.Math.cos not found in scope PointOnCircle (looking for a function or record).
+// [OpenModelica/flattening/modelica/algorithms-functions/StatementCall.mo:15:15-15:39:writable] Error: Class Modelica.Math.cos not found in scope PointOnCircle (looking for a function or record).
+// [OpenModelica/flattening/modelica/algorithms-functions/StatementCall.mo:16:15-16:39:writable] Error: Class Modelica.Math.sin not found in scope PointOnCircle (looking for a function or record).
 // Error: Error occurred while flattening model StatementCall
 //
 // Execution failed!

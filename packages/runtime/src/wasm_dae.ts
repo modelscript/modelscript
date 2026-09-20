@@ -1473,7 +1473,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   addRange(start: number, stop: number, step = -1): number {
-    return this.addExpression(ExprKind.Range, start, stop, step);
+    return this.addExpression(ExprKind.Range, start, step, stop);
   }
 
   addSubscript(baseExpr: number, subExpr: number): number {

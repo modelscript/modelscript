@@ -54,7 +54,7 @@ export class CadViewerPanel {
     // Watch for active editor changes to auto-update CAD viewer
     vscode.window.onDidChangeActiveTextEditor(
       () => {
-        if (vscode.window.activeTextEditor?.document.languageId === "modelica") {
+        if (vscode.window.activeTextEditor?.document) {
           this.update();
         }
       },
@@ -89,7 +89,7 @@ export class CadViewerPanel {
 
   public async update() {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "modelica") {
+    if (!editor || editor.document.uri.scheme === "output") {
       return;
     }
 

@@ -64,7 +64,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let updateTimeout: ReturnType<typeof setTimeout> | null = null;
     let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
-    const isSysML = uriString.endsWith(".sysml");
+    const languageId =
+      document.languageId && document.languageId !== "" ? document.languageId : uriString.split(".").pop() || "generic";
     let currentDiagramType = "All";
     let diagramEditQueue = Promise.resolve();
     let isSpatialEditPending = false;
@@ -435,8 +436,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     });
 
     // Initial load
-    // Tell the webview whether this is a SysML2 file (shows diagram type selector)
-    webviewPanel.webview.postMessage({ type: "setLanguage", language: isSysML ? "sysml" : "modelica" });
+    // Tell the webview the document language (enables diagram features/palette)
+    webviewPanel.webview.postMessage({ type: "setLanguage", language: languageId });
     debouncedUpdate();
   }
 

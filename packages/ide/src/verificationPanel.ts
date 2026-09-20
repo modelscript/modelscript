@@ -25,8 +25,8 @@ export class VerificationPanel {
         switch (msg.type) {
           case "runVerification": {
             const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.document.languageId !== "sysml") {
-              vscode.window.showWarningMessage("Open a SysML file first.");
+            if (!editor) {
+              vscode.window.showWarningMessage("Open a file first.");
               return;
             }
             const uri = editor.document.uri.toString();

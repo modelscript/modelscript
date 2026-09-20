@@ -507,6 +507,7 @@ export interface TreeNodeInfo {
   compositeName?: string;
   kind?: string;
   classKind?: string;
+  icon?: string;
   hasChildren?: boolean;
   language?: string;
   description?: string | null;

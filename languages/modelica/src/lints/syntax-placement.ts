@@ -1023,41 +1023,43 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4042,
     message: (target) => `Constant '${target.text}' has no value.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const comp of db.ast.getAncestors(node, 0)) {
-        if (db.ast.getType(comp) == $.component_clause) {
-          if (hasTypePrefix(db, comp, "constant", $)) {
-            let hasMod = false;
-            for (const mod of db.ast.getDescendants(node, $.modification)) {
-              if (mod != 0) hasMod = true;
+      for (const cls of db.ast.getAncestors(node, $.class_definition)) {
+        if (isClassKind(db, cls, "function")) return;
+        break;
+      }
+      for (const comp of db.ast.getAncestors(node, $.component_clause)) {
+        if (hasTypePrefix(db, comp, "constant", $)) {
+          let hasMod = false;
+          for (const mod of db.ast.getDescendants(node, $.modification)) {
+            if (mod != 0) hasMod = true;
+            break;
+          }
+          if (!hasMod) {
+            let nameId: u32 = 0;
+            for (const id of db.ast.getDescendants(node, $.identifier)) {
+              nameId = id;
               break;
             }
-            if (!hasMod) {
-              let nameId: u32 = 0;
-              for (const id of db.ast.getDescendants(node, $.identifier)) {
-                nameId = id;
-                break;
-              }
-              if (nameId != 0) {
-                const docRoot = db.ast.getRootNode();
-                if (docRoot != 0) {
-                  for (const elemMod of db.ast.getDescendants(docRoot, $.element_modification)) {
-                    for (const n of db.ast.getDescendants(elemMod, $.name)) {
-                      if (db.ast.textEqualsNode(n, nameId)) {
-                        hasMod = true;
-                        break;
-                      }
+            if (nameId != 0) {
+              const docRoot = db.ast.getRootNode();
+              if (docRoot != 0) {
+                for (const elemMod of db.ast.getDescendants(docRoot, $.element_modification)) {
+                  for (const n of db.ast.getDescendants(elemMod, $.name)) {
+                    if (db.ast.textEqualsNode(n, nameId)) {
+                      hasMod = true;
+                      break;
                     }
-                    if (hasMod) break;
                   }
+                  if (hasMod) break;
                 }
               }
             }
-            if (!hasMod) {
-              db.diagnostic(node);
-            }
           }
-          break;
+          if (!hasMod) {
+            db.diagnostic(node);
+          }
         }
+        break;
       }
     },
   },

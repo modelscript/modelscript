@@ -1,4 +1,5 @@
 import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 export const CLASS_KIND_KEYWORDS = [
   "class",
@@ -49,12 +50,27 @@ export const fqnCacheState = {
   cache: new Map<string, number>(),
 };
 
+export function iconFromEntry(entry: any): string | undefined {
+  if (entry?.language) {
+    const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
+    const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
+    if (symConfig?.icon) return symConfig.icon;
+  }
+  return undefined;
+}
+
 export function classKindFromEntry(entry: any): string {
-  if (entry.language === "sysml2") {
+  if (entry?.language) {
+    const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
+    const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
+    if (symConfig?.icon) return symConfig.icon;
+    if (symConfig?.group) return symConfig.group;
+  }
+  if (entry?.language === "sysml2") {
     return SYSML2_RULE_TO_KIND[entry.ruleName] ?? entry.kind?.toLowerCase() ?? "definition";
   }
   // Modelica path
-  const prefixesText = entry.metadata?.classPrefixes;
+  const prefixesText = entry?.metadata?.classPrefixes;
   if (typeof prefixesText !== "string" || !prefixesText) return "class";
   const lower = prefixesText.toLowerCase();
   for (let i = CLASS_KIND_KEYWORDS.length - 1; i >= 0; i--) {
@@ -64,12 +80,17 @@ export function classKindFromEntry(entry: any): string {
 }
 
 export function isTreeVisible(entry: any): boolean {
-  if (entry.metadata?.isPredefined) return false;
-  if (entry.name?.startsWith("'") || entry.name?.startsWith('"')) return false;
-  if (entry.language === "sysml2") {
+  if (entry?.metadata?.isPredefined) return false;
+  if (entry?.name?.startsWith("'") || entry?.name?.startsWith('"')) return false;
+  if (entry?.language) {
+    const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
+    const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
+    if (symConfig?.treeVisible !== undefined) return symConfig.treeVisible;
+  }
+  if (entry?.language === "sysml2") {
     return SYSML2_TREE_KINDS.has(entry.kind);
   }
-  return entry.kind === "Class";
+  return entry?.kind === "Class";
 }
 
 export function getCompositeName(entry: any, index: any, visited = new Set<string>()): string {
@@ -127,6 +148,7 @@ export function getTreeChildrenFast(index: any, parentId?: string, workspace?: a
           name: entry.name,
           compositeName,
           classKind: classKindFromEntry(entry),
+          icon: iconFromEntry(entry),
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
         });
@@ -162,6 +184,7 @@ export function getTreeChildrenFast(index: any, parentId?: string, workspace?: a
           name: entry.name,
           compositeName,
           classKind: classKindFromEntry(entry),
+          icon: iconFromEntry(entry),
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
         });
@@ -197,6 +220,7 @@ export function getTreeChildrenFast(index: any, parentId?: string, workspace?: a
           name: entry.name,
           compositeName,
           classKind: classKindFromEntry(entry),
+          icon: iconFromEntry(entry),
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
         });

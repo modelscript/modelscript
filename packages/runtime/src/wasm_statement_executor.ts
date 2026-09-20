@@ -9,7 +9,13 @@
 import { evaluateMslCFunction, isMslCFunction } from "./msl_ffi.js";
 import type { QueryDB, SymbolId } from "./runtime.js";
 import { DAEBuilder, ExprKind, StmtKind, VarType } from "./wasm_dae.js";
-import { evaluateArenaExpression, evaluateArenaRuntime, type ArenaValue } from "./wasm_evaluator.js";
+import {
+  evalRawSubscriptIndex,
+  evaluateArenaExpression,
+  evaluateArenaRuntime,
+  splitTopLevelIndices,
+  type ArenaValue,
+} from "./wasm_evaluator.js";
 
 /** Debugger hook interface for step-through simulation inspection. */
 export interface StatementExecutionDebugger {
@@ -1063,10 +1069,10 @@ export function executeArenaCEvalStatements(
         if (targetKind === ExprKind.Name) {
           const name = arena.interner.resolve(arena.getExprData1(targetExprId));
           if (name) {
-            const match = name.match(/^([^[\]]+)\[([^\]]+)\]$/);
+            const match = name.match(/^([^[\]]+)\[(.*)\]$/);
             if (match && match[1] && match[2]) {
               const baseName = match[1];
-              const rawIndices = match[2].split(",").map((s) => s.trim());
+              const rawIndices = splitTopLevelIndices(match[2]);
               const subscripts: (number | string | number[])[] = [];
               let ok = true;
               for (const rawIdx of rawIndices) {
@@ -1082,40 +1088,12 @@ export function executeArenaCEvalStatements(
                     break;
                   }
                 } else {
-                  const num = Number(rawIdx);
-                  if (!isNaN(num)) subscripts.push(num);
-                  else {
-                    const effectiveDb = db ?? (arena as any).db;
-                    let enumResolved = false;
-                    if (effectiveDb && rawIdx.includes(".")) {
-                      const parts = rawIdx.split(".");
-                      const litName = parts.pop()!;
-                      const typeName = parts.length > 0 ? parts.pop()! : null;
-                      const candidateSyms = typeName
-                        ? effectiveDb.byName(typeName)
-                        : effectiveDb.index?.symbols
-                          ? Array.from(effectiveDb.index.symbols.values()).filter(
-                              (s: any) => (s as any).kind === "Class",
-                            )
-                          : [];
-                      for (const s of candidateSyms as any[]) {
-                        const cstText = (effectiveDb.cstNode(s.id) as any)?.text ?? "";
-                        const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-                        if (match && match[1]) {
-                          const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
-                          const idx = lits.indexOf(litName);
-                          if (idx >= 0) {
-                            subscripts.push(idx + 1);
-                            enumResolved = true;
-                            break;
-                          }
-                        }
-                      }
-                    }
-                    if (!enumResolved) {
-                      ok = false;
-                      break;
-                    }
+                  const idxNum = evalRawSubscriptIndex(rawIdx, env, db, arena);
+                  if (idxNum !== undefined) {
+                    subscripts.push(idxNum);
+                  } else {
+                    ok = false;
+                    break;
                   }
                 }
               }
@@ -1545,6 +1523,8 @@ export function evaluateArenaFunctionCall(
 
   try {
     const env = new Map<string, ArenaValue>();
+    const lastDot = funcName.lastIndexOf(".");
+    const instancePrefix = lastDot > 0 ? funcName.slice(0, lastDot) : undefined;
 
     const functionLookup = (fid: number, args: ArenaValue[]) => {
       const funcName = funcArena.interner.resolve(fid);
@@ -1564,9 +1544,25 @@ export function evaluateArenaFunctionCall(
       }
     }
 
+    let allScalarInputs = true;
+    for (let i = 0; i < funcArena.varCount; i++) {
+      if (funcArena.isVarRemoved(i)) continue;
+      if (funcArena.getVarCausality(i) === 1 /* Input */) {
+        const s = funcArena.getVarShape(i);
+        if (s && s.length > 0) {
+          allScalarInputs = false;
+          break;
+        }
+        if (funcArena.getVarName(i).includes("[")) {
+          allScalarInputs = false;
+          break;
+        }
+      }
+    }
+
     let hasVectorizedArgs = false;
     let vectorizedShape: number[] | null = null;
-    if (argValues.length === expectedInputsCount) {
+    if (allScalarInputs && argValues.length === expectedInputsCount) {
       let inIdx = 0;
       for (let i = 0; i < funcArena.varCount; i++) {
         if (funcArena.isVarRemoved(i) || funcArena.getVarCausality(i) !== 1 /* Input */) continue;
@@ -1584,6 +1580,30 @@ export function evaluateArenaFunctionCall(
             vectorizedShape = extraDims;
           }
           hasVectorizedArgs = true;
+        }
+        inIdx++;
+      }
+    }
+
+    if (!hasVectorizedArgs && argValues.length === expectedInputsCount) {
+      let inIdx = 0;
+      for (let i = 0; i < funcArena.varCount; i++) {
+        if (funcArena.isVarRemoved(i) || funcArena.getVarCausality(i) !== 1 /* Input */) continue;
+        const expectedShape = funcArena.getVarShape(i);
+        const arg = argValues[inIdx];
+        const argShape: number[] = [];
+        let curr: any = arg;
+        while (Array.isArray(curr)) {
+          argShape.push(curr.length);
+          curr = curr[0];
+        }
+        if (expectedShape.length !== argShape.length) {
+          return null;
+        }
+        for (let d = 0; d < expectedShape.length; d++) {
+          if (expectedShape[d] !== -1 && expectedShape[d] !== argShape[d]) {
+            return null;
+          }
         }
         inIdx++;
       }
@@ -1700,11 +1720,21 @@ export function evaluateArenaFunctionCall(
       } else {
         if (causality === 2 /* Output */) outputs.push(name);
         if (typeof startExprId === "number" && startExprId !== -1) {
-          env.set(
-            name,
-            evaluateArenaExpression(funcArena, startExprId, env, db, scopeId, undefined, false, functionLookup) ??
-              defaultVal,
+          const evaluatedVal = evaluateArenaExpression(
+            funcArena,
+            startExprId,
+            env,
+            db,
+            scopeId,
+            undefined,
+            false,
+            functionLookup,
+            dae,
+            instancePrefix,
           );
+          if (evaluatedVal !== null && evaluatedVal !== undefined) {
+            env.set(name, evaluatedVal);
+          }
         } else {
           env.set(name, defaultVal);
         }
@@ -1733,13 +1763,23 @@ export function evaluateArenaFunctionCall(
         const info = unprovidedMap.get(inputName);
         if (info) {
           for (const dep of info.deps) {
-            if (unprovidedMap.has(dep)) {
+            if (dep !== inputName && unprovidedMap.has(dep)) {
               resolveInput(dep);
             }
           }
           const val =
-            evaluateArenaExpression(funcArena, info.exprId, env, db, scopeId, undefined, false, functionLookup) ??
-            info.defaultVal;
+            evaluateArenaExpression(
+              funcArena,
+              info.exprId,
+              env,
+              db,
+              scopeId,
+              undefined,
+              false,
+              functionLookup,
+              dae,
+              instancePrefix,
+            ) ?? info.defaultVal;
           env.set(inputName, val);
         }
         visiting.delete(inputName);
@@ -1797,7 +1837,11 @@ export function evaluateArenaFunctionCall(
           });
           const cResult = fn(...resolvedArgs);
           if (outName) env.set(outName, cResult);
+        } else {
+          return null;
         }
+      } else {
+        return null;
       }
     }
 

@@ -28,7 +28,16 @@ export class ModelicaNotebookController implements vscode.Disposable {
       ModelicaNotebookController.label,
     );
 
-    this._controller.supportedLanguages = ["modelica"];
+    this._controller.supportedLanguages = [
+      "modelica",
+      "sysml",
+      "sysml2",
+      "step",
+      "owl2",
+      "csv",
+      "javascript",
+      "typescript",
+    ];
     this._controller.supportsExecutionOrder = true;
     this._controller.executeHandler = this._execute.bind(this);
   }

@@ -1,47 +1,174 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-import { AnnotationEvaluator } from "@modelscript/modelica/diagram";
-import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
-import { createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
-import owl2Lang from "@modelscript/owl2/language";
 import { QueryEngine, UnifiedWorkspace } from "@modelscript/runtime";
-import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
+import { createRequire } from "node:module";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
-import { extractIndexerHooks } from "../utils/hook-extractor.js";
 import { DocumentManager } from "./DocumentManager.js";
 
-const owl2IndexerHooks = extractIndexerHooks(owl2Lang);
+let nodeRequire: ((id: string) => any) | null = null;
+try {
+  if (typeof createRequire === "function" && typeof process !== "undefined" && process.versions?.node) {
+    nodeRequire = createRequire(import.meta.url);
+  }
+} catch {
+  // Non-node environment
+}
+
+export interface LanguageWorkspaceContext {
+  index: any;
+  queryEngine: QueryEngine | null;
+}
 
 export class WorkspaceManager {
-  public globalWorkspaceIndex = createModelicaWorkspaceIndex();
-  public sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
-  public owl2WorkspaceIndex = createOWL2WorkspaceIndex();
-  public stepWorkspaceIndex: any; // Requires step-workspace-index
+  private languageContexts = new Map<string, LanguageWorkspaceContext>();
   public unifiedWorkspace = new UnifiedWorkspace();
   public allWorkspaceIndices = new Map<string, any>();
   public workspaceInstances = new Map<string, any[]>();
   public documentInstances = new Map<string, any[]>();
   public documentContexts = new Map<string, any>();
 
-  public globalModelicaQueryEngine: QueryEngine | null = null;
-  public globalSysML2QueryEngine: QueryEngine | null = null;
-  public globalStepQueryEngine: QueryEngine | null = null;
-  public globalOWL2QueryEngine: QueryEngine | null = null;
+  public getWorkspaceIndex(langId: string): any {
+    const norm = langId.toLowerCase();
+    const ctx = this.languageContexts.get(norm);
+    if (ctx?.index) return ctx.index;
+    const plugin = globalLanguageRegistry.getPluginById(norm);
+    if (plugin?.workspaceIndex) {
+      this.setWorkspaceIndex(norm, plugin.workspaceIndex);
+      return plugin.workspaceIndex;
+    }
+    const factory = (globalThis as any)[`create_${norm}_workspace_index`];
+    if (typeof factory === "function") {
+      const idx = factory();
+      this.setWorkspaceIndex(norm, idx);
+      return idx;
+    }
+    if (nodeRequire) {
+      try {
+        if (norm === "modelica") {
+          const mod = nodeRequire("@modelscript/modelica/factory");
+          if (mod?.createModelicaWorkspaceIndex) {
+            const idx = mod.createModelicaWorkspaceIndex();
+            this.setWorkspaceIndex(norm, idx);
+            return idx;
+          }
+        } else if (norm === "sysml2" || norm === "sysml") {
+          const mod = nodeRequire("@modelscript/sysml2/factory");
+          if (mod?.createSysML2WorkspaceIndex) {
+            const idx = mod.createSysML2WorkspaceIndex();
+            this.setWorkspaceIndex(norm, idx);
+            return idx;
+          }
+        }
+      } catch {
+        // Fallback failed
+      }
+    }
+    return undefined;
+  }
+
+  public setWorkspaceIndex(langId: string, index: any): void {
+    const norm = langId.toLowerCase();
+    const existing = this.languageContexts.get(norm) ?? { index: null, queryEngine: null };
+    existing.index = index;
+    this.languageContexts.set(norm, existing);
+    this.allWorkspaceIndices.set(norm, index);
+  }
+
+  public getQueryEngine(langId: string): QueryEngine | null {
+    const norm = langId.toLowerCase();
+    return (
+      this.languageContexts.get(norm)?.queryEngine ?? globalLanguageRegistry.getPluginById(norm)?.queryEngine ?? null
+    );
+  }
+
+  public setQueryEngine(langId: string, qe: QueryEngine | null): void {
+    const norm = langId.toLowerCase();
+    const existing = this.languageContexts.get(norm) ?? { index: null, queryEngine: null };
+    existing.queryEngine = qe;
+    this.languageContexts.set(norm, existing);
+    const plugin = globalLanguageRegistry.getPluginById(norm);
+    if (plugin) plugin.queryEngine = qe ?? undefined;
+  }
+
+  // Compatibility getters/setters for legacy callers
+  get globalWorkspaceIndex() {
+    return this.getWorkspaceIndex("modelica");
+  }
+  set globalWorkspaceIndex(val: any) {
+    this.setWorkspaceIndex("modelica", val);
+  }
+
+  get sysml2WorkspaceIndex() {
+    return this.getWorkspaceIndex("sysml2");
+  }
+  set sysml2WorkspaceIndex(val: any) {
+    this.setWorkspaceIndex("sysml2", val);
+  }
+
+  get owl2WorkspaceIndex() {
+    return this.getWorkspaceIndex("owl2");
+  }
+  set owl2WorkspaceIndex(val: any) {
+    this.setWorkspaceIndex("owl2", val);
+  }
+
+  get stepWorkspaceIndex() {
+    return this.getWorkspaceIndex("step");
+  }
+  set stepWorkspaceIndex(val: any) {
+    this.setWorkspaceIndex("step", val);
+  }
+
+  get globalModelicaQueryEngine() {
+    return this.getQueryEngine("modelica");
+  }
+  set globalModelicaQueryEngine(val: QueryEngine | null) {
+    this.setQueryEngine("modelica", val);
+  }
+
+  get globalSysML2QueryEngine() {
+    return this.getQueryEngine("sysml2");
+  }
+  set globalSysML2QueryEngine(val: QueryEngine | null) {
+    this.setQueryEngine("sysml2", val);
+  }
+
+  get globalOWL2QueryEngine() {
+    return this.getQueryEngine("owl2");
+  }
+  set globalOWL2QueryEngine(val: QueryEngine | null) {
+    this.setQueryEngine("owl2", val);
+  }
+
+  get globalStepQueryEngine() {
+    return this.getQueryEngine("step");
+  }
+  set globalStepQueryEngine(val: QueryEngine | null) {
+    this.setQueryEngine("step", val);
+  }
 
   private documentManager: DocumentManager;
 
   constructor(documentManager: DocumentManager) {
     this.documentManager = documentManager;
-    // Step integration is handled in browserServerMain or by a setter
+
+    // Seed default workspace indices from registered language plugins
+    for (const plugin of globalLanguageRegistry.getAllPlugins()) {
+      if (plugin.workspaceIndex) {
+        this.setWorkspaceIndex(plugin.id, plugin.workspaceIndex);
+      }
+    }
 
     const getEngine = (resourceId?: string) => {
       if (!resourceId) return null;
       const pluginEngine = globalLanguageRegistry.getQueryEngineForUri(resourceId);
       if (pluginEngine) return pluginEngine;
-      if (resourceId.endsWith(".sysml")) return this.globalSysML2QueryEngine;
-      if (resourceId.endsWith(".owl") || resourceId.endsWith(".ofn")) return this.globalOWL2QueryEngine;
-      if (/\.(step|stp|p21)$/i.test(resourceId)) return this.globalStepQueryEngine;
-      return this.globalModelicaQueryEngine;
+      const plugin = globalLanguageRegistry.getPluginForUri(resourceId);
+      if (plugin) {
+        const eng = this.getQueryEngine(plugin.id);
+        if (eng) return eng;
+      }
+      return null;
     };
 
     // Wire up CST providers for cross-language polyglot queries
@@ -64,6 +191,10 @@ export class WorkspaceManager {
       const engine = getEngine(entry.resourceId);
       return engine?.query(queryName, id) ?? null;
     };
+  }
+
+  public resolveClassInstance(uri: string, className?: string): any | null {
+    return this.resolveModelicaClassInstance(uri, className);
   }
 
   public resolveModelicaClassInstance(uri: string, className?: string): any | null {
@@ -248,10 +379,22 @@ export class WorkspaceManager {
           }
 
           try {
-            const evaluator = new AnnotationEvaluator(classInstance);
-            const evaluated = evaluator.evaluate(cstNode, name);
-            classAnnCache.set(name, evaluated ?? null);
-            return evaluated ?? null;
+            let evaluatorClass =
+              (globalThis as any).AnnotationEvaluator ??
+              (globalLanguageRegistry.getPluginForUri(entry.resourceId || "") as any)?.annotationEvaluator;
+            if (!evaluatorClass && nodeRequire) {
+              try {
+                evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
+              } catch {
+                // ignore
+              }
+            }
+            if (evaluatorClass) {
+              const evaluator = new evaluatorClass(classInstance);
+              const evaluated = evaluator.evaluate(cstNode, name);
+              classAnnCache.set(name, evaluated ?? null);
+              return evaluated ?? null;
+            }
           } catch {
             classAnnCache.set(name, null);
             return null;
@@ -321,9 +464,10 @@ export class WorkspaceManager {
 
       const entry = idx.symbols.get(symbolIds[0]);
       if (entry && entry.resourceId) {
-        let engine = entry.resourceId.endsWith(".sysml")
-          ? this.globalSysML2QueryEngine
-          : this.globalModelicaQueryEngine;
+        let engine =
+          entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")
+            ? this.globalSysML2QueryEngine
+            : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
         const db = engine ? (engine.toQueryDB() as any) : fallbackDb;
         return buildAdapter(entry, db, className);
@@ -343,9 +487,10 @@ export class WorkspaceManager {
 
     for (const [id, entry] of idx.symbols.entries()) {
       if (entry.resourceId === uri && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
-        let engine = entry.resourceId.endsWith(".sysml")
-          ? this.globalSysML2QueryEngine
-          : this.globalModelicaQueryEngine;
+        let engine =
+          entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")
+            ? this.globalSysML2QueryEngine
+            : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
         const db = engine ? (engine.toQueryDB() as any) : fallbackDb;
         return buildAdapter(entry, db, entry.name ?? "");

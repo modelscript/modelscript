@@ -771,7 +771,15 @@ export function evaluateConstantArenaExpression(
         if (allOk) {
           const fnInternId = arena.interner.intern(funcName);
           const res = evaluateArenaFunctionCall(arena, fnInternId, args, db, scopeId);
-          if (res !== null) return res as any;
+          if (res !== null) {
+            (fnBridge as any).wasCalled = true;
+            for (const f of arena.functions.values()) {
+              if (f.name === fnBridge.name) {
+                (f as any).wasCalled = true;
+              }
+            }
+            return res as any;
+          }
         }
       }
     }

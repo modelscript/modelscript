@@ -414,7 +414,12 @@ export function registerSemanticTokensProvider(
     }
 
     // SysML2 files use a separate parser and node-type classification
-    if (textDocument.uri.endsWith(".sysml")) {
+    if (
+      textDocument.uri.endsWith(".sysml") ||
+      textDocument.uri.endsWith(".sysml2") ||
+      textDocument.languageId === "sysml" ||
+      textDocument.languageId === "sysml2"
+    ) {
       return computeSysML2SemanticTokens(builder, text, getSysml2Parser, isSysml2ParserReady);
     }
 
@@ -426,7 +431,10 @@ export function registerSemanticTokensProvider(
     let tree = docTree.tree;
     if (docTree.text !== text && parseFallback) {
       try {
-        tree = parseFallback(textDocument.uri.endsWith(".sysml") ? ".sysml" : ".mo", text) as any;
+        tree = parseFallback(
+          textDocument.uri.endsWith(".sysml") || textDocument.uri.endsWith(".sysml2") ? ".sysml" : ".mo",
+          text,
+        ) as any;
       } catch {
         // fallback to old tree, but it will cause invalid tokens
       }

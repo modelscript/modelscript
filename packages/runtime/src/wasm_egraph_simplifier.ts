@@ -16,6 +16,39 @@ export interface SimplificationStats {
   equationsSimplified: number;
 }
 
+function areArenaExprsEqual(arena: DAEBuilder, a: number, b: number): boolean {
+  if (a === b) return true;
+  if (a < 0 || b < 0) return false;
+  const kA = arena.getExprKind(a);
+  const kB = arena.getExprKind(b);
+  if (kA !== kB) return false;
+  switch (kA) {
+    case ExprKind.Name:
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+    case ExprKind.EnumLiteral:
+    case ExprKind.StringLiteral:
+      return arena.getExprData1(a) === arena.getExprData1(b);
+    case ExprKind.RealLiteral:
+      return arena.getExprRealValue(a) === arena.getExprRealValue(b);
+    case ExprKind.Negate:
+      return areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b));
+    case ExprKind.Unary:
+      return (
+        arena.getExprData1(a) === arena.getExprData1(b) &&
+        areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b))
+      );
+    case ExprKind.Binary:
+      return (
+        arena.getExprData1(a) === arena.getExprData1(b) &&
+        areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b)) &&
+        areArenaExprsEqual(arena, arena.getExprRight(a), arena.getExprRight(b))
+      );
+    default:
+      return false;
+  }
+}
+
 /**
  * Recursively simplifies an arena expression using equality saturation rules.
  */
@@ -114,19 +147,86 @@ export function simplifyArenaExpr(arena: DAEBuilder, exprId: number, stats?: Sim
       // Constant folding: c1 op c2 => c3
       if (lVal !== null && rVal !== null) {
         if (stats) stats.constantsFolded++;
+        const isInt = lKind === ExprKind.IntLiteral && rKind === ExprKind.IntLiteral;
         switch (op) {
           case BinOp.Add:
           case BinOp.ElemAdd:
-            return arena.addRealLiteral(lVal + rVal);
+            return isInt ? arena.addIntLiteral(lVal + rVal) : arena.addRealLiteral(lVal + rVal);
           case BinOp.Sub:
           case BinOp.ElemSub:
-            return arena.addRealLiteral(lVal - rVal);
+            return isInt ? arena.addIntLiteral(lVal - rVal) : arena.addRealLiteral(lVal - rVal);
           case BinOp.Mul:
           case BinOp.ElemMul:
-            return arena.addRealLiteral(lVal * rVal);
+            return isInt ? arena.addIntLiteral(lVal * rVal) : arena.addRealLiteral(lVal * rVal);
           case BinOp.Div:
           case BinOp.ElemDiv:
-            return rVal !== 0 ? arena.addRealLiteral(lVal / rVal) : exprId;
+            return rVal !== 0
+              ? isInt && lVal % rVal === 0
+                ? arena.addIntLiteral(lVal / rVal)
+                : arena.addRealLiteral(lVal / rVal)
+              : exprId;
+        }
+      }
+
+      if (op === BinOp.Add || op === BinOp.Sub || op === BinOp.ElemAdd || op === BinOp.ElemSub) {
+        const terms: { exprId: number; coeff: number }[] = [];
+        let constVal = 0;
+        let hasConst = false;
+        let isFloat = false;
+
+        const collect = (id: number, sign: number) => {
+          if (id < 0) return;
+          const k = arena.getExprKind(id);
+          if (k === ExprKind.IntLiteral) {
+            constVal += sign * arena.getExprData1(id);
+            hasConst = true;
+            return;
+          }
+          if (k === ExprKind.RealLiteral) {
+            constVal += sign * arena.getExprRealValue(id);
+            hasConst = true;
+            isFloat = true;
+            return;
+          }
+          if (k === ExprKind.Negate) {
+            collect(arena.getExprLeft(id), -sign);
+            return;
+          }
+          if (k === ExprKind.Unary && arena.getExprData1(id) === UnaryOp.Negate) {
+            collect(arena.getExprLeft(id), -sign);
+            return;
+          }
+          if (k === ExprKind.Binary) {
+            const bOp = arena.getExprData1(id) as BinOp;
+            if (bOp === BinOp.Add || bOp === BinOp.ElemAdd) {
+              collect(arena.getExprLeft(id), sign);
+              collect(arena.getExprRight(id), sign);
+              return;
+            }
+            if (bOp === BinOp.Sub || bOp === BinOp.ElemSub) {
+              collect(arena.getExprLeft(id), sign);
+              collect(arena.getExprRight(id), -sign);
+              return;
+            }
+          }
+          // Symbolic term
+          const existing = terms.find((t) => areArenaExprsEqual(arena, t.exprId, id));
+          if (existing) {
+            existing.coeff += sign;
+          } else {
+            terms.push({ exprId: id, coeff: sign });
+          }
+        };
+
+        collect(left, 1);
+        collect(right, op === BinOp.Sub || op === BinOp.ElemSub ? -1 : 1);
+
+        const activeTerms = terms.filter((t) => t.coeff !== 0);
+        const didCancel = terms.some((t) => t.coeff === 0);
+
+        if (didCancel && activeTerms.length === 0) {
+          if (stats) stats.identitiesFolded++;
+          return isFloat ? arena.addRealLiteral(constVal) : arena.addIntLiteral(Math.trunc(constVal));
         }
       }
 

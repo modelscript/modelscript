@@ -42,6 +42,7 @@ export interface PoolOptions {
   omcMode?: boolean;
   timeoutMs?: number;
   maxTestsPerWorker?: number;
+  maxWorkerRssBytes?: number;
 }
 
 interface QueuedTask {
@@ -87,7 +88,8 @@ export class TestsuitePool {
       updateMode: options.updateMode,
       omcMode: options.omcMode ?? false,
       timeoutMs: options.timeoutMs ?? 120_000,
-      maxTestsPerWorker: options.maxTestsPerWorker ?? 200,
+      maxTestsPerWorker: options.maxTestsPerWorker ?? 15,
+      maxWorkerRssBytes: options.maxWorkerRssBytes ?? 768 * 1024 * 1024,
     };
 
     for (let i = 0; i < this.options.concurrency; i++) {
@@ -98,14 +100,18 @@ export class TestsuitePool {
   private spawnWorker(): void {
     if (this.isShuttingDown) return;
 
-    const child = spawn(process.execPath, ["--import", "tsx", this.options.workerScript, "--persistent"], {
-      cwd: this.options.cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        NODE_OPTIONS: "--max-old-space-size=4096",
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", "--expose-gc", this.options.workerScript, "--persistent"],
+      {
+        cwd: this.options.cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          NODE_OPTIONS: "--max-old-space-size=1536",
+        },
       },
-    });
+    );
 
     const instance = new WorkerInstance(child);
     this.workers.push(instance);
@@ -144,7 +150,8 @@ export class TestsuitePool {
           task.resolve(result);
           instance.testsProcessed++;
 
-          if (instance.testsProcessed >= this.options.maxTestsPerWorker) {
+          const rss = typeof msg.rss === "number" ? msg.rss : 0;
+          if (instance.testsProcessed >= this.options.maxTestsPerWorker || rss > this.options.maxWorkerRssBytes) {
             this.retireWorker(instance);
           } else {
             this.onWorkerAvailable(instance);
@@ -262,6 +269,19 @@ export class TestsuitePool {
     } catch {
       // ignore
     }
+
+    const forceKillTimer = setTimeout(() => {
+      try {
+        worker.child.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+    }, 2000);
+
+    worker.child.once("close", () => {
+      clearTimeout(forceKillTimer);
+    });
+
     this.removeWorker(worker);
     if (!this.isShuttingDown) {
       this.spawnWorker();

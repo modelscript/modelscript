@@ -51,7 +51,7 @@ export function registerSemanticDiffComments(context: vscode.ExtensionContext, c
 
     // Check if it's a diff editor and the file is supported
     const uri = editor.document.uri;
-    if (!(uri.fsPath.endsWith(".mo") || uri.fsPath.endsWith(".sysml"))) {
+    if (!/\.(mo|mos|sysml|sysml2|step|stp|p21|owl|ttl|ofn|csv)$/i.test(uri.fsPath)) {
       return;
     }
 

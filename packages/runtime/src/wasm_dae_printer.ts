@@ -520,92 +520,85 @@ export class ArenaDAEPrinter {
             }
           }
 
+          let hasCall = false;
+          for (const childId of operands) {
+            if (childId >= 0 && a.getExprKind(childId) === ExprKind.Call) {
+              hasCall = true;
+              break;
+            }
+          }
+
           if (
             this.omcCompatibility &&
             !isStringConcat &&
+            (op === BinOp.Mul || this.isInsideAlgorithm || !hasCall) &&
             (op === BinOp.Add || (!this.isInsideAlgorithm && op === BinOp.Mul))
           ) {
-            // OMC canonicalization: bubble literals to the front, UNLESS the chain
-            // contains a function call, derivative, or pre. OMC preserves order
-            // when functions are involved.
-            let hasCall = false;
-            if (op === BinOp.Add) {
-              for (const childId of operands) {
-                if (childId < 0) continue;
-                const kind = a.getExprKind(childId);
-                if (kind === ExprKind.Call) {
-                  hasCall = true;
-                  break;
-                }
+            // OMC canonicalization: bubble literals to the front
+            const literals: number[] = [];
+            const nonLiterals: number[] = [];
+            for (const childId of operands) {
+              if (childId < 0) {
+                nonLiterals.push(childId);
+                continue;
+              }
+              const kind = a.getExprKind(childId);
+              if (
+                kind === ExprKind.IntLiteral ||
+                kind === ExprKind.RealLiteral ||
+                kind === ExprKind.BoolLiteral ||
+                kind === ExprKind.StringLiteral ||
+                kind === ExprKind.EnumLiteral
+              ) {
+                literals.push(childId);
+              } else {
+                nonLiterals.push(childId);
               }
             }
-
-            if (!hasCall) {
-              const literals: number[] = [];
-              const nonLiterals: number[] = [];
-              for (const childId of operands) {
-                if (childId < 0) {
-                  nonLiterals.push(childId);
-                  continue;
+            const getOperandRank = (nid: number): number => {
+              const kind = a.getExprKind(nid);
+              if (kind === ExprKind.Name) {
+                const nameId = a.getExprData1(nid);
+                let vIdx = a.lookupVariable(nameId);
+                if (vIdx < 0) {
+                  const nameStr = a.interner.resolve(nameId);
+                  if (nameStr) vIdx = a.getVarIdxByName(nameStr);
                 }
-                const kind = a.getExprKind(childId);
-                if (
-                  kind === ExprKind.IntLiteral ||
-                  kind === ExprKind.RealLiteral ||
-                  kind === ExprKind.BoolLiteral ||
-                  kind === ExprKind.StringLiteral ||
-                  kind === ExprKind.EnumLiteral
-                ) {
-                  literals.push(childId);
-                } else {
-                  nonLiterals.push(childId);
+                if (vIdx >= 0) {
+                  const v = a.getVarVariability(vIdx);
+                  if (v === Variability.Constant) return 1;
+                  if (v === Variability.Parameter) return 2;
+                  return 3;
                 }
+                return 4;
               }
-              const getOperandRank = (nid: number): number => {
-                const kind = a.getExprKind(nid);
-                if (kind === ExprKind.Name) {
-                  const nameId = a.getExprData1(nid);
-                  let vIdx = a.lookupVariable(nameId);
-                  if (vIdx < 0) {
-                    const nameStr = a.interner.resolve(nameId);
-                    if (nameStr) vIdx = a.getVarIdxByName(nameStr);
+              if (kind === ExprKind.Call) {
+                return 10;
+              }
+              return 5;
+            };
+            if (op === BinOp.Mul) {
+              nonLiterals.sort((x, y) => {
+                const xKind = a.getExprKind(x);
+                const yKind = a.getExprKind(y);
+                if (xKind === ExprKind.Name && yKind === ExprKind.Name) {
+                  const rx = getOperandRank(x);
+                  const ry = getOperandRank(y);
+                  if (rx !== ry) return rx - ry;
+                  const nx = a.interner.resolve(a.getExprData1(x)) || "";
+                  const ny = a.interner.resolve(a.getExprData1(y)) || "";
+                  if (!nx.includes("[") && !ny.includes("[")) {
+                    return nx.localeCompare(ny);
                   }
-                  if (vIdx >= 0) {
-                    const v = a.getVarVariability(vIdx);
-                    if (v === Variability.Constant) return 1;
-                    if (v === Variability.Parameter) return 2;
-                    return 3;
-                  }
-                  return 4;
-                }
-                if (kind === ExprKind.Call) {
-                  return 10;
-                }
-                return 5;
-              };
-              if (op === BinOp.Mul) {
-                nonLiterals.sort((x, y) => {
-                  const xKind = a.getExprKind(x);
-                  const yKind = a.getExprKind(y);
-                  if (xKind === ExprKind.Name && yKind === ExprKind.Name) {
-                    const rx = getOperandRank(x);
-                    const ry = getOperandRank(y);
-                    if (rx !== ry) return rx - ry;
-                    const nx = a.interner.resolve(a.getExprData1(x)) || "";
-                    const ny = a.interner.resolve(a.getExprData1(y)) || "";
-                    if (!nx.includes("[") && !ny.includes("[")) {
-                      return nx.localeCompare(ny);
-                    }
-                    return 0;
-                  }
-                  if (xKind === ExprKind.Call && yKind === ExprKind.Name) return 1;
-                  if (xKind === ExprKind.Name && yKind === ExprKind.Call) return -1;
                   return 0;
-                });
-              }
-              operands.length = 0;
-              operands.push(...literals, ...nonLiterals);
+                }
+                if (xKind === ExprKind.Call && yKind === ExprKind.Name) return 1;
+                if (xKind === ExprKind.Name && yKind === ExprKind.Call) return -1;
+                return 0;
+              });
             }
+            operands.length = 0;
+            operands.push(...literals, ...nonLiterals);
           }
 
           for (let i = 0; i < operands.length; i++) {
@@ -641,7 +634,7 @@ export class ArenaDAEPrinter {
             rKind === ExprKind.RealLiteral ||
             rKind === ExprKind.BoolLiteral ||
             rKind === ExprKind.StringLiteral;
-          if (rIsLit && !lIsLit) {
+          if (rIsLit && !lIsLit && (op === BinOp.Mul || this.isInsideAlgorithm || lKind !== ExprKind.Call)) {
             finalLhs = rhs;
             finalRhs = lhs;
           } else if (op === BinOp.Mul && lKind === ExprKind.Name && rKind === ExprKind.Name) {
@@ -947,11 +940,13 @@ export class ArenaDAEPrinter {
     const shapeExprs = a.getVarShapeExprs(idx);
     if (shapeExprs && shapeExprs.length > 0) {
       this.out.write("[");
-      for (let i = 0; i < shapeExprs.length; i++) {
+      const maxDimCount = Math.max(shapeExprs.length, shape.length);
+      for (let i = 0; i < maxDimCount; i++) {
         if (i > 0) this.out.write(", ");
-        const exprId = shapeExprs[i];
-        if (exprId !== undefined) {
-          this.printExpr(exprId);
+        if (i < shapeExprs.length && shapeExprs[i] !== undefined) {
+          this.printExpr(shapeExprs[i]!);
+        } else if (i < shape.length) {
+          this.out.write(shape[i]! <= 0 ? ":" : String(shape[i]!));
         }
       }
       this.out.write("]");
@@ -1200,13 +1195,44 @@ export class ArenaDAEPrinter {
     const a = this.arena;
 
     switch (a.getStmtKind(idx)) {
-      case StmtKind.Assignment:
+      case StmtKind.Assignment: {
+        const lhsId = a.getStmtData1(idx);
+        const rhsId = a.getStmtLeft(idx);
+        if (this.omcCompatibility && a.classKind === "function") {
+          let outputVarName: string | null = null;
+          let outputCount = 0;
+          for (let v = 0; v < a.varCount; v++) {
+            if (a.getVarCausality(v) === 2 /* Output */) {
+              outputCount++;
+              if (!outputVarName) outputVarName = a.getVarName(v);
+            }
+          }
+          if (outputCount === 1 && a.getExprKind(lhsId) === ExprKind.Name && a.getExprKind(rhsId) === ExprKind.Call) {
+            const lhsName = a.interner.resolve(a.getExprData1(lhsId));
+            if (lhsName === outputVarName) {
+              const callFnName = a.interner.resolve(a.getExprData1(rhsId)) ?? "";
+              const curFnName = a.name;
+              const isSelfCall =
+                curFnName &&
+                (callFnName === curFnName ||
+                  callFnName.endsWith("." + curFnName) ||
+                  curFnName.endsWith("." + callFnName));
+              if (isSelfCall) {
+                this.out.write(this.indent() + "return ");
+                this.printExpr(rhsId);
+                this.out.write(";\n");
+                return idx + 1;
+              }
+            }
+          }
+        }
         this.out.write(this.indent());
-        this.printExpr(a.getStmtData1(idx));
+        this.printExpr(lhsId);
         this.out.write(" := ");
-        this.printExpr(a.getStmtLeft(idx));
+        this.printExpr(rhsId);
         this.out.write(";\n");
         return idx + 1;
+      }
 
       case StmtKind.Return:
         this.out.write(this.indent() + "return;\n");
@@ -1216,11 +1242,13 @@ export class ArenaDAEPrinter {
         this.out.write(this.indent() + "break;\n");
         return idx + 1;
 
-      case StmtKind.ProcedureCall:
+      case StmtKind.ProcedureCall: {
+        const callExprId = a.getStmtData1(idx);
         this.out.write(this.indent());
-        this.printExpr(a.getStmtData1(idx));
+        this.printExpr(callExprId);
         this.out.write(";\n");
         return idx + 1;
+      }
 
       case StmtKind.For: {
         const indexNameRaw = a.interner.resolve(a.getStmtData1(idx));
@@ -1420,9 +1448,50 @@ export class ArenaDAEPrinter {
   printDAE(dae: DAEBuilder): void {
     this.visitedFunctions.clear();
     // Emit function definitions
-    const uniqueFns = Array.from(new Set(dae.functions.values())).filter(
-      (fn) => !(fn as any).wasInlined && !(fn as any).isEarlyInline,
-    );
+    const calledFnNames = new Set<string>();
+    const collectCalls = (builder: DAEBuilder) => {
+      for (let i = 0; i < builder.exprCount; i++) {
+        if (builder.getExprKind(i) === ExprKind.Call) {
+          const fnName = builder.interner.resolve(builder.getExprData1(i));
+          if (fnName) calledFnNames.add(fnName);
+        }
+      }
+    };
+    collectCalls(dae);
+    for (const fn of dae.functions.values()) {
+      collectCalls(fn);
+    }
+
+    const uniqueFns = Array.from(new Set(dae.functions.values())).filter((fn) => {
+      if (
+        (fn as any).wasInlined ||
+        (fn as any).isEarlyInline ||
+        (fn.externalDecl && fn.externalDecl.includes('"builtin"')) ||
+        fn.name === "String" ||
+        fn.name === "Real" ||
+        fn.name === "Integer" ||
+        fn.name === "Boolean"
+      ) {
+        return false;
+      }
+      if (
+        (fn as any).isNestedMember &&
+        !(fn as any).wasCalled &&
+        !calledFnNames.has(fn.name) &&
+        !calledFnNames.has(fn.name.split(".").pop()!)
+      ) {
+        return false;
+      }
+      return true;
+    });
+    if (process.env.DEBUG_FNS) {
+      console.log(
+        "DEBUG_PRINT_DAE:",
+        Array.from(dae.functions.keys()),
+        "uniqueFns=",
+        uniqueFns.map((f) => f.name),
+      );
+    }
     const getOmcFnRank = (fn: DAEBuilder): [number, number, string] => {
       const name = fn.name;
       if (name.includes("DummyFunctions")) {
@@ -1452,6 +1521,7 @@ export class ArenaDAEPrinter {
         })
       : uniqueFns.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const fn of sortedFns) {
+      if ((fn as any).aliasTo) continue;
       if (this.visitedFunctions.has(fn)) continue;
       this.printFunction(fn);
       this.out.write("\n\n");
@@ -1661,6 +1731,7 @@ export class ArenaDAEPrinter {
     if (this.omcCompatibility) {
       const inputs: number[] = [];
       const outputs: number[] = [];
+      const publicLocals: number[] = [];
       const protNoBinding: number[] = [];
       const protWithBinding: number[] = [];
 
@@ -1679,10 +1750,24 @@ export class ArenaDAEPrinter {
           } else {
             protNoBinding.push(i);
           }
+        } else {
+          if (fn.getVarVariability(i) !== Variability.Constant) {
+            publicLocals.push(i);
+          }
         }
       }
 
-      for (const i of [...inputs, ...outputs, ...protNoBinding, ...protWithBinding]) {
+      protNoBinding.sort((a, b) => {
+        const aShape = fn.getVarShape(a);
+        const bShape = fn.getVarShape(b);
+        const aIsArray = aShape && aShape.length > 0;
+        const bIsArray = bShape && bShape.length > 0;
+        if (!aIsArray && bIsArray) return -1;
+        if (aIsArray && !bIsArray) return 1;
+        return 0;
+      });
+
+      for (const i of [...inputs, ...outputs, ...publicLocals, ...protNoBinding, ...protWithBinding]) {
         this.printVar(i);
       }
     } else {

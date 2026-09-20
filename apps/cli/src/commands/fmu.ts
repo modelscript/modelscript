@@ -48,6 +48,7 @@ interface FmuArgs {
   "fmi-version": string;
   wasm: boolean;
   timing: boolean;
+  flattener?: "ts" | "wasm" | "hybrid" | "diff";
 }
 
 export const Fmu: CommandModule<{}, FmuArgs> = {
@@ -127,6 +128,14 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         type: "boolean",
         default: false,
       })
+      .option("flattener", {
+        alias: "F",
+        choices: ["ts", "wasm", "hybrid", "diff"],
+        default: "hybrid",
+        description:
+          "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
+        type: "string",
+      })
       .option("timing", {
         description: "report timing information for each stage as JSON to stderr",
         type: "boolean",
@@ -147,7 +156,10 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
 
     // Flatten the model
     profiler.start("flattening");
-    let arena = context.flattenArena(args.name, undefined, undefined, { arrayMode: "scalarize" });
+    let arena = context.flattenArena(args.name, undefined, undefined, {
+      arrayMode: "scalarize",
+      backend: args.flattener,
+    });
     profiler.end("flattening");
 
     if (!arena) {

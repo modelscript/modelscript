@@ -220,12 +220,12 @@ function runTestInWorker(
   return new Promise((resolve) => {
     console.log("STARTING TEST:", testCase.file);
     const start = Date.now();
-    const child = spawn(process.execPath, ["--import", "tsx", WORKER_SCRIPT], {
+    const child = spawn(process.execPath, ["--import", "tsx", "--expose-gc", WORKER_SCRIPT], {
       cwd: path.resolve(import.meta.dirname ?? __dirname, ".."),
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        NODE_OPTIONS: "--max-old-space-size=4096",
+        NODE_OPTIONS: "--max-old-space-size=1536",
       },
     });
 
@@ -427,6 +427,23 @@ async function runWithConcurrency<T>(
   return results;
 }
 
+// ── Memory detection ─────────────────────────────────────────────────────────
+
+function getAvailableMemoryBytes(): number {
+  try {
+    if (process.platform === "linux") {
+      const meminfo = fs.readFileSync("/proc/meminfo", "utf8");
+      const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/i);
+      if (match && match[1]) {
+        return parseInt(match[1], 10) * 1024;
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return os.freemem();
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -439,9 +456,24 @@ async function main(): Promise<void> {
   const omcMode = rawArgs.includes("--omc");
   const freshProcess = rawArgs.includes("--fresh-process");
   const concurrencyArg = rawArgs.find((a) => a.startsWith("--concurrency="));
-  const concurrency = concurrencyArg
-    ? parseInt(concurrencyArg.split("=")[1] ?? "1", 10)
-    : Math.max(1, process.env.CI ? os.availableParallelism() : Math.floor(os.availableParallelism() / 2));
+
+  let concurrency: number;
+  if (concurrencyArg) {
+    concurrency = Math.max(1, parseInt(concurrencyArg.split("=")[1] ?? "1", 10));
+  } else {
+    const availableMem = getAvailableMemoryBytes();
+    // Reserve 1.2 GB for OS / parent runner
+    const usableMem = Math.max(512 * 1024 * 1024, availableMem - 1200 * 1024 * 1024);
+    // Allow ~1.1 GB memory envelope per worker
+    const memBasedWorkers = Math.max(1, Math.floor(usableMem / (1100 * 1024 * 1024)));
+    const cpuWorkers = process.env.CI ? os.availableParallelism() : Math.floor(os.availableParallelism() / 2);
+    // Bound default concurrency to prevent OOM spikes (cap at 4 on local dev machines unless explicitly overridden)
+    concurrency = Math.max(1, Math.min(cpuWorkers, memBasedWorkers, process.env.CI ? cpuWorkers : 4));
+  }
+
+  const flattenerArg = rawArgs.find((a) => a.startsWith("--flattener="));
+  const flattenerBackend = flattenerArg ? flattenerArg.split("=")[1] : process.env.FLATTENER_BACKEND || "hybrid";
+  process.env.FLATTENER_BACKEND = flattenerBackend;
 
   const args = rawArgs.filter(
     (a) =>
@@ -449,11 +481,14 @@ async function main(): Promise<void> {
       a !== "--omc" &&
       a !== "--allow-failures" &&
       a !== "--fresh-process" &&
-      !a.startsWith("--concurrency="),
+      !a.startsWith("--concurrency=") &&
+      !a.startsWith("--flattener="),
   );
 
   const modeStr = freshProcess ? "isolated processes" : "persistent worker pool";
-  console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena, mode=${modeStr})`);
+  console.log(
+    `${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena, flattener=${flattenerBackend}, mode=${modeStr})`,
+  );
   console.log();
 
   // Determine which subdirectories (and optionally specific files) to run
@@ -591,7 +626,7 @@ async function main(): Promise<void> {
           updateMode,
           omcMode,
           timeoutMs: WORKER_TIMEOUT_MS,
-          maxTestsPerWorker: 25,
+          maxTestsPerWorker: 15,
         })
       : null;
 
