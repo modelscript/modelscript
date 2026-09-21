@@ -6,6 +6,7 @@ dist/
 build/
 .build/
 as-gen/
+packages/dsl/src/src-gen/
 build-parser.ts
 packages/runtime/build/
 prebuilds/

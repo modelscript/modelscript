@@ -8,8 +8,9 @@ import {
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
-import { typeKeywords } from "@modelscript/modelica/keywords";
+const DEFAULT_TYPE_KEYWORDS = ["Real", "Integer", "Boolean", "String", "Natural"];
 
 const tokenTypes = [
   "keyword",
@@ -471,7 +472,9 @@ export function registerSemanticTokensProvider(
           curr = curr.parent;
         }
 
-        if (typeKeywords.includes(node.text)) {
+        const plugin = globalLanguageRegistry.getPluginForUri(textDocument.uri);
+        const typeKws = (plugin?.monarch?.typeKeywords as string[]) ?? DEFAULT_TYPE_KEYWORDS;
+        if (typeKws.includes(node.text)) {
           tokenType = "type";
         } else if (inError) {
           tokenType = "variable";

@@ -5,8 +5,10 @@ import {
   floatOption,
   generateConfigDomain,
   intOption,
-  RuntimeConfigClient,
 } from "@modelscript/dsl";
+import { RuntimeConfigClient } from "@modelscript/runtime";
+import expect from "expect";
+import { describe, test } from "node:test";
 
 describe("Unified Compile-Time & Runtime Configuration System", () => {
   // 1. Define a generic, multi-phase DSL configuration schema

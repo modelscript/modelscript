@@ -1,24 +1,29 @@
-import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { LspContext } from "../LspContext.js";
 
-let replInterpreter: ArenaScriptInterpreter | null = null;
+let replInterpreter: any = null;
 
 export function registerReplEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/repl/evaluate", async (params: { input: string }) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const parser = (globalThis as any).parser;
+      const parser =
+        (globalThis as any).parser ?? (globalThis as any).modelicaParser ?? context.parserService.getParser("modelica");
       if (!parser) {
-        return { status: "error", error: "Modelica Tree-sitter parser not initialized on server." };
+        return { status: "error", error: "Script parser not initialized on server." };
       }
 
-      const queryEngine = context.workspaceManager.globalModelicaQueryEngine;
+      const queryEngine = context.workspaceManager.getQueryEngine("modelica");
       if (!queryEngine) {
-        return { status: "error", error: "Global Modelica query engine not initialized." };
+        return { status: "error", error: "Query engine not initialized on server." };
+      }
+
+      const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
+      if (!InterpreterClass) {
+        return { status: "error", error: "Script interpreter engine not registered on server." };
       }
 
       if (!replInterpreter) {
-        replInterpreter = new ArenaScriptInterpreter(queryEngine as any);
+        replInterpreter = new InterpreterClass(queryEngine as any);
       }
 
       // We append a newline to ensure tree-sitter treats single-line statements correctly

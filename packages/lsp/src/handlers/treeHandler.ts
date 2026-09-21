@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
-import { getClassIconSvg } from "@modelscript/modelica/diagram";
 import { LspContext } from "../LspContext.js";
 import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchyUtils.js";
 
@@ -178,14 +177,20 @@ export function registerTreeHandlers(context: LspContext) {
       // Yield to event loop to avoid blocking LSP completely
       await new Promise((r) => setTimeout(r, 0));
 
-      const cls = context.workspaceManager.resolveModelicaClassInstance(params.uri || "modelica:/", params.className);
+      const getIconSvg = (globalThis as any).getClassIconSvg ?? (globalThis as any).modelicaDiagramOps?.getClassIconSvg;
+      if (!getIconSvg) {
+        iconCache.set(params.className, null);
+        return null;
+      }
+
+      const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className);
       if (!cls) {
         iconCache.set(params.className, null);
         return null;
       }
 
       try {
-        const svg = getClassIconSvg(cls, 20, false);
+        const svg = getIconSvg(cls, 20, false);
         iconCache.set(params.className, svg || null);
         return svg || null;
       } catch (e) {

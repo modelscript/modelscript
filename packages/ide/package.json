@@ -14,10 +14,8 @@
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/lsp": "*",
-    "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",
     "@modelscript/step": "*",
-    "@modelscript/sysml2": "*",
     "@vscode/debugadapter": "^1.68.0",
     "vscode-languageclient": "^9.0.1"
   },

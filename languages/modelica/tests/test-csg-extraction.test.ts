@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Context } from "../src/context.js";
-import { extractCSGTopology } from "../src/csg.js";
+import { extractCSGTopology } from "../src/extensions/csg.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

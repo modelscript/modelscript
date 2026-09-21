@@ -510,7 +510,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       id: participantId,
       modelName: fileName,
       uri,
-      type: editor.document.languageId || "modelica",
+      type: editor.document.languageId || "modelscript",
       variables: 0, // Will be populated after initialization
       participant: lspParticipant,
     };

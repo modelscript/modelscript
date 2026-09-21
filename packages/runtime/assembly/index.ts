@@ -1,28 +1,29 @@
-/* eslint-disable */
 // AssemblyScript implementation of WebAssembly Solvers, DAE Builder & BLT
-export * from "../src/wasm/alias";
-export * from "../src/wasm/affine";
-export * from "../src/wasm/bdf";
-export * from "../src/wasm/branch_and_bound";
-export * from "../src/wasm/coloring";
+export * from "../src/wasm/dae/alias";
+export * from "../src/wasm/autodiff/affine";
+export * from "../src/wasm/solvers/bdf";
+export * from "../src/wasm/optimization/branch_and_bound";
+export * from "../src/wasm/autodiff/coloring";
 export * from "../src/wasm/cse";
-export * from "../src/wasm/dae";
-export * from "../src/wasm/doe";
-export * from "../src/wasm/events";
-export * from "../src/wasm/fold";
-export * from "../src/wasm/gpu_buffers";
-export * from "../src/wasm/groebner";
-export * from "../src/wasm/integrators";
-export * from "../src/wasm/interval";
-export * from "../src/wasm/mccormick";
-export * from "../src/wasm/monte_carlo";
-export * from "../src/wasm/pantelides";
-export * from "../src/wasm/scalarize";
-export * from "../src/wasm/sparse_cholesky";
-export * from "../src/wasm/sparse_lu";
-export * from "../src/wasm/string_pool";
-export * from "../src/wasm/tape";
-export * from "../src/wasm/tearing";
+export * from "../src/wasm/dae/types";
+export * from "../src/wasm/dae/accessors";
+export * from "../src/wasm/dae/builder";
+export * from "../src/wasm/simulation/doe";
+export * from "../src/wasm/simulation/events";
+export * from "../src/wasm/dae/fold";
+export * from "../src/wasm/gpu/gpu_buffers";
+export * from "../src/wasm/solvers/groebner";
+export * from "../src/wasm/solvers/integrators";
+export * from "../src/wasm/autodiff/interval";
+export * from "../src/wasm/autodiff/mccormick";
+export * from "../src/wasm/simulation/monte_carlo";
+export * from "../src/wasm/structural/pantelides";
+export * from "../src/wasm/dae/scalarize";
+export * from "../src/wasm/solvers/sparse_cholesky";
+export * from "../src/wasm/solvers/sparse_lu";
+export * from "../src/wasm/core/string_pool";
+export * from "../src/wasm/autodiff/tape";
+export * from "../src/wasm/structural/tearing";
 
 // We will use Typed Arrays instead of Map/Set for much higher performance
 // since our variable and equation IDs are densely packed integers [0, N-1].

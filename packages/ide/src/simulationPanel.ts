@@ -253,12 +253,13 @@ export class SimulationPanel {
                   parameterOverrides: msg.payload?.parameterOverrides,
                 });
               } catch {
-                // Fallback to executeAction if modelscript/simulate fails
+                const activeDoc = vscode.window.activeTextEditor?.document;
                 const res: any = await this.client.sendRequest("modelscript/executeAction", {
                   actionId: "simulate",
-                  languageId: vscode.window.activeTextEditor?.document.languageId ?? "modelica",
+                  languageId: activeDoc?.languageId ?? "modelica",
                   uri,
                   inputs: {
+                    documentText: activeDoc?.getText(),
                     startTime: msg.payload?.startTime,
                     stopTime: msg.payload?.stopTime,
                     interval: msg.payload?.interval,

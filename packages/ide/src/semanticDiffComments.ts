@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { isSupportedModelFile } from "./utils/fileUtils";
 
 export interface FlatSemanticEdit {
   action: "insert" | "delete" | "update" | "none";
@@ -51,7 +52,7 @@ export function registerSemanticDiffComments(context: vscode.ExtensionContext, c
 
     // Check if it's a diff editor and the file is supported
     const uri = editor.document.uri;
-    if (!/\.(mo|mos|sysml|sysml2|step|stp|p21|owl|ttl|ofn|csv)$/i.test(uri.fsPath)) {
+    if (!isSupportedModelFile(uri.fsPath)) {
       return;
     }
 

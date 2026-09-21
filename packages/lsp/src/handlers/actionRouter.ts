@@ -102,26 +102,40 @@ export function registerActionRouter(context: LspContext): void {
         );
       }
 
-      let doc = params.uri ? context.documents.get(params.uri) : undefined;
-      if (!doc && params.uri) {
-        for (const d of context.documents.all()) {
-          if (d.uri === params.uri || decodeURIComponent(d.uri) === decodeURIComponent(params.uri)) {
-            doc = d;
-            break;
+      let docText = params.inputs?.documentText;
+      if (!docText) {
+        let doc = params.uri ? context.documents.get(params.uri) : undefined;
+        if (!doc && params.uri) {
+          const normUri = params.uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+          for (const d of context.documents.all()) {
+            const dNorm = d.uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+            if (
+              d.uri === params.uri ||
+              dNorm === normUri ||
+              decodeURIComponent(d.uri) === decodeURIComponent(params.uri) ||
+              decodeURIComponent(dNorm) === decodeURIComponent(normUri)
+            ) {
+              doc = d;
+              break;
+            }
           }
         }
-      }
-      let docText = doc?.getText();
-      if (!docText && params.uri) {
-        const cached = (context.workspaceManager as any)?.documentManager?.documentTrees?.get(params.uri);
-        if (cached?.text) {
-          docText = cached.text;
-        } else if ((globalThis as any).sharedFs) {
-          const fsPath = params.uri.replace(/^[a-z0-9+-]+:\/\/?/, "/");
-          try {
-            docText = (globalThis as any).sharedFs.read(fsPath);
-          } catch {
-            /* ignore */
+        docText = doc?.getText();
+        if (!docText && params.uri) {
+          const normUri = params.uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+          const cached =
+            context.documentManager?.documentTrees?.get(params.uri) ??
+            context.documentManager?.documentTrees?.get(normUri) ??
+            (context.workspaceManager as any)?.documentManager?.documentTrees?.get(params.uri);
+          if (cached?.text) {
+            docText = cached.text;
+          } else if ((globalThis as any).sharedFs) {
+            const fsPath = params.uri.replace(/^[a-z0-9+-]+:\/\/?/, "/");
+            try {
+              docText = (globalThis as any).sharedFs.read(fsPath);
+            } catch {
+              /* ignore */
+            }
           }
         }
       }
@@ -130,7 +144,10 @@ export function registerActionRouter(context: LspContext): void {
         uri: params.uri,
         languageId: plugin.id,
         documentText: docText,
-        queryEngine: plugin.queryEngine ?? (context.workspaceManager as any)?.globalModelicaQueryEngine,
+        queryEngine:
+          plugin.queryEngine ??
+          (context.workspaceManager as any)?.getQueryEngine?.(plugin.id) ??
+          (context.workspaceManager as any)?.globalModelicaQueryEngine,
         workspaceManager: context.workspaceManager,
         connection: context.connection,
         notifyProgress: (msg: string, increment?: number) => {

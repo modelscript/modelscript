@@ -27,7 +27,12 @@ import { createDiagramDispatch } from "./diagramApi.js";
 
 import type { SyntaxNode, Tree as TreeSitterTree } from "./utils/tree-sitter.js";
 
-import { ArenaQueryFlattener, modelicaActionHandlers, modelicaLanguage } from "@modelscript/modelica";
+import {
+  ArenaQueryFlattener,
+  deriveSimplification,
+  modelicaActionHandlers,
+  modelicaLanguage,
+} from "@modelscript/modelica";
 import { DAEBuilder, QueryEngine, initBltWasm } from "@modelscript/runtime";
 import { LineIndex } from "./utils/line-index.js";
 
@@ -40,6 +45,7 @@ import {
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
+import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 
 // @ts-ignore
 // @ts-ignore
@@ -126,6 +132,10 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 (globalThis as any).create_sysml2_workspace_index = createSysML2WorkspaceIndex;
 (globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
 (globalThis as any).sysml2DiagramOps = { ...sysml2DiagramOps, buildSysML2DiagramData };
+(globalThis as any).extractSysML2Constraints = extractSysML2Constraints;
+(globalThis as any).mapConstraintsToOptimizer = mapConstraintsToOptimizer;
+(globalThis as any).ArenaScriptInterpreter = ArenaScriptInterpreter;
+(globalThis as any).deriveSimplification = deriveSimplification;
 
 /* Tree-sitter state */
 
@@ -241,30 +251,38 @@ import { ValidationService } from "./services/ValidationService.js";
 
 const unifiedWorkspace = new UnifiedWorkspace();
 const stepWorkspaceIndex = new StepWorkspaceIndex();
-workspaceManager.unifiedWorkspace.registerWorkspace(
-  "modelica",
-  workspaceManager.globalWorkspaceIndex,
-  modelicaLangFallback,
-);
-workspaceManager.unifiedWorkspace.registerWorkspace(
-  "sysml2",
-  workspaceManager.sysml2WorkspaceIndex,
-  sysml2LangFallback,
-);
-workspaceManager.unifiedWorkspace.registerWorkspace("owl2", workspaceManager.owl2WorkspaceIndex, owl2LangFallback);
+if (workspaceManager.globalWorkspaceIndex) {
+  workspaceManager.unifiedWorkspace.registerWorkspace(
+    "modelica",
+    workspaceManager.globalWorkspaceIndex,
+    modelicaLangFallback,
+  );
+}
+if (workspaceManager.sysml2WorkspaceIndex) {
+  workspaceManager.unifiedWorkspace.registerWorkspace(
+    "sysml2",
+    workspaceManager.sysml2WorkspaceIndex,
+    sysml2LangFallback,
+  );
+}
+if (workspaceManager.owl2WorkspaceIndex) {
+  workspaceManager.unifiedWorkspace.registerWorkspace("owl2", workspaceManager.owl2WorkspaceIndex, owl2LangFallback);
+}
 
 const getReadyMessage = () => {
   const parts = [];
-  const mslCount = workspaceManager.globalWorkspaceIndex.fileCount;
+  const mslCount = workspaceManager.globalWorkspaceIndex?.fileCount ?? 0;
   if (mslCount > 0) parts.push(`${mslCount} MSL`);
-  const sysmlCount = workspaceManager.sysml2WorkspaceIndex.fileCount;
+  const sysmlCount = workspaceManager.sysml2WorkspaceIndex?.fileCount ?? 0;
   if (sysmlCount > 0) parts.push(`${sysmlCount} SysML2`);
   return parts.length > 0 ? `ModelScript (${parts.join(", ")})` : "ModelScript";
 };
 globalThis.getReadyMessage = getReadyMessage;
-workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, {
-  name: "step",
-});
+if (workspaceManager.stepWorkspaceIndex) {
+  workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, {
+    name: "step",
+  });
+}
 
 // ── Multi-Body generation from STEP ───────────────────────────────
 globalThis.documentLSPBridges = validationService.documentLSPBridges;

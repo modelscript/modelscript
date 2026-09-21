@@ -1,4 +1,5 @@
-import { describe, expect, it } from "@jest/globals";
+import expect from "expect";
+import { describe, it } from "node:test";
 import { WasmLanguageBinding } from "../src/bindings/javascript/bindings.js";
 
 describe("Zero-GC Hybrid Unparser & Formatting Engine", () => {

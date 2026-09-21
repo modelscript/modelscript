@@ -26,7 +26,7 @@ export class CalibrationPanel {
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
     const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
     if (!sourceUri) {
-      vscode.window.showWarningMessage("Open a Modelica file to run calibration.");
+      vscode.window.showWarningMessage("Open a model file to run calibration.");
       return;
     }
 

@@ -1,4 +1,3 @@
-import { keywords, typeKeywords } from "@modelscript/modelica/keywords";
 import { CompletionItem, CompletionItemKind, Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge } from "../lsp-bridge.js";
@@ -49,126 +48,17 @@ export function registerCompletionProvider(
       return items;
     }
 
-    // Fallback: keyword completions (generic from plugin or language-specific)
+    // Fallback: keyword completions dynamically from language definition or monarch
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
-    if (plugin?.languageDef?.keywords || plugin?.monarch?.keywords) {
-      const kws = plugin.languageDef?.keywords ?? plugin.monarch?.keywords ?? [];
-      if (Array.isArray(kws) && kws.length > 0) {
-        return kws.map((kw: string, index: number) => ({
-          label: kw,
-          kind: CompletionItemKind.Keyword,
-          data: index,
-        }));
-      }
-    }
-
-    if (plugin?.id === "sysml2" || params.textDocument.uri.endsWith(".sysml")) {
-      const sysml2Keywords = [
-        // Structural
-        "package",
-        "part",
-        "part def",
-        "attribute",
-        "attribute def",
-        "port",
-        "port def",
-        "item",
-        "item def",
-        "enum def",
-        "occurrence",
-        "occurrence def",
-        // Behavioral
-        "action",
-        "action def",
-        "state",
-        "state def",
-        "calc",
-        "calc def",
-        "transition",
-        "accept",
-        "send",
-        "assign",
-        "perform",
-        "exhibit",
-        // Requirements
-        "requirement",
-        "requirement def",
-        "constraint",
-        "constraint def",
-        "concern",
-        "concern def",
-        "assume",
-        "require",
-        // Analysis
-        "use case",
-        "use case def",
-        "case",
-        "case def",
-        "analysis",
-        "analysis case",
-        "verification",
-        // Interconnection
-        "connection",
-        "connection def",
-        "connect",
-        "interface",
-        "interface def",
-        "allocation",
-        "allocation def",
-        "flow",
-        "flow def",
-        "binding",
-        "succession",
-        // Views
-        "view",
-        "view def",
-        "viewpoint",
-        "viewpoint def",
-        "rendering",
-        "rendering def",
-        // Modifiers
-        "abstract",
-        "readonly",
-        "derived",
-        "end",
-        "ordered",
-        "nonunique",
-        "in",
-        "out",
-        "inout",
-        "ref",
-        "redefines",
-        "subsets",
-        "specializes",
-        // Control
-        "if",
-        "else",
-        "while",
-        "for",
-        "loop",
-        "return",
-        // Types
-        "Boolean",
-        "Integer",
-        "Real",
-        "String",
-        "Natural",
-        // Meta
-        "import",
-        "alias",
-        "doc",
-        "comment",
-        "about",
-        "actor",
-        "stakeholder",
-        "subject",
-        "objective",
-      ];
-      return sysml2Keywords.map((kw, index) => ({
+    const kws: string[] =
+      (plugin?.languageDef?.keywords as string[]) ??
+      (plugin?.monarch?.keywords as string[]) ??
+      (plugin?.languageDef?.symbols ? Object.keys(plugin.languageDef.symbols) : []);
+    if (Array.isArray(kws) && kws.length > 0) {
+      return kws.map((kw: string, index: number) => ({
         label: kw,
         kind: CompletionItemKind.Keyword,
         data: index,
-        // Provide snippets for definition keywords
         ...(kw.endsWith(" def")
           ? {
               insertText: `${kw} $1 {\n\t$0\n}`,
@@ -178,11 +68,6 @@ export function registerCompletionProvider(
       }));
     }
 
-    const allKeywords = [...keywords, ...typeKeywords];
-    return allKeywords.map((kw, index) => ({
-      label: kw,
-      kind: CompletionItemKind.Keyword,
-      data: index,
-    }));
+    return [];
   });
 }

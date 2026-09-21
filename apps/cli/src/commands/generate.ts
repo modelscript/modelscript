@@ -147,7 +147,9 @@ export const Generate: CommandModule<any, any> = {
         fs.writeFileSync(outputPath, JSON.stringify(parserInfo, null, 2));
 
         for (const file of assemblyScriptFiles) {
-          fs.writeFileSync(path.join(absoluteOutDir, file.filename), file.content);
+          const filePath = path.join(absoluteOutDir, file.filename);
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, file.content);
         }
 
         const { js: wrapperJs, dts: wrapperDts } = javascriptWrapper;

@@ -21,11 +21,11 @@ interface RawNotebook {
 }
 
 /**
- * Serializer for .monb (Modelica Notebook) files.
+ * Serializer for .monb (ModelScript Notebook) files.
  *
  * File format: JSON with structure `{ cells: [{ cell_type, source, outputs? }] }`.
  */
-export class ModelicaNotebookSerializer implements vscode.NotebookSerializer {
+export class ModelScriptNotebookSerializer implements vscode.NotebookSerializer {
   async deserializeNotebook(content: Uint8Array): Promise<vscode.NotebookData> {
     const text = new TextDecoder().decode(content);
 
@@ -40,7 +40,7 @@ export class ModelicaNotebookSerializer implements vscode.NotebookSerializer {
 
     const cells = raw.map((cell) => {
       const kind = cell.cell_type === "markdown" ? vscode.NotebookCellKind.Markup : vscode.NotebookCellKind.Code;
-      const language = cell.cell_type === "markdown" ? "markdown" : cell.language || "modelica";
+      const language = cell.cell_type === "markdown" ? "markdown" : cell.language || "modelscript";
       const cellData = new vscode.NotebookCellData(kind, cell.source.join("\n"), language);
 
       // Restore persisted outputs
@@ -102,3 +102,6 @@ export class ModelicaNotebookSerializer implements vscode.NotebookSerializer {
     return new TextEncoder().encode(JSON.stringify(notebook, null, 2) + "\n");
   }
 }
+
+/** Backward-compatibility alias */
+export const ModelicaNotebookSerializer = ModelScriptNotebookSerializer;

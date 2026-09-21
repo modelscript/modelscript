@@ -84,8 +84,6 @@ export default defineConfig([
             "languages/step/tests/*.ts",
             "languages/sysml2/tests/*.ts",
             "apps/api/tests/*.ts",
-            "languages/modelica/src/multibody-generator.d.ts",
-            "languages/modelica/src/multibody-generator.js",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

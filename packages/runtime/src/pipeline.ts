@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PolyglotTransformer } from "./polyglot-transformer.js";
+import { PolyglotTransformer } from "./interop/polyglot-transformer.js";
 
 export interface PipelineStage {
   name: string;

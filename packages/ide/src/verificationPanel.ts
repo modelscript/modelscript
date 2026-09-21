@@ -221,7 +221,7 @@ export class VerificationPanel {
       const content = document.getElementById('content');
       if (requirements.length === 0) {
         content.innerHTML = '<div class="empty"><h3>No requirements loaded</h3>' +
-          '<p>Open a .sysml file and click "Run Verification".</p></div>';
+          '<p>Open a model file and click "Run Verification".</p></div>';
         updateSummary(0, 0, 0);
         return;
       }

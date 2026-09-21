@@ -24,7 +24,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
           options: vscode.LanguageModelToolInvocationOptions<{ name: string; languageId?: string; uri?: string }>,
         ): Promise<vscode.LanguageModelToolResult> {
           const name = options.input.name;
-          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelscript";
           let result: { text?: string | null; error?: string };
           try {
             result = await client.sendRequest<{ text?: string | null; error?: string }>("modelscript/executeAction", {
@@ -63,7 +63,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
             format?: string;
           }>,
         ): Promise<vscode.LanguageModelToolResult> {
-          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelscript";
           let result: any;
           try {
             result = await client.sendRequest<any>("modelscript/executeAction", {
@@ -94,7 +94,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
         async invoke(
           options: vscode.LanguageModelToolInvocationOptions<{ name: string; languageId?: string; uri?: string }>,
         ): Promise<vscode.LanguageModelToolResult> {
-          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelscript";
           let result: any;
           try {
             result = await client.sendRequest<any>("modelscript/executeAction", {
@@ -125,7 +125,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
         async invoke(
           options: vscode.LanguageModelToolInvocationOptions<{ code: string; languageId?: string }>,
         ): Promise<vscode.LanguageModelToolResult> {
-          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelica";
+          const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelscript";
           let result: any;
           try {
             result = await client.sendRequest<any>("modelscript/executeAction", {

@@ -1,4 +1,6 @@
-import { PolyglotNode, PolyglotTransformer } from "../src/transformers/polyglot-transformer.js";
+import { PolyglotNode, PolyglotTransformer } from "@modelscript/runtime";
+import expect from "expect";
+import { describe, it } from "node:test";
 import { emitModelica, sysml2ToModelica, type SysML2PartDef } from "./fixtures/modelica-transformer.js";
 import { emitSysML2, modelicaToSysML2, type ModelicaModel } from "./fixtures/sysml2-transformer.js";
 

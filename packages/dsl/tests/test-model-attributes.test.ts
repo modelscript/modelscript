@@ -1,6 +1,8 @@
 import { field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import { generateCodeGraphBridge } from "@modelscript/dsl/codegen/graph.js";
 import { generateTypes } from "@modelscript/dsl/codegen/types.js";
+import expect from "expect";
+import { describe, it } from "node:test";
 
 describe("Model Attributes & WASM Blackboard Tests", () => {
   it("should generate NodeFlag and Property enums for bool and property model attributes", () => {

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { FlatSemanticEdit } from "./semanticDiffComments"; // actually, we should define it locally or import from where it is shared
+import { isSupportedModelFile } from "./utils/fileUtils";
 
 // We'll define the interface locally to avoid circular dependencies if any
 interface SemanticEditNode {
@@ -74,7 +75,7 @@ class SemanticDiffTreeProvider implements vscode.TreeDataProvider<SemanticDiffTr
 
     for (const change of changes) {
       const uri = change.uri;
-      if (!/\.(mo|mos|sysml|sysml2|step|stp|p21|owl|ttl|ofn|csv)$/i.test(uri.fsPath)) {
+      if (!isSupportedModelFile(uri.fsPath)) {
         continue;
       }
 

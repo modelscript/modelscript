@@ -1,5 +1,6 @@
-import { describe, expect, it } from "@jest/globals";
 import { generateTypeSystem } from "@modelscript/dsl/codegen/typesys.js";
+import expect from "expect";
+import { describe, it } from "node:test";
 
 describe("Subtyping Predicates Lambda Support", () => {
   it("should generate AssemblyScript subtyping logic for string and lambda predicates", () => {

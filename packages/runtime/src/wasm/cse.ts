@@ -9,9 +9,9 @@ import {
   EQ_STRIDE,
   EQ_LHS,
   EQ_RHS,
-} from "./dae";
-import { UnmanagedMap64, createMap64 } from "./hashmap";
-import { ChunkedInt32Array, createChunkedInt32Array } from "./array";
+} from "./dae/builder";
+import { UnmanagedMap64, createMap64 } from "./core/hashmap";
+import { ChunkedInt32Array, createChunkedInt32Array } from "./core/array";
 
 /**
  * Computes a 64-bit FNV-1a structural hash for an expression node given its canonical child hashes.

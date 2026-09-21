@@ -112,6 +112,40 @@ function generateModelicaSspBlock(ssp: SspSystem): string {
   return lines.join("\n");
 }
 
+/** Generate a SysML v2 representation from SSP metadata. */
+function generateSysml2SspBlock(ssp: SspSystem): string {
+  const lines: string[] = [];
+
+  lines.push("// ── System Structure and Parameterization (SSP in SysML v2) ─────────");
+  lines.push("// This is a readonly view of the SSP archive contents.");
+  lines.push("");
+
+  lines.push(`package ${ssp.name} {`);
+  if (ssp.description) lines.push(`  doc /* ${ssp.description} */`);
+
+  for (const comp of ssp.components) {
+    lines.push(`  part def ${comp.name}_type {`);
+    for (const conn of comp.connectors) {
+      const portDir = conn.kind === "input" ? "in" : conn.kind === "output" ? "out" : "inout";
+      lines.push(`    ${portDir} port ${conn.name}: ${conn.type};`);
+    }
+    lines.push("  }");
+  }
+
+  lines.push(`  part system {`);
+  for (const comp of ssp.components) {
+    lines.push(`    part ${comp.name.toLowerCase()}: ${comp.name}_type;`);
+  }
+  for (const conn of ssp.connections) {
+    lines.push(
+      `    connection connect_${conn.startElement}_${conn.endElement} connect ${conn.startElement.toLowerCase()}.${conn.startConnector} to ${conn.endElement.toLowerCase()}.${conn.endConnector};`,
+    );
+  }
+  lines.push("  }");
+  lines.push("}");
+  return lines.join("\n") + "\n";
+}
+
 // ── Lightweight ZIP reader (browser-safe, uses pako) ──
 
 /**
@@ -167,14 +201,15 @@ function extractFromZip(zipData: Uint8Array, targetName: string): Uint8Array | n
   return null;
 }
 
-/** Extract SystemStructure.ssd from SSP bytes and generate Modelica code. */
-function sspBytesToModelica(name: string, sspBytes: Uint8Array): string {
+/** Extract SystemStructure.ssd from SSP bytes and generate wrapper code. */
+function sspBytesToCode(name: string, sspBytes: Uint8Array, targetLang: string = "modelica"): string {
   try {
     const xmlData = extractFromZip(sspBytes, "SystemStructure.ssd");
     if (!xmlData) return `// Error: SystemStructure.ssd not found in ${name}.ssp\n`;
     const xml = new TextDecoder().decode(xmlData);
     const ssp = parseSsd(xml);
-    return generateModelicaSspBlock(ssp);
+    const isSysml = targetLang === "sysml" || targetLang === "sysml2";
+    return isSysml ? generateSysml2SspBlock(ssp) : generateModelicaSspBlock(ssp);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return `// Error reading ${name}.ssp: ${msg}\n`;
@@ -185,15 +220,15 @@ function sspBytesToModelica(name: string, sspBytes: Uint8Array): string {
 
 /**
  * Provides virtual readonly text content for SSP files.
- * URIs: \`ssp-view:/System\` → Modelica block text.
+ * URIs: \`ssp-view:/System\` → Generated wrapper text.
  */
 export class SspContentProvider implements vscode.TextDocumentContentProvider {
   private cache = new Map<string, string>();
   private bytesCache = new Map<string, Uint8Array>();
 
   /** Register content from raw SSP bytes. */
-  registerSsp(name: string, sspBytes: Uint8Array): void {
-    this.cache.set(name, sspBytesToModelica(name, sspBytes));
+  registerSsp(name: string, sspBytes: Uint8Array, targetLang: string = "modelica"): void {
+    this.cache.set(name, sspBytesToCode(name, sspBytes, targetLang));
     this.bytesCache.set(name, sspBytes);
   }
 
@@ -252,13 +287,17 @@ export class SspEditorProvider implements vscode.CustomReadonlyEditorProvider<Ss
   }
 
   async resolveCustomEditor(document: SspDocument, webviewPanel: vscode.WebviewPanel): Promise<void> {
-    // Register the content in the virtual document provider
-    this.contentProvider.registerSsp(document.name, document.sspBytes);
+    const activeLang = vscode.window.activeTextEditor?.document.languageId;
+    const isSysml = activeLang === "sysml" || activeLang === "sysml2";
+    const targetLang = isSysml ? "sysml2" : "modelica";
 
-    // Open the virtual text document with Modelica syntax highlighting
+    // Register the content in the virtual document provider
+    this.contentProvider.registerSsp(document.name, document.sspBytes, targetLang);
+
+    // Open the virtual text document with matching syntax highlighting
     const virtualUri = vscode.Uri.parse(`${SSP_VIEW_SCHEME}:/${document.name}`);
     const doc = await vscode.workspace.openTextDocument(virtualUri);
-    await vscode.languages.setTextDocumentLanguage(doc, "modelica");
+    await vscode.languages.setTextDocumentLanguage(doc, targetLang);
     await vscode.window.showTextDocument(doc, {
       viewColumn: webviewPanel.viewColumn,
       preview: false,

@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
 
-import { buildComponentProperties } from "@modelscript/modelica/diagram";
 import { LspContext } from "../LspContext.js";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
 import { dispatchLanguageRequest } from "./languageProtocolRouter.js";
@@ -52,17 +51,30 @@ export function registerDiagramHandlers(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getComponentProperties",
-    (params: { uri: string; componentName: string; className?: string }) => {
-      const classInstance = context.workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
+    async (params: { uri: string; componentName: string; className?: string }) => {
+      try {
+        const dispatch = context.diagramService.getDiagramDispatch();
+        if (typeof dispatch?.getComponentProperties === "function") {
+          return await dispatch.getComponentProperties(params);
+        }
+      } catch {
+        // ignore
+      }
+
+      const classInstance = context.workspaceManager.resolveClassInstance(params.uri, params.className);
       if (!classInstance) return null;
 
-      try {
-        return buildComponentProperties(classInstance, params.componentName);
-      } catch (e: any) {
-        context.connection.console.error(`[diagram] Error building component properties: ${e?.message ?? e}
-  ${e?.stack ?? ""}`);
-        return null;
+      const buildProps = (globalThis as any).modelicaDiagramOps?.buildComponentProperties;
+      if (typeof buildProps === "function") {
+        try {
+          return buildProps(classInstance, params.componentName);
+        } catch (e: any) {
+          context.connection.console.error(
+            `[diagram] Error building component properties: ${e?.message ?? e}\n  ${e?.stack ?? ""}`,
+          );
+        }
       }
+      return null;
     },
   );
 

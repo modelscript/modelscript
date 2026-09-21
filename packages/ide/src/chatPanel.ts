@@ -463,7 +463,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <div id="messages"></div>
   <div id="input-area">
     <div class="input-wrapper">
-      <textarea id="input" rows="1" placeholder="Ask about Modelica..." disabled></textarea>
+      <textarea id="input" rows="1" placeholder="Ask about your model or system..." disabled></textarea>
       <button id="send-btn" disabled title="Send">
         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
           <path d="M8.6 1L15 7.4L15 8.1L8.6 14.5L7.9 13.8L13.3 8.5H1V7.5H13.3L7.9 2.1L8.6 1Z"/>

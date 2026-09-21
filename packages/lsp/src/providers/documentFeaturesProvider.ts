@@ -1,4 +1,3 @@
-import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -73,14 +72,16 @@ export function registerDocumentFeaturesProvider(
         if (text) {
           try {
             const tree = parser.parse(text);
-            const ws = plugin?.workspaceIndex ?? wm?.globalWorkspaceIndex ?? createModelicaWorkspaceIndex();
+            const langId = plugin?.id ?? "modelica";
+            const ws = plugin?.workspaceIndex ?? wm?.getWorkspaceIndex(langId);
+            if (!ws) return [];
             ws.register(params.textDocument.uri, () => tree.rootNode);
             ws.getFileIndex(params.textDocument.uri);
             const unified =
               wm?.unifiedWorkspace?.toUnifiedPartial?.() ??
               (typeof ws.toUnifiedPartial === "function" ? ws.toUnifiedPartial() : ws.toUnified());
             const engine = plugin?.queryEngine ??
-              wm?.globalModelicaQueryEngine ?? {
+              wm?.getQueryEngine(langId) ?? {
                 toQueryDB: () => ({ index: unified }),
                 index: unified,
               };

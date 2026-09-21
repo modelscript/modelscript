@@ -11,7 +11,6 @@ import {
   type ArenaDoEInputRange,
 } from "@modelscript/simulate";
 import { ModelicaCalibrator, ModelicaOptimizer } from "@modelscript/simulate/optimizer";
-import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import { LspContext } from "../LspContext.js";
 import { getRequirements } from "../requirements.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arenaUtils.js";
@@ -305,28 +304,31 @@ export function registerAnalysisEndpoints(context: LspContext) {
           finalControls = ["u"];
         }
 
-        // ── SysML2 constraint injection ──
+        // ── Constraints injection ──
         let stateConstraints: { variable: string; bound: number; type: "<=" | ">=" }[] | undefined;
-        if (params.sysmlUri && context.workspaceManager.globalSysML2QueryEngine) {
+        const constraintsUri = params.constraintsUri ?? params.sysmlUri;
+        const qe = context.workspaceManager.getQueryEngine("sysml2");
+        if (constraintsUri && qe) {
           try {
-            // Ensure the SysML2 document is indexed
-            const sysmlDoc = context.documents.get(params.sysmlUri);
-            if (sysmlDoc) await context.validationService.validateTextDocument(sysmlDoc);
+            // Ensure the document is indexed
+            const doc = context.documents.get(constraintsUri);
+            if (doc) await context.validationService.validateTextDocument(doc);
 
-            const sysmlDb = context.workspaceManager.globalSysML2QueryEngine.toQueryDB();
-            const rawConstraints = extractSysML2Constraints(sysmlDb, params.sysmlFilter);
-            const variableMap = params.sysmlVariableMap ? new Map(Object.entries(params.sysmlVariableMap)) : undefined;
-            stateConstraints = mapConstraintsToOptimizer(rawConstraints, variableMap);
-            context.connection.console.info(
-              `[optimize] Extracted ${stateConstraints.length} SysML2 constraints` +
-                (params.sysmlFilter ? ` (filter: ${params.sysmlFilter})` : ""),
-            );
-            for (const sc of stateConstraints) {
-              context.connection.console.info(`[optimize]   ${sc.variable} ${sc.type} ${sc.bound}`);
+            const sysmlDb = qe.toQueryDB();
+            const extractor = (globalThis as any).extractSysML2Constraints;
+            const mapper = (globalThis as any).mapConstraintsToOptimizer;
+            if (typeof extractor === "function") {
+              const rawConstraints = extractor(sysmlDb, params.sysmlFilter ?? params.constraintsFilter);
+              const variableMap =
+                (params.sysmlVariableMap ?? params.variableMap)
+                  ? new Map(Object.entries(params.sysmlVariableMap ?? params.variableMap))
+                  : undefined;
+              stateConstraints = typeof mapper === "function" ? mapper(rawConstraints, variableMap) : rawConstraints;
+              context.connection.console.info(`[optimize] Extracted ${stateConstraints?.length ?? 0} constraints`);
             }
           } catch (e) {
             context.connection.console.warn(
-              `[optimize] SysML2 constraint extraction failed: ${e instanceof Error ? e.message : String(e)}`,
+              `[optimize] Constraint extraction failed: ${e instanceof Error ? e.message : String(e)}`,
             );
           }
         }

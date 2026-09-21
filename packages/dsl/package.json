@@ -24,6 +24,70 @@
       "types": "./dist/codegen/index.d.ts",
       "default": "./dist/codegen/index.js"
     },
+    "./codegen/parser": {
+      "types": "./dist/codegen/parser/index.d.ts",
+      "default": "./dist/codegen/parser/index.js"
+    },
+    "./codegen/parser/*": {
+      "types": "./dist/codegen/parser/*.d.ts",
+      "default": "./dist/codegen/parser/*.js"
+    },
+    "./codegen/transpiler": {
+      "types": "./dist/codegen/transpiler/index.d.ts",
+      "default": "./dist/codegen/transpiler/index.js"
+    },
+    "./codegen/transpiler/*": {
+      "types": "./dist/codegen/transpiler/*.d.ts",
+      "default": "./dist/codegen/transpiler/*.js"
+    },
+    "./codegen/analysis": {
+      "types": "./dist/codegen/analysis/index.d.ts",
+      "default": "./dist/codegen/analysis/index.js"
+    },
+    "./codegen/analysis/*": {
+      "types": "./dist/codegen/analysis/*.d.ts",
+      "default": "./dist/codegen/analysis/*.js"
+    },
+    "./codegen/rewriting": {
+      "types": "./dist/codegen/rewriting/index.d.ts",
+      "default": "./dist/codegen/rewriting/index.js"
+    },
+    "./codegen/rewriting/*": {
+      "types": "./dist/codegen/rewriting/*.d.ts",
+      "default": "./dist/codegen/rewriting/*.js"
+    },
+    "./codegen/typesys": {
+      "types": "./dist/codegen/typesys/index.d.ts",
+      "default": "./dist/codegen/typesys/index.js"
+    },
+    "./codegen/typesys/*": {
+      "types": "./dist/codegen/typesys/*.d.ts",
+      "default": "./dist/codegen/typesys/*.js"
+    },
+    "./codegen/emitters": {
+      "types": "./dist/codegen/emitters/index.d.ts",
+      "default": "./dist/codegen/emitters/index.js"
+    },
+    "./codegen/emitters/*": {
+      "types": "./dist/codegen/emitters/*.d.ts",
+      "default": "./dist/codegen/emitters/*.js"
+    },
+    "./codegen/ide": {
+      "types": "./dist/codegen/ide/index.d.ts",
+      "default": "./dist/codegen/ide/index.js"
+    },
+    "./codegen/ide/*": {
+      "types": "./dist/codegen/ide/*.d.ts",
+      "default": "./dist/codegen/ide/*.js"
+    },
+    "./codegen/shared": {
+      "types": "./dist/codegen/shared/index.d.ts",
+      "default": "./dist/codegen/shared/index.js"
+    },
+    "./codegen/shared/*": {
+      "types": "./dist/codegen/shared/*.d.ts",
+      "default": "./dist/codegen/shared/*.js"
+    },
     "./codegen/*.js": {
       "types": "./dist/codegen/*.d.ts",
       "default": "./dist/codegen/*.js"
@@ -45,20 +109,20 @@
       "default": "./dist/bindings/javascript/*.js"
     },
     "./tgg": {
-      "types": "./dist/codegen/compile_tgg.d.ts",
-      "default": "./dist/codegen/compile_tgg.js"
+      "types": "./dist/codegen/rewriting/compile_tgg.d.ts",
+      "default": "./dist/codegen/rewriting/compile_tgg.js"
     },
     "./cpa": {
-      "types": "./dist/codegen/cpa.d.ts",
-      "default": "./dist/codegen/cpa.js"
+      "types": "./dist/codegen/rewriting/cpa.d.ts",
+      "default": "./dist/codegen/rewriting/cpa.js"
     },
     "./egraph": {
-      "types": "./dist/codegen/egraph.d.ts",
-      "default": "./dist/codegen/egraph.js"
+      "types": "./dist/codegen/rewriting/egraph.d.ts",
+      "default": "./dist/codegen/rewriting/egraph.js"
     },
     "./parser": {
-      "types": "./dist/codegen/parser.d.ts",
-      "default": "./dist/codegen/parser.js"
+      "types": "./dist/codegen/parser/parser.d.ts",
+      "default": "./dist/codegen/parser/parser.js"
     },
     "./utils": {
       "types": "./dist/utils/index.d.ts",

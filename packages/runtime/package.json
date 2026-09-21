@@ -11,48 +11,248 @@
       "default": "./dist/index.js"
     },
     "./dae": {
-      "types": "./dist/wasm_dae.d.ts",
-      "default": "./dist/wasm_dae.js"
+      "types": "./dist/dae/wasm_dae.d.ts",
+      "default": "./dist/dae/wasm_dae.js"
     },
     "./dae-printer": {
-      "types": "./dist/wasm_dae_printer.d.ts",
-      "default": "./dist/wasm_dae_printer.js"
+      "types": "./dist/dae/wasm_dae_printer.d.ts",
+      "default": "./dist/dae/wasm_dae_printer.js"
     },
     "./workspace": {
-      "types": "./dist/wasm_workspace.d.ts",
-      "default": "./dist/wasm_workspace.js"
+      "types": "./dist/workspace/wasm_workspace.d.ts",
+      "default": "./dist/workspace/wasm_workspace.js"
     },
     "./query-engine": {
-      "types": "./dist/wasm_query_engine.d.ts",
-      "default": "./dist/wasm_query_engine.js"
+      "types": "./dist/workspace/wasm_query_engine.d.ts",
+      "default": "./dist/workspace/wasm_query_engine.js"
     },
     "./solvers": {
-      "types": "./dist/solvers_bridge.d.ts",
-      "default": "./dist/solvers_bridge.js"
+      "types": "./dist/solvers/solvers_bridge.d.ts",
+      "default": "./dist/solvers/solvers_bridge.js"
     },
     "./evaluator": {
-      "types": "./dist/wasm_evaluator.d.ts",
-      "default": "./dist/wasm_evaluator.js"
+      "types": "./dist/dae/wasm_evaluator.d.ts",
+      "default": "./dist/dae/wasm_evaluator.js"
     },
     "./init": {
-      "types": "./dist/wasm_init.d.ts",
-      "default": "./dist/wasm_init.js"
+      "types": "./dist/dae/wasm_init.d.ts",
+      "default": "./dist/dae/wasm_init.js"
     },
     "./tape": {
-      "types": "./dist/wasm_tape.d.ts",
-      "default": "./dist/wasm_tape.js"
+      "types": "./dist/autodiff/wasm_tape.d.ts",
+      "default": "./dist/autodiff/wasm_tape.js"
     },
     "./verifier": {
-      "types": "./dist/wasm_verifier.d.ts",
-      "default": "./dist/wasm_verifier.js"
+      "types": "./dist/simulation/wasm_verifier.d.ts",
+      "default": "./dist/simulation/wasm_verifier.js"
     },
-    "./*.js": {
-      "types": "./dist/*.d.ts",
-      "default": "./dist/*.js"
+    "./wasm_dae.js": {
+      "types": "./dist/dae/wasm_dae.d.ts",
+      "default": "./dist/dae/wasm_dae.js"
     },
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "default": "./dist/*.js"
+    "./wasm_dae_printer.js": {
+      "types": "./dist/dae/wasm_dae_printer.d.ts",
+      "default": "./dist/dae/wasm_dae_printer.js"
+    },
+    "./wasm_evaluator.js": {
+      "types": "./dist/dae/wasm_evaluator.d.ts",
+      "default": "./dist/dae/wasm_evaluator.js"
+    },
+    "./wasm_fold.js": {
+      "types": "./dist/dae/wasm_fold.d.ts",
+      "default": "./dist/dae/wasm_fold.js"
+    },
+    "./wasm_init.js": {
+      "types": "./dist/dae/wasm_init.d.ts",
+      "default": "./dist/dae/wasm_init.js"
+    },
+    "./wasm_statement_executor.js": {
+      "types": "./dist/dae/wasm_statement_executor.d.ts",
+      "default": "./dist/dae/wasm_statement_executor.js"
+    },
+    "./wasm_blt.js": {
+      "types": "./dist/analysis/wasm_blt.d.ts",
+      "default": "./dist/analysis/wasm_blt.js"
+    },
+    "./wasm_pantelides.js": {
+      "types": "./dist/analysis/wasm_pantelides.d.ts",
+      "default": "./dist/analysis/wasm_pantelides.js"
+    },
+    "./wasm_egraph_simplifier.js": {
+      "types": "./dist/analysis/wasm_egraph_simplifier.d.ts",
+      "default": "./dist/analysis/wasm_egraph_simplifier.js"
+    },
+    "./wasm_interval.js": {
+      "types": "./dist/analysis/wasm_interval.d.ts",
+      "default": "./dist/analysis/wasm_interval.js"
+    },
+    "./wasm_workspace.js": {
+      "types": "./dist/workspace/wasm_workspace.d.ts",
+      "default": "./dist/workspace/wasm_workspace.js"
+    },
+    "./wasm_query_engine.js": {
+      "types": "./dist/workspace/wasm_query_engine.d.ts",
+      "default": "./dist/workspace/wasm_query_engine.js"
+    },
+    "./wasm_cache_store.js": {
+      "types": "./dist/workspace/wasm_cache_store.d.ts",
+      "default": "./dist/workspace/wasm_cache_store.js"
+    },
+    "./wasm_string_pool.js": {
+      "types": "./dist/workspace/wasm_string_pool.d.ts",
+      "default": "./dist/workspace/wasm_string_pool.js"
+    },
+    "./wasm_container.js": {
+      "types": "./dist/workspace/wasm_container.d.ts",
+      "default": "./dist/workspace/wasm_container.js"
+    },
+    "./wasm_bdf.js": {
+      "types": "./dist/solvers/wasm_bdf.d.ts",
+      "default": "./dist/solvers/wasm_bdf.js"
+    },
+    "./wasm_dopri5.js": {
+      "types": "./dist/solvers/wasm_dopri5.d.ts",
+      "default": "./dist/solvers/wasm_dopri5.js"
+    },
+    "./wasm_gaussian.js": {
+      "types": "./dist/solvers/wasm_gaussian.d.ts",
+      "default": "./dist/solvers/wasm_gaussian.js"
+    },
+    "./wasm_groebner.js": {
+      "types": "./dist/solvers/wasm_groebner.d.ts",
+      "default": "./dist/solvers/wasm_groebner.js"
+    },
+    "./wasm_sparse_jacobian.js": {
+      "types": "./dist/solvers/wasm_sparse_jacobian.d.ts",
+      "default": "./dist/solvers/wasm_sparse_jacobian.js"
+    },
+    "./wasm_minlp.js": {
+      "types": "./dist/solvers/wasm_minlp.d.ts",
+      "default": "./dist/solvers/wasm_minlp.js"
+    },
+    "./solvers_bridge.js": {
+      "types": "./dist/solvers/solvers_bridge.d.ts",
+      "default": "./dist/solvers/solvers_bridge.js"
+    },
+    "./wasm_tape.js": {
+      "types": "./dist/autodiff/wasm_tape.d.ts",
+      "default": "./dist/autodiff/wasm_tape.js"
+    },
+    "./wasm_isolation.js": {
+      "types": "./dist/autodiff/wasm_isolation.d.ts",
+      "default": "./dist/autodiff/wasm_isolation.js"
+    },
+    "./wasm_fused_kernel.js": {
+      "types": "./dist/autodiff/wasm_fused_kernel.d.ts",
+      "default": "./dist/autodiff/wasm_fused_kernel.js"
+    },
+    "./wasm_ontology.js": {
+      "types": "./dist/ontology/wasm_ontology.d.ts",
+      "default": "./dist/ontology/wasm_ontology.js"
+    },
+    "./parallel_reasoner.js": {
+      "types": "./dist/ontology/parallel_reasoner.d.ts",
+      "default": "./dist/ontology/parallel_reasoner.js"
+    },
+    "./wasm_rtc_statemachine.js": {
+      "types": "./dist/statemachine/wasm_rtc_statemachine.d.ts",
+      "default": "./dist/statemachine/wasm_rtc_statemachine.js"
+    },
+    "./wasm_fuml_engine.js": {
+      "types": "./dist/statemachine/wasm_fuml_engine.d.ts",
+      "default": "./dist/statemachine/wasm_fuml_engine.js"
+    },
+    "./wasm_monte_carlo.js": {
+      "types": "./dist/simulation/wasm_monte_carlo.d.ts",
+      "default": "./dist/simulation/wasm_monte_carlo.js"
+    },
+    "./wasm_doe.js": {
+      "types": "./dist/simulation/wasm_doe.d.ts",
+      "default": "./dist/simulation/wasm_doe.js"
+    },
+    "./wasm_cosim.js": {
+      "types": "./dist/simulation/wasm_cosim.d.ts",
+      "default": "./dist/simulation/wasm_cosim.js"
+    },
+    "./wasm_fmu_subsystem.js": {
+      "types": "./dist/simulation/wasm_fmu_subsystem.d.ts",
+      "default": "./dist/simulation/wasm_fmu_subsystem.js"
+    },
+    "./wasm_verifier.js": {
+      "types": "./dist/simulation/wasm_verifier.d.ts",
+      "default": "./dist/simulation/wasm_verifier.js"
+    },
+    "./wasm_gpu_buffers.js": {
+      "types": "./dist/gpu/wasm_gpu_buffers.d.ts",
+      "default": "./dist/gpu/wasm_gpu_buffers.js"
+    },
+    "./wasm_memory_planner.js": {
+      "types": "./dist/gpu/wasm_memory_planner.d.ts",
+      "default": "./dist/gpu/wasm_memory_planner.js"
+    },
+    "./config_client.js": {
+      "types": "./dist/config/config_client.d.ts",
+      "default": "./dist/config/config_client.js"
+    },
+    "./indexeddb_snapshot.js": {
+      "types": "./dist/config/indexeddb_snapshot.d.ts",
+      "default": "./dist/config/indexeddb_snapshot.js"
+    },
+    "./thread_hypergraph.js": {
+      "types": "./dist/interop/thread_hypergraph.d.ts",
+      "default": "./dist/interop/thread_hypergraph.js"
+    },
+    "./thread_serializer.js": {
+      "types": "./dist/interop/thread_serializer.d.ts",
+      "default": "./dist/interop/thread_serializer.js"
+    },
+    "./reqif.js": {
+      "types": "./dist/interop/reqif.d.ts",
+      "default": "./dist/interop/reqif.js"
+    },
+    "./oslc_gateway.js": {
+      "types": "./dist/interop/oslc_gateway.d.ts",
+      "default": "./dist/interop/oslc_gateway.js"
+    },
+    "./provenance.js": {
+      "types": "./dist/interop/provenance.d.ts",
+      "default": "./dist/interop/provenance.js"
+    },
+    "./vcycle_verifier.js": {
+      "types": "./dist/interop/vcycle_verifier.d.ts",
+      "default": "./dist/interop/vcycle_verifier.js"
+    },
+    "./brownfield_alignment.js": {
+      "types": "./dist/interop/brownfield_alignment.d.ts",
+      "default": "./dist/interop/brownfield_alignment.js"
+    },
+    "./polyglot-transformer.js": {
+      "types": "./dist/interop/polyglot-transformer.d.ts",
+      "default": "./dist/interop/polyglot-transformer.js"
+    },
+    "./diff.js": {
+      "types": "./dist/util/diff.d.ts",
+      "default": "./dist/util/diff.js"
+    },
+    "./ctrf_reporter.js": {
+      "types": "./dist/util/ctrf_reporter.d.ts",
+      "default": "./dist/util/ctrf_reporter.js"
+    },
+    "./type_registry.js": {
+      "types": "./dist/util/type_registry.d.ts",
+      "default": "./dist/util/type_registry.js"
+    },
+    "./msl_ffi.js": {
+      "types": "./dist/util/msl_ffi.d.ts",
+      "default": "./dist/util/msl_ffi.js"
+    },
+    "./runtime.js": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./pipeline.js": {
+      "types": "./dist/pipeline.d.ts",
+      "default": "./dist/pipeline.js"
     }
   },
   "main": "./dist/index.js",

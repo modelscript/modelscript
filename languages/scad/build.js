@@ -71,7 +71,9 @@ const result = buildParser(scadLanguage, { sourcePath: languagePath });
 const asGenDir = path.join(__dirname, "as-gen");
 fs.mkdirSync(asGenDir, { recursive: true });
 for (const file of result.assemblyScriptFiles) {
-  fs.writeFileSync(path.join(asGenDir, file.filename), file.content);
+  const filePath = path.join(asGenDir, file.filename);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, file.content);
 }
 
 // 2. Write TypeScript/JavaScript bindings to src-gen/

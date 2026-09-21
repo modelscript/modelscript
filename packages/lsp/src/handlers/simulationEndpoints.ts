@@ -7,8 +7,6 @@ import {
   Orchestrator,
   WasmOpenFoamProvider,
 } from "@modelscript/exchange/cosim";
-import { ArenaQueryFlattener } from "@modelscript/modelica";
-import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { Causality, DAEBuilder } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@modelscript/simulate";
 import { LspContext } from "../LspContext.js";
@@ -33,7 +31,11 @@ function resolveTargetClass(
   uri: string,
   className?: string,
 ): { symbolId: number; className: string; classKind: string } | null {
-  const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+  const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial() ?? {
+    symbols: new Map(),
+    byName: new Map(),
+    childrenOf: new Map(),
+  };
   if (className) {
     const parts = className.split(".");
     const candidates = unifiedIndex.byName.get(parts[parts.length - 1]);
@@ -51,14 +53,53 @@ function resolveTargetClass(
     }
   }
 
+  const normUri = uri ? uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///") : "";
   // Fallback: search for top-level class in the specified URI
   for (const [id, entry] of unifiedIndex.symbols.entries()) {
-    if (entry.resourceId === uri && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+    const entryNorm = entry.resourceId?.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+    if (
+      (entry.resourceId === uri || entryNorm === normUri) &&
+      (entry.kind === "Class" || entry.kind === "Def") &&
+      entry.parentId === null
+    ) {
       return {
         symbolId: id,
         className: entry.name,
         classKind: (entry.metadata?.classKind as string) ?? "class",
       };
+    }
+  }
+
+  // Second fallback: check language workspace index directly
+  const wsIndex = context.workspaceManager?.globalWorkspaceIndex;
+  if (wsIndex?.unifiedIndex?.symbols) {
+    if (className) {
+      const wsCandidates = wsIndex.unifiedIndex.byName?.get(className);
+      if (wsCandidates && wsCandidates.length > 0) {
+        const id = wsCandidates[0];
+        const entry = wsIndex.unifiedIndex.symbols.get(id);
+        if (entry) {
+          return {
+            symbolId: id,
+            className: entry.name,
+            classKind: (entry.metadata?.classKind as string) ?? "class",
+          };
+        }
+      }
+    }
+    for (const [id, entry] of wsIndex.unifiedIndex.symbols.entries()) {
+      const entryNorm = entry.resourceId?.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+      if (
+        (entry.resourceId === uri || entryNorm === normUri) &&
+        (entry.kind === "Class" || entry.kind === "Def") &&
+        entry.parentId === null
+      ) {
+        return {
+          symbolId: id,
+          className: entry.name,
+          classKind: (entry.metadata?.classKind as string) ?? "class",
+        };
+      }
     }
   }
 
@@ -83,11 +124,15 @@ function flattenTargetClass(
       arena = null;
     }
   }
-  if (!arena && context.workspaceManager.globalModelicaQueryEngine) {
+  const qe = context.workspaceManager.getQueryEngine("modelica");
+  if (!arena && qe) {
     try {
-      const queryDB = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
-      const flattener = new ArenaQueryFlattener(queryDB);
-      arena = flattener.flatten(target.symbolId);
+      const FlattenerClass = (globalThis as any).ArenaQueryFlattener;
+      if (FlattenerClass) {
+        const queryDB = qe.toQueryDB();
+        const flattener = new FlattenerClass(queryDB);
+        arena = flattener.flatten(target.symbolId);
+      }
     } catch (e: any) {
       return { error: `Failed to flatten class '${target.className}': ${e?.message ?? e}` };
     }
@@ -788,13 +833,21 @@ export function registerSimulationEndpoints(context: LspContext) {
       return { output: "", error: "Failed to parse script." };
     }
 
-    const interpreter = new ArenaScriptInterpreter(context.workspaceManager.globalModelicaQueryEngine);
+    const qe = context.workspaceManager.getQueryEngine("modelica");
+    const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
+    if (!InterpreterClass || !qe) {
+      return { output: "", error: "Script execution engine not initialized." };
+    }
+
+    const interpreter = new InterpreterClass(qe);
     const result = interpreter.execute(tree.rootNode);
     return result;
   });
 
   context.connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
-    if (!context.state.sharedContext || !context.workspaceManager.globalModelicaQueryEngine) {
+    const qe = context.workspaceManager.getQueryEngine("modelica");
+    const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
+    if (!context.state.sharedContext || !qe || !InterpreterClass) {
       return { output: "", error: "Language server not fully initialized." };
     }
 
@@ -805,7 +858,7 @@ export function registerSimulationEndpoints(context: LspContext) {
 
     let interpreter = notebookSessions.get(params.sessionId);
     if (!interpreter) {
-      interpreter = new ArenaScriptInterpreter(context.workspaceManager.globalModelicaQueryEngine);
+      interpreter = new InterpreterClass(qe);
       notebookSessions.set(params.sessionId, interpreter);
     }
 

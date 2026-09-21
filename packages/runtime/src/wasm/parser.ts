@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { DaeBuilder } from "./dae";
+import { DaeBuilder } from "./dae/builder";
 
 export const inputEncoding: i32 = 0;
 

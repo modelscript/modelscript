@@ -14,12 +14,11 @@ import {
   type QueryEngine,
   type WorkspaceIndex,
 } from "@modelscript/runtime";
+import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./extensions/geometry.js";
+import { ModelicaPoParser, ModelicaTranslation } from "./extensions/po.js";
+import { MODELSCRIPT_STUDIES_PACKAGE } from "./extensions/studies.js";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ModelicaFlattener, type FlattenOptions } from "./flattener.js";
-import { ModelicaPoParser, ModelicaTranslation } from "./po.js";
-
-import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./geometry.js";
-import { MODELSCRIPT_STUDIES_PACKAGE } from "./studies.js";
 
 export type PreconditionerMode = "none" | "branch-and-bound";
 export interface InitSolverConfig {

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "@jest/globals";
-import { buildDiagramFromDSL } from "../src/diagram/polyglot-diagram-builder.js";
+import { buildDiagramFromDSL } from "@modelscript/diagram";
+import expect from "expect";
+import { describe, it } from "node:test";
 
 describe("DSL to X6 Diagram Adapter", () => {
   it("should adapt raw AST diagram data with DSL diagram configuration", () => {

@@ -1,5 +1,6 @@
-import { describe, expect, test } from "@jest/globals";
 import { generateWatEmitter } from "@modelscript/dsl/codegen/emit_wat.js";
+import expect from "expect";
+import { describe, test } from "node:test";
 
 describe("WebAssembly Text (WAT) Emitter Generator", () => {
   test("generates valid WAT module template function", () => {

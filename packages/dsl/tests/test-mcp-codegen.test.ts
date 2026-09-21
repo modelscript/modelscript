@@ -11,10 +11,12 @@ import {
   semanticToken,
   seq,
 } from "@modelscript/dsl";
+import expect from "expect";
 import childProcess from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { after as afterAll, before as beforeAll, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { LspFacade } from "../src/bindings/javascript/bindings.js";
 

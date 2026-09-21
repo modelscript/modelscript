@@ -809,7 +809,11 @@ export function resolveSimpleNameHelper(
   name: string,
   encapsulated = false,
   skipInherited = false,
+  visited: Set<SymbolId> = new Set(),
 ): SymbolEntry | null {
+  if (visited.has(classId)) return null;
+  visited.add(classId);
+
   const unspecializedId = db.baseOf(classId) ?? classId;
   const scope = db.query<ScopeData | null>("scopeData", unspecializedId);
   if (!scope) return null;
@@ -843,8 +847,8 @@ export function resolveSimpleNameHelper(
           const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
           if (parentResolver) {
             const resolved = parentResolver(typeName);
-            if (resolved?.id && resolved.id !== classId) {
-              const found = resolveSimpleNameHelper(db, resolved.id, name, encapsulated, skipInherited);
+            if (resolved?.id && resolved.id !== classId && !visited.has(resolved.id)) {
+              const found = resolveSimpleNameHelper(db, resolved.id, name, encapsulated, skipInherited, visited);
               if (found) return found;
             }
           }
@@ -894,10 +898,16 @@ export function resolveSimpleNameHelper(
   }
 
   // 6. Parent scope walk (unless encapsulated)
-  if (!encapsulated && !scope.isEncapsulated && scope.parentId !== null && scope.parentId !== unspecializedId) {
+  if (
+    !encapsulated &&
+    !scope.isEncapsulated &&
+    scope.parentId !== null &&
+    scope.parentId !== unspecializedId &&
+    !visited.has(scope.parentId)
+  ) {
     const parentEntry = db.symbol(scope.parentId);
     if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
-      const found = resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited);
+      const found = resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited, visited);
       if (found) return found;
     }
   }
@@ -905,9 +915,11 @@ export function resolveSimpleNameHelper(
   // 7. Predefined types fallback
   const predefined = db.byName(name);
   return (
+    predefined?.find((e) => (e.metadata as any)?.isPredefined) ??
     predefined?.find(
       (e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function" || e.kind === "Definition",
-    ) ?? null
+    ) ??
+    null
   );
 }
 

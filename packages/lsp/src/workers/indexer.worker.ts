@@ -16,24 +16,6 @@ async function initParsers(serverDistBase: string, customWasmUrls?: Record<strin
       }
     }
   }
-
-  if (!parsers.has("modelica")) {
-    try {
-      const modelicaResult = await createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`);
-      parsers.set("modelica", modelicaResult.parser);
-    } catch (e) {
-      console.warn("[indexer-worker] Failed to load Modelica parser:", e);
-    }
-  }
-
-  if (!parsers.has("sysml2")) {
-    try {
-      const sysmlResult = await createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`);
-      parsers.set("sysml2", sysmlResult.parser);
-    } catch (e) {
-      console.warn("[indexer-worker] Failed to load SysML2 parser:", e);
-    }
-  }
 }
 
 self.onmessage = async (e: MessageEvent<IndexerBatchRequest>) => {

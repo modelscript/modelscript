@@ -5147,22 +5147,29 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
       bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
     if (!syntaxNames) {
-      const bindingsPaths = [
+      const candidates = [
         wasmUrlOrBytes.replace(/\/dist\/parser\.wasm$/, "/src-gen/bindings.js"),
         wasmUrlOrBytes.replace(/\.wasm$/, ".bindings.js"),
         wasmUrlOrBytes.replace(/\/parser\.wasm$/, "/bindings.js"),
         wasmUrlOrBytes.replace(/\/tree-sitter-[^/]+\.wasm$/, "/bindings.js"),
       ];
+      const bindingsPaths = candidates.filter(
+        (p) => p !== wasmUrlOrBytes && !p.endsWith(".wasm"),
+      );
       for (const bPath of bindingsPaths) {
-        const mod = await Function("m", "return import(m)")(bPath);
-        if (mod) {
-          if (mod.SYNTAX_NAMES && mod.SYNTAX_NAMES.length > 0) {
-            syntaxNames = mod.SYNTAX_NAMES;
+        try {
+          const mod = await Function("m", "return import(m)")(bPath);
+          if (mod) {
+            if (mod.SYNTAX_NAMES && mod.SYNTAX_NAMES.length > 0) {
+              syntaxNames = mod.SYNTAX_NAMES;
+            }
+            if (mod.FIELD_NAMES) {
+              Object.assign(FIELD_NAMES, mod.FIELD_NAMES);
+            }
+            if (syntaxNames) break;
           }
-          if (mod.FIELD_NAMES) {
-            Object.assign(FIELD_NAMES, mod.FIELD_NAMES);
-          }
-          if (syntaxNames) break;
+        } catch {
+          // Companion bindings optional; ignore if not present
         }
       }
     }

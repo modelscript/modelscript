@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { isSupportedModelFile } from "./utils/fileUtils";
 
 export function registerScmIntegration(context: vscode.ExtensionContext, client: LanguageClient | undefined) {
   context.subscriptions.push(
@@ -43,7 +44,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
             const stagedDiffs = [];
             for (const change of changes) {
               const uri = change.uri;
-              if (/\.(mo|mos|sysml|sysml2|step|stp|p21|owl|ttl|ofn|csv)$/i.test(uri.fsPath)) {
+              if (isSupportedModelFile(uri.fsPath)) {
                 try {
                   // Use git show to get HEAD version
                   const oldText = await repository.show("HEAD", uri.fsPath);

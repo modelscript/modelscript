@@ -408,7 +408,7 @@ export const modelicaLanguage = language({
         }
 
         if (!targetClassName) return [];
-        const { extractModelicaCadComponents } = await import("./cad.js");
+        const { extractModelicaCadComponents } = await import("./extensions/cad.js");
         return extractModelicaCadComponents(sharedContext, targetClassName, targetSymbolId, params.uri);
       },
       "modelscript/exportShapeToStep": async (ctx: any, params: { uri: string; className: string }) => {
@@ -417,7 +417,7 @@ export const modelicaLanguage = language({
           throw new Error(`Could not resolve Modelica class ${params.className}`);
         }
         const queryDB = ctx.workspaceManager.globalModelicaQueryEngine.toQueryDB();
-        const { ShapeFlattener } = await import("./shape-flattener.js");
+        const { ShapeFlattener } = await import("./extensions/shape-flattener.js");
         const { compileAssemblyToStep } = await import("@modelscript/cad");
         const flattener = new ShapeFlattener(queryDB);
         const assembly = flattener.flatten(classInstance.symbolId);
@@ -430,7 +430,7 @@ export const modelicaLanguage = language({
           throw new Error(`Could not resolve Modelica class ${params.className}`);
         }
         const queryDB = ctx.workspaceManager.globalModelicaQueryEngine.toQueryDB();
-        const { StudyFlattener } = await import("./study-flattener.js");
+        const { StudyFlattener } = await import("./extensions/study-flattener.js");
         const flattener = new StudyFlattener(queryDB);
         return flattener.flatten(classInstance.symbolId);
       },

@@ -6,56 +6,39 @@
  * structural analysis, numerical integrators, and symbolic solvers.
  */
 
-export * from "./brownfield_alignment.js";
-export * from "./config_client.js";
-export * from "./ctrf_reporter.js";
-export * from "./diff.js";
-export * from "./indexeddb_snapshot.js";
-export * from "./msl_ffi.js";
-export * from "./oslc_gateway.js";
-export * from "./parallel_reasoner.js";
+export * from "./analysis/wasm_blt.js";
+export * from "./analysis/wasm_egraph_simplifier.js";
+export * from "./analysis/wasm_interval.js";
+export * from "./analysis/wasm_pantelides.js";
+export * from "./autodiff/wasm_fused_kernel.js";
+export * from "./autodiff/wasm_isolation.js";
+export * from "./autodiff/wasm_tape.js";
+export * from "./config/config_client.js";
+export * from "./config/indexeddb_snapshot.js";
+export * from "./dae/wasm_dae.js";
+export * from "./dae/wasm_dae_printer.js";
+export * from "./dae/wasm_evaluator.js";
+export * from "./dae/wasm_fold.js";
+export * from "./dae/wasm_init.js";
+export * from "./dae/wasm_statement_executor.js";
+export * from "./gpu/wasm_gpu_buffers.js";
+export * from "./gpu/wasm_memory_planner.js";
+export * from "./interop/brownfield_alignment.js";
+export * from "./interop/oslc_gateway.js";
+export * from "./interop/polyglot-transformer.js";
+export * from "./interop/provenance.js";
+export * from "./interop/reqif.js";
+export * from "./interop/thread_hypergraph.js";
+export * from "./interop/thread_serializer.js";
+export * from "./interop/vcycle_verifier.js";
+export * from "./ontology/parallel_reasoner.js";
+export * from "./ontology/wasm_ontology.js";
 export * from "./pipeline.js";
-export * from "./polyglot-transformer.js";
-export * from "./provenance.js";
-export * from "./reqif.js";
 export * from "./runtime.js";
-export * from "./solvers_bridge.js";
-export * from "./thread_hypergraph.js";
-export * from "./thread_serializer.js";
-export * from "./type_registry.js";
-export * from "./vcycle_verifier.js";
-export * from "./wasm_bdf.js";
-export * from "./wasm_blt.js";
-export * from "./wasm_cache_store.js";
-export * from "./wasm_container.js";
-export * from "./wasm_cosim.js";
-export * from "./wasm_dae.js";
-export * from "./wasm_dae_printer.js";
-export * from "./wasm_doe.js";
-export * from "./wasm_dopri5.js";
-export * from "./wasm_egraph_simplifier.js";
-export * from "./wasm_evaluator.js";
-export * from "./wasm_fmu_subsystem.js";
-export * from "./wasm_fold.js";
-export * from "./wasm_fuml_engine.js";
-export * from "./wasm_fused_kernel.js";
-export * from "./wasm_gaussian.js";
-export * from "./wasm_gpu_buffers.js";
-export * from "./wasm_groebner.js";
-export * from "./wasm_init.js";
-export * from "./wasm_interval.js";
-export * from "./wasm_isolation.js";
-export * from "./wasm_memory_planner.js";
-export * from "./wasm_minlp.js";
-export * from "./wasm_monte_carlo.js";
-export * from "./wasm_ontology.js";
-export * from "./wasm_pantelides.js";
-export * from "./wasm_query_engine.js";
-export * from "./wasm_rtc_statemachine.js";
-export * from "./wasm_sparse_jacobian.js";
-export * from "./wasm_statement_executor.js";
-export * from "./wasm_string_pool.js";
-export * from "./wasm_tape.js";
+export * from "./simulation/wasm_cosim.js";
+export * from "./simulation/wasm_doe.js";
+export * from "./simulation/wasm_fmu_subsystem.js";
+export * from "./simulation/wasm_monte_carlo.js";
 export {
   VerificationRunner,
   VerifyOp,
@@ -69,11 +52,28 @@ export {
   type TrajectoryConstraint,
   type VerificationResult,
   type SimulationResult as VerifierSimulationResult,
-} from "./wasm_verifier.js";
-export * from "./wasm_workspace.js";
+} from "./simulation/wasm_verifier.js";
+export * from "./solvers/solvers_bridge.js";
+export * from "./solvers/wasm_bdf.js";
+export * from "./solvers/wasm_dopri5.js";
+export * from "./solvers/wasm_gaussian.js";
+export * from "./solvers/wasm_groebner.js";
+export * from "./solvers/wasm_minlp.js";
+export * from "./solvers/wasm_sparse_jacobian.js";
+export * from "./statemachine/wasm_fuml_engine.js";
+export * from "./statemachine/wasm_rtc_statemachine.js";
+export * from "./util/ctrf_reporter.js";
+export * from "./util/diff.js";
+export * from "./util/msl_ffi.js";
+export * from "./util/type_registry.js";
+export * from "./workspace/wasm_cache_store.js";
+export * from "./workspace/wasm_container.js";
+export * from "./workspace/wasm_query_engine.js";
+export * from "./workspace/wasm_string_pool.js";
+export * from "./workspace/wasm_workspace.js";
 export {
   LanguageWorkspaceIndex,
   LanguageWorkspaceIndex as WasmWorkspaceIndex,
   LanguageWorkspaceIndex as WorkspaceIndex,
-} from "./wasm_workspace.js";
+} from "./workspace/wasm_workspace.js";
 export type CSTNode = any;

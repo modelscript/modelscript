@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { buildParser, language } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 

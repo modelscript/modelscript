@@ -31,37 +31,25 @@
       "types": "./dist/src/builtins.d.ts",
       "default": "./dist/src/builtins.js"
     },
-    "./predefined": {
-      "types": "./dist/src/predefined.d.ts",
-      "default": "./dist/src/predefined.js"
-    },
     "./units": {
       "types": "./dist/src/units.d.ts",
       "default": "./dist/src/units.js"
     },
-    "./annotation": {
-      "types": "./dist/src/annotation.d.ts",
-      "default": "./dist/src/annotation.js"
-    },
     "./geometry": {
-      "types": "./dist/src/geometry.d.ts",
-      "default": "./dist/src/geometry.js"
+      "types": "./dist/src/extensions/geometry.d.ts",
+      "default": "./dist/src/extensions/geometry.js"
     },
     "./csg": {
-      "types": "./dist/src/csg.d.ts",
-      "default": "./dist/src/csg.js"
-    },
-    "./scripting": {
-      "types": "./dist/src/scripting.d.ts",
-      "default": "./dist/src/scripting.js"
+      "types": "./dist/src/extensions/csg.d.ts",
+      "default": "./dist/src/extensions/csg.js"
     },
     "./errors": {
       "types": "./dist/src/errors.d.ts",
       "default": "./dist/src/errors.js"
     },
     "./po": {
-      "types": "./dist/src/po.d.ts",
-      "default": "./dist/src/po.js"
+      "types": "./dist/src/extensions/po.d.ts",
+      "default": "./dist/src/extensions/po.js"
     },
     "./diagram": {
       "types": "./dist/src/diagram/index.d.ts",
@@ -76,8 +64,8 @@
       "default": "./dist/src/keywords.js"
     },
     "./multibody-generator": {
-      "types": "./dist/src/multibody-generator.d.ts",
-      "default": "./dist/src/multibody-generator.js"
+      "types": "./dist/src/extensions/multibody-generator.d.ts",
+      "default": "./dist/src/extensions/multibody-generator.js"
     },
     "./modification-args": {
       "types": "./dist/src/modifications.d.ts",
@@ -96,12 +84,20 @@
       "default": "./dist/src/flattener.js"
     },
     "./shape-flattener": {
-      "types": "./dist/src/shape-flattener.d.ts",
-      "default": "./dist/src/shape-flattener.js"
+      "types": "./dist/src/extensions/shape-flattener.d.ts",
+      "default": "./dist/src/extensions/shape-flattener.js"
     },
     "./study-flattener": {
-      "types": "./dist/src/study-flattener.d.ts",
-      "default": "./dist/src/study-flattener.js"
+      "types": "./dist/src/extensions/study-flattener.d.ts",
+      "default": "./dist/src/extensions/study-flattener.js"
+    },
+    "./extensions": {
+      "types": "./dist/src/extensions/index.d.ts",
+      "default": "./dist/src/extensions/index.js"
+    },
+    "./extensions/*": {
+      "types": "./dist/src/extensions/*.d.ts",
+      "default": "./dist/src/extensions/*.js"
     },
     "./expression-evaluator": {
       "types": "./dist/src/expression-evaluator.d.ts",

@@ -31,12 +31,15 @@ import { ParserService } from "./services/ParserService.js";
 import { ValidationService } from "./services/ValidationService.js";
 import { WorkspaceManager } from "./services/WorkspaceManager.js";
 
+import { ArenaQueryFlattener, deriveSimplification } from "@modelscript/modelica";
+import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import * as modelicaDiagramOps from "@modelscript/modelica/diagram";
 import {
   createModelicaQueryEngine,
   createModelicaWorkspaceIndex,
   injectPredefinedTypes,
 } from "@modelscript/modelica/factory";
+import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
 import {
   buildSysML2DiagramData,
@@ -58,6 +61,11 @@ export function startNodeServer() {
   (globalThis as any).injectPredefinedTypes = injectPredefinedTypes;
   (globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
   (globalThis as any).sysml2DiagramOps = { ...sysml2DiagramOps, buildSysML2DiagramData };
+  (globalThis as any).extractSysML2Constraints = extractSysML2Constraints;
+  (globalThis as any).mapConstraintsToOptimizer = mapConstraintsToOptimizer;
+  (globalThis as any).ArenaScriptInterpreter = ArenaScriptInterpreter;
+  (globalThis as any).ArenaQueryFlattener = ArenaQueryFlattener;
+  (globalThis as any).deriveSimplification = deriveSimplification;
 
   const connection = createConnection(ProposedFeatures.all);
   const documents = new TextDocuments(TextDocument);

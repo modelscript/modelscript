@@ -432,11 +432,20 @@ export async function activate(context: vscode.ExtensionContext) {
           const cmdId = `modelscript.action.${action.id}`;
           const handler = async (args?: any) => {
             const activeDoc = vscode.window.activeTextEditor?.document;
+            const inputs = typeof args === "object" && args ? { ...args } : {};
+            if (!inputs.documentText && activeDoc) {
+              inputs.documentText = activeDoc.getText();
+            }
+            if (!inputs.name && activeDoc) {
+              const text = activeDoc.getText();
+              const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+              if (m) inputs.name = m[1];
+            }
             return await client?.sendRequest("modelscript/executeAction", {
               actionId: action.id,
               uri: args?.uri ?? activeDoc?.uri.toString(),
               languageId: action.languageId ?? activeDoc?.languageId,
-              inputs: args,
+              inputs,
             });
           };
           context.subscriptions.push(vscode.commands.registerCommand(cmdId, handler));
@@ -1120,6 +1129,14 @@ END-ISO-10303-21;`;
       if (!uri && editor?.document) {
         uri = editor.document.uri.toString();
       }
+      if (!inputs.documentText && editor?.document) {
+        inputs.documentText = editor.document.getText();
+      }
+      if (!inputs.name && editor?.document) {
+        const text = editor.document.getText();
+        const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+        if (m) inputs.name = m[1];
+      }
       try {
         await vscode.window.withProgress(
           {
@@ -1170,6 +1187,17 @@ END-ISO-10303-21;`;
         } else {
           inputs = args;
         }
+      }
+      if (!uri && editor?.document) {
+        uri = editor.document.uri.toString();
+      }
+      if (!inputs.documentText && editor?.document) {
+        inputs.documentText = editor.document.getText();
+      }
+      if (!inputs.name && editor?.document) {
+        const text = editor.document.getText();
+        const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+        if (m) inputs.name = m[1];
       }
       try {
         const lang = editor?.document.languageId ?? "modelica";

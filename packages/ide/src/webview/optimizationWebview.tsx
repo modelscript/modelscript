@@ -42,11 +42,11 @@ if (root) {
           <input type="number" id="opt-iters" value="200" style="width:80px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);">
         </div>
         <div style="padding: 8px 16px; font-size: 11px;">
-          <label style="display:block;margin-bottom:4px">SysML URI (Optional)</label>
+          <label style="display:block;margin-bottom:4px">Constraints Model URI (Optional)</label>
           <input type="text" id="opt-sysml-uri" style="width:100%;box-sizing:border-box;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);">
         </div>
         <div style="padding: 8px 16px; font-size: 11px;">
-          <label style="display:block;margin-bottom:4px">SysML Filter (Optional)</label>
+          <label style="display:block;margin-bottom:4px">Constraints Filter (Optional)</label>
           <input type="text" id="opt-sysml-filter" style="width:100%;box-sizing:border-box;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);">
         </div>
         <div style="padding: 12px 16px;">

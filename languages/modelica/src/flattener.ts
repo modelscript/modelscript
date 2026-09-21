@@ -9467,7 +9467,8 @@ export class ModelicaFlattener {
     const isStrictWasm = this.options.backend === "wasm";
     const isDiffMode = this.options.backend === "diff";
     const allowWasm =
-      (this.options.backend === "wasm" || this.options.backend === "hybrid") && Boolean(this.options.useWasmKernel);
+      this.options.backend === "wasm" ||
+      ((this.options.backend === "hybrid" || !this.options.backend) && Boolean(this.options.useWasmKernel));
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
@@ -9489,6 +9490,9 @@ export class ModelicaFlattener {
         const wasmFlattener = dae.exports.flattener_create(dae.ptr);
         if (wasmFlattener) {
           const varCount = dae.exports.flattener_flatten(wasmFlattener, classNodePtr, rootProgramPtr);
+          if (typeof dae.exports.flattener_getErrorCode === "function") {
+            (dae as any).wasmErrorCode = dae.exports.flattener_getErrorCode(wasmFlattener);
+          }
           if (varCount > 0) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
@@ -9627,24 +9631,17 @@ export class ModelicaFlattener {
         | undefined;
       if (wasmDiff) {
         delete (this as any)._wasmDiffStats;
-        if (wasmDiff.error) {
-          targetDae.diagnostics.push({
-            code: 1098,
-            rule: "flattener-diff-error",
-            severity: "warning",
-            message: `[DiffFlattener] WASM flattener failed: ${wasmDiff.error}`,
-            range: null,
-          });
-        } else {
-          const varMatch = wasmDiff.varCount === targetDae.varCount;
-          const eqMatch = wasmDiff.eqCount === targetDae.eqCount;
-          targetDae.diagnostics.push({
-            code: varMatch && eqMatch ? 1097 : 1098,
-            rule: "flattener-diff-report",
-            severity: varMatch && eqMatch ? "info" : "warning",
-            message: `[DiffFlattener] ${varMatch && eqMatch ? "PARITY MATCH" : "PARITY MISMATCH"}: vars (WASM=${wasmDiff.varCount}, TS=${targetDae.varCount}), eqs (WASM=${wasmDiff.eqCount}, TS=${targetDae.eqCount})`,
-            range: null,
-          });
+        (targetDae as any).diffReport = wasmDiff;
+        if (process.env.DEBUG_DIFF === "1") {
+          if (wasmDiff.error) {
+            console.warn(`[DiffFlattener] WASM flattener failed: ${wasmDiff.error}`);
+          } else {
+            const varMatch = wasmDiff.varCount === targetDae.varCount;
+            const eqMatch = wasmDiff.eqCount === targetDae.eqCount;
+            console.log(
+              `[DiffFlattener] ${varMatch && eqMatch ? "PARITY MATCH" : "PARITY MISMATCH"}: vars (WASM=${wasmDiff.varCount}, TS=${targetDae.varCount}), eqs (WASM=${wasmDiff.eqCount}, TS=${targetDae.eqCount})`,
+            );
+          }
         }
       }
     };

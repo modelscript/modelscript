@@ -61,8 +61,10 @@ export class OptimizationPanel {
               controls: msg.payload.controls,
               tolerance: msg.payload.tolerance,
               maxIterations: msg.payload.maxIterations,
-              sysmlUri: msg.payload.sysmlUri,
-              sysmlFilter: msg.payload.sysmlFilter,
+              constraintsUri: msg.payload.constraintsUri ?? msg.payload.sysmlUri,
+              constraintsFilter: msg.payload.constraintsFilter ?? msg.payload.sysmlFilter,
+              sysmlUri: msg.payload.constraintsUri ?? msg.payload.sysmlUri,
+              sysmlFilter: msg.payload.constraintsFilter ?? msg.payload.sysmlFilter,
             });
             const isDark =
               vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||

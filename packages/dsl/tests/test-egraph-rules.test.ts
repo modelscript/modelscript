@@ -1,4 +1,6 @@
 import { compileRewriteRules, TRIG_RULES } from "@modelscript/dsl/codegen/compile_rules.js";
+import expect from "expect";
+import { describe, it } from "node:test";
 
 describe("E-Graph Rewrite Rules & Simplifications", () => {
   it("compiles string S-expression rules correctly", () => {

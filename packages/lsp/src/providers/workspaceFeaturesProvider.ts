@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-useless-assignment */
-import { deriveSimplification } from "@modelscript/modelica";
 import {
   CodeAction,
   CodeActionKind,
@@ -251,26 +250,43 @@ export function registerWorkspaceFeaturesProvider(
         const termText = text.substring(startOffset, endOffset).trim();
 
         if (termText) {
+          const deriveSimp =
+            (globalThis as any).deriveSimplification ??
+            ((kind: string, varName: string, options?: any) => {
+              switch (kind) {
+                case "power":
+                  return `(${options?.power ?? 2}) * ${varName}`;
+                case "quadratic_drag":
+                  return `2 * ${varName}`;
+                case "exp":
+                  return `1 + ${varName}`;
+                case "sqrt":
+                  return `1 + 0.5 * (${varName} - 1)`;
+                default:
+                  return `/* linear proxy */ ${varName}`;
+              }
+            });
+
           let simplified: string | null = null;
           const powMatch = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\^\s*([0-9]+(?:\.[0-9]+)?)$/);
           if (powMatch) {
             const varName = powMatch[1];
             const power = parseFloat(powMatch[2]);
-            simplified = deriveSimplification("power", varName, { power });
+            simplified = deriveSimp("power", varName, { power });
           } else if (/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*abs\(\s*\1\s*\)$/.test(termText)) {
             const varName = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/)?.[1] || "v";
-            simplified = deriveSimplification("quadratic_drag", varName);
+            simplified = deriveSimp("quadratic_drag", varName);
           } else if (/^abs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s*\*\s*\1$/.test(termText)) {
             const varName = termText.match(/abs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/)?.[1] || "v";
-            simplified = deriveSimplification("quadratic_drag", varName);
+            simplified = deriveSimp("quadratic_drag", varName);
           } else if (/^exp\(\s*([^()]+)\s*\)$/.test(termText)) {
             const arg = termText.match(/^exp\(\s*([^()]+)\s*\)$/)?.[1] || "x";
             const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
-            simplified = deriveSimplification("exp", varName, { arg });
+            simplified = deriveSimp("exp", varName, { arg });
           } else if (/^sqrt\(\s*([^()]+)\s*\)$/.test(termText)) {
             const arg = termText.match(/^sqrt\(\s*([^()]+)\s*\)$/)?.[1] || "x";
             const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
-            simplified = deriveSimplification("sqrt", varName, { arg });
+            simplified = deriveSimp("sqrt", varName, { arg });
           } else {
             simplified = `/* linear proxy */ ${termText}`;
           }

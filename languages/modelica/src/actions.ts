@@ -43,17 +43,29 @@ function ensureClassIndexed(
 ): { firstId: number | undefined; queryDB: any } {
   let queryDB = queryEngine.toQueryDB();
   let firstId = resolveClassId(queryEngine, queryDB, className);
-  if (
-    firstId === undefined &&
-    context.uri &&
-    context.documentText &&
-    (context.workspaceManager as any)?.globalWorkspaceIndex
-  ) {
+  if (firstId === undefined && context.uri && context.documentText) {
     try {
-      const ws = (context.workspaceManager as any).globalWorkspaceIndex;
-      const sharedCtx = (globalThis as any).sharedContext;
-      if (sharedCtx) {
-        const tree = sharedCtx.parse(".mo", context.documentText);
+      const ws =
+        (context.workspaceManager as any)?.globalWorkspaceIndex ??
+        (context.workspaceManager as any)?.getWorkspaceIndex?.("modelica");
+      const sharedCtx =
+        (globalThis as any).sharedContext ??
+        (context as any).state?.sharedContext ??
+        (context.workspaceManager as any)?.sharedContext;
+
+      let parseFn = sharedCtx?.parse;
+      if (typeof parseFn !== "function") {
+        const parser =
+          (globalThis as any).modelicaParser ??
+          (context.workspaceManager as any)?.parserService?.getParser?.("modelica") ??
+          (context.workspaceManager as any)?.parserService?.parser;
+        if (parser && typeof parser.parse === "function") {
+          parseFn = (_ext: string, input: string) => parser.parse(input);
+        }
+      }
+
+      if (typeof parseFn === "function" && ws) {
+        const tree = parseFn(".mo", context.documentText);
         if (tree) {
           ws.indexDocument(context.uri, () => tree.rootNode);
           const unified = ws.toUnified();
@@ -64,8 +76,33 @@ function ensureClassIndexed(
           }
         }
       }
-    } catch {
-      /* ignore fallback indexing error */
+
+      if (firstId === undefined && ws?.unifiedIndex) {
+        const entries = ws.unifiedIndex.byName?.get(className) || [];
+        firstId = entries[0];
+        if (firstId === undefined && ws.unifiedIndex.symbols) {
+          for (const [id, entry] of ws.unifiedIndex.symbols.entries()) {
+            if (entry.name === className || entry.qualifiedName === className) {
+              firstId = id;
+              break;
+            }
+          }
+        }
+        if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
+          queryEngine.updateIndex(ws.toUnified());
+          queryDB = queryEngine.toQueryDB();
+        }
+      }
+
+      if (firstId === undefined && (context.workspaceManager as any)?.unifiedWorkspace) {
+        const uws = (context.workspaceManager as any).unifiedWorkspace.toUnifiedPartial();
+        if (uws?.byName) {
+          const entries = uws.byName.get(className) || [];
+          firstId = entries[0];
+        }
+      }
+    } catch (err) {
+      console.warn("[ensureClassIndexed] Error during fallback indexing:", err);
     }
   }
   return { firstId, queryDB };

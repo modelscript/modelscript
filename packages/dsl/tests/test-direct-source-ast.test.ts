@@ -1,7 +1,9 @@
 import { buildParser, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import { extractLanguageAST } from "@modelscript/dsl/codegen/ast-loader.js";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 

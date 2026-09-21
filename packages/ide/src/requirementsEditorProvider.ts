@@ -248,7 +248,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
 
       if (reqs.length === 0) {
         panel.innerHTML = '<div class="empty-state"><h3>No requirements found</h3>' +
-          '<p>Open a .sysml file containing requirement definitions or usages.</p></div>';
+          '<p>Open a model file containing requirement definitions or usages.</p></div>';
         return;
       }
 
@@ -288,7 +288,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       const panel = document.getElementById('matrixPanel');
       if (!matrix || matrix.links.length === 0) {
         panel.innerHTML = '<div class="empty-state"><h3>No traceability links</h3>' +
-          '<p>Add satisfy or verify usages to your SysML model.</p></div>';
+          '<p>Add satisfy or verify relationships to your model.</p></div>';
         return;
       }
 

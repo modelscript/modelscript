@@ -1,5 +1,6 @@
-import { describe, expect, test } from "@jest/globals";
 import { generateWit } from "@modelscript/dsl/codegen/wit.js";
+import expect from "expect";
+import { describe, test } from "node:test";
 
 describe("WASM Interface Types (WIT) Generator", () => {
   test("generates valid WIT interface IDL with model accessors", () => {
