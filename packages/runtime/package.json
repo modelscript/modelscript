@@ -263,7 +263,8 @@
     "asbuild:release": "asc assembly/index.ts --target release",
     "build": "npm run clean && npm run asbuild && tsc",
     "clean": "rimraf dist build",
-    "lint": "eslint src --no-warn-ignored"
+    "lint": "eslint src --no-warn-ignored",
+    "test": "npx tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/dsl": "*"

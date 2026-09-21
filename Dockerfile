@@ -25,7 +25,6 @@ COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
-COPY extensions/vscode/package.json extensions/vscode/
 COPY apps/ide/package.json apps/ide/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 
@@ -56,7 +55,6 @@ COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
-COPY extensions/vscode/package.json extensions/vscode/
 COPY apps/ide/package.json apps/ide/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=deps /app/languages/modelica/src languages/modelica/src
@@ -132,7 +130,6 @@ FROM deps AS build-ide-false
 COPY scripts scripts
 COPY packages packages
 COPY languages languages
-COPY extensions extensions
 COPY apps/ide apps/ide
 COPY apps/morsel apps/morsel
 RUN npx nx build @modelscript/ide
@@ -142,9 +139,6 @@ FROM deps AS build-ide-true
 COPY apps/ide/dist apps/ide/dist
 COPY apps/ide/vscode-web apps/ide/vscode-web
 COPY apps/ide/github-fs/dist apps/ide/github-fs/dist
-COPY extensions/vscode/dist extensions/vscode/dist
-COPY extensions/vscode/syntaxes extensions/vscode/syntaxes
-COPY extensions/vscode/language-configuration.json extensions/vscode/
 COPY apps/morsel/public apps/morsel/public
 
 FROM build-ide-${PREBUILT} AS build-ide
@@ -153,7 +147,6 @@ FROM node:22-alpine AS ide
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/ide/package.json apps/ide/
-COPY extensions/vscode/package.json extensions/vscode/
 COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
@@ -166,9 +159,6 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=build-ide /app/apps/ide/dist apps/ide/dist
 COPY --from=build-ide /app/apps/ide/vscode-web apps/ide/vscode-web
 COPY --from=build-ide /app/apps/ide/github-fs/dist apps/ide/github-fs/dist
-COPY --from=build-ide /app/extensions/vscode/dist extensions/vscode/dist
-COPY --from=build-ide /app/extensions/vscode/syntaxes extensions/vscode/syntaxes
-COPY --from=build-ide /app/extensions/vscode/language-configuration.json extensions/vscode/
 COPY --from=build-ide /app/apps/morsel/public apps/morsel/public
 COPY --from=build-ide /app/node_modules/@vscode node_modules/@vscode
 COPY --from=download-model /app/apps/ide/models apps/ide/models

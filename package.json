@@ -20,6 +20,7 @@
   "workspaces": [
     "apps/*",
     "packages/*",
+    "packages/examples/*",
     "languages/*",
     "languages/*/*"
   ],
@@ -60,32 +61,29 @@
     "dompurify": "^3.4.0",
     "elliptic": "^6.6.1",
     "hono": "^4.12.14",
-    "three": "^0.184.0",
-    "tree-sitter-cli": "0.26.9"
-  },
-  "dependencies": {
-    "@eslint/config-array": "^0.19.2",
-    "@eslint/eslintrc": "^3.2.0",
-    "ajv": "^8.17.0",
-    "glob": "^13.0.6",
-    "lodash.merge": "^4.6.2",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "source-map": "^0.8.0"
+    "three": "^0.184.0"
   },
   "devDependencies": {
+    "@eslint/config-array": "^0.19.2",
+    "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^10.0.1",
     "@nx/js": "^22.7.3",
     "@types/node": "^25.3.2",
+    "ajv": "^8.17.0",
     "esbuild": "^0.28.0",
     "eslint": "^10.1.0",
+    "glob": "^13.0.6",
     "husky": "^9.1.7",
     "jiti": "^2.6.1",
     "lint-staged": "^16.4.0",
+    "lodash.merge": "^4.6.2",
     "nx": "^22.6.5",
     "prettier": "^3.6.2",
     "prettier-plugin-organize-imports": "^4.3.0",
     "prettier-plugin-packagejson": "^3.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "source-map": "^0.8.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3"

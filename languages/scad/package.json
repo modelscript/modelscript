@@ -34,7 +34,9 @@
   "scripts": {
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
-    "clean": "rimraf dist src-gen as-gen *.wasm"
+    "clean": "rimraf dist src-gen as-gen *.wasm",
+    "lint": "eslint src --no-warn-ignored",
+    "test": "npx tsx tests/test-scad-evaluator.ts"
   },
   "dependencies": {
     "@modelscript/cad": "*",

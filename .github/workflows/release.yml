@@ -76,22 +76,24 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
 
       # --- Publish VS Code Extension ---
+      - name: Build VS Code Extension
+        run: npm run build:extension
       - name: Sync VS Code Extension Version
-        run: npm pkg set version=$(node -p 'require("./packages/core/package.json").version') --workspace=extensions/vscode
+        run: node -e 'const pkg = JSON.parse(require("fs").readFileSync("dist/extension/package.json")); pkg.version = require("./packages/runtime/package.json").version; require("fs").writeFileSync("dist/extension/package.json", JSON.stringify(pkg, null, 2));'
       - name: Package VS Code Extension
         run: npx @vscode/vsce package --no-dependencies
-        working-directory: extensions/vscode
+        working-directory: dist/extension
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
           name: modelscript-vsix
-          path: extensions/vscode/*.vsix
+          path: dist/extension/*.vsix
       - name: Publish to VS Code Marketplace
         run: npx @vscode/vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
-        working-directory: extensions/vscode
+        working-directory: dist/extension
       - name: Publish to Open VSX
         run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
-        working-directory: extensions/vscode
+        working-directory: dist/extension
 
       # --- Deploy Apps (Morsel, IDE) ---
       - name: SPA fallback for Morsel
@@ -138,7 +140,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract version from package.json
         id: version
-        run: echo "version=$(node -p 'require("./packages/core/package.json").version')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p 'require("./packages/runtime/package.json").version')" >> "$GITHUB_OUTPUT"
       - name: Build and push Docker images
         uses: docker/bake-action@v6
         with:

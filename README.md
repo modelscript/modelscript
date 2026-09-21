@@ -26,7 +26,7 @@ Designed for modern workflows, it features a robust engine for incremental compi
 
 ## Monorepo Structure
 
-This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces**. The structure reflects our transition to a fully modular, high-performance compiler and simulator architecture.
+This project is a monorepo managed with **Nx** and **npm workspaces**. The structure reflects our transition to a fully modular, high-performance compiler and simulator architecture.
 
 ### Packages (`packages/`)
 
@@ -38,29 +38,34 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 | [`@modelscript/lsp`](./packages/lsp/)           | Multi-language Language Server Protocol server, language services, and multi-file workspace indexing                                            |
 | [`@modelscript/diagram`](./packages/diagram/)   | Polyglot diagram builder, auto-layout, and diagram protocol                                                                                     |
 | [`@modelscript/exchange`](./packages/exchange/) | FMI 2.0/3.0 FMU export/import, SSP container toolkit, and Co-Simulation master orchestrator                                                     |
+| [`@modelscript/cad`](./packages/cad/)           | CAD and ECAD engine — CSG primitives, OpenCascade operations, STEP serialization, and Gerber parser                                             |
+| [`@modelscript/mcp`](./packages/mcp/)           | Model Context Protocol (MCP) server, tools, and resources                                                                                       |
+| [`@modelscript/ide-client`](./packages/ide/)    | VS Code Web Extension client, custom editors, and webview panels                                                                                |
 
 ### Languages (`languages/`)
 
-| Package                                          | Description                                                                 |
-| ------------------------------------------------ | --------------------------------------------------------------------------- |
-| [`@modelscript/csv`](./languages/csv/)           | CSV tabular data parsing and validation                                     |
-| [`@modelscript/example`](./languages/example/)   | Example language configuration illustrating how to add new languages        |
-| [`@modelscript/modelica`](./languages/modelica/) | Tree-sitter grammar (native + WASM) and language configuration for Modelica |
-| [`@modelscript/owl2`](./languages/owl2/)         | OWL2 Functional Syntax parsing and ontological knowledge extraction         |
-| [`@modelscript/step`](./languages/step/)         | STEP (ISO 10303) grammar and querying for CAD/CAE interoperability          |
-| [`@modelscript/sysml2`](./languages/sysml2/)     | SysML v2 tree-sitter AST querying, handling, and verification               |
+| Package                                          | Description                                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------------ |
+| [`@modelscript/csv`](./languages/csv/)           | CSV tabular data parsing and validation                                  |
+| [`@modelscript/example`](./languages/example/)   | Example language configuration illustrating how to add new languages     |
+| [`@modelscript/modelica`](./languages/modelica/) | Native WebAssembly GLR parser and language configuration for Modelica    |
+| [`@modelscript/owl2`](./languages/owl2/)         | OWL2 Functional Syntax parsing and ontological knowledge extraction      |
+| [`@modelscript/scad`](./languages/scad/)         | OpenSCAD language support, CSG evaluator, and AST patcher                |
+| [`@modelscript/ssp`](./languages/ssp/)           | System Structure and Parameterization (SSP) package definitions          |
+| [`@modelscript/step`](./languages/step/)         | STEP (ISO 10303) grammar and querying for CAD/CAE interoperability       |
+| [`@modelscript/sysml2`](./languages/sysml2/)     | SysML v2 AST querying, KerML standard library snapshot, and verification |
 
-### Applications (`apps/` & `extensions/`)
+### Applications (`apps/`)
 
-| Package                                       | Description                                                                        |
-| --------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`@modelscript/cli`](./apps/cli/)             | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
-| [`@modelscript/api`](./apps/api/)             | REST API for ModelScript — simulation, publishing, GraphQL, SPARQL, and RDF        |
-| [`@modelscript/morsel`](./apps/morsel/)       | Visual editor — code editing, diagram viewer, simulation, and plotting             |
-| [`@modelscript/web`](./apps/web/)             | Web frontend for browsing and exploring libraries (NPM-style registry)             |
-| [`@modelscript/ide`](./apps/ide/)             | ModelScript VS Code Web IDE with GitHub/GitLab repository integration              |
-| [`@modelscript/site`](./apps/site/)           | Main modelscript.org website                                                       |
-| [`@modelscript/vscode`](./extensions/vscode/) | VS Code extension — syntax highlighting, LSP client, diagram view                  |
+| Package                                 | Description                                                                        |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`@modelscript/cli`](./apps/cli/)       | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
+| [`@modelscript/api`](./apps/api/)       | REST API for ModelScript — simulation, publishing, GraphQL, SPARQL, and RDF        |
+| [`@modelscript/morsel`](./apps/morsel/) | Visual editor — code editing, diagram viewer, simulation, and plotting             |
+| [`@modelscript/web`](./apps/web/)       | Web frontend for browsing and exploring libraries (NPM-style registry)             |
+| [`@modelscript/ide`](./apps/ide/)       | ModelScript VS Code Web IDE with GitHub/GitLab repository integration              |
+| [`@modelscript/site`](./apps/site/)     | Main modelscript.org website                                                       |
+| [`@modelscript/docs`](./apps/docs/)     | ModelScript documentation website (VitePress)                                      |
 
 ## Core Features
 
@@ -70,7 +75,7 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 - **Incremental Flattening** — state-of-the-art incremental compilation and unrolling of hierarchical models into flat Differential Algebraic Equations (DAE).
 - **FMU & ROM** — seamless FMU import/export, integration, and high-performance surrogate ROM generation from FMUs.
 - **Optimization & Calibration** — direct collocation solvers for optimal control problems, model optimization, and parameter calibration.
-- **Accurate Parsing** — custom Tree-sitter grammars for efficient, incremental parsing of all supported domains.
+- **Accurate Parsing** — custom WebAssembly GLR incremental parsers for all supported domains.
 - **Semantic Analysis** — full scope and name resolution for complex multi-domain hierarchies.
 - **Diagram Rendering** — interactive SVG diagrams and X6-based visual layouts with auto-placement.
 - **Language Server** — rich completions, hover, diagnostics, formatting, and color provider.

@@ -40,7 +40,7 @@ export default defineConfig({
     ],
     socialLinks: [{ icon: "github", link: "https://github.com/modelscript/modelscript" }],
     footer: {
-      message: "Released under the MIT License.",
+      message: "Released under the GNU AGPL v3 License.",
       copyright: "Copyright © 2026-present ModelScript Team",
     },
   },

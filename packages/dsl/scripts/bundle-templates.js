@@ -30,7 +30,10 @@ function collectTsFiles(dir, baseDir = dir) {
 }
 
 const runtimeFiles = collectTsFiles(runtimeWasmDir);
-const dslFiles = collectTsFiles(dslRuntimeDir);
+const dslFiles = collectTsFiles(dslRuntimeDir).filter((file) => {
+  // If a file is a local shim pointing to runtimeWasmDir (e.g. arena.ts), skip it
+  return !runtimeFiles.some((rf) => rf.basename === file.basename && rf.relPath === file.relPath);
+});
 
 const allFiles = [...runtimeFiles, ...dslFiles];
 
@@ -55,6 +58,8 @@ for (const file of allFiles) {
     varName = "daeTypesCode";
   } else if (file.relPath === "dae/accessors.ts") {
     varName = "daeAccessorsCode";
+  } else if (file.relPath === "analysis/coloring.ts") {
+    varName = "analysisColoringCode";
   } else {
     varName = file.basename.replace(".ts", "Code").replace(/-([a-z])/g, function (g) {
       return g[1].toUpperCase();
@@ -63,6 +68,17 @@ for (const file of allFiles) {
 
   out += `export const ${varName} = \`${cleaned}\`;\n\n`;
   dtsOut += `export declare const ${varName}: string;\n`;
+
+  // Also export camelCase alias if varName contains underscores
+  if (varName.includes("_")) {
+    const camelVarName = varName.replace(/_([a-z0-9])/g, function (_, char) {
+      return char.toUpperCase();
+    });
+    if (camelVarName !== varName) {
+      out += `export const ${camelVarName} = ${varName};\n\n`;
+      dtsOut += `export declare const ${camelVarName}: string;\n`;
+    }
+  }
 
   // Do not include dynamically generated files (parser.ts, graph.ts) in runtimeTemplateFiles
   if (file.relPath !== "parser.ts" && file.relPath !== "graph.ts") {
@@ -87,6 +103,13 @@ for (const file of allFiles) {
         filename: file.basename,
         content: `export * from "./${subDir}/${file.basename.replace(/\.ts$/, "")}";\n`,
       });
+      if (file.basename.includes("_")) {
+        const hyphenatedName = file.basename.replace(/_/g, "-");
+        rootShims.push({
+          filename: hyphenatedName,
+          content: `export * from "./${subDir}/${file.basename.replace(/\.ts$/, "")}";\n`,
+        });
+      }
     }
   }
 }

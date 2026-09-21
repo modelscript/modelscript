@@ -58,7 +58,7 @@ export function buildCFG(rootNodeId: u32): u32 { return 0; }
   let code = `
 import { allocGen0, getNodeType, getNodeFirstChild, getNodeNextSibling, getNodeFlags, FLAG_IS_SYNTHETIC } from "./arena";
 import { SyntaxType } from "../parser/parser";
-import { BLOCK_SIZE, BLOCK_TRUE_BRANCH, BLOCK_FALSE_BRANCH, BLOCK_NEXT, BLOCK_PREV } from "../emitters/ir_layout";
+import { BLOCK_SIZE, BLOCK_TRUE_BRANCH, BLOCK_FALSE_BRANCH, BLOCK_NEXT, BLOCK_PREV } from "./ir_layout";
 
 export let firstBlock: u32 = 0;
 export let lastBlock: u32 = 0;

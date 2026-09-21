@@ -96,7 +96,8 @@
   "scripts": {
     "build": "npm run clean && tsc && tsx scripts/build-browser.ts",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored"
+    "lint": "eslint src --no-warn-ignored",
+    "test": "npx tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/cad": "*",

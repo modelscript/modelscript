@@ -1,0 +1,18 @@
+{
+  "extends": "assemblyscript/std/assembly.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "../*": [
+        "../../../../runtime/src/wasm/*"
+      ]
+    },
+    "strictPropertyInitialization": false,
+    "experimentalDecorators": true,
+    "noImplicitAny": false
+  },
+  "include": [
+    "./**/*.ts",
+    "../../../../runtime/src/wasm/**/*.ts"
+  ]
+}
