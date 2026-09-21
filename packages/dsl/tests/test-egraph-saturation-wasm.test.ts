@@ -1,6 +1,8 @@
 import { buildParser, choice, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -41,7 +43,9 @@ describe("E-Graph Saturation & AST Simplification in WASM Linear Memory", () => 
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");

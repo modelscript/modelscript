@@ -4,6 +4,7 @@ import { Connection } from "vscode-languageserver";
 import {
   GenericDSLDiagramBackend,
   ModelicaDiagramBackend,
+  Owl2DiagramBackend,
   SysML2DiagramBackend,
   createDiagramDispatch,
 } from "../diagramApi.js";
@@ -29,6 +30,7 @@ function simpleHash(str: string): number {
 
 export class DiagramService {
   private sysml2Layouts = new Map<string, any>();
+  private owl2Layouts = new Map<string, any>();
   private diagramDispatch: any;
   private diagramCache = new Map<string, { version: string; data: any }>();
   public validationService?: any;
@@ -323,10 +325,77 @@ export class DiagramService {
         },
       });
 
+      const owl2Backend = new Owl2DiagramBackend({
+        getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
+        getAxioms: (uri) => {
+          const store = this.workspaceManager.unifiedWorkspace?.owl2Store;
+          if (store) {
+            const uriAxioms = store.axiomsBySource?.get(uri);
+            if (uriAxioms && uriAxioms.length > 0) return [...uriAxioms];
+            if (store.axioms && store.axioms.length > 0) return [...store.axioms];
+          }
+          return [];
+        },
+        getLayout: (uri) => {
+          let layout = this.owl2Layouts.get(uri);
+          if (!layout && typeof uri === "string" && uri.startsWith("file://")) {
+            try {
+              const layoutPath = fileURLToPath(`${uri}.layout`);
+              if (fs.existsSync(layoutPath)) {
+                const content = fs.readFileSync(layoutPath, "utf-8");
+                layout = JSON.parse(content);
+                if (layout) this.owl2Layouts.set(uri, layout);
+              }
+            } catch {
+              // ignore
+            }
+          }
+          return layout;
+        },
+        setLayout: (uri, layout) => {
+          this.owl2Layouts.set(uri, layout);
+          if (typeof uri === "string" && uri.startsWith("file://")) {
+            try {
+              const layoutPath = fileURLToPath(`${uri}.layout`);
+              fs.writeFileSync(layoutPath, JSON.stringify(layout, null, 2), "utf-8");
+            } catch {
+              // ignore
+            }
+          }
+        },
+        createEmptyLayout: () => ({ elements: {}, connections: {} }),
+        updateElementPositions: (layout, items) => {
+          const updated = { ...layout, elements: { ...(layout?.elements ?? {}) } };
+          for (const item of items) {
+            updated.elements[item.name] = {
+              x: item.x,
+              y: item.y,
+              width: item.width,
+              height: item.height,
+            };
+          }
+          return updated;
+        },
+        updateConnectionVertices: (layout, updates) => {
+          const updated = { ...layout, connections: { ...(layout?.connections ?? {}) } };
+          for (const u of updates) {
+            updated.connections[u.id] = u.vertices;
+          }
+          return updated;
+        },
+        removeElements: (layout, names) => {
+          const updated = { ...layout, elements: { ...(layout?.elements ?? {}) } };
+          const nameSet = new Set(names);
+          updated.elements = Object.fromEntries(Object.entries(updated.elements).filter(([key]) => !nameSet.has(key)));
+          return updated;
+        },
+      });
+
       this.diagramDispatch = createDiagramDispatch({
         modelica: modelicaBackend,
         sysml2: sysml2Backend,
         generic: genericBackend,
+        owl2: owl2Backend,
       });
     }
     return this.diagramDispatch;

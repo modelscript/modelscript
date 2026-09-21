@@ -23,6 +23,10 @@
       "types": "./dist/src/cst-lowering.d.ts",
       "default": "./dist/src/cst-lowering.js"
     },
+    "./diagram": {
+      "types": "./dist/src/diagram/index.d.ts",
+      "default": "./dist/src/diagram/index.js"
+    },
     "./parser": {
       "types": "./src-gen/bindings.d.ts",
       "default": "./src-gen/bindings.js"

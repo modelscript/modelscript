@@ -64,6 +64,7 @@
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
     "clean": "rimraf dist *.wasm",
+    "lint": "eslint src transformers --no-warn-ignored",
     "test": "npx tsx --test tests/*.test.ts && npx tsx tests/test-imports-and-stdlib.ts && npx tsx tests/test-reasoner-multiplicity-disjoint.ts"
   },
   "dependencies": {

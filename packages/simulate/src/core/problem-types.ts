@@ -12,6 +12,7 @@
  */
 
 export type { BVPOptions, DDEOptions, SDEOptions } from "./solver-options.js";
+import type { STLOnlineMonitor, STLVerificationResult } from "./stl_monitor.js";
 
 // ── Common Result Types ──
 
@@ -28,6 +29,8 @@ export interface CommonSolverResult {
   times: number[];
   states: number[][];
   stats?: SolverStats;
+  /** Quantitative robustness certificates and violation metrics from attached STL monitors */
+  stlResults?: STLVerificationResult[];
 }
 
 // ── 1. ODE Problem ──
@@ -43,6 +46,8 @@ export interface ODEProblem<P = Record<string, number> | number[]> {
   p?: P;
   /** Optional analytical Jacobian J = df/dy */
   jac?: (t: number, y: number[], p?: P) => number[][];
+  /** Optional streaming Signal Temporal Logic (STL) robustness monitors */
+  stlMonitors?: STLOnlineMonitor[];
 }
 
 // ── 2. DAE Problem ──
@@ -67,6 +72,8 @@ export interface DAEProblem<P = Record<string, number> | number[]> {
   p?: P;
   /** Optional analytical Jacobian */
   jac?: (t: number, y: number[], p?: P) => number[][];
+  /** Optional streaming Signal Temporal Logic (STL) robustness monitors */
+  stlMonitors?: STLOnlineMonitor[];
 }
 
 // ── 3. SDE Problem ──

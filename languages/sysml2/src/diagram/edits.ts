@@ -83,21 +83,127 @@ const ELEMENT_TEMPLATES: Record<string, (name: string, indent: string) => string
 
 // ── Insert new element ──
 
+// ── CST Traversal Helpers ──
+
+/**
+ * Searches the parsed CST tree for a definition or usage node whose identifier matches `name`.
+ */
+export function findCstNodeByName(node: any, name: string): any | null {
+  if (!node) return null;
+  const isDecl =
+    node.type?.endsWith("Usage") ||
+    node.type?.endsWith("Def") ||
+    node.type?.endsWith("Definition") ||
+    node.type?.endsWith("Declaration") ||
+    node.type === "Package";
+
+  if (isDecl) {
+    for (let i = 0; i < (node.namedChildCount ?? 0); i++) {
+      const child = node.namedChild(i);
+      if (
+        (child.type === "Name" || child.type === "Identifier" || child.type?.includes("Identification")) &&
+        child.text === name
+      ) {
+        return node;
+      }
+    }
+  }
+
+  for (let i = 0; i < (node.namedChildCount ?? 0); i++) {
+    const found = findCstNodeByName(node.namedChild(i), name);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Finds the enclosing block or package node in the CST for inserting child elements.
+ */
+export function findCstEnclosingBlock(tree: any, elementName?: string): { line: number; indent: string } | null {
+  if (!tree?.rootNode) return null;
+  const root = tree.rootNode;
+
+  let targetBlockNode: any = null;
+  if (elementName) {
+    const el = findCstNodeByName(root, elementName);
+    if (el) {
+      targetBlockNode = el.parent;
+      while (
+        targetBlockNode &&
+        !targetBlockNode.type?.includes("Body") &&
+        !targetBlockNode.type?.endsWith("Def") &&
+        !targetBlockNode.type?.endsWith("Definition") &&
+        targetBlockNode.type !== "Package"
+      ) {
+        targetBlockNode = targetBlockNode.parent;
+      }
+    }
+  }
+
+  if (!targetBlockNode) {
+    targetBlockNode = root;
+    for (let i = 0; i < (root.namedChildCount ?? 0); i++) {
+      const ch = root.namedChild(i);
+      if (ch.type === "Package" || ch.type?.includes("Body") || ch.type?.endsWith("Def")) {
+        targetBlockNode = ch;
+        break;
+      }
+    }
+  }
+
+  if (targetBlockNode) {
+    const endLine = targetBlockNode.endPosition?.row;
+    if (typeof endLine === "number" && endLine >= 0) {
+      return { line: endLine, indent: INDENT };
+    }
+  }
+  return null;
+}
+
+/**
+ * Finds all CST connection or transition nodes connecting source and target.
+ */
+export function findCstConnectionNodes(root: any, source: string, target: string): any[] {
+  const matches: any[] = [];
+  function walk(node: any) {
+    if (!node) return;
+    const isConn =
+      node.type === "ConnectionUsage" ||
+      node.type === "TransitionUsage" ||
+      node.type?.includes("Connection") ||
+      node.type?.includes("Succession");
+    if (isConn) {
+      const text = node.text || "";
+      if ((text.includes(source) && text.includes(target)) || (text.includes(target) && text.includes(source))) {
+        matches.push(node);
+      }
+    }
+    for (let i = 0; i < (node.namedChildCount ?? 0); i++) {
+      walk(node.namedChild(i));
+    }
+  }
+  walk(root);
+  return matches;
+}
+
+// ── Insert new element ──
+
 /**
  * Insert a new SysML2 element declaration at the appropriate position.
- * Finds the nearest enclosing body `{ ... }` and inserts before the closing `}`.
+ * Uses the parsed CST tree if available, falling back to brace counting.
  */
 export function computeSysML2ElementInsert(
   docText: string,
   elementType: string,
   elementName: string,
   insertionLine?: number,
+  tree?: any,
 ): TextEdit[] {
   const lines = docText.split("\n");
   const template = ELEMENT_TEMPLATES[elementType];
   if (!template) {
     // Fallback: generic part usage
-    return computeSysML2ElementInsert(docText, "PartUsage", elementName, insertionLine);
+    return computeSysML2ElementInsert(docText, "PartUsage", elementName, insertionLine, tree);
   }
 
   // Find the best insertion point
@@ -108,22 +214,29 @@ export function computeSysML2ElementInsert(
     targetLine = insertionLine;
     indent = getIndentAt(lines, targetLine);
   } else {
-    // Find the last closing `}` in the document (end of the outermost package body)
-    targetLine = -1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].trim() === "}") {
-        targetLine = i;
-        break;
-      }
-    }
-    if (targetLine === -1) {
-      // No closing brace found — append at end
-      targetLine = lines.length;
-      indent = INDENT;
-    } else {
-      // Indent one level deeper than the closing brace
-      const braceIndent = lines[targetLine].match(/^(\s*)/)?.[1] ?? "";
+    const cstBlock = tree ? findCstEnclosingBlock(tree) : null;
+    if (cstBlock) {
+      targetLine = cstBlock.line;
+      const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
       indent = braceIndent + INDENT;
+    } else {
+      // Find the last closing `}` in the document (end of the outermost package body)
+      targetLine = -1;
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (lines[i].trim() === "}") {
+          targetLine = i;
+          break;
+        }
+      }
+      if (targetLine === -1) {
+        // No closing brace found — append at end
+        targetLine = lines.length;
+        indent = INDENT;
+      } else {
+        // Indent one level deeper than the closing brace
+        const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+        indent = braceIndent + INDENT;
+      }
     }
   }
 
@@ -135,19 +248,32 @@ export function computeSysML2ElementInsert(
 
 /**
  * Delete a SysML2 element by finding its declaration in the source text.
- * Scans for lines matching `keyword name` patterns.
+ * Uses the parsed CST tree if provided, falling back to keyword line scanning.
  */
-export function computeSysML2ElementDelete(docText: string, elementNames: string[]): TextEdit[] {
+export function computeSysML2ElementDelete(docText: string, elementNames: string[], tree?: any): TextEdit[] {
   const lines = docText.split("\n");
   const edits: TextEdit[] = [];
   const nameSet = new Set(elementNames);
 
   for (const name of nameSet) {
-    // Find lines declaring this element
+    if (tree?.rootNode) {
+      const cstNode = findCstNodeByName(tree.rootNode, name);
+      if (cstNode?.startPosition && cstNode?.endPosition) {
+        const startLine = cstNode.startPosition.row;
+        const endLine = cstNode.endPosition.row;
+        if (endLine + 1 < lines.length) {
+          edits.push(TextEdit.del(Range.create(startLine, 0, endLine + 1, 0)));
+        } else {
+          edits.push(TextEdit.del(Range.create(startLine, 0, endLine, lines[endLine]?.length ?? 0)));
+        }
+        continue;
+      }
+    }
+
+    // Fallback: regex search
     const { startLine, endLine } = findElementRange(lines, name);
     if (startLine === -1) continue;
 
-    // Delete the range (including trailing newline)
     if (endLine + 1 < lines.length) {
       edits.push(TextEdit.del(Range.create(startLine, 0, endLine + 1, 0)));
     } else {
@@ -156,20 +282,35 @@ export function computeSysML2ElementDelete(docText: string, elementNames: string
   }
 
   // Also delete connection usages that reference deleted elements
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.startsWith("connection") && line.includes("connect")) {
-      // Check if any deleted element is referenced
-      for (const name of nameSet) {
-        if (line.includes(name)) {
-          // Find the full extent of this connection usage
-          const { startLine: cs, endLine: ce } = findStatementRange(lines, i);
+  if (tree?.rootNode) {
+    for (const name of nameSet) {
+      const conns = findCstConnectionNodes(tree.rootNode, name, "");
+      for (const conn of conns) {
+        if (conn.startPosition && conn.endPosition) {
+          const cs = conn.startPosition.row;
+          const ce = conn.endPosition.row;
           if (ce + 1 < lines.length) {
             edits.push(TextEdit.del(Range.create(cs, 0, ce + 1, 0)));
           } else {
             edits.push(TextEdit.del(Range.create(cs, 0, ce, lines[ce]?.length ?? 0)));
           }
-          break;
+        }
+      }
+    }
+  } else {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith("connection") && line.includes("connect")) {
+        for (const name of nameSet) {
+          if (line.includes(name)) {
+            const { startLine: cs, endLine: ce } = findStatementRange(lines, i);
+            if (ce + 1 < lines.length) {
+              edits.push(TextEdit.del(Range.create(cs, 0, ce + 1, 0)));
+            } else {
+              edits.push(TextEdit.del(Range.create(cs, 0, ce, lines[ce]?.length ?? 0)));
+            }
+            break;
+          }
         }
       }
     }
@@ -180,7 +321,12 @@ export function computeSysML2ElementDelete(docText: string, elementNames: string
 
 // ── Helper: find enclosing block's closing brace ──
 
-function findEnclosingBlockBrace(lines: string[], elementName?: string): number {
+function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: any): number {
+  if (tree?.rootNode) {
+    const cstBlock = findCstEnclosingBlock(tree, elementName);
+    if (cstBlock) return cstBlock.line;
+  }
+
   if (elementName) {
     let declLine = -1;
     for (let i = 0; i < lines.length; i++) {
@@ -222,15 +368,15 @@ function findEnclosingBlockBrace(lines: string[], elementName?: string): number 
  * If the document contains state definitions/usages (state machine context),
  * inserts a `transition` usage instead.
  */
-export function computeSysML2ConnectionInsert(docText: string, source: string, target: string): TextEdit[] {
+export function computeSysML2ConnectionInsert(docText: string, source: string, target: string, tree?: any): TextEdit[] {
   // Auto-detect state machine context — if source text contains state keywords,
   // insert a transition instead of a generic connection
   if (/\bstate\s+(def\s+)?\w+/.test(docText)) {
-    return computeSysML2TransitionInsert(docText, source, target);
+    return computeSysML2TransitionInsert(docText, source, target, tree);
   }
 
   const lines = docText.split("\n");
-  const targetLine = findEnclosingBlockBrace(lines, source);
+  const targetLine = findEnclosingBlockBrace(lines, source, tree);
 
   const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
   const indent = braceIndent + INDENT;
@@ -248,9 +394,9 @@ export function computeSysML2ConnectionInsert(docText: string, source: string, t
  * Insert a `transition` usage connecting two states.
  * Generates: `transition first sourceState then targetState;`
  */
-export function computeSysML2TransitionInsert(docText: string, source: string, target: string): TextEdit[] {
+export function computeSysML2TransitionInsert(docText: string, source: string, target: string, tree?: any): TextEdit[] {
   const lines = docText.split("\n");
-  const targetLine = findEnclosingBlockBrace(lines, source);
+  const targetLine = findEnclosingBlockBrace(lines, source, tree);
 
   const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
   const indent = braceIndent + INDENT;
@@ -266,9 +412,9 @@ export function computeSysML2TransitionInsert(docText: string, source: string, t
  * Insert a `succession` usage connecting two actions in an activity diagram.
  * Generates: `first source then target;`
  */
-export function computeSysML2SuccessionInsert(docText: string, source: string, target: string): TextEdit[] {
+export function computeSysML2SuccessionInsert(docText: string, source: string, target: string, tree?: any): TextEdit[] {
   const lines = docText.split("\n");
-  let targetLine = findEnclosingBlockBrace(lines, source);
+  let targetLine = findEnclosingBlockBrace(lines, source, tree);
 
   if (targetLine === -1) targetLine = lines.length;
 
@@ -284,14 +430,33 @@ export function computeSysML2SuccessionInsert(docText: string, source: string, t
 
 /**
  * Delete a connection usage by finding matching `connect source to target` text.
+ * Uses the parsed CST tree if available, falling back to line scanning.
  */
-export function computeSysML2ConnectionDelete(docText: string, source: string, target: string): TextEdit[] {
+export function computeSysML2ConnectionDelete(docText: string, source: string, target: string, tree?: any): TextEdit[] {
   const lines = docText.split("\n");
   const edits: TextEdit[] = [];
 
+  if (tree?.rootNode) {
+    const conns = findCstConnectionNodes(tree.rootNode, source, target);
+    for (const conn of conns) {
+      if (conn.startPosition && conn.endPosition) {
+        const startLine = conn.startPosition.row;
+        const endLine = conn.endPosition.row;
+        if (endLine + 1 < lines.length) {
+          edits.push(TextEdit.del(Range.create(startLine, 0, endLine + 1, 0)));
+        } else {
+          edits.push(TextEdit.del(Range.create(startLine, 0, endLine, lines[endLine]?.length ?? 0)));
+        }
+      }
+    }
+    if (edits.length > 0) {
+      return deduplicateAndSort(edits);
+    }
+  }
+
+  // Fallback: line scanning
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    // Match both `connect source to target` and `connect target to source`
     if (
       line.includes("connect") &&
       ((line.includes(source) && line.includes(target)) || (line.includes(target) && line.includes(source)))

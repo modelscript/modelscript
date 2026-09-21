@@ -52,6 +52,92 @@ import { BltEngine, blt_createEngine } from "./blt";
 import { GenericScopeStack } from "./scope_stack";
 import { ArenaStringPool } from "./string_pool";
 import { atomicChunkAlloc } from "./arena";
+import {
+  initOctagonDBM,
+  setOctagonBound,
+  closeOctagonDBM,
+  assumeOctagonDiff,
+  checkOctagonDiff,
+  assumeOctagonInterval,
+  checkOctagonInterval,
+  getOctagonUpperBound,
+  getOctagonLowerBound,
+  hasNegativeCycle,
+  resetOctagonDBM,
+  widenOctagonDBM,
+  narrowOctagonDBM,
+} from "./octagon";
+import {
+  initSATArena,
+  satAddClause,
+  solveDPLL,
+  satGetModelValue,
+  registerLraConstraint,
+  checkTheoryLRA,
+} from "./sat";
+
+export class OctagonAPI {
+  @inline init(numVars: u32): void {
+    initOctagonDBM(numVars);
+  }
+  @inline setBound(i: u32, j: u32, bound: i32): void {
+    setOctagonBound(i, j, bound);
+  }
+  @inline close(): void {
+    closeOctagonDBM();
+  }
+  @inline assumeDiff(var1: u32, var2: u32, maxDiff: i32): void {
+    assumeOctagonDiff(var1, var2, maxDiff);
+  }
+  @inline checkDiff(var1: u32, var2: u32, limit: i32): boolean {
+    return checkOctagonDiff(var1, var2, limit);
+  }
+  @inline assumeInterval(varIdx: u32, lower: i32, upper: i32): void {
+    assumeOctagonInterval(varIdx, lower, upper);
+  }
+  @inline checkInterval(varIdx: u32, lower: i32, upper: i32): boolean {
+    return checkOctagonInterval(varIdx, lower, upper);
+  }
+  @inline getUpperBound(varIdx: u32): i32 {
+    return getOctagonUpperBound(varIdx);
+  }
+  @inline getLowerBound(varIdx: u32): i32 {
+    return getOctagonLowerBound(varIdx);
+  }
+  @inline hasNegativeCycle(): boolean {
+    return hasNegativeCycle();
+  }
+  @inline reset(): void {
+    resetOctagonDBM();
+  }
+  @inline widen(prevDBM: u32): void {
+    widenOctagonDBM(prevDBM);
+  }
+  @inline narrow(prevDBM: u32): void {
+    narrowOctagonDBM(prevDBM);
+  }
+}
+
+export class SatAPI {
+  @inline init(startOffset: u32): void {
+    initSATArena(startOffset);
+  }
+  @inline addClause(clausePtr: u32, len: u32): boolean {
+    return satAddClause(clausePtr, len);
+  }
+  @inline solve(): boolean {
+    return solveDPLL();
+  }
+  @inline getModelValue(varIdx: u32): u8 {
+    return satGetModelValue(varIdx);
+  }
+  @inline registerLraConstraint(satVar: u32, coeffsPtr: u32, limit: f64, isUpper: u8): void {
+    registerLraConstraint(satVar, coeffsPtr, limit, isUpper);
+  }
+  @inline checkLRA(): u32 {
+    return checkTheoryLRA();
+  }
+}
 
 @external("host", "runHostQuery")
 export declare function host_runHostQuery(queryId: u32, arg1: u32, arg2: u32, arg3: u32): u32;
@@ -1394,6 +1480,8 @@ class CodeGraph {
     env: EnvAPI;
     connectors: ConnectorAPI;
     ssa: SsaAPI;
+    octagon: OctagonAPI;
+    sat: SatAPI;
 
     constructor() {
       let daeBuilder = changetype<DaeBuilder>(dae_createBuilder());
@@ -1409,6 +1497,8 @@ class CodeGraph {
       this.env = new EnvAPI();
       this.connectors = new ConnectorAPI(daeBuilder);
       this.ssa = new SsaAPI(daeBuilder);
+      this.octagon = new OctagonAPI();
+      this.sat = new SatAPI();
     }
 
     @inline runQuery(queryType: u32, queryArg: u32): u32 {

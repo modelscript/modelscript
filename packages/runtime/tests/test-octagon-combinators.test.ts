@@ -13,7 +13,9 @@ import {
   transfer,
 } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -76,7 +78,9 @@ describe("Functional Combinators & Native Octagon Abstract Domain", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -115,22 +119,49 @@ describe("Functional Combinators & Native Octagon Abstract Domain", () => {
   });
 
   it("should construct and close Difference Bound Matrix (DBM) in WASM linear memory", () => {
-    if (typeof wasmExports.initOctagonDBM === "function") {
-      // Initialize DBM for 3 variables (x_0, x_1, x_2)
-      wasmExports.initOctagonDBM(3);
+    expect(typeof wasmExports.initOctagonDBM).toBe("function");
 
-      // Assume x_0 - x_1 <= 5
-      wasmExports.assumeOctagonDiff(0, 1, 5);
+    // Initialize DBM for 3 variables (x_0, x_1, x_2)
+    wasmExports.initOctagonDBM(3);
 
-      // Assume x_1 - x_2 <= 3
-      wasmExports.assumeOctagonDiff(1, 2, 3);
+    // Assume x_0 - x_1 <= 5
+    wasmExports.assumeOctagonDiff(0, 1, 5);
 
-      // Floyd-Warshall closure should infer x_0 - x_2 <= 8
-      const isSatisfied = Boolean(wasmExports.checkOctagonDiff(0, 2, 8));
-      expect(isSatisfied).toBe(true);
+    // Assume x_1 - x_2 <= 3
+    wasmExports.assumeOctagonDiff(1, 2, 3);
 
-      const isViolated = Boolean(wasmExports.checkOctagonDiff(0, 2, 4));
-      expect(isViolated).toBe(false);
-    }
+    // Floyd-Warshall closure should infer x_0 - x_2 <= 8
+    const isSatisfied = Boolean(wasmExports.checkOctagonDiff(0, 2, 8));
+    expect(isSatisfied).toBe(true);
+
+    const isViolated = Boolean(wasmExports.checkOctagonDiff(0, 2, 4));
+    expect(isViolated).toBe(false);
+  });
+
+  it("should enforce unary intervals and query upper/lower bounds", () => {
+    wasmExports.initOctagonDBM(3);
+
+    // Assume 2 <= x_0 <= 10
+    wasmExports.assumeOctagonInterval(0, 2, 10);
+
+    expect(wasmExports.checkOctagonInterval(0, 2, 10)).toBe(1);
+    expect(wasmExports.checkOctagonInterval(0, 3, 9)).toBe(0);
+
+    expect(wasmExports.getOctagonLowerBound(0)).toBe(2);
+    expect(wasmExports.getOctagonUpperBound(0)).toBe(10);
+    expect(Boolean(wasmExports.hasNegativeCycle())).toBe(false);
+  });
+
+  it("should detect negative cycles on contradictory bounds", () => {
+    wasmExports.initOctagonDBM(2);
+
+    // Assume x_0 <= 2 and x_0 >= 5 (contradiction)
+    wasmExports.assumeOctagonInterval(0, 5, 2);
+
+    expect(Boolean(wasmExports.hasNegativeCycle())).toBe(true);
+
+    // Reset should restore consistency
+    wasmExports.resetOctagonDBM();
+    expect(Boolean(wasmExports.hasNegativeCycle())).toBe(false);
   });
 });

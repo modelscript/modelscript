@@ -1,0 +1,11 @@
+# .actrc - Configuration for running GitHub Actions locally via act (nektos/act)
+
+# Map GitHub Actions runner to standard Ubuntu image
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Environment variables
+--env CI=true
+--env GITHUB_ACTIONS=true
+
+# Force amd64 architecture
+--container-architecture linux/amd64

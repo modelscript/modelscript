@@ -16,6 +16,8 @@ import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 // Public interfaces
 // ─────────────────────────────────────────────────────────────────────
 
+export type ConstraintKind = "static_parameter" | "steady_state_limit" | "transient_dynamic";
+
 export interface ExtractedConstraint {
   /** Full constraint expression, e.g. "v <= 10.0" */
   expression: string;
@@ -31,6 +33,33 @@ export interface ExtractedConstraint {
   requirementName?: string;
   /** Constraint entry name */
   constraintName?: string;
+  /** Classification of the constraint for Tier 3/4 verification dispatch */
+  kind?: ConstraintKind;
+  /** Parameter uncertainty ranges (e.g. { R: [8, 12] }) */
+  parameterRanges?: Record<string, [number, number]>;
+}
+
+/**
+ * Classifies a constraint into static parameter limits, steady-state limits, or dynamic transients.
+ */
+export function classifyConstraint(lhs: string, expression: string, entryName?: string): ConstraintKind {
+  const lower = `${lhs} ${expression} ${entryName ?? ""}`.toLowerCase();
+  if (
+    lower.includes("transient") ||
+    lower.includes("time") ||
+    lower.includes("dynamic") ||
+    lower.includes("velocity") ||
+    lower.includes("accel") ||
+    lower.includes("trajectory") ||
+    lower.includes("overshoot") ||
+    lower.includes("settling")
+  ) {
+    return "transient_dynamic";
+  }
+  if (lower.includes("steady") || lower.includes("equilibrium") || lower.includes("operating_point")) {
+    return "steady_state_limit";
+  }
+  return "static_parameter";
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -77,6 +106,7 @@ export function extractSysML2Constraints(db: QueryDB, filter?: string): Extracte
 
     // Find the parent requirement name (if any)
     const reqName = findRequirementName(db, entry);
+    const kind = classifyConstraint(comp.lhs, cstText, entry.name);
 
     constraints.push({
       expression: `${comp.lhs} ${comp.op} ${comp.rhs}`,
@@ -86,6 +116,7 @@ export function extractSysML2Constraints(db: QueryDB, filter?: string): Extracte
       source: "sysml2",
       requirementName: reqName,
       constraintName: entry.name,
+      kind,
     });
   }
 

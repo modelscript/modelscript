@@ -22,7 +22,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored"
+    "lint": "eslint src --no-warn-ignored",
+    "test": "npx tsx tests/test-fillet-chamfer.ts"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23",

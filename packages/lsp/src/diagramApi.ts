@@ -8,6 +8,14 @@
 import { buildDiagramFromDSL, buildPolyglotDiagram } from "@modelscript/diagram/builder";
 import { SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
 import { compileDiagramConfigToPolyglot } from "@modelscript/dsl";
+import {
+  buildOWL2DiagramData,
+  computeOWL2ConnectionDelete,
+  computeOWL2ConnectionInsert,
+  computeOWL2ElementDelete,
+  computeOWL2ElementInsert,
+  computeOWL2NameEdit,
+} from "@modelscript/owl2/diagram";
 import type { TextEdit } from "vscode-languageserver";
 import type {
   ComponentPropertyData,
@@ -161,10 +169,16 @@ export interface SysML2BackendDeps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   buildDiagramData: (params: DiagramGetDataParams) => any;
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;
-  computeConnectionInsert: (text: string, source: string, target: string) => TextEdit[];
-  computeConnectionDelete: (text: string, source: string, target: string) => TextEdit[];
-  computeElementInsert: (text: string, elementType: string, name: string) => TextEdit[];
-  computeElementDelete: (text: string, names: string[]) => TextEdit[];
+  computeConnectionInsert: (text: string, source: string, target: string, tree?: unknown) => TextEdit[];
+  computeConnectionDelete: (text: string, source: string, target: string, tree?: unknown) => TextEdit[];
+  computeElementInsert: (
+    text: string,
+    elementType: string,
+    name: string,
+    insertionLine?: number,
+    tree?: unknown,
+  ) => TextEdit[];
+  computeElementDelete: (text: string, names: string[], tree?: unknown) => TextEdit[];
   generateUniqueName: (text: string, baseName: string) => string;
   computeNameEdit: (tree: unknown, text: string, oldName: string, newName: string) => TextEdit[];
   computeDescriptionEdit: (tree: unknown, text: string, name: string, desc: string) => TextEdit[];
@@ -306,6 +320,16 @@ export class SysML2DiagramBackend implements DiagramBackend {
     let needsRender: "none" | "immediate" | "debounced" = "none";
     let layout = this.deps.getLayout(params.uri) ?? this.deps.createEmptyLayout();
 
+    const parser = this.deps.getSysML2Parser ? this.deps.getSysML2Parser() : null;
+    let tree: any = null;
+    if (parser && typeof parser.parse === "function") {
+      try {
+        tree = parser.parse(docText);
+      } catch {
+        // Fallback to heuristic editing if parse fails
+      }
+    }
+
     try {
       for (const action of params.actions) {
         switch (action.type) {
@@ -326,7 +350,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
             layout = this.deps.updateElementPositions(layout, [action.item]);
             break;
           case "connect":
-            allEdits.push(...this.deps.computeConnectionInsert(docText, action.source, action.target));
+            allEdits.push(...this.deps.computeConnectionInsert(docText, action.source, action.target, tree));
             if (action.points && action.points.length > 0) {
               layout = this.deps.updateConnectionVertices(layout, [
                 { id: `${action.source}→${action.target}`, vertices: action.points },
@@ -335,12 +359,12 @@ export class SysML2DiagramBackend implements DiagramBackend {
             needsRender = "immediate";
             break;
           case "disconnect":
-            allEdits.push(...this.deps.computeConnectionDelete(docText, action.source, action.target));
+            allEdits.push(...this.deps.computeConnectionDelete(docText, action.source, action.target, tree));
             needsRender = "immediate";
             break;
           case "reconnect":
-            allEdits.push(...this.deps.computeConnectionDelete(docText, action.oldSource, action.oldTarget));
-            allEdits.push(...this.deps.computeConnectionInsert(docText, action.newSource, action.newTarget));
+            allEdits.push(...this.deps.computeConnectionDelete(docText, action.oldSource, action.oldTarget, tree));
+            allEdits.push(...this.deps.computeConnectionInsert(docText, action.newSource, action.newTarget, tree));
             needsRender = "immediate";
             break;
           case "moveEdge":
@@ -350,32 +374,26 @@ export class SysML2DiagramBackend implements DiagramBackend {
             );
             break;
           case "deleteComponents":
-            allEdits.push(...this.deps.computeElementDelete(docText, action.names));
+            allEdits.push(...this.deps.computeElementDelete(docText, action.names, tree));
             layout = this.deps.removeElements(layout, action.names);
             needsRender = "immediate";
             break;
           case "updateName": {
-            const parser = this.deps.getSysML2Parser();
-            if (parser) {
-              const tree = parser.parse(docText);
+            if (tree) {
               allEdits.push(...this.deps.computeNameEdit(tree, docText, action.oldName, action.newName));
             }
             needsRender = "debounced";
             break;
           }
           case "updateDescription": {
-            const parser = this.deps.getSysML2Parser();
-            if (parser) {
-              const tree = parser.parse(docText);
+            if (tree) {
               allEdits.push(...this.deps.computeDescriptionEdit(tree, docText, action.name, action.description));
             }
             needsRender = "debounced";
             break;
           }
           case "updateParameter": {
-            const parser = this.deps.getSysML2Parser();
-            if (parser) {
-              const tree = parser.parse(docText);
+            if (tree) {
               allEdits.push(
                 ...this.deps.computeParameterEdit(tree, docText, action.name, action.parameter, action.value),
               );
@@ -384,9 +402,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
             break;
           }
           case "updateProperty": {
-            const parser = this.deps.getSysML2Parser();
-            if (parser) {
-              const tree = parser.parse(docText);
+            if (tree) {
               allEdits.push(
                 ...this.deps.computeParameterEdit(tree, docText, action.name, action.key, String(action.value)),
               );
@@ -399,7 +415,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
             const baseParts = elementType.replace("Definition", "").replace("Usage", "");
             const baseName = baseParts.charAt(0).toLowerCase() + baseParts.slice(1);
             const uniqueName = this.deps.generateUniqueName(docText, baseName);
-            allEdits.push(...this.deps.computeElementInsert(docText, elementType, uniqueName));
+            allEdits.push(...this.deps.computeElementInsert(docText, elementType, uniqueName, undefined, tree));
             // Store position in layout
             layout = this.deps.updateElementPositions(layout, [
               {
@@ -472,6 +488,262 @@ export class SysML2DiagramBackend implements DiagramBackend {
       ],
       data: childData ?? undefined,
     };
+  }
+}
+
+// ── OWL 2 Backend ──
+
+export interface Owl2BackendDeps {
+  getDocumentText: (uri: string) => string | undefined;
+  getAxioms: (uri: string) => any[];
+  getLayout?: (uri: string) => any;
+  setLayout?: (uri: string, layout: any) => void;
+  createEmptyLayout?: () => any;
+  updateElementPositions?: (
+    layout: any,
+    items: { name: string; x: number; y: number; width: number; height: number; rotation?: number }[],
+  ) => any;
+  updateConnectionVertices?: (layout: any, updates: { id: string; vertices: { x: number; y: number }[] }[]) => any;
+  removeElements?: (layout: any, names: string[]) => any;
+  computeConnectionInsert?: (text: string, source: string, target: string, edgeType?: string) => TextEdit[];
+  computeConnectionDelete?: (text: string, source: string, target: string) => TextEdit[];
+  computeElementInsert?: (text: string, elementType: string, name: string) => TextEdit[];
+  computeElementDelete?: (text: string, names: string[]) => TextEdit[];
+  computeNameEdit?: (text: string, oldIri: string, newIri: string) => TextEdit[];
+  buildDiagramData?: (axioms: any[], layout?: any, diagramType?: string) => DiagramData;
+  getEntityData?: (
+    uri: string,
+    entityIri: string,
+  ) => {
+    iri: string;
+    type: string;
+    axioms?: string[];
+    annotations?: Record<string, string>;
+  } | null;
+}
+
+export class Owl2DiagramBackend implements DiagramBackend {
+  constructor(private readonly deps: Owl2BackendDeps) {}
+
+  getData(params: DiagramGetDataParams): DiagramData | null {
+    const axioms = this.deps.getAxioms(params.uri);
+    const layout = this.deps.getLayout ? this.deps.getLayout(params.uri) : undefined;
+    const builder = this.deps.buildDiagramData ?? buildOWL2DiagramData;
+    return builder(axioms, layout, params.diagramType);
+  }
+
+  getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
+    const name = params.componentName;
+    const uri = params.uri;
+    const axioms = this.deps.getAxioms(uri);
+
+    const relatedAxioms: string[] = [];
+    let entityType = "Class";
+    const namePattern = name.replace(/^:/, "");
+
+    for (const ax of axioms) {
+      const axStr = JSON.stringify(ax);
+      if (axStr.includes(namePattern)) {
+        if (ax.type === "ClassDeclaration" && ax.iri?.includes(namePattern)) entityType = "Class";
+        else if (ax.type === "ObjectPropertyDeclaration" && ax.iri?.includes(namePattern))
+          entityType = "ObjectProperty";
+        else if (ax.type === "DataPropertyDeclaration" && ax.iri?.includes(namePattern)) entityType = "DataProperty";
+        else if (ax.type === "IndividualDeclaration" && ax.iri?.includes(namePattern)) entityType = "Individual";
+
+        if (ax.type === "SubClassOf") {
+          relatedAxioms.push(`SubClassOf(${ax.subClassIri} ${ax.superClassIri})`);
+        } else if (ax.type === "EquivalentClasses") {
+          relatedAxioms.push(`EquivalentClasses(${ax.classIris?.join(" ")})`);
+        } else if (ax.type === "DisjointClasses") {
+          relatedAxioms.push(`DisjointClasses(${ax.classIris?.join(" ")})`);
+        } else if (ax.type === "ObjectPropertyAssertion") {
+          relatedAxioms.push(`ObjectPropertyAssertion(${ax.propertyIri} ${ax.subjectIri} ${ax.objectIri})`);
+        }
+      }
+    }
+
+    const generalFields: PropertyFieldConfig[] = [
+      { key: "iri", label: "IRI", kind: "string", defaultValue: name, readOnly: true },
+      { key: "name", label: "Short Name", kind: "string", defaultValue: name.replace(/^.*[#/:]/, "") },
+      { key: "type", label: "Entity Type", kind: "string", defaultValue: entityType, readOnly: true },
+    ];
+
+    const generalGroups: PropertyGroupConfig[] = [
+      {
+        id: "identification",
+        label: "Identification",
+        fields: generalFields,
+      },
+    ];
+
+    const axiomFields: PropertyFieldConfig[] = relatedAxioms.map((ax, idx) => ({
+      key: `axiom_${idx}`,
+      label: `Axiom ${idx + 1}`,
+      kind: "expression",
+      defaultValue: ax,
+      readOnly: true,
+    }));
+
+    const axiomGroups: PropertyGroupConfig[] =
+      axiomFields.length > 0
+        ? [
+            {
+              id: "axioms",
+              label: "Axioms",
+              fields: axiomFields,
+            },
+          ]
+        : [];
+
+    const tabs: PropertyTabConfig[] = [
+      { id: "general", label: "General", groups: generalGroups },
+      { id: "axioms", label: "Axioms", groups: axiomGroups },
+      { id: "annotations", label: "Annotations", groups: [] },
+    ];
+
+    const values: Record<string, any> = {
+      iri: name,
+      name: name.replace(/^.*[#/:]/, ""),
+      type: entityType,
+    };
+    relatedAxioms.forEach((ax, idx) => {
+      values[`axiom_${idx}`] = ax;
+    });
+
+    return {
+      name,
+      className: entityType,
+      description: name,
+      schema: { tabs },
+      values,
+      parameters: [],
+    };
+  }
+
+  applyEdits(params: DiagramApplyEditsParams): DiagramApplyEditsResult {
+    const docText = this.deps.getDocumentText(params.uri) ?? "";
+    const allEdits: TextEdit[] = [];
+    let needsRender: "none" | "immediate" | "debounced" = "none";
+    let layout = this.deps.getLayout ? this.deps.getLayout(params.uri) : undefined;
+    if (!layout && this.deps.createEmptyLayout) {
+      layout = this.deps.createEmptyLayout();
+    }
+
+    for (const action of params.actions) {
+      switch (action.type) {
+        case "move":
+          if (this.deps.updateElementPositions) {
+            layout = this.deps.updateElementPositions(layout, action.items);
+          }
+          if (needsRender === "none") needsRender = "none";
+          break;
+        case "resize":
+          if (this.deps.updateElementPositions) {
+            layout = this.deps.updateElementPositions(layout, [action.item]);
+          }
+          if (needsRender === "none") needsRender = "none";
+          break;
+        case "moveEdge":
+          if (this.deps.updateConnectionVertices) {
+            layout = this.deps.updateConnectionVertices(
+              layout,
+              action.edges.map((e) => ({ id: `${e.source}→${e.target}`, vertices: e.points })),
+            );
+          }
+          if (needsRender === "none") needsRender = "none";
+          break;
+        case "connect": {
+          const insertFn = this.deps.computeConnectionInsert ?? computeOWL2ConnectionInsert;
+          const edgeType = (action as any).edgeType ?? "subClassOf";
+          allEdits.push(...insertFn(docText, action.source, action.target, edgeType));
+          if (action.points && action.points.length > 0 && this.deps.updateConnectionVertices) {
+            layout = this.deps.updateConnectionVertices(layout, [
+              { id: `${action.source}→${action.target}`, vertices: action.points },
+            ]);
+          }
+          needsRender = "immediate";
+          break;
+        }
+        case "disconnect": {
+          const delFn = this.deps.computeConnectionDelete ?? computeOWL2ConnectionDelete;
+          allEdits.push(...delFn(docText, action.source, action.target));
+          needsRender = "immediate";
+          break;
+        }
+        case "reconnect": {
+          const delFn = this.deps.computeConnectionDelete ?? computeOWL2ConnectionDelete;
+          const insertFn = this.deps.computeConnectionInsert ?? computeOWL2ConnectionInsert;
+          allEdits.push(...delFn(docText, action.oldSource, action.oldTarget));
+          allEdits.push(...insertFn(docText, action.newSource, action.newTarget));
+          needsRender = "immediate";
+          break;
+        }
+        case "deleteComponents": {
+          const delFn = this.deps.computeElementDelete ?? computeOWL2ElementDelete;
+          allEdits.push(...delFn(docText, action.names));
+          if (this.deps.removeElements) {
+            layout = this.deps.removeElements(layout, action.names);
+          }
+          needsRender = "immediate";
+          break;
+        }
+        case "updateName": {
+          const nameFn = this.deps.computeNameEdit ?? computeOWL2NameEdit;
+          allEdits.push(...nameFn(docText, action.oldName, action.newName));
+          needsRender = "debounced";
+          break;
+        }
+        case "addComponent": {
+          const insertFn = this.deps.computeElementInsert ?? computeOWL2ElementInsert;
+          const elementType = action.className || "Class";
+          const uniqueName = (action as any).name || (action.className ? `${action.className}_1` : "Entity_1");
+          allEdits.push(...insertFn(docText, elementType, uniqueName));
+          if (this.deps.updateElementPositions) {
+            layout = this.deps.updateElementPositions(layout, [
+              { name: uniqueName, x: action.x, y: action.y, width: 140, height: 50 },
+            ]);
+          }
+          needsRender = "immediate";
+          break;
+        }
+      }
+    }
+
+    if (layout && this.deps.setLayout) {
+      this.deps.setLayout(params.uri, layout);
+    }
+
+    return {
+      seq: params.seq,
+      edits: deduplicateAndSort(allEdits),
+      renderHint: needsRender,
+    };
+  }
+
+  getPalette(_params: DiagramGetPaletteParams): DiagramPalette | null {
+    return {
+      categories: [
+        {
+          name: "Classes & Concepts",
+          items: [
+            { label: "Class", className: "Class" },
+            { label: "Defined Class", className: "DefinedClass" },
+            { label: "Individual", className: "Individual" },
+          ],
+        },
+        {
+          name: "Properties",
+          items: [
+            { label: "Object Property", className: "ObjectProperty" },
+            { label: "Data Property", className: "DataProperty" },
+          ],
+        },
+      ],
+    };
+  }
+
+  drillDown(_params: DiagramDrillDownParams): DiagramDrillDownResult | null {
+    return null;
   }
 }
 
@@ -1151,6 +1423,7 @@ export interface DiagramDispatchDeps {
   modelica?: DiagramBackend;
   sysml2?: DiagramBackend;
   generic?: DiagramBackend;
+  owl2?: DiagramBackend;
   customBackends?: Map<string | RegExp, DiagramBackend>;
 }
 
@@ -1172,6 +1445,12 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     }
     if (uri.endsWith(".sysml") && backends.sysml2) return backends.sysml2;
     if (uri.endsWith(".mo") && backends.modelica) return backends.modelica;
+    if (
+      backends.owl2 &&
+      (uri.endsWith(".owl") || uri.endsWith(".ofn") || uri.endsWith(".owx") || uri.endsWith(".ttl"))
+    ) {
+      return backends.owl2;
+    }
     return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);
   }
 

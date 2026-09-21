@@ -81,3 +81,16 @@ export {
   type ParameterInversionUpdate,
 } from "./parameter-inversion.js";
 export { RomLoadPipeline, type FeaBoundaryCondition, type TransientPeakLoad } from "./rom_load_pipeline.js";
+
+// Spatial Clearance & Verification
+export {
+  computeAABBDistance,
+  computeSolidAABB,
+  transformAABB,
+  unionAABB,
+  verifyAssemblyClearance,
+  type AABB,
+  type ClearanceConstraint,
+  type SpatialClearanceReport,
+  type SpatialClearanceViolation,
+} from "./clearance.js";

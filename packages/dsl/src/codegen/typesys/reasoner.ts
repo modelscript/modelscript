@@ -1,5 +1,6 @@
 import { NormalizedGrammar } from "../../dsl/grammar.js";
 import { LanguageOptions as GrammarOptions } from "../../dsl/language.js";
+import { datalogEngineCode } from "../../src-gen/runtime-templates.js";
 
 import { getDJB2Hash } from "../shared/utils.js";
 
@@ -38,7 +39,11 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
   const maxArity = Math.max(grammar.semantics?.maxArity || 2, 3);
   const FACT_STRIDE = 1 + maxArity;
 
-  let rawRules = [...(grammar.semantics?.rules || []), ...(grammar.semantics?.axioms || [])];
+  let rawRules = [
+    ...(grammar.semantics?.rules || []),
+    ...((grammar.semantics?.reasoner as any)?.rules || []),
+    ...(grammar.semantics?.axioms || []),
+  ];
   let rules: string[] = rawRules.map((r: any) => {
     if (typeof r === "string") return r;
     if (typeof r === "function") {
@@ -350,6 +355,13 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
 
     const b0 = positiveAtoms[0];
 
+    out += `        let ${prefix}_chain0 = predIndexHead[(${b0.pred} >>> 0) & PRED_INDEX_MASK];\n`;
+    out += `        while (${prefix}_chain0 != 0) {\n`;
+    out += `            let ${prefix}_i0 = ${prefix}_chain0 - 1;\n`;
+    out += `            ${prefix}_chain0 = predIndexNext[${prefix}_i0];\n`;
+    out += `            let ${prefix}_idx0 = ${prefix}_i0 * FACT_STRIDE;\n`;
+    out += `            if (factTable[${prefix}_idx0] != ${b0.pred}) continue;\n`;
+
     // Build variable-to-position map and handle constants in b0
     const varMap: Record<string, string[]> = {};
     for (let ai = 0; ai < b0.args.length; ai++) {
@@ -452,9 +464,21 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     }
     while (headArgExprs.length < maxArity) headArgExprs.push("0");
 
-    // Emit head fact
-    out += `                    if (!factExists(${rule.headHash}, ${headArgExprs.join(", ")})) {\n`;
-    out += `                        addFact(${rule.headHash}, ${headArgExprs.join(", ")});\n`;
+    // Conjunction of body provenance: headProv = prov(b0) | prov(b1) | ...
+    const provTerms = [`factProvTable[${prefix}_i0]`];
+    for (let k = 1; k < positiveAtoms.length; k++) {
+      provTerms.push(`factProvTable[${prefix}_i${k}]`);
+    }
+    const headProvExpr = provTerms.join(" | ");
+
+    // Emit head fact with semiring provenance
+    out += `                    let ${prefix}_headProv: u32 = (${headProvExpr});\n`;
+    out += `                    let ${prefix}_existingIdx = findFactIndex(${rule.headHash}, ${headArgExprs.join(", ")});\n`;
+    out += `                    if (${prefix}_existingIdx < 0) {\n`;
+    out += `                        addFactWithProv(${rule.headHash}, ${headArgExprs.join(", ")}, ${prefix}_headProv);\n`;
+    out += `                        newFactsDerived = true;\n`;
+    out += `                    } else if ((factProvTable[${prefix}_existingIdx as u32] | ${prefix}_headProv) != factProvTable[${prefix}_existingIdx as u32]) {\n`;
+    out += `                        factProvTable[${prefix}_existingIdx as u32] |= ${prefix}_headProv;\n`;
     out += `                        newFactsDerived = true;\n`;
     out += `                    }\n`;
 
@@ -625,7 +649,10 @@ export function resolveDottedName(rootElement: u32, dottedNamePtr: u32): u32 {
   const maxFactsOverride = grammar.semantics?.reasoner?.maxFacts;
   const MAX_FACTS = maxFactsOverride || Math.floor(100000 / FACT_STRIDE);
 
-  code += `
+  if (maxArity === 3 && !maxFactsOverride) {
+    code += `\n${datalogEngineCode.replace(/from "\.\.\//g, 'from "./')}\n`;
+  } else {
+    code += `
 const FACT_STRIDE: u32 = ${FACT_STRIDE};
 export let factTable = createChunkedUint32Array(${MAX_FACTS * FACT_STRIDE});
 export let factCount: u32 = 0;
@@ -645,6 +672,9 @@ let predIndexNext = createChunkedUint32Array(${MAX_FACTS});         // Next fact
 const FACT_HASH_CAPACITY: u32 = ${Math.max(MAX_FACTS * 4, 16384)};
 let factHashTable = createChunkedUint32Array(FACT_HASH_CAPACITY);
 
+// --- Provenance Semiring (PosBool / N[X]) ---
+export let factProvTable = createChunkedUint32Array(MAX_FACTS);
+
 function factHashKey(${addFactParams.join(", ")}): u32 {
     // Fibonacci hashing on all available arguments for good distribution
     let h = pred;
@@ -652,40 +682,93 @@ function factHashKey(${addFactParams.join(", ")}): u32 {
     return h % FACT_HASH_CAPACITY;
 }
 
-export function addFact(${addFactParams.join(", ")}): void {
-   if (factCount >= MAX_FACTS) return;
-   // Check if already exists via hash index
-   if (factExists(${addFactParams.map((p) => p.split(":")[0].trim()).join(", ")})) return;
-   let idx = factCount * FACT_STRIDE;
+export function findFactIndex(${factExistsParams.join(", ")}): i32 {
+    let hk = factHashKey(${factExistsParams.map((p) => p.split(":")[0].trim()).join(", ")});
+    let guard: u32 = 0;
+    while (guard < FACT_HASH_CAPACITY) {
+        let slot = factHashTable[hk];
+        if (slot == 0) return -1;
+        let idx = (slot - 1) * FACT_STRIDE;
+        if (${factExistsChecks.join(" && ")}) return (slot - 1) as i32;
+        hk = (hk + 1) % FACT_HASH_CAPACITY;
+        guard++;
+    }
+    return -1;
+}
+
+export function addFactWithProv(${addFactParams.join(", ")}, provMask: u32 = 1): u32 {
+    if (factCount >= MAX_FACTS) return 0;
+    let existingIdx = findFactIndex(${factExistsParams.map((p) => p.split(":")[0].trim()).join(", ")});
+    if (existingIdx >= 0) {
+        factProvTable[existingIdx as u32] |= provMask;
+        return existingIdx as u32;
+    }
+    let idx = factCount * FACT_STRIDE;
 ${addFactStores.join("")}   let factIdx = factCount;
-   factCount++;
-   // Insert into hash index (1-based index to distinguish from empty=0)
-   let hk = factHashKey(${addFactParams.map((p) => p.split(":")[0].trim()).join(", ")});
-   let guard: u32 = 0;
-   while (factHashTable[hk] != 0 && guard < FACT_HASH_CAPACITY) {
-       hk = (hk + 1) % FACT_HASH_CAPACITY;
-       guard++;
-   }
-   if (guard < FACT_HASH_CAPACITY) factHashTable[hk] = factCount; // 1-based
-   // Insert into predicate index chain
-   let predSlot = (pred >>> 0) & PRED_INDEX_MASK;
-   predIndexNext[factIdx] = predIndexHead[predSlot];
-   predIndexHead[predSlot] = factIdx + 1; // 1-based
+    factProvTable[factIdx] = provMask != 0 ? provMask : 1;
+    factCount++;
+    // Insert into hash index (1-based index to distinguish from empty=0)
+    let hk = factHashKey(${addFactParams.map((p) => p.split(":")[0].trim()).join(", ")});
+    let guard: u32 = 0;
+    while (factHashTable[hk] != 0 && guard < FACT_HASH_CAPACITY) {
+        hk = (hk + 1) % FACT_HASH_CAPACITY;
+        guard++;
+    }
+    if (guard < FACT_HASH_CAPACITY) factHashTable[hk] = factCount; // 1-based
+    // Insert into predicate index chain
+    let predSlot = (pred >>> 0) & PRED_INDEX_MASK;
+    predIndexNext[factIdx] = predIndexHead[predSlot];
+    predIndexHead[predSlot] = factIdx + 1; // 1-based
+    return factIdx;
+}
+
+export function addFact(${addFactParams.join(", ")}): void {
+    addFactWithProv(${addFactParams.map((p) => p.split(":")[0].trim()).join(", ")}, 1);
 }
 
 export function factExists(${factExistsParams.join(", ")}): boolean {
-   // O(1) amortized lookup via hash index
-   let hk = factHashKey(${factExistsParams.map((p) => p.split(":")[0].trim()).join(", ")});
-   let guard: u32 = 0;
-   while (guard < FACT_HASH_CAPACITY) {
-       let slot = factHashTable[hk];
-       if (slot == 0) return false; // Empty slot = not found
-       let idx = (slot - 1) * FACT_STRIDE;
-       if (${factExistsChecks.join(" && ")}) return true;
-       hk = (hk + 1) % FACT_HASH_CAPACITY;
-       guard++;
-   }
-   return false;
+    return findFactIndex(${factExistsParams.map((p) => p.split(":")[0].trim()).join(", ")}) >= 0;
+}
+
+export function getFactProvenance(factIdx: u32): u32 {
+    if (factIdx < factCount && factTable[factIdx * FACT_STRIDE] != 0) {
+        return factProvTable[factIdx];
+    }
+    return 0;
+}
+
+export function getFactProvenanceTokens(factIdx: u32): StaticArray<u32> {
+    let mask = getFactProvenance(factIdx);
+    let count: i32 = 0;
+    for (let b: u32 = 0; b < 32; b++) {
+        if (((mask >>> b) & 1) != 0) count++;
+    }
+    let res = new StaticArray<u32>(count);
+    let idx = 0;
+    for (let b: u32 = 0; b < 32; b++) {
+        if (((mask >>> b) & 1) != 0) {
+            res[idx++] = b;
+        }
+    }
+    return res;
+}
+
+export function retractToken(tokenId: u32): u32 {
+    if (tokenId >= 32) return 0;
+    let tokenBit: u32 = (1 << tokenId);
+    let retractedCount: u32 = 0;
+    for (let i: u32 = 0; i < factCount; i++) {
+        let fIdx = i * FACT_STRIDE;
+        if (factTable[fIdx] == 0) continue;
+        if ((factProvTable[i] & tokenBit) != 0) {
+            factProvTable[i] &= ~tokenBit;
+            if (factProvTable[i] == 0) {
+                tombstoneFact(i);
+                retractedCount++;
+            }
+        }
+    }
+    return retractedCount;
 }
 
 export function initFactArena(): void {
@@ -694,8 +777,12 @@ export function initFactArena(): void {
    for (let i: u32 = 0; i < FACT_HASH_CAPACITY; i++) factHashTable[i] = 0;
    // Clear predicate index
    for (let i: u32 = 0; i < PRED_INDEX_CAPACITY; i++) predIndexHead[i] = 0;
+   for (let i: u32 = 0; i < MAX_FACTS; i++) factProvTable[i] = 0;
 }
+`;
+  }
 
+  code += `
 let globalTraverseStack = createChunkedUint32Array(100000);
 
 export function traverseAndExtract(newRoot: u32): void {
@@ -762,11 +849,15 @@ export function extractTypeFacts(newRoot: u32): void {
 
   ${deepTypeFactsCode}
 }
+`;
 
+  if (!(maxArity === 3 && !maxFactsOverride)) {
+    code += `
 export function tombstoneFact(factIdx: u32): void {
     // Mark a fact as deleted by zeroing its predicate slot
     if (factIdx < factCount) {
         factTable[factIdx * FACT_STRIDE] = 0; // pred = 0 means tombstoned
+        factProvTable[factIdx] = 0;
     }
 }
 
@@ -782,6 +873,7 @@ export function garbageCollectFacts(): void {
             for (let k: u32 = 0; k < FACT_STRIDE; k++) {
                 factTable[wIdx + k] = factTable[idx + k];
             }
+            factProvTable[writeIdx] = factProvTable[i];
         }
         writeIdx++;
     }
@@ -795,7 +887,7 @@ export function garbageCollectFacts(): void {
     for (let i: u32 = 0; i < factCount; i++) {
         let idx = i * FACT_STRIDE;
         // Rebuild hash index
-        let hk = factHashKey(${Array.from({ length: maxArity + 1 }, (_, k) => (k === 0 ? "factTable[idx]" : `factTable[idx + ${k}]`)).join(", ")});
+        let hk = factHashKey(\${Array.from({ length: maxArity + 1 }, (_, k) => (k === 0 ? "factTable[idx]" : \`factTable[idx + \${k}]\`)).join(", ")});
         let guard: u32 = 0;
         while (factHashTable[hk] != 0 && guard < FACT_HASH_CAPACITY) {
             hk = (hk + 1) % FACT_HASH_CAPACITY;
@@ -809,7 +901,10 @@ export function garbageCollectFacts(): void {
         predIndexHead[predSlot] = i + 1; // 1-based
     }
 }
+`;
+  }
 
+  code += `
 // --- Stratified Datalog Materialization (Phase 4A) ---
 // ${numStrata} stratum/strata computed from negation dependencies.
 export function runDatalogMaterialization(): void {
@@ -823,7 +918,10 @@ export function runDatalogMaterialization(): void {
 export function runAxiomValidation(): void {
     runDatalogMaterialization();
 }
+`;
 
+  if (!(maxArity === 3 && !maxFactsOverride)) {
+    code += `
 export function datalog_ask_string(q: string): boolean {
     // Parse the query string: "predicate(arg1, arg2, ...)" or just "predicate"
     // Hash each component using the same DJB2 algorithm used by getDJB2Hash
@@ -879,7 +977,10 @@ export function datalog_ask_string(q: string): boolean {
     // Build the full argument list for factExists
     return factExists(predHash${Array.from({ length: maxArity }, (_, i) => `, argCount > ${i} ? argHashes[${i}] : 0`).join("")});
 }
+`;
+  }
 
+  code += `
 ${pathResolutionCode}
 `;
 

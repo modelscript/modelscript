@@ -143,4 +143,41 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     const segments = splinePath.split(" C ");
     assert.strictEqual(segments.length, 4, "Must contain 3 cubic Bezier segments");
   });
+
+  it("should compute staggered parallel routes for bus connections to avoid line overlap", () => {
+    const source: PointLike = { x: 20, y: 50 };
+    const target: PointLike = { x: 120, y: 150 };
+
+    const route1 = computeOrthogonalRoute(source, target, [], { parallelIndex: 0, channelSpacing: 10 });
+    const route2 = computeOrthogonalRoute(source, target, [], { parallelIndex: 1, channelSpacing: 10 });
+    const route3 = computeOrthogonalRoute(source, target, [], { parallelIndex: 2, channelSpacing: 10 });
+
+    assert.strictEqual(route1.length, 2);
+    assert.strictEqual(route2.length, 2);
+    assert.strictEqual(route3.length, 2);
+
+    // Mid-points must be separated by channelSpacing
+    assert.notStrictEqual(route1[0].x, route2[0].x, "Parallel routes must not overlap on x-axis");
+    assert.notStrictEqual(route2[0].x, route3[0].x, "Parallel routes must not overlap on x-axis");
+  });
+
+  it("should evaluate 4-way detours and choose the non-colliding channel", () => {
+    const source: PointLike = { x: 50, y: 100 };
+    const target: PointLike = { x: 250, y: 100 };
+    // Obstacle blocking the direct center
+    const obstacles: RectLike[] = [{ x: 100, y: 80, width: 80, height: 40 }];
+
+    const route = computeOrthogonalRoute(source, target, obstacles, { padding: 10 });
+    assert.ok(route.length >= 2, "Must produce detour route");
+
+    // Verify all segments avoid the obstacle
+    const all = [source, ...route, target];
+    for (let i = 0; i < all.length - 1; i++) {
+      assert.strictEqual(
+        segmentIntersectsRect(all[i], all[i + 1], obstacles[0], 0),
+        false,
+        `Segment ${i} intersected obstacle`,
+      );
+    }
+  });
 });

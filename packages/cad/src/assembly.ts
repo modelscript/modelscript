@@ -5,21 +5,30 @@
  * wrapping a {@link Solid} with optional material and color metadata.
  */
 
+import { computeSolidAABB } from "./clearance.js";
 import type { Assembly, PartEntry, Solid, Vec3 } from "./types.js";
 
 /**
- * Wrap a solid as a named assembly part with optional metadata.
+ * Wrap a solid as a named assembly part with optional metadata and precomputed bounding box.
  *
  * @example
  * ```ts
  * part(motor, { material: "Aluminum", color: [0.7, 0.7, 0.8] })
  * ```
  */
-export function part(solid: Solid, opts?: { material?: string; color?: Vec3 }): PartEntry {
+export function part(
+  solid: Solid,
+  opts?: {
+    material?: string;
+    color?: Vec3;
+    boundingBox?: { min: [number, number, number]; max: [number, number, number] };
+  },
+): PartEntry {
   return Object.freeze({
     solid,
     material: opts?.material,
     color: opts?.color,
+    boundingBox: opts?.boundingBox ?? computeSolidAABB(solid),
   });
 }
 

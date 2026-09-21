@@ -142,23 +142,7 @@ export function generateParserTables(
 ): GeneratedFile[] {
   (originalGrammar as any).fieldToInt = grammar.fieldToInt;
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nimport { CorrespondenceIndex } from "./correspondence";\nimport { PolyglotArena } from "./polyglot_arena";\nexport { getInputBuffer } from "./arena";\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {
-  let raw = atomicChunkAlloc((numElements + 1) * 4);
-  let ptr = (raw + 3) & ~3;
-  store<i32>(ptr, numElements);
-  let dataPtr = ptr + 4;
-  let arr = changetype<UnmanagedUint32Array>(dataPtr);
-  for (let i = 0; i < numElements; i++) {
-     let val: u32 = 0;
-     for (let j = 0; j < 8; j++) {
-        let c = hex.charCodeAt(i * 8 + j);
-        let nibble = c >= 97 ? c - 97 + 10 : (c >= 65 ? c - 65 + 10 : c - 48);
-        val = (val << 4) | (nibble as u32);
-     }
-     arr[i] = val;
-  }
-  return dataPtr;
-}\n\nexport let expected_tokens: usize = 0;\n\n`;
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nimport { CorrespondenceIndex } from "./correspondence";\nimport { PolyglotArena } from "./polyglot_arena";\nexport { getInputBuffer } from "./arena";\nimport { decodeHexIntArray } from "./encoding";\nexport { decodeHexIntArray };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport let expected_tokens: usize = 0;\n\n`;
 
   // Types & SyntaxType enum
   const typesContent = generateTypes(originalGrammar, grammar);
@@ -1235,7 +1219,7 @@ export function generateParserTables(
   code += extractExports(statementsCode, "./dae/statements");
   code += extractExports(verifierCode, "./simulation/verifier");
 
-  if (originalGrammar.cfgNodes || originalGrammar.analysis) {
+  if (originalGrammar.cfgNodes || originalGrammar.analysis || Boolean(originalGrammar.domains?.bounds)) {
     let layoutContent = generateBlockLayoutConstants();
     let cfgContent = generateCFG(originalGrammar, grammar);
     let ssaContent = generateSSA();
@@ -1252,11 +1236,6 @@ export function generateParserTables(
     code += extractExports(pantelidesContent, "./pantelides-domain");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
-    outFiles.push({ filename: "ssa.ts", content: ssaContent });
-    outFiles.push({ filename: "alias-domain.ts", content: aliasContent });
-    outFiles.push({ filename: "octagon.ts", content: octagonContent });
-    outFiles.push({ filename: "isolation-domain.ts", content: isolationContent });
-    outFiles.push({ filename: "pantelides-domain.ts", content: pantelidesContent });
   }
   if (originalGrammar.analysis) {
     let dfContent = generateDataflow(originalGrammar);

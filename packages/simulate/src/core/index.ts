@@ -8,6 +8,7 @@ export * from "./problem-types.js";
 export * from "./simulate-arena.js";
 export * from "./simulation.js";
 export * from "./solver-options.js";
+export * from "./stl_monitor.js";
 export * from "./vmap-arena.js";
 export * from "./wasm-simulation-runner.js";
 export * from "./webgpu-simulation-runner.js";

@@ -48,7 +48,8 @@
   "scripts": {
     "build": "npm run clean && tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored"
+    "lint": "eslint src --no-warn-ignored",
+    "test": "npx tsx tests/test-solvers-all.ts && npx tsx tests/test-ad-jvp-vjp.ts"
   },
   "dependencies": {
     "@modelscript/dsl": "*",

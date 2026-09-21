@@ -10,4 +10,5 @@ export * from "./fuml-bridge.js";
 export * from "./language.js";
 export { default, default as sysml2Language } from "./language.js";
 export * from "./reasoner-bridge.js";
+export * from "./smt-bridge.js";
 export * from "./sysml2-container-exporter.js";

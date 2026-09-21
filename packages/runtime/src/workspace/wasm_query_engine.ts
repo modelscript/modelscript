@@ -458,6 +458,25 @@ export class WasmQueryEngine {
 
   static readonly LINT_PREFIX = "lint__";
 
+  /**
+   * Registers an incremental lint hook for a specific AST rule or grammar construct.
+   *
+   * @param ruleName Target rule name (e.g. "AssemblyDefinition", "RequirementDefinition")
+   * @param lintName Identifier for the linter (e.g. "cad_clearance", "parametric_bounds")
+   * @param fn Lint evaluation function returning LintResult or LintResult[]
+   */
+  public registerLintHook(ruleName: string, lintName: string, fn: QueryFn): void {
+    let hooks = this.hooksByRule.get(ruleName);
+    if (!hooks) {
+      hooks = {};
+      this.hooksByRule.set(ruleName, hooks);
+    }
+    const hookKey = lintName.startsWith(WasmQueryEngine.LINT_PREFIX)
+      ? lintName
+      : `${WasmQueryEngine.LINT_PREFIX}${lintName}`;
+    hooks[hookKey] = fn;
+  }
+
   public runAllLints(resourceId?: string): LintDiagnostic[] {
     const diagnostics: LintDiagnostic[] = [];
     let symbolsToCheck: Iterable<[SymbolId, SymbolEntry]>;

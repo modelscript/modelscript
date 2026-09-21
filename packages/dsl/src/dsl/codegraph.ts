@@ -81,6 +81,37 @@ export interface SsaAPI {
 }
 
 /**
+ * Difference Bound Matrix (DBM) Octagon Domain API.
+ */
+export interface OctagonAPI {
+  init(numVars: u32): void;
+  setBound(i: u32, j: u32, bound: i32): void;
+  close(): void;
+  assumeDiff(var1: u32, var2: u32, maxDiff: i32): void;
+  checkDiff(var1: u32, var2: u32, limit: i32): boolean;
+  assumeInterval(varIdx: u32, lower: i32, upper: i32): void;
+  checkInterval(varIdx: u32, lower: i32, upper: i32): boolean;
+  getUpperBound(varIdx: u32): i32;
+  getLowerBound(varIdx: u32): i32;
+  hasNegativeCycle(): boolean;
+  reset(): void;
+  widen(prevDBM: u32): void;
+  narrow(prevDBM: u32): void;
+}
+
+/**
+ * Native DPLL(T) CDCL SAT & SMT Solver API.
+ */
+export interface SatAPI {
+  init(startOffset: u32): void;
+  addClause(clausePtr: u32, len: u32): boolean;
+  solve(): boolean;
+  getModelValue(varIdx: u32): u8;
+  registerLraConstraint(satVar: u32, coeffsPtr: u32, limit: f64, isUpper: u8): void;
+  checkLRA(): u32;
+}
+
+/**
  * Declarative physical connector schema definition.
  */
 export interface ConnectorDefinition {
@@ -279,6 +310,8 @@ export interface CodeGraph<
   env: EnvAPI;
   connectors: ConnectorAPI;
   ssa: SsaAPI;
+  octagon: OctagonAPI;
+  sat: SatAPI;
 
   unroll(iterVar: string, start: i32, end: i32, fn: (idx: i32) => void): void;
   error(message: string): void;

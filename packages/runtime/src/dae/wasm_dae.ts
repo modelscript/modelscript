@@ -1200,7 +1200,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     const eqs: number[] = [];
     for (let i = 0; i < this.eqCount; i++) {
       const lhs = this.getEqLhs(i);
-      const rhs = this.getEqRhs(i);
+      const rhs = this.getOrigEqRhs(i);
       if (this.exprReferencesName(lhs, paramName) || this.exprReferencesName(rhs, paramName)) {
         eqs.push(i);
       }
@@ -1260,7 +1260,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     out: Set<string> = new Set<string>(),
     visited: Set<number> = new Set<number>(),
   ): Set<string> {
-    if (exprId <= 0 || visited.has(exprId)) return out;
+    if (exprId < 0 || visited.has(exprId)) return out;
     visited.add(exprId);
     const kind = this.getExprKind(exprId);
     if (kind === ExprKind.Name) {

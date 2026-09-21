@@ -20,6 +20,7 @@ import { emitAxioms } from "./reasoner-bridge.js";
 import {
   choice,
   def,
+  domain,
   error,
   field,
   info,
@@ -2032,6 +2033,7 @@ const requirementUsageLintsEnhanced = {
 };
 
 import { TableauReasoner } from "@modelscript/runtime";
+import { checkRequirementConsistency } from "./smt-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Package-level traceability queries
@@ -2181,6 +2183,20 @@ const packageTraceabilityLints = {
       return error(`Ontological inconsistency detected in '${self.name || "package"}'${detail}`, {
         field: "declaredName",
       });
+    }
+    return null;
+  },
+  conflictingRequirements: (db: QueryDB, self: SymbolEntry) => {
+    const smtResult = checkRequirementConsistency(db, self.name);
+    if (!smtResult.isConsistent) {
+      const coreNames =
+        smtResult.conflictingRequirements.length > 0 ? ` (${smtResult.conflictingRequirements.join(", ")})` : "";
+      return error(
+        `Conflicting requirements detected in '${self.name || "package"}'${coreNames}: ${smtResult.violatedConstraints[0]?.reason || "unsatisfiable constraints"}`,
+        {
+          field: "declaredName",
+        },
+      );
     }
     return null;
   },
@@ -2357,6 +2373,19 @@ export const sysml2Language = language({
     fileExtensions: [".sysml", ".sysml2"],
   },
 
+  semantics: {
+    reasoner: {
+      smt: {
+        theories: ["LRA", "EUF"],
+        maxSimplexVars: 500,
+      },
+    } as any,
+  },
+
+  domains: {
+    bounds: domain.octagon(),
+  },
+
   actions: [
     {
       id: "extract_topology",
@@ -2385,6 +2414,12 @@ export const sysml2Language = language({
       category: "verify",
       inputs: {
         partName: { type: "string", description: "Part name to verify" },
+      },
+      execute: async (ctx: any, params: { partName?: string }) => {
+        const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
+        if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
+        const { checkRequirementConsistency } = await import("./smt-bridge.js");
+        return checkRequirementConsistency(queryDB, params?.partName);
       },
       ui: {
         editorTitle: {

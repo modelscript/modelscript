@@ -1,0 +1,13 @@
+{
+  "name": "@modelscript/example-dsl",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Example DSL demonstrating @modelscript/dsl grammar and semantics",
+  "type": "module",
+  "exports": {
+    "./language": "./src/language.ts"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*"
+  }
+}

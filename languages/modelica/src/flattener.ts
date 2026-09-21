@@ -8944,7 +8944,8 @@ export class ModelicaFlattener {
   constructor(db: QueryDB, options?: FlattenOptions) {
     this.db = db;
     const omcCompatibility = options?.omcCompatibility ?? false;
-    let backend: FlattenerBackend = options?.backend ?? (options?.useWasmKernel ? "wasm" : "hybrid");
+    let backend: FlattenerBackend =
+      options?.backend ?? (options as any)?.flattenerBackend ?? (options?.useWasmKernel ? "wasm" : "hybrid");
     this.options = {
       backend,
       arrayMode: options?.arrayMode ?? (omcCompatibility ? "scalarize" : "preserve"),
@@ -8960,10 +8961,10 @@ export class ModelicaFlattener {
 
   flatten(rootClassId: SymbolId, cachedArena?: DAEBuilder | null, options?: FlattenOptions): DAEBuilder {
     if (options) {
-      if (options.backend !== undefined) {
-        this.options.backend = options.backend;
-        this.options.useWasmKernel =
-          options.backend === "wasm" || options.backend === "hybrid" || options.backend === "diff";
+      const optBackend = options.backend ?? (options as any).flattenerBackend;
+      if (optBackend !== undefined) {
+        this.options.backend = optBackend;
+        this.options.useWasmKernel = optBackend === "wasm" || optBackend === "hybrid" || optBackend === "diff";
       } else if (options.useWasmKernel !== undefined) {
         this.options.useWasmKernel = options.useWasmKernel;
         this.options.backend = options.useWasmKernel ? "wasm" : "ts";
@@ -9496,6 +9497,23 @@ export class ModelicaFlattener {
           if (varCount > 0) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
+            for (let i = 0; i < dae.eqCount; i++) {
+              const rhsId = dae.getEqRhs(i);
+              dae.setOrigEqRhs(i, rhsId);
+              if (rhsId >= 0) {
+                const names = dae.collectExprVarNames(rhsId);
+                for (const name of names) {
+                  dae.registerParamEquationDep(name, i);
+                }
+              }
+              const lhsId = dae.getEqLhs(i);
+              if (lhsId >= 0) {
+                const names = dae.collectExprVarNames(lhsId);
+                for (const name of names) {
+                  dae.registerParamEquationDep(name, i);
+                }
+              }
+            }
           }
         }
       } catch {

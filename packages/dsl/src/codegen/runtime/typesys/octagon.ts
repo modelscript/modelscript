@@ -80,6 +80,82 @@ export function checkOctagonDiff(var1: u32, var2: u32, limit: i32): boolean {
     return bound <= limit;
 }
 
+// Assume unary interval constraint: lower <= varIdx <= upper
+export function assumeOctagonInterval(varIdx: u32, lower: i32, upper: i32): void {
+    if (octagonDBM == 0 || octagonNumVars == 0) return;
+    let p = varIdx * 2;
+    if (upper < OCTAGON_INF / 2) {
+        setOctagonBound(p, p + 1, upper * 2);
+    }
+    if (lower > -OCTAGON_INF / 2) {
+        setOctagonBound(p + 1, p, -lower * 2);
+    }
+    closeOctagonDBM();
+}
+
+// Check unary interval constraint: lower <= varIdx <= upper
+export function checkOctagonInterval(varIdx: u32, lower: i32, upper: i32): boolean {
+    if (octagonDBM == 0 || octagonNumVars == 0) return true;
+    let p = varIdx * 2;
+    let dim = octagonNumVars * 2;
+    if (p + 1 >= dim) return true;
+
+    if (upper < OCTAGON_INF / 2) {
+        let uBound = load<i32>(octagonDBM + (p * dim + (p + 1)) * 4);
+        if (uBound > upper * 2) return false;
+    }
+    if (lower > -OCTAGON_INF / 2) {
+        let lBound = load<i32>(octagonDBM + ((p + 1) * dim + p) * 4);
+        if (lBound > -lower * 2) return false;
+    }
+    return true;
+}
+
+// Get current upper bound for variable
+export function getOctagonUpperBound(varIdx: u32): i32 {
+    if (octagonDBM == 0 || octagonNumVars == 0) return OCTAGON_INF;
+    let p = varIdx * 2;
+    let dim = octagonNumVars * 2;
+    if (p + 1 >= dim) return OCTAGON_INF;
+    let raw = load<i32>(octagonDBM + (p * dim + (p + 1)) * 4);
+    if (raw >= OCTAGON_INF) return OCTAGON_INF;
+    return raw / 2;
+}
+
+// Get current lower bound for variable
+export function getOctagonLowerBound(varIdx: u32): i32 {
+    if (octagonDBM == 0 || octagonNumVars == 0) return -OCTAGON_INF;
+    let p = varIdx * 2;
+    let dim = octagonNumVars * 2;
+    if (p + 1 >= dim) return -OCTAGON_INF;
+    let raw = load<i32>(octagonDBM + ((p + 1) * dim + p) * 4);
+    if (raw >= OCTAGON_INF) return -OCTAGON_INF;
+    return -raw / 2;
+}
+
+// Detect if any diagonal entry is negative (indicates inconsistent/contradictory constraints)
+export function hasNegativeCycle(): boolean {
+    if (octagonDBM == 0 || octagonNumVars == 0) return false;
+    let dim = octagonNumVars * 2;
+    for (let i: u32 = 0; i < dim; i++) {
+        let val = load<i32>(octagonDBM + (i * dim + i) * 4);
+        if (val < 0) return true;
+    }
+    return false;
+}
+
+// Reset DBM to initial unconstrained state
+export function resetOctagonDBM(): void {
+    if (octagonDBM == 0 || octagonNumVars == 0) return;
+    let dim = octagonNumVars * 2;
+    for (let i: u32 = 0; i < dim; i++) {
+        for (let j: u32 = 0; j < dim; j++) {
+            let val: i32 = (i == j) ? 0 : OCTAGON_INF;
+            store<i32>(octagonDBM + (i * dim + j) * 4, val);
+        }
+    }
+}
+
 // Widening Operator (nabla) for loop bounds convergence
 export function widenOctagonDBM(prevDBM: u32): void {
     if (octagonDBM == 0 || prevDBM == 0 || octagonNumVars == 0) return;

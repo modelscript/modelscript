@@ -225,6 +225,12 @@ export interface PartEntry {
   readonly solid: Solid;
   readonly material?: string | undefined;
   readonly color?: Vec3 | undefined;
+  readonly boundingBox?:
+    | {
+        min: [number, number, number];
+        max: [number, number, number];
+      }
+    | undefined;
 }
 
 export interface Assembly {

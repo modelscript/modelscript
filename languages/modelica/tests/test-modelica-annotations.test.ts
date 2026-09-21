@@ -36,7 +36,7 @@ equation
 end ExperimentTest;
 `;
     ctx.load(src, "file:///ExperimentTest.mo");
-    const arena = ctx.flattenArena("ExperimentTest", undefined, "file:///ExperimentTest.mo");
+    const arena = ctx.flattenArena("ExperimentTest", undefined, "file:///ExperimentTest.mo", { backend: "ts" });
     assert.ok(arena, "Arena flattening should succeed");
 
     assert.strictEqual(arena.experiment.startTime, 1.0);
@@ -66,7 +66,7 @@ equation
 end HideResultTest;
 `;
     ctx.load(src, "file:///HideResultTest.mo");
-    const arena = ctx.flattenArena("HideResultTest", undefined, "file:///HideResultTest.mo");
+    const arena = ctx.flattenArena("HideResultTest", undefined, "file:///HideResultTest.mo", { backend: "ts" });
     assert.ok(arena);
 
     // Verify hiddenVarIndices was populated
@@ -100,7 +100,7 @@ equation
 end EvaluateTest;
 `;
     ctx.load(src, "file:///EvaluateTest.mo");
-    const arena = ctx.flattenArena("EvaluateTest", undefined, "file:///EvaluateTest.mo");
+    const arena = ctx.flattenArena("EvaluateTest", undefined, "file:///EvaluateTest.mo", { backend: "ts" });
     assert.ok(arena);
 
     const res = simulateArena(arena, { startTime: 0, stopTime: 1.0, step: 0.1 });
@@ -119,7 +119,7 @@ equation
 end DiffusionTest;
 `;
     ctx.load(src, "file:///DiffusionTest.mo");
-    const arena = ctx.flattenArena("DiffusionTest", undefined, "file:///DiffusionTest.mo");
+    const arena = ctx.flattenArena("DiffusionTest", undefined, "file:///DiffusionTest.mo", { backend: "ts" });
     assert.ok(arena);
 
     const xIdx = arena.findVar("x");

@@ -1,4 +1,5 @@
 import { LanguageOptions } from "../../dsl/language.js";
+import { dataflowFrameworkCode } from "../../src-gen/runtime-templates.js";
 import {
   BLOCK_FALSE_BRANCH,
   BLOCK_FIRST_INSTR,
@@ -46,8 +47,6 @@ export function generateDataflow(grammarDef: LanguageOptions<any>): string {
 
   let out = `
 import { S, getNodePadding, getNodeByteLength, allocGen0, getNodeFlags, FLAG_IS_SYNTHETIC } from "./arena";
-import { allocDiagnostic } from "../shared/graph";
-import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
 import { firstBlock } from "./cfg";
 import {
   BLOCK_STATE_IN,
@@ -59,18 +58,7 @@ import {
   IR_INSTR_NEXT,
 } from "./ir_layout";
 
-// --- Auto-Generated Dataflow Analysis Engine ---
-
-const DATAFLOW_MAX_ITERATIONS: u32 = 1000;
-
-export function dataflowError(nodeId: u32, code: u32): void {
-    if (nodeId == 0 || (getNodeFlags(nodeId) & FLAG_IS_SYNTHETIC) != 0) return;
-    let absStart = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
-    let startByte: u32 = absStart >= 0 ? (absStart as u32) : getNodePadding(nodeId);
-    let endByte = startByte + getNodeByteLength(nodeId);
-    allocDiagnostic(startByte, endByte, code, 0);
-}
-
+${dataflowFrameworkCode}
 `;
 
   let latticeMap: Record<string, number> = { Bottom: 0, Top: 100 };

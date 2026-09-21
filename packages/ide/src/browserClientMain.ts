@@ -874,11 +874,22 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`Failed to export shape: ${e instanceof Error ? e.message : e}`);
       }
     }),
-    commands.registerCommand("modelscript.owl2.openDiagram", () => {
-      if (!client) return;
+    commands.registerCommand("modelscript.owl2.openDiagram", async () => {
       const editor = vscode.window.activeTextEditor;
-      const uri = editor?.document.languageId === "owl2" ? editor.document.uri.toString() : undefined;
-      OWL2DiagramPanel.createOrShow(client, uri);
+      if (editor?.document && editor.document.uri.scheme !== "output") {
+        try {
+          const docUri = editor.document.uri;
+          if (docUri.scheme === "memfs") {
+            const content = new TextEncoder().encode(editor.document.getText());
+            await workspace.fs.writeFile(docUri, content);
+          }
+          await vscode.commands.executeCommand("vscode.openWith", docUri, DiagramEditorProvider.viewType);
+        } catch (e: unknown) {
+          vscode.window.showErrorMessage(`Failed to open diagram: ${(e as Error)?.message || e}`);
+        }
+      } else if (client) {
+        OWL2DiagramPanel.createOrShow(client, undefined);
+      }
     }),
     commands.registerCommand("modelscript.owl2.goToDeclaration", async (iri: string) => {
       if (!client) return;

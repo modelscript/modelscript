@@ -20,6 +20,9 @@ export interface RouterOptions {
   padding?: number;
   step?: number;
   maxIterations?: number;
+  parallelIndex?: number;
+  parallelCount?: number;
+  channelSpacing?: number;
 }
 
 /**
@@ -54,7 +57,8 @@ export function segmentIntersectsRect(p1: PointLike, p2: PointLike, rect: RectLi
 }
 
 /**
- * Computes an obstacle-free orthogonal route between source and target points.
+ * Computes an obstacle-free orthogonal route between source and target points,
+ * supporting 4-way obstacle detours and parallel bus connection staggering.
  */
 export function computeOrthogonalRoute(
   source: PointLike,
@@ -64,25 +68,28 @@ export function computeOrthogonalRoute(
 ): PointLike[] {
   const padding = options.padding ?? 12;
   const step = options.step ?? 10;
+  const parallelOffset = (options.parallelIndex ?? 0) * (options.channelSpacing ?? 8);
 
-  // If direct horizontal or vertical line with no obstacle collision
+  // If direct horizontal or vertical line with no obstacle collision and no parallel offset
   const isDirectH = Math.abs(source.y - target.y) < 1;
   const isDirectV = Math.abs(source.x - target.x) < 1;
 
-  if (isDirectH && !obstacles.some((r) => segmentIntersectsRect(source, target, r, padding))) {
-    return [];
-  }
-  if (isDirectV && !obstacles.some((r) => segmentIntersectsRect(source, target, r, padding))) {
-    return [];
+  if (parallelOffset === 0) {
+    if (isDirectH && !obstacles.some((r) => segmentIntersectsRect(source, target, r, padding))) {
+      return [];
+    }
+    if (isDirectV && !obstacles.some((r) => segmentIntersectsRect(source, target, r, padding))) {
+      return [];
+    }
   }
 
   // Determine standard lead-out directions
   const dx = target.x - source.x;
   const dy = target.y - source.y;
 
-  // Try standard 2-bend orthogonal routing (Z-step or S-step)
-  const midX = Math.round((source.x + dx / 2) / step) * step;
-  const midY = Math.round((source.y + dy / 2) / step) * step;
+  // Try standard 2-bend orthogonal routing (Z-step or S-step) with parallel staggering
+  const midX = Math.round((source.x + dx / 2 + parallelOffset) / step) * step;
+  const midY = Math.round((source.y + dy / 2 + parallelOffset) / step) * step;
 
   // Option 1: Horizontal first -> (midX, source.y) -> (midX, target.y)
   const p1A: PointLike = { x: midX, y: source.y };
@@ -110,22 +117,108 @@ export function computeOrthogonalRoute(
     return routeB;
   }
 
-  // Option 3: Channel around colliding obstacles
-  let detourY = source.y;
-  for (const obs of obstacles) {
-    if (segmentIntersectsRect(source, p1A, obs, padding) || segmentIntersectsRect(p1A, p2A, obs, padding)) {
-      detourY = Math.min(detourY, obs.y - padding - 10);
-    }
+  // Option 3: 4-Way Detour evaluation around colliding obstacles
+  // Test top, bottom, left, and right channels to select the shortest collision-free path
+  const intersectingObstacles = obstacles.filter(
+    (obs) =>
+      segmentIntersectsRect(source, p1A, obs, padding) ||
+      segmentIntersectsRect(p1A, p2A, obs, padding) ||
+      segmentIntersectsRect(p2A, target, obs, padding) ||
+      segmentIntersectsRect(source, p1B, obs, padding) ||
+      segmentIntersectsRect(p1B, p2B, obs, padding) ||
+      segmentIntersectsRect(p2B, target, obs, padding),
+  );
+
+  const activeObstacles = intersectingObstacles.length > 0 ? intersectingObstacles : obstacles;
+
+  let minObsY = Infinity;
+  let maxObsY = -Infinity;
+  let minObsX = Infinity;
+  let maxObsX = -Infinity;
+
+  for (const obs of activeObstacles) {
+    minObsY = Math.min(minObsY, obs.y);
+    maxObsY = Math.max(maxObsY, obs.y + obs.height);
+    minObsX = Math.min(minObsX, obs.x);
+    maxObsX = Math.max(maxObsX, obs.x + obs.width);
   }
 
+  const candidateRoutes: { route: PointLike[]; length: number }[] = [];
+
+  // Candidate Top: detour above obstacles
+  const detourTopY = minObsY - padding - 10 - parallelOffset;
+  const routeTop: PointLike[] = [
+    { x: source.x, y: detourTopY },
+    { x: target.x, y: detourTopY },
+  ];
+  const collidesTop =
+    obstacles.some((r) => segmentIntersectsRect(source, routeTop[0], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeTop[0], routeTop[1], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeTop[1], target, r, padding));
+  if (!collidesTop) {
+    const len = Math.abs(source.y - detourTopY) + Math.abs(target.x - source.x) + Math.abs(target.y - detourTopY);
+    candidateRoutes.push({ route: routeTop, length: len });
+  }
+
+  // Candidate Bottom: detour below obstacles
+  const detourBottomY = maxObsY + padding + 10 + parallelOffset;
+  const routeBottom: PointLike[] = [
+    { x: source.x, y: detourBottomY },
+    { x: target.x, y: detourBottomY },
+  ];
+  const collidesBottom =
+    obstacles.some((r) => segmentIntersectsRect(source, routeBottom[0], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeBottom[0], routeBottom[1], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeBottom[1], target, r, padding));
+  if (!collidesBottom) {
+    const len = Math.abs(source.y - detourBottomY) + Math.abs(target.x - source.x) + Math.abs(target.y - detourBottomY);
+    candidateRoutes.push({ route: routeBottom, length: len });
+  }
+
+  // Candidate Left: detour left of obstacles
+  const detourLeftX = minObsX - padding - 10 - parallelOffset;
+  const routeLeft: PointLike[] = [
+    { x: detourLeftX, y: source.y },
+    { x: detourLeftX, y: target.y },
+  ];
+  const collidesLeft =
+    obstacles.some((r) => segmentIntersectsRect(source, routeLeft[0], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeLeft[0], routeLeft[1], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeLeft[1], target, r, padding));
+  if (!collidesLeft) {
+    const len = Math.abs(source.x - detourLeftX) + Math.abs(target.y - source.y) + Math.abs(target.x - detourLeftX);
+    candidateRoutes.push({ route: routeLeft, length: len });
+  }
+
+  // Candidate Right: detour right of obstacles
+  const detourRightX = maxObsX + padding + 10 + parallelOffset;
+  const routeRight: PointLike[] = [
+    { x: detourRightX, y: source.y },
+    { x: detourRightX, y: target.y },
+  ];
+  const collidesRight =
+    obstacles.some((r) => segmentIntersectsRect(source, routeRight[0], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeRight[0], routeRight[1], r, padding)) ||
+    obstacles.some((r) => segmentIntersectsRect(routeRight[1], target, r, padding));
+  if (!collidesRight) {
+    const len = Math.abs(source.x - detourRightX) + Math.abs(target.y - source.y) + Math.abs(target.x - detourRightX);
+    candidateRoutes.push({ route: routeRight, length: len });
+  }
+
+  if (candidateRoutes.length > 0) {
+    candidateRoutes.sort((a, b) => a.length - b.length);
+    return candidateRoutes[0].route;
+  }
+
+  // Fallback: default top channel
   return [
-    { x: source.x, y: detourY },
-    { x: target.x, y: detourY },
+    { x: source.x, y: detourTopY },
+    { x: target.x, y: detourTopY },
   ];
 }
 
 /**
- * AntV X6 custom router adapter.
+ * AntV X6 custom router adapter with obstacle avoidance and parallel edge staggering.
  */
 export function portOrthogonalRouter(
   vertices: PointLike[],
@@ -143,9 +236,11 @@ export function portOrthogonalRouter(
   const target = edgeView.targetPoint;
   if (!source || !target) return [];
 
-  // Extract obstacle rectangles from graph cells
+  // Extract obstacle rectangles and parallel edges from graph cells
   const graph = edgeView.graph;
   const obstacles: RectLike[] = [];
+  let parallelIndex = 0;
+  let parallelCount = 1;
 
   if (graph && typeof graph.getNodes === "function") {
     const sourceCell = edgeView.cell?.getSourceCell();
@@ -165,9 +260,31 @@ export function portOrthogonalRouter(
         });
       }
     }
+
+    if (sourceCell && targetCell && typeof graph.getEdges === "function") {
+      const allEdges = graph.getEdges();
+      const parallelEdges = allEdges.filter((e: any) => {
+        const s = e.getSourceCell()?.id;
+        const t = e.getTargetCell()?.id;
+        return (s === sourceCell.id && t === targetCell.id) || (s === targetCell.id && t === sourceCell.id);
+      });
+      if (parallelEdges.length > 1) {
+        parallelCount = parallelEdges.length;
+        const idx = parallelEdges.findIndex((e: any) => e.id === edgeView.cell?.id);
+        if (idx !== -1) {
+          parallelIndex = idx;
+        }
+      }
+    }
   }
 
-  return computeOrthogonalRoute(source, target, obstacles, args);
+  const routerArgs: RouterOptions = {
+    ...args,
+    parallelIndex,
+    parallelCount,
+  };
+
+  return computeOrthogonalRoute(source, target, obstacles, routerArgs);
 }
 
 /** Stem line representation connecting an internal port pad to the node boundary */

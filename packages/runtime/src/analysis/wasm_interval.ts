@@ -563,6 +563,13 @@ export function solveSBB(
   queue.push({ box: new Map(initialBox), lowerBound: rootLB });
 
   const midpoint = boxMidpoint(initialBox, variables);
+  if (constraintTapes.length === 0 || isBoxFeasible(midpoint, initialBox)) {
+    const midObj = evaluateObjective(objectiveTape, midpoint);
+    if (midObj < upperBound) {
+      upperBound = midObj;
+      incumbent = new Map(midpoint);
+    }
+  }
   const localResult = localNewtonSolve(objectiveTape, constraintTapes, variables, midpoint, maxNewtonIter);
   if (localResult !== null && isBoxFeasible(localResult.point, initialBox)) {
     const objVal = evaluateObjective(objectiveTape, localResult.point);
@@ -580,6 +587,13 @@ export function solveSBB(
     if (node.lowerBound >= upperBound - absTol) continue;
 
     const mid = boxMidpoint(node.box, variables);
+    if (constraintTapes.length === 0 || isBoxFeasible(mid, node.box)) {
+      const midObj = evaluateObjective(objectiveTape, mid);
+      if (midObj < upperBound) {
+        upperBound = midObj;
+        incumbent = new Map(mid);
+      }
+    }
     const mcResult = evaluateTapeMcCormick(objectiveTape.ops, node.box, mid);
     const mcLB = mcResult[objectiveTape.outputIndex]?.cv ?? node.lowerBound;
     const tighterLB = Math.max(node.lowerBound, mcLB);
@@ -613,7 +627,7 @@ export function solveSBB(
     const leftBox: DomainBox = new Map(node.box);
     leftBox.set(splitVar, new Interval(splitInterval.lo, splitMid));
     if (contractBoxICP(constraintTapes, leftBox)) {
-      const leftLB = Math.max(tighterLB, evaluateIntervalLB(objectiveTape, leftBox));
+      const leftLB = evaluateIntervalLB(objectiveTape, leftBox);
       if (leftLB < upperBound - absTol) {
         queue.push({ box: leftBox, lowerBound: leftLB });
       }
@@ -623,7 +637,7 @@ export function solveSBB(
     const rightBox: DomainBox = new Map(node.box);
     rightBox.set(splitVar, new Interval(splitMid, splitInterval.hi));
     if (contractBoxICP(constraintTapes, rightBox)) {
-      const rightLB = Math.max(tighterLB, evaluateIntervalLB(objectiveTape, rightBox));
+      const rightLB = evaluateIntervalLB(objectiveTape, rightBox);
       if (rightLB < upperBound - absTol) {
         queue.push({ box: rightBox, lowerBound: rightLB });
       }

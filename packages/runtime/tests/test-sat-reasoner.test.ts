@@ -1,5 +1,7 @@
 import { generateSAT } from "@modelscript/dsl/codegen/sat";
 import { generateSimplex } from "@modelscript/dsl/codegen/simplex";
+import expect from "expect";
+import { describe, it } from "node:test";
 
 describe("SMT/SAT DPLL(T) Solver Codegen", () => {
   it("should generate AssemblyScript DPLL CDCL solver code with clause ingestion APIs", () => {

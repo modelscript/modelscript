@@ -48,6 +48,12 @@ export interface RequirementRow {
   violationTime?: number;
   /** Name of the constrained variable (e.g., "motor.T"). */
   lhsName?: string;
+  /** Verification tier: structural (Tier 1), spatial (Tier 2), static parametric (Tier 3), dynamic STL (Tier 4) */
+  tier?: "structural" | "spatial" | "static_parametric" | "dynamic_stl";
+  /** Safety margin or quantitative robustness degree */
+  margin?: number;
+  /** Blame token IDs / AST provenance */
+  blameTokens?: number[];
 }
 
 /** A single cell in the traceability matrix. */
@@ -122,6 +128,9 @@ export function getRequirements(
     limitValue?: number;
     violationTime?: number;
     lhsName?: string;
+    tier?: "structural" | "spatial" | "static_parametric" | "dynamic_stl";
+    margin?: number;
+    blameTokens?: number[];
   }[],
 ): RequirementRow[] {
   const rows: RequirementRow[] = [];
@@ -163,6 +172,10 @@ export function getRequirements(
     let limitValue: number | undefined;
     let violationTime: number | undefined;
     let lhsName: string | undefined;
+    let tier: "structural" | "spatial" | "static_parametric" | "dynamic_stl" | undefined;
+    let margin: number | undefined;
+    let blameTokens: number[] | undefined;
+
     if (verificationResults && verificationResults.length > 0) {
       let hasCheckedConstraint = false;
       let hasFailure = false;
@@ -186,6 +199,9 @@ export function getRequirements(
           violationTime = res.violationTime;
         }
         if (res.lhsName) lhsName = res.lhsName;
+        if (res.tier) tier = res.tier;
+        if (res.margin !== undefined) margin = res.margin;
+        if (res.blameTokens) blameTokens = res.blameTokens;
       }
       if (hasCheckedConstraint) {
         status = hasFailure ? "Failed" : "Passed";
@@ -208,6 +224,9 @@ export function getRequirements(
       limitValue,
       violationTime,
       lhsName,
+      tier,
+      margin,
+      blameTokens,
     });
   }
 

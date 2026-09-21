@@ -195,3 +195,89 @@ export function isConstant(eClass: u32, val: f64): boolean {
     return false;
 }
 
+export function addENode(exprId: u32, dae: DaeBuilder): u32 {
+    if (exprId == 0xFFFFFFFF) return 0xFFFFFFFF;
+    let exprOffset = exprId * 4;
+    let kind = dae.exprData.get(exprOffset + 0);
+    let data1 = dae.exprData.get(exprOffset + 1);
+    let data2 = dae.exprData.get(exprOffset + 2);
+
+    if (kind == 0) { // Name
+        let key: u64 = (data1 as u64);
+        let existing = hashFind(key);
+        if (existing != 0xFFFFFFFF) return ufFind(existing);
+        let id = ufMakeSet();
+        hashInsert(key, id);
+        return id;
+    }
+
+    if (kind == 1) { // IntLiteral
+        let key: u64 = ((256 as u64) << 48) | ((data1 as u32) as u64);
+        let existing = hashFind(key);
+        if (existing != 0xFFFFFFFF) return ufFind(existing);
+        let id = ufMakeSet();
+        hashInsert(key, id);
+        return id;
+    }
+
+    if (kind == 2) { // RealLiteral
+        let lo = data1 as u64;
+        let hi = data2 as u64;
+        let floatBits: u64 = lo | (hi << 32);
+        let key: u64 = ((512 as u64) << 48) | (floatBits >>> 16);
+        let existing = hashFind(key);
+        if (existing != 0xFFFFFFFF) return ufFind(existing);
+        let id = ufMakeSet();
+        hashInsert(key, id);
+        return id;
+    }
+
+    if (kind == 3) { // BoolLiteral
+        let key: u64 = ((768 as u64) << 48) | ((data1 != 0 ? 1 : 0) as u64);
+        let existing = hashFind(key);
+        if (existing != 0xFFFFFFFF) return ufFind(existing);
+        let id = ufMakeSet();
+        hashInsert(key, id);
+        return id;
+    }
+
+    if (kind == 5) { // Binary
+        let leftId = dae.exprData.get(exprOffset + 2);
+        let rightId = dae.exprData.get(exprOffset + 3);
+        let leftClass = addENode(leftId, dae);
+        let rightClass = addENode(rightId, dae);
+        let opType = (kind << 8) | data1;
+        let key: u64 = ((opType as u64) << 48) | (((ufFind(leftClass) & 0xFFFFFF) as u64) << 24) | ((ufFind(rightClass) & 0xFFFFFF) as u64);
+        let existing = hashFind(key);
+        if (existing != 0xFFFFFFFF) return ufFind(existing);
+        let id = ufMakeSet();
+        hashInsert(key, id);
+        return id;
+    }
+
+    if (kind == 6) { // Unary
+        let childId = dae.exprData.get(exprOffset + 2);
+        let childClass = addENode(childId, dae);
+        let opType = (kind << 8) | data1;
+        let key: u64 = ((opType as u64) << 48) | (((ufFind(childClass) & 0xFFFFFF) as u64) << 24);
+        let existing = hashFind(key);
+        if (existing != 0xFFFFFFFF) return ufFind(existing);
+        let id = ufMakeSet();
+        hashInsert(key, id);
+        return id;
+    }
+
+    if (kind == 7) { // Call
+        let childId = dae.exprData.get(exprOffset + 2);
+        let childClass = addENode(childId, dae);
+        let opType = 1800 + (data1 as u16);
+        let key: u64 = ((opType as u64) << 48) | (((ufFind(childClass) & 0xFFFFFF) as u64) << 24);
+        let existing = hashFind(key);
+        if (existing != 0xFFFFFFFF) return ufFind(existing);
+        let id = ufMakeSet();
+        hashInsert(key, id);
+        return id;
+    }
+
+    return 0xFFFFFFFF;
+}

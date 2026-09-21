@@ -94,7 +94,7 @@ equation
 end ParamFold;`;
 
     ctx.load(src1, uri);
-    const dae1 = ctx.flattenArena("ParamFold", undefined, uri);
+    const dae1 = ctx.flattenArena("ParamFold", undefined, uri, { flattenerBackend: "ts" });
     assert(dae1 !== null, "Initial flatten must succeed");
 
     const aIdx = dae1.lookupVariable("a");
@@ -116,7 +116,7 @@ end ParamFold;`;
 
     const t0 = performance.now();
     ctx.load(src2, uri);
-    const dae2 = ctx.flattenArena("ParamFold", undefined, uri);
+    const dae2 = ctx.flattenArena("ParamFold", undefined, uri, { flattenerBackend: "ts" });
     const elapsed = performance.now() - t0;
     console.log(`  -> Parameter patch and targeted folding took: ${elapsed.toFixed(3)} ms`);
 

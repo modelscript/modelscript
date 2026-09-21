@@ -8,8 +8,25 @@
  * TGG polyglot correspondence index and WebAssembly zero-GC runtime.
  */
 
+export interface ProvenanceToken {
+  readonly tokenId: number;
+  readonly sourceLang?: string;
+  readonly sourceUri?: string;
+  readonly startByte?: number;
+  readonly endByte?: number;
+  readonly symbolId?: string | number;
+}
+
 export interface OntologyProjectionResult {
   props: Record<string, unknown>;
+  provenanceTokens?: readonly ProvenanceToken[];
+  blameLocations?: readonly {
+    uri?: string;
+    startByte?: number;
+    endByte?: number;
+    sourceLang?: string;
+    symbolId?: string | number;
+  }[];
 }
 import type { SymbolEntry, SymbolId, SymbolIndex } from "../runtime.js";
 
@@ -359,6 +376,13 @@ export interface SHACLViolation {
   readonly message: string;
   readonly constraintComponent: string;
   readonly severity?: "Violation" | "Warning" | "Info";
+  readonly blameLocations?: readonly {
+    uri?: string;
+    startByte?: number;
+    endByte?: number;
+    sourceLang?: string;
+    symbolId?: string | number;
+  }[];
 }
 
 export type OWL2Axiom =

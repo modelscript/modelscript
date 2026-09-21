@@ -184,6 +184,7 @@ export function initGraph(isDark: boolean): Graph {
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
+      snap: { radius: 25 },
       allowBlank: false,
       allowMulti: () => true,
       allowLoop: false,
@@ -191,17 +192,39 @@ export function initGraph(isDark: boolean): Graph {
       allowEdge: false,
       allowPort: true,
       highlight: true,
+      highlighting: {
+        magnetAvailable: {
+          name: "stroke",
+          args: {
+            attrs: {
+              fill: "#fff",
+              stroke: "#31d0c6",
+              strokeWidth: 4,
+            },
+          },
+        },
+        magnetAdsorbed: {
+          name: "stroke",
+          args: {
+            attrs: {
+              fill: "#31d0c6",
+              stroke: "#1890ff",
+              strokeWidth: 6,
+            },
+          },
+        },
+      },
       validateMagnet: () => true,
       validateConnection: () => true,
       validateEdge: () => true,
       createEdge: (): ReturnType<Graph["createEdge"]> => {
         return g.createEdge({
           zIndex: 1000,
-          router: { name: "normal" },
+          router: { name: "port-orthogonal-astar" },
           attrs: {
             line: {
-              stroke: "#0000ff",
-              strokeWidth: 1,
+              stroke: isDark ? "#569cd6" : "#005fb8",
+              strokeWidth: 1.5,
               "vector-effect": "non-scaling-stroke",
               targetMarker: null,
               "pointer-events": "none",

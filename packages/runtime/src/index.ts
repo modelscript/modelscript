@@ -6,6 +6,7 @@
  * structural analysis, numerical integrators, and symbolic solvers.
  */
 
+export * from "./analysis/parametric_verifier.js";
 export * from "./analysis/wasm_blt.js";
 export * from "./analysis/wasm_egraph_simplifier.js";
 export * from "./analysis/wasm_interval.js";

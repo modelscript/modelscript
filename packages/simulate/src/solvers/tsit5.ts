@@ -58,6 +58,11 @@ export interface Tsit5Options {
   minStep?: number;
   maxSteps?: number;
   equidistantOutput?: boolean;
+  eventFunctions?: Tsit5EventFunction[];
+  eventDirections?: (1 | -1 | 0)[];
+  eventCallback?: Tsit5EventCallback;
+  /** Optional streaming Signal Temporal Logic (STL) robustness monitors */
+  stlMonitors?: import("../core/stl_monitor.js").STLOnlineMonitor[];
 }
 
 export interface Tsit5Result extends CommonSolverResult {
@@ -144,6 +149,13 @@ export function tsit5(
   } else if (!denseOutputs) {
     resultTimes.push(t);
     resultStates.push([...y]);
+  }
+
+  // Initialize online STL monitors with initial point
+  if (options.stlMonitors && options.stlMonitors.length > 0) {
+    for (const m of options.stlMonitors) {
+      m.step(t, y);
+    }
   }
 
   // Pre-allocate stage vector
@@ -304,6 +316,19 @@ export function tsit5(
       for (let i = 0; i < n; i++) {
         y[i] = yNew[i]!;
       }
+
+      // Step online STL monitors
+      if (options.stlMonitors && options.stlMonitors.length > 0) {
+        let earlyStop = false;
+        for (const m of options.stlMonitors) {
+          const stepRes = m.step(t, y);
+          if (stepRes.shouldTerminate) {
+            earlyStop = true;
+          }
+        }
+        if (earlyStop) break;
+      }
+
       // FSAL: k[0] of next step is k[6] of current step
       k[0] = k[6]!;
 
@@ -331,6 +356,7 @@ export function tsit5(
     times: resultTimes,
     states: resultStates,
     stats,
+    stlResults: options.stlMonitors ? options.stlMonitors.map((m) => m.finish()) : undefined,
   };
 }
 
@@ -340,5 +366,9 @@ export function tsit5(
 export function solveODE(problem: ODEProblem, options: Tsit5Options = {}): Tsit5Result {
   const [t0, tEnd] = problem.tSpan;
   const f = (t: number, y: number[]) => problem.f(t, y, problem.p);
-  return tsit5(f, t0, problem.y0, tEnd, undefined, options);
+  const effectiveOpts: Tsit5Options = {
+    ...options,
+    stlMonitors: options.stlMonitors ?? problem.stlMonitors,
+  };
+  return tsit5(f, t0, problem.y0, tEnd, undefined, effectiveOpts);
 }

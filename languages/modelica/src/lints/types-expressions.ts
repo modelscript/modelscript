@@ -1,4 +1,4 @@
-import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/dsl";
+import type { CodeGraph, CompilerLint, i32, u16, u32 } from "@modelscript/dsl";
 import { unitsCompatible } from "../units.js";
 import {
   getComponentUnit,
@@ -20,6 +20,8 @@ import {
   TYPE_STRING,
   TYPE_UNKNOWN,
 } from "./helpers.js";
+
+const OCTAGON_INF: i32 = 0x3fffffff;
 
 export const modelicaTypeLints: Record<string, CompilerLint> = {
   /**
@@ -964,6 +966,145 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         if (exprUnit != null && !unitsCompatible(compUnit, exprUnit)) {
           db.diagnostic(node);
         }
+      }
+    },
+  },
+
+  /**
+   * M4031: Array index out of bounds.
+   */
+  arrayIndexOutOfBounds: {
+    nodes: ["component_reference"],
+    severity: "error",
+    code: 4031,
+    message: (node, subNode, dimIndex, dimSize) => {
+      const idxText = subNode && subNode.text ? subNode.text : "index";
+      const arrName = node && node.text ? node.text.split("[")[0].trim() : "array";
+      const dIdx = dimIndex ? String(dimIndex) : "1";
+      const dSz = dimSize ? String(dimSize) : "?";
+      return `Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if ($.array_subscripts == 0 || $.subscript == 0) return;
+      let subsNode: u32 = 0;
+      for (const s of db.ast.getDescendants(node, $.array_subscripts)) {
+        subsNode = s;
+        break;
+      }
+      if (subsNode == 0) return;
+
+      // Extract array name
+      let arrNameNode: u32 = 0;
+      for (const id of db.ast.getDescendants(node, $.identifier)) {
+        arrNameNode = id;
+        break;
+      }
+      if (arrNameNode == 0) return;
+
+      // Find declared size from enclosing class/component declaration
+      const encClass = getEnclosingClass(db, node, $);
+      if (encClass == 0) return;
+
+      let dimSize = 0;
+      for (const compDecl of db.ast.getDescendants(encClass, $.component_declaration)) {
+        let matches = false;
+        for (const id of db.ast.getDescendants(compDecl, $.identifier)) {
+          if (db.ast.textEqualsNode(id, arrNameNode)) {
+            matches = true;
+            break;
+          }
+        }
+        if (matches) {
+          for (const anc of db.ast.getAncestors(compDecl)) {
+            const ancType = db.ast.getType(anc);
+            if (ancType == $.component_clause || ancType == $.component_clause1) {
+              for (const s of db.ast.getDescendants(anc, $.array_subscripts)) {
+                dimSize = db.ast.parseInteger(s);
+                break;
+              }
+              break;
+            }
+          }
+          if (dimSize > 0) break;
+        }
+      }
+      if (dimSize <= 0) return;
+
+      // Check each subscript
+      let dimIdx = 1;
+      for (const sub of db.ast.getDescendants(subsNode, $.subscript)) {
+        const val = db.ast.parseInteger(sub);
+        if (val > 0) {
+          if (val < 1 || val > dimSize) {
+            db.diagnostic(node, sub, dimIdx, dimSize);
+            return;
+          }
+        }
+        dimIdx++;
+      }
+    },
+  },
+
+  /**
+   * M4076: Parameter lower bound exceeds upper bound.
+   */
+  parameterBoundContradiction: {
+    nodes: ["component_declaration", "component_declaration1"],
+    severity: "error",
+    code: 4076,
+    message: (node, lowerNode, upperNode) => {
+      let pName = "parameter";
+      if (node && node.text) {
+        const parts = node.text.split("(")[0].split("=");
+        pName = parts[0].trim();
+      }
+      const lVal = lowerNode && lowerNode.text ? lowerNode.text : "min";
+      const uVal = upperNode && upperNode.text ? upperNode.text : "max";
+      return `Contradictory bounds for parameter '${pName}': lower bound '${lVal}' exceeds upper bound '${uVal}'.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      // Must be parameter variability
+      let isParam = false;
+      for (const anc of db.ast.getAncestors(node)) {
+        const ancType = db.ast.getType(anc);
+        if (ancType == $.component_clause || ancType == $.component_clause1) {
+          for (const prefix of db.ast.getDescendants(anc, $.type_prefix)) {
+            if (db.ast.textEquals(prefix, "parameter")) {
+              isParam = true;
+              break;
+            }
+          }
+          break;
+        }
+      }
+      if (!isParam) return;
+
+      // Check for min and max element modifications
+      let minVal = -OCTAGON_INF;
+      let maxVal = OCTAGON_INF;
+      let minNode: u32 = 0;
+      let maxNode: u32 = 0;
+
+      for (const mod of db.ast.getDescendants(node, $.element_modification)) {
+        for (const nameId of db.ast.getDescendants(mod, $.name)) {
+          if (db.ast.textEquals(nameId, "min")) {
+            for (const expr of db.ast.getDescendants(mod, $.expression)) {
+              minVal = db.ast.parseInteger(expr);
+              minNode = expr;
+              break;
+            }
+          } else if (db.ast.textEquals(nameId, "max")) {
+            for (const expr of db.ast.getDescendants(mod, $.expression)) {
+              maxVal = db.ast.parseInteger(expr);
+              maxNode = expr;
+              break;
+            }
+          }
+        }
+      }
+
+      if (minNode != 0 && maxNode != 0 && minVal > maxVal) {
+        db.diagnostic(node, minNode, maxNode);
       }
     },
   },

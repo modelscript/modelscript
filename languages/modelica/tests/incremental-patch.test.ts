@@ -123,7 +123,7 @@ equation
 end ArrayTest;`;
 
     ctx.load(src1, uri);
-    const dae1 = ctx.flattenArena("ArrayTest", undefined, uri);
+    const dae1 = ctx.flattenArena("ArrayTest", undefined, uri, { arrayMode: "scalarize" });
     assert(dae1 !== null, "Initial flatten must succeed");
     assert.strictEqual(dae1.varCount, 10, "Must have 10 variables");
 
@@ -137,7 +137,7 @@ end ArrayTest;`;
 
     const t0 = performance.now();
     ctx.load(src2, uri);
-    const dae2 = ctx.flattenArena("ArrayTest", undefined, uri);
+    const dae2 = ctx.flattenArena("ArrayTest", undefined, uri, { arrayMode: "scalarize" });
     const elapsed = performance.now() - t0;
     console.log(`  -> Array modifier patch took: ${elapsed.toFixed(3)} ms`);
 
@@ -203,7 +203,7 @@ equation
 end ArrayEqPatch;`;
 
     ctx.load(src1, uri);
-    const dae1 = ctx.flattenArena("ArrayEqPatch", undefined, uri);
+    const dae1 = ctx.flattenArena("ArrayEqPatch", undefined, uri, { arrayMode: "scalarize" });
     assert(dae1 !== null, "Initial flatten must succeed");
     assert.strictEqual(dae1.varCount, 2, "Must have 2 scalarized variables");
     assert.strictEqual(dae1.eqCount, 2, "Must have 2 scalarized equations");
@@ -224,7 +224,7 @@ end ArrayEqPatch;`;
 
     const t0 = performance.now();
     ctx.load(src2, uri);
-    const dae2 = ctx.flattenArena("ArrayEqPatch", undefined, uri);
+    const dae2 = ctx.flattenArena("ArrayEqPatch", undefined, uri, { arrayMode: "scalarize" });
     const elapsed = performance.now() - t0;
     console.log(`  -> Scalarized array equation patch took: ${elapsed.toFixed(3)} ms`);
 

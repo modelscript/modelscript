@@ -480,11 +480,13 @@ let lraConstraintCount: u32 = 0;
 let satVarToLraRow = createChunkedUint32Array(50000);
 let lraRowToSatVar = createChunkedUint32Array(LRA_MAX_ROWS);
 
-@external("env", "initSimplexArena") declare function initSimplexArena(offset: u32): void;
-@external("env", "addLinearConstraint") declare function addLinearConstraint(coeffs: u32, limit: f64, isUpper: u8): boolean;
-@external("env", "setConstraintOrigin") declare function setConstraintOrigin(row: u32, node: u32): void;
-@external("env", "checkSimplexFeasibility") declare function checkSimplexFeasibility(): boolean;
-@external("env", "extractUnsatCore") declare function extractUnsatCore(row: u32): u32;
+import {
+    initSimplexArena,
+    addLinearConstraint,
+    setConstraintOrigin,
+    checkSimplexFeasibility,
+    extractUnsatCore,
+} from "../analysis/simplex";
 
 function initLraTheory(): void {
     lraConstraintCount = 0;
@@ -500,7 +502,20 @@ export function registerLraConstraint(satVar: u32, coeffsPtr: u32, limit: f64, i
     setConstraintOrigin(rowIdx, satVarToNode[satVar]);
 }
 
-function checkTheoryLRA(): u32 {
+export function satAddClause(clausePtr: u32, len: u32): boolean {
+    let chunk = createChunkedUint32Array(len);
+    for (let i: u32 = 0; i < len; i++) {
+        chunk[i] = load<u32>(clausePtr + i * 4);
+    }
+    return addClause(chunk, len) != 0;
+}
+
+export function satGetModelValue(varIdx: u32): u8 {
+    if (varIdx >= 100000) return SAT_UNASSIGNED;
+    return assignmentValues[varIdx] as u8;
+}
+
+export function checkTheoryLRA(): u32 {
     let feasible = checkSimplexFeasibility();
     if (!feasible) {
         let corePtr = extractUnsatCore(0);
@@ -530,9 +545,37 @@ let eufEqualityCount: u32 = 0;
 let satVarToEufT1 = createChunkedUint32Array(50000);
 let satVarToEufT2 = createChunkedUint32Array(50000);
 
-@external("env", "initEGraph") declare function initEGraph(): void;
-@external("env", "ufUnion") declare function ufUnion(a: u32, b: u32): u32;
-@external("env", "ufFind") declare function ufFind(x: u32): u32;
+let eufUfParent = createChunkedUint32Array(50000);
+
+function initEGraph(): void {
+    for (let i: u32 = 0; i < 50000; i++) {
+        eufUfParent[i] = i;
+    }
+}
+
+function ufFind(x: u32): u32 {
+    if (x >= 50000) return x;
+    let root = x;
+    while (root < 50000 && eufUfParent[root] != root) {
+        root = eufUfParent[root];
+    }
+    let curr = x;
+    while (curr < 50000 && eufUfParent[curr] != root) {
+        let next = eufUfParent[curr];
+        eufUfParent[curr] = root;
+        curr = next;
+    }
+    return root;
+}
+
+function ufUnion(a: u32, b: u32): u32 {
+    let rA = ufFind(a);
+    let rB = ufFind(b);
+    if (rA != rB && rA < 50000 && rB < 50000) {
+        eufUfParent[rA] = rB;
+    }
+    return rB;
+}
 
 function initEufTheory(): void {
     eufEqualityCount = 0;
@@ -574,7 +617,7 @@ function checkTheoryEUF(): u32 {
 function backtrackEufTheory(level: u32): void {
 }
 
-export function solveDPLL(constraintRootId: u32): boolean {
+export function solveDPLL(constraintRootId: u32 = 0): boolean {
     let iterations: u32 = 0;
     while (iterations < 100000) {
         iterations++;

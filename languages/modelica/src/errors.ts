@@ -789,6 +789,20 @@ export const ModelicaErrorCode = {
     message: (exprText: string, leftType: string, rightType: string) =>
       `Cannot resolve type of expression ${exprText}. The operands have types ${leftType}, ${rightType} in component <NO_COMPONENT>.`,
   },
+  PARAMETER_BOUND_CONTRADICTION: {
+    code: 4076,
+    rule: "parameter-bound-contradiction",
+    severity: "error",
+    message: (paramName: string, lower: string, upper: string) =>
+      `Contradictory bounds for parameter '${paramName}': lower bound '${lower}' exceeds upper bound '${upper}'.`,
+  },
+  LOOP_TERMINATION_INCONCLUSIVE: {
+    code: 4077,
+    rule: "loop-termination-inconclusive",
+    severity: "error",
+    message: (loopVar: string, condition: string) =>
+      `Loop over '${loopVar}' with condition '${condition}' cannot be proven to terminate.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys
