@@ -17,6 +17,7 @@ export interface DiscoveredLanguageManifestEntry {
   fileExtensions: string[];
   primaryExtension: string;
   wasm?: string | undefined;
+  syntaxNames?: string[] | undefined;
   lineComment?: string | undefined;
   blockComment?: { open: string; close: string } | undefined;
 }
@@ -125,6 +126,41 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       });
     }
 
+    // 4. Discover native parser bindings.js & syntax names
+    const bindingsCandidates = [
+      path.join(langDir, "src-gen", "bindings.js"),
+      path.join(langDir, "dist", "src-gen", "bindings.js"),
+      path.join(langDir, "dist", "bindings.js"),
+      path.join(langDir, "bindings.js"),
+    ];
+
+    let syntaxNames: string[] | undefined;
+    const foundBindings = bindingsCandidates.find(fs.existsSync);
+    if (foundBindings) {
+      wasmAssets.push({
+        src: foundBindings,
+        dest: `server/dist/${normalized.id}.bindings.js`,
+      });
+      wasmAssets.push({
+        src: foundBindings,
+        dest: `server/dist/tree-sitter-${normalized.id}.bindings.js`,
+      });
+      try {
+        const mod = await dynamicImport(foundBindings);
+        if (mod && Array.isArray(mod.SYNTAX_NAMES) && mod.SYNTAX_NAMES.length > 0) {
+          syntaxNames = mod.SYNTAX_NAMES;
+        }
+      } catch {
+        try {
+          const content = fs.readFileSync(foundBindings, "utf-8");
+          const m = content.match(/SYNTAX_NAMES\s*=\s*(?:typeof\s*)?(\[[^\]]+\])/);
+          if (m) {
+            syntaxNames = JSON.parse(m[1]);
+          }
+        } catch {}
+      }
+    }
+
     manifest.push({
       id: normalized.id,
       name: normalized.name,
@@ -132,6 +168,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       fileExtensions: normalized.fileExtensions,
       primaryExtension: normalized.primaryExtension,
       wasm: wasmFileName,
+      syntaxNames,
       lineComment: normalized.lineComment,
       blockComment: normalized.blockComment,
     });

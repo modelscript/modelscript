@@ -1161,12 +1161,43 @@ END-ISO-10303-21;`;
       if (!uri && editor?.document) {
         uri = editor.document.uri.toString();
       }
+      if (!uri) {
+        const candidate =
+          vscode.window.visibleTextEditors.find(
+            (e) =>
+              e.document.uri.scheme !== "output" &&
+              (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
+          )?.document ??
+          vscode.workspace.textDocuments.find(
+            (d) => d.uri.scheme !== "output" && (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
+          );
+        if (candidate) {
+          uri = candidate.uri.toString();
+          if (!inputs.documentText) inputs.documentText = candidate.getText();
+          if (!inputs.name) {
+            const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+            if (m) inputs.name = m[1];
+          }
+        }
+      }
+      if (uri && !inputs.documentText) {
+        const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
+        if (openDoc) {
+          inputs.documentText = openDoc.getText();
+        } else {
+          try {
+            const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
+            inputs.documentText = new TextDecoder("utf-8").decode(bytes);
+          } catch {
+            // ignore
+          }
+        }
+      }
       if (!inputs.documentText && editor?.document) {
         inputs.documentText = editor.document.getText();
       }
-      if (!inputs.name && editor?.document) {
-        const text = editor.document.getText();
-        const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+      if (!inputs.name && inputs.documentText) {
+        const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
         if (m) inputs.name = m[1];
       }
       try {
@@ -1223,12 +1254,43 @@ END-ISO-10303-21;`;
       if (!uri && editor?.document) {
         uri = editor.document.uri.toString();
       }
+      if (!uri) {
+        const candidate =
+          vscode.window.visibleTextEditors.find(
+            (e) =>
+              e.document.uri.scheme !== "output" &&
+              (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
+          )?.document ??
+          vscode.workspace.textDocuments.find(
+            (d) => d.uri.scheme !== "output" && (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
+          );
+        if (candidate) {
+          uri = candidate.uri.toString();
+          if (!inputs.documentText) inputs.documentText = candidate.getText();
+          if (!inputs.name) {
+            const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+            if (m) inputs.name = m[1];
+          }
+        }
+      }
+      if (uri && !inputs.documentText) {
+        const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
+        if (openDoc) {
+          inputs.documentText = openDoc.getText();
+        } else {
+          try {
+            const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
+            inputs.documentText = new TextDecoder("utf-8").decode(bytes);
+          } catch {
+            // ignore
+          }
+        }
+      }
       if (!inputs.documentText && editor?.document) {
         inputs.documentText = editor.document.getText();
       }
-      if (!inputs.name && editor?.document) {
-        const text = editor.document.getText();
-        const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+      if (!inputs.name && inputs.documentText) {
+        const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
         if (m) inputs.name = m[1];
       }
       try {
@@ -1987,15 +2049,45 @@ async function initWorkspaceAndTree(
 ): Promise<void> {
   const folders = workspace.workspaceFolders;
 
+  let workspaceUri: vscode.Uri | undefined =
+    folders && folders.length > 0 && folders[0].uri.scheme === "memfs" ? folders[0].uri : undefined;
+  if (!workspaceUri) {
+    try {
+      const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
+      if (hash.startsWith("memfs")) {
+        const template = hash.split(":")[1] || "empty";
+        workspaceUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // For memfs workspaces, skip the file scan entirely — VS Code has no search
   // provider for memfs, so workspace.findFiles() hangs indefinitely.
-  // Go straight to template scaffolding.
-  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
-    const workspaceUri = folders[0].uri;
+  // Go straight to template scaffolding and open all template files directly.
+  if (workspaceUri && workspaceUri.scheme === "memfs") {
     try {
       const template = workspaceUri.path.substring(1) || "empty";
       const primaryFile = getTemplatePrimaryFile(template);
       const fileUri = Uri.joinPath(workspaceUri, primaryFile);
+
+      // Pre-open any other files in this memfs template workspace so LSP server tracks them
+      try {
+        const dirEntries = await workspace.fs.readDirectory(workspaceUri);
+        for (const [name, type] of dirEntries) {
+          if (type === vscode.FileType.File && name !== primaryFile) {
+            try {
+              await workspace.openTextDocument(Uri.joinPath(workspaceUri, name));
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+
       try {
         if (primaryFile.endsWith(".monb")) {
           await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
@@ -2004,8 +2096,8 @@ async function initWorkspaceAndTree(
           await vscode.window.showTextDocument(doc);
           treeProvider.setDocumentUri(fileUri.toString());
         }
-      } catch {
-        // File may be dynamically loaded or opened later
+      } catch (e: unknown) {
+        console.error("[blank-project] Failed to open primary template file:", e);
       }
 
       if (template === "mbse-verification") {
@@ -2028,6 +2120,19 @@ async function initWorkspaceAndTree(
     } catch (e: unknown) {
       console.error("[blank-project] Failed to initialize workspace template:", e);
     }
+
+    // Auto-expand root items after tree data loads
+    setTimeout(async () => {
+      try {
+        const rootItems = await treeProvider.getChildren();
+        for (const item of rootItems) {
+          await treeView.reveal(item, { expand: true, select: false, focus: false });
+        }
+      } catch {
+        // ignore — tree may not be ready yet
+      }
+    }, 3000);
+    return;
   }
 
   // Always scan for existing .mo/.sysml files so the LSP indexes the workspace
@@ -2057,6 +2162,10 @@ async function initWorkspaceAndTree(
  * isn't available yet (e.g. GitHub FS extension still activating).
  */
 async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
+  const folders = workspace.workspaceFolders;
+  if (folders && folders.length > 0 && folders.every((f) => f.uri.scheme === "memfs")) {
+    return [];
+  }
   const maxRetries = 5;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {

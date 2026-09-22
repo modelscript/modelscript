@@ -75,6 +75,7 @@ export const ERROR_COST_PER_SKIPPED_TREE: i32 = 110;
 export const ERROR_COST_PER_MISSING_TREE: i32 = 100;
 export const ERROR_COST_PER_SKIPPED_CHAR: i32 = 1;
 export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 5000;
+export const PENALTY_DELETE_LINE_END_DANGLING: i32 = 100;
 
 /**
  * Searches the action table for a SHIFT transition for the given state and terminal token.
@@ -267,6 +268,28 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
         let diagStart: u32 = anc.pos + firstPad;
         let diagEnd: u32 = pos;
+
+        // Narrow diagStart past valid (non-error) children of the error node.
+        // When depth > 0, the error node wraps popped stack nodes that were
+        // successfully parsed. The diagnostic should only cover the disruption
+        // point (after the valid nodes), not the valid content itself.
+        if (depth > 0) {
+          let child = getNodeFirstChild(errNode);
+          let childOff: u32 = diagStart;
+          while (child != 0) {
+            let cFlags = getNodeFlags(child);
+            let cType = getNodeType(child);
+            if (cType != 0 && (cFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0) {
+              childOff += getNodePadding(child) + getNodeByteLength(child);
+            } else {
+              break;
+            }
+            child = getNodeNextSibling(child);
+          }
+          if (childOff > diagStart) {
+            diagStart = childOff;
+          }
+        }
         if (diagEnd <= diagStart) {
           diagEnd = diagStart + (lexLen > 0 ? lexLen : step);
         }
@@ -382,6 +405,15 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let exp = getExpectedTokensForState(head.state);
   let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, childTokType as u32, 2, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
 
+  let crossedNl = false;
+  for (let p = pos; p < srcLexPos; p++) {
+    let ch = peekChar(p);
+    if (ch == 10 || ch == 13) {
+      crossedNl = true;
+      break;
+    }
+  }
+
   let hasNl = false;
   let pNl = nextPos;
   while (pNl < inputLength) {
@@ -393,7 +425,7 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     if (ch != 32 && ch != 9) break;
     pNl += peekCharLen(pNl);
   }
-  let nlPenalty: i32 = hasNl ? PENALTY_DELETE_NEWLINE_CROSS : 0;
+  let nlPenalty: i32 = crossedNl ? PENALTY_DELETE_NEWLINE_CROSS : (hasNl ? PENALTY_DELETE_LINE_END_DANGLING : 0);
 
   let unconfirmedPenalty: i32 = head.successfulShifts < 2 ? 60 : 0;
   let parentHead: ParseHead | null = head.errorNode != 0 ? head.prev : head;
@@ -481,9 +513,8 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
     return 0; // Perfect combined split-word typo match!
   }
 
-  if (matchChars == 0) return 999999;
-  let delta = kwLen > matchChars ? (kwLen - matchChars) : 0;
-  let penalty: i32 = (delta as i32) * 15;
+  let delta = kwLen > matchChars ? (kwLen - matchChars) : kwLen;
+  let penalty: i32 = (delta as i32) * 15 + (matchChars == 0 ? 10 : 0);
   return penalty;
 }
 

@@ -497,6 +497,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             else setNextSibling(lastChild, clone);
             setNextSibling(clone, 0);
             lastChild = clone;
+            if (getNodeType(child) == 0 || (getNodeFlags(child) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0) {
+              setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
+            }
           }
         }
       }

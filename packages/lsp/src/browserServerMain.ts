@@ -265,6 +265,11 @@ if (workspaceManager.sysml2WorkspaceIndex) {
     workspaceManager.sysml2WorkspaceIndex,
     sysml2LangFallback,
   );
+  workspaceManager.unifiedWorkspace.registerWorkspace(
+    "sysml",
+    workspaceManager.sysml2WorkspaceIndex,
+    sysml2LangFallback,
+  );
 }
 if (workspaceManager.owl2WorkspaceIndex) {
   workspaceManager.unifiedWorkspace.registerWorkspace("owl2", workspaceManager.owl2WorkspaceIndex, owl2LangFallback);
@@ -387,6 +392,18 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       languageDef: sysml2LangFallback,
     });
     globalLanguageRegistry.register({
+      id: "sysml",
+      name: "SysML v2",
+      extensions: [".sysml", ".sysml2"],
+      parser: parserService.sysml2Parser,
+      facade: parserService.sysml2Facade,
+      workspaceIndex: workspaceManager.sysml2WorkspaceIndex,
+      get queryEngine() {
+        return workspaceManager.globalSysML2QueryEngine ?? undefined;
+      },
+      languageDef: sysml2LangFallback,
+    });
+    globalLanguageRegistry.register({
       id: "step",
       name: "STEP",
       extensions: [".step", ".stp", ".p21"],
@@ -427,6 +444,15 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       .initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl, registerBuiltinLanguages)
       .then(async () => {
         registerBuiltinLanguages();
+
+        // Revalidate open documents now that parsers are ready
+        for (const doc of documents.all()) {
+          try {
+            await validationService.validateTextDocument(doc);
+          } catch (e: any) {
+            connection.console.warn(`[lsp] Post-init validation failed for ${doc.uri}: ${e?.message}`);
+          }
+        }
 
         // Attempt to fetch user-registered languages from Web IDE express endpoint
         try {

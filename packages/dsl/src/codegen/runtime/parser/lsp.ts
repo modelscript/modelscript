@@ -529,6 +529,21 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
       let dStart = nodeStart;
       let dEnd = nodeEnd > nodeStart ? nodeEnd : dStart + step;
 
+      // For ERROR nodes whose first child is a valid (non-error) node,
+      // narrow dStart past it. When recovery wraps popped stack nodes into
+      // an error, the first child is the valid node that was on the stack
+      // before the error. The diagnostic should start after it.
+      if (type == 0 && firstChild != 0) {
+        let cType = getNodeType(firstChild);
+        let cFlags = getNodeFlags(firstChild);
+        if (cType != 0 && (cFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0) {
+          let firstChildEnd = nodeStart + getNodePadding(firstChild) + getNodeByteLength(firstChild);
+          if (firstChildEnd > dStart && firstChildEnd < dEnd) {
+            dStart = firstChildEnd;
+          }
+        }
+      }
+
       if ((flags & FLAG_IS_INSERTED) == 0 && dEnd > dStart) {
         while (dStart < dEnd) {
           let ch = peekChar(dStart);
@@ -653,6 +668,35 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
         let ch = peekChar(dStart);
         tokType = ch as u16;
       }
+      if (dEnd > dStart && totalInputBytes > 0) {
+        if (dStart > 0 && dStart < totalInputBytes) {
+          let chCurr = peekChar(dStart);
+          let chPrev = peekChar(dStart - step);
+          let isCurrWord = (chCurr >= 97 && chCurr <= 122) || (chCurr >= 65 && chCurr <= 90) || (chCurr >= 48 && chCurr <= 57) || chCurr == 95;
+          let isPrevWord = (chPrev >= 97 && chPrev <= 122) || (chPrev >= 65 && chPrev <= 90) || (chPrev >= 48 && chPrev <= 57) || chPrev == 95;
+          if (isCurrWord && isPrevWord) {
+            while (dStart > 0) {
+              let c = peekChar(dStart - step);
+              if (!((c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95)) break;
+              dStart -= step;
+            }
+          }
+        }
+        if (dEnd > 0 && dEnd < totalInputBytes) {
+          let chEnd = peekChar(dEnd);
+          let chBeforeEnd = peekChar(dEnd - step);
+          let isEndWord = (chEnd >= 97 && chEnd <= 122) || (chEnd >= 65 && chEnd <= 90) || (chEnd >= 48 && chEnd <= 57) || chEnd == 95;
+          let isBeforeWord = (chBeforeEnd >= 97 && chBeforeEnd <= 122) || (chBeforeEnd >= 65 && chBeforeEnd <= 90) || (chBeforeEnd >= 48 && chBeforeEnd <= 57) || chBeforeEnd == 95;
+          if (isEndWord && isBeforeWord) {
+            while (dEnd < totalInputBytes) {
+              let c = peekChar(dEnd);
+              if (!((c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95)) break;
+              dEnd += step;
+            }
+          }
+        }
+      }
+
       if (dEnd > dStart) {
         if ((flags & FLAG_IS_INSERTED) != 0) {
           lsp_allocDiagnostic(dStart, dEnd, 0, 1, (type & 0x7fff) as u32);

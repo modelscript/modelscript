@@ -124,14 +124,19 @@ export class LanguageRegistry {
    * Looks up a registered language plugin by its identifier.
    */
   getPluginById(id: string): LanguagePlugin | undefined {
-    return this.plugins.get(id.toLowerCase());
+    const norm = id.toLowerCase();
+    const plugin = this.plugins.get(norm);
+    if (plugin) return plugin;
+    if (norm === "sysml") return this.plugins.get("sysml2");
+    if (norm === "sysml2") return this.plugins.get("sysml");
+    return undefined;
   }
 
   /**
    * Alias for getPluginById.
    */
   getPluginByLanguageId(id: string): LanguagePlugin | undefined {
-    return this.plugins.get(id.toLowerCase());
+    return this.getPluginById(id);
   }
 
   /**
@@ -141,6 +146,9 @@ export class LanguageRegistry {
     if (languageId) {
       const byId = this.getPluginById(languageId);
       if (byId) return byId;
+      if (!uri && (languageId.includes("/") || languageId.includes("."))) {
+        return this.getPluginForUri(languageId);
+      }
     }
     if (uri) {
       return this.getPluginForUri(uri);

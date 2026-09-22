@@ -157,16 +157,17 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     });
 
     if (lang.id === "sysml2") {
+      activationEvents.push("onLanguage:sysml");
       contributesLanguages.push({
         id: "sysml",
         aliases: ["SysML", "sysml"],
         extensions: [".sysml"],
-        configuration: `./language-configuration-${lang.id}.json`,
+        configuration: `./language-configuration-sysml.json`,
       });
       contributesGrammars.push({
         language: "sysml",
         scopeName: `source.sysml`,
-        path: `./syntaxes/${lang.id}.tmLanguage.json`,
+        path: `./syntaxes/sysml.tmLanguage.json`,
       });
     }
 
@@ -881,6 +882,33 @@ export function bundleExtension(
         ),
       });
     }
+
+    if (lang.id === "sysml2") {
+      files.push({
+        path: `language-configuration-sysml.json`,
+        content: generateLanguageConfiguration(lang),
+      });
+      try {
+        const sysmlTm = generateTextMate({ ...lang.options, name: "sysml" });
+        files.push({
+          path: `syntaxes/sysml.tmLanguage.json`,
+          content: sysmlTm.tm || JSON.stringify({}),
+        });
+      } catch {
+        files.push({
+          path: `syntaxes/sysml.tmLanguage.json`,
+          content: JSON.stringify(
+            {
+              name: "SysML",
+              scopeName: "source.sysml",
+              patterns: [],
+            },
+            null,
+            2,
+          ),
+        });
+      }
+    }
   }
 
   // 4. Client bootstrap TypeScript source (src/extension.ts)
@@ -984,6 +1012,24 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
         JSON.stringify({ name: lang.displayName, scopeName: `source.${lang.id}`, patterns: [] }, null, 2),
         "utf-8",
       );
+    }
+
+    if (lang.id === "sysml2") {
+      fs.writeFileSync(
+        path.join(outDir, `language-configuration-sysml.json`),
+        generateLanguageConfiguration(lang),
+        "utf-8",
+      );
+      try {
+        const sysmlTm = generateTextMate({ ...lang.options, name: "sysml" });
+        fs.writeFileSync(path.join(syntaxesDir, `sysml.tmLanguage.json`), sysmlTm.tm, "utf-8");
+      } catch {
+        fs.writeFileSync(
+          path.join(syntaxesDir, `sysml.tmLanguage.json`),
+          JSON.stringify({ name: "SysML", scopeName: "source.sysml", patterns: [] }, null, 2),
+          "utf-8",
+        );
+      }
     }
   }
 

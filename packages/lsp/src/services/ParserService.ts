@@ -43,21 +43,36 @@ export class ParserService {
 
   public getParser(langId: string): any | null {
     const norm = langId.toLowerCase();
-    return this.parserEntries.get(norm)?.parser ?? globalLanguageRegistry.getPluginById(norm)?.parser ?? null;
+    const p = this.parserEntries.get(norm)?.parser ?? globalLanguageRegistry.getPluginById(norm)?.parser;
+    if (p) return p;
+    if (norm === "sysml") return this.getParser("sysml2");
+    if (norm === "sysml2") return this.getParser("sysml");
+    return null;
   }
 
   public getFacade(langId: string): any | null {
     const norm = langId.toLowerCase();
-    return this.parserEntries.get(norm)?.facade ?? globalLanguageRegistry.getPluginById(norm)?.facade ?? null;
+    const f = this.parserEntries.get(norm)?.facade ?? globalLanguageRegistry.getPluginById(norm)?.facade;
+    if (f) return f;
+    if (norm === "sysml") return this.getFacade("sysml2");
+    if (norm === "sysml2") return this.getFacade("sysml");
+    return null;
   }
 
   public isParserReady(langId: string): boolean {
     const norm = langId.toLowerCase();
-    return this.parserEntries.get(norm)?.ready ?? !!globalLanguageRegistry.getPluginById(norm)?.parser;
+    const r = this.parserEntries.get(norm)?.ready ?? !!globalLanguageRegistry.getPluginById(norm)?.parser;
+    if (r) return true;
+    if (norm === "sysml") return this.isParserReady("sysml2");
+    if (norm === "sysml2") return this.isParserReady("sysml");
+    return false;
   }
 
   public getParserForUri(uri: string): any | null {
-    const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(uri);
+    const plugin =
+      globalLanguageRegistry.getPluginForLanguageIdOrUri(undefined, uri) ||
+      globalLanguageRegistry.getPluginById(uri) ||
+      globalLanguageRegistry.getPluginForUri(uri);
     if (plugin?.id) {
       const p = this.getParser(plugin.id);
       if (p) return p;
@@ -459,7 +474,13 @@ export class ParserService {
       });
 
       // Load languages from languages-manifest.json if present
-      let manifest: { id: string; wasm?: string; displayName?: string; fileExtensions?: string[] }[] = [];
+      let manifest: {
+        id: string;
+        wasm?: string;
+        displayName?: string;
+        fileExtensions?: string[];
+        syntaxNames?: string[];
+      }[] = [];
       try {
         const manifestUrl = `${serverDistBase}/languages-manifest.json`;
         if (typeof fetch !== "undefined") {
@@ -488,7 +509,7 @@ export class ParserService {
           if (!entry.wasm) return;
           const wasmUrl = `${serverDistBase}/${entry.wasm}`;
           const legacyWasmUrl = `${serverDistBase}/tree-sitter-${entry.id}.wasm`;
-          const syntaxNames = (globalThis as any)[`${entry.id}SyntaxNames`];
+          const syntaxNames = entry.syntaxNames || (globalThis as any)[`${entry.id}SyntaxNames`];
 
           try {
             const result = await createWasmParser(wasmUrl, { syntaxNames }).catch(() =>
@@ -497,6 +518,11 @@ export class ParserService {
 
             if (result) {
               this.registerParser(entry.id, result.parser, result.facade);
+              if (this.workspaceManager?.unifiedWorkspace && result.parser) {
+                for (const ext of entry.fileExtensions || [`.${entry.id}`]) {
+                  this.workspaceManager.unifiedWorkspace.registerParser(ext, result.parser);
+                }
+              }
               if (entry.id === "modelica") {
                 this.parser = result.parser;
                 (globalThis as any).modelicaParser = this.parser;
@@ -506,6 +532,21 @@ export class ParserService {
                 this.sysml2Parser = result.parser;
                 this.sysml2Facade = result.facade;
                 this.sysml2ParserReady = true;
+                this.registerParser("sysml", result.parser, result.facade);
+                const existingSysml = globalLanguageRegistry.getPluginById("sysml");
+                if (!existingSysml) {
+                  globalLanguageRegistry.register({
+                    id: "sysml",
+                    name: "SysML v2",
+                    extensions: [".sysml", ".sysml2"],
+                    parser: result.parser,
+                    facade: result.facade,
+                    disposables: [],
+                  });
+                } else {
+                  existingSysml.parser = result.parser;
+                  existingSysml.facade = result.facade;
+                }
               } else if (entry.id === "step") {
                 this.stepParser = result.parser;
                 this.stepFacade = result.facade;

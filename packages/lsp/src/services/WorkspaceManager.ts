@@ -36,6 +36,10 @@ export class WorkspaceManager {
       this.setWorkspaceIndex(norm, plugin.workspaceIndex);
       return plugin.workspaceIndex;
     }
+    if (norm === "sysml") {
+      const s2 = this.getWorkspaceIndex("sysml2");
+      if (s2) return s2;
+    }
     const factory = (globalThis as any)[`create_${norm}_workspace_index`];
     if (typeof factory === "function") {
       const idx = factory();
@@ -76,9 +80,12 @@ export class WorkspaceManager {
 
   public getQueryEngine(langId: string): QueryEngine | null {
     const norm = langId.toLowerCase();
-    return (
-      this.languageContexts.get(norm)?.queryEngine ?? globalLanguageRegistry.getPluginById(norm)?.queryEngine ?? null
-    );
+    const qe =
+      this.languageContexts.get(norm)?.queryEngine ?? globalLanguageRegistry.getPluginById(norm)?.queryEngine ?? null;
+    if (qe) return qe;
+    if (norm === "sysml") return this.getQueryEngine("sysml2");
+    if (norm === "sysml2") return this.getQueryEngine("sysml");
+    return null;
   }
 
   public setQueryEngine(langId: string, qe: QueryEngine | null): void {

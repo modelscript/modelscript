@@ -1016,7 +1016,7 @@ end ThermalSystem;
     expect(syntaxError).toBeDefined();
     expect(syntaxError.range.start.line).toBe(0);
     expect(syntaxError.range.start.character).toBe(24);
-    expect(syntaxError.range.end.character).toBe(27);
+    expect(syntaxError.range.end.character).toBe(25);
 
     const powerDiag = diags.find((d: any) => d.code === 2000 && d.range.start.line === 3);
     expect(powerDiag).toBeDefined();
@@ -1599,7 +1599,7 @@ end ThermalSystem;
     expect(errorDiags).toHaveLength(1);
     expect(errorDiags[0].range.start.line).toBe(0);
     expect(errorDiags[0].range.start.character).toBe(24);
-    expect(errorDiags[0].range.end.character).toBe(36);
+    expect(errorDiags[0].range.end.character).toBe(30);
     expect(sExpr).toContain("ModelDef");
     expect(sExpr).toContain("Decl");
     expect(sExpr).toContain("Equation");

@@ -105,7 +105,7 @@ export function registerActionRouter(context: LspContext): void {
       let docText = params.inputs?.documentText;
       if (!docText) {
         let doc = params.uri ? context.documents.get(params.uri) : undefined;
-        if (!doc && params.uri) {
+        if (!doc && params.uri && typeof context.documents?.all === "function") {
           const normUri = params.uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
           for (const d of context.documents.all()) {
             const dNorm = d.uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
@@ -140,6 +140,23 @@ export function registerActionRouter(context: LspContext): void {
         }
       }
 
+      if (!docText && typeof context.documents?.all === "function") {
+        for (const d of context.documents.all()) {
+          const text = d.getText();
+          if (
+            params.inputs?.name &&
+            (text.includes(`model ${params.inputs.name}`) ||
+              text.includes(`class ${params.inputs.name}`) ||
+              text.includes(`block ${params.inputs.name}`) ||
+              text.includes(params.inputs.name))
+          ) {
+            docText = text;
+            if (!params.uri) params.uri = d.uri;
+            break;
+          }
+        }
+      }
+
       const executionContext: ActionExecutionContext = {
         uri: params.uri,
         languageId: plugin.id,
@@ -149,6 +166,13 @@ export function registerActionRouter(context: LspContext): void {
           (context.workspaceManager as any)?.getQueryEngine?.(plugin.id) ??
           (context.workspaceManager as any)?.globalModelicaQueryEngine,
         workspaceManager: context.workspaceManager,
+        parserService: context.parserService,
+        validationService: context.validationService,
+        documentManager: context.documentManager,
+        documents: context.documents,
+        state: context.state,
+        sharedContext:
+          context.state?.sharedContext ?? context.parserService?.sharedContext ?? (globalThis as any).sharedContext,
         connection: context.connection,
         notifyProgress: (msg: string, increment?: number) => {
           context.connection.sendNotification("modelscript/status", {
