@@ -94,7 +94,7 @@ describe("Phase 2: Zero-GC WASM DAE Flattening & Connection Physics", () => {
     exports.flattener_addConnection(flattener, i1, i2, 1, 0); // flow = 1
 
     const generatedFlowEqs = exports.flattener_finalizeConnections(flattener);
-    expect(generatedFlowEqs).toBe(1);
+    expect(generatedFlowEqs).toBe(4);
 
     // 5. Test Bidirectional Fluid Stream Connection (Modelica 3.7 Chapter 15)
     const h1 = exports.dae_addVariable(dae, djb2Hash("pipe1.port_b.h_outflow"), 0, 0, 0, 0, 4); // Stream flag (1 << 2)

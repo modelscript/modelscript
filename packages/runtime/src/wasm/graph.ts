@@ -47,6 +47,9 @@ import {
   EXPR_KIND,
   EXPR_DATA1,
   FLAG_VAR_FLOW,
+  FLAG_EQ_STREAM_CONNECT,
+  Variability,
+  Causality,
 } from "./dae";
 import { IntUnionFind } from "./alias";
 import { BltEngine, blt_createEngine } from "./blt";
@@ -1344,6 +1347,22 @@ class ConnectorAPI {
     return this.dae.addEquation(EqKind.Connect, e1, e2);
   }
 
+  @inline addStreamConnection(h1VarId: u32, mdot1VarId: u32, h2VarId: u32, mdot2VarId: u32): u32 {
+    let eh1 = this.dae.addExpression(ExprKind.Name, h1VarId);
+    let eh2 = this.dae.addExpression(ExprKind.Name, h2VarId);
+    let emdot1 = this.dae.addExpression(ExprKind.Name, mdot1VarId);
+    let zeroReal = this.dae.addRealLiteral(0.0);
+
+    let cond1 = this.dae.addExpression(ExprKind.Binary, BinOp.Gt as u32, emdot1, zeroReal);
+    let ifExpr1 = this.dae.addExpression(ExprKind.IfElse, cond1, eh2, eh1);
+    this.dae.addEquation(EqKind.Simple, eh1, ifExpr1, FLAG_EQ_STREAM_CONNECT as u32);
+    return 0;
+  }
+
+  @inline expandConnector(busVarId: u32, memberNameHash: u32, varType: u32 = 0): u32 {
+    return this.dae.addVariable(memberNameHash, varType as u16, Variability.Continuous, Causality.Local, 0.0);
+  }
+
   finalize(): u32 {
     let varCount = this.dae.varCount;
     let eqCount = this.dae.eqCount;
@@ -1722,4 +1741,14 @@ export function flattener_addConnection(flattenerPtr: u32, p1VarId: u32, p2VarId
 export function flattener_finalizeConnections(flattenerPtr: u32): u32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ConnectorAPI>(flattenerPtr).finalize();
+}
+
+export function flattener_addStreamConnection(flattenerPtr: u32, h1VarId: u32, mdot1VarId: u32, h2VarId: u32, mdot2VarId: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ConnectorAPI>(flattenerPtr).addStreamConnection(h1VarId, mdot1VarId, h2VarId, mdot2VarId);
+}
+
+export function flattener_expandConnector(flattenerPtr: u32, busVarId: u32, memberNameHash: u32, varType: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ConnectorAPI>(flattenerPtr).expandConnector(busVarId, memberNameHash, varType);
 }

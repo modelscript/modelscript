@@ -50,9 +50,11 @@ export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
   let e = ExprAccessor.at(dae.getExprData(), exprId);
 
   if (e.kind == ExprKind.Binary) {
-    let op  = e.binOp;
-    let left  = cas_simplify(dae, e.left);
-    let right = cas_simplify(dae, e.right);
+    let op = e.binOp;
+    let leftId = e.left;
+    let rightId = e.right;
+    let left  = cas_simplify(dae, leftId);
+    let right = cas_simplify(dae, rightId);
 
     // Constant folding if both operands are numeric constants
     if (cas_isConstant(dae, left) && cas_isConstant(dae, right)) {

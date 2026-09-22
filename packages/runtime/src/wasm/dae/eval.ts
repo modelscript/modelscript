@@ -27,8 +27,10 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
   }
 
   if (e.kind == ExprKind.Unary || e.kind == ExprKind.Negate) {
-    let val = evalExpr(e.left, dae, varValuesPtr);
-    if (e.unaryOp == UnaryOp.Not) {
+    let isNot = e.unaryOp == UnaryOp.Not;
+    let left = e.left;
+    let val = evalExpr(left, dae, varValuesPtr);
+    if (isNot) {
       return val == 0.0 ? 1.0 : 0.0;
     }
     return -val;
@@ -36,8 +38,10 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
 
   if (e.kind == ExprKind.Binary) {
     let op = e.binOp;
-    let lVal = evalExpr(e.left, dae, varValuesPtr);
-    let rVal = evalExpr(e.right, dae, varValuesPtr);
+    let left = e.left;
+    let right = e.right;
+    let lVal = evalExpr(left, dae, varValuesPtr);
+    let rVal = evalExpr(right, dae, varValuesPtr);
 
     if (op == BinOp.Add || op == BinOp.ElemAdd) return lVal + rVal;
     if (op == BinOp.Sub || op == BinOp.ElemSub) return lVal - rVal;
@@ -55,16 +59,21 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
   }
 
   if (e.kind == ExprKind.IfElse) {
-    let condVal = evalExpr(e.data1u, dae, varValuesPtr);
+    let cond = e.data1u;
+    let left = e.left;
+    let right = e.right;
+    let condVal = evalExpr(cond, dae, varValuesPtr);
     return condVal != 0.0
-      ? evalExpr(e.left,  dae, varValuesPtr)
-      : evalExpr(e.right, dae, varValuesPtr);
+      ? evalExpr(left,  dae, varValuesPtr)
+      : evalExpr(right, dae, varValuesPtr);
   }
 
   if (e.kind == ExprKind.Call) {
-    let v1 = evalExpr(e.left,  dae, varValuesPtr);
-    let v2 = evalExpr(e.right, dae, varValuesPtr);
+    let left = e.left;
+    let right = e.right;
     let funcId = e.funcId as i32;
+    let v1 = evalExpr(left,  dae, varValuesPtr);
+    let v2 = evalExpr(right, dae, varValuesPtr);
 
     if (funcId ==  1) return Math.abs(v1);
     if (funcId ==  2) return Math.sqrt(v1);
@@ -98,8 +107,10 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
 export function evalEquationResidual(eqId: u32, dae: DaeBuilder, varValuesPtr: usize): f64 {
   if (eqId >= dae.eqCount) return 0.0;
   let eq = EqAccessor.at(dae.getEqData(), eqId);
-  let lhsVal = evalExpr(eq.lhs, dae, varValuesPtr);
-  let rhsVal = evalExpr(eq.rhs, dae, varValuesPtr);
+  let lhs = eq.lhs;
+  let rhs = eq.rhs;
+  let lhsVal = evalExpr(lhs, dae, varValuesPtr);
+  let rhsVal = evalExpr(rhs, dae, varValuesPtr);
   return rhsVal - lhsVal;
 }
 

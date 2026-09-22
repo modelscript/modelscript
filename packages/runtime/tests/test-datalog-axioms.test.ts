@@ -1,5 +1,6 @@
-import { describe, expect, it } from "@jest/globals";
 import { generateReasoner } from "@modelscript/dsl/codegen/reasoner.js";
+import expect from "expect";
+import { describe, it } from "node:test";
 
 describe("Unified Datalog Semantic Entailment Axioms Tests", () => {
   it("should parse axioms into rules and generate stratified Datalog logic with constant strings and multi-atom joins", () => {

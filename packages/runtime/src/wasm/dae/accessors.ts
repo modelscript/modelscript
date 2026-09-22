@@ -18,7 +18,7 @@
  * All accessors are @inline and compile away to direct load/store instructions.
  */
 
-import { ChunkedInt32Array } from "../core/array";
+import { ChunkedInt32Array, atomicChunkAlloc } from "../core/array";
 import {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
@@ -30,6 +30,21 @@ import {
   NULL_ID,
   VarType, Variability, Causality, ExprKind, EqKind, StmtKind, BinOp, UnaryOp,
 } from "./types";
+
+const ACCESSOR_SLOTS: u32 = 64;
+const ACCESSOR_MASK: u32 = ACCESSOR_SLOTS - 1;
+
+let g_varAccessorIdx: u32 = 0;
+let g_varAccessorBuf: usize = 0;
+
+let g_exprAccessorIdx: u32 = 0;
+let g_exprAccessorBuf: usize = 0;
+
+let g_eqAccessorIdx: u32 = 0;
+let g_eqAccessorBuf: usize = 0;
+
+let g_stmtAccessorIdx: u32 = 0;
+let g_stmtAccessorBuf: usize = 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VarAccessor: Zero-overhead view over a variable row
@@ -48,12 +63,15 @@ export class VarAccessor {
   private _offset: u32;
 
   /**
-   * Creates a stack-local accessor pointing at `varData[varId * VAR_STRIDE]`.
-   * This is the canonical way to access variable fields — use instead of raw
-   * `data.get(varId * VAR_STRIDE + VAR_FIELD)`.
+   * Creates an accessor pointing at `varData[varId * VAR_STRIDE]`.
+   * Uses a thread-safe / recursion-safe ring buffer to avoid clobbering concurrent accessors.
    */
   @inline static at(data: ChunkedInt32Array, varId: u32): VarAccessor {
-    let a = changetype<VarAccessor>(0);
+    if (g_varAccessorBuf == 0) {
+      g_varAccessorBuf = atomicChunkAlloc(ACCESSOR_SLOTS * (sizeof<usize>() * 2));
+    }
+    let slot = (g_varAccessorIdx++) & ACCESSOR_MASK;
+    let a = changetype<VarAccessor>(g_varAccessorBuf + slot * (sizeof<usize>() * 2));
     a._data = data;
     a._offset = varId * VAR_STRIDE;
     return a;
@@ -143,7 +161,11 @@ export class ExprAccessor {
   private _offset: u32;
 
   @inline static at(data: ChunkedInt32Array, exprId: u32): ExprAccessor {
-    let a = changetype<ExprAccessor>(0);
+    if (g_exprAccessorBuf == 0) {
+      g_exprAccessorBuf = atomicChunkAlloc(ACCESSOR_SLOTS * (sizeof<usize>() * 2));
+    }
+    let slot = (g_exprAccessorIdx++) & ACCESSOR_MASK;
+    let a = changetype<ExprAccessor>(g_exprAccessorBuf + slot * (sizeof<usize>() * 2));
     a._data = data;
     a._offset = exprId * EXPR_STRIDE;
     return a;
@@ -223,7 +245,11 @@ export class EqAccessor {
   private _offset: u32;
 
   @inline static at(data: ChunkedInt32Array, eqId: u32): EqAccessor {
-    let a = changetype<EqAccessor>(0);
+    if (g_eqAccessorBuf == 0) {
+      g_eqAccessorBuf = atomicChunkAlloc(ACCESSOR_SLOTS * (sizeof<usize>() * 2));
+    }
+    let slot = (g_eqAccessorIdx++) & ACCESSOR_MASK;
+    let a = changetype<EqAccessor>(g_eqAccessorBuf + slot * (sizeof<usize>() * 2));
     a._data = data;
     a._offset = eqId * EQ_STRIDE;
     return a;
@@ -273,7 +299,11 @@ export class StmtAccessor {
   private _offset: u32;
 
   @inline static at(data: ChunkedInt32Array, stmtId: u32): StmtAccessor {
-    let a = changetype<StmtAccessor>(0);
+    if (g_stmtAccessorBuf == 0) {
+      g_stmtAccessorBuf = atomicChunkAlloc(ACCESSOR_SLOTS * (sizeof<usize>() * 2));
+    }
+    let slot = (g_stmtAccessorIdx++) & ACCESSOR_MASK;
+    let a = changetype<StmtAccessor>(g_stmtAccessorBuf + slot * (sizeof<usize>() * 2));
     a._data = data;
     a._offset = stmtId * STMT_STRIDE;
     return a;

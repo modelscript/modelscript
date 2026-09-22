@@ -120,9 +120,13 @@ function evalHomotopyJacobian(
       let baseOrig = evalEquationResidual(r, dae, varValuesPtr);
       let hOrig = lambda * baseOrig + (1.0 - lambda) * (load<f64>(varValuesPtr + r * 8) - 1.0);
 
+      store<f64>(varValuesPtr + c * 8, origVal + eps);
+
       let dh_dx = (hPert - hOrig) / eps;
       store<f64>(jPtr + (r * n + c) * 8, dh_dx);
     }
+
+    store<f64>(varValuesPtr + c * 8, origVal);
   }
 }
 

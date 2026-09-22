@@ -173,15 +173,17 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
 
   if (e.kind == ExprKind.Binary) {
     let op = e.binOp;
+    let left = e.left;
+    let right = e.right;
 
-    let resLeft = evalConstantExpr(dae, e.left, visitedDepth + 1);
+    let resLeft = evalConstantExpr(dae, left, visitedDepth + 1);
     if (!resLeft.isConstant) { staticResult.isConstant = false; return staticResult; }
     let vL_Real = resLeft.valReal;
     let vL_Int  = resLeft.valInt;
     let vL_Bool = resLeft.valBool;
     let vL_Type = resLeft.valType;
 
-    let resRight = evalConstantExpr(dae, e.right, visitedDepth + 1);
+    let resRight = evalConstantExpr(dae, right, visitedDepth + 1);
     if (!resRight.isConstant) { staticResult.isConstant = false; return staticResult; }
     let vR_Real = resRight.valReal;
     let vR_Int  = resRight.valInt;
