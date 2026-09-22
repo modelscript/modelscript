@@ -231,7 +231,13 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
   }
 
   // 3. der( expr )
-  if (nodeType == $.primary || nodeType == $.expression) {
+  if (
+    nodeType == $.primary ||
+    nodeType == $.expression ||
+    nodeType == $.simple_expression ||
+    nodeType == $.lhs_primary ||
+    nodeType == $.lhs_expression
+  ) {
     if (graph.ast.startsWith(node, "der")) {
       for (const exprList of graph.ast.getDescendants(node, $.expression_list)) {
         for (const expr of graph.ast.getDescendants(exprList, $.expression)) {
@@ -248,7 +254,7 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
   if (nodeType == $.function_call) {
     fnRefNode = graph.ast.getChildByFieldId(node, "name");
     fnCallArgsNode = graph.ast.getChildByFieldId(node, "args");
-  } else if (nodeType == $.primary) {
+  } else if (nodeType == $.primary || nodeType == $.lhs_primary) {
     const ch1 = graph.ast.getFirstChild(node);
     if (ch1 != 0) {
       const ch2 = graph.ast.getNextSibling(ch1);
@@ -278,6 +284,11 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
 
     const argExprIds: u32[] = [];
     collectTopLevelExpressions(graph, fnCallArgsNode, argExprIds, prefixId, $);
+
+    // Handle der() as a built-in derivative expression
+    if (matchesName(graph, fnNameStrId, "der") && argExprIds.length == 1) {
+      return graph.dae.addExpression(12 /* Der */, 0, argExprIds[0]);
+    }
 
     if (
       matchesName(graph, fnNameStrId, "sin") ||
@@ -309,7 +320,13 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
   }
 
   // 5. Array Constructors: [e1, e2] or {e1, e2}
-  if (nodeType == $.primary || nodeType == $.expression) {
+  if (
+    nodeType == $.primary ||
+    nodeType == $.expression ||
+    nodeType == $.simple_expression ||
+    nodeType == $.lhs_primary ||
+    nodeType == $.lhs_expression
+  ) {
     if (graph.ast.startsWith(node, "[") || graph.ast.startsWith(node, "{")) {
       const elemIds: u32[] = [];
       collectTopLevelExpressions(graph, node, elemIds, prefixId, $);
@@ -351,7 +368,14 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
   }
 
   // 10. Check if node is an expression / primary / unsigned_number wrapper
-  if (nodeType == $.expression || nodeType == $.primary || nodeType == $.unsigned_number) {
+  if (
+    nodeType == $.expression ||
+    nodeType == $.primary ||
+    nodeType == $.unsigned_number ||
+    nodeType == $.simple_expression ||
+    nodeType == $.lhs_expression ||
+    nodeType == $.lhs_primary
+  ) {
     const firstChild = graph.ast.getFirstChild(node);
     if (firstChild != 0 && graph.ast.getNextSibling(firstChild) == 0) {
       return lowerExpression(graph, firstChild, prefixId, $);
@@ -372,6 +396,14 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
     for (const num of graph.ast.getDescendants(node, $.unsigned_real)) {
       const val = graph.ast.parseReal(num);
       return graph.dae.addRealLiteral(val);
+    }
+  }
+
+  // 10b. General single-child wrapper unwrapping for GLR parser intermediate types
+  {
+    const firstChild = graph.ast.getFirstChild(node);
+    if (firstChild != 0 && graph.ast.getNextSibling(firstChild) == 0) {
+      return lowerExpression(graph, firstChild, prefixId, $);
     }
   }
 

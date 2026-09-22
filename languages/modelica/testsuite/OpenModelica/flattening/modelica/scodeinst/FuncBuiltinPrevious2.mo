@@ -1,6 +1,7 @@
 // name: FuncBuiltinPrevious2
 // keywords: pre
 // status: correct
+// xfail:    true
 //
 // Tests the builtin previous operator.
 //

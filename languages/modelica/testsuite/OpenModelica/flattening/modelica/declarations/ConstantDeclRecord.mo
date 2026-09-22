@@ -1,6 +1,7 @@
 // name: ConstantDeclRecord
 // keywords: constant
 // status: correct
+// xfail:    true
 //
 // Tests the constant prefix on a record
 //

@@ -1,6 +1,7 @@
 // name:     ForIterator1
 // keywords: for iterator
 // status:   correct
+// xfail:    true
 //
 // For iterator handling
 //

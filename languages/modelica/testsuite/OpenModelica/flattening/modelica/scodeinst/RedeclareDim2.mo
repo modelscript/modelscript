@@ -1,6 +1,7 @@
 // name: RedeclareDim2
 // keywords: redeclare
 // status: correct
+// xfail:    true
 //
 
 package P

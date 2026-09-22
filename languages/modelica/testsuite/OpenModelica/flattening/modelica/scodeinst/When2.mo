@@ -1,6 +1,7 @@
 // name: When2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model When2

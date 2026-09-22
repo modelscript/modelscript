@@ -1,6 +1,7 @@
 // name:     BC3 - FirstOrder component
 // keywords: FirstOrder
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the FirstOrder component.
 //

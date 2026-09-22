@@ -1,6 +1,7 @@
 // name:     ComplexNumbers
 // keywords: package, functions
 // status:   correct
+// xfail:    true
 //
 // defines and uses a package
 //

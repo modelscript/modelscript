@@ -54,7 +54,7 @@
     "build:parser": "node build.js --force",
     "clean": "rimraf dist src-gen *.wasm",
     "lint": "eslint src --no-warn-ignored",
-    "test": "npx tsx --test tests/*.test.ts"
+    "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/cad": "*",

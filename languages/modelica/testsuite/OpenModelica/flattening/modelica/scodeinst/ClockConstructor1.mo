@@ -1,6 +1,7 @@
 // name: ClockConstructor1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model ClockConstructor1

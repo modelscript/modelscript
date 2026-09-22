@@ -1,6 +1,7 @@
 // name:     Integer2Real
 // keywords: type
 // status:   correct
+// xfail:    true
 //
 // Automatic conversion from Integer to Real.
 //

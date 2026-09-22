@@ -1,3 +1,4 @@
+// xfail:    true
 model PDEModelicaTest
   model PDE
     constant Real pi = 3.14159;

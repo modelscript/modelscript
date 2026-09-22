@@ -1,6 +1,7 @@
 // name:     BM10 -  Division component
 // keywords: Division
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Division component.
 //

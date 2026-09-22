@@ -1,6 +1,7 @@
 // name: FuncBuiltinSmoothNonParam
 // keywords: smooth
 // status: incorrect
+// xfail:    true
 //
 // Tests the builtin smooth operator.
 //

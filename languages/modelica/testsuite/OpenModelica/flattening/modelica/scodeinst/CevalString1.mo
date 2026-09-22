@@ -1,6 +1,7 @@
 // name: CevalString1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model CevalString1

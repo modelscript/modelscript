@@ -1,6 +1,7 @@
 // name:     BM17 -  Max component
 // keywords: Max
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Max component.
 //

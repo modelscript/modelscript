@@ -52,7 +52,7 @@
     "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
     "release": "nx release",
     "release:dry-run": "nx release --dry-run",
-    "test": "nx run-many --target=test --parallel=8",
+    "test": "nx run-many --target=test --parallel=1",
     "test:modelica": "npx tsx languages/modelica/tests/testsuite-runner.ts",
     "test:modelica:update": "npx tsx languages/modelica/tests/testsuite-runner.ts --update --omc",
     "test:single": "npx tsx languages/modelica/tests/testsuite-runner.ts"

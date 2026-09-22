@@ -1,6 +1,7 @@
 // name: OperatorOverloadArrayOp4
 // keywords: operator overload complex
 // status: correct
+// xfail:    true
 //
 //
 

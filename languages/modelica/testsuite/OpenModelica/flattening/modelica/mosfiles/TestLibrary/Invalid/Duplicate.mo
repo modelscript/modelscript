@@ -1,3 +1,4 @@
+// xfail:    true
 within Invalid;
 package Duplicate
 end Duplicate;

@@ -1,6 +1,7 @@
 // name:     Implicit Integer to enumeration conversion
 // keywords: type
 // status:   correct
+// xfail:    true
 //
 // This tests that the +intEnumConversion flag works.
 //

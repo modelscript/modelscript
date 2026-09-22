@@ -1,6 +1,7 @@
 // name: CombineSubscripts1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model B

@@ -164,6 +164,13 @@ export class UnmanagedSet64 {
      * Creates a 64-bit hash set.
      */
     static create(): u32 {
+        if (UnmanagedSet64.poolDepth > 0) {
+            UnmanagedSet64.poolDepth--;
+            let ptr = load<usize>(UnmanagedSet64.poolBuf + (UnmanagedSet64.poolDepth * sizeof<usize>()));
+            let s = changetype<UnmanagedSet64>(ptr);
+            s.init();
+            return changetype<u32>(s);
+        }
         let ptr = atomicChunkAlloc(32);
         memory.fill(ptr, 0, 32);
         let s = changetype<UnmanagedSet64>(ptr);
@@ -333,13 +340,33 @@ export class UnmanagedMap64 {
      * Releases this map instance back to the object pool.
      */
     @inline release(): void {
+        if (!this.isActive) return;
         this.isActive = false;
+        if (this.capacity > 1024) {
+            this.keys = 0;
+            this.values = 0;
+            this.capacity = 0;
+        }
+        if (UnmanagedMap64.poolBuf == 0) {
+            UnmanagedMap64.poolBuf = atomicChunkAlloc(16 * sizeof<usize>());
+        }
+        if (UnmanagedMap64.poolDepth < 16) {
+            store<usize>(UnmanagedMap64.poolBuf + (UnmanagedMap64.poolDepth * sizeof<usize>()), changetype<usize>(this));
+            UnmanagedMap64.poolDepth++;
+        }
     }
 
     /**
      * Creates a 64-bit to 32-bit hash map.
      */
     static create(initialCapacity: u32 = 16): u32 {
+        if (UnmanagedMap64.poolDepth > 0) {
+            UnmanagedMap64.poolDepth--;
+            let ptr = load<usize>(UnmanagedMap64.poolBuf + (UnmanagedMap64.poolDepth * sizeof<usize>()));
+            let m = changetype<UnmanagedMap64>(ptr);
+            m.init(initialCapacity);
+            return changetype<u32>(m);
+        }
         let ptr = atomicChunkAlloc(32);
         memory.fill(ptr, 0, 32);
         let m = changetype<UnmanagedMap64>(ptr);
@@ -472,10 +499,30 @@ export class UnmanagedMap64To64 {
     }
 
     @inline release(): void {
+        if (!this.isActive) return;
         this.isActive = false;
+        if (this.capacity > 1024) {
+            this.keys = 0;
+            this.values = 0;
+            this.capacity = 0;
+        }
+        if (UnmanagedMap64To64.poolBuf == 0) {
+            UnmanagedMap64To64.poolBuf = atomicChunkAlloc(16 * sizeof<usize>());
+        }
+        if (UnmanagedMap64To64.poolDepth < 16) {
+            store<usize>(UnmanagedMap64To64.poolBuf + (UnmanagedMap64To64.poolDepth * sizeof<usize>()), changetype<usize>(this));
+            UnmanagedMap64To64.poolDepth++;
+        }
     }
 
     static create(): u32 {
+        if (UnmanagedMap64To64.poolDepth > 0) {
+            UnmanagedMap64To64.poolDepth--;
+            let ptr = load<usize>(UnmanagedMap64To64.poolBuf + (UnmanagedMap64To64.poolDepth * sizeof<usize>()));
+            let m = changetype<UnmanagedMap64To64>(ptr);
+            m.init();
+            return changetype<u32>(m);
+        }
         let ptr = atomicChunkAlloc(32);
         memory.fill(ptr, 0, 32);
         let m = changetype<UnmanagedMap64To64>(ptr);

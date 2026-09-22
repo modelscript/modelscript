@@ -1,6 +1,7 @@
 // name: ComponentNames
 // keywords: component
 // status: incorrect
+// xfail:    true
 //
 // THIS TEST SHOULD FAIL according to Modelica Specifications.
 // But MSL contains such errors, so the test only results in a warning

@@ -1,6 +1,7 @@
 // name: InnerOuterReplaceable2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

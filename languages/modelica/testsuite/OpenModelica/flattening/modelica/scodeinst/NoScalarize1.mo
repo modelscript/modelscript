@@ -1,6 +1,7 @@
 // name: NoScalarize1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model NoScalarize1

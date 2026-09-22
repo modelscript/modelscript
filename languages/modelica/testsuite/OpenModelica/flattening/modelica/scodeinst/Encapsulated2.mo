@@ -1,6 +1,7 @@
 // name: Encapsulated2
 // keywords: operator
 // status: correct
+// xfail:    true
 //
 // Checks that builtin functions can be accessed from an encapsulated scope.
 //

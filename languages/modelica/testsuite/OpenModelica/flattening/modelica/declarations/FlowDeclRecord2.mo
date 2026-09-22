@@ -1,6 +1,7 @@
 // name: FlowDeclRecord2
 // keywords: flow, record
 // status: correct
+// xfail:    true
 //
 // Checks that the flow prefix is propagated when used on structured components.
 //

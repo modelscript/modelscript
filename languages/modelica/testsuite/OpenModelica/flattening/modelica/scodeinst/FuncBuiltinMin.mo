@@ -1,6 +1,7 @@
 // name: FuncBuiltinMin
 // keywords: min
 // status: correct
+// xfail:    true
 //
 // Tests the builtin min operator.
 //

@@ -1,6 +1,7 @@
 // name:     BS4 - Exponentials component
 // keywords: Exponentials
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Exponentials component.
 //

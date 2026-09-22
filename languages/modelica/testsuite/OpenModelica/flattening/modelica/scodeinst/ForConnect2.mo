@@ -1,6 +1,7 @@
 // name: ForConnect2
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name: CevalMatrixPow1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

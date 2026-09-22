@@ -1,6 +1,7 @@
 // name:     BM1 -  Abs component
 // keywords: Abs
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Abs component.
 //

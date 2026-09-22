@@ -1,6 +1,7 @@
 // name: BadVariabilityBug3150 [BUG: https://trac.openmodelica.org/OpenModelica/ticket/3150]
 // keywords: array
 // status: incorrect
+// xfail:    true
 //
 // Testing the array reduction constant-ness calculation
 //

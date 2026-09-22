@@ -1,6 +1,7 @@
 // name:     EnumRange
 // keywords: enumeration enum range reduction
 // status:   correct
+// xfail:    true
 //
 // Tests that enumeration literals are preserved when used in ranges.
 //

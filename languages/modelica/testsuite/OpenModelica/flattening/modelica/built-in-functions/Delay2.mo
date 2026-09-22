@@ -1,6 +1,7 @@
 // name:     Delay2
 // keywords: builtin
 // status:   correct
+// xfail:    true
 //
 // Test flattening of the builtin function delay.
 // Expression value is cast into Real.

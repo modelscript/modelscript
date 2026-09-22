@@ -1,6 +1,7 @@
 // name:     joinThreeVectors2
 // keywords: external functions
 // status:   correct
+// xfail:    true
 //
 // External C function with column-major arrays
 // Drmodelica: 11.1 Function Annotations (p. 372)

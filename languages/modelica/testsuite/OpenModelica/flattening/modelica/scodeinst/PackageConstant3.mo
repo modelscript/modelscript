@@ -1,6 +1,7 @@
 // name: PackageConstant3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

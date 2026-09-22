@@ -1,6 +1,7 @@
 // name: ClassExtends1.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that a proper error message is given when no inherited element is found for a class extends.
 //

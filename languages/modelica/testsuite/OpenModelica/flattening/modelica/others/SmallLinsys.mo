@@ -1,6 +1,7 @@
 // name:     SmallLinsys
 // keywords:
 // status:   correct
+// xfail:    true
 //
 
 model LinSys

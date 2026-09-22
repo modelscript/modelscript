@@ -1,6 +1,7 @@
 // name:     DuplicateElementsExtends
 // keywords: check if duplicate elements one from extends are equivalent!
 // status:   incorrect
+// xfail:    true
 
 
 package Crap

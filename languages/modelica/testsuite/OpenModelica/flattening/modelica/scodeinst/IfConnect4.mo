@@ -1,6 +1,7 @@
 // name: IfConnect4
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

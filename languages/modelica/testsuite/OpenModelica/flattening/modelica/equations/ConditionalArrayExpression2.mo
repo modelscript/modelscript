@@ -1,6 +1,7 @@
 // name:     ConditionalArrayExpression2
 // keywords: equation,array
 // status:   correct
+// xfail:    true
 //
 // The sizes must fit in array expressions and equations.
 

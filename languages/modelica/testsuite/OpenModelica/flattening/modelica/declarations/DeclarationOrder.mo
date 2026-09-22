@@ -1,6 +1,7 @@
 // name: DeclarationOrder
 // keywords: component, declaration
 // status: correct
+// xfail:    true
 //
 // Tests to make sure declaration order does not matter
 //

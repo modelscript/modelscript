@@ -1,3 +1,5 @@
+import expect from "expect";
+import { describe, test } from "node:test";
 import { IndexFileTask, LspWorkerPool } from "../src/workers/worker-pool.js";
 
 describe("LspWorkerPool Unit & Regression Tests", () => {

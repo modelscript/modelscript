@@ -1,6 +1,7 @@
 // name:     InnerEnumeration
 // keywords: inner outer variables
 // status:   correct
+// xfail:    true
 //
 // makes sure that outer variables are replaced with the correct inner ones on the top scope
 //

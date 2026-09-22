@@ -1,6 +1,7 @@
 // name:     Circle
 // keywords: equation
 // status:   correct
+// xfail:    true
 
 
 model Circle

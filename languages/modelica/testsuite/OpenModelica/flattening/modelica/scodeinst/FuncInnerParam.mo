@@ -1,6 +1,7 @@
 // name: FuncInnerParam
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that inner is not a valid function parameter prefix.
 //

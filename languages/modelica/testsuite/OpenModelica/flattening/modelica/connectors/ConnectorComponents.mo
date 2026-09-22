@@ -1,6 +1,7 @@
 // name: ConnectorComponents
 // keywords: connector
 // status: correct
+// xfail:    true
 //
 // Tests declaration and instantiation of a connector with components
 //

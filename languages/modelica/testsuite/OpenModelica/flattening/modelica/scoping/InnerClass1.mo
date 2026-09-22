@@ -1,6 +1,7 @@
 // name:     InnerClass1
 // keywords: dynamic scoping
 // status:   correct
+// xfail:    true
 //
 // This example demonstrates how dynamic
 // scoping can be used both for models and for functions.

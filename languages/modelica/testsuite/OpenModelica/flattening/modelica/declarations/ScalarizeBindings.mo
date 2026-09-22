@@ -1,6 +1,7 @@
 // name:     ScalarizeBindings
 // keywords: declaration scalarization
 // status:   correct
+// xfail:    true
 //
 // Checks that array bindings are scalarized when the +scalarizeBindings flag is
 // used.

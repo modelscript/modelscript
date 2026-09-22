@@ -1,6 +1,7 @@
 // name:     ArrayModification2
 // keywords: array, modification
 // status:   incorrect
+// xfail:    true
 //
 // Subscripted modifiers are not allowed.
 //

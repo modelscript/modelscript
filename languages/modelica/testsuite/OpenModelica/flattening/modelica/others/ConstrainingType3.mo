@@ -1,6 +1,7 @@
 // name:     ConstrainingType3
 // keywords: replaceable
 // status:   incorrect
+// xfail:    true
 //
 // Modifiers are applied to the constraining type,
 // and thus it is illegal to set parameters

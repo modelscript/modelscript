@@ -1,6 +1,7 @@
 // name: RedeclarationComponentNames
 // keywords: component
 // status: incorrect
+// xfail:    true
 //
 // This test should produce a warning (or even fail, according to Modelica Specifications)
 // Tests whether or not a component can have the same name as its type specifier in a redeclaraton

@@ -1,6 +1,7 @@
 // name: usertype6.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 type MyReal

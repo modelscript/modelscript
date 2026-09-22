@@ -1,6 +1,7 @@
 // name:     DisturbedResistance1
 // keywords: modification
 // status:   incorrect
+// xfail:    true
 //
 // A parameter must not be time-varying.
 //

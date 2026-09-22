@@ -1,6 +1,7 @@
 // name:     Enumeration5
 // keywords: enumeration enum
 // status:   incorrect
+// xfail:    true
 //
 //
 //

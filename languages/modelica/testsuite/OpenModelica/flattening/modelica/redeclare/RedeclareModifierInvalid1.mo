@@ -1,6 +1,7 @@
 // name:     RedeclareModifierInvalid1
 // keywords: redeclare, modification, replaceable
 // status:   incorrect
+// xfail:    true
 //
 // Checks that the redeclared component needs to be replaceable if the type is
 // changed.

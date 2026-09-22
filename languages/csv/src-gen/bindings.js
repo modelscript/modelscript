@@ -640,11 +640,6 @@ export class LspFacade {
     if (this.exports.lsp_setInputLength)
       this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
-    const preview =
-      changeText.length > 30 ? changeText.substring(0, 30) + "..." : changeText;
-    console.log(
-      `[Bindings] parseIncremental START: changeText="${preview.replace(/\n/g, "\\n")}" (len ${changeText.length}), offset=${rangeOffset}, rangeLen=${rangeLength}, newTotalLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
-    );
     let editStart = rangeOffset * 2;
     let editOldEnd = (rangeOffset + rangeLength) * 2;
     let editNewEnd = (rangeOffset + changeText.length) * 2;
@@ -658,29 +653,17 @@ export class LspFacade {
       editOldEnd = 0;
       editNewEnd = 0;
     }
-    const _t0 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
     let newAstRoot = this.exports.parse(
       baseRoot,
       editStart,
       editOldEnd,
       editNewEnd,
     );
-    const _t1 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    console.log(
-      `[Bindings] parseIncremental WASM parse finished in ${Math.round(_t1 - _t0)}ms -> newAstRoot=${newAstRoot}`,
-    );
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
       }
     }
-    const _t2 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    console.log(
-      `[Bindings] parseIncremental diff finished in ${Math.round(_t2 - _t1)}ms (total ${Math.round(_t2 - _t0)}ms)`,
-    );
     const isCatastrophic = this.exports.lsp_isCatastrophicError
       ? this.exports.lsp_isCatastrophicError()
       : false;
@@ -825,29 +808,17 @@ export class LspFacade {
       editOldEndByte = 0;
       editNewEndByte = 0;
     }
-    const _t0 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
     const newAstRoot = this.exports.parse(
       baseRoot,
       editStartByte,
       editOldEndByte,
       editNewEndByte,
     );
-    const _t1 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    console.log(
-      `[Bindings] parseIncrementalBatch WASM parse finished in ${Math.round(_t1 - _t0)}ms -> newAstRoot=${newAstRoot}`,
-    );
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
       }
     }
-    const _t2 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    console.log(
-      `[Bindings] parseIncrementalBatch diff finished in ${Math.round(_t2 - _t1)}ms (total ${Math.round(_t2 - _t0)}ms)`,
-    );
     const isCatastrophic = this.exports.lsp_isCatastrophicError
       ? this.exports.lsp_isCatastrophicError()
       : false;
@@ -1096,14 +1067,12 @@ export class LspFacade {
       }
       return "";
     };
-    // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges.
+    // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges or need context interpolation.
     // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
     const requiredNodePtrs = new Set();
     for (let i = 0; i < numElements * 7; i += 7) {
-      const startByte = memory[(dirPtr >> 2) + i];
-      const endByte = memory[(dirPtr >> 2) + i + 1];
       const lintId = memory[(dirPtr >> 2) + i + 2];
-      if (lintId > 0 && startByte === 0 && endByte === 0) {
+      if (lintId > 0) {
         const arg0 = memory[(dirPtr >> 2) + i + 3];
         const arg1 = memory[(dirPtr >> 2) + i + 4];
         const arg2 = memory[(dirPtr >> 2) + i + 5];
@@ -1193,18 +1162,24 @@ export class LspFacade {
       const arg1 = memory[(dirPtr >> 2) + i + 4];
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
-      if (
-        lintId > 0 &&
-        startByte === 0 &&
-        endByte === 0 &&
-        arg0 > 0 &&
-        offsetCache.has(arg0)
-      ) {
-        startByte = offsetCache.get(arg0);
-        const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
-        endByte =
-          startByte +
-          (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
+      if (lintId > 0 && startByte === 0 && endByte === 0 && arg0 > 0) {
+        let nodeStart = offsetCache.get(arg0);
+        if (nodeStart === undefined && this.exports.lsp_findNodeOffset) {
+          try {
+            const off = this.exports.lsp_findNodeOffset(astRoot, arg0, 0);
+            if (off >= 0) {
+              nodeStart = off;
+              offsetCache.set(arg0, off);
+            }
+          } catch (_e) {}
+        }
+        if (nodeStart !== undefined) {
+          startByte = nodeStart;
+          const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
+          endByte =
+            startByte +
+            (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
+        }
       }
       const rawLintId = lintId & 0x7fff;
       let msg =
@@ -1400,51 +1375,45 @@ export class LspFacade {
               offsetToPoint: (o) => this.offsetToPos(o, lineStarts),
               facade: this,
             };
-            const createContext = (nodePtr, fallbackText) => {
-              let syntaxNode = null;
-              let text = fallbackText;
-              const isAlignedAddress =
-                nodePtr > 0 &&
-                nodePtr % 4 === 0 &&
-                nodePtr / 4 < memory.length - 4;
-              if (isAlignedAddress && this.exports.getChildByFieldId) {
-                const typeFlags = memory[nodePtr / 4];
-                const typeId = typeFlags & 0x03ff;
-                const pad = typeFlags >>> 22;
-                const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
-                let actualByteStart = -1;
-                if (offsetCache.has(nodePtr)) {
-                  actualByteStart = offsetCache.get(nodePtr);
-                } else if (this.exports.lsp_findNodeOffset) {
-                  try {
-                    const offset = this.exports.lsp_findNodeOffset(
-                      astRoot,
-                      nodePtr,
-                      0,
-                    );
-                    memory = new Uint32Array(this.wasmMemory.buffer);
-                    if (offset >= 0) {
-                      actualByteStart = offset;
-                    }
-                  } catch (_e) {
-                    // Safe fallback if pointer is not in active tree
+            const getSyntaxNodeForPtr = (ptr) => {
+              const isAligned =
+                ptr > 0 && ptr % 4 === 0 && ptr / 4 < memory.length - 4;
+              if (!isAligned || !this.exports.getChildByFieldId) return null;
+              let actualStart = -1;
+              if (offsetCache.has(ptr)) {
+                actualStart = offsetCache.get(ptr);
+              } else if (this.exports.lsp_findNodeOffset) {
+                try {
+                  const off = this.exports.lsp_findNodeOffset(astRoot, ptr, 0);
+                  memory = new Uint32Array(this.wasmMemory.buffer);
+                  if (off >= 0) {
+                    actualStart = off;
+                    offsetCache.set(ptr, off);
                   }
-                }
-                if (actualByteStart >= 0) {
-                  syntaxNode = new SyntaxNode(
-                    dummyTree,
-                    nodePtr,
-                    actualByteStart,
-                    null,
-                    0,
-                    len,
-                    typeId,
-                  );
-                  text = dummyTree.sourceCode.substring(
-                    syntaxNode.startIndex,
-                    syntaxNode.endIndex,
-                  );
-                }
+                } catch (_e) {}
+              }
+              if (actualStart < 0) return null;
+              const typeFlags = memory[ptr / 4];
+              const typeId = typeFlags & 0x03ff;
+              const len = memory[(ptr + 4) / 4] & 0x007fffff;
+              return new SyntaxNode(
+                dummyTree,
+                ptr,
+                actualStart,
+                null,
+                0,
+                len,
+                typeId,
+              );
+            };
+            const createContext = (nodePtr, fallbackText) => {
+              const syntaxNode = getSyntaxNodeForPtr(nodePtr);
+              let text = fallbackText;
+              if (syntaxNode) {
+                text = dummyTree.sourceCode.substring(
+                  syntaxNode.startIndex,
+                  syntaxNode.endIndex,
+                );
               }
               const isAstNode = syntaxNode !== null;
               const nodeText = isAstNode
@@ -1452,14 +1421,27 @@ export class LspFacade {
                 : fallbackText !== ""
                   ? fallbackText
                   : String(nodePtr);
+              const resolveChildFieldText = (fieldName) => {
+                if (syntaxNode) {
+                  const cText = syntaxNode.childText(fieldName);
+                  if (cText) return cText;
+                }
+                if (arg1 > 0 && nodePtr !== arg1) {
+                  const ctxSyntaxNode = getSyntaxNodeForPtr(arg1);
+                  if (ctxSyntaxNode) {
+                    const cText = ctxSyntaxNode.childText(fieldName);
+                    if (cText) return cText;
+                  }
+                }
+                return "";
+              };
               return new Proxy(
                 {},
                 {
                   get: (target, prop) => {
                     if (prop === "text") return nodeText;
                     if (prop === "field")
-                      return (name) =>
-                        syntaxNode ? syntaxNode.childText(name) : "";
+                      return (name) => resolveChildFieldText(name);
                     if (prop === "asNumber") return () => Number(nodePtr);
                     if (prop === "asSymbol")
                       return () =>
@@ -1471,7 +1453,7 @@ export class LspFacade {
                         {},
                         {
                           get: (_, fieldName) =>
-                            syntaxNode ? syntaxNode.childText(fieldName) : "",
+                            resolveChildFieldText(fieldName),
                         },
                       );
                     }
@@ -1482,23 +1464,8 @@ export class LspFacade {
                       }
                       return undefined;
                     }
-                    if (syntaxNode) {
-                      const cText = syntaxNode.childText(prop);
-                      if (cText) return cText;
-                    }
-                    if (arg1 > 0 && nodePtr !== arg1 && offsetCache.has(arg1)) {
-                      const ctxSyntaxNode = new SyntaxNode(
-                        dummyTree,
-                        arg1,
-                        offsetCache.get(arg1),
-                        null,
-                        0,
-                        memory[(arg1 + 4) / 4] & 0x007fffff,
-                        memory[arg1 / 4] & 0x03ff,
-                      );
-                      const cText = ctxSyntaxNode.childText(prop);
-                      if (cText) return cText;
-                    }
+                    const fieldVal = resolveChildFieldText(prop);
+                    if (fieldVal) return fieldVal;
                     return "";
                   },
                 },

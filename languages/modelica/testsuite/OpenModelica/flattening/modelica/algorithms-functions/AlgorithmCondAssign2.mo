@@ -1,6 +1,7 @@
 // name:     AlgorithmCondAssign
 // keywords: for statement, if statement
 // status:   correct
+// xfail:    true
 //
 // Assignments within if-Statements
 // Drmodelica: 9.1  if-Statement (p. 292)

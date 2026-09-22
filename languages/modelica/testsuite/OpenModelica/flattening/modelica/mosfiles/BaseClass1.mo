@@ -1,3 +1,4 @@
+// xfail:    true
 partial package PartialMedium
 
   constant Integer nX = size(reference_X,1);

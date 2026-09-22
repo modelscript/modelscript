@@ -2,16 +2,22 @@ import { createWasmParser } from "@modelscript/dsl/bindings";
 import { getClassIconSvg } from "@modelscript/modelica/diagram";
 import assert from "assert";
 import { readFileSync } from "fs";
-import { resolve } from "path";
+import test from "node:test";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 import { DocumentManager } from "../src/services/DocumentManager.js";
 import { WorkspaceManager } from "../src/services/WorkspaceManager.js";
 
 import { SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
 
-async function testClassIcon() {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const repoRoot = resolve(__dirname, "../../..");
+
+test("test-class-icon", async () => {
   console.log("Starting test-class-icon...");
 
-  const wasmPath = resolve("languages/modelica/dist/parser.wasm");
+  const wasmPath = resolve(repoRoot, "languages/modelica/dist/parser.wasm");
   const wasmBytes = readFileSync(wasmPath);
   const { parser } = await createWasmParser(wasmBytes, {
     syntaxNames: modelicaSyntaxNames,
@@ -22,7 +28,10 @@ async function testClassIcon() {
   const wm = new WorkspaceManager(docManager);
 
   // Load Resistor.mo
-  const resistorPath = resolve("data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/Analog/Basic/Resistor.mo");
+  const resistorPath = resolve(
+    repoRoot,
+    "data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/Analog/Basic/Resistor.mo",
+  );
   const resistorText = readFileSync(resistorPath, "utf-8");
 
   // Register in sharedFs
@@ -72,9 +81,4 @@ async function testClassIcon() {
   assert(svg.includes("Resistor"), "SVG text must contain Resistor");
 
   console.log("test-class-icon passed successfully!");
-}
-
-testClassIcon().catch((err) => {
-  console.error("Test failed:", err);
-  process.exit(1);
 });

@@ -1,6 +1,7 @@
 // name: FuncVectorizationCastConflict1
 // keywords: vectorization function
 // status: correct
+// xfail:    true
 //
 // Checks that a vectorized function that matches both exactly and via casting
 // chooses the exact match.

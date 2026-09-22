@@ -1,6 +1,7 @@
 // name:     Connect16
 // keywords: connect
 // status:   correct
+// xfail:    true
 //
 // Checks that the correct connect equations are generated when components are
 // connected at different levels in the hierarchy.

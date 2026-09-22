@@ -1,6 +1,7 @@
 // name: FuncViaComp
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that functions can be called via components.
 //

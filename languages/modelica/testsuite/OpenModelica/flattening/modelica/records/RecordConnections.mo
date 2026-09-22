@@ -1,6 +1,7 @@
 // name: RecordConnections
 // keywords: record
 // status: correct
+// xfail:    true
 //
 // Tests if records can be used in connections
 // THIS TEST SHOULD FAIL

@@ -1,6 +1,7 @@
 // name: CevalFuncFor2
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

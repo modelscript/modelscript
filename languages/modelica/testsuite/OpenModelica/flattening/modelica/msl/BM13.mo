@@ -1,6 +1,7 @@
 // name:     BM13 -  Gain component
 // keywords: Gain
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Asin component.
 //

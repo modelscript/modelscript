@@ -1,4 +1,5 @@
 /* eslint-disable */
+import { createWasmParser } from "@modelscript/dsl/bindings";
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser.js";
 
 Error.stackTraceLimit = Infinity;
@@ -424,8 +425,41 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
     parserService
       .initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl, registerBuiltinLanguages)
-      .then(() => {
+      .then(async () => {
         registerBuiltinLanguages();
+
+        // Attempt to fetch user-registered languages from Web IDE express endpoint
+        try {
+          const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
+          if (origin) {
+            const resp = await fetch(`${origin}/api/languages/user`);
+            if (resp.ok) {
+              const catalog = await resp.json();
+              const languages = catalog.languages || {};
+              for (const [id, entry] of Object.entries<any>(languages)) {
+                if (globalLanguageRegistry.getPluginById(id)) continue;
+                const wasmUrl = `${origin}/api/languages/user/${id}/parser.wasm`;
+                try {
+                  const { parser, facade } = await createWasmParser(wasmUrl);
+                  parserService.registerParser(id, parser, facade);
+                  globalLanguageRegistry.register({
+                    id,
+                    name: entry.name || id,
+                    extensions: entry.extensions || [`.${id}`],
+                    parser,
+                    facade,
+                    disposables: [],
+                  });
+                  connection.console.info(`[lsp-browser] Loaded user-registered language '${id}'`);
+                } catch (wasmErr) {
+                  connection.console.warn(`[lsp-browser] Could not load user language '${id}': ${wasmErr}`);
+                }
+              }
+            }
+          }
+        } catch {
+          // optional in non-express or offline contexts
+        }
       })
       .catch((e) => {
         connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);

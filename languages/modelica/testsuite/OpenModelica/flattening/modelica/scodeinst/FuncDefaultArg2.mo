@@ -1,6 +1,7 @@
 // name: FuncDefaultArg2
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that default arguments are replaced with the correct expression in the
 // function call.

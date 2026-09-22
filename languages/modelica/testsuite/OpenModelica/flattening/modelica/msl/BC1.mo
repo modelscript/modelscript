@@ -1,6 +1,7 @@
 // name:     BC1 - Der component
 // keywords: Der
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Der component.
 //

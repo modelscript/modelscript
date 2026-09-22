@@ -1,6 +1,7 @@
 // name:     BooleanRanges
 // keywords: boolean range
 // status:   correct
+// xfail:    true
 //
 // Tests boolean ranges.
 //

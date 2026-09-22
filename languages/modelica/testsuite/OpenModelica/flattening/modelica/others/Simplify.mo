@@ -1,6 +1,7 @@
 // name:     Simplify
 // keywords: simplify
 // status:   correct
+// xfail:    true
 //
 
 

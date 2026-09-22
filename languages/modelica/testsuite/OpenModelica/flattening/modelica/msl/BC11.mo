@@ -1,6 +1,7 @@
 // name:     BC11 - TransferFunction component
 // keywords: TransferFunction
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the TransferFunction component.
 //

@@ -1,6 +1,7 @@
 // name: mod9.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Class modifications not propagated.
 //

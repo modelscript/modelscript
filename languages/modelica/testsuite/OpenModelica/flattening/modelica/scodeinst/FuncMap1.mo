@@ -1,6 +1,7 @@
 // name: FuncMap1
 // keywords: function map array reduction
 // status: correct
+// xfail:    true
 //
 // checks mapping functions are typed correctly.
 

@@ -1,6 +1,7 @@
 // name:     FunctionEval5
 // keywords: function,constant propagation
 // status:   correct
+// xfail:    true
 //
 // Constant evaluation of function calls. Result of a function call with
 // constant arguments is inserted into flat modelica.

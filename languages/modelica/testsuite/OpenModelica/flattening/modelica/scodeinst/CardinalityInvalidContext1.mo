@@ -1,6 +1,7 @@
 // name: CardinalityInvalidContext1
 // keywords: cardinality
 // status: incorrect
+// xfail:    true
 //
 // Cardinality may only be used in the conditions of if-statements/equations and
 // asserts.

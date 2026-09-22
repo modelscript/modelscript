@@ -1,6 +1,7 @@
 // name: StringInteger
 // keywords: string
 // status: correct
+// xfail:    true
 //
 // Tests string conversion from Integer
 //

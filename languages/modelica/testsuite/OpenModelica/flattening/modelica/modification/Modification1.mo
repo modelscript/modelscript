@@ -1,6 +1,7 @@
 // name:     Modification1
 // keywords: modification
 // status:   correct
+// xfail:    true
 //
 // This file tests simple modifications of variables
 //

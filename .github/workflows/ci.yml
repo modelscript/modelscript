@@ -10,6 +10,7 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
@@ -34,8 +35,12 @@ jobs:
         run: npx nx affected -t lint --parallel=3
 
   test:
-    needs: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [core, languages, tools-sim]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -50,45 +55,101 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: ${{ runner.os }}-nx-test-${{ github.sha }}
+          key: ${{ runner.os }}-nx-test-${{ matrix.shard }}-${{ github.sha }}
           restore-keys: |
+            ${{ runner.os }}-nx-test-${{ matrix.shard }}-
             ${{ runner.os }}-nx-test-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
       - name: Cache MSL
+        if: matrix.shard == 'languages' || matrix.shard == 'core'
         id: cache-msl
         uses: actions/cache@v4
         with:
           path: scripts/ModelicaStandardLibrary_v4.1.0.zip
           key: ${{ runner.os }}-msl-v4.1.0
       - name: Download MSL
+        if: matrix.shard == 'languages' || matrix.shard == 'core'
         run: node scripts/download-msl.cjs
       - name: Cache FMI Simulator
+        if: matrix.shard == 'tools-sim' || matrix.shard == 'languages'
         id: cache-fmusim
         uses: actions/cache@v4
         with:
           path: packages/exchange/validation/fmi/reference_fmus
           key: ${{ runner.os }}-fmusim-v0.0.39
       - name: Fetch FMI Simulator
-        if: steps.cache-fmusim.outputs.cache-hit != 'true'
+        if: (matrix.shard == 'tools-sim' || matrix.shard == 'languages') && steps.cache-fmusim.outputs.cache-hit != 'true'
         run: npm run fetch:fmusim --workspace=@modelscript/exchange
-      - name: Run Tests
-        run: npx nx affected -t test --parallel=3
+      - name: Cache WASM Parsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            languages/*/.cache
+            packages/runtime/build/wasm
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+      - name: Run Sharded Tests
+        run: |
+          case "${{ matrix.shard }}" in
+            core)
+              npx nx affected -t test --projects=@modelscript/dsl,@modelscript/runtime --parallel=2
+              ;;
+            languages)
+              npx nx affected -t test --projects=@modelscript/modelica,@modelscript/sysml2,@modelscript/scad,@modelscript/owl2,@modelscript/step,@modelscript/ssp,@modelscript/csv --parallel=2
+              ;;
+            tools-sim)
+              npx nx affected -t test --projects=@modelscript/simulate,@modelscript/exchange,@modelscript/lsp,@modelscript/diagram,@modelscript/cli,@modelscript/api,@modelscript/cad --parallel=2
+              ;;
+          esac
       - name: Validate FMI
+        if: matrix.shard == 'tools-sim'
         run: |
           npm run validate --workspace=@modelscript/exchange
           npm run test:fmusim --workspace=@modelscript/exchange
+      - name: Upload CTRF Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctrf-${{ matrix.shard }}
+          path: "**/ctrf/*.json"
+          if-no-files-found: ignore
         if: always()
-      - name: Publish Test Report
+
+  publish_reports:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download All CTRF Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ctrf-artifacts
+          pattern: ctrf-*
+          merge-multiple: true
+      - name: Publish Test Report & PR Insights
         uses: ctrf-io/github-test-reporter@v1
         with:
-          report-path: "**/ctrf/*.json"
+          report-path: "ctrf-artifacts/**/*.json"
+          github-report: true
+          pull-request-report: true
+          flaky-rate-report: true
+          slowest-report: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: always()
 
   build_and_deploy:
-    needs: lint
+    needs: [lint, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -138,6 +199,7 @@ jobs:
   docker_build:
     needs: build_and_deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       packages: write
       contents: read

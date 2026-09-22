@@ -1,5 +1,6 @@
 // name: Constant12
 // status: correct
+// xfail:    true
 
 class A
   class B

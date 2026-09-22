@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
-import { computeEditRanges } from "../src/diff.js";
-import { UnifiedWorkspace } from "../src/wasm_workspace.js";
+import { computeEditRanges, UnifiedWorkspace } from "../src/index.js";
 
 async function runTests() {
   console.log("Running UnifiedWorkspace tests...");
@@ -161,7 +160,7 @@ async function runTests() {
 
   // 6. LanguageWorkspaceIndex and Composite Pattern Compliance
   {
-    const { LanguageWorkspaceIndex, WorkspaceIndex, WasmWorkspaceIndex } = await import("../src/wasm_workspace.js");
+    const { LanguageWorkspaceIndex, WorkspaceIndex, WasmWorkspaceIndex } = await import("../src/index.js");
     assert.strictEqual(LanguageWorkspaceIndex, WorkspaceIndex, "WorkspaceIndex is alias for LanguageWorkspaceIndex");
     assert.strictEqual(
       LanguageWorkspaceIndex,
@@ -202,7 +201,7 @@ async function runTests() {
 
   // 7. Automated Document Ingestion on setDocument
   {
-    const { LanguageWorkspaceIndex } = await import("../src/wasm_workspace.js");
+    const { LanguageWorkspaceIndex } = await import("../src/index.js");
     const ws = new UnifiedWorkspace();
     const langWs = new LanguageWorkspaceIndex();
 
@@ -232,7 +231,7 @@ async function runTests() {
 
   // 8. Coordinated Document Deletion
   {
-    const { LanguageWorkspaceIndex } = await import("../src/wasm_workspace.js");
+    const { LanguageWorkspaceIndex } = await import("../src/index.js");
     const ws = new UnifiedWorkspace();
     const langWs = new LanguageWorkspaceIndex();
 

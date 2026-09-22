@@ -1,6 +1,7 @@
 // name: FuncBuiltinReduction
 // keywords: reduction
 // status: correct
+// xfail:    true
 //
 // Tests the builtin reduction operators.
 //

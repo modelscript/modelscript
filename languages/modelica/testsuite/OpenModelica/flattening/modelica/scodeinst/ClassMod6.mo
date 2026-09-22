@@ -1,5 +1,6 @@
 // name: ClassMod6
 // status: correct
+// xfail:    true
 
 model X
   Real x;

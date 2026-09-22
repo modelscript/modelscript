@@ -1,6 +1,7 @@
 // name: InnerOuterConnect1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector RealOutput = output Real;

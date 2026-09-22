@@ -1,6 +1,8 @@
 import { buildParser, choice, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { before as beforeAll, beforeEach, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -31,7 +33,9 @@ describe("Multi-File LSP Connector Features", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -49,7 +53,7 @@ describe("Multi-File LSP Connector Features", () => {
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
 
     const imports = {
       env: {
@@ -146,7 +150,7 @@ describe("Multi-File LSP Connector Features", () => {
     console.log("Memory byteLength:", activeFacade.wasmMemory.buffer.byteLength);
     exports.lsp_registerDocument(fileId2, ast2);
 
-    const velOffset1 = doc1.indexOf("velocity");
+    const velOffset1 = doc1.indexOf("velocity") * 2;
     const refs = activeFacade.getReferences(ast1, velOffset1);
     expect(refs.length).toBeGreaterThan(0);
 

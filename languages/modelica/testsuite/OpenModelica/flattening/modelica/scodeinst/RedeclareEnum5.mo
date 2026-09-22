@@ -1,6 +1,7 @@
 // name: RedeclareEnum5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

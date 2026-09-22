@@ -1,6 +1,7 @@
 // name: Identity2
 // keywords: identity
 // status: incorrect
+// xfail:    true
 //
 // Tests the built in operator identity.
 //

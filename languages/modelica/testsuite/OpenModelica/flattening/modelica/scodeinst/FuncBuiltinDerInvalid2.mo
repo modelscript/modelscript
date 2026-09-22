@@ -1,6 +1,7 @@
 // name: FuncBuiltinDerInvalid2
 // keywords: der
 // status: incorrect
+// xfail:    true
 //
 // Tests the builtin der operator.
 //

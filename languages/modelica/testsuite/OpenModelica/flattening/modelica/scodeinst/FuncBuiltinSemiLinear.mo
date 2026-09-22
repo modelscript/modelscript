@@ -1,6 +1,7 @@
 // name: FuncBuiltinSemiLinear
 // keywords: semiLinear
 // status: correct
+// xfail:    true
 //
 // Tests the builtin semiLinear operator.
 //

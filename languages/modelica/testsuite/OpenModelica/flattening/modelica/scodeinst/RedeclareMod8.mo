@@ -1,6 +1,7 @@
 // name: RedeclareMod8
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record A

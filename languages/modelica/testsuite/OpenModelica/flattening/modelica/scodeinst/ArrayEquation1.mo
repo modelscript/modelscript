@@ -1,6 +1,7 @@
 // name: ArrayEquation1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model ArrayEquation1

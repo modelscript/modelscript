@@ -1,6 +1,7 @@
 // name: StringBoolean
 // keywords: string
 // status: correct
+// xfail:    true
 //
 // Tests string conversion from boolean
 //

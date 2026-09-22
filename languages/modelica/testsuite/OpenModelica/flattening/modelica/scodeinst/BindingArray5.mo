@@ -1,6 +1,7 @@
 // name: BindingArray5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 type MyReal = Real[4];

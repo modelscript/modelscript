@@ -38,35 +38,43 @@ const extDestDir = join(OUT_DIR, "static", "devextensions");
 mkdirSync(extDestDir, { recursive: true });
 cpSync(MODELSCRIPT_EXT_DIR, extDestDir, { recursive: true });
 
-// Ensure Modelica parser wasm is explicitly present and copied
-const modelicaWasmSrc = [
-  resolve(__dirname, "..", "..", "..", "languages", "modelica", "dist", "parser.wasm"),
-  resolve(__dirname, "..", "..", "..", "languages", "modelica", "tree-sitter-modelica.wasm"),
-].find(existsSync);
-if (!modelicaWasmSrc) {
-  console.error("FATAL: parser.wasm is missing from languages/modelica/dist/");
-  process.exit(1);
-}
-const modelicaWasmDest = join(extDestDir, "server", "dist", "tree-sitter-modelica.wasm");
-mkdirSync(join(extDestDir, "server", "dist"), { recursive: true });
-cpSync(modelicaWasmSrc, modelicaWasmDest);
-console.log(`  Copied ${modelicaWasmSrc} to ${modelicaWasmDest}`);
+// Ensure all discovered language WASM files from languages-manifest.json are present
+const manifestPath = join(MODELSCRIPT_EXT_DIR, "server", "dist", "languages-manifest.json");
+const serverDistDest = join(extDestDir, "server", "dist");
+mkdirSync(serverDistDest, { recursive: true });
 
-// Ensure tree-sitter-sysml2.wasm is also copied
-const sysml2WasmSrc = [
-  resolve(__dirname, "..", "..", "..", "languages", "sysml2", "dist", "parser.wasm"),
-  resolve(__dirname, "..", "..", "..", "languages", "sysml2", "tree-sitter-sysml2.wasm"),
-].find(existsSync);
-const sysml2WasmDest = join(extDestDir, "server", "dist", "tree-sitter-sysml2.wasm");
-if (sysml2WasmSrc) {
-  cpSync(sysml2WasmSrc, sysml2WasmDest);
-  console.log(`  Copied ${sysml2WasmSrc} to ${sysml2WasmDest}`);
-} else {
-  console.warn("  Warning: SysML2 parser wasm not found, SysML support will be disabled");
+if (existsSync(manifestPath)) {
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    writeFileSync(join(serverDistDest, "languages-manifest.json"), JSON.stringify(manifest, null, 2), "utf-8");
+
+    const repoRoot = resolve(__dirname, "..", "..", "..");
+    for (const lang of manifest) {
+      if (!lang.wasm) continue;
+      const langDir = resolve(repoRoot, "languages", lang.id);
+      const candidates = [
+        join(MODELSCRIPT_EXT_DIR, "server", "dist", lang.wasm),
+        join(langDir, "dist", "parser.wasm"),
+        join(langDir, "parser.wasm"),
+        join(langDir, `tree-sitter-${lang.id}.wasm`),
+      ];
+      const found = candidates.find(existsSync);
+      if (found) {
+        cpSync(found, join(serverDistDest, lang.wasm));
+        cpSync(found, join(serverDistDest, `tree-sitter-${lang.id}.wasm`));
+        console.log(`  Copied ${lang.id} WASM parser (${lang.wasm}) to ${serverDistDest}`);
+      } else {
+        console.warn(`  Warning: WASM parser for ${lang.id} not found`);
+      }
+    }
+  } catch (err) {
+    console.warn("  Warning: could not process languages-manifest.json:", err);
+  }
 }
 
 // Ensure release.wasm (compiler BLT solver) is copied
 const releaseWasmSrc = [
+  join(MODELSCRIPT_EXT_DIR, "server", "dist", "release.wasm"),
   resolve(__dirname, "..", "..", "..", "packages", "runtime", "build", "release.wasm"),
   resolve(__dirname, "..", "..", "..", "packages", "language", "build", "release.wasm"),
 ].find(existsSync);
@@ -76,42 +84,6 @@ if (releaseWasmSrc && existsSync(releaseWasmSrc)) {
   console.log(`  Copied release.wasm to ${releaseWasmDest}`);
 } else {
   console.warn("  Warning: release.wasm not found, BLT solver will be disabled");
-}
-
-// Ensure tree-sitter-owl2.wasm is also copied
-const owl2WasmSrc = [
-  resolve(__dirname, "..", "..", "..", "languages", "owl2", "dist", "parser.wasm"),
-  resolve(__dirname, "..", "..", "..", "languages", "owl2", "tree-sitter-owl2.wasm"),
-].find(existsSync);
-const owl2WasmDest = join(extDestDir, "server", "dist", "tree-sitter-owl2.wasm");
-if (owl2WasmSrc) {
-  cpSync(owl2WasmSrc, owl2WasmDest);
-  console.log(`  Copied ${owl2WasmSrc} to ${owl2WasmDest}`);
-} else {
-  console.warn("  Warning: OWL2 parser wasm not found, OWL2 support will be disabled");
-}
-
-// Ensure tree-sitter-step.wasm is also copied
-const stepWasmSrc = [
-  resolve(__dirname, "..", "..", "..", "languages", "step", "dist", "parser.wasm"),
-  resolve(__dirname, "..", "..", "..", "languages", "step", "tree-sitter-step.wasm"),
-].find(existsSync);
-const stepWasmDest = join(extDestDir, "server", "dist", "tree-sitter-step.wasm");
-if (stepWasmSrc) {
-  cpSync(stepWasmSrc, stepWasmDest);
-  console.log(`  Copied ${stepWasmSrc} to ${stepWasmDest}`);
-} else {
-  console.warn("  Warning: STEP parser wasm not found, STEP support will be disabled");
-}
-
-// Ensure tree-sitter-csv.wasm is also copied
-const csvWasmSrc = resolve(__dirname, "..", "..", "..", "languages", "csv", "tree-sitter-csv.wasm");
-const csvWasmDest = join(extDestDir, "server", "dist", "tree-sitter-csv.wasm");
-if (existsSync(csvWasmSrc)) {
-  cpSync(csvWasmSrc, csvWasmDest);
-  console.log(`  Copied tree-sitter-csv.wasm to ${csvWasmDest}`);
-} else {
-  console.warn("  Warning: tree-sitter-csv.wasm not found, CSV support will be disabled");
 }
 
 // 3. Copy GitHub FS extension

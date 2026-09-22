@@ -1,6 +1,7 @@
 // name: ArrayConnect5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector C

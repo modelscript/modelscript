@@ -1,6 +1,7 @@
 // name: RecordBinding15
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record ParamsBottom

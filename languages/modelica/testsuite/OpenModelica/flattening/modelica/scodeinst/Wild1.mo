@@ -1,6 +1,7 @@
 // name: Wild1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

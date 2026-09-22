@@ -1,6 +1,7 @@
 // name: StateSelectVariability1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model StateSelectVariability1

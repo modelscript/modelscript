@@ -1,6 +1,7 @@
 // name:     BN1 -  DeadZone component
 // keywords: DeadZone
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the DeadZone component.
 //

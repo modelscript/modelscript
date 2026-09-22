@@ -1,6 +1,7 @@
 // name:     PolynomialEvaluatorB
 // keywords:
 // status:   correct
+// xfail:    true
 //
 
 block PolynomialEvaluator

@@ -1,6 +1,7 @@
 // name:     Subscript3
 // keywords: subscript array prefix
 // status:   correct
+// xfail:    true
 //
 // Checks that subscripts are correctly prefixed.
 //

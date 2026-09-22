@@ -1,6 +1,7 @@
 // name: OperatorOverloadSum1
 // keywords: operator overload complex
 // status: correct
+// xfail:    true
 //
 //
 

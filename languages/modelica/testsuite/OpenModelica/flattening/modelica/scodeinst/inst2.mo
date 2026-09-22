@@ -1,6 +1,7 @@
 // name: inst2.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

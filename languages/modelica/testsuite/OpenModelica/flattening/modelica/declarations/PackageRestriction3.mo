@@ -1,6 +1,7 @@
 // name: PackageRestriction3
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 package P

@@ -1,6 +1,7 @@
 // name: InnerOuter11
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial function A

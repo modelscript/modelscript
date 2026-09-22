@@ -1,6 +1,7 @@
 // name: StringConcatenation
 // keywords: string
 // status: correct
+// xfail:    true
 //
 // Tests string concatenation
 //

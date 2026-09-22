@@ -46,6 +46,7 @@ import {
   EXPR_STRIDE,
   EXPR_KIND,
   EXPR_DATA1,
+  FLAG_VAR_FLOW,
 } from "./dae";
 import { IntUnionFind } from "./alias";
 import { BltEngine, blt_createEngine } from "./blt";
@@ -1332,8 +1333,14 @@ class ConnectorAPI {
   }
 
   @inline add(p1VarId: u32, p2VarId: u32, isFlow: boolean = false, isBoundary: boolean = false): u32 {
-    let e1 = this.dae.addExpression(ExprKind.Name, p1VarId);
-    let e2 = this.dae.addExpression(ExprKind.Name, p2VarId);
+    if (isFlow) {
+      if (p1VarId < this.dae.varCount) this.dae.setVarFlag(p1VarId, FLAG_VAR_FLOW);
+      if (p2VarId < this.dae.varCount) this.dae.setVarFlag(p2VarId, FLAG_VAR_FLOW);
+    }
+    let name1 = p1VarId < this.dae.varCount ? this.dae.getVarNameId(p1VarId) : p1VarId;
+    let name2 = p2VarId < this.dae.varCount ? this.dae.getVarNameId(p2VarId) : p2VarId;
+    let e1 = this.dae.addExpression(ExprKind.Name, name1);
+    let e2 = this.dae.addExpression(ExprKind.Name, name2);
     return this.dae.addEquation(EqKind.Connect, e1, e2);
   }
 
@@ -1364,6 +1371,8 @@ class ConnectorAPI {
             let toExact = this.dae.lookupVariableByName(toNameId);
             if (fromExact >= 0 && toExact >= 0) {
               uf.union(fromExact as u32, toExact as u32);
+            } else if (fromNameId < varCount && toNameId < varCount) {
+              uf.union(fromNameId, toNameId);
             } else {
               // Hierarchical connector port matching
               for (let v: u32 = 0; v < varCount; v++) {
@@ -1386,7 +1395,7 @@ class ConnectorAPI {
     }
 
     // 2. Emit potential and flow equations
-    let generatedEqs: u32 = 0;
+    let generatedFlowEqs: u32 = 0;
     let zeroExpr = this.dae.addRealLiteral(0.0);
 
     // Pass A: Zero-flow for unconnected flow variables
@@ -1403,7 +1412,7 @@ class ConnectorAPI {
         if (!hasOther) {
           let vExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(v));
           this.dae.addEquation(EqKind.Simple, vExpr, zeroExpr);
-          generatedEqs++;
+          generatedFlowEqs++;
         }
       }
     }
@@ -1413,7 +1422,14 @@ class ConnectorAPI {
       let root = uf.find(v);
       if (root != v) continue;
 
-      let isFlow = this.dae.isVarFlow(root);
+      let isFlow = false;
+      for (let member: u32 = 0; member < varCount; member++) {
+        if (uf.find(member) == root && this.dae.isVarFlow(member)) {
+          isFlow = true;
+          break;
+        }
+      }
+
       if (isFlow) {
         let sumExpr: u32 = 0;
         let memberCount: u32 = 0;
@@ -1421,22 +1437,18 @@ class ConnectorAPI {
         for (let member: u32 = 0; member < varCount; member++) {
           if (uf.find(member) == root) {
             let mExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(member));
-            let negExpr = this.dae.addExpression(ExprKind.Negate, 0, mExpr);
             if (memberCount == 0) {
-              sumExpr = negExpr;
+              sumExpr = mExpr;
             } else {
-              sumExpr = this.dae.addBinaryExpr(BinOp.Add as u16, sumExpr, negExpr);
+              sumExpr = this.dae.addBinaryExpr(BinOp.Add as u16, sumExpr, mExpr);
             }
-            // Emit zero-flow initial value
-            this.dae.addEquation(EqKind.Simple, mExpr, zeroExpr);
-            generatedEqs++;
             memberCount++;
           }
         }
 
         if (memberCount > 1) {
           this.dae.addEquation(EqKind.Simple, sumExpr, zeroExpr);
-          generatedEqs++;
+          generatedFlowEqs++;
         }
       } else {
         let rootExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(root));
@@ -1444,13 +1456,12 @@ class ConnectorAPI {
           if (member != root && uf.find(member) == root) {
             let mExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(member));
             this.dae.addEquation(EqKind.Simple, rootExpr, mExpr);
-            generatedEqs++;
           }
         }
       }
     }
 
-    return generatedEqs;
+    return generatedFlowEqs;
   }
 }
 
@@ -1675,4 +1686,40 @@ export function query_getGlobalRevision(): u32 {
 
 export function query_incrementRevision(): void {
   incrementGlobalRevision();
+}
+
+export function flattener_create(daePtr: u32): u32 {
+  let dae = daePtr != 0 ? changetype<DaeBuilder>(daePtr) : graph.dae;
+  return changetype<u32>(new ConnectorAPI(dae));
+}
+
+export function flattener_flattenClass(flattenerPtr: u32, classNodePtr: u32): u32 {
+  return 0;
+}
+
+export function flattener_createEnv(parentPtr: u32): u32 {
+  return graph.env.create(parentPtr);
+}
+
+export function flattener_envBind(envPtr: u32, keyHash: u32, valExprId: u32, isFinal: u32, isEach: u32): void {
+  graph.env.bind(envPtr, keyHash, valExprId, isFinal == 1, isEach == 1);
+}
+
+export function flattener_envLookup(envPtr: u32, keyHash: u32): u32 {
+  return graph.env.lookup(envPtr, keyHash);
+}
+
+export function flattener_addConnection(flattenerPtr: u32, p1VarId: u32, p2VarId: u32, isFlow: u32, isBoundary: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let conn = changetype<ConnectorAPI>(flattenerPtr);
+  if (isFlow == 1) {
+    if (p1VarId < conn.dae.varCount) conn.dae.setVarFlag(p1VarId, FLAG_VAR_FLOW);
+    if (p2VarId < conn.dae.varCount) conn.dae.setVarFlag(p2VarId, FLAG_VAR_FLOW);
+  }
+  return conn.add(p1VarId, p2VarId, isFlow == 1, isBoundary == 1);
+}
+
+export function flattener_finalizeConnections(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ConnectorAPI>(flattenerPtr).finalize();
 }

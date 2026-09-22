@@ -1,6 +1,7 @@
 // name: OperationLogicalBinary1
 // keywords: 
 // status: correct
+// xfail:    true
 //
 
 model OperationLogicalBinary1

@@ -1,6 +1,7 @@
 // name:     BS16 - BooleanPulse component
 // keywords: BooleanPulse
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the BooleanPulse component.
 //

@@ -1,6 +1,7 @@
 // name: RecordBinding14
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package Cooling

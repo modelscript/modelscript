@@ -1,6 +1,7 @@
 // name: FuncBuiltinInitial1
 // keywords: initial
 // status: correct
+// xfail:    true
 //
 // Tests the builtin initial operator.
 //

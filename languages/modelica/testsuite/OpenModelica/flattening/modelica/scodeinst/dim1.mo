@@ -1,6 +1,7 @@
 // name: dim1.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

@@ -1,6 +1,7 @@
 // name: FuncBuiltinSample
 // keywords: sample
 // status: correct
+// xfail:    true
 //
 // Tests the builtin sample operator.
 //

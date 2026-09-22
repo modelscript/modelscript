@@ -1,6 +1,7 @@
 // name: BuiltinAttribute13
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model BuiltinAttribute13

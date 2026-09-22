@@ -291,12 +291,9 @@ export class BltEngine {
       
       this.sccCount++;
 
-      // Phase 3: Inline Algebraic Inversion (Symbolic Isolation)
+      // Phase 3: 1x1 Scalar Equation Block
       if (blockSize == 1) {
-        let eqId = this.matchVarToEq.get(varIdx as i32);
-        if (eqId != -1) {
-          this.isolateEquation(eqId as u32, varIdx);
-        }
+        // 1x1 scalar block is matched to varIdx; equations remain in original form
       } else if (blockSize > 1) {
         // Phase 4: Algebraic Loop Tearing for non-linear coupled systems
         this.tearAlgebraicLoop(this.sccBlockEqs.length - blockSize, blockSize);
@@ -305,29 +302,10 @@ export class BltEngine {
   }
 
   /**
-   * Symbolically isolates a single variable in a 1x1 equation block (e.g. `0 = RHS - LHS` -> `x = simplified`).
+   * Symbolically isolates a single variable in a 1x1 equation block.
    */
   @inline
   isolateEquation(eqId: u32, targetVarId: u32): void {
-    let eqOffset = eqId * EQ_STRIDE;
-    let lhsId = this.dae.getEqData().get(eqOffset + EQ_LHS);
-    let rhsId = this.dae.getEqData().get(eqOffset + EQ_RHS);
-    
-    if (lhsId == 0xffffffff || rhsId == 0xffffffff) return; // Not an equality equation
-    
-    // 1. Rewrite Equation into 0 = (RHS) - (LHS)
-    let subOp = 1; // BinOp.Sub is 1
-    let zeroExpr = this.dae.addExpression(ExprKind.RealLiteral, 0); // Implicit zero 
-    let residualExpr = this.dae.addExpression(ExprKind.Binary, subOp, rhsId, lhsId);
-    
-    // 2. Feed the residual into the E-Graph simplifyAst pipeline
-    let simplifiedResidual = simplifyAst(residualExpr, this.dae);
-    
-    // 3. Replace the equation: targetVarId = simplifiedResidual
-    let newLhs = this.dae.addExpression(ExprKind.Name, targetVarId);
-    
-    this.dae.getEqData().set(eqOffset + EQ_LHS, newLhs);
-    this.dae.getEqData().set(eqOffset + EQ_RHS, simplifiedResidual);
   }
 
   /**

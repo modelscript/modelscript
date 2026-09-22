@@ -26,7 +26,9 @@ describe("Tier 2: WASM DAE Sparsity, Distance-2 Coloring, Sparse LU & Variable-O
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const f of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, f.filename), f.content);
+      const destPath = path.join(tmpDir, f.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, f.content);
     }
     fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
 
@@ -50,7 +52,7 @@ describe("Tier 2: WASM DAE Sparsity, Distance-2 Coloring, Sparse LU & Variable-O
 
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
 
     const imports = {
       env: {

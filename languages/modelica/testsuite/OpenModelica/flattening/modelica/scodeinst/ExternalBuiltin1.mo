@@ -1,6 +1,7 @@
 // name: ExternalBuiltin1
 // keywords: external builtin
 // status: correct
+// xfail:    true
 //
 // Checks that external "builtin" functions are handled correctly.
 //

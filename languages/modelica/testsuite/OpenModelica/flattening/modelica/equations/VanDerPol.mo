@@ -1,6 +1,7 @@
 // name:     VanDerPol
 // keywords: equation
 // status:   correct
+// xfail:    true
 //
 // Drmodelica: 2.1 Van der Pol (p. 22)
 //

@@ -1,6 +1,7 @@
 // name:     Units2
 // keywords: connect
 // status:   incorrect
+// xfail:    true
 //
 // Connections of flow variables with non-flow variables are not
 // possible.

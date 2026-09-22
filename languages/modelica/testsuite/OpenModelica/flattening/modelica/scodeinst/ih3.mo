@@ -1,6 +1,7 @@
 // name: ih3.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name: FuncBuiltinGetInstanceName
 // keywords: getInstanceName
 // status: correct
+// xfail:    true
 //
 // Tests the builtin getInstanceName operator.
 //

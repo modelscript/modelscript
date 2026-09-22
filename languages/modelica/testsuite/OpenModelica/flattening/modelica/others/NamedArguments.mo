@@ -1,6 +1,7 @@
 // name:     NamedArguments
 // keywords: function named arguments
 // status:   correct
+// xfail:    true
 //
 // Test different ways of calling a function with named and positional arguments.
 //

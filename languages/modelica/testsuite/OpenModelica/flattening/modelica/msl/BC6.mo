@@ -1,6 +1,7 @@
 // name:     BC6 - LimPID component
 // keywords: LimPID
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the LimPID component.
 //

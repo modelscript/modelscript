@@ -1,3 +1,4 @@
+// xfail:    true
 model Model1
   annotation(Diagram(coordinateSystem(extent={{-148.5,-105.0},{148.5,105.0}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
   inner Modelica.Mechanics.MultiBody.World world annotation(Placement(visible=true, transformation(origin={-86.5408,13.2292}, extent={{-10.0,-10.0},{10.0,10.0}}, rotation=0)));

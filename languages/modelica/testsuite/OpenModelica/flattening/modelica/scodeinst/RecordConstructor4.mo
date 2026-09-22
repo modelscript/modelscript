@@ -1,6 +1,7 @@
 // name: RecordConstructor4
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

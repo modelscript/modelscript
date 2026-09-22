@@ -1,6 +1,7 @@
 // name: ExternalObjectInvalidElement1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 //
 

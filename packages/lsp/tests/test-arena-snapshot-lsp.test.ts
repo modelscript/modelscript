@@ -1,7 +1,9 @@
 import { buildParser, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import { IndexedDbSnapshotStore } from "@modelscript/runtime/indexeddb_snapshot.js";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, test } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -46,7 +48,9 @@ describe("Phase 6: Snapshotting, Memory Forking & Production LSP Integration", (
 
     const result = buildParser(dsl as any);
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -64,7 +68,7 @@ describe("Phase 6: Snapshotting, Memory Forking & Production LSP Integration", (
     getFacadeFn = new Function(wrapperSrc);
 
     const createInstance = async () => {
-      const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+      const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
       wasmMemory = memory;
       const imports = {
         env: {
@@ -138,7 +142,7 @@ describe("Phase 6: Snapshotting, Memory Forking & Production LSP Integration", (
     expect(loaded.data.length).toBe(binary.length);
 
     // Create a clean second instance and hydrate
-    const memory2 = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory2 = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports2 = {
       env: { memory: memory2, abort: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },

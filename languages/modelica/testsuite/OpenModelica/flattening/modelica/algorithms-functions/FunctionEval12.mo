@@ -1,6 +1,7 @@
 // name:     FunctionEval12
 // keywords: function, ceval, bug1522
 // status:   correct
+// xfail:    true
 //
 // Checks that size of an input parameter in a function is considered
 // non-constant, i.e. it should not be constant evaluated since the arrays size

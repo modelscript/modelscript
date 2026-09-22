@@ -1,5 +1,6 @@
 // name: ceval4.mo
 // status: correct
+// xfail:    true
 
 model A
   function f

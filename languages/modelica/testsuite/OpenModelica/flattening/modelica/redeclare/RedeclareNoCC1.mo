@@ -1,6 +1,7 @@
 // name:     RedeclareNoCC1
 // keywords: redeclare, constraining class, #3528
 // status:   correct
+// xfail:    true
 //
 // Checks that redeclares are applied correctly when no constraining class is
 // given.

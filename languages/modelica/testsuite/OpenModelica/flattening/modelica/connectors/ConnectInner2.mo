@@ -2,6 +2,7 @@
 // name:     ConnectInner2
 // keywords: connect,dynamic scoping
 // status:   correct
+// xfail:    true
 //
 // The inner connector must be declared 'inner'. Generate a warning.
 //

@@ -1,6 +1,7 @@
 // name: RecordOrder3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package Cooling

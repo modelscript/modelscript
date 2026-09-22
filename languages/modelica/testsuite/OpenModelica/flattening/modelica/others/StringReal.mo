@@ -1,6 +1,7 @@
 // name: StringReal
 // keywords: string
 // status: correct
+// xfail:    true
 //
 // Tests conversion to string from Real
 //

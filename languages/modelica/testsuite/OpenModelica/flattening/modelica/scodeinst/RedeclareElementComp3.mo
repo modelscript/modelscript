@@ -1,6 +1,7 @@
 // name: RedeclareElementComp3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

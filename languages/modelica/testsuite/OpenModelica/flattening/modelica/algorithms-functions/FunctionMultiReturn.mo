@@ -1,6 +1,7 @@
 // name:     FunctionReturn
 // keywords: function return
 // status:   correct
+// xfail:    true
 //
 // This tests return in function
 

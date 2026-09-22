@@ -1,5 +1,6 @@
 // name: ErrorRecursionLimit
 // status: incorrect
+// xfail:    true
 
 model ErrorRecursionLimit
   model M

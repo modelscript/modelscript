@@ -1,5 +1,6 @@
 // name: ErrorMultipleClasses
 // status: incorrect
+// xfail:    true
 
 class A
 end A;

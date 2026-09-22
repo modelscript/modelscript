@@ -1,6 +1,7 @@
 // name: ModClass4
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

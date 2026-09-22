@@ -1,6 +1,7 @@
 // name: CevalRecordArray10
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package Tilt

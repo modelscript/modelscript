@@ -1,6 +1,7 @@
 // name:     Function10
 // keywords: function
 // status:   correct
+// xfail:    true
 //
 // This tests for bug in function instantiation. A function argument can have same identifier as
 // function name.

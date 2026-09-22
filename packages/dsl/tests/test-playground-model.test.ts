@@ -75,7 +75,9 @@ describe("Playground Model Test", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const destPath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -98,7 +100,7 @@ describe("Playground Model Test", () => {
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
 
     const imports = {
       env: {
@@ -766,7 +768,9 @@ end ElectricalCircuit;
     fs.mkdirSync(tmpDirLocal, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+      const destPath = path.join(tmpDirLocal, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -789,7 +793,7 @@ end ElectricalCircuit;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade: LspFacadeLocal } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const importsLocal = {
       env: {
         memory: memory,
@@ -932,7 +936,9 @@ end ThermalSystem;
     fs.mkdirSync(tmpDirLocal, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+      const destPath = path.join(tmpDirLocal, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -955,7 +961,7 @@ end ThermalSystem;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade: LspFacadeLocal } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const importsLocal = {
       env: {
         memory: memory,
@@ -1103,7 +1109,9 @@ end ThermalSystem;
     fs.mkdirSync(tmpDirLocal, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+      const destPath = path.join(tmpDirLocal, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -1126,7 +1134,7 @@ end ThermalSystem;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade: LspFacadeLocal } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const importsLocal = {
       env: {
         memory: memory,
@@ -1303,7 +1311,9 @@ end ThermalSystem;`;
     fs.mkdirSync(tmpDirLocal, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+      const destPath = path.join(tmpDirLocal, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -1326,7 +1336,7 @@ end ThermalSystem;`;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade: LspFacadeLocal } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const importsLocal = {
       env: {
         memory: memory,
@@ -1438,7 +1448,9 @@ end ThermalSystem;`;
     fs.mkdirSync(tmpDirLocal, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+      const destPath = path.join(tmpDirLocal, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -1461,7 +1473,7 @@ end ThermalSystem;`;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: { memory: memory, abort: () => {}, logNode: () => {}, debugLog: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },
@@ -1702,7 +1714,9 @@ end ThermalSystem;
     fs.mkdirSync(tmpDirLocal, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+      const destPath = path.join(tmpDirLocal, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -1725,7 +1739,7 @@ end ThermalSystem;
     const getFacade = new Function(wrapperSrc);
     const { LspFacade: LspFacadeLocal } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const importsLocal = {
       env: {
         memory: memory,

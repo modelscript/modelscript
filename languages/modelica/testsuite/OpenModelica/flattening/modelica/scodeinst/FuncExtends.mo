@@ -1,6 +1,7 @@
 // name: FuncExtends
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

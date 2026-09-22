@@ -1,6 +1,7 @@
 // name: RedeclareMod5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Line

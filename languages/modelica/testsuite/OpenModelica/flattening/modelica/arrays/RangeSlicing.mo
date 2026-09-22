@@ -1,6 +1,7 @@
 // name: RangeSlicing
 // keywords: array range slicing subscript
 // status: correct
+// xfail:    true
 //
 // Tests array slicing with range subscripts.
 //

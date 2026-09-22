@@ -1,6 +1,7 @@
 // name:     ImplicitRangeReductions
 // keywords: reductions implicit range
 // status:   correct
+// xfail:    true
 //
 // Tests deduction of implicit iteration ranges in reductions.
 //

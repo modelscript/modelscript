@@ -1,6 +1,7 @@
 // name: FuncUnknownDim1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

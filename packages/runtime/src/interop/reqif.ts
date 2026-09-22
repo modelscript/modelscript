@@ -138,15 +138,19 @@ export class ReqIfParser {
       // Check for numeric limit / comparison heuristics in requirement text if not explicitly provided
       let limitValue = extractedLimit;
       let comparator = extractedComparator;
-      if (limitValue === undefined) {
+      if (comparator === undefined || limitValue === undefined) {
         const compMatch = text.match(/(?:>=|<=|>|<|==|!=|\bexceed\b|\bat least\b|\bmaximum\b|\bminimum\b)\s*([\d.]+)/i);
         if (compMatch) {
-          limitValue = parseFloat(compMatch[1]);
-          if (text.includes(">=") || text.includes("at least")) comparator = ">=";
-          else if (text.includes("<=") || text.includes("maximum")) comparator = "<=";
-          else if (text.includes(">") || text.includes("exceed")) comparator = ">";
-          else if (text.includes("<")) comparator = "<";
-          else comparator = "<=";
+          if (limitValue === undefined) {
+            limitValue = parseFloat(compMatch[1]);
+          }
+          if (comparator === undefined) {
+            if (text.includes(">=") || text.includes("at least")) comparator = ">=";
+            else if (text.includes("<=") || text.includes("maximum")) comparator = "<=";
+            else if (text.includes(">") || text.includes("exceed")) comparator = ">";
+            else if (text.includes("<")) comparator = "<";
+            else comparator = "<=";
+          }
         }
       }
 

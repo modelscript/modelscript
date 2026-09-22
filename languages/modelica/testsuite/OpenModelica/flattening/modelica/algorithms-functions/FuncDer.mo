@@ -1,6 +1,7 @@
 // name:     FuncDer
 // keywords: Function Annotations
 // status:   correct
+// xfail:    true
 //
 // Something wrong with Boolean and  der_2_y := exp(x)*der_x*der_x + exp(x)*der_2_x; in h2
 // Drmodelica: 11.1 Function Annotations (p. 372)

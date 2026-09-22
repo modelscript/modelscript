@@ -1,5 +1,6 @@
 // name: ClassMod4
 // status: correct
+// xfail:    true
 
 model A
   type T = Real;

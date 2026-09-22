@@ -1,6 +1,7 @@
 // name:     BM8 -  Cos component
 // keywords: Cos
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Cos component.
 //

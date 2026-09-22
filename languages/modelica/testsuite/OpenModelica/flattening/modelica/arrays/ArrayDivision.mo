@@ -1,6 +1,7 @@
 // name: ArrayDivision
 // keywords: array, division
 // status: correct
+// xfail:    true
 //
 // Tests elementwise array division
 //

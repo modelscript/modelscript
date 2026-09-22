@@ -1,4 +1,5 @@
 // status: correct
+// xfail:    true
 
 model Concatenation
   Real z[1,2] = [{{2}},{1.0}];

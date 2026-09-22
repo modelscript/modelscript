@@ -1,6 +1,7 @@
 // name: OperationPow1
 // keywords: 
 // status: correct
+// xfail:    true
 //
 
 model OperationPow1

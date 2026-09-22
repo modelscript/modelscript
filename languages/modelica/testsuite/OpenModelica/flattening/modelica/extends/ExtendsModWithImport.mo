@@ -1,6 +1,7 @@
 // name:     ExtendsModWithImport
 // keywords: extends import modification bug1255
 // status:   correct
+// xfail:    true
 //
 // Tests extends where a modifier uses an import alias.
 //

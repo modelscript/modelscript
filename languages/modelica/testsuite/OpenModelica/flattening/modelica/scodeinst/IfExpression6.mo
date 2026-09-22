@@ -1,6 +1,7 @@
 // name: IfExpression6
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model M

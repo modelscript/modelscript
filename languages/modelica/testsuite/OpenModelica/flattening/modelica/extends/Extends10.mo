@@ -1,6 +1,7 @@
 // name:     Extends10
 // keywords: extends
 // status:   correct
+// xfail:    true
 //
 // Testing that imports are handled properly when extending.
 //

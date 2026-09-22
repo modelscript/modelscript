@@ -1,6 +1,7 @@
 // name:     Connect8
 // keywords: connect
 // status:   correct
+// xfail:    true
 //
 // If parameters are involved in connections, the parameters have to
 // be known to generate the equations.

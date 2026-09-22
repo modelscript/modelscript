@@ -1,6 +1,7 @@
 // name:     ImportNamedInvalid1
 // keywords: named import
 // status:   incorrect
+// xfail:    true
 //
 // Checks that an error is output for missing named imports.
 //

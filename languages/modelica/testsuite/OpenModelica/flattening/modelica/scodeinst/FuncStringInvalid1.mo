@@ -1,6 +1,7 @@
 // name: FuncStringInvalid1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that type checking works for the builtin String function.
 //

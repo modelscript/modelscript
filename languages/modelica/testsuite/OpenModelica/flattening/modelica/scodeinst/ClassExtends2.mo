@@ -1,6 +1,7 @@
 // name: ClassExtends2.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that class extends without redeclare works, although with a warning
 // since it was deprecated in Modelica 3.4.

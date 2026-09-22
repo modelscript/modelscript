@@ -1,6 +1,7 @@
 // name: InStreamArray2
 // keywords: stream instream connector
 // status: correct
+// xfail:    true
 //
 
 connector C

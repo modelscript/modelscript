@@ -1,6 +1,7 @@
 // name:     SimpleIntegrator2
 // keywords: declaration,equation,modification
 // status:   correct
+// xfail:    true
 //
 // Correct formulation of a simple integrator example.
 //

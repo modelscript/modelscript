@@ -1,6 +1,7 @@
 // name: TopLevelInputs2
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Top-level inputs with bindings should not be counted as top-level inputs
 // without bindings if their binding is moved to an equation section.

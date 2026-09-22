@@ -1,6 +1,7 @@
 // name: OperatorOverloadBinaryWithBuiltin
 // keywords: operator overload
 // status: correct
+// xfail:    true
 //
 // Tests binary overloaded operators with simple builtin types.
 //

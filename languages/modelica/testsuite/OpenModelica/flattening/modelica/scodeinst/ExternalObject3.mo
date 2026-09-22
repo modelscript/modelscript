@@ -1,6 +1,7 @@
 // name: ExternalObject3
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

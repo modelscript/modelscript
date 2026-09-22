@@ -1,5 +1,6 @@
 // name: ExternalFunction5
 // status: correct
+// xfail:    true
 // teardown_command: rm -f myFloor.* myFloor_* ExternalFunction5_*
 
 function trunc

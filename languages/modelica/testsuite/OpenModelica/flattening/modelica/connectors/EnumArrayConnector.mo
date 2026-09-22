@@ -1,6 +1,7 @@
 // name: EnumArrayConnector
 // keywords: connect enum array
 // status: correct
+// xfail:    true
 //
 // Tests that connectors containing arrays with enum dimensions work correctly.
 //

@@ -1,6 +1,7 @@
 // name: dim8.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model M

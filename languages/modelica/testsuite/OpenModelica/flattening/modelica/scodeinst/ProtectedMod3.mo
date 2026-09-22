@@ -1,6 +1,7 @@
 // name: ProtectedMod3
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 //
 

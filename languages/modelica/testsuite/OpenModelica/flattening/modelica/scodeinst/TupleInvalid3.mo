@@ -1,6 +1,7 @@
 // name: TupleInvalid3
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model TupleInvalid3

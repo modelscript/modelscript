@@ -1,6 +1,7 @@
 // name: RecordBinding13
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record R

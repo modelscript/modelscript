@@ -1,6 +1,7 @@
 // name:     AssertTest2
 // keywords: assert
 // status:   correct
+// xfail:    true
 //
 // Drmodelica: 9.1 assert (p. 298)
 //

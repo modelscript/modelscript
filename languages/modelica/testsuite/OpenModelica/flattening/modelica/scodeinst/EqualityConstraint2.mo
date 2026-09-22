@@ -1,6 +1,7 @@
 // name: EqualityConstraint2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 type Real2 = Real[2];

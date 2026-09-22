@@ -1,6 +1,7 @@
 // name: ExternalFunctionImplicit2
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

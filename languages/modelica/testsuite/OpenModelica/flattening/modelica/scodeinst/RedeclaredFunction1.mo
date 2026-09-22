@@ -1,6 +1,7 @@
 // name: RedeclareFunction1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

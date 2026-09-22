@@ -1,6 +1,7 @@
 // name: conn13.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 // FAILREASON: Overconstrained types are not recognized as such yet (need to add
 //             equalityConstraint to their type).

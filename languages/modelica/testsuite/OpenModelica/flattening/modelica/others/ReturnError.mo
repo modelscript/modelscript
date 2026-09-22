@@ -1,5 +1,6 @@
 // name: ReturnError
 // status: incorrect
+// xfail:    true
 
 model ReturnError
 algorithm

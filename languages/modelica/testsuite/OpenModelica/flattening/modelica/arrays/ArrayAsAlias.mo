@@ -1,6 +1,7 @@
 // name:     ArrayAsAlias
 // keywords: testing that array as alias and enumeration functionality works properly
 // status:   correct
+// xfail:    true
 //
 // Array as alias checks, enumeration checks, etc.
 

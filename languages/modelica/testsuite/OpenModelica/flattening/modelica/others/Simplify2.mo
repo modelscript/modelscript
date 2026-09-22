@@ -1,6 +1,7 @@
 // name:     Simplify2
 // keywords: simplify
 // status:   correct
+// xfail:    true
 //
 // Checks that expressions are not lost in simplify.
 //

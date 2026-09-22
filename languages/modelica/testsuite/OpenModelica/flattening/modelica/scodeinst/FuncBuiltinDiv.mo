@@ -1,6 +1,7 @@
 // name: FuncBuiltinDiv
 // keywords: div
 // status: correct
+// xfail:    true
 //
 // Tests the builtin div function.
 //

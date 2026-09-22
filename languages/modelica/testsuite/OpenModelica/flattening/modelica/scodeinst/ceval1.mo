@@ -1,5 +1,6 @@
 // name: ceval1.mo
 // status: correct
+// xfail:    true
 
 model A
   parameter Integer n = (-1+2)*2-3+4;

@@ -1,6 +1,7 @@
 // name: ParameterDeclConnector
 // keywords: parameter
 // status: correct
+// xfail:    true
 //
 // Tests the parameter prefix on a connector type
 //

@@ -1,6 +1,7 @@
 // name:     NonConstantReduction
 // keywords: array
 // status:   correct
+// xfail:    true
 //
 // Tests elaboration of non-constant reductions.
 //

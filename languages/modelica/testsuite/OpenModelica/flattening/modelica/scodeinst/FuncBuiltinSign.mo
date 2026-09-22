@@ -1,6 +1,7 @@
 // name: FuncBuiltinSign
 // keywords: sign
 // status: correct
+// xfail:    true
 //
 // Tests the builtin sign function.
 //

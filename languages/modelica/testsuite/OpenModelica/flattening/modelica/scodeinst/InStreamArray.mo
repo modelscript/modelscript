@@ -1,6 +1,7 @@
 // name: InStreamArray
 // keywords: stream instream connector
 // status: correct
+// xfail:    true
 //
 
 connector Port

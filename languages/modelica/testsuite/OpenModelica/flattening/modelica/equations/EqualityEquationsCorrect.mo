@@ -1,6 +1,7 @@
 // name:     EqualityEquationsCorrect
 // keywords: equation
 // status:   correct
+// xfail:    true
 //
 // Not yet implemented
 

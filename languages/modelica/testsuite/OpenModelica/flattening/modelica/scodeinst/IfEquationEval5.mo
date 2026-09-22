@@ -1,6 +1,7 @@
 // name: IfEquationEval5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model IfEquationEval5

@@ -59,7 +59,9 @@ describe("SOTA Architecture Verification Suite", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const destPath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -77,7 +79,7 @@ describe("SOTA Architecture Verification Suite", () => {
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: {
         memory: memory,

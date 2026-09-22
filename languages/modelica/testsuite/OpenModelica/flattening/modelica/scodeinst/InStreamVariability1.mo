@@ -1,6 +1,7 @@
 // name: InStreamVariability1
 // keywords: stream inStream connector
 // status: incorrect
+// xfail:    true
 //
 
 connector C

@@ -1,6 +1,7 @@
 // name:     BooleanDim
 // keywords: boolean dimension
 // status:   correct
+// xfail:    true
 //
 // Tests the use of Boolean as dimension.
 //

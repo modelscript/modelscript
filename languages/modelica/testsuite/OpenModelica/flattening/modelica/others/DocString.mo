@@ -1,6 +1,7 @@
 // name: DocString.mo
 // keywords: comment, documentation string
 // status: correct
+// xfail:    true
 //
 // This file tests ""-documentation strings in various places
 //

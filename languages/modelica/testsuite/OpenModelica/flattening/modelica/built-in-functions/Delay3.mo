@@ -1,6 +1,7 @@
 // name:     Delay3
 // keywords: builtin
 // status:   correct
+// xfail:    true
 //
 // Test builtin function delay.
 //

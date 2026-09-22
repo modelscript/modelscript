@@ -1,6 +1,7 @@
 // name: BindingInvalidType3
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model BindingInvalidType3

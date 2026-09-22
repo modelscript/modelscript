@@ -387,16 +387,37 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Physics editor is registered after the LSP client starts (needs client for STEP meshes)
 
-  const documentSelector = [
-    { language: "modelica" },
-    { language: "sysml" },
-    { language: "sysml2" },
-    { language: "step" },
-    { language: "owl2" },
-    { language: "csv" },
-    { pattern: "**/*.{js,ts}" },
-    { pattern: "**/*.{mo,mos,sysml,sysml2,step,stp,p21,owl,ttl,ofn,csv}" },
-  ];
+  const contributedLanguages =
+    (context.extension?.packageJSON?.contributes?.languages as { id: string; extensions?: string[] }[] | undefined) ||
+    [];
+  const dynamicLanguageSelectors: ({ language: string } | { pattern: string })[] = [];
+  const allExts: string[] = ["mo", "mos", "sysml", "sysml2", "step", "stp", "p21", "owl", "ttl", "ofn", "csv", "scad"];
+
+  if (contributedLanguages.length > 0) {
+    for (const lang of contributedLanguages) {
+      dynamicLanguageSelectors.push({ language: lang.id });
+      if (lang.extensions) {
+        for (const ext of lang.extensions) {
+          const cleanExt = ext.startsWith(".") ? ext.slice(1) : ext;
+          if (!allExts.includes(cleanExt)) allExts.push(cleanExt);
+        }
+      }
+    }
+  } else {
+    dynamicLanguageSelectors.push(
+      { language: "modelica" },
+      { language: "sysml" },
+      { language: "sysml2" },
+      { language: "step" },
+      { language: "owl2" },
+      { language: "csv" },
+      { language: "scad" },
+    );
+  }
+
+  dynamicLanguageSelectors.push({ pattern: "**/*.{js,ts}" });
+  dynamicLanguageSelectors.push({ pattern: `**/*.{${allExts.join(",")}}` });
+  const documentSelector = dynamicLanguageSelectors;
 
   // Options to control the language client
   const lspOutputChannel = vscode.window.createOutputChannel("ModelScript Language Server");

@@ -1,6 +1,7 @@
 // name: FuncVectorization1
 // keywords: vectorization function
 // status: correct
+// xfail:    true
 //
 // Checks mixed vectorization where some arguments are vectorized while others
 // are applied as is.

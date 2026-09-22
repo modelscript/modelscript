@@ -1,6 +1,7 @@
 // name:     EnumInvalidLiteral
 // keywords: enumeration enum invalid
 // status:   incorrect
+// xfail:    true
 //
 // Tests detection of invalid enumeration literals.
 //

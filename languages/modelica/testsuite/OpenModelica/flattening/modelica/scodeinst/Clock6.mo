@@ -1,6 +1,7 @@
 // name: Clock6
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

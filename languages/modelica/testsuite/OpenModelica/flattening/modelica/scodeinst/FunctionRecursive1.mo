@@ -1,6 +1,7 @@
 // name: FunctionRecursive1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function fac

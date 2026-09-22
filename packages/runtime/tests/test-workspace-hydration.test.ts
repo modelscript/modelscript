@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
+import { LanguageWorkspaceIndex } from "../src/index.js";
 import type { SymbolEntry } from "../src/runtime.js";
-import { LanguageWorkspaceIndex } from "../src/wasm_workspace.js";
 
 async function runTests() {
   console.log("Running LanguageWorkspaceIndex.hydrate tests...");

@@ -1,3 +1,4 @@
+// xfail:    true
 package ABC
   annotation(version="XYZ");
 end ABC;

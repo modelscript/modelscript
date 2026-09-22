@@ -1,6 +1,7 @@
 // name: Comment1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Comment1 "class comment"

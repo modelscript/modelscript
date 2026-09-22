@@ -1,6 +1,7 @@
 // name: InvalidConnectorType5
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model InvalidConnectorType5

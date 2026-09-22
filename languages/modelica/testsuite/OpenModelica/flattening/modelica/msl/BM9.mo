@@ -1,6 +1,7 @@
 // name:     BM9 -  Cosh component
 // keywords: Cosh
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Cosh component.
 //

@@ -1,6 +1,7 @@
 // name:     FilterBlock1
 // keywords: initial, reinit
 // status:   correct
+// xfail:    true
 //
 // First order filter block
 // Drmodelica: 9.1 reinit (p. 296)

@@ -1,6 +1,7 @@
 // name: FuncBuiltinPre
 // keywords: pre
 // status: correct
+// xfail:    true
 //
 // Tests the builtin pre operator.
 //

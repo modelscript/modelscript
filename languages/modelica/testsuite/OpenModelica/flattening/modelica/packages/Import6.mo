@@ -1,6 +1,7 @@
 // name:     Import6
 // keywords: import
 // status:   correct
+// xfail:    true
 //
 // Import of constants in packages.
 

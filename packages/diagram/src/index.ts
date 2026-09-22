@@ -1924,6 +1924,7 @@ export function triggerInteractiveInput(
 
 export * from "./affine-matrix.js";
 export * from "./color-inversion.js";
+export * from "./fault-tree.js";
 export * from "./glyphs.js";
 export * from "./interactive.js";
 export * from "./polyglot-diagram-builder.js";

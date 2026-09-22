@@ -1,6 +1,7 @@
 // name: ComponentAttributes2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model A

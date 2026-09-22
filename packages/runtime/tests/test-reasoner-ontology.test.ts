@@ -42,7 +42,9 @@ describe("Phase 3: Knowledge Stores, Semantic Projections & Synthetic Deduplicat
 
     const result = buildParser(dsl as any);
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const destPath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -56,7 +58,7 @@ describe("Phase 3: Knowledge Stores, Semantic Projections & Synthetic Deduplicat
     const wasmModule = await WebAssembly.compile(wasm);
 
     const createInstance = async () => {
-      const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+      const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
       const imports = {
         env: {
           memory,

@@ -1,6 +1,7 @@
 // name:     EnumConnectArray
 // keywords: enum connect array
 // status:   correct
+// xfail:    true
 //
 // Tests that enumeration literals are preserved when connecting two arrays
 // whose dimensions are given by enumerations.

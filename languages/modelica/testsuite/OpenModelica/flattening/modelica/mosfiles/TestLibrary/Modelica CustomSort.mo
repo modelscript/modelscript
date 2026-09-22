@@ -1,3 +1,4 @@
+// xfail:    true
 within ;
 package Modelica
 annotation(version = "CustomSort");

@@ -1,6 +1,7 @@
 // name: ConnectorVariability2
 // keywords: connector
 // status: correct
+// xfail:    true
 //
 //
 

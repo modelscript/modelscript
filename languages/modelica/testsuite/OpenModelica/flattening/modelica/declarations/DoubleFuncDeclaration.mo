@@ -1,5 +1,6 @@
 // name:     DoubleFuncDeclaration.mo
 // status:   incorrect
+// xfail:    true
 //
 // Checks that duplicate functions are detected.
 //

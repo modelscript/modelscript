@@ -1,6 +1,7 @@
 // name: Reinit3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Reinit3

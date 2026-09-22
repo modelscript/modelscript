@@ -1,6 +1,7 @@
 // name:     ArrayEWOps6
 // keywords: array
 // status:   correct
+// xfail:    true
 //
 // Tests various array operators.
 

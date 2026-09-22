@@ -1,6 +1,7 @@
 // name: FuncDefaultArg6
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

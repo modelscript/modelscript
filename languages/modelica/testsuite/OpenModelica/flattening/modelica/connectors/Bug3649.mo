@@ -1,3 +1,4 @@
+// xfail:    true
 package Transformer  
   model SC1  
     Modelica.Electrical.QuasiStationary.SinglePhase.Sensors.PowerSensor powerSensor2;

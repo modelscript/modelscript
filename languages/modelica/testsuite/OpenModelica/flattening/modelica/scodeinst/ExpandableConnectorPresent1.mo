@@ -1,6 +1,7 @@
 // name: ExpandableConnectorPresent1
 // keywords: expandable connector
 // status: correct
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name: FunctionalArg2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial function F

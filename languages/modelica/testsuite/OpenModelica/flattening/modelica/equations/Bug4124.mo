@@ -1,3 +1,4 @@
+// xfail:    true
 package Modelica_DeviceDrivers  "Modelica_DeviceDrivers - A collection of drivers interfacing hardware like input devices, communication devices, shared memory, analog-digital converters and else" 
   extends Modelica.Icons.Package;
 

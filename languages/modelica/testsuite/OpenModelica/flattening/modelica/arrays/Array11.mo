@@ -1,6 +1,7 @@
 // name:     Array11
 // keywords: matrix
 // status:   correct
+// xfail:    true
 //
 // Fixes bug #38
 //

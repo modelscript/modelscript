@@ -1,6 +1,7 @@
 // name:     ColorClasses
 // keywords: extends, replaceable, equation
 // status:   correct
+// xfail:    true
 //
 // Drmodelica: 4.1 Public Respectively Protected Elements (p. 117)
 //

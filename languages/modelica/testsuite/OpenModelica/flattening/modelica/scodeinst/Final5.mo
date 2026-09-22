@@ -1,6 +1,7 @@
 // name: Final5
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model A

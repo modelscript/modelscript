@@ -2,6 +2,7 @@
 
 import type { ActionCategory, LanguageAction, LanguageOptions } from "../../dsl/language.js";
 import { generateTextMate } from "../parser/textmate.js";
+import { discoverWorkspaceLanguages } from "./language-discovery.js";
 
 /**
  * Configuration options for generating a VS Code extension.
@@ -913,43 +914,31 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   fs.mkdirSync(path.join(outDir, "dist"), { recursive: true });
   fs.mkdirSync(path.join(outDir, "server", "dist"), { recursive: true });
 
-  // 1. Normalize default polyglot languages
-  const builtInLanguages: any[] = [];
-  const dynamicImport = (m: string): Promise<any> => Function("m", "return import(m)")(m);
-  const pkgPrefix = "@modelscript" + "/";
-  try {
-    const modelicaLang = (await dynamicImport(pkgPrefix + "modelica/language")).default;
-    builtInLanguages.push(modelicaLang);
-  } catch {
-    // optional
-  }
-  try {
-    const sysml2Lang = (await dynamicImport(pkgPrefix + "sysml2/language")).default;
-    builtInLanguages.push(sysml2Lang);
-  } catch {
-    // optional
-  }
-  try {
-    const stepLang = (await dynamicImport(pkgPrefix + "step/language")).default;
-    builtInLanguages.push(stepLang);
-  } catch {
-    // optional
-  }
-  try {
-    const owl2Lang = (await dynamicImport(pkgPrefix + "owl2/language")).default;
-    builtInLanguages.push(owl2Lang);
-  } catch {
-    // optional
-  }
-  try {
-    const csvLang = (await dynamicImport(pkgPrefix + "csv/language")).default;
-    builtInLanguages.push(csvLang);
-  } catch {
-    // optional
+  // 1. Locate repository root and discover workspace languages
+  const currentDir = path.dirname(new URL(import.meta.url).pathname);
+  let repoRoot = currentDir;
+  while (repoRoot !== path.dirname(repoRoot)) {
+    if (fs.existsSync(path.join(repoRoot, "package.json"))) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+        if (pkg.name === "modelscript") break;
+      } catch {}
+    }
+    repoRoot = path.dirname(repoRoot);
   }
 
-  const languages = normalizeLanguages(
-    builtInLanguages.length > 0 ? builtInLanguages : [{ name: "modelica", lsp: { fileExtensions: [".mo"] } }],
+  const languagesDir = path.join(repoRoot, "languages");
+  const discovered = await discoverWorkspaceLanguages(languagesDir);
+  const languages =
+    discovered.languages.length > 0
+      ? discovered.languages
+      : normalizeLanguages([{ name: "modelica", lsp: { fileExtensions: [".mo"] } }]);
+
+  // Write languages manifest for runtime & web worker loading
+  fs.writeFileSync(
+    path.join(outDir, "server", "dist", "languages-manifest.json"),
+    JSON.stringify(discovered.manifest, null, 2),
+    "utf-8",
   );
 
   // 2. Generate package.json manifest
@@ -999,7 +988,6 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   }
 
   // 4. Compile with esbuild
-  const currentDir = path.dirname(new URL(import.meta.url).pathname);
   const ideDir =
     [
       path.resolve(currentDir, "../../../../packages/ide/src"),
@@ -1076,23 +1064,16 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   }
 
   // 5. Copy WASM and library assets
-  let repoRoot = currentDir;
-  while (repoRoot !== path.dirname(repoRoot)) {
-    if (fs.existsSync(path.join(repoRoot, "package.json"))) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
-        if (pkg.name === "modelscript") break;
-      } catch {}
+  // Copy discovered language WASM assets (both <lang>.wasm and legacy tree-sitter-<lang>.wasm)
+  for (const asset of discovered.wasmAssets) {
+    const destPath = path.join(outDir, asset.dest);
+    if (fs.existsSync(asset.src)) {
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.cpSync(asset.src, destPath, { recursive: true });
     }
-    repoRoot = path.dirname(repoRoot);
   }
+
   const candidateAssets = [
-    [path.join(repoRoot, "languages/modelica/tree-sitter-modelica.wasm"), "server/dist/tree-sitter-modelica.wasm"],
-    [path.join(repoRoot, "languages/modelica/dist/parser.wasm"), "server/dist/tree-sitter-modelica.wasm"],
-    [path.join(repoRoot, "languages/sysml2/dist/parser.wasm"), "server/dist/tree-sitter-sysml2.wasm"],
-    [path.join(repoRoot, "languages/step/dist/parser.wasm"), "server/dist/tree-sitter-step.wasm"],
-    [path.join(repoRoot, "languages/owl2/dist/parser.wasm"), "server/dist/tree-sitter-owl2.wasm"],
-    [path.join(repoRoot, "languages/csv/dist/parser.wasm"), "server/dist/tree-sitter-csv.wasm"],
     [path.join(repoRoot, "packages/runtime/build/release.wasm"), "server/dist/release.wasm"],
     [path.join(repoRoot, "node_modules/occt-import-js/dist/occt-import-js.wasm"), "server/dist/occt-import-js.wasm"],
     [

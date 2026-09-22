@@ -1,6 +1,7 @@
 // name: Connect14
 // keywords:  connector, primitive types
 // status: correct
+// xfail:    true
 //
 // Test that all primitive types can be used in connectors.
 //

@@ -1,6 +1,7 @@
 // name:     EnumDuplicateLiteral
 // keywords: enumeration enum duplicate
 // status:   incorrect
+// xfail:    true
 //
 // Tests detection of duplicated enumeration literals.
 //

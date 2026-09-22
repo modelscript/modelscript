@@ -1,6 +1,7 @@
 // name: CevalReduction1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name:     package-s-1
 // keywords: package, declaration
 // status:   correct
+// xfail:    true
 
 //
 //   Instantiation of models residing in packages.

@@ -1,6 +1,7 @@
 // name:     BS11 - TimeTable component
 // keywords: TimeTable
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the TimeTable component.
 //

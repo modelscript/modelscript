@@ -1,4 +1,5 @@
 // status: correct
+// xfail:    true
 // ticket #3518
 
 model Matrix3

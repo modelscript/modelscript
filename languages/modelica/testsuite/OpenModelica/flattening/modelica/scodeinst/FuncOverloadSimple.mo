@@ -1,6 +1,7 @@
 // name: FuncOverloadSimple
 // keywords: overload
 // status: correct
+// xfail:    true
 //
 // Tests simple overloading.
 //

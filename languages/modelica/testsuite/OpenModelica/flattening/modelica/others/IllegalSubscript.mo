@@ -1,5 +1,6 @@
 // name: IllegalSubscript
 // status: correct
+// xfail:    true
 // Should fail in backend; not frontend
 
 class IllegalSubscript

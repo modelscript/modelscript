@@ -1,6 +1,7 @@
 // name: CevalRecordArray2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

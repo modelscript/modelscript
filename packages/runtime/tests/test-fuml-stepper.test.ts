@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
 import test from "node:test";
-import { ActivityEdgeKind, ActivityNodeKind, PinDirection, WasmFumlEngine } from "../src/wasm_fuml_engine.js";
+import {
+  ActivityEdgeKind,
+  ActivityNodeKind,
+  PinDirection,
+  WasmFumlEngine,
+} from "../src/statemachine/wasm_fuml_engine.js";
 
 test("WasmFumlEngine - Discrete fUML Token & Activity Stepper", async (t) => {
   await t.test("executes sequential control flow with action behaviors", () => {

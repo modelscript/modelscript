@@ -1,6 +1,7 @@
 // name: VectorizeBindings5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Failing

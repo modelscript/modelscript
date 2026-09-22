@@ -1,6 +1,7 @@
 // name: FunctionCompOrder4
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record R

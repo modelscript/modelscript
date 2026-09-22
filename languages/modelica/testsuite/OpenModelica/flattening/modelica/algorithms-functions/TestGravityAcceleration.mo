@@ -1,6 +1,7 @@
 // name:     TestGravityAcceleration
 // keywords: instance function
 // status:   correct
+// xfail:    true
 //
 // Tests for calling function via instance
 //

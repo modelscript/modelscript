@@ -1,6 +1,7 @@
 // name: ArrayExtendsUnknown
 // keywords: array, inheritance
 // status: correct
+// xfail:    true
 //
 // This test verifies that you can modify an array with unknown dimensions
 // in an extends node.

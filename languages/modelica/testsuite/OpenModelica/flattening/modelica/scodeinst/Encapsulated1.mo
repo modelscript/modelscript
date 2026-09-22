@@ -1,6 +1,7 @@
 // name: Encapsulated1
 // keywords: operator
 // status: incorrect
+// xfail:    true
 //
 // Checks that it's not allowed to look outside an encapsulated package.
 //

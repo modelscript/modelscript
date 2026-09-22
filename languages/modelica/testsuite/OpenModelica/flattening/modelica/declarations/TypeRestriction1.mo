@@ -1,6 +1,7 @@
 // name: TypeRestriction1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 type T

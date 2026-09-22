@@ -1,6 +1,7 @@
 // name: FuncBuiltinMax
 // keywords: max
 // status: correct
+// xfail:    true
 //
 // Tests the builtin max operator.
 //

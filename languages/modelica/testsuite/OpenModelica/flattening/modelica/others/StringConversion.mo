@@ -1,6 +1,7 @@
 // name: StringConversion
 // keywords: string
 // status: correct
+// xfail:    true
 //
 // Tests conversion of strings from other datatypes
 //

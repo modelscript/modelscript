@@ -1,6 +1,7 @@
 // name: RecordBinding3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record R

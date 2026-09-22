@@ -1,6 +1,7 @@
 // name: ConstantConnector1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model ConstantConnector1

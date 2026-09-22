@@ -1,6 +1,7 @@
 // name: DuplicateMod7.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model A

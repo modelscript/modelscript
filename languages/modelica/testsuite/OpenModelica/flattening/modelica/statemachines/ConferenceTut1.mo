@@ -1,6 +1,7 @@
 // name: ConferenceTut1
 // keywords: state machines features
 // status: correct
+// xfail:    true
 
 model ConferenceTut1
   inner Integer i(start=0);

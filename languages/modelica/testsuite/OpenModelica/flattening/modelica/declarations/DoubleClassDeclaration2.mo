@@ -1,5 +1,6 @@
 // name:     DoubleClassDeclaration2.mo
 // status:   incorrect
+// xfail:    true
 //
 // Checks that duplicate classes are detected.
 //

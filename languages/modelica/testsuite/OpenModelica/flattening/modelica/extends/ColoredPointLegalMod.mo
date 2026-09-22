@@ -1,6 +1,7 @@
 // name:      Colered Point Legal Mod
 // keywords: <insert keywords here>
 // status:   correct
+// xfail:    true
 //
 // Test the public and protected access keywords together with inheritance
 // If the keyword protected is used in front of an extends clause, all

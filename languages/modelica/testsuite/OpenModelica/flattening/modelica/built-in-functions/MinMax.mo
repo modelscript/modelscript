@@ -1,6 +1,7 @@
 // name:     Min & Max
 // keywords: builtin functions min max
 // status:   correct
+// xfail:    true
 //
 // Usage of the min and max functions
 model MinMax

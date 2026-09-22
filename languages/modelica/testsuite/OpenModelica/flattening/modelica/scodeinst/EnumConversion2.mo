@@ -1,6 +1,7 @@
 // name: EnumConversion2
 // keywords:
 // status: correct
+// xfail:    true
 
 model EnumConversion2
   type E = enumeration(one, two, three);

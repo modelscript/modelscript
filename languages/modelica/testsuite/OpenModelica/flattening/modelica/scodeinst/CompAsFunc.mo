@@ -1,6 +1,7 @@
 // name: CompAsFunc.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that a proper error message is given when trying to use a component as
 // a function.

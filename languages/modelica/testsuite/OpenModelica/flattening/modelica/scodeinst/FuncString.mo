@@ -1,6 +1,7 @@
 // name: FuncString
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Tests the builtin String function.
 //

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { PolyglotTransformer } from "../src/polyglot-transformer.js";
-import { WorkspaceTypeRegistry } from "../src/type_registry.js";
-import { UnifiedWorkspace } from "../src/wasm_workspace.js";
+import { PolyglotTransformer, UnifiedWorkspace, WorkspaceTypeRegistry } from "../src/index.js";
 
 describe("WorkspaceTypeRegistry & Dynamic Symbol Type Resolution", () => {
   it("should resolve primitive type mappings across all 5 domains", () => {

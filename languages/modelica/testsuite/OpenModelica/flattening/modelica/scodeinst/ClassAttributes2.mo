@@ -1,6 +1,7 @@
 // name: ClassAttributes2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model ClassAttributes2

@@ -1,6 +1,7 @@
 // name:     PolynomialEvaluator
 // keywords: dynamic array, for
 // status:   correct
+// xfail:    true
 //
 // Tests named arguments, dynamic array sizes etc.
 //

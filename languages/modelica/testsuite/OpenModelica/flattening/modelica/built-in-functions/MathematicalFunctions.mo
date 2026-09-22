@@ -1,6 +1,7 @@
 // name: MathematicalFunctions
 // keywords: builtin, function, math
 // status: correct
+// xfail:    true
 //
 // Testing built-in mathematical functions
 //

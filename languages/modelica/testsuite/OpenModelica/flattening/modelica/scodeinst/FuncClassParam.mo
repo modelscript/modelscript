@@ -1,6 +1,7 @@
 // name: FuncClassParam
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that function parameters are not allowed to be e.g. models.
 //

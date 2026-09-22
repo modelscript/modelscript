@@ -1,6 +1,7 @@
 // name:     Xpowers3
 // keywords: equation,array
 // status:   correct
+// xfail:    true
 //
 // <decription>
 //

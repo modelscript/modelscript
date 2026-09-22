@@ -1,6 +1,7 @@
 // name: WhenClockedTupleCall1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

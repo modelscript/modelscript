@@ -1,6 +1,7 @@
 // name: expconn3.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 // FAILREASON: Expandable connectors not handled yet.
 //

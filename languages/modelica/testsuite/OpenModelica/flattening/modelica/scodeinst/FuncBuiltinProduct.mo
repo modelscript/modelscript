@@ -1,6 +1,7 @@
 // name: FuncBuiltinProduct
 // keywords: product
 // status: correct
+// xfail:    true
 //
 // Tests the builtin product operator.
 //

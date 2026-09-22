@@ -458,71 +458,91 @@ export class ParserService {
         message: "Initializing this.parser...",
       });
 
-      const modelicaSyntaxNames = (globalThis as any).modelicaSyntaxNames;
-      const sysml2SyntaxNames = (globalThis as any).sysml2SyntaxNames;
-      const [modelicaResult, sysmlResult, stepResult, owl2Result, csvResult] = await Promise.all([
-        createWasmParser(`${serverDistBase}/tree-sitter-modelica.wasm`, {
-          syntaxNames: modelicaSyntaxNames,
-        }),
-        createWasmParser(`${serverDistBase}/tree-sitter-sysml2.wasm`, {
-          syntaxNames: sysml2SyntaxNames,
-        }).catch((e) => {
-          this.connection.console.warn(`Failed to load SysML2 language: ${e}`);
-          return null;
-        }),
-        createWasmParser(`${serverDistBase}/tree-sitter-step.wasm`, {
-          syntaxNames: (globalThis as any).stepSyntaxNames,
-        }).catch((e) => {
-          this.connection.console.warn(`Failed to load Step language: ${e}`);
-          return null;
-        }),
-        createWasmParser(`${serverDistBase}/tree-sitter-owl2.wasm`, {
-          syntaxNames: (globalThis as any).owl2SyntaxNames,
-        }).catch((e) => {
-          this.connection.console.warn(`Failed to load Owl2 language: ${e}`);
-          return null;
-        }),
-        createWasmParser(`${serverDistBase}/tree-sitter-csv.wasm`, {
-          syntaxNames: (globalThis as any).csvSyntaxNames,
-        }).catch((e) => {
-          this.connection.console.warn(`Failed to load Csv language: ${e}`);
-          return null;
-        }),
-      ]);
-
-      this.parser = modelicaResult.parser;
-      (globalThis as any).modelicaParser = this.parser;
-      this.facade = modelicaResult.facade;
-      this.parserReady = true;
-      this.connection.console.info("ModelScript Modelica parser initialized");
-
-      if (sysmlResult) {
-        this.sysml2Parser = sysmlResult.parser;
-        this.sysml2Facade = sysmlResult.facade;
-        this.sysml2ParserReady = true;
-        this.connection.console.info("ModelScript SysML2 parser initialized");
+      // Load languages from languages-manifest.json if present
+      let manifest: { id: string; wasm?: string; displayName?: string; fileExtensions?: string[] }[] = [];
+      try {
+        const manifestUrl = `${serverDistBase}/languages-manifest.json`;
+        if (typeof fetch !== "undefined") {
+          const resp = await fetch(manifestUrl);
+          if (resp.ok) {
+            manifest = await resp.json();
+          }
+        }
+      } catch {
+        // ignore
       }
 
-      if (stepResult) {
-        this.stepParser = stepResult.parser;
-        this.stepFacade = stepResult.facade;
-        this.stepParserReady = true;
-        this.connection.console.info("ModelScript STEP parser initialized");
+      if (!manifest || manifest.length === 0) {
+        manifest = [
+          { id: "modelica", wasm: "modelica.wasm", displayName: "Modelica", fileExtensions: [".mo"] },
+          { id: "sysml2", wasm: "sysml2.wasm", displayName: "SysML v2", fileExtensions: [".sysml", ".sysml2"] },
+          { id: "step", wasm: "step.wasm", displayName: "Step", fileExtensions: [".step"] },
+          { id: "owl2", wasm: "owl2.wasm", displayName: "Owl2", fileExtensions: [".owl2"] },
+          { id: "csv", wasm: "csv.wasm", displayName: "Csv", fileExtensions: [".csv"] },
+          { id: "scad", wasm: "scad.wasm", displayName: "Scad", fileExtensions: [".scad"] },
+        ];
       }
 
-      if (owl2Result) {
-        this.owl2Parser = owl2Result.parser;
-        this.owl2Facade = owl2Result.facade;
-        this.owl2ParserReady = true;
-        this.connection.console.info("ModelScript OWL2 parser initialized");
-      }
+      await Promise.all(
+        manifest.map(async (entry) => {
+          if (!entry.wasm) return;
+          const wasmUrl = `${serverDistBase}/${entry.wasm}`;
+          const legacyWasmUrl = `${serverDistBase}/tree-sitter-${entry.id}.wasm`;
+          const syntaxNames = (globalThis as any)[`${entry.id}SyntaxNames`];
 
-      if (csvResult) {
-        this.csvParser = csvResult.parser;
-        this.csvFacade = csvResult.facade;
-        this.csvParserReady = true;
-        this.connection.console.info("ModelScript CSV parser initialized");
-      }
+          try {
+            const result = await createWasmParser(wasmUrl, { syntaxNames }).catch(() =>
+              createWasmParser(legacyWasmUrl, { syntaxNames }),
+            );
+
+            if (result) {
+              this.registerParser(entry.id, result.parser, result.facade);
+              if (entry.id === "modelica") {
+                this.parser = result.parser;
+                (globalThis as any).modelicaParser = this.parser;
+                this.facade = result.facade;
+                this.parserReady = true;
+              } else if (entry.id === "sysml2") {
+                this.sysml2Parser = result.parser;
+                this.sysml2Facade = result.facade;
+                this.sysml2ParserReady = true;
+              } else if (entry.id === "step") {
+                this.stepParser = result.parser;
+                this.stepFacade = result.facade;
+                this.stepParserReady = true;
+              } else if (entry.id === "owl2") {
+                this.owl2Parser = result.parser;
+                this.owl2Facade = result.facade;
+                this.owl2ParserReady = true;
+              } else if (entry.id === "csv") {
+                this.csvParser = result.parser;
+                this.csvFacade = result.facade;
+                this.csvParserReady = true;
+              }
+
+              // Register in globalLanguageRegistry as well
+              const existing = globalLanguageRegistry.getPluginById(entry.id);
+              if (!existing) {
+                globalLanguageRegistry.register({
+                  id: entry.id,
+                  name: entry.displayName || entry.id,
+                  extensions: entry.fileExtensions || [`.${entry.id}`],
+                  parser: result.parser,
+                  facade: result.facade,
+                  disposables: [],
+                });
+              } else {
+                existing.parser = result.parser;
+                existing.facade = result.facade;
+              }
+
+              this.connection.console.info(`ModelScript ${entry.displayName || entry.id} parser initialized`);
+            }
+          } catch (e) {
+            this.connection.console.warn(`Failed to load ${entry.id} language: ${e}`);
+          }
+        }),
+      );
 
       // Early callback: notify as soon as Modelica/SysML2 parser is ready
       if (typeof onParsersReady === "function") {
@@ -698,6 +718,16 @@ export class ParserService {
         message: "Parser initialization failed",
       });
     }
+  }
+
+  public async initWasmParsers(
+    extensionUri: string,
+    validationService?: any,
+    projectDependencies?: { name: string; version: string }[],
+    useLocalMsl = false,
+    onParsersReady?: () => void,
+  ): Promise<void> {
+    return this.initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl, onParsersReady);
   }
 
   sendProjectTreeChanged() {

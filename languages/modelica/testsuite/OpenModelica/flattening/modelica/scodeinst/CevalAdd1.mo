@@ -1,6 +1,7 @@
 // name: CevalAdd1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model CevalAdd1

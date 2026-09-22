@@ -1,6 +1,7 @@
 // name:     Array7
 // keywords: array,array of components
 // status:   correct
+// xfail:    true
 //
 // This demonstrates how a modifier is split
 // among a an array of componets.

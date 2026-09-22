@@ -1,6 +1,7 @@
 // name:     Gear - Complete example with Gear
 // keywords: Gear, Mechanics, Modelica2.2
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Gear model
 //

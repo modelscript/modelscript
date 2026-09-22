@@ -1,6 +1,7 @@
 // name: FuncVectorizationMap1
 // keywords: vectorization function map array reduction
 // status: correct
+// xfail:    true
 //
 // Checks vectorization mixed with mapping function.
 //

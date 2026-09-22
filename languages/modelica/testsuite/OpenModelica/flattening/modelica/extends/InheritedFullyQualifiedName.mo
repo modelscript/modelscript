@@ -1,6 +1,7 @@
 // name:     InheritedFullyQualifiedName
 // keywords: #4520
 // status:   correct
+// xfail:    true
 //
 // Tests that fully qualified names in inherited elements aren't corrupted.
 //

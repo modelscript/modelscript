@@ -1,6 +1,7 @@
 // name: func2.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 

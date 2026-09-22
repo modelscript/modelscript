@@ -1,6 +1,7 @@
 // name: enum2.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

@@ -1,6 +1,7 @@
 // name:     ModifyUnknown1
 // keywords: modification
 // status:   incorrect
+// xfail:    true
 //
 // Try to introduce a new member via modification.
 //

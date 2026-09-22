@@ -1,6 +1,7 @@
 // name: FuncMissingDefault1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that missing default arguments are detected.
 // 

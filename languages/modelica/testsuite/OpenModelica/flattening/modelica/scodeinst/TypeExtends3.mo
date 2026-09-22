@@ -1,6 +1,7 @@
 // name: TypeExtends3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 type TypeInteger

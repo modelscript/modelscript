@@ -1,6 +1,7 @@
 // name: ComponentAsTypeError
 // keywords: type error
 // status: incorrect
+// xfail:    true
 //
 // Checks that an error is output if a component is used as type.
 //

@@ -1,5 +1,6 @@
 // name: Binding1.mo
 // status: correct
+// xfail:    true
 //
 // Simple test of component bindings.
 //

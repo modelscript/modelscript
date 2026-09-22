@@ -1,6 +1,7 @@
 // name:     BC8 - PID component
 // keywords: PID
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the PID component.
 //

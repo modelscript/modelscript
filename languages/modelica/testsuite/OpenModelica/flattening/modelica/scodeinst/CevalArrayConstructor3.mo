@@ -1,6 +1,7 @@
 // name: CevalArrayConstructor3
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

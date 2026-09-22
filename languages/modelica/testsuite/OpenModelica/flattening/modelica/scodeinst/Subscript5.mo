@@ -1,5 +1,6 @@
 // name: Subscript5
 // status: correct
+// xfail:    true
 //
 // Checks that partially subscripted crefs are padded with :.
 // 

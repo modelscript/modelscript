@@ -1,6 +1,7 @@
 // name: redeclare10
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

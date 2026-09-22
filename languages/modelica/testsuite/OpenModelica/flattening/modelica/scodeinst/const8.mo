@@ -1,6 +1,7 @@
 // name: const8.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

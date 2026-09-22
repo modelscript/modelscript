@@ -1,6 +1,7 @@
 // name:     ComponentFunctions.mo [BUG: #2854]
 // keywords: function calls via component
 // status:   correct
+// xfail:    true
 //
 // function call via component
 

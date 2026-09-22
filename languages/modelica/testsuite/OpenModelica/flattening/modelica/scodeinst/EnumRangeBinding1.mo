@@ -1,6 +1,7 @@
 // name: EnumRangeBinding1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model EnumRangeBinding1

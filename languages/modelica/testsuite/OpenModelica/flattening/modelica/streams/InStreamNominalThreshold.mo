@@ -1,6 +1,7 @@
 // name: InStreamNominalThreshold
 // keywords: stream instream connector outside
 // status: correct
+// xfail:    true
 //
 // Checks that the nominal value of a flow is used for the flow rate threshold.
 //

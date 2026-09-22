@@ -51,7 +51,7 @@ async function main() {
 
   const wasmBytes = fs.readFileSync(wasmOut);
   const wasmCompiled = await WebAssembly.compile(wasmBytes);
-  const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+  const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
   const imports = {
     env: {
       memory: memory,

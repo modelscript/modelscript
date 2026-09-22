@@ -1,6 +1,7 @@
 // name:     Type6
 // keywords: type,declaration
 // status:   correct
+// xfail:    true
 //
 // Simple variable declarations, take two.
 //

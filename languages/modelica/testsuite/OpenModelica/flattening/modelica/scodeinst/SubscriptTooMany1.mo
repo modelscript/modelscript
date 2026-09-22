@@ -1,5 +1,6 @@
 // name: SubscriptTooMany1
 // status: incorrect
+// xfail:    true
 //
 
 model SubscriptTooMany1

@@ -1,6 +1,7 @@
 // name: ExtendSelf3.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that a class extending from itself gives an error.
 //

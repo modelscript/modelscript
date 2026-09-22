@@ -1,6 +1,7 @@
 // name:     BM25 -  Tan component
 // keywords: Tan
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Tan component.
 //

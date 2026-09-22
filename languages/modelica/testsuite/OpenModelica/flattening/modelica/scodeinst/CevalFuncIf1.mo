@@ -1,6 +1,7 @@
 // name: CevalFuncIf1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

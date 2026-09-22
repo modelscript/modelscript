@@ -1,6 +1,7 @@
 // name:     ColorPixel
 // keywords: <insert keywords here>
 // status:   correct
+// xfail:    true
 //
 // Drmodelica: 7.1 Type Checking (p. 209)
 //

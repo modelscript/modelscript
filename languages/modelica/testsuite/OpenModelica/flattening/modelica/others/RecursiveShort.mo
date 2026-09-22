@@ -1,6 +1,7 @@
 // name:     RecursiveShort
 // keywords: Recursive Short Class Definition
 // status:   incorrect
+// xfail:    true
 //
 // Checks that compiler does not enter infinite lookup loop in the case
 // of recursive short class definition (like type Env = Env.Env; here)

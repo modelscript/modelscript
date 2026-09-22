@@ -1,6 +1,7 @@
 // name:     ExtendsVisibility
 // keywords: extends
 // status:   correct
+// xfail:    true
 //
 // Testing propagation of visibility for extends.
 

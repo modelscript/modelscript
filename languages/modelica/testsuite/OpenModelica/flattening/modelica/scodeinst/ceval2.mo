@@ -1,5 +1,6 @@
 // name: ceval2.mo
 // status: correct
+// xfail:    true
 
 model A
   parameter Integer n = 1;

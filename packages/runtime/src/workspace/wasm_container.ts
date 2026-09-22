@@ -253,7 +253,7 @@ export function createZipArchive(
 
 /** Extract attribute value from tag in XML string. */
 export function extractXmlAttr(xml: string, tag: string, attr: string): string | null {
-  const regex = new RegExp(`<${tag}[^>]*\\b${attr}\\s*=\\s*"([^"]*)"`, "i");
+  const regex = new RegExp(`<${tag}(?=[\\s/>])[^>]*\\b${attr}\\s*=\\s*"([^"]*)"`, "i");
   const match = xml.match(regex);
   return match?.[1] ?? null;
 }
@@ -268,7 +268,7 @@ export function extractXmlAttrFromStr(attrStr: string, attrName: string): string
 /** Extract matching XML tags with attribute strings and bodies. */
 export function extractXmlTags(xml: string, tag: string): { attrs: string; body: string }[] {
   const results: { attrs: string; body: string }[] = [];
-  const regex = new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)<\\/${tag}>|<${tag}\\b([^>]*)\\/>`, "gi");
+  const regex = new RegExp(`<${tag}(?=[\\s/>])([^>]*)>([\\s\\S]*?)<\\/${tag}>|<${tag}(?=[\\s/>])([^>]*)\\/>`, "gi");
   let match: RegExpExecArray | null;
   while ((match = regex.exec(xml)) !== null) {
     const attrs = match[1] ?? match[3] ?? "";

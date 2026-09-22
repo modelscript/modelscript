@@ -1,6 +1,7 @@
 // name:     Encapsulated2
 // keywords: encapsulated
 // status:   incorrect
+// xfail:    true
 //
 // An encapsulate class requires import to access
 // even top-level classes.

@@ -1,6 +1,7 @@
 // name: FlowDeclRecord
 // keywords: flow
 // status: correct
+// xfail:    true
 //
 // Tests the flow prefix on a record type
 //

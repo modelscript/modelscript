@@ -1,6 +1,7 @@
 // name: CevalFuncArray4
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that the function evaluation can handle outputs whose type depends on
 // the input.

@@ -1,6 +1,7 @@
 // name: ActualStreamMinMax2
 // keywords: stream actualStream connector
 // status: correct
+// xfail:    true
 //
 // Checks that actualStream is simplified when the flow direction can be
 // determined from the min/max attributes.

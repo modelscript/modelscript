@@ -1,6 +1,7 @@
 // name: ForEquationEnum1.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

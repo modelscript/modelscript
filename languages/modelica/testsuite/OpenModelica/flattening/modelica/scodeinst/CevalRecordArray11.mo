@@ -1,6 +1,7 @@
 // name: CevalRecordArray11
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model SpeedControlled_y

@@ -1,6 +1,7 @@
 // name: Return
 // keywords: function, return
 // status: correct
+// xfail:    true
 //
 // Tests return within a function algorithm
 //

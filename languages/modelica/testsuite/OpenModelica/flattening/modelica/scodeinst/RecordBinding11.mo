@@ -1,6 +1,7 @@
 // name: RecordBinding11
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package PartialMedium

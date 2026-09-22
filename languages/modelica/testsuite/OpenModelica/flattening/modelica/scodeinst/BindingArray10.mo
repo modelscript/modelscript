@@ -1,6 +1,7 @@
 // name: BindingArray10
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model BindingArray10

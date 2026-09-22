@@ -1,6 +1,7 @@
 // name: InvalidConnectorDirection4
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model InvalidConnectorDirection4

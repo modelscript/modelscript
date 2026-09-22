@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
 import test from "node:test";
-import { StateKind, WasmRtcStateMachine } from "../src/wasm_rtc_statemachine.js";
+import { StateKind, WasmRtcStateMachine } from "../src/index.js";
 
 test("WasmRtcStateMachine - Run-to-Completion (RTC) Stepper", async (t) => {
   await t.test("executes state entry, do, and exit lifecycle actions", () => {

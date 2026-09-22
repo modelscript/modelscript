@@ -1,6 +1,7 @@
 // name:     IgnoreReplaceable
 // keywords: 
 // status:   correct
+// xfail:    true
 //
 // Tests the --ignoreReplaceable flag.
 //

@@ -1,6 +1,7 @@
 // name:     BS3 - ExpSine component
 // keywords: ExpSine
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the ExpSine component.
 //

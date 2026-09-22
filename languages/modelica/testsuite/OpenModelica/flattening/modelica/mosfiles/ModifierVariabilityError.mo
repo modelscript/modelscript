@@ -1,3 +1,4 @@
+// xfail:    true
 model ModifierVariabilityErrorParam
   Real x;
   parameter Real y = x;

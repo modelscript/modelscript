@@ -1,6 +1,8 @@
 import { buildParser, choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, test } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -67,7 +69,9 @@ describe("Incremental Linting & Sub-Millisecond Diagnostic Suite", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");

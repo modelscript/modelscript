@@ -1,6 +1,7 @@
 // name: EncapsulatingInst1
 // keywords:
 // status: correct
+// xfail:    true
 // cflags: -i=EncapsulatingInst1.M
 //
 

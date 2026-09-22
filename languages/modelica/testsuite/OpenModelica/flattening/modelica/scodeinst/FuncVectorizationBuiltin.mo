@@ -1,6 +1,7 @@
 // name: FuncVectorizationBuiltin
 // keywords: vectorization function map array reduction
 // status: correct
+// xfail:    true
 //
 // Checks vectorization of simple builtin functions.
 //

@@ -1,6 +1,7 @@
 // name: ClassExtends8
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P1

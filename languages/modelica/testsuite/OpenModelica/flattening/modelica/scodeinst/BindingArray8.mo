@@ -1,6 +1,7 @@
 // name: BindingArray8
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model BindingArray8  

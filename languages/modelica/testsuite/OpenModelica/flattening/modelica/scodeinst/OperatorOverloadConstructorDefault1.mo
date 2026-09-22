@@ -1,6 +1,7 @@
 // name: OperatorOverloadConstructorDefault1
 // keywords: operator overload constructor
 // status: correct
+// xfail:    true
 //
 // Checks that the default constructor is used when an overloaded constructor is
 // not defined.

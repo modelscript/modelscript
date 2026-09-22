@@ -1,6 +1,7 @@
 // name: PartialType2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 partial model A

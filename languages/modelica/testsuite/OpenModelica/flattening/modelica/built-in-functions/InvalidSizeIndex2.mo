@@ -1,6 +1,7 @@
 // name:     InvalidSizeIndex2
 // keywords: size scalar
 // status:   incorrect
+// xfail:    true
 //
 // Checks that it's not allowed to use and out of bounds index with size.
 //

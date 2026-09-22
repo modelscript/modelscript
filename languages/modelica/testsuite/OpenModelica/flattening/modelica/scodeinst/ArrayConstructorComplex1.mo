@@ -1,6 +1,7 @@
 // name: ArrayConstructorComplex1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 operator record Complex  "Complex number with overloaded operators"

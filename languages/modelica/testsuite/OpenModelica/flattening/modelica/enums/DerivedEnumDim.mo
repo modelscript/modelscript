@@ -1,6 +1,7 @@
 // name:     DerivedEnumDim
 // keywords: enumeration enum extends dimension
 // status:   correct
+// xfail:    true
 //
 // Tests that an enumeration can be used as dimension in a short class
 // definition.

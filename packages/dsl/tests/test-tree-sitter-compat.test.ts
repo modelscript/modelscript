@@ -88,7 +88,7 @@ describe("100% Tree-sitter API Compatibility Suite", () => {
     SyntaxNodeClass = SyntaxNode;
     TreeSitterParserClass = TreeSitterParser;
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: { memory, abort: () => {}, logNode: () => {}, debugLog: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },

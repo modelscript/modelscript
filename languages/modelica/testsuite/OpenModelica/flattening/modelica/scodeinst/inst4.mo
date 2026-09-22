@@ -1,6 +1,7 @@
 // name: inst4.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 //
 

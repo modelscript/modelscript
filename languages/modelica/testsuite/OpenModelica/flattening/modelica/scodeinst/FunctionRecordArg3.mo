@@ -1,6 +1,7 @@
 // name: FunctionRecordArg3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record BaseR

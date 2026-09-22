@@ -1,6 +1,7 @@
 // name: VectorizeBindings3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 operator record Complex

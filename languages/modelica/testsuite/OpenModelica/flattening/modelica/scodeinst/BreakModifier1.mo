@@ -1,6 +1,7 @@
 // name: BreakModifier1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model BreakModifier1

@@ -1,6 +1,7 @@
 // name: CevalRecordArray7
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function anyTrue

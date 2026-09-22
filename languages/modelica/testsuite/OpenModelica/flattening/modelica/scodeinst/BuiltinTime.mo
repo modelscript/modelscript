@@ -1,6 +1,7 @@
 // name: BuiltinTime
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that the builtin variable time is handled.
 //

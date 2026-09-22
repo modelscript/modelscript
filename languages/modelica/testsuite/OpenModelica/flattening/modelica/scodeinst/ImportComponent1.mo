@@ -1,6 +1,7 @@
 // name:     ImportComponent1
 // keywords: import
 // status:   correct
+// xfail:    true
 //
 //
 

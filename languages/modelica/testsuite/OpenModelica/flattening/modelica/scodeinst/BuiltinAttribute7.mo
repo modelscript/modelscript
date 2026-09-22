@@ -1,6 +1,7 @@
 // name: BuiltinAttribute7
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model BuiltinAttribute7

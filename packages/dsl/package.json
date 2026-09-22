@@ -161,7 +161,7 @@
     "check:as": "node scripts/check-as.js",
     "clean": "rimraf dist src/src-gen build",
     "lint": "eslint src --no-warn-ignored",
-    "test": "npx tsx --test tests/*.test.ts"
+    "test": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=1 --test-timeout=120000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
     "helmlab": "^0.11.9",

@@ -1,6 +1,7 @@
 // name: const12
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

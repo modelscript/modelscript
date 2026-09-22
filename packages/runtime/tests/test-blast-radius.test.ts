@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { DigitalThreadHypergraph, ThreadDomain } from "../src/thread_hypergraph.js";
+import { DigitalThreadHypergraph, ThreadDomain } from "../src/index.js";
 
 describe("DigitalThreadHypergraph: Transitive Blast-Radius Impact Analysis", () => {
   it("should calculate blast radius across 4-domain chain", () => {

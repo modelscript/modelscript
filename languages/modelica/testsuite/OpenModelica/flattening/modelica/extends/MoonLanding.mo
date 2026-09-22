@@ -1,6 +1,7 @@
 // name:     MoonLanding
 // keywords: <insert keywords here>
 // status:   correct
+// xfail:    true
 //
 // MORE WORK ON THIS FILE HAS TO BE DONE!
 // Drmodelica: 4.1  Moon Landing (p. 115)

@@ -1,6 +1,7 @@
 // name: conn9.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector C

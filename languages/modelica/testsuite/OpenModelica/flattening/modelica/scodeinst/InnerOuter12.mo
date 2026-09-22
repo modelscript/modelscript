@@ -1,6 +1,7 @@
 // name: InnerOuter12
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

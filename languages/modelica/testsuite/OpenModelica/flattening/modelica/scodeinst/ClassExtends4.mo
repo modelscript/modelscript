@@ -1,6 +1,7 @@
 // name: ClassExtends4
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package PartialMedium

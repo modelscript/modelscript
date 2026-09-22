@@ -1,6 +1,8 @@
 import { buildParser, choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -51,7 +53,9 @@ describe("SOTA CST Completion Context", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath =
@@ -80,7 +84,7 @@ describe("SOTA CST Completion Context", () => {
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
 
     const imports = {
       env: {

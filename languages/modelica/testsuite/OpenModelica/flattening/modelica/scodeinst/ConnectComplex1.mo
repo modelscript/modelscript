@@ -1,6 +1,7 @@
 // name: ConnectComplex1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record R

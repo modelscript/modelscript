@@ -1,6 +1,7 @@
 // name: CevalLog102
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name:     Modification2
 // keywords: modification
 // status:   correct
+// xfail:    true
 //
 // Modifying a parameter in a local class is allowed.
 

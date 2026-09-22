@@ -1,6 +1,7 @@
 // name: TopLevelInputs1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

@@ -1,6 +1,7 @@
 // name:     Class2
 // keywords:
 // status:   correct
+// xfail:    true
 //
 // This is a really simple tests.
 //

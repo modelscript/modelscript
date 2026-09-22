@@ -58,7 +58,9 @@ describe("First-Class DSL Custom Classes & Functions Transpilation", () => {
 
     // Write virtual files to scratch directory
     for (const f of build.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, f.filename), f.content, "utf-8");
+      const destPath = path.join(tmpDir, f.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, f.content, "utf-8");
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -73,7 +75,7 @@ describe("First-Class DSL Custom Classes & Functions Transpilation", () => {
     const wasmBuffer = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasmBuffer);
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: {
         memory: memory,

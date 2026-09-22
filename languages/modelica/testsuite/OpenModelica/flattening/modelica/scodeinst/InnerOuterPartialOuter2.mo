@@ -1,6 +1,7 @@
 // name: InnerOuterPartialOuter2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial record BaseR

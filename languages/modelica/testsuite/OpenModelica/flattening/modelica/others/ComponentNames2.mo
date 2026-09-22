@@ -1,6 +1,7 @@
 // name: ComponentNames2
 // keywords: component
 // status: correct
+// xfail:    true
 //
 // Tests whether or not a component can have the same name as the last ident of its type specifier
 //

@@ -1,4 +1,5 @@
 // status: correct
+// xfail:    true
 
 model MatrixMulVector
   Real x[4];

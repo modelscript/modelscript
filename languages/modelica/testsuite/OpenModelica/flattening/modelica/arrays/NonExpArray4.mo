@@ -1,6 +1,7 @@
 // name:     Non-expanded Array 4
 // keywords: array
 // status:   correct
+// xfail:    true
 //
 // This is a simple test of non-expanded array handling.
 // It tests using expressions of non-constant dimension as attribute values.

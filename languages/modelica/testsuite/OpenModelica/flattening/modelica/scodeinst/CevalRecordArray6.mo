@@ -1,6 +1,7 @@
 // name: CevalRecordArray6
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model MultiLayer

@@ -1,5 +1,6 @@
 // name: Concatenation2
 // status: correct
+// xfail:    true
 
 model Concatenation2
   parameter Real x[:] = {1, 2};

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { generateCtrfReport, generateJUnitReport } from "../src/ctrf_reporter.js";
-import { DigitalThreadHypergraph, ThreadDomain } from "../src/thread_hypergraph.js";
+import { DigitalThreadHypergraph, generateCtrfReport, generateJUnitReport, ThreadDomain } from "../src/index.js";
 import {
   computeIntegral,
   computeOvershoot,
@@ -11,7 +10,7 @@ import {
   VerificationRunner,
   type SimulationResult,
   type VerificationResult,
-} from "../src/wasm_verifier.js";
+} from "../src/simulation/wasm_verifier.js";
 
 describe("Closed-Loop V&V Trajectory Evaluator & Reporter", () => {
   describe("Temporal Trajectory Metrics", () => {

@@ -44,7 +44,7 @@ describe("WASM Hermite Interpolation & DOPRI5 Adaptive Step Integrator", () => {
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: { memory: memory, abort: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },

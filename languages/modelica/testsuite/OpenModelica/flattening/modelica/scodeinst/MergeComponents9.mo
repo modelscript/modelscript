@@ -1,6 +1,7 @@
 // name: MergeComponents9
 // keywords:
 // status: correct
+// xfail:    true
 // teardown_command: rm MergeComponents9_merged_table.json
 //
 

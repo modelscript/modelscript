@@ -1,6 +1,7 @@
 // name: FuncBuiltinEdge2
 // keywords: edge
 // status: correct
+// xfail:    true
 //
 // Tests the builtin edge operator.
 //

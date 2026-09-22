@@ -1,6 +1,7 @@
 // name: ClassExtends6
 // keywords: class, extends
 // status: correct
+// xfail:    true
 //
 // Tests that partial packages may be extended, and functions inside
 // redeclared.

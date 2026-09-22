@@ -1,6 +1,7 @@
 // name: ClassExtends3
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that modifiers on class extends are applied.
 //

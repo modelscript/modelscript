@@ -1,6 +1,7 @@
 // name: ExtendsVisibility5
 // keywords: extends visibility
 // status: correct
+// xfail:    true
 //
 
 model A

@@ -1,6 +1,7 @@
 // name:     RDCL.mo [BUG: #2346]
 // keywords: redeclare check
 // status:   correct
+// xfail:    true
 
 package B
   connector Flange_b

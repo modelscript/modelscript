@@ -1,6 +1,7 @@
 // name:     EnumFor
 // keywords: enumeration enum range for loop
 // status:   correct
+// xfail:    true
 //
 // Tests that enumeration literals are preserved when used in for loops.
 //

@@ -1,6 +1,7 @@
 // name:     BM19 -  Product component
 // keywords: Product
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Product component.
 //

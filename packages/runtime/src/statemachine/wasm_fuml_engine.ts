@@ -231,6 +231,14 @@ export class WasmFumlEngine {
     return this.nodeNameToId.get(name);
   }
 
+  getNode(id: NodeId): ActivityNode | undefined {
+    return this.nodes.get(id);
+  }
+
+  getEdge(id: EdgeId): ActivityEdge | undefined {
+    return this.edges.get(id);
+  }
+
   getPinId(qualifiedName: string): PinId | undefined {
     return this.pinNameToId.get(qualifiedName);
   }
@@ -368,6 +376,20 @@ export class WasmFumlEngine {
       isTerminated: (this.status as string) === "terminated",
       activeTokenCount: this.countActiveTokens(),
     };
+  }
+
+  /**
+   * Alias for step() forward.
+   */
+  stepForward(): StepResult {
+    return this.step();
+  }
+
+  /**
+   * Returns a serialized snapshot of all active tokens in the activity graph.
+   */
+  getSerializedMarking(): SerializedMarking {
+    return this.serializeMarking();
   }
 
   /**

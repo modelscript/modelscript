@@ -1,5 +1,6 @@
 // name: EndUnknown
 // status: correct
+// xfail:    true
 // teardown_command: rm -f EndUnknown_*
 
 model EndUnknown

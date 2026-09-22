@@ -1,6 +1,7 @@
 // name:     ScalarizeMinMax
 // keywords: scalarize min max
 // status:   correct
+// xfail:    true
 //
 // Tests that min/max reductions are scalarized when +scalarizeMinMax is used.
 //

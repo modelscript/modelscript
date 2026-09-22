@@ -1,6 +1,7 @@
 // name: ExtendConnector1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial connector C1

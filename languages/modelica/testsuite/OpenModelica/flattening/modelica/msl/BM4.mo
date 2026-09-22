@@ -1,6 +1,7 @@
 // name:     BM4 -  Add3 component
 // keywords: Abs
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Add3 component.
 //

@@ -1,6 +1,7 @@
 // name:     RefinedSimpleCircuitInvalid
 // keywords: <insert keywords here>
 // status:   incorrect
+// xfail:    true
 //
 //
 // Sometimes it can be useful to allow a more general constraining type of

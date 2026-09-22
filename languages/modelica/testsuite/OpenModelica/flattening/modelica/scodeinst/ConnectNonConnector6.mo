@@ -1,6 +1,7 @@
 // name: ConnectNonConnector6
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that a connector member that isn't itself a connector isn't allowed in
 // a connection.

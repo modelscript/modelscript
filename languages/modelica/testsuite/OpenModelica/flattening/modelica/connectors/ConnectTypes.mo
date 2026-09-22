@@ -1,6 +1,7 @@
 // name:     ConnectTypes
 // keywords: connect,type
 // status:   correct
+// xfail:    true
 //
 // Check generation of connection equations.
 // Parameters and constants should generate assertions

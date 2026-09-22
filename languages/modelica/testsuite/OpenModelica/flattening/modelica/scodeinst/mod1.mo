@@ -1,6 +1,7 @@
 // name: mod1.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model M

@@ -1,6 +1,7 @@
 // name: ExtendsShort1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

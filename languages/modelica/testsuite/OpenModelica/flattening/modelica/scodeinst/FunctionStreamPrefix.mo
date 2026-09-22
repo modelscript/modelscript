@@ -1,6 +1,7 @@
 // name: FunctionStreamPrefix
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

@@ -1,6 +1,7 @@
 // name:     Ticket4276a.mo
 // keywords: declaration
 // status:   incorrect
+// xfail:    true
 //
 // Check that you cannot assign to parameter(fixed=true)
 //

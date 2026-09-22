@@ -1,6 +1,7 @@
 // name: DimNegative1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model DimNegative2

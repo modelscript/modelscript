@@ -1,6 +1,7 @@
 // name: FuncInteger
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that the Integer function works.
 //

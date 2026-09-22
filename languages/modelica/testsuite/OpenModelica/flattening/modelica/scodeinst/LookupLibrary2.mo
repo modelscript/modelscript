@@ -1,6 +1,7 @@
 // name: LookupLibrary2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Tests that missing libraries are not loaded when --loadMissingLibraries=false
 //

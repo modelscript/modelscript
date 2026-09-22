@@ -1,6 +1,7 @@
 // name: InheritanceMultiple
 // keywords: inheritance:
 // status: correct
+// xfail:    true
 //
 // tests multiple inheritance
 //

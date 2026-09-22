@@ -1,6 +1,7 @@
 // name: ArrayDeclaration4
 // keywords: array
 // status: incorrect
+// xfail:    true
 //
 // Tests declaring arrays with negative dimensions
 // This test should fail

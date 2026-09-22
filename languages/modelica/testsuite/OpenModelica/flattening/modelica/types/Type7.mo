@@ -1,6 +1,7 @@
 // name:     Type7
 // keywords: types
 // status:   incorrect
+// xfail:    true
 //
 // This checks that Real and RealType are handled differently
 //

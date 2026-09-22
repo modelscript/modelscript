@@ -1,5 +1,6 @@
 // name: Inverted Pendulum
 // status: correct
+// xfail:    true
 //
 
 package Modelica "Modelica Standard Library"

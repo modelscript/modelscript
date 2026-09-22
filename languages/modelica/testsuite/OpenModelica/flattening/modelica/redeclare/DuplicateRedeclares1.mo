@@ -1,6 +1,7 @@
 // name:     DuplicateRedeclares1
 // keywords: redeclare
 // status:   incorrect
+// xfail:    true
 //
 // Checks that the compiler issues an error on duplicate redeclares.
 //

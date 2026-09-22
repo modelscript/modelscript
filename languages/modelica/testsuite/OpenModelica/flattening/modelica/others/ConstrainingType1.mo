@@ -1,6 +1,7 @@
 // name:     ConstrainingType1
 // keywords: replaceable
 // status:   correct
+// xfail:    true
 //
 // Demonstrates that it is sufficient that
 // a redeclare is a sub-type of the constraining

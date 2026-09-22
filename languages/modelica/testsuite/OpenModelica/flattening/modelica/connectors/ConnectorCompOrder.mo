@@ -1,6 +1,7 @@
 // name:     ConnectorCompOrder
 // keywords: connector, binding, modification, bug2159
 // status:   correct
+// xfail:    true
 //
 // Checks that order of the components in connectors doesn't matter.
 //

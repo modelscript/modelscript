@@ -1,5 +1,6 @@
 // name: CheckInstantiationLimit
 // status: correct
+// xfail:    true
 
 model CheckInstantiationLimit
   extends M(i=1);

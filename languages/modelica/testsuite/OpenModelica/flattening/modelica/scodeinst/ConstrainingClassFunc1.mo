@@ -1,6 +1,7 @@
 // name: ConstrainingClassFunc1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

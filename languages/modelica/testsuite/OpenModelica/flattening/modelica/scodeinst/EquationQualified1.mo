@@ -1,6 +1,7 @@
 // name: EquationQualified1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

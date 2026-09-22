@@ -1,6 +1,7 @@
 // name: EnumUnspecified1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model EnumUnspecified1

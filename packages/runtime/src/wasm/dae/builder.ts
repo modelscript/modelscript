@@ -313,6 +313,13 @@ export class DaeBuilder {
     this.getVarData().set(offset + VAR_SHAPE_DIM, 0);
     this.getVarData().set(offset + VAR_FLAGS, flags);
 
+    // Clear shape dimensions to prevent stale data leakage across reset() calls
+    let shapeBase = idx * 4;
+    this.getVarShapes().set(shapeBase, 0);
+    this.getVarShapes().set(shapeBase + 1, 0);
+    this.getVarShapes().set(shapeBase + 2, 0);
+    this.getVarShapes().set(shapeBase + 3, 0);
+
     // Default alias is self (or -1)
     this.getAliasData().set(idx, -1);
     this.getVarClockMap().set(idx, 0);

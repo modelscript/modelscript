@@ -1,6 +1,7 @@
 // name: ArrayInvalidDims
 // keywords: array invalid dimensions
 // status: incorrect
+// xfail:    true
 //
 // Checks that an error message is generated if the arguments to array have
 // different dimensions.

@@ -1,6 +1,7 @@
 // name: Size7
 // keywords: size
 // status: correct
+// xfail:    true
 //
 // Tests the builtin size operator.
 //

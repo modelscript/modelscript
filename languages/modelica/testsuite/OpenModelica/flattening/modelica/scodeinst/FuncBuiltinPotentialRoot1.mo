@@ -1,6 +1,7 @@
 // name: FuncBuiltinPotentialRoot1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 type OC

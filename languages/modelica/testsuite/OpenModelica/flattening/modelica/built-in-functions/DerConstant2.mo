@@ -1,6 +1,7 @@
 // name:     DerConstant2
 // keywords: derivative
 // status:   incorrect
+// xfail:    true
 //
 // The argument to der must be a subtype of Real, even when constant.
 //

@@ -113,7 +113,9 @@ describe("Modelica SI Units System & Diagnostics", () => {
       if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
       for (const f of result.assemblyScriptFiles) {
-        fs.writeFileSync(path.join(tmpDir, f.filename), f.content);
+        const destPath = path.join(tmpDir, f.filename);
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.writeFileSync(destPath, f.content);
       }
       fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
 
@@ -130,7 +132,7 @@ describe("Modelica SI Units System & Diagnostics", () => {
       );
 
       const wasmBytes = fs.readFileSync(path.join(tmpDir, "parser.wasm"));
-      memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+      memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
       const imports = {
         env: {
           memory: memory,

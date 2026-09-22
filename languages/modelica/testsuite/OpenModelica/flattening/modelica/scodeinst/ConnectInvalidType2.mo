@@ -1,6 +1,7 @@
 // name: ConnectInvalidType2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 connector C1

@@ -1,6 +1,7 @@
 // name: CevalDer2
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

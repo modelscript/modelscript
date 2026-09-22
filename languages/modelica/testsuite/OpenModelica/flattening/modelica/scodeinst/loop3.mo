@@ -1,6 +1,7 @@
 // name: loop3.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

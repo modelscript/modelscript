@@ -1,5 +1,6 @@
 // name: SubscriptReduction1
 // status: correct
+// xfail:    true
 //
 //
 

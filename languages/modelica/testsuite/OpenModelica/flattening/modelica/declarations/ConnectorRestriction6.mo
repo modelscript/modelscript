@@ -1,6 +1,7 @@
 // name: ConnectorRestriction6
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 connector C

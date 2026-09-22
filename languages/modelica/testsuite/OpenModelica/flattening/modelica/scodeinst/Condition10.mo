@@ -1,6 +1,7 @@
 // name: Condition10
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Condition10

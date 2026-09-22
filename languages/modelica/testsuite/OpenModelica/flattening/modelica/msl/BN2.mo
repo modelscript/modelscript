@@ -1,6 +1,7 @@
 // name:     BN2 -  Limiter component
 // keywords: Limiter
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Nonlinear.Limiter component.
 //

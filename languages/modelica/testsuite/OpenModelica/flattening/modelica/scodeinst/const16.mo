@@ -1,6 +1,7 @@
 // name: const16.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

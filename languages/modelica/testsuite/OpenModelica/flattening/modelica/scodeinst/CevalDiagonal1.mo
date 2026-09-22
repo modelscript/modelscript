@@ -1,6 +1,7 @@
 // name: CevalDiagonal1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

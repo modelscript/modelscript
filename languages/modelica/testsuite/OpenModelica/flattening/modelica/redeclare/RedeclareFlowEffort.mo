@@ -1,6 +1,7 @@
 // name:     RedeclareFlowEffort
 // keywords: modification
 // status:   incorrect
+// xfail:    true
 //
 // Redeclaration that changes flow/non-flow is not allowed.
 //

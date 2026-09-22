@@ -253,15 +253,38 @@ export function registerWorkspaceFeaturesProvider(
           const deriveSimp =
             (globalThis as any).deriveSimplification ??
             ((kind: string, varName: string, options?: any) => {
+              const startVal = options?.startVal ?? (varName.toLowerCase().startsWith("t") ? 300.0 : 1.0);
               switch (kind) {
-                case "power":
-                  return `(${options?.power ?? 2}) * ${varName}`;
+                case "power": {
+                  const p = options?.power ?? 2;
+                  if (p === 2) {
+                    const slope = 2 * startVal;
+                    const intercept = startVal * startVal;
+                    return `(${slope} * ${varName} - ${intercept})`;
+                  } else if (p === 4) {
+                    const slope = 4 * Math.pow(startVal, 3);
+                    const intercept = 3 * Math.pow(startVal, 4);
+                    return `(${slope} * ${varName} - ${intercept})`;
+                  } else {
+                    const slope = p * Math.pow(startVal, p - 1);
+                    const intercept = (p - 1) * Math.pow(startVal, p);
+                    return `(${slope.toFixed(4)} * ${varName} - ${intercept.toFixed(4)})`;
+                  }
+                }
                 case "quadratic_drag":
-                  return `2 * ${varName}`;
-                case "exp":
-                  return `1 + ${varName}`;
-                case "sqrt":
-                  return `1 + 0.5 * (${varName} - 1)`;
+                  return `(${varName} * ${startVal})`;
+                case "exp": {
+                  const arg = options?.arg ?? varName;
+                  return `(1.0 + (${arg}))`;
+                }
+                case "sqrt": {
+                  const arg = options?.arg ?? varName;
+                  return `(1.0 + 0.5 * ((${arg}) - 1.0))`;
+                }
+                case "log": {
+                  const arg = options?.arg ?? varName;
+                  return `((${arg}) - 1.0)`;
+                }
                 default:
                   return `/* linear proxy */ ${varName}`;
               }

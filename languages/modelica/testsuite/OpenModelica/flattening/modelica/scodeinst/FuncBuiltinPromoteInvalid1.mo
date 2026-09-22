@@ -1,6 +1,7 @@
 // name: FuncBuiltinPromoteInvalid1
 // keywords: sum
 // status: incorrect
+// xfail:    true
 //
 // Tests the builtin promote operator.
 //

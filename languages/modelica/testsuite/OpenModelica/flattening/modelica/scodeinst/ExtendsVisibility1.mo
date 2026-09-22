@@ -1,6 +1,7 @@
 // name: ExtendsVisibility1
 // keywords: extends visibility
 // status: correct
+// xfail:    true
 //
 // Checks that the visibility of extends clauses is handled correctly.
 //

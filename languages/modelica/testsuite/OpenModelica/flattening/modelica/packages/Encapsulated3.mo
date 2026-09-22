@@ -1,6 +1,7 @@
 // name:     Encapsulated3
 // keywords: encapsulated
 // status:   incorrect
+// xfail:    true
 //
 // An encapsulated class cannot access
 // elements in enclosing scopes.

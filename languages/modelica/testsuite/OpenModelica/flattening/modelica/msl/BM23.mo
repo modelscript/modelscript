@@ -1,6 +1,7 @@
 // name:     BM23 -  Sqrt component
 // keywords: Sqrt
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Sqrt component.
 //

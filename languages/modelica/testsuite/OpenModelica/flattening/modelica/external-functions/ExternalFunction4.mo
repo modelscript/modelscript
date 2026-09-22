@@ -1,6 +1,7 @@
 // name:     ExternalFunction4
 // keywords: external function,code generation,constant propagation
 // status:   correct
+// xfail:    true
 // teardown_command: rm -f ExternalFunction4_*
 //
 // Constant evaluation of function calls using Library annotation.

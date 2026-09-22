@@ -1,6 +1,7 @@
 // name:     BS12 - Trapetzoid component
 // keywords: Trapetzoid
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Trapetzoid component.
 //

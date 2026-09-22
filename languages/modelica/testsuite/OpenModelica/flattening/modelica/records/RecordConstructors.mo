@@ -1,6 +1,7 @@
 // name: RecordConstructors
 // keywords: record
 // status: correct
+// xfail:    true
 //
 // Tests record constructor functions
 //

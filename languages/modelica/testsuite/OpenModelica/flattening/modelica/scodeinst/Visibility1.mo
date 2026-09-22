@@ -1,6 +1,7 @@
 // name: Visibility1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Visibility1

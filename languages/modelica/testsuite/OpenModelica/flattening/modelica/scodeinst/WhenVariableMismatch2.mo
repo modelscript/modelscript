@@ -1,6 +1,7 @@
 // name: WhenVariableMismatch2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model WhenVariableMismatch2

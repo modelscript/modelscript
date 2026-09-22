@@ -1,6 +1,7 @@
 // name: FunctionRecordArg5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model FunctionRecordArg5

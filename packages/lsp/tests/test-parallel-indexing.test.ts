@@ -1,6 +1,8 @@
 import { buildParser, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, test } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { IndexFileTask, LspWorkerPool } from "../src/workers/worker-pool.js";
@@ -41,7 +43,9 @@ describe("Gap 3: Multi-Threaded Parallel Indexing & Bulk Registration Tests", ()
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -58,7 +62,7 @@ describe("Gap 3: Multi-Threaded Parallel Indexing & Bulk Registration Tests", ()
       result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
     const getFacadeFn = new Function(wrapperSrc);
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: { memory, abort: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },

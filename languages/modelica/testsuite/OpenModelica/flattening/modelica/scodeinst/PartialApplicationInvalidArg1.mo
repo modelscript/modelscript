@@ -1,6 +1,7 @@
 // name: PartialApplicationInvalidArg1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 function f1

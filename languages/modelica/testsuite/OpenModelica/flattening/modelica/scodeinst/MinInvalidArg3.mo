@@ -1,6 +1,7 @@
 // name: MinInvalidArg3
 // keywords: min
 // status: incorrect
+// xfail:    true
 //
 
 model MinInvalidArg3

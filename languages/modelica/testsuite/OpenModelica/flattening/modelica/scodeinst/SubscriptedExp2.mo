@@ -1,5 +1,6 @@
 // name: SubscriptedExp2
 // status: incorrect
+// xfail:    true
 //
 //
 

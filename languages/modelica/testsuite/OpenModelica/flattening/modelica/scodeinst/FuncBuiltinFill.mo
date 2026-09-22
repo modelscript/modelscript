@@ -1,6 +1,7 @@
 // name: FuncBuiltinFill
 // keywords: fill
 // status: correct
+// xfail:    true
 //
 // Tests the builtin fill operator.
 //

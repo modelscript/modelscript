@@ -4,7 +4,7 @@
 // and a GitHub FileSystemProvider for loading GitHub repositories.
 
 import express from "express";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, watch } from "fs";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { join, resolve } from "path";
 
@@ -285,6 +285,75 @@ app.use(
     },
   }),
 );
+
+// ── User Language Registry API ──
+
+function getUserLanguagesDir(): string {
+  if (process.env.MODELSCRIPT_LANGUAGES_DIR) {
+    return resolve(process.env.MODELSCRIPT_LANGUAGES_DIR);
+  }
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  return join(home, ".modelscript", "languages");
+}
+
+app.get("/api/languages/user", (_req, res) => {
+  const regPath = join(getUserLanguagesDir(), "registry.json");
+  if (!existsSync(regPath)) {
+    return res.json({ version: "1.0.0", languages: {} });
+  }
+  try {
+    const raw = readFileSync(regPath, "utf-8");
+    return res.type("application/json").send(raw);
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+app.get("/api/languages/user/:id/parser.wasm", (req, res) => {
+  const langId = req.params.id;
+  const langDir = join(getUserLanguagesDir(), langId);
+  const candidates = [
+    join(langDir, "parser.wasm"),
+    join(langDir, "dist", "parser.wasm"),
+    join(langDir, `${langId}.wasm`),
+  ];
+  const found = candidates.find(existsSync);
+  if (found) {
+    res.type("application/wasm").sendFile(found);
+  } else {
+    res.status(404).send(`parser.wasm for user language '${langId}' not found`);
+  }
+});
+
+const registryClients: express.Response[] = [];
+
+app.get("/api/languages/user/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  registryClients.push(res);
+
+  req.on("close", () => {
+    const idx = registryClients.indexOf(res);
+    if (idx !== -1) registryClients.splice(idx, 1);
+  });
+});
+
+const userLanguagesDir = getUserLanguagesDir();
+if (existsSync(userLanguagesDir)) {
+  try {
+    watch(userLanguagesDir, (_eventType, filename) => {
+      if (filename === "registry.json") {
+        for (const client of registryClients) {
+          client.write(`data: ${JSON.stringify({ event: "change" })}\n\n`);
+        }
+      }
+    });
+  } catch {
+    // Directory may not exist yet
+  }
+}
 
 // ── VS Code workbench route ──
 

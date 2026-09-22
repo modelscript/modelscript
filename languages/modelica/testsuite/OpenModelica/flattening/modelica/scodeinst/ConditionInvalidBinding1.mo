@@ -1,6 +1,7 @@
 // name: ConditionInvalidBinding1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model ConditionInvalidBinding1

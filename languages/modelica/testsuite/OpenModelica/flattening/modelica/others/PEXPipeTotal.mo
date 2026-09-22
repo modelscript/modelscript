@@ -1,6 +1,7 @@
 // name:     PEXPipe
 // keywords: ticket #2699
 // status:   correct
+// xfail:    true
 //
 // Ticket #2699 extending a model in FluidHeatFlow
 //

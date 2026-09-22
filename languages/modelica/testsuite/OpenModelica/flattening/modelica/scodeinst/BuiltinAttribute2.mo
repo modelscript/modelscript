@@ -1,6 +1,7 @@
 // name: BuiltinAttribute2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 type MyReal

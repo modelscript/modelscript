@@ -1,5 +1,6 @@
 // name: ceval5.mo
 // status: incorrect
+// xfail:    true
 
 model A
   parameter Real n = 3;

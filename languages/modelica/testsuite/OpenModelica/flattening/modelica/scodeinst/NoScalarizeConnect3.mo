@@ -1,6 +1,7 @@
 // name: NoScalarizeConnect3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector Port

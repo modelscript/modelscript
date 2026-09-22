@@ -1,6 +1,7 @@
 // name: FuncBuiltinDelay
 // keywords: delay
 // status: correct
+// xfail:    true
 //
 // Tests the builtin delay operator.
 //

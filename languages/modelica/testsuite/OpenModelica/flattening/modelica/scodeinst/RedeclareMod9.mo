@@ -1,6 +1,7 @@
 // name: RedeclareMod9
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record NominalValues

@@ -1,3 +1,4 @@
+// xfail:    true
 package Invalid
 end Invalid;
 

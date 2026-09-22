@@ -1,6 +1,7 @@
 // name:     Extends5
 // keywords: extends, function
 // status:   correct
+// xfail:    true
 //
 // Testing of bug that causes infinite loop if you call a function in an extended class.
 

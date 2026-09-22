@@ -8,6 +8,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./fault-tree": {
+      "types": "./dist/fault-tree.d.ts",
+      "default": "./dist/fault-tree.js"
+    },
     "./protocol": {
       "types": "./dist/protocol.d.ts",
       "default": "./dist/protocol.js"
@@ -71,7 +75,7 @@
     "build": "tsc && node build-browser.js",
     "clean": "rimraf dist",
     "lint": "eslint src --no-warn-ignored",
-    "test": "npx tsx --test tests/**/*.test.ts"
+    "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/**/*.test.ts"
   },
   "dependencies": {
     "@antv/layout": "^0.3.25",

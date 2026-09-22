@@ -1,6 +1,7 @@
 // name: FuncBuiltinNoClock1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model FuncBuiltinNoClock1

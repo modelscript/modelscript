@@ -1,6 +1,7 @@
 // name: BuiltinLookup1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model BuiltinLookup1

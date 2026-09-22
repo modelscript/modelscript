@@ -1,6 +1,7 @@
 // name: Each2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Each2

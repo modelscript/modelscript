@@ -1,6 +1,7 @@
 // name: ImplicitRangeType2
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

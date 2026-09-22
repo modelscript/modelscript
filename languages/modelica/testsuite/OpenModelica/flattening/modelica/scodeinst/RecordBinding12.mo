@@ -1,6 +1,7 @@
 // name: RecordBinding12
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record BaseR

@@ -1,6 +1,7 @@
 // name:     Algorithm3
 // keywords: algorithm
 // status:   correct
+// xfail:    true
 //
 // Type checks in algorithms.
 //

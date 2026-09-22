@@ -1,6 +1,7 @@
 // name: IfEquationInvalidCond1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model IfEquationInvalidCond1

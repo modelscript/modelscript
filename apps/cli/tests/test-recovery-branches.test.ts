@@ -82,7 +82,9 @@ describe("GLR Parser Error Recovery Branches", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const targetPath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, file.content);
     }
 
     const ascPath = path.join(__dirname, "../../../node_modules/.bin/asc");

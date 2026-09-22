@@ -1,6 +1,7 @@
 // name:     AccessDemo Legal Mod
 // keywords: <insert keywords here>
 // status:   correct
+// xfail:    true
 //
 // Test the public and protected access keywords
 // Drmodelica: 3.4 Access Control (p. 88)

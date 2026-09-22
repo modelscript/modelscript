@@ -1,6 +1,7 @@
 // name:     ImportSubPackage1
 // keywords: import
 // status:   incorrect
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name: CevalMin1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

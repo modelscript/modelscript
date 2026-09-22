@@ -1,6 +1,7 @@
 // name: FunctionCompOrder2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 function f

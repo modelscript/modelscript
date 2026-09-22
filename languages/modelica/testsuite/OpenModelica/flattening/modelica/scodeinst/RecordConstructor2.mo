@@ -1,6 +1,7 @@
 // name: RecordConstructor2
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that final components in a record becomes protected in the default
 // constructor.

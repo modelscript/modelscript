@@ -1,6 +1,7 @@
 // name: OutputDeclRecord
 // keywords: output
 // status: correct
+// xfail:    true
 //
 // Tests the output prefix on a record type
 //

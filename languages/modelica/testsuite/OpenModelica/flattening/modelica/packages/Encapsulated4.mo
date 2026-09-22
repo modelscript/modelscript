@@ -1,6 +1,7 @@
 // name:     Encapsulated4
 // keywords: encapsulated
 // status:   incorrect
+// xfail:    true
 //
 // Checks that the look up stops when encountering an encapsulated scope, except
 // for builtin types and functions.

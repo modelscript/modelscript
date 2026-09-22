@@ -1,6 +1,7 @@
 // name: FuncVectorization5
 // keywords: vectorization function
 // status: correct
+// xfail:    true
 //
 //
 

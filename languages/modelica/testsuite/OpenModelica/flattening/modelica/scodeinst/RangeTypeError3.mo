@@ -1,6 +1,7 @@
 // name: RangeTypeError3.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 //
 

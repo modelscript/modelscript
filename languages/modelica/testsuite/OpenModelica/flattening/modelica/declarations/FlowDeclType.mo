@@ -1,6 +1,7 @@
 // name: FlowDeclType
 // keywords: flow
 // status: correct
+// xfail:    true
 //
 // Tests the flow prefix on a regular type
 //

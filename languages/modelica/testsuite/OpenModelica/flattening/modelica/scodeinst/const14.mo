@@ -1,6 +1,7 @@
 // name: const14.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package B

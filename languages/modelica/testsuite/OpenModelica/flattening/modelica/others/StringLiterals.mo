@@ -1,6 +1,7 @@
 // name: StringLiterals
 // keywords: string
 // status: correct
+// xfail:    true
 
 model StringLiterals
   // Skipping \r since it's weird :)

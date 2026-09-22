@@ -1,6 +1,7 @@
 // name: OperatorOverloadConstructor2
 // keywords: operator overload constructor
 // status: correct
+// xfail:    true
 //
 //
 

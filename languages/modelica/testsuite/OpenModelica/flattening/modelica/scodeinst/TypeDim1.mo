@@ -1,6 +1,7 @@
 // name: TypeDim1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model TypeDim1

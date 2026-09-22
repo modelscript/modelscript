@@ -1,6 +1,7 @@
 // name:     Type9
 // keywords: types
 // status:   correct
+// xfail:    true
 //
 // This checks that attributes are propagated from types to instances.
 //

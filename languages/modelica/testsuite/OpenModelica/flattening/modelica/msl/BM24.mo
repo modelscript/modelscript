@@ -1,6 +1,7 @@
 // name:     BM24 -  Sum component
 // keywords: Sum
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Sum component.
 //

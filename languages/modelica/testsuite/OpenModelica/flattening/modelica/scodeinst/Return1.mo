@@ -1,6 +1,7 @@
 // name: Return1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

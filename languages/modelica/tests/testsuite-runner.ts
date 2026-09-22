@@ -17,9 +17,10 @@
  *   npx tsx tests/testsuite-runner.ts extends modification
  *
  * Options:
- *   --update      Rewrite expected output in .mo files to match actual
- *   --concurrency=N  Number of parallel workers (default: CPU count / 2)
- *   --allow-failures  Exit with code 0 even if some tests fail
+ *   --update          Rewrite expected output in .mo files to match actual
+ *   --concurrency=N   Number of parallel workers (default: CPU count / 2)
+ *   --allow-failures  Exit with code 0 even if some tests fail or regress
+ *   --mark-xfail      Automatically add/remove // xfail: true based on current test results
  *
  * If no arguments are given, all subdirectories under testsuite/ are run.
  */
@@ -42,6 +43,7 @@ interface TestCaseMetadata {
   arrayMode?: "scalarize" | "preserve";
   fmiVersion?: "2.0" | "3.0";
   simulate?: boolean;
+  xfail?: boolean | string;
 }
 
 interface TestCase {
@@ -61,6 +63,7 @@ interface TestResult {
   message?: string;
   keywords?: string;
   testStatus?: string;
+  xfail?: boolean | string;
 }
 
 interface CtrfReport {
@@ -129,7 +132,9 @@ function parseTestFile(filePath: string): TestCase | null {
     // Description: comment lines after status, until first non-comment or blank
     if (status && line.startsWith("//")) {
       const descText = line.replace(/^\/\/\s?/, "").trim();
-      if (descText) descriptionLines.push(descText);
+      if (descText && !descText.toLowerCase().startsWith("xfail:")) {
+        descriptionLines.push(descText);
+      }
       continue;
     }
 
@@ -145,7 +150,13 @@ function parseTestFile(filePath: string): TestCase | null {
   let arrayMode: "scalarize" | "preserve" | undefined = undefined;
   let fmiVersion: "2.0" | "3.0" | undefined = undefined;
   let simulate = false;
+  let xfail: boolean | string | undefined = undefined;
   for (const line of lines) {
+    const xfMatch = line.match(/^\/\/\s*xfail:\s*(.+)/i);
+    if (xfMatch && xfMatch[1]) {
+      const val = xfMatch[1].trim();
+      xfail = val === "true" ? true : val === "false" ? false : val;
+    }
     const amMatch = line.match(/^\/\/\s*arrayMode:\s*(preserve|scalarize)/);
     if (amMatch && amMatch[1]) arrayMode = amMatch[1] as "preserve" | "scalarize";
     const fmiMatch = line.match(/^\/\/\s*fmiVersion:\s*(2\.0|3\.0)/);
@@ -198,6 +209,7 @@ function parseTestFile(filePath: string): TestCase | null {
       description: descriptionLines.join(" "),
       ...(arrayMode ? { arrayMode } : {}),
       ...(fmiVersion ? { fmiVersion } : {}),
+      ...(xfail !== undefined ? { xfail } : {}),
       simulate,
     },
     source,
@@ -287,6 +299,7 @@ function runTestInWorker(
         message,
         keywords: testCase.metadata.keywords,
         testStatus: testCase.metadata.status,
+        xfail: testCase.metadata.xfail,
       });
     });
   });
@@ -302,15 +315,22 @@ const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
 
 function printResult(result: TestResult): void {
-  const icon =
-    result.status === "passed"
-      ? `${GREEN}✓${RESET}`
-      : result.status === "skipped"
-        ? `${YELLOW}○${RESET}`
-        : `${RED}✗${RESET}`;
+  const isXFail = result.status === "failed" && Boolean(result.xfail);
+  const isXPass = result.status === "passed" && Boolean(result.xfail);
+
+  const icon = isXPass
+    ? `${YELLOW}★ [XPASS]${RESET}`
+    : isXFail
+      ? `${YELLOW}✗ [XFAIL]${RESET}`
+      : result.status === "passed"
+        ? `${GREEN}✓${RESET}`
+        : result.status === "skipped"
+          ? `${YELLOW}○${RESET}`
+          : `${RED}✗ [REGRESSION]${RESET}`;
 
   const duration = `${DIM}(${result.duration.toFixed(0)}ms, cpu ${result.cpuTime.toFixed(0)}ms)${RESET}`;
-  console.log(`  ${icon} ${result.name} ${duration}`);
+  const xfailReason = typeof result.xfail === "string" ? ` ${DIM}(reason: ${result.xfail})${RESET}` : "";
+  console.log(`  ${icon} ${result.name} ${duration}${xfailReason}`);
 
   if (result.message) {
     const indented = result.message
@@ -322,16 +342,36 @@ function printResult(result: TestResult): void {
 }
 
 function printSummary(results: TestResult[], suiteLabel: string): void {
-  const passed = results.filter((r) => r.status === "passed").length;
-  const failed = results.filter((r) => r.status === "failed").length;
+  const passed = results.filter((r) => r.status === "passed" && !r.xfail).length;
+  const xpass = results.filter((r) => r.status === "passed" && Boolean(r.xfail)).length;
+  const xfail = results.filter((r) => r.status === "failed" && Boolean(r.xfail)).length;
+  const regressions = results.filter((r) => r.status === "failed" && !r.xfail).length;
   const skipped = results.filter((r) => r.status === "skipped").length;
   const total = results.length;
 
   console.log();
   console.log(`${BOLD}${suiteLabel}${RESET}`);
-  console.log(
-    `  Tests: ${GREEN}${passed} passed${RESET}, ${RED}${failed} failed${RESET}, ${YELLOW}${skipped} skipped${RESET}, ${total} total`,
-  );
+
+  let failedStr = `${RED}${regressions} failed (regressions)${RESET}`;
+  if (xfail > 0) {
+    failedStr += `, ${YELLOW}${xfail} expected failures (xfail)${RESET}`;
+  }
+
+  let passedStr = `${GREEN}${passed} passed${RESET}`;
+  if (xpass > 0) {
+    passedStr += `, ${YELLOW}${xpass} unexpected passes (xpass)${RESET}`;
+  }
+
+  console.log(`  Tests: ${passedStr}, ${failedStr}, ${YELLOW}${skipped} skipped${RESET}, ${total} total`);
+
+  if (regressions > 0) {
+    console.log(`  ${RED}${BOLD}✗ ${regressions} unexpected regression(s) detected!${RESET}`);
+  }
+  if (xpass > 0) {
+    console.log(
+      `  ${YELLOW}${BOLD}★ ${xpass} test(s) marked as xfail passed! Consider removing '// xfail: true'.${RESET}`,
+    );
+  }
 }
 
 // ── CTRF reporter ────────────────────────────────────────────────────────────
@@ -365,7 +405,7 @@ function generateCtrfReport(results: TestResult[], startTime: number, stopTime: 
         duration: Math.floor(r.duration),
         cpuTime: Math.floor(r.cpuTime),
         status: r.status === "skipped" ? "pending" : r.status,
-        rawStatus: r.status,
+        rawStatus: r.xfail ? (r.status === "failed" ? "xfail" : "xpass") : r.status,
         type: "unit",
         filePath: r.file,
         retries: 0,
@@ -374,6 +414,7 @@ function generateCtrfReport(results: TestResult[], startTime: number, stopTime: 
         ...(r.message ? { message: stripAnsi(r.message) } : {}),
         ...(r.keywords ? { keywords: r.keywords } : {}),
         ...(r.testStatus ? { testStatus: r.testStatus } : {}),
+        ...(r.xfail !== undefined ? { extra: { xfail: r.xfail } } : {}),
       })),
     },
   };
@@ -481,6 +522,7 @@ async function main(): Promise<void> {
       a !== "--omc" &&
       a !== "--allow-failures" &&
       a !== "--fresh-process" &&
+      a !== "--mark-xfail" &&
       !a.startsWith("--concurrency=") &&
       !a.startsWith("--flattener="),
   );
@@ -677,7 +719,8 @@ async function main(): Promise<void> {
         }
         const q = allQueued.find((x) => x.testCase.file === r.file);
         const suiteStr = q ? `${DIM}[${q.suiteName}]${RESET} ` : "";
-        console.log(`  ${RED}✗${RESET} ${suiteStr}${r.name}`);
+        const tag = r.xfail ? `${YELLOW}✗ [XFAIL]${RESET}` : `${RED}✗ [REGRESSION]${RESET}`;
+        console.log(`  ${tag} ${suiteStr}${r.name}`);
         if (r.message) {
           console.log(
             r.message
@@ -750,20 +793,68 @@ async function main(): Promise<void> {
     generateHtmlReport(ctrfPath, htmlPath);
   }
 
-  // Exit with error code if any tests failed
-  const failedCount = allResults.filter((r) => r.status === "failed").length;
-  if (failedCount > 0) {
-    if (process.env.CI || rawArgs.includes("--allow-failures")) {
+  // Handle --mark-xfail: update .mo files based on current test run results
+  if (rawArgs.includes("--mark-xfail")) {
+    let markedCount = 0;
+    let unmarkedCount = 0;
+
+    for (const res of allResults) {
+      if (res.status === "failed" && !res.xfail) {
+        try {
+          const content = fs.readFileSync(res.file, "utf-8");
+          if (content.match(/^\/\/\s*status:\s*.+/m)) {
+            const updated = content.replace(/^(\/\/\s*status:\s*.+)$/m, `$1\n// xfail:    true`);
+            fs.writeFileSync(res.file, updated, "utf-8");
+            markedCount++;
+          } else {
+            fs.writeFileSync(res.file, `// xfail:    true\n` + content, "utf-8");
+            markedCount++;
+          }
+        } catch (e) {
+          console.error(`Failed to update ${res.file}:`, e);
+        }
+      } else if (res.status === "passed" && res.xfail) {
+        try {
+          const content = fs.readFileSync(res.file, "utf-8");
+          const updated = content.replace(/^\/\/\s*xfail:\s*.+\n?/m, "");
+          fs.writeFileSync(res.file, updated, "utf-8");
+          unmarkedCount++;
+        } catch (e) {
+          console.error(`Failed to unmark ${res.file}:`, e);
+        }
+      }
+    }
+
+    console.log(
+      `\n${BOLD}[--mark-xfail]${RESET} Updated test metadata: marked ${markedCount} new xfail(s), unmarked ${unmarkedCount} resolved test(s).`,
+    );
+    process.exit(0);
+  }
+
+  // Exit with error code if any regressions occurred
+  const regressions = allResults.filter((r) => r.status === "failed" && !r.xfail);
+  const xfails = allResults.filter((r) => r.status === "failed" && Boolean(r.xfail));
+
+  if (regressions.length > 0) {
+    if (rawArgs.includes("--allow-failures")) {
       console.log(
-        `\n${YELLOW}Warning: ${failedCount} test(s) failed, but exiting with code 0 because CI=true or --allow-failures is set.${RESET}`,
+        `\n${YELLOW}Warning: ${regressions.length} regression(s) occurred, but exiting with code 0 because --allow-failures is set.${RESET}`,
       );
       process.exit(0);
     }
+    console.error(`\n${RED}${BOLD}Error: ${regressions.length} unexpected regression(s) detected!${RESET}`);
     process.exit(1);
+  }
+
+  if (xfails.length > 0) {
+    console.log(`\n${DIM}All ${xfails.length} failure(s) are expected (xfail). Exiting with code 0.${RESET}`);
   }
 }
 
 main().catch((err) => {
   console.error("Fatal error:", err);
+  if (process.argv.slice(2).includes("--allow-failures")) {
+    process.exit(0);
+  }
   process.exit(1);
 });

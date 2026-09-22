@@ -6,7 +6,9 @@ import modelicaLangFallback from "@modelscript/modelica/language";
 import owl2LangFallback from "@modelscript/owl2/language";
 import { StepWorkspaceIndex } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
+import fs from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import {
   createConnection,
@@ -94,49 +96,126 @@ export function startNodeServer() {
 
   // Initialize built-in WASM parsers
   const require = createRequire(import.meta.url);
-  try {
-    const modelicaWasm = require.resolve("@modelscript/modelica/parser.wasm");
-    createWasmParser(modelicaWasm)
-      .then(({ parser, facade }) => {
-        parserService.parser = parser;
-        (globalThis as any).modelicaParser = parser;
-        parserService.parserReady = true;
-        globalLanguageRegistry.register({
-          id: "modelica",
-          name: "Modelica",
-          extensions: [".mo"],
-          parser,
-          facade,
-          disposables: [],
-        });
-      })
-      .catch((err) => {
-        connection.console.warn(`[NodeServer] Could not load Modelica WASM parser: ${err.message}`);
-      });
-  } catch {
-    // Modelica WASM resolution optional in decoupled environments
+  const builtInPkgs = [
+    { id: "modelica", pkg: "@modelscript/modelica", name: "Modelica", ext: [".mo"] },
+    { id: "sysml2", pkg: "@modelscript/sysml2", name: "SysML v2", ext: [".sysml", ".sysml2"] },
+    { id: "step", pkg: "@modelscript/step", name: "STEP", ext: [".step", ".stp", ".p21"] },
+    { id: "owl2", pkg: "@modelscript/owl2", name: "OWL2", ext: [".owl2", ".ofn", ".ttl"] },
+    { id: "csv", pkg: "@modelscript/csv", name: "CSV", ext: [".csv"] },
+    { id: "scad", pkg: "@modelscript/scad", name: "OpenSCAD", ext: [".scad"] },
+  ];
+
+  for (const item of builtInPkgs) {
+    try {
+      let wasmPath: string | undefined;
+      try {
+        wasmPath = require.resolve(`${item.pkg}/parser.wasm`);
+      } catch {
+        try {
+          wasmPath = require.resolve(`${item.pkg}/dist/parser.wasm`);
+        } catch {}
+      }
+      if (wasmPath) {
+        createWasmParser(wasmPath)
+          .then(({ parser, facade }) => {
+            parserService.registerParser(item.id, parser, facade);
+            if (item.id === "modelica") {
+              parserService.parser = parser;
+              (globalThis as any).modelicaParser = parser;
+              parserService.parserReady = true;
+            } else if (item.id === "sysml2") {
+              parserService.sysml2Parser = parser;
+              parserService.sysml2ParserReady = true;
+            }
+            globalLanguageRegistry.register({
+              id: item.id,
+              name: item.name,
+              extensions: item.ext,
+              parser,
+              facade,
+              disposables: [],
+            });
+          })
+          .catch((err) => {
+            connection.console.warn(`[NodeServer] Could not load ${item.name} WASM parser: ${err.message}`);
+          });
+      }
+    } catch {
+      // Optional in decoupled environments
+    }
   }
 
-  try {
-    const sysmlWasm = require.resolve("@modelscript/sysml2/parser.wasm");
-    createWasmParser(sysmlWasm)
-      .then(({ parser, facade }) => {
-        parserService.sysml2Parser = parser;
-        parserService.sysml2ParserReady = true;
-        globalLanguageRegistry.register({
-          id: "sysml2",
-          name: "SysML v2",
-          extensions: [".sysml"],
-          parser,
-          facade,
-          disposables: [],
-        });
-      })
-      .catch((err) => {
-        connection.console.warn(`[NodeServer] Could not load SysML2 WASM parser: ${err.message}`);
+  // Helper to load user languages from registry directory (~/.modelscript/languages/)
+  function getUserLanguagesDir(): string {
+    if (process.env.MODELSCRIPT_LANGUAGES_DIR) {
+      return path.resolve(process.env.MODELSCRIPT_LANGUAGES_DIR);
+    }
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    return path.join(home, ".modelscript", "languages");
+  }
+
+  async function loadUserRegisteredLanguages(): Promise<void> {
+    const regDir = getUserLanguagesDir();
+    const regPath = path.join(regDir, "registry.json");
+    if (!fs.existsSync(regPath)) return;
+
+    try {
+      const catalog = JSON.parse(fs.readFileSync(regPath, "utf-8"));
+      const languages = catalog.languages || {};
+
+      for (const [id, entry] of Object.entries<any>(languages)) {
+        if (globalLanguageRegistry.getPluginById(id)) continue;
+
+        let wasmPath = entry.wasmPath;
+        if (!wasmPath || !fs.existsSync(wasmPath)) {
+          const langDir = path.join(regDir, id);
+          const candidates = [
+            path.join(langDir, "parser.wasm"),
+            path.join(langDir, "dist", "parser.wasm"),
+            path.join(langDir, `${id}.wasm`),
+          ];
+          wasmPath = candidates.find(fs.existsSync);
+        }
+
+        if (wasmPath && fs.existsSync(wasmPath)) {
+          try {
+            const { parser, facade } = await createWasmParser(wasmPath);
+            parserService.registerParser(id, parser, facade);
+            globalLanguageRegistry.register({
+              id,
+              name: entry.name || id,
+              extensions: entry.extensions || [`.${id}`],
+              parser,
+              facade,
+              disposables: [],
+            });
+            connection.console.info(`[NodeServer] Loaded custom language '${id}' from ${wasmPath}`);
+          } catch (err: any) {
+            connection.console.warn(`[NodeServer] Failed to load custom language '${id}': ${err.message}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      connection.console.warn(`[NodeServer] Failed to read user languages registry: ${err.message}`);
+    }
+  }
+
+  loadUserRegisteredLanguages().catch(() => {});
+
+  const userLanguagesDir = getUserLanguagesDir();
+  if (fs.existsSync(userLanguagesDir)) {
+    try {
+      fs.watch(userLanguagesDir, async (_eventType, filename) => {
+        if (filename === "registry.json") {
+          connection.console.info(`[NodeServer] User languages registry changed, reloading...`);
+          await loadUserRegisteredLanguages();
+          connection.sendNotification("modelscript/status", {
+            state: "ready",
+            message: "ModelScript (Languages Updated)",
+          });
+        }
       });
-  } catch {
-    // SysML2 WASM resolution optional in decoupled environments
+    } catch {}
   }
 
   // 1. Connection lifecycle handlers

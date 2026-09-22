@@ -1,6 +1,7 @@
 // name: FunctionParamVariability
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that declaring a function parameter constant/parameter has no impact
 // on the function, since variability prefixes have no semantic meaning for

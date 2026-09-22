@@ -72,7 +72,9 @@ describe("Tier 4 & Tree-sitter Parity Architecture Suite", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const destPath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     const ascPath =
@@ -99,7 +101,7 @@ describe("Tier 4 & Tree-sitter Parity Architecture Suite", () => {
     TreeClass = Tree;
     WasmTreeCursorClass = WasmTreeCursor;
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: { memory, abort: () => {}, logNode: () => {}, debugLog: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },

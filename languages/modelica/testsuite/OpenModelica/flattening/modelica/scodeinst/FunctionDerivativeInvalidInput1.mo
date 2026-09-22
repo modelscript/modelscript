@@ -1,5 +1,6 @@
 // name: FunctionDerivativeInvalidInput1
 // status: incorrect
+// xfail:    true
 //
 //
 

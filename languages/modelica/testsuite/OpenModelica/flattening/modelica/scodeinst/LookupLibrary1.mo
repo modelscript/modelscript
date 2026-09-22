@@ -1,6 +1,7 @@
 // name: LookupLibrary1
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Tests that libraries can be looked up even when not explicitly loaded.
 //

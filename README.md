@@ -47,7 +47,6 @@ This project is a monorepo managed with **Nx** and **npm workspaces**. The struc
 | Package                                          | Description                                                              |
 | ------------------------------------------------ | ------------------------------------------------------------------------ |
 | [`@modelscript/csv`](./languages/csv/)           | CSV tabular data parsing and validation                                  |
-| [`@modelscript/example`](./languages/example/)   | Example language configuration illustrating how to add new languages     |
 | [`@modelscript/modelica`](./languages/modelica/) | Native WebAssembly GLR parser and language configuration for Modelica    |
 | [`@modelscript/owl2`](./languages/owl2/)         | OWL2 Functional Syntax parsing and ontological knowledge extraction      |
 | [`@modelscript/scad`](./languages/scad/)         | OpenSCAD language support, CSG evaluator, and AST patcher                |

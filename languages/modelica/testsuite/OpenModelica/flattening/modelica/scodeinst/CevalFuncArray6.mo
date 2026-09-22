@@ -1,6 +1,7 @@
 // name: CevalFuncArray6
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

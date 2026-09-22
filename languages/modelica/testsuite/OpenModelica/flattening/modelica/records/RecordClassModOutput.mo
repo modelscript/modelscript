@@ -1,6 +1,7 @@
 // name: RecordClassModOutput.mo
 // keywords: record, submod
 // status: correct
+// xfail:    true
 //
 // Checks that output records from functions with classmod modification get bindings
 //

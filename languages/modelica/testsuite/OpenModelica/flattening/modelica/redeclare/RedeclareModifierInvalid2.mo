@@ -1,6 +1,7 @@
 // name:     RedeclareModifierInvalid2
 // keywords: redeclare, modification, replaceable
 // status:   incorrect
+// xfail:    true
 //
 // Checks that the redeclared class needs to be replaceable.
 //

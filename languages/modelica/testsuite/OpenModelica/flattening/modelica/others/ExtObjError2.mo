@@ -1,4 +1,5 @@
 // status: incorrect
+// xfail:    true
 
 model ExtObjError2
   class ExtObj

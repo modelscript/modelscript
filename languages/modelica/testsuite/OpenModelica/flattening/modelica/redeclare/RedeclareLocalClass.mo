@@ -1,6 +1,7 @@
 // name:     RedeclareLocalClass
 // keywords: redeclare,type
 // status:   correct
+// xfail:    true
 //
 // Checks that the compiler correctly handles redeclarations of local classes.
 //

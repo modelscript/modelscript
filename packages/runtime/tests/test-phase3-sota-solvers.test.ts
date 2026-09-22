@@ -23,7 +23,9 @@ describe("Phase 3: SOTA Symbolic DAE Reduction, Synchronous Clocks & Solvers", (
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const f of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, f.filename), f.content);
+      const destPath = path.join(tmpDir, f.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, f.content);
     }
     fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
 

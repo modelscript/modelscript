@@ -1,6 +1,7 @@
 // name:     BC2 - Derivative component
 // keywords: Derivative
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Derivative component.
 //

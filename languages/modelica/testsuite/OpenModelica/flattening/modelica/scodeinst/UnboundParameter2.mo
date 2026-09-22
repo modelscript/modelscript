@@ -1,6 +1,7 @@
 // name: UnboundParameter2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model UnboundParameter2

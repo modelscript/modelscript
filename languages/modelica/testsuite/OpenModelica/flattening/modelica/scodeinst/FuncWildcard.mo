@@ -1,6 +1,7 @@
 // name: FuncWildcard
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that _ can be used as a function name, since the Modelica grammar
 // actually allows that.

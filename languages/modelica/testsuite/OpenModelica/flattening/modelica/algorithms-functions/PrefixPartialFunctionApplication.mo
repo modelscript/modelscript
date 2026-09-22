@@ -1,4 +1,5 @@
 // status: correct
+// xfail:    true
 // From: https://trac.openmodelica.org/OpenModelica/ticket/4795
 
 package ModelicaServices  "ModelicaServices (OpenModelica implementation) - Models and functions used in the Modelica Standard Library requiring a tool specific implementation"

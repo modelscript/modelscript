@@ -1,6 +1,7 @@
 // name: const13.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model A

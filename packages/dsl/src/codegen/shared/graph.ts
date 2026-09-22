@@ -108,6 +108,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   // 2. Emit Top-Level Helper Functions (e.g. inferExprType, isTypeCompatible, etc.)
   if (ast && ast.functions) {
     for (const [fnName, fnDecl] of ast.functions.entries()) {
+      if (fnName === "language" || fnName === "grammar" || fnName === "buildParser") continue;
       const fnSf = getNodeSourceFile(fnDecl);
       const fnInfo = transpileQuery(fnDecl);
       let fnStr = fnInfo.body;

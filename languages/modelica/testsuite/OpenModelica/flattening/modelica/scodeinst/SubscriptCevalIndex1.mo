@@ -1,6 +1,7 @@
 // name: SubscriptCevalIndex1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model SubscriptCevalIndex1

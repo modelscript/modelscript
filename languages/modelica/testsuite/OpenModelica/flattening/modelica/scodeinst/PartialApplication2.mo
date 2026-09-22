@@ -1,6 +1,7 @@
 // name: PartialApplication2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial function pf

@@ -1,6 +1,7 @@
 // name: Assert4
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model Assert4

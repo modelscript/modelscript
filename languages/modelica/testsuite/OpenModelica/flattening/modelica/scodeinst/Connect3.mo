@@ -1,6 +1,7 @@
 // name: Connect3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector C

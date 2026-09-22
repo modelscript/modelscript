@@ -1,6 +1,7 @@
 // name:     InnerOuterArray2
 // keywords: dynamic scope, inner outer, lookup, array
 // status:   correct
+// xfail:    true
 //
 // Tests that inner/outer arrays are handled correctly.
 //

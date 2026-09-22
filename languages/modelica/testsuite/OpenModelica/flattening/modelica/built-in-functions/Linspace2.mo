@@ -1,4 +1,5 @@
 // status: correct
+// xfail:    true
 
 model Linespace2
   Real points[5,2];

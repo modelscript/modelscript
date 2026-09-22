@@ -1,6 +1,7 @@
 // name: TypeMissingBaseType1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 type T

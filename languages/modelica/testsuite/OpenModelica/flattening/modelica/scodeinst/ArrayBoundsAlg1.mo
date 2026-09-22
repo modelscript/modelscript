@@ -1,6 +1,7 @@
 // name: ArrayBoundsAlg1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model ArrayBoundsAlg1

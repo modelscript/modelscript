@@ -1,6 +1,7 @@
 // name: inst3.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

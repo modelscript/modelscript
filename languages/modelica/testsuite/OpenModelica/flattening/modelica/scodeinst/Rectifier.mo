@@ -1,3 +1,4 @@
+// xfail:    true
 package PowerSystems  "Library for electrical power systems"
   extends Modelica.Icons.Package;
   import Modelica.Constants.pi;

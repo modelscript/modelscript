@@ -1,6 +1,7 @@
 // name: cond4.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

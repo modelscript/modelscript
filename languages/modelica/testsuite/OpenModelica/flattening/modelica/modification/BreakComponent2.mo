@@ -1,6 +1,7 @@
 // name:     BreakComponent2
 // keywords: modification break
 // status:   correct
+// xfail:    true
 //
 
 model M

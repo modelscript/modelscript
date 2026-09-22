@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import { OslcGateway } from "../src/oslc_gateway.js";
-import { ReqIfParser } from "../src/reqif.js";
-import { DigitalThreadHypergraph, ThreadDomain } from "../src/thread_hypergraph.js";
+import { DigitalThreadHypergraph, OslcGateway, ReqIfParser, ThreadDomain } from "../src/index.js";
 
 describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
   let gateway: OslcGateway;

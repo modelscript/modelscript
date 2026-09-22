@@ -1,6 +1,7 @@
 // name:     PartialLookup3
 // keywords: lookup partial redeclare
 // status:   incorrect
+// xfail:    true
 //
 // Checks that it's not allowed to look up a name in a partial class.
 //

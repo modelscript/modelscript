@@ -164,3 +164,93 @@ export interface BVPProblem<P = Record<string, number> | number[]> {
   /** Optional parameter object or vector */
   p?: P;
 }
+
+// ── 6. Flowpipe Reachability Problem ──
+
+export interface FlowpipeRequirementSpec {
+  stateIndex: number;
+  stateName?: string;
+  operator: "<=" | ">=" | "<" | ">";
+  limitValue: number;
+}
+
+export interface FlowpipeIntervalEnclosure {
+  lo: number;
+  hi: number;
+}
+
+export interface FlowpipeReachabilityProblem<P = Record<string, number> | number[]> {
+  /**
+   * System dynamics vector field dy/dt = f(t, y, p)
+   */
+  f: (t: number, y: number[], p?: P) => number[];
+  /** Initial state interval enclosure [lo, hi] for each state variable */
+  initialEnclosure: FlowpipeIntervalEnclosure[];
+  /** Nominal initial state point */
+  nominalInitial: number[];
+  /** Time interval [t0, tEnd] */
+  tSpan: [number, number];
+  /** Step size for flowpipe segments */
+  dt: number;
+  /** Polynomial order for Taylor Models (default: 2) */
+  order?: number;
+  /** Safety requirements to formally verify against flowpipe */
+  requirements?: FlowpipeRequirementSpec[];
+  /** Optional parameter object or vector */
+  p?: P;
+}
+
+// ── 7. Hybrid Flowpipe Reachability Problem ──
+
+export interface HybridFlowpipeMode<P = Record<string, number> | number[]> {
+  id: string;
+  name?: string;
+  /** Continuous dynamics vector field dy/dt = f(t, y, p) */
+  f: (t: number, y: number[], p?: P) => number[];
+  /** Invariants: state bounds that must hold while active in this mode */
+  invariants?: { stateIndex: number; min?: number; max?: number }[];
+}
+
+export interface HybridTransitionSpec {
+  id: string;
+  sourceModeId: string;
+  targetModeId: string;
+  /** Guard condition scalar function g(y) <= 0 or zero crossing */
+  guard: (y: number[]) => number;
+  /** State reset map: y_post = reset(y_pre) */
+  reset?: (pre: number[]) => number[];
+  label?: string;
+}
+
+export interface HybridFlowpipeProblem<P = Record<string, number> | number[]> {
+  modes: HybridFlowpipeMode<P>[];
+  transitions: HybridTransitionSpec[];
+  initialModeId: string;
+  initialEnclosure: FlowpipeIntervalEnclosure[];
+  nominalInitial: number[];
+  tSpan: [number, number];
+  dt: number;
+  order?: number;
+  adaptive?: boolean;
+  tol?: number;
+  useQrPreconditioning?: boolean;
+  requirements?: FlowpipeRequirementSpec[];
+  maxJumps?: number;
+  p?: P;
+}
+
+export interface HybridFlowpipeResult {
+  isCertifiedSafe: boolean;
+  totalSteps: number;
+  jumpCount: number;
+  violations: {
+    stepIndex: number;
+    time: number;
+    stateIndex: number;
+    operator: string;
+    worstCaseValue: number;
+    limitValue: number;
+    reason: string;
+  }[];
+  summary: string;
+}

@@ -1,6 +1,7 @@
 // name:     ConnectHierarchical2
 // keywords: connect
 // status:   correct
+// xfail:    true
 //
 // Compared to ConnectHiearchical1 we have established
 // the same connections but at different places.

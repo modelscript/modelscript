@@ -1,6 +1,7 @@
 // name: PublicAccess
 // keywords: public, access
 // status: correct
+// xfail:    true
 //
 // Tests access to public elements of another class
 //

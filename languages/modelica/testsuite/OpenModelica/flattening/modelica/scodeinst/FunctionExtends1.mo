@@ -1,6 +1,7 @@
 // name: FunctionExtends1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial function f

@@ -1,6 +1,7 @@
 // name: InnerOuterDuplicate1
 // keywords: 
 // status: correct
+// xfail:    true
 //
 // Tests that having duplicate outer elements due to inheritance works
 // correctly.

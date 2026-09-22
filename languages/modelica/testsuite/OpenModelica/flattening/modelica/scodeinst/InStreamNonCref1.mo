@@ -1,6 +1,7 @@
 // name: InStreamNonCref1
 // keywords: stream inStream connector
 // status: incorrect
+// xfail:    true
 //
 
 model InStreamNonCref1

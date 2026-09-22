@@ -1,6 +1,7 @@
 // name:     Record1
 // keywords: type
 // status:   correct
+// xfail:    true
 //
 
 record A

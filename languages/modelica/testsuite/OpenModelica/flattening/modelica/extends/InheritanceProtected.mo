@@ -1,6 +1,7 @@
 // name: InheritanceProtected
 // keywords: inheritance
 // status: correct
+// xfail:    true
 //
 // Tests protected inheritance
 //

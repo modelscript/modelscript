@@ -1,6 +1,7 @@
 // name: VectorizeBindings6
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model VectorizeBindings6

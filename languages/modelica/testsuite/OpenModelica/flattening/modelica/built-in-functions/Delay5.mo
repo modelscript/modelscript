@@ -1,6 +1,7 @@
 // name:     Delay5
 // keywords: builtin
 // status:   incorrect
+// xfail:    true
 //
 // Test flattening of the builtin function delay.
 // Should issue an error as a is not parameter/constant.

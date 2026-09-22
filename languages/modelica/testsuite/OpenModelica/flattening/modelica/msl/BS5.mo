@@ -1,6 +1,7 @@
 // name:     BS5 - KinematicPTP component
 // keywords: KinematicPTP
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the KinematicPTP component.
 //

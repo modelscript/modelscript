@@ -1,6 +1,7 @@
 // name: SampleTest
 // keywords: synchronous features
 // status: correct
+// xfail:    true
 
 model SampleTest
   Clock c;

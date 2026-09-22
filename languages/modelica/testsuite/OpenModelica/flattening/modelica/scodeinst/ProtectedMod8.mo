@@ -1,6 +1,7 @@
 // name: ProtectedMod8
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

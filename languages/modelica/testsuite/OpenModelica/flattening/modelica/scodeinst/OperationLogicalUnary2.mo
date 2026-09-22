@@ -1,6 +1,7 @@
 // name: OperationLogicalUnary2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

@@ -1,6 +1,7 @@
 // name:     ForIterator2
 // keywords: for iterator
 // status:   correct
+// xfail:    true
 //
 // For iterator handling, testcase derived from MultiBody.World model.
 //

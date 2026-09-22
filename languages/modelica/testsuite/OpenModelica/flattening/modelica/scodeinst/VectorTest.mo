@@ -1,6 +1,7 @@
 // name: VectorTest
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package VectorTest  

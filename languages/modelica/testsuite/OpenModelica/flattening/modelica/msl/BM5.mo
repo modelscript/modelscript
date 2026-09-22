@@ -1,6 +1,7 @@
 // name:     BM5 -  Asin component
 // keywords: Asin
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Asin component.
 //

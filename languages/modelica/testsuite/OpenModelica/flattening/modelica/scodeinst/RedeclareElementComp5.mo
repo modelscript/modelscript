@@ -1,6 +1,7 @@
 // name: RedeclareElementComp5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

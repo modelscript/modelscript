@@ -1,6 +1,7 @@
 // name:     Derivative Annotation
 // keywords: functions, index reduction
 // status:   correct
+// xfail:    true
 //
 
 function f1

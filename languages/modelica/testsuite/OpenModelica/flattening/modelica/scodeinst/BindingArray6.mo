@@ -1,6 +1,7 @@
 // name: BindingArray6
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

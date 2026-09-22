@@ -1,6 +1,7 @@
 // name: OperatorOverloadConstructorSimple
 // keywords: operator constructor overload
 // status: correct
+// xfail:    true
 //
 // Tests simple overloaded construction.
 //

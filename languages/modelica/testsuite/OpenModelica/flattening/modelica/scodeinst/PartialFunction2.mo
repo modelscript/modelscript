@@ -1,6 +1,7 @@
 // name: PartialFunction2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial function f

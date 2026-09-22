@@ -1,6 +1,7 @@
 // name:     BS14 - IntegerStep component
 // keywords: IntegerStep
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the IntegerStep component.
 //

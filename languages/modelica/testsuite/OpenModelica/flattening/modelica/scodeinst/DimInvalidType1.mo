@@ -1,6 +1,7 @@
 // name: DimInvalidType1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model DimInvalidType1

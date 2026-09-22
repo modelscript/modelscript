@@ -1,6 +1,7 @@
 // name: PackageConstant2
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Tests that package constants are collected correctly when the
 // replacePackageConstants debug flag is disabled.

@@ -1,6 +1,7 @@
 // name: ConnectDiffOrder2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector C1

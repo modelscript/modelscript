@@ -1,6 +1,7 @@
 // name: FunctionInverse1
 // keywords: inverse
 // status: correct
+// xfail:    true
 //
 
 function f

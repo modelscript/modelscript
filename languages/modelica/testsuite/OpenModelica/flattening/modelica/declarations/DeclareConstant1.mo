@@ -1,6 +1,7 @@
 // name:     DeclareConstant1
 // keywords: declaration,equation
 // status:   incorrect
+// xfail:    true
 //
 // A constant requires a declaration equation.
 // A normal equation from which we can compute

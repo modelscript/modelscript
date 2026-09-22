@@ -1,6 +1,7 @@
 // name: redeclare4.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

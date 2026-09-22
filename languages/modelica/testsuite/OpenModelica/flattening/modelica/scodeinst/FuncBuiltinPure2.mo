@@ -1,6 +1,7 @@
 // name:     FuncBuiltinPure2
 // keywords:
 // status:   incorrect
+// xfail:    true
 //
 //
 

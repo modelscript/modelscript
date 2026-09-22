@@ -1294,6 +1294,10 @@ export function cloneNodeShallow(gc: u32): u32 {
   // Keep FLAG_EXTRACTED on the clone so its shared children are not mutated in-place
   setNodeFlags(clone, (getNodeFlags(gc) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED)); 
   setFirstChild(clone, getNodeFirstChild(gc)); // Keep original children
+  let srcNode = changetype<ASTNode>(gc);
+  let cloneNode = changetype<ASTNode>(clone);
+  cloneNode.merkleLow = srcNode.merkleLow;
+  cloneNode.merkleHigh = srcNode.merkleHigh;
   return clone;
 }
 /**
@@ -2682,8 +2686,8 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
 
     let actCount = action_data[actionOffset];
     let idx = actionOffset + 1;
-    let bestReduce = -1;
-    let bestLhs = -1;
+    let defaultReduce = -1;
+    let defaultLhs = -1;
     let shiftCandidateReduce = -1;
 
     for (let a = 0; a < actCount; a++) {
@@ -2695,9 +2699,11 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
         if (aType == ACTION_REDUCE) {
           if (aTarget >= 0 && aTarget < prod_lhs.length) {
             let lhs = prod_lhs[aTarget];
-            if (lhs > bestLhs || (lhs == bestLhs && aTarget > bestReduce)) {
-              bestLhs = lhs;
-              bestReduce = aTarget;
+            if (sym == 0) {
+              if (lhs > defaultLhs || (lhs == defaultLhs && aTarget > defaultReduce)) {
+                defaultLhs = lhs;
+                defaultReduce = aTarget;
+              }
             }
             // B7 fix: prioritize reduction that allows the lookahead token to be shifted
             if (shiftCandidateReduce == -1 && tok != TOKEN_EOF) {
@@ -2714,7 +2720,7 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
       }
     }
 
-    let chosenReduce = shiftCandidateReduce != -1 ? shiftCandidateReduce : bestReduce;
+    let chosenReduce = shiftCandidateReduce != -1 ? shiftCandidateReduce : defaultReduce;
     if (chosenReduce == -1) break;
 
     if (curr.state == 0 && prod_lengths[chosenReduce] == 0 && tok != TOKEN_EOF) {
@@ -4559,9 +4565,26 @@ export function findReusableNode(
     let canReuse = (!isError && !isMissing && nodeEnvHash == envHash);
 
     if (canReuse) {
-      if (!isOldRangeEdited(start, end)) {
+      let isTouchingEdit = false;
+      if (end >= g_editStart && (g_editOldEnd > 0 || g_editNewEnd > 0 || t_editRangesCount > 0)) {
+        if (end > g_editStart) {
+          isTouchingEdit = true;
+        } else if (end == g_editStart && g_editStart >= 2) {
+          let prevChar = peekChar(g_editStart - 2);
+          let isWordChar = (prevChar >= 48 && prevChar <= 57) || // 0-9
+                           (prevChar >= 65 && prevChar <= 90) || // A-Z
+                           (prevChar >= 97 && prevChar <= 122) || // a-z
+                           prevChar == 95 || // _
+                           prevChar == 46;   // .
+          if (isWordChar || nodeType <= (MAX_TERMINAL_ID as u16)) {
+            isTouchingEdit = true;
+          }
+        }
+      }
+      if (!isTouchingEdit && !isOldRangeEdited(start, end)) {
+        let isTerminalLeaf = nodeType <= (MAX_TERMINAL_ID as u16);
         let canTransition = false;
-        if (nodeType > (MAX_TERMINAL_ID as u16)) {
+        if (!isTerminalLeaf) {
           canTransition = (nodeStartState == (currentState as u32));
           if (!canTransition && (currentState as i32) >= 0 && (currentState as i32) < goto_offsets.length) {
             let gOffset = goto_offsets[currentState];
@@ -4585,8 +4608,7 @@ export function findReusableNode(
         if (canTransition) {
           let typeFlags = getNodeFlags(cPtr);
           let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
-          let isCleanGen1 = (g_oldTree != 0 && !isNodeGen2(cPtr));
-          if (!hasErrorFlags && (isCleanGen1 || !nodeHasAnyErrors(cPtr))) {
+          if (!hasErrorFlags && !nodeHasAnyErrors(cPtr)) {
             debugLog(9008, cPtr, start, end);
             return cPtr;
           }
@@ -4594,7 +4616,16 @@ export function findReusableNode(
       }
     }
 
-    // Node cannot be reused as a whole. Drill down into its children to find smaller reusable subtrees.
+    // Node cannot be reused as a whole.
+    // If this node contains errors and is a single non-list construct (e.g. broken statement),
+    // do not drill down into its broken pieces; reparse it cleanly.
+    let typeFlags = getNodeFlags(cPtr);
+    let hasErr = ((typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0) || nodeHasAnyErrors(cPtr);
+    if (hasErr && (typeFlags & FLAG_IS_LIST) == 0) {
+      return 0;
+    }
+
+    // Drill down into its children to find smaller reusable subtrees.
     if (globalCursorGotoFirstChild()) {
       continue;
     }

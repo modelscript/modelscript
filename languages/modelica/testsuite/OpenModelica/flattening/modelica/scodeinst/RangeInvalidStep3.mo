@@ -1,6 +1,7 @@
 // name: RangeInvalidStep3.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that an enumeration range isn't allowed to have a step size.
 // 

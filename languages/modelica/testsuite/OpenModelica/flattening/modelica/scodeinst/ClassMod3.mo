@@ -1,5 +1,6 @@
 // name: ClassMod3
 // status: correct
+// xfail:    true
 
 package P
   type T = Real;

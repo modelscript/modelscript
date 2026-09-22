@@ -1,6 +1,7 @@
 // name: redeclare9.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

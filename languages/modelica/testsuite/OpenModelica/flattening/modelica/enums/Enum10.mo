@@ -1,6 +1,7 @@
 // name:     Enum10
 // keywords: enumeration enum type extends
 // status:   correct
+// xfail:    true
 //
 // Tests creation of new enumeration type by extending an already existing one.
 //

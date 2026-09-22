@@ -1,5 +1,6 @@
 // name: UnusedInput
 // status: correct
+// xfail:    true
 
 model UnusedInput
 

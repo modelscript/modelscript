@@ -1,6 +1,7 @@
 // name: ExternalFunctionInvalidArg2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 //
 

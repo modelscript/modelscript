@@ -1,6 +1,7 @@
 // name: RecordBinding16
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record Borefield

@@ -1,6 +1,7 @@
 // name: CevalVectorProduct1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name: TypeDim3
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

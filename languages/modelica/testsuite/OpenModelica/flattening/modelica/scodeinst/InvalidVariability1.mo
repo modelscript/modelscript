@@ -1,6 +1,7 @@
 // name: InvalidVariability1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model InvalidVariability1

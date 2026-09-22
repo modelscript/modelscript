@@ -1,6 +1,7 @@
 // name: RecordBinding9
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record R_base

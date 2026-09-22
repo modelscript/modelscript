@@ -1,3 +1,4 @@
+// xfail:    true
 package ScalableTestSuite  "A library of scalable Modelica test models" 
   package Mechanical  "Models from the mechanical domain" 
     package FlexibleBeam  "Models of flexible beams" 

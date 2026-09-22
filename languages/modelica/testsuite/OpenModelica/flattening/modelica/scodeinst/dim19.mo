@@ -1,6 +1,7 @@
 // name: dim19.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

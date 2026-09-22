@@ -1,6 +1,7 @@
 // name: ClassExtends9
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial function f

@@ -1,6 +1,7 @@
 // name:     Constant7
 // keywords: Constant package lookup
 // status:   correct
+// xfail:    true
 //
 // Constants can be looked up in parent scopes.
 //

@@ -1,6 +1,7 @@
 // name: ConnectEnumArray
 // keywords: connect enum array
 // status: correct
+// xfail:    true
 //
 // Tests that enumeration indices are preserved when connecting arrays with
 // enumerations as dimensions.

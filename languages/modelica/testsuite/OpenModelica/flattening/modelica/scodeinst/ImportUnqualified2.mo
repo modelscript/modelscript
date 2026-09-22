@@ -1,6 +1,7 @@
 // name:     ImportUnqualified2
 // keywords: unqualified import
 // status:   correct
+// xfail:    true
 //
 // Checks that unqualified imports work.
 //

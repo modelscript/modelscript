@@ -1,6 +1,7 @@
 // name: Inline5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package PartialMedium

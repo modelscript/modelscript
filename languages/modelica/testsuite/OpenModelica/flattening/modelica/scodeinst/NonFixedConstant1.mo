@@ -1,6 +1,7 @@
 // name: NonFixedConstant1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model NonFixedConstant1

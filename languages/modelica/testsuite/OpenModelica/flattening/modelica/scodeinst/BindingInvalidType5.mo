@@ -1,6 +1,7 @@
 // name: BindingInvalidType5
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model BindingInvalidType5

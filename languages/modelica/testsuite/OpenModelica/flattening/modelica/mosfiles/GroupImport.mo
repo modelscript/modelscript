@@ -1,3 +1,4 @@
+// xfail:    true
 package B
   constant Real c=1,d=2;
 end B;

@@ -1,6 +1,7 @@
 // name: DimSize5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record A

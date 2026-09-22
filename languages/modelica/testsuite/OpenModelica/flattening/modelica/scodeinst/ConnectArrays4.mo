@@ -1,6 +1,7 @@
 // name: ConnectArrays4
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

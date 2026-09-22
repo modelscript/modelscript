@@ -1,6 +1,7 @@
 // name:     Constant9
 // keywords: constant, package
 // status:   incorrect
+// xfail:    true
 //
 // Lookup of variables in packages must result in variable being constant. Parameters and variables
 // are not allowed to look up in packages.

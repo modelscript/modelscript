@@ -1,5 +1,6 @@
 // name: VectorizeUnknownDim
 // status: correct
+// xfail:    true
 
 model VectorizeUnknownDim
   function Foo

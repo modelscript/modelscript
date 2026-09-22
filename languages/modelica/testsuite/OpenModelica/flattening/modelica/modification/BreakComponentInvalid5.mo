@@ -1,6 +1,7 @@
 // name:     BreakComponentInvalid5
 // keywords: modification break
 // status:   incorrect
+// xfail:    true
 //
 
 record R

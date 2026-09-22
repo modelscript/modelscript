@@ -292,10 +292,14 @@ export async function registerLanguageFromDirectory(dir: string): Promise<Langua
     extensions = [`.${langId}`];
   }
 
-  // Look for compiled WASM file
+  // Look for compiled GLR WASM file
   const distDir = path.join(absDir, "dist");
   let wasmPath = "";
-  if (fs.existsSync(distDir)) {
+  const wasmCandidates = [path.join(distDir, "parser.wasm"), path.join(absDir, "parser.wasm")];
+  const foundCandidate = wasmCandidates.find(fs.existsSync);
+  if (foundCandidate) {
+    wasmPath = foundCandidate;
+  } else if (fs.existsSync(distDir)) {
     const files = fs.readdirSync(distDir);
     const foundWasm = files.find((f) => f.endsWith(".wasm"));
     if (foundWasm) {
@@ -317,6 +321,16 @@ export async function registerLanguageFromDirectory(dir: string): Promise<Langua
     }
   }
 
+  // Ensure parser.wasm is copied into ~/.modelscript/languages/<langId>/
+  const userLangDir = path.join(getRegistryDir(), langId);
+  fs.mkdirSync(userLangDir, { recursive: true });
+  if (wasmPath && fs.existsSync(wasmPath)) {
+    const destWasm = path.join(userLangDir, "parser.wasm");
+    if (path.resolve(wasmPath) !== path.resolve(destWasm)) {
+      fs.copyFileSync(wasmPath, destWasm);
+    }
+  }
+
   const manifest: LanguageManifest = {
     id: langId,
     name: langName,
@@ -325,6 +339,8 @@ export async function registerLanguageFromDirectory(dir: string): Promise<Langua
     wrapperPath: wrapperPath || undefined,
     sourceDir: absDir,
   };
+
+  fs.writeFileSync(path.join(userLangDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf-8");
 
   registerLanguage(manifest);
   return manifest;

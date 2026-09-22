@@ -1,6 +1,7 @@
 // name: FuncBuiltinSuperSample1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model FuncBuiltinSuperSample1

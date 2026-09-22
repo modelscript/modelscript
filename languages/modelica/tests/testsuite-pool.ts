@@ -12,6 +12,7 @@ export interface TestCaseMetadata {
   arrayMode?: "scalarize" | "preserve";
   fmiVersion?: "2.0" | "3.0";
   simulate?: boolean;
+  xfail?: boolean | string;
 }
 
 export interface TestCase {
@@ -31,6 +32,7 @@ export interface TestResult {
   message?: string;
   keywords?: string;
   testStatus?: string;
+  xfail?: boolean | string;
 }
 
 export interface PoolOptions {
@@ -170,6 +172,7 @@ export class TestsuitePool {
             message: `Worker error: ${msg.error}\n${instance.stderr.slice(-2000)}`,
             keywords: task.testCase.metadata.keywords,
             testStatus: task.testCase.metadata.status,
+            xfail: task.testCase.metadata.xfail,
           });
 
           this.retireWorker(instance);
@@ -196,6 +199,7 @@ export class TestsuitePool {
           message: `Worker exited with code ${code}\n${instance.stderr.slice(-2000)}`,
           keywords: task.testCase.metadata.keywords,
           testStatus: task.testCase.metadata.status,
+          xfail: task.testCase.metadata.xfail,
         });
       }
 
@@ -237,6 +241,7 @@ export class TestsuitePool {
           message: `Worker timed out after ${this.options.timeoutMs / 1000}s`,
           keywords: active.testCase.metadata.keywords,
           testStatus: active.testCase.metadata.status,
+          xfail: active.testCase.metadata.xfail,
         });
       }
     }, this.options.timeoutMs);

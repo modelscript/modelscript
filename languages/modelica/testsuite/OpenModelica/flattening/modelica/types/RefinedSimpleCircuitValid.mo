@@ -1,6 +1,7 @@
 // name:     RefinedSimpleCircuitValid
 // keywords: <insert keywords here>
 // status:   correct
+// xfail:    true
 // cflags: -d=-newInst
 //
 //

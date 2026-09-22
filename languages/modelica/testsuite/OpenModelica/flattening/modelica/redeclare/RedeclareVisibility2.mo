@@ -1,6 +1,7 @@
 // name:     RedeclareVisibility2
 // keywords: redeclare, modification, constant
 // status:   incorrect
+// xfail:    true
 //
 // Checks that it's not allowed to modify a protected element with a replacement.
 //

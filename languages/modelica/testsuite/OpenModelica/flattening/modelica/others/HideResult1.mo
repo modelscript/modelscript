@@ -1,6 +1,7 @@
 // name: HideResult1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

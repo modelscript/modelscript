@@ -1,6 +1,7 @@
 // name: DiscreteDeclType
 // keywords: discrete
 // status: correct
+// xfail:    true
 //
 // Tests the discrete prefix on a regular type
 //

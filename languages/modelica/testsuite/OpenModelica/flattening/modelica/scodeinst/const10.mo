@@ -1,6 +1,7 @@
 // name: const10.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

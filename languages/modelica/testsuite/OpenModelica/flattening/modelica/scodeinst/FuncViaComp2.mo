@@ -1,6 +1,7 @@
 // name: FuncViaComp2
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

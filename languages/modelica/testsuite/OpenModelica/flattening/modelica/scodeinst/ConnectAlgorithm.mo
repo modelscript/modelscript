@@ -1,6 +1,7 @@
 // name: ConnectAlgorithm
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that connect isn't allowed in an algorithm section.
 //

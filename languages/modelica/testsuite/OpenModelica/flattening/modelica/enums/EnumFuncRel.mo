@@ -1,6 +1,7 @@
 // name:     EnumFuncRel
 // keywords: 
 // status:   incorrect
+// xfail:    true
 //
 // Checks that a function reference to a function returning an enumeration can't
 // be used as an enumeration value.

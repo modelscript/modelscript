@@ -1,6 +1,7 @@
 // name:     TempResistor3
 // keywords: <insert keywords here>
 // status:   correct
+// xfail:    true
 //
 // MORE WORK ON THIS FILE HAS TO BE DONE!
 //

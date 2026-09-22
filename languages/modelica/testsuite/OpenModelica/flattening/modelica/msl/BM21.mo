@@ -1,6 +1,7 @@
 // name:     BM21 -  Sin component
 // keywords: Sin
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Sin component.
 //

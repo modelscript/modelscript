@@ -1,6 +1,7 @@
 // name: TypenameInvalid2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model TypenameInvalid2

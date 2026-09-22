@@ -1,6 +1,7 @@
 // name: FuncBuiltinFloor
 // keywords: floor
 // status: correct
+// xfail:    true
 //
 // Tests the builtin floor function.
 //

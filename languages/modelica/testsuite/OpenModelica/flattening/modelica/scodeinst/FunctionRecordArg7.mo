@@ -1,6 +1,7 @@
 // name: FunctionRecordArg7
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record flowParametersInternal

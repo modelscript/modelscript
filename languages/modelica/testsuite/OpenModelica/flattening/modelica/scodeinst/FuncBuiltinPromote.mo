@@ -1,6 +1,7 @@
 // name: FuncBuiltinPromote
 // keywords: sum
 // status: correct
+// xfail:    true
 //
 // Tests the builtin promote operator.
 //

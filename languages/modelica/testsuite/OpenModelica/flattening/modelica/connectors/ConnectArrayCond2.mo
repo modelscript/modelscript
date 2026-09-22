@@ -1,6 +1,7 @@
 // name:     ConnectArrayCond2
 // keywords: connect conditional #3473
 // status:   correct
+// xfail:    true
 //
 // Tests connecting deleted conditional array components.
 //

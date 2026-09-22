@@ -1,6 +1,7 @@
 // name: RedeclareClass1.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

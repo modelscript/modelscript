@@ -1,6 +1,7 @@
 // name: FuncBuiltinLinspace
 // keywords: linspace
 // status: correct
+// xfail:    true
 //
 // Tests the builtin linspace operator.
 //

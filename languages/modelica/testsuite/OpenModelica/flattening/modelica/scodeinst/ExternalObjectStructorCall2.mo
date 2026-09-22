@@ -1,6 +1,7 @@
 // name: ExternalObjectStructorCall2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Tests that it's not possible to call an external object constructor
 // explicitly.

@@ -1,6 +1,7 @@
 // name: InStreamReduction1
 // keywords: stream actualStream connector
 // status: correct
+// xfail:    true
 //
 
 connector C

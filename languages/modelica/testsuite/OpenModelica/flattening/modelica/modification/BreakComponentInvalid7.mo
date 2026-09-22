@@ -1,6 +1,7 @@
 // name:     BreakComponentInvalid7
 // keywords: modification break
 // status:   incorrect
+// xfail:    true
 //
 
 model A

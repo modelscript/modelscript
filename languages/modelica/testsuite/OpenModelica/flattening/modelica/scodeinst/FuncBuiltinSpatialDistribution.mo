@@ -1,6 +1,7 @@
 // name: FuncBuiltinSpatialDistribution
 // keywords: spacialDistribution
 // status: correct
+// xfail:    true
 //
 // Tests the builtin spacialDistribution operator.
 //

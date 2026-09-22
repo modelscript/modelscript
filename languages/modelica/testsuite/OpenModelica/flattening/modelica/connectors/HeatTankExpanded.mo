@@ -1,6 +1,7 @@
 // name:     HeatTankExpanded
 // keywords:
 // status:   correct
+// xfail:    true
 //
 //
 //

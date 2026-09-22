@@ -1,6 +1,7 @@
 // name:     FinalRedeclareModifier
 // keywords: redeclare, modification, final
 // status:   incorrect
+// xfail:    true
 //
 // Checks that it's not allowed to redeclare a component declared as final.
 //

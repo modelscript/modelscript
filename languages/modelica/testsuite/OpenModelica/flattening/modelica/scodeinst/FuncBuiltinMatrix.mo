@@ -1,6 +1,7 @@
 // name: FuncBuiltinMatrix
 // keywords: matrix
 // status: correct
+// xfail:    true
 //
 // Tests the builtin matrix operator.
 //

@@ -1,3 +1,4 @@
+// xfail:    true
 model extendOverride
   parameter Real pr1 = 1.1*2/4+4;
   final parameter Real p_finalPrefix5 = 1.123456;

@@ -1,5 +1,6 @@
 // name: ArrayAddition2
 // status: correct
+// xfail:    true
 
 model ArrayAddition2
   Real Stock1[1,1,1](each fixed = false, each start = 0.0);

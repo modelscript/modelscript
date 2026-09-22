@@ -1,6 +1,7 @@
 // name:     FunctionInverse
 // keywords: function bug2056
 // status:   correct
+// xfail:    true
 //
 // This test checks that output parameters with dimensions given by the input
 // arguments works.

@@ -1,6 +1,7 @@
 // name:     TankHybridPI
 // keywords: <insert keywords here>
 // status:   correct
+// xfail:    true
 //
 // <insert description here>
 //

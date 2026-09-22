@@ -60,6 +60,7 @@ interface TestCaseMetadata {
   description: string;
   arrayMode?: "scalarize" | "preserve";
   fmiVersion?: "2.0" | "3.0";
+  xfail?: boolean | string;
 }
 
 interface TestCase {
@@ -78,6 +79,7 @@ interface TestResult {
   message?: string;
   keywords?: string;
   testStatus?: string;
+  xfail?: boolean | string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -320,6 +322,7 @@ export function runTestCase(
     name: path.basename(testCase.file),
     keywords: testCase.metadata.keywords,
     testStatus: testCase.metadata.status,
+    xfail: testCase.metadata.xfail,
     file: testCase.file,
     status,
     duration: performance.now() - start,

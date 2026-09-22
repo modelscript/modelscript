@@ -966,7 +966,22 @@ export function generateParserTables(
       "getInputBuffer",
       "ParseHead",
       "ErrorBranch",
+      "VarAccessor",
+      "ExprAccessor",
+      "EqAccessor",
+      "StmtAccessor",
     ]);
+
+    for (const t of runtimeTemplateFiles) {
+      const classMatches = t.content.matchAll(/\b(?:class|interface)\s+([a-zA-Z0-9_]+)/g);
+      for (const m of classMatches) {
+        ignoreList.add(m[1]);
+      }
+    }
+    const localClassMatches = codeStr.matchAll(/\b(?:class|interface)\s+([a-zA-Z0-9_]+)/g);
+    for (const m of localClassMatches) {
+      ignoreList.add(m[1]);
+    }
     while ((match = regex.exec(codeStr)) !== null) {
       if (!ignoreList.has(match[2])) {
         exports.push(match[2]);
@@ -1100,7 +1115,18 @@ export function generateParserTables(
 
   const loadRuntimeFile = (rf: any): { filename: string; content: string } | null => {
     if (typeof rf === "string") {
-      const resolvedPath = path.isAbsolute(rf) ? rf : path.resolve(sourceDir, rf);
+      let resolvedPath = path.isAbsolute(rf) ? rf : path.resolve(sourceDir, rf);
+      if (!fs.existsSync(resolvedPath)) {
+        const stripped = resolvedPath.replace(/[/\\]dist[/\\]assembly[/\\]/, "/assembly/");
+        if (fs.existsSync(stripped)) {
+          resolvedPath = stripped;
+        } else {
+          const relToSource = path.resolve(sourceDir, "..", "assembly", path.basename(rf));
+          if (fs.existsSync(relToSource)) {
+            resolvedPath = relToSource;
+          }
+        }
+      }
       if (fs.existsSync(resolvedPath)) {
         return {
           filename: path.basename(resolvedPath),
@@ -1112,7 +1138,18 @@ export function generateParserTables(
       let content = rf.content;
       let filename = rf.filename;
       if (!content && rf.path) {
-        const resolvedPath = path.isAbsolute(rf.path) ? rf.path : path.resolve(sourceDir, rf.path);
+        let resolvedPath = path.isAbsolute(rf.path) ? rf.path : path.resolve(sourceDir, rf.path);
+        if (!fs.existsSync(resolvedPath)) {
+          const stripped = resolvedPath.replace(/[/\\]dist[/\\]assembly[/\\]/, "/assembly/");
+          if (fs.existsSync(stripped)) {
+            resolvedPath = stripped;
+          } else {
+            const relToSource = path.resolve(sourceDir, "..", "assembly", path.basename(rf.path));
+            if (fs.existsSync(relToSource)) {
+              resolvedPath = relToSource;
+            }
+          }
+        }
         if (fs.existsSync(resolvedPath)) {
           content = fs.readFileSync(resolvedPath, "utf-8");
           if (!filename) filename = path.basename(resolvedPath);

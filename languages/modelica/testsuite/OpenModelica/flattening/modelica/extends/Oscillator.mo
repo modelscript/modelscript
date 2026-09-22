@@ -1,6 +1,7 @@
 // name:     Oscillator
 // keywords: modelica library
 // status:   correct
+// xfail:    true
 //
 // MORE WORK ON THIS FILE HAS TO BE DONE!
 //

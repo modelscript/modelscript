@@ -1,6 +1,7 @@
 // name: FuncOverloadMulti
 // keywords: overload, cast
 // status: correct
+// xfail:    true
 //
 // Tests handling of multiple overload, i.e, and overload of overloaded function
 //

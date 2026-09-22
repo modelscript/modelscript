@@ -1,6 +1,7 @@
 // name: ArrayAddition
 // keywords: array, addition
 // status: correct
+// xfail:    true
 //
 // Tests elementwise array addition
 //

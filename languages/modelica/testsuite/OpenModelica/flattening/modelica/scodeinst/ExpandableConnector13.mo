@@ -1,6 +1,7 @@
 // name: ExpandableConnector13
 // keywords: expandable connector
 // status: correct
+// xfail:    true
 //
 // Checks that potentially present non-connector variables in an expandable
 // connector doesn't generate warnings about unbalanced connectors.

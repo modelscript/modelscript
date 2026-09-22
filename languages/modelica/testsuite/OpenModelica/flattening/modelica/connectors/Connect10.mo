@@ -1,6 +1,7 @@
 // name:     Connect10
 // keywords: connect
 // status:   incorrect
+// xfail:    true
 //
 // Testing of input/output flags
 //

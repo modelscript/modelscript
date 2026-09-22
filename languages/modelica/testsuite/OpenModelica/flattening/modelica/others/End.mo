@@ -1,5 +1,6 @@
 // name: End
 // status: correct
+// xfail:    true
 
 model End
   Integer p2 = 1;

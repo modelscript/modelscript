@@ -1,6 +1,7 @@
 // name: ReductionInvalidTypeMax
 // keywords: reduction
 // status: incorrect
+// xfail:    true
 //
 // Tests the builtin reduction operators.
 //

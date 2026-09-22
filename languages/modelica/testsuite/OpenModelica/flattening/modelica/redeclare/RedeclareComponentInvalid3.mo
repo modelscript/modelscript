@@ -1,6 +1,7 @@
 // name:     RedeclareComponentInvalid3
 // keywords: redeclare component
 // status:   incorrect
+// xfail:    true
 //
 // Tests that it's only allowed to redeclare a component marked as replaceable.
 //

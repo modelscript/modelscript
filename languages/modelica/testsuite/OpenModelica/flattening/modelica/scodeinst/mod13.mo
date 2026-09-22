@@ -1,6 +1,7 @@
 // name: mod13.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model D

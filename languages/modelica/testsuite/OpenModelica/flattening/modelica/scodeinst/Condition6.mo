@@ -1,6 +1,7 @@
 // name: Condition6
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

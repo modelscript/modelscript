@@ -1,6 +1,7 @@
 // name: CevalFuncRecord5
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

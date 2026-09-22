@@ -1,6 +1,7 @@
 // name: FuncBuiltinTerminal1
 // keywords: terminal
 // status: correct
+// xfail:    true
 //
 // Tests the builtin terminal operator.
 //

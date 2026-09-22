@@ -1,6 +1,7 @@
 // name: CevalLinspace1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

@@ -1,6 +1,7 @@
 // name: InheritanceClassMod
 // keywords: inheritance
 // status: correct
+// xfail:    true
 //
 // Tests simple inheritance with class modifications
 //

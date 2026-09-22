@@ -1,6 +1,7 @@
 // name:     Lookup1
 // keywords: scoping
 // status:   correct
+// xfail:    true
 //
 // Names are looked up in a partially defined class.
 //

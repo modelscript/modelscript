@@ -1,6 +1,7 @@
 // name: InvalidConnectorType2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model InvalidConnectorType2

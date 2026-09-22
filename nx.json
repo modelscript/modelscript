@@ -30,7 +30,8 @@
     "test": {
       "cache": true,
       "dependsOn": ["^build", "build"],
-      "outputs": ["{projectRoot}/coverage"]
+      "outputs": ["{projectRoot}/coverage", "{projectRoot}/ctrf"],
+      "maxParallel": 1
     },
     "lint": {
       "cache": true,

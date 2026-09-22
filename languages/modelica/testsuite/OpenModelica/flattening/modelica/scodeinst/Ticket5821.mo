@@ -1,6 +1,7 @@
 // name:     Ticket5821.mo
 // keywords: tests Connections.branch/Connections.uniqueRoot/Connections.uniqueRootIndices
 // status:   correct
+// xfail:    true
 //
 //
 

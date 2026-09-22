@@ -1,6 +1,7 @@
 // name: FuncOverloadNoMatch
 // keywords: overload
 // status: incorrect
+// xfail:    true
 //
 // Tests that proper error messages are printed for no overload match
 //

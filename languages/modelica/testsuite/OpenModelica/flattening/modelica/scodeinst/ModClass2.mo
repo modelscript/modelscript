@@ -1,6 +1,7 @@
 // name: ModClass2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package A

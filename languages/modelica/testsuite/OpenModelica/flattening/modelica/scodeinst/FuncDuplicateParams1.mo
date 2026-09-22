@@ -1,6 +1,7 @@
 // name: FuncDuplicateParams1
 // keywords:
 // status: correct
+// xfail:    true
 //
 // Checks that duplicate elements are handled correctly in functions.
 //

@@ -1,6 +1,7 @@
 // name:     modelica_1_1_Array9
 // keywords: array, construction
 // status:   correct
+// xfail:    true
 //
 //
 

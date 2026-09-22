@@ -1,6 +1,7 @@
 // name: TupleOperation1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

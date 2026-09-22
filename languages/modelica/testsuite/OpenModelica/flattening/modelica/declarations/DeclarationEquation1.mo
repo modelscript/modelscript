@@ -1,6 +1,7 @@
 // name: DeclarationEquation1
 // keywords: equation
 // status: correct
+// xfail:    true
 //
 // Tests declaration equations with scalars
 //

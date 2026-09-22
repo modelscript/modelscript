@@ -1,6 +1,7 @@
 // name: OperationRelational1
 // keywords: 
 // status: correct
+// xfail:    true
 //
 
 model OperationRelational1

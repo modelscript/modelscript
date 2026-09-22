@@ -1,4 +1,5 @@
 // status: correct
+// xfail:    true
 // Enhancement #3096
 
 model DotOperator

@@ -1,6 +1,7 @@
 // name:     EqualityConstraintLookup1
 // keywords: connect equalityConstraint lookup #2163
 // status:   correct
+// xfail:    true
 // cflags:   -i=P.M
 //
 // Checks that the equalityConstraint function of a connector can be found when

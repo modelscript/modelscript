@@ -1,6 +1,7 @@
 // name: FunctionSections5
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

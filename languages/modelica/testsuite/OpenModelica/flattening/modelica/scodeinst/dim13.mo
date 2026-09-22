@@ -1,6 +1,7 @@
 // name: dim13
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 

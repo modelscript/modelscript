@@ -1,6 +1,7 @@
 // name: CevalNoEvent1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

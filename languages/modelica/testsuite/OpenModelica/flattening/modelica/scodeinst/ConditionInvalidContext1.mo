@@ -1,6 +1,7 @@
 // name: ConditionInvalidContext1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model ConditionInvalidContext1

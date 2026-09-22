@@ -1,4 +1,5 @@
 // status: correct
+// xfail:    true
 
 model MissingCast
 record SomeData

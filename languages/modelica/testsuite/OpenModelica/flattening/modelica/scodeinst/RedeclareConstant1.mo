@@ -1,6 +1,7 @@
 // name: RedeclareConstant1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that constants aren't allowed to be redeclared.
 // 

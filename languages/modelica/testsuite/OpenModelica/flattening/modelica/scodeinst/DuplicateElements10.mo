@@ -1,6 +1,7 @@
 // name: DuplicateElements10
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

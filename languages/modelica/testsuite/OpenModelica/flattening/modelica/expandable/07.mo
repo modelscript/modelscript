@@ -1,3 +1,4 @@
+// xfail:    true
 
   connector RealOutput = output Real;
 

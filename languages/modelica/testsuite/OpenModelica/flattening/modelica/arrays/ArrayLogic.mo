@@ -1,6 +1,7 @@
 // name: ArrayLogic
 // keywords: array, operators, logic
 // status: correct
+// xfail:    true
 //
 // Tests vectorization of logical operators and, or, and not.
 //

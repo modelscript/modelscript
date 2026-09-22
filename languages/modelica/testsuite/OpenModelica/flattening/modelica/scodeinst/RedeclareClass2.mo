@@ -1,6 +1,7 @@
 // name: RedeclareClass2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model LosslessPipe

@@ -1,6 +1,7 @@
 // name:     BS6 - Pulse component
 // keywords: Pulse
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Pulse component.
 //

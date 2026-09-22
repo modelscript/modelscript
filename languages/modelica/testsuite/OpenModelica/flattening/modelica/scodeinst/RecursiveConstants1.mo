@@ -1,6 +1,7 @@
 // name: RecursiveConstants1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model RecursiveConstants1

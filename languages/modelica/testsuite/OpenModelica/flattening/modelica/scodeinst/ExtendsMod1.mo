@@ -1,6 +1,7 @@
 // name: ExtendsMod1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

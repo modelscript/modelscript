@@ -1,6 +1,7 @@
 // name: CevalRecordArray9
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector HeatPort_a

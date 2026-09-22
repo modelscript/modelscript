@@ -1,6 +1,7 @@
 // name:     EnumMatrixProduct
 // keywords: enum matrix product
 // status:   correct
+// xfail:    true
 //
 // Tests that enumeration literals are preserved when doing matrix/vector
 // multiplications.

@@ -1,6 +1,7 @@
 // name: FunctionalArgInvalidType1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 partial function F

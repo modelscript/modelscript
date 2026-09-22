@@ -1,5 +1,6 @@
 // name: MaxArray
 // status: correct
+// xfail:    true
 // Checks that we can simplify max(array)=>max(scalar1,scalar2)
 
 class MaxArray

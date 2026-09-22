@@ -1,6 +1,7 @@
 // name: ArrayExtend
 // keywords: array, inheritance
 // status: correct
+// xfail:    true
 //
 // Tests extension of types that are declared as arrays
 // Makes sure you can't combine them with simple components

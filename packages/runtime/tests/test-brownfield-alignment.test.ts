@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { BrownfieldAlignmentEngine, type AlignmentElement } from "../src/brownfield_alignment.js";
-import { DigitalThreadHypergraph, ThreadDomain } from "../src/thread_hypergraph.js";
+import {
+  BrownfieldAlignmentEngine,
+  DigitalThreadHypergraph,
+  ThreadDomain,
+  type AlignmentElement,
+} from "../src/index.js";
 
 describe("Brownfield Seed Alignment & Trigram Matching Engine", () => {
   const engine = new BrownfieldAlignmentEngine();

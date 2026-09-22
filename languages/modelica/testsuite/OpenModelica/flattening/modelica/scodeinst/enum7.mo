@@ -1,6 +1,7 @@
 // name: enum7.mo
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model M

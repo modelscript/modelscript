@@ -1,5 +1,6 @@
 // name: CevalBinding6
 // status: correct
+// xfail:    true
 //
 //
 

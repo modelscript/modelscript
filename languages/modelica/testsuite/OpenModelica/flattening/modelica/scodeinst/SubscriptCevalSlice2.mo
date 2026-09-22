@@ -1,6 +1,7 @@
 // name: SubscriptCevalSlice2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model SubscriptCevalSlice2

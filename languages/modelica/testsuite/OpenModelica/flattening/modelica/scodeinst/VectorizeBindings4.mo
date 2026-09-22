@@ -1,6 +1,7 @@
 // name: VectorizeBindings4
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

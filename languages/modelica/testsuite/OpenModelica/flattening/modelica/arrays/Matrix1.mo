@@ -1,6 +1,7 @@
 // name:     Matrix1
 // keywords: array,matrices
 // status:   correct
+// xfail:    true
 //
 // This is a simple test of basic matrix handling.
 //

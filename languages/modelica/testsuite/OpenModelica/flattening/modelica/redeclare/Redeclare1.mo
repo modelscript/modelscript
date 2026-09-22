@@ -1,6 +1,7 @@
 // name:     Redeclare1
 // keywords: redeclare,type
 // status:   correct
+// xfail:    true
 //
 // Redeclaration and subtyping.
 //

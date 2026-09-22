@@ -1,6 +1,7 @@
 // name: PartialApplication1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f1

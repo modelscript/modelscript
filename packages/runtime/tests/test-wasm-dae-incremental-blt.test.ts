@@ -28,7 +28,9 @@ describe("WASM Incremental BLT & Tearing Cache", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const f of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, f.filename), f.content);
+      const destPath = path.join(tmpDir, f.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, f.content);
     }
 
     const ascPath =
@@ -52,7 +54,7 @@ describe("WASM Incremental BLT & Tearing Cache", () => {
 
     const wasmBytes = fs.readFileSync(wasmOut);
     const mod = await WebAssembly.compile(wasmBytes);
-    memory = new WebAssembly.Memory({ initial: 64, maximum: 512, shared: true });
+    memory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
     const imports = {
       env: {
         memory: memory,

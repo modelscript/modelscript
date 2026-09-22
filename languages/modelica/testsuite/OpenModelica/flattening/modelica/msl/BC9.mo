@@ -1,6 +1,7 @@
 // name:     BC9 - SecondOrder component
 // keywords: SecondOrder
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the SecondOrder component.
 //

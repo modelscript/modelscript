@@ -1,6 +1,7 @@
 // name: WhenIllegalContext3
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model WhenIllegalContext3

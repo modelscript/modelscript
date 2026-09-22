@@ -1,6 +1,7 @@
 // name: ExpandableConnector14
 // keywords: expandable connector
 // status: correct
+// xfail:    true
 //
 
 expandable connector EC

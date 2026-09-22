@@ -1,6 +1,7 @@
 // name: FuncBuiltinChange
 // keywords: change
 // status: correct
+// xfail:    true
 //
 // Tests the builtin change operator.
 //

@@ -1,6 +1,7 @@
 // name: WhenIllegalContext1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 function f

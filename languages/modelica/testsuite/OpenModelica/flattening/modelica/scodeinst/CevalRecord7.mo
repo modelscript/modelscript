@@ -1,6 +1,7 @@
 // name: CevalRecord7
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package PB

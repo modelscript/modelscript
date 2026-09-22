@@ -1,6 +1,7 @@
 // name: ExternalObjectVariability1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

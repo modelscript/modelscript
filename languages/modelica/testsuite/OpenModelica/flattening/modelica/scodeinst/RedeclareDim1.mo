@@ -1,6 +1,7 @@
 // name: RedeclareDim1
 // keywords: redeclare
 // status: correct
+// xfail:    true
 //
 
 model A

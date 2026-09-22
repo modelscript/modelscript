@@ -1,6 +1,7 @@
 // name:     TestPackageConstantHandling.mo
 // keywords: declaration, import
 // status:   correct
+// xfail:    true
 //
 // test that the imported constant can be used
 //

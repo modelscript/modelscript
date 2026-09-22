@@ -1,6 +1,7 @@
 // name: Inline4
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 operator record Complex

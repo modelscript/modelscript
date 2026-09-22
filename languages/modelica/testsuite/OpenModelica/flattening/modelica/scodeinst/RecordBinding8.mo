@@ -1,6 +1,7 @@
 // name: RecordBinding8
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record R1

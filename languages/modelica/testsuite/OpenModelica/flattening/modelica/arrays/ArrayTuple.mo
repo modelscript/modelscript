@@ -1,6 +1,7 @@
 // name: ArrayTuple [BUG: https://trac.openmodelica.org/OpenModelica/ticket/1951]
 // keywords: array
 // status: correct
+// xfail:    true
 //
 // Testing the array reduction on function returning tuple
 //

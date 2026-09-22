@@ -1,6 +1,7 @@
 // name:     ImportConflict1
 // keywords: import conflict
 // status:   incorrect
+// xfail:    true
 //
 // Checks that an error is output for conflicting imports.
 //

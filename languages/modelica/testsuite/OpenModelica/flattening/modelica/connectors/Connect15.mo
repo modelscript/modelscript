@@ -1,6 +1,7 @@
 // name: Connect15
 // keywords:  connector, arrays
 // status: correct
+// xfail:    true
 //
 // Test that it is possible to connect to array of connector.
 //

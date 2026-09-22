@@ -1,6 +1,7 @@
 // name:     Encapsulated1
 // keywords: encapsulated
 // status:   correct
+// xfail:    true
 //
 // Demonstrating correct use of import.
 

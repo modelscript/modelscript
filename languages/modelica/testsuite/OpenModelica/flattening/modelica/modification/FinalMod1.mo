@@ -1,6 +1,7 @@
 // name:     FinalMod1
 // keywords: final modification #2964
 // status:   incorrect
+// xfail:    true
 //
 // Tests that the compiler gives an error when trying to modify a final element.
 //

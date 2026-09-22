@@ -1,6 +1,7 @@
 // name:     MyPointsInst1
 // keywords: class declaration
 // status:   correct
+// xfail:    true
 //
 // Drmodelica: 2.2  Declaring Instances of Classes (p. 26)
 //

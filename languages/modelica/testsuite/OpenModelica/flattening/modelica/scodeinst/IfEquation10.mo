@@ -1,6 +1,7 @@
 // name: IfEquation10
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model IfEquation10

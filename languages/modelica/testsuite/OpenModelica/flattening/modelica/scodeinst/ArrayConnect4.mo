@@ -1,6 +1,7 @@
 // name: ArrayConnect4
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 connector Port

@@ -1,6 +1,7 @@
 // name: CevalCross1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

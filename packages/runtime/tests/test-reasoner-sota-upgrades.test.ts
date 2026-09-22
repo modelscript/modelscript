@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert";
-import { ParallelOntologyReasoner } from "../src/parallel_reasoner.js";
 import {
+  ParallelOntologyReasoner,
   WasmOntologyReasoner,
   WasmOntologyStore,
   absorbGCIs,
@@ -10,7 +10,7 @@ import {
   type CadBoundingBox,
   type OWL2Axiom,
   type SHACLNodeShape,
-} from "../src/wasm_ontology.js";
+} from "../src/index.js";
 
 async function runTests() {
   console.log("=================================================");

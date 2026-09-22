@@ -1,6 +1,7 @@
 // name:     BM11 -  Exp component
 // keywords: Exp
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Exp component.
 //

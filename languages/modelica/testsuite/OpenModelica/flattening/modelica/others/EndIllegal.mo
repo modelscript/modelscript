@@ -1,5 +1,6 @@
 // name: EndIllegal
 // status: incorrect
+// xfail:    true
 
 model M
   Real r = end;

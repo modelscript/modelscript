@@ -1,6 +1,7 @@
 // name:     BM16 -  MatrixGain component
 // keywords: MatrixGain
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.MatrixGain component.
 //

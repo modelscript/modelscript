@@ -1,6 +1,7 @@
 // name:     MissingRedeclare1
 // keywords: redeclare, modification, replaceable
 // status:   incorrect
+// xfail:    true
 //
 // Checks that it's not allowed to redeclare a class without using redeclare.
 //

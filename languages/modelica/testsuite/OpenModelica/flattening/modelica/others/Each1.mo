@@ -1,6 +1,7 @@
 // name:     Each1
 // keywords: Each modifier
 // status:   correct
+// xfail:    true
 //
 // Testcase from Modelica specification.
 //

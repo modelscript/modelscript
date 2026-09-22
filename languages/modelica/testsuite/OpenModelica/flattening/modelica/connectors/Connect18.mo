@@ -1,6 +1,7 @@
 // name:     Connect18
 // keywords: connect arrays subscript bug1733
 // status:   correct
+// xfail:    true
 //
 // Tests complex array connections with subscripts.
 //

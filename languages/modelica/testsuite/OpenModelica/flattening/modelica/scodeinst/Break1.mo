@@ -1,6 +1,7 @@
 // name: Break1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

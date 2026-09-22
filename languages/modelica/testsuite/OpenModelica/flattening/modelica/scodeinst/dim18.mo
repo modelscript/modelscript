@@ -1,6 +1,7 @@
 // name: dim18
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model A

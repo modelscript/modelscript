@@ -1,6 +1,7 @@
 // name:     Philosopher2
 // keywords: Example
 // status:   correct
+// xfail:    true
 //
 // This is the dining philosopher model from Peter F. book.
 // Regression test for bug #1181

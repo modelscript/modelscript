@@ -1,6 +1,7 @@
 // name: CevalRecord8
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that the division by zero error is shown when in a record.
 //

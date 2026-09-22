@@ -1,5 +1,6 @@
 // name: SampleError
 // status: incorrect
+// xfail:    true
 
 model SampleError
   Real r = 1.5;

@@ -419,6 +419,12 @@ export function language<
           if (
             line.includes("/dsl.") ||
             line.includes("\\dsl.") ||
+            line.includes("/dsl/") ||
+            line.includes("\\dsl\\") ||
+            line.includes("/packages/dsl/") ||
+            line.includes("\\packages\\dsl\\") ||
+            line.includes("/packages/language/") ||
+            line.includes("\\packages\\language\\") ||
             line.includes("node_modules") ||
             line.includes("internal/")
           ) {

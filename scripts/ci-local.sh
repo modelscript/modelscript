@@ -136,6 +136,10 @@ if [ "$MODE_TEST" = true ]; then
 
   run_task "test" "Unit and integration tests"
 
+  if [ -f "scripts/summarize-ctrf.cjs" ]; then
+    node scripts/summarize-ctrf.cjs || true
+  fi
+
   # If full mode is active, run FMI validation
   if [ "$MODE_FULL" = true ]; then
     echo ""

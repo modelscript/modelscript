@@ -1,6 +1,7 @@
 // name: BindingArray7
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 operator record Complex

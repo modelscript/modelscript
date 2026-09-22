@@ -27,7 +27,9 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
 
     const result = buildParser(dsl as any);
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const destPath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, file.content);
     }
 
     // Create entrypoint file that exports all wrapper functions for WebAssembly
@@ -45,7 +47,7 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
       releaseMap64,
       createMap64To64,
       releaseMap64To64
-    } from "./parser";
+    } from "./hashmap";
 
     export function testSetOps(key: u64): boolean {
       let ptr = createSet64();

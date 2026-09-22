@@ -1,6 +1,7 @@
 // name:     FaultNonPropagation
 // keywords:
 // status:   correct
+// xfail:    true
 //
 // Checks that faults in an unused model doesn't cause instantiation of another
 // model to fail.

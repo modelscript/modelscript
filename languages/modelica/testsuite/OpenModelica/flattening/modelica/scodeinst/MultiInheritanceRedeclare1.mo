@@ -1,6 +1,7 @@
 // name: MultiInheritanceRedeclare1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 package P

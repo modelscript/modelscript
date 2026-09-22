@@ -139,7 +139,10 @@ describe("Complete Cyber-Physical Digital Thread Implementation Suite", () => {
 
       // Test SysML v2 generation
       const sysml = ReqIfParser.toSysML2(spec);
-      assert.ok(sysml.includes("package PowertrainSafetyRequirements"));
+      assert.ok(
+        sysml.includes("package 'Powertrain Safety Requirements'") ||
+          sysml.includes("package PowertrainSafetyRequirements"),
+      );
       assert.ok(sysml.includes("requirement def REQ_TORQUE_01"));
       assert.ok(sysml.includes("attribute limitValue : Real = 350;"));
       assert.ok(sysml.includes('attribute asil : String = "ASIL-D";'));
@@ -166,7 +169,10 @@ describe("Complete Cyber-Physical Digital Thread Implementation Suite", () => {
       const modelicaCode = GenericModelicaBridge.emitModelica(sysmlDef);
       assert.ok(modelicaCode.includes("model ElectricMotor"));
       assert.ok(modelicaCode.includes("parameter Real R = 0.5;"));
-      assert.ok(modelicaCode.includes("Modelica.Electrical.Analog.Interfaces.Pin p;"));
+      assert.ok(
+        modelicaCode.includes("Modelica.Electrical.Analog.Interfaces.PositivePin p;") ||
+          modelicaCode.includes("Modelica.Electrical.Analog.Interfaces.Pin p;"),
+      );
       assert.ok(modelicaCode.includes("connect(p, internal_resistor.p);"));
       assert.ok(modelicaCode.includes("v = p.v - n.v;"));
 

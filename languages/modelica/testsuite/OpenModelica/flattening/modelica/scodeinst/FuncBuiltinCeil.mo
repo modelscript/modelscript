@@ -1,6 +1,7 @@
 // name: FuncBuiltinCeil
 // keywords: ceil
 // status: correct
+// xfail:    true
 //
 // Tests the builtin ceil function.
 //

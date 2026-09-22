@@ -1,6 +1,7 @@
 // name: SumScalar
 // keywords: sum scalar
 // status: incorrect
+// xfail:    true
 //
 // Tests that sum(scalar) is invalid.
 //

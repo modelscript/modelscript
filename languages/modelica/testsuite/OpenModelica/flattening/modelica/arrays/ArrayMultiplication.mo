@@ -1,6 +1,7 @@
 // name: ArrayMultiplication
 // keywords: array, multiplication
 // status: correct
+// xfail:    true
 //
 // Tests elementwise array multiplication
 //

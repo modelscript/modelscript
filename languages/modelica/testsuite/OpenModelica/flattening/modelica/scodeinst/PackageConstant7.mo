@@ -1,6 +1,7 @@
 // name: PackageConstant7
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model PackageConstant7

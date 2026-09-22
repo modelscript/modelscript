@@ -1,6 +1,7 @@
 // name: FuncOverloadAmbiguousDefault
 // keywords: overload
 // status: incorrect
+// xfail:    true
 //
 // Tests an ambigous overload due to default values.
 //

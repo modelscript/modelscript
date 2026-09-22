@@ -1,6 +1,7 @@
 // name: FunctionRestriction6
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 function f

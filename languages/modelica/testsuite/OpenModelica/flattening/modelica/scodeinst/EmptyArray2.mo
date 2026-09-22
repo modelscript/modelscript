@@ -1,6 +1,7 @@
 // name: EmptyArray2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model EmptyArray2

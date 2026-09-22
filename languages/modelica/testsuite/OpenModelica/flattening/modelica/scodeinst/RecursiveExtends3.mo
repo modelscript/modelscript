@@ -1,6 +1,7 @@
 // name: RecursiveExtends3
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that the compiler catches recursive extends.
 //

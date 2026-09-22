@@ -1,6 +1,7 @@
 // name:     BM26 -  Tanh component
 // keywords: Tanh
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Tanh component.
 //

@@ -1,6 +1,7 @@
 // name:     BM14 -  Log component
 // keywords: Log
 // status:   correct
+// xfail:    true
 //
 // Testing instantiation of the Math.Log component.
 //

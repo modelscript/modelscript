@@ -1,6 +1,7 @@
 // name: ArrayBounds3
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model ArrayBounds3

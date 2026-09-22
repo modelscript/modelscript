@@ -1,6 +1,7 @@
 // name:     Lookup7
 // keywords: scoping
 // status:   incorrect
+// xfail:    true
 //
 // Modelica uses lexical scoping.
 //

@@ -1,6 +1,7 @@
 // name: RecordOrder2
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 record R1

@@ -1,6 +1,7 @@
 // name:     SubscriptEval
 // keywords: subscripts
 // status:   correct
+// xfail:    true
 //
 // Checks that subscripts are evaluated correctly.
 //

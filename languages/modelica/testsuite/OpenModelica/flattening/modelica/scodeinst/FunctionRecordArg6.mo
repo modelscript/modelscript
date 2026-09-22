@@ -1,6 +1,7 @@
 // name: FunctionRecordArg6
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 function f

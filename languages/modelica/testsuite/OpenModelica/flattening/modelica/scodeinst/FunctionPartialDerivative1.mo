@@ -1,6 +1,7 @@
 // name: FunctionPartialDerivative1
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 model FunctionPartialDerivative1

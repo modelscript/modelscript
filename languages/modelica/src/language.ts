@@ -255,7 +255,10 @@ export const modelicaLanguage = language({
       ? [
           {
             filename: "flattener.ts",
-            path: new URL("../assembly/flattener.ts", import.meta.url).pathname,
+            path: new URL(
+              import.meta.url.includes("/dist/") ? "../../assembly/flattener.ts" : "../assembly/flattener.ts",
+              import.meta.url,
+            ).pathname,
           },
         ]
       : [],

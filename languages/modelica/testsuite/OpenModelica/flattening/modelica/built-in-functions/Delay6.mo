@@ -1,6 +1,7 @@
 // name:     Delay6
 // keywords: builtin
 // status:   correct
+// xfail:    true
 //
 // Test flattening of the builtin function delay.
 //

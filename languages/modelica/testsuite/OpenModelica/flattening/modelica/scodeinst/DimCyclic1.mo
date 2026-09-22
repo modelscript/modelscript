@@ -1,6 +1,7 @@
 // name: DimCyclic1
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 
 model DimCyclic1

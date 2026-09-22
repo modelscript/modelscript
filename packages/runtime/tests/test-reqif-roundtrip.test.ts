@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { ReqIfParser } from "../src/reqif.js";
+import { ReqIfParser } from "../src/index.js";
 
 const SAMPLE_REQIF_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">

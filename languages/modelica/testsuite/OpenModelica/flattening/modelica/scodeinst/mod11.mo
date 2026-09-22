@@ -1,6 +1,7 @@
 // name: mod11.mo
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 //
 

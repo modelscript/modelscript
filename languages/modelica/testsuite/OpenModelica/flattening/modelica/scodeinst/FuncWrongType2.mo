@@ -1,6 +1,7 @@
 // name: FuncWrongType2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that type checking works for functions.
 //

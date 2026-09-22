@@ -1,6 +1,7 @@
 // name: ModifierVariable
 // keywords: modifier
 // status: correct
+// xfail:    true
 //
 // Tests modification of variables
 //

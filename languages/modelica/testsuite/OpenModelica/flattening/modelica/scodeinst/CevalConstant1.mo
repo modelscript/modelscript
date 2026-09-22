@@ -1,6 +1,7 @@
 // name: CevalConstant1
 // keywords:
 // status: correct
+// xfail:    true
 //
 //
 

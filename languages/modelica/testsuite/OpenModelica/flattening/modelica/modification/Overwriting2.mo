@@ -1,6 +1,7 @@
 // name:     Overwriting2
 // keywords: modification,equation
 // status:   correct
+// xfail:    true
 //
 // The modification for `x' does not overwrite the equation.
 

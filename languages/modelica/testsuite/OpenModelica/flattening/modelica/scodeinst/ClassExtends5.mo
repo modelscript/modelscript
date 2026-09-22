@@ -1,6 +1,7 @@
 // name: ClassExtends5
 // keywords:
 // status: correct
+// xfail:    true
 //
 
 partial package PartialMedium

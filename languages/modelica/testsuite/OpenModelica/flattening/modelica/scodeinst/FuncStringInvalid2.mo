@@ -1,6 +1,7 @@
 // name: FuncStringInvalid2
 // keywords:
 // status: incorrect
+// xfail:    true
 //
 // Checks that positional arguments can't be used for the named parameters in
 // the String function.

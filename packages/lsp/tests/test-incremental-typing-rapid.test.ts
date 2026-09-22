@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { buildParser, choice, field, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
 import childProcess from "child_process";
+import expect from "expect";
 import fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -43,7 +44,9 @@ describe("Rapid Typing Incremental Buffer & Diagnostics Suite", () => {
     const result = buildParser(dslGrammar as any);
 
     for (const file of result.assemblyScriptFiles) {
-      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      const filePath = path.join(tmpDir, file.filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content);
     }
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
@@ -62,7 +65,7 @@ describe("Rapid Typing Incremental Buffer & Diagnostics Suite", () => {
     const getFacade = new Function(wrapperSrc);
     const { LspFacade } = getFacade();
 
-    wasmMemory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    wasmMemory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
     const imports = {
       env: { memory: wasmMemory, abort: () => {}, logNode: () => {}, debugLog: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },
@@ -147,12 +150,12 @@ describe("Rapid Typing Incremental Buffer & Diagnostics Suite", () => {
     expect(initialRoot).toBeGreaterThan(0);
     expect(getWasmText(text.length)).toBe(text);
 
-    // Perform two sequential edits within a batch:
-    // 1) Replace 'a' with 'alpha' at offset 5 (length 1) -> delta +4
-    // 2) Replace 'b' with 'beta' at offset 13 + 4 (length 1)
+    // Perform two edits within a batch:
+    // 1) Replace 'a' with 'alpha' at offset 5 (length 1)
+    // 2) Replace 'b' with 'beta' at offset 13 (length 1)
     const edits = [
       { text: "alpha", rangeOffset: 5, rangeLength: 1 },
-      { text: "beta", rangeOffset: 13 + 4, rangeLength: 1 },
+      { text: "beta", rangeOffset: 13, rangeLength: 1 },
     ];
     const expectedText = "Real alpha;\nReal beta;\nReal c;\n";
     const root = activeFacade.parseIncrementalBatch(edits, expectedText.length, docUri);

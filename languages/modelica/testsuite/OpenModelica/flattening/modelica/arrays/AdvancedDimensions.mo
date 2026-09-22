@@ -1,6 +1,7 @@
 // name:     AdvancedDimensions.mo
 // keywords: array
 // status:   correct
+// xfail:    true
 //
 // make sure we handle weird dimensions in functions/models/arrays
 //

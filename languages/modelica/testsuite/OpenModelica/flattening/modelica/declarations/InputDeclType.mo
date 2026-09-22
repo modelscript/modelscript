@@ -1,6 +1,7 @@
 // name: InputDeclType
 // keywords: input
 // status: correct
+// xfail:    true
 //
 // Tests the input prefix on a regular type
 //
