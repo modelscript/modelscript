@@ -1,4 +1,4 @@
-import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createChunkedUint8Array } from "../core/array";
+import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createChunkedUint8Array, UnmanagedFloat64Array } from "../core/array";
 import { DaeBuilder } from "../dae/builder";
 import { evalExpr } from "../dae/eval";
 import { atomicChunkAlloc } from "../arena";
@@ -10,26 +10,26 @@ import { atomicChunkAlloc } from "../arena";
  */
 @unmanaged
 export class EventDetector {
-  daePtr: usize;
-  zcfExprIdsPtr: usize;
-  zcfSignsPtr: usize;
-  zcfDirectionsPtr: usize;
+  dae: DaeBuilder;
+  zcfExprIds: ChunkedInt32Array;
+  zcfSigns: ChunkedUint8Array;
+  zcfDirections: ChunkedInt32Array;
   zcfCount: u32;
 
   consecutiveEvents: u32;
   lastEventTime: f64;
   zenoLimitReached: u8;
 
-  @inline getDae(): DaeBuilder { return changetype<DaeBuilder>(load<usize>(changetype<usize>(this) + offsetof<EventDetector>("daePtr"))); }
-  @inline getZcfExprIds(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<EventDetector>("zcfExprIdsPtr"))); }
-  @inline getZcfSigns(): ChunkedUint8Array { return changetype<ChunkedUint8Array>(load<usize>(changetype<usize>(this) + offsetof<EventDetector>("zcfSignsPtr"))); }
-  @inline getZcfDirections(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<EventDetector>("zcfDirectionsPtr"))); }
+  @inline getDae(): DaeBuilder { return this.dae; }
+  @inline getZcfExprIds(): ChunkedInt32Array { return this.zcfExprIds; }
+  @inline getZcfSigns(): ChunkedUint8Array { return this.zcfSigns; }
+  @inline getZcfDirections(): ChunkedInt32Array { return this.zcfDirections; }
 
   init(dae: DaeBuilder): void {
-    this.daePtr = changetype<usize>(dae);
-    this.zcfExprIdsPtr = changetype<usize>(createChunkedInt32Array(128));
-    this.zcfSignsPtr = changetype<usize>(createChunkedUint8Array(128));
-    this.zcfDirectionsPtr = changetype<usize>(createChunkedInt32Array(128));
+    this.dae = dae;
+    this.zcfExprIds = createChunkedInt32Array(128);
+    this.zcfSigns = createChunkedUint8Array(128);
+    this.zcfDirections = createChunkedInt32Array(128);
     this.zcfCount = 0;
     this.consecutiveEvents = 0;
     this.lastEventTime = -1e18;
@@ -189,10 +189,13 @@ export class EventDetector {
 
       // Interpolate state at s
       let alpha = (t1 - t0) > 1e-14 ? (s - t0) / (t1 - t0) : 0.5;
+      let vStartArr = changetype<UnmanagedFloat64Array>(varValuesStartPtr as usize);
+      let vEndArr = changetype<UnmanagedFloat64Array>(varValuesEndPtr as usize);
+      let interpArr = changetype<UnmanagedFloat64Array>(interpolatedValuesPtr as usize);
       for (let v: u32 = 0; v < numVars; v++) {
-        let vStart = load<f64>(varValuesStartPtr + v * 8);
-        let vEnd = load<f64>(varValuesEndPtr + v * 8);
-        store<f64>(interpolatedValuesPtr + v * 8, vStart + alpha * (vEnd - vStart));
+        let vStart = vStartArr[v];
+        let vEnd = vEndArr[v];
+        interpArr[v] = vStart + alpha * (vEnd - vStart);
       }
 
       let fs = evalExpr(exprId, dae, interpolatedValuesPtr);
@@ -242,6 +245,10 @@ export class EventDetector {
     let maxIter: u32 = 40;
     let iter: u32 = 0;
 
+    let vStartArr = changetype<UnmanagedFloat64Array>(varValuesStartPtr as usize);
+    let vEndArr = changetype<UnmanagedFloat64Array>(varValuesEndPtr as usize);
+    let interpArr = changetype<UnmanagedFloat64Array>(interpolatedValuesPtr as usize);
+
     while (iter < maxIter && (tRight - tLeft) > tol) {
       iter++;
       let tMid = (tLeft + tRight) * 0.5;
@@ -249,10 +256,9 @@ export class EventDetector {
 
       // Linear interpolation of state vector at tMid
       for (let v: u32 = 0; v < numVars; v++) {
-        let vStart = load<f64>(varValuesStartPtr + v * 8);
-        let vEnd = load<f64>(varValuesEndPtr + v * 8);
-        let vInterp = vStart + alpha * (vEnd - vStart);
-        store<f64>(interpolatedValuesPtr + v * 8, vInterp);
+        let vStart = vStartArr[v];
+        let vEnd = vEndArr[v];
+        interpArr[v] = vStart + alpha * (vEnd - vStart);
       }
 
       let fMid = evalExpr(exprId, dae, interpolatedValuesPtr);

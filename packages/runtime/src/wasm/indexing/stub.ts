@@ -29,6 +29,94 @@ import { salsa_invalidateNegativeDependencies } from "../graph";
 export const STUB_STRIDE: u32 = 12;
 export const FLAG_IS_SYNTHETIC: u16 = 0x0100;
 
+const STUB_ACCESSOR_SLOTS: u32 = 16;
+const STUB_ACCESSOR_MASK: u32 = STUB_ACCESSOR_SLOTS - 1;
+let g_stubAccessorIdx: u32 = 0;
+let g_stubAccessorBuf: usize = 0;
+
+/**
+ * Lightweight, zero-overhead accessor over a single 48-byte stub symbol in `t_stubTable`.
+ * Avoids manual baseIdx arithmetic with @inline property getters/setters.
+ */
+@unmanaged
+export class StubAccessor {
+  private _data: ChunkedUint32Array;
+  private _offset: u32;
+
+  @inline static at(data: ChunkedUint32Array, stubId: u32): StubAccessor {
+    if (g_stubAccessorBuf == 0) {
+      g_stubAccessorBuf = atomicChunkAlloc(STUB_ACCESSOR_SLOTS * (sizeof<usize>() * 2));
+    }
+    let slot = (g_stubAccessorIdx++) & STUB_ACCESSOR_MASK;
+    let a = changetype<StubAccessor>(g_stubAccessorBuf + slot * (sizeof<usize>() * 2));
+    a._data = data;
+    a._offset = stubId * STUB_STRIDE;
+    return a;
+  }
+
+  @inline get fileId(): u32 { return this._data.get(this._offset + 0); }
+  @inline set fileId(v: u32) { this._data.set(this._offset + 0, v); }
+
+  @inline get symbolId(): u32 { return this._data.get(this._offset + 1); }
+  @inline set symbolId(v: u32) { this._data.set(this._offset + 1, v); }
+
+  @inline get parentSymbolId(): u32 { return this._data.get(this._offset + 2); }
+  @inline set parentSymbolId(v: u32) { this._data.set(this._offset + 2, v); }
+
+  @inline get kind(): u16 { return (this._data.get(this._offset + 3) & 0xffff) as u16; }
+  @inline get flags(): u16 { return ((this._data.get(this._offset + 3) >> 16) & 0xffff) as u16; }
+  @inline setKindAndFlags(kind: u16, flags: u16): void {
+    this._data.set(this._offset + 3, (kind as u32) | ((flags as u32) << 16));
+  }
+
+  @inline get nameHash(): u32 { return this._data.get(this._offset + 4); }
+  @inline set nameHash(v: u32) { this._data.set(this._offset + 4, v); }
+
+  @inline get nameHandle(): u32 { return this._data.get(this._offset + 5); }
+  @inline set nameHandle(v: u32) { this._data.set(this._offset + 5, v); }
+
+  @inline get startByte(): u32 { return this._data.get(this._offset + 6); }
+  @inline set startByte(v: u32) { this._data.set(this._offset + 6, v); }
+
+  @inline get endByte(): u32 { return this._data.get(this._offset + 7); }
+  @inline set endByte(v: u32) { this._data.set(this._offset + 7, v); }
+
+  @inline get merkleLow(): u32 { return this._data.get(this._offset + 8); }
+  @inline set merkleLow(v: u32) { this._data.set(this._offset + 8, v); }
+
+  @inline get merkleHigh(): u32 { return this._data.get(this._offset + 9); }
+  @inline set merkleHigh(v: u32) { this._data.set(this._offset + 9, v); }
+
+  @inline get parentFqnHash(): u32 { return this._data.get(this._offset + 10); }
+  @inline set parentFqnHash(v: u32) { this._data.set(this._offset + 10, v); }
+
+  @inline get reserved(): u32 { return this._data.get(this._offset + 11); }
+  @inline set reserved(v: u32) { this._data.set(this._offset + 11, v); }
+
+  @inline get kindAndFlags(): u32 { return this._data.get(this._offset + 3); }
+  @inline set kindAndFlags(v: u32) { this._data.set(this._offset + 3, v); }
+
+  @inline getWord(wordIdx: u32): u32 {
+    return this._data.get(this._offset + wordIdx);
+  }
+
+  @inline setWord(wordIdx: u32, v: u32): void {
+    this._data.set(this._offset + wordIdx, v);
+  }
+
+  @inline clear(): void {
+    for (let w: u32 = 0; w < STUB_STRIDE; w++) {
+      this._data.set(this._offset + w, 0);
+    }
+  }
+
+  @inline writeTo(outBuffer: ChunkedUint32Array): void {
+    for (let w: u32 = 0; w < STUB_STRIDE; w++) {
+      outBuffer.push(this._data.get(this._offset + w));
+    }
+  }
+}
+
 export let t_stubTable: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let t_stubNameHashes: ChunkedUint32Array = changetype<ChunkedUint32Array>(0); // Contiguous for SIMD
 export let t_stubCount: u32 = 1; // 1-indexed, 0 is null
@@ -117,19 +205,19 @@ export function stub_registerSymbol(
     }
   }
 
-  let baseIdx = id * STUB_STRIDE;
-  t_stubTable.set(baseIdx + 0, fileId);
-  t_stubTable.set(baseIdx + 1, symbolId);
-  t_stubTable.set(baseIdx + 2, parentSymbolId);
-  t_stubTable.set(baseIdx + 3, (kind as u32) | ((flags as u32) << 16));
-  t_stubTable.set(baseIdx + 4, nameHash);
-  t_stubTable.set(baseIdx + 5, nameHandle);
-  t_stubTable.set(baseIdx + 6, startByte);
-  t_stubTable.set(baseIdx + 7, endByte);
-  t_stubTable.set(baseIdx + 8, merkleLow);
-  t_stubTable.set(baseIdx + 9, merkleHigh);
-  t_stubTable.set(baseIdx + 10, parentFqnHash);
-  t_stubTable.set(baseIdx + 11, 0);
+  let stub = StubAccessor.at(t_stubTable, id);
+  stub.fileId = fileId;
+  stub.symbolId = symbolId;
+  stub.parentSymbolId = parentSymbolId;
+  stub.setKindAndFlags(kind, flags);
+  stub.nameHash = nameHash;
+  stub.nameHandle = nameHandle;
+  stub.startByte = startByte;
+  stub.endByte = endByte;
+  stub.merkleLow = merkleLow;
+  stub.merkleHigh = merkleHigh;
+  stub.parentFqnHash = parentFqnHash;
+  stub.reserved = 0;
 
   t_stubNameHashes.set(id, nameHash);
 
@@ -187,8 +275,8 @@ export function stub_stitchParentFQN(childStubId: u32, parentFqnHash: u32): u32 
   let resolvedParentStub = t_fqnToStubMap.get(parentFqnHash as u64) as u32;
   if (resolvedParentStub == 0) return 0;
 
-  let baseIdx = childStubId * STUB_STRIDE;
-  let oldParentId = t_stubTable.get(baseIdx + 2);
+  let stub = StubAccessor.at(t_stubTable, childStubId);
+  let oldParentId = stub.parentSymbolId;
   if (oldParentId != resolvedParentStub) {
     if (oldParentId != 0) {
       let head = t_stubsByParent.get(oldParentId as u64);
@@ -205,8 +293,8 @@ export function stub_stitchParentFQN(childStubId: u32, parentFqnHash: u32): u32 
       }
     }
 
-    t_stubTable.set(baseIdx + 2, resolvedParentStub);
-    t_stubTable.set(baseIdx + 10, parentFqnHash);
+    stub.parentSymbolId = resolvedParentStub;
+    stub.parentFqnHash = parentFqnHash;
 
     let prevParentHead = t_stubsByParent.get(resolvedParentStub as u64);
     t_stubNextSibling.set(childStubId, prevParentHead);
@@ -237,12 +325,9 @@ export function stub_projectSyntheticSymbol(
   // 1. Search for existing non-synthetic stub with this nameHash
   let existingStubId = t_stubsByNameHash.get(nameHash as u64);
   while (existingStubId != 0) {
-    let baseIdx = existingStubId * STUB_STRIDE;
-    let fId = t_stubTable.get(baseIdx + 0);
-    if (fId != 0) {
-      let kf = t_stubTable.get(baseIdx + 3);
-      let flags = ((kf >>> 16) & 0xffff) as u16;
-      if ((flags & FLAG_IS_SYNTHETIC) == 0) {
+    let stub = StubAccessor.at(t_stubTable, existingStubId);
+    if (stub.fileId != 0) {
+      if ((stub.flags & FLAG_IS_SYNTHETIC) == 0) {
         // Found real symbol: deduplicate and return existing ID!
         return existingStubId;
       }
@@ -276,10 +361,10 @@ export function stub_clearFile(fileId: u32): void {
 
   let stubId = t_stubsByFile.get(fileId as u64);
   while (stubId != 0) {
-    let baseIdx = stubId * STUB_STRIDE;
+    let stub = StubAccessor.at(t_stubTable, stubId);
     let nextInFile = t_stubNextInFile.get(stubId);
-    let nameHash = t_stubTable.get(baseIdx + 4);
-    let parentSymbolId = t_stubTable.get(baseIdx + 2);
+    let nameHash = stub.nameHash;
+    let parentSymbolId = stub.parentSymbolId;
 
     // 1. Unlink from byNameHash chain
     if (nameHash != 0) {
@@ -314,9 +399,7 @@ export function stub_clearFile(fileId: u32): void {
     }
 
     // 3. Clear stub memory & push onto free-list
-    for (let w: u32 = 0; w < STUB_STRIDE; w++) {
-      t_stubTable.set(baseIdx + w, 0);
-    }
+    stub.clear();
     t_stubNameHashes.set(stubId, 0);
 
     t_stubNextSibling.set(stubId, t_stubFreeListHead);
@@ -359,11 +442,9 @@ export function stub_getDefinition(nameHash: u32, preferredFileId: u32): u32 {
   let bestStubId: u32 = 0;
 
   while (stubId != 0) {
-    let baseIdx = stubId * STUB_STRIDE;
-    let fId = t_stubTable.get(baseIdx + 0);
-
-    if (fId != 0) {
-      if (preferredFileId != 0 && fId == preferredFileId) {
+    let stub = StubAccessor.at(t_stubTable, stubId);
+    if (stub.fileId != 0) {
+      if (preferredFileId != 0 && stub.fileId == preferredFileId) {
         bestStubId = stubId;
         break;
       }
@@ -376,15 +457,11 @@ export function stub_getDefinition(nameHash: u32, preferredFileId: u32): u32 {
 
   if (bestStubId == 0) return 0;
 
-  let baseIdx = bestStubId * STUB_STRIDE;
-  let targetFileId = t_stubTable.get(baseIdx + 0);
-  let startByte = t_stubTable.get(baseIdx + 6);
-  let endByte = t_stubTable.get(baseIdx + 7);
-
+  let best = StubAccessor.at(t_stubTable, bestStubId);
   ensureStubBuffer();
-  t_stubBinaryBuffer.push(targetFileId);
-  t_stubBinaryBuffer.push(startByte);
-  t_stubBinaryBuffer.push(endByte);
+  t_stubBinaryBuffer.push(best.fileId);
+  t_stubBinaryBuffer.push(best.startByte);
+  t_stubBinaryBuffer.push(best.endByte);
   flushStubBuffer();
 
   return 3;
@@ -402,13 +479,9 @@ export function stub_getChildren(parentSymbolId: u32): u32 {
   let stubId = t_stubsByParent.get(parentSymbolId as u64);
 
   while (stubId != 0) {
-    let baseIdx = stubId * STUB_STRIDE;
-    let fId = t_stubTable.get(baseIdx + 0);
-
-    if (fId != 0) {
-      for (let w: u32 = 0; w < STUB_STRIDE; w++) {
-        t_stubBinaryBuffer.push(t_stubTable.get(baseIdx + w));
-      }
+    let stub = StubAccessor.at(t_stubTable, stubId);
+    if (stub.fileId != 0) {
+      stub.writeTo(t_stubBinaryBuffer);
       count++;
     }
     stubId = t_stubNextSibling.get(stubId);
@@ -430,13 +503,9 @@ export function stub_findByName(nameHash: u32): u32 {
   let stubId = t_stubsByNameHash.get(nameHash as u64);
 
   while (stubId != 0) {
-    let baseIdx = stubId * STUB_STRIDE;
-    let fId = t_stubTable.get(baseIdx + 0);
-
-    if (fId != 0) {
-      for (let w: u32 = 0; w < STUB_STRIDE; w++) {
-        t_stubBinaryBuffer.push(t_stubTable.get(baseIdx + w));
-      }
+    let stub = StubAccessor.at(t_stubTable, stubId);
+    if (stub.fileId != 0) {
+      stub.writeTo(t_stubBinaryBuffer);
       count++;
     }
     stubId = t_stubNextByName.get(stubId);
@@ -552,12 +621,9 @@ export function stub_getFileSymbols(fileId: u32): u32 {
 
   let stubId = t_stubsByFile.get(fileId as u64);
   while (stubId != 0) {
-    let baseIdx = stubId * STUB_STRIDE;
-    let fId = t_stubTable.get(baseIdx + 0);
-    if (fId == fileId) {
-      for (let w: u32 = 0; w < STUB_STRIDE; w++) {
-        t_stubBinaryBuffer.push(t_stubTable.get(baseIdx + w));
-      }
+    let stub = StubAccessor.at(t_stubTable, stubId);
+    if (stub.fileId == fileId) {
+      stub.writeTo(t_stubBinaryBuffer);
       count++;
     }
     stubId = t_stubNextInFile.get(stubId);
@@ -583,22 +649,20 @@ export function stub_shiftByteOffsets(fileId: u32, fromByte: u32, deltaBytes: i3
   let stubId = t_stubsByFile.get(fileId as u64);
 
   while (stubId != 0) {
-    let baseIdx = stubId * STUB_STRIDE;
-    let fId = t_stubTable.get(baseIdx + 0);
-
-    if (fId == fileId) {
-      let startByte = t_stubTable.get(baseIdx + 6);
-      let endByte = t_stubTable.get(baseIdx + 7);
+    let stub = StubAccessor.at(t_stubTable, stubId);
+    if (stub.fileId == fileId) {
+      let startByte = stub.startByte;
+      let endByte = stub.endByte;
 
       if (startByte >= fromByte) {
         let newStart = (startByte as i32 + deltaBytes) >= 0 ? (startByte as i32 + deltaBytes) as u32 : 0;
         let newEnd = (endByte as i32 + deltaBytes) >= 0 ? (endByte as i32 + deltaBytes) as u32 : 0;
-        t_stubTable.set(baseIdx + 6, newStart);
-        t_stubTable.set(baseIdx + 7, newEnd);
+        stub.startByte = newStart;
+        stub.endByte = newEnd;
         count++;
       } else if (endByte > fromByte) {
         let newEnd = (endByte as i32 + deltaBytes) >= 0 ? (endByte as i32 + deltaBytes) as u32 : 0;
-        t_stubTable.set(baseIdx + 7, newEnd);
+        stub.endByte = newEnd;
         count++;
       }
     }
@@ -613,19 +677,19 @@ export function stub_shiftByteOffsets(fileId: u32, fromByte: u32, deltaBytes: i3
  */
 export function stub_getMerkleLow(stubId: u32): u32 {
   if (stubId >= t_stubCount) return 0;
-  return t_stubTable.get(stubId * STUB_STRIDE + 8);
+  return StubAccessor.at(t_stubTable, stubId).merkleLow;
 }
 
 export function stub_getMerkleHigh(stubId: u32): u32 {
   if (stubId >= t_stubCount) return 0;
-  return t_stubTable.get(stubId * STUB_STRIDE + 9);
+  return StubAccessor.at(t_stubTable, stubId).merkleHigh;
 }
 
 export function stub_setMerkleHash(stubId: u32, low: u32, high: u32): void {
   if (stubId >= t_stubCount) return;
-  let baseIdx = stubId * STUB_STRIDE;
-  t_stubTable.set(baseIdx + 8, low);
-  t_stubTable.set(baseIdx + 9, high);
+  let stub = StubAccessor.at(t_stubTable, stubId);
+  stub.merkleLow = low;
+  stub.merkleHigh = high;
 }
 
 /**
@@ -754,18 +818,19 @@ export function stub_importBinary(inPtr: u32, byteLength: u32): u32 {
     let mHigh: u32 = stride >= 10 ? load<u32>(srcOffset + 36) : 0;
     let parentFqn: u32 = stride >= 12 ? load<u32>(srcOffset + 40) : 0;
 
-    t_stubTable.set(dstBase + 0, fId);
-    t_stubTable.set(dstBase + 1, symId);
-    t_stubTable.set(dstBase + 2, parentSymId);
-    t_stubTable.set(dstBase + 3, kf);
-    t_stubTable.set(dstBase + 4, nameHash);
-    t_stubTable.set(dstBase + 5, nameHandle);
-    t_stubTable.set(dstBase + 6, startByte);
-    t_stubTable.set(dstBase + 7, endByte);
-    t_stubTable.set(dstBase + 8, mLow);
-    t_stubTable.set(dstBase + 9, mHigh);
-    t_stubTable.set(dstBase + 10, parentFqn);
-    t_stubTable.set(dstBase + 11, 0);
+    let stub = StubAccessor.at(t_stubTable, i);
+    stub.fileId = fId;
+    stub.symbolId = symId;
+    stub.parentSymbolId = parentSymId;
+    stub.setWord(3, kf);
+    stub.nameHash = nameHash;
+    stub.nameHandle = nameHandle;
+    stub.startByte = startByte;
+    stub.endByte = endByte;
+    stub.merkleLow = mLow;
+    stub.merkleHigh = mHigh;
+    stub.parentFqnHash = parentFqn;
+    stub.reserved = 0;
 
     t_stubNameHashes.set(i, nameHash);
   }
@@ -779,10 +844,10 @@ export function stub_importBinary(inPtr: u32, byteLength: u32): u32 {
 
   // Re-link lookup chains
   for (let id: u32 = 1; id < stubCount; id++) {
-    let baseIdx = id * STUB_STRIDE;
-    let fId = t_stubTable.get(baseIdx + 0);
-    let parentSymbolId = t_stubTable.get(baseIdx + 2);
-    let nameHash = t_stubTable.get(baseIdx + 4);
+    let stub = StubAccessor.at(t_stubTable, id);
+    let fId = stub.fileId;
+    let parentSymbolId = stub.parentSymbolId;
+    let nameHash = stub.nameHash;
 
     if (fId != 0) {
       let prevNameHead = t_stubsByNameHash.get(nameHash as u64);

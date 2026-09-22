@@ -3,7 +3,7 @@
 // Manages zero-GC basic block allocations, sequential chains, and loop contexts in linear memory.
 
 import { allocGen0 } from "./arena";
-import { BLOCK_SIZE, BLOCK_TRUE_BRANCH, BLOCK_FALSE_BRANCH, BLOCK_NEXT, BLOCK_PREV } from "./ir_layout";
+import { BLOCK_SIZE, BasicBlock } from "./ir_layout";
 
 export let firstBlock: u32 = 0;
 export let lastBlock: u32 = 0;
@@ -19,8 +19,10 @@ export function allocBlock(): u32 {
     if (firstBlock == 0) {
       firstBlock = blk;
     } else if (lastBlock != 0) {
-      store<u32>(lastBlock + BLOCK_NEXT, blk);
-      store<u32>(blk + BLOCK_PREV, lastBlock);
+      let last = BasicBlock.at(lastBlock as usize);
+      let curr = BasicBlock.at(blk as usize);
+      last.nextBlock = blk;
+      curr.prevBlock = lastBlock;
     }
     lastBlock = blk;
   }
@@ -38,5 +40,10 @@ export function resetCFG(): void {
 
 export function addCFGSuccessor(srcBlk: u32, dstBlk: u32, isTrueBranch: boolean): void {
   if (srcBlk == 0 || dstBlk == 0) return;
-  store<u32>(srcBlk + (isTrueBranch ? BLOCK_TRUE_BRANCH : BLOCK_FALSE_BRANCH), dstBlk);
+  let src = BasicBlock.at(srcBlk as usize);
+  if (isTrueBranch) {
+    src.trueBranch = dstBlk;
+  } else {
+    src.falseBranch = dstBlk;
+  }
 }

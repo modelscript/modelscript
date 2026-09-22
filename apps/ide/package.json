@@ -33,7 +33,7 @@
     "@modelscript/sysml2": "*",
     "express": "^5.1.0",
     "express-rate-limit": "^8.3.2",
-    "http-proxy-middleware": "^3.0.5",
+    "http-proxy-middleware": "^3.0.7",
     "path-to-regexp": "^8.4.2"
   },
   "devDependencies": {
@@ -41,7 +41,7 @@
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/express": "^5.0.3",
     "@vscode/test-web": "^0.0.81",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.1",
     "eslint": "^9.13.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

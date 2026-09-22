@@ -721,6 +721,88 @@ export const TREE_CURSOR_SIZE: u32 = 1040;
 export class TreeCursor {
   root: u32;
   depth: i32;
+
+  @inline static at(ptr: usize): TreeCursor {
+    return changetype<TreeCursor>(ptr);
+  }
+
+  @inline getNode(d: i32): u32 {
+    return load<u32>(changetype<usize>(this) + 8 + (d << 2));
+  }
+
+  @inline setNode(d: i32, val: u32): void {
+    store<u32>(changetype<usize>(this) + 8 + (d << 2), val);
+  }
+
+  @inline getContentStart(d: i32): u32 {
+    return load<u32>(changetype<usize>(this) + 520 + (d << 2));
+  }
+
+  @inline setContentStart(d: i32, val: u32): void {
+    store<u32>(changetype<usize>(this) + 520 + (d << 2), val);
+  }
+
+  @inline reset(rootPtr: u32): void {
+    this.root = rootPtr;
+    if (rootPtr != 0) {
+      this.depth = 0;
+      this.setNode(0, rootPtr);
+      this.setContentStart(0, getNodePadding(rootPtr));
+    } else {
+      this.depth = -1;
+    }
+  }
+
+  @inline currentNode(): u32 {
+    let d = this.depth;
+    if (d < 0) return 0;
+    return this.getNode(d);
+  }
+
+  @inline currentOffset(): u32 {
+    let d = this.depth;
+    if (d < 0) return 0;
+    return this.getContentStart(d);
+  }
+
+  @inline gotoFirstChild(): boolean {
+    let d = this.depth;
+    if (d < 0 || d >= TREE_CURSOR_MAX_DEPTH - 1) return false;
+
+    let cPtr = this.getNode(d);
+    let child = getNodeFirstChild(cPtr);
+    if (child == 0) return false;
+
+    let parentContentStart = this.getContentStart(d);
+    d++;
+    this.depth = d;
+    this.setNode(d, child);
+    this.setContentStart(d, parentContentStart);
+    return true;
+  }
+
+  @inline gotoNextSibling(): boolean {
+    let d = this.depth;
+    if (d < 0) return false;
+
+    let cPtr = this.getNode(d);
+    let sibling = getNodeNextSibling(cPtr);
+    if (sibling == 0) return false;
+
+    let contentStart = this.getContentStart(d);
+    let prevContentEnd = contentStart + getNodeByteLength(cPtr);
+    let siblingContentStart = prevContentEnd + getNodePadding(sibling);
+
+    this.setNode(d, sibling);
+    this.setContentStart(d, siblingContentStart);
+    return true;
+  }
+
+  @inline gotoParent(): boolean {
+    if (this.depth <= 0) return false;
+    this.depth--;
+    return true;
+  }
 }
 
 export function treeCursorAlloc(): usize {
@@ -730,74 +812,34 @@ export function treeCursorAlloc(): usize {
 }
 
 export function treeCursorReset(cursorPtr: usize, rootPtr: u32): void {
-  store<u32>(cursorPtr, rootPtr);
-  if (rootPtr != 0) {
-    store<i32>(cursorPtr + 4, 0); // depth = 0
-    store<u32>(cursorPtr + 8, rootPtr); // nodes[0] = rootPtr
-    store<u32>(cursorPtr + 8 + 512, getNodePadding(rootPtr)); // contentStarts[0]
-  } else {
-    store<i32>(cursorPtr + 4, -1); // depth = -1
-  }
+  TreeCursor.at(cursorPtr).reset(rootPtr);
 }
 
 @inline
 export function treeCursorCurrentNode(cursorPtr: usize): u32 {
-  let d = load<i32>(cursorPtr + 4);
-  if (d < 0) return 0;
-  return load<u32>(cursorPtr + 8 + (d << 2));
+  return TreeCursor.at(cursorPtr).currentNode();
 }
 
 @inline
 export function treeCursorCurrentOffset(cursorPtr: usize): u32 {
-  let d = load<i32>(cursorPtr + 4);
-  if (d < 0) return 0;
-  return load<u32>(cursorPtr + 8 + 512 + (d << 2));
+  return TreeCursor.at(cursorPtr).currentOffset();
 }
 
 @inline
 export function treeCursorDepth(cursorPtr: usize): i32 {
-  return load<i32>(cursorPtr + 4);
+  return TreeCursor.at(cursorPtr).depth;
 }
 
 export function treeCursorGotoFirstChild(cursorPtr: usize): boolean {
-  let d = load<i32>(cursorPtr + 4);
-  if (d < 0 || d >= TREE_CURSOR_MAX_DEPTH - 1) return false;
-
-  let cPtr = load<u32>(cursorPtr + 8 + (d << 2));
-  let child = getNodeFirstChild(cPtr);
-  if (child == 0) return false;
-
-  let parentContentStart = load<u32>(cursorPtr + 8 + 512 + (d << 2));
-  d++;
-  store<i32>(cursorPtr + 4, d);
-  store<u32>(cursorPtr + 8 + (d << 2), child);
-  store<u32>(cursorPtr + 8 + 512 + (d << 2), parentContentStart);
-  return true;
+  return TreeCursor.at(cursorPtr).gotoFirstChild();
 }
 
 export function treeCursorGotoNextSibling(cursorPtr: usize): boolean {
-  let d = load<i32>(cursorPtr + 4);
-  if (d < 0) return false;
-
-  let cPtr = load<u32>(cursorPtr + 8 + (d << 2));
-  let sibling = getNodeNextSibling(cPtr);
-  if (sibling == 0) return false;
-
-  let contentStart = load<u32>(cursorPtr + 8 + 512 + (d << 2));
-  let prevContentEnd = contentStart + getNodeByteLength(cPtr);
-  let siblingContentStart = prevContentEnd + getNodePadding(sibling);
-
-  store<u32>(cursorPtr + 8 + (d << 2), sibling);
-  store<u32>(cursorPtr + 8 + 512 + (d << 2), siblingContentStart);
-  return true;
+  return TreeCursor.at(cursorPtr).gotoNextSibling();
 }
 
 export function treeCursorGotoParent(cursorPtr: usize): boolean {
-  let d = load<i32>(cursorPtr + 4);
-  if (d <= 0) return false;
-  d--;
-  store<i32>(cursorPtr + 4, d);
-  return true;
+  return TreeCursor.at(cursorPtr).gotoParent();
 }
 
 
@@ -1934,6 +1976,40 @@ function getElementSize(type: u32): u32 {
   return 1; // Boolean, Int8, Uint8
 }
 
+/**
+ * Unmanaged header for tensors stored in the tensorArena.
+ * Layout:
+ *   offset 0:  type (u32)
+ *   offset 4:  rank (u32)
+ *   offset 8:  elementCount (u32)
+ *   offset 12: alignedHeaderSize (u32)
+ *   offset 16: shape[rank] (u32 * rank)
+ *   offset alignedHeaderSize: data payload
+ */
+@unmanaged
+export class TensorHeader {
+  type: u32;
+  rank: u32;
+  elementCount: u32;
+  alignedHeaderSize: u32;
+
+  @inline static at(ptr: usize): TensorHeader {
+    return changetype<TensorHeader>(ptr);
+  }
+
+  @inline getShape(dimIndex: u32): u32 {
+    return load<u32>(changetype<usize>(this) + 16 + (dimIndex << 2));
+  }
+
+  @inline setShape(dimIndex: u32, size: u32): void {
+    store<u32>(changetype<usize>(this) + 16 + (dimIndex << 2), size);
+  }
+
+  @inline getDataPtr(flatIndex: u32, elementSize: u32): usize {
+    return changetype<usize>(this) + this.alignedHeaderSize + (flatIndex * elementSize);
+  }
+}
+
 /** Universal N-Dimensional Tensor Allocation */
 export function ast_createTensor(type: u32, rank: u32, elementCount: u32): u32 {
   // align base handle to 16 bytes for safe WebGPU and SIMD access
@@ -1950,26 +2026,26 @@ export function ast_createTensor(type: u32, rank: u32, elementCount: u32): u32 {
   let byteSize = alignedHeaderSize + (elementCount * elementSize);
   ensureTensorArena(byteSize);
   
-  store<u32>(tensorArenaPtr + handle, type);
-  store<u32>(tensorArenaPtr + handle + 4, rank);
-  store<u32>(tensorArenaPtr + handle + 8, elementCount);
-  store<u32>(tensorArenaPtr + handle + 12, alignedHeaderSize); // Store data payload offset
+  let th = TensorHeader.at(tensorArenaPtr + handle);
+  th.type = type;
+  th.rank = rank;
+  th.elementCount = elementCount;
+  th.alignedHeaderSize = alignedHeaderSize; // Store data payload offset
   
   tensorArenaOffset += byteSize;
   return handle;
 }
 
 export function ast_setTensorShape(handle: u32, dimIndex: u32, size: u32): void {
-  store<u32>(tensorArenaPtr + handle + 16 + (dimIndex * 4), size);
+  TensorHeader.at(tensorArenaPtr + handle).setShape(dimIndex, size);
 }
 
 export function ast_getTensorShape(handle: u32, dimIndex: u32): u32 {
-  return load<u32>(tensorArenaPtr + handle + 16 + (dimIndex * 4));
+  return TensorHeader.at(tensorArenaPtr + handle).getShape(dimIndex);
 }
 
 @inline function getTensorDataPtr(handle: u32, flatIndex: u32, elementSize: u32): usize {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  return tensorArenaPtr + handle + headerSize + (flatIndex * elementSize);
+  return TensorHeader.at(tensorArenaPtr + handle).getDataPtr(flatIndex, elementSize);
 }
 
 export function ast_setTensorFloat(h: u32, i: u32, v: f64): void { store<f64>(getTensorDataPtr(h, i, 8), v); }
@@ -2032,13 +2108,13 @@ export function ast_getLiteralTensor(nodeId: u32): u32 {
 export function ast_getTensorType(nodeId: u32): u32 {
   let handle = nodeTensorHandles.get(nodeId >> 4);
   if (handle == 0) return 0; // defaults to Float64
-  return load<u32>(tensorArenaPtr + handle);
+  return TensorHeader.at(tensorArenaPtr + handle).type;
 }
 
 export function ast_getTensorDimensions(nodeId: u32): u32 {
   let handle = nodeTensorHandles.get(nodeId >> 4);
   if (handle == 0) return 0;
-  return load<u32>(tensorArenaPtr + handle + 4);
+  return TensorHeader.at(tensorArenaPtr + handle).rank;
 }
 
 export function ast_getTensorShapePtr(nodeId: u32): usize {

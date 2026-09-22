@@ -2,6 +2,7 @@
 
 import { atomicChunkAlloc } from "../arena";
 import { SobolSequence, Xoshiro256pp } from "./monte_carlo";
+import { DenseMatrixView, UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 
 /**
  * Range specification for an input parameter:
@@ -15,6 +16,10 @@ export class DoEInputRange {
   min: f64;
   max: f64;
   levels: u32;
+
+  @inline static at(rangesPtr: usize, index: u32): DoEInputRange {
+    return changetype<DoEInputRange>(rangesPtr + (index as usize) * 24);
+  }
 }
 
 export const STRATEGY_FULL_FACTORIAL: u32 = 0;
@@ -36,8 +41,8 @@ export function doe_calculateTotalSamples(
   if (strategy == STRATEGY_FULL_FACTORIAL) {
     let total: u32 = 1;
     for (let d: u32 = 0; d < nInputs; d++) {
-      let levels = load<u32>(rangesPtr + d * 24 + 16);
-      if (levels == 0) levels = 5;
+      let range = DoEInputRange.at(rangesPtr, d);
+      let levels = range.levels == 0 ? 5 : range.levels;
       total *= levels;
     }
     return total;
@@ -83,31 +88,35 @@ export function doe_generateSamples(
 
 function generateFullFactorial(rangesPtr: usize, nInputs: u32, outSamplesPtr: usize): u32 {
   let levelCountsPtr = atomicChunkAlloc(nInputs * 4);
+  let levelCounts = changetype<UnmanagedUint32Array>(levelCountsPtr);
   let totalSamples: u32 = 1;
 
   for (let d: u32 = 0; d < nInputs; d++) {
-    let levels = load<u32>(rangesPtr + d * 24 + 16);
-    if (levels == 0) levels = 5;
-    store<u32>(levelCountsPtr + d * 4, levels);
+    let range = DoEInputRange.at(rangesPtr, d);
+    let levels = range.levels == 0 ? 5 : range.levels;
+    levelCounts[d] = levels;
     totalSamples *= levels;
   }
+
+  let outSamples = DenseMatrixView.at(outSamplesPtr, totalSamples, nInputs);
 
   for (let s: u32 = 0; s < totalSamples; s++) {
     let idx = s;
     for (let d: i32 = (nInputs as i32) - 1; d >= 0; d--) {
-      let nL = load<u32>(levelCountsPtr + (d as u32) * 4);
+      let nL = levelCounts[d as u32];
       let levelIdx = idx % nL;
       idx = idx / nL;
 
-      let minVal = load<f64>(rangesPtr + (d as u32) * 24);
-      let maxVal = load<f64>(rangesPtr + (d as u32) * 24 + 8);
+      let range = DoEInputRange.at(rangesPtr, d as u32);
+      let minVal = range.min;
+      let maxVal = range.max;
       let val: f64;
       if (nL == 1) {
         val = (minVal + maxVal) / 2.0;
       } else {
         val = minVal + ((levelIdx as f64) / ((nL - 1) as f64)) * (maxVal - minVal);
       }
-      store<f64>(outSamplesPtr + (s * nInputs + (d as u32)) * 8, val);
+      outSamples.set(s, d as u32, val);
     }
   }
 
@@ -125,32 +134,32 @@ function generateLatinHypercube(
   rng.init(seed == 0 ? 0x123456789abcdef0 : seed);
 
   let strataPtr = atomicChunkAlloc(numSamples * 8);
+  let strata = changetype<UnmanagedFloat64Array>(strataPtr);
+  let outSamples = DenseMatrixView.at(outSamplesPtr, numSamples, nInputs);
 
   for (let d: u32 = 0; d < nInputs; d++) {
-    let minVal = load<f64>(rangesPtr + d * 24);
-    let maxVal = load<f64>(rangesPtr + d * 24 + 8);
+    let range = DoEInputRange.at(rangesPtr, d);
+    let minVal = range.min;
+    let maxVal = range.max;
     let span = maxVal - minVal;
 
     for (let i: u32 = 0; i < numSamples; i++) {
       let u = ((i as f64) + rng.random()) / (numSamples as f64);
-      store<f64>(strataPtr + i * 8, u);
+      strata[i] = u;
     }
 
     for (let i: i32 = (numSamples as i32) - 1; i > 0; i--) {
       let randVal = rng.random();
       let k: i32 = (randVal * ((i + 1) as f64)) as i32;
       if (k > i) k = i;
-      let iOffset: u32 = (i as u32) * 8;
-      let kOffset: u32 = (k as u32) * 8;
-      let tmp = load<f64>(strataPtr + iOffset);
-      store<f64>(strataPtr + iOffset, load<f64>(strataPtr + kOffset));
-      store<f64>(strataPtr + kOffset, tmp);
+      let tmp = strata[i as u32];
+      strata[i as u32] = strata[k as u32];
+      strata[k as u32] = tmp;
     }
 
     for (let s: u32 = 0; s < numSamples; s++) {
-      let u = load<f64>(strataPtr + s * 8);
-      let val = minVal + u * span;
-      store<f64>(outSamplesPtr + ((s * nInputs + d) as usize) * 8, val);
+      let u = strata[s];
+      outSamples.set(s, d, minVal + u * span);
     }
   }
 
@@ -167,16 +176,17 @@ function generateSobol(
   sobol.init(nInputs);
 
   let rawPointPtr = atomicChunkAlloc(nInputs * 8);
+  let rawPoint = changetype<UnmanagedFloat64Array>(rawPointPtr);
+  let outSamples = DenseMatrixView.at(outSamplesPtr, numSamples, nInputs);
   sobol.next(rawPointPtr);
 
   for (let s: u32 = 0; s < numSamples; s++) {
     sobol.next(rawPointPtr);
     for (let d: u32 = 0; d < nInputs; d++) {
-      let minVal = load<f64>(rangesPtr + d * 24);
-      let maxVal = load<f64>(rangesPtr + d * 24 + 8);
-      let u = load<f64>(rawPointPtr + d * 8);
-      let val = minVal + u * (maxVal - minVal);
-      store<f64>(outSamplesPtr + (s * nInputs + d) * 8, val);
+      let range = DoEInputRange.at(rangesPtr, d);
+      let u = rawPoint[d];
+      let val = range.min + u * (range.max - range.min);
+      outSamples.set(s, d, val);
     }
   }
 
@@ -189,14 +199,17 @@ function generateCentralComposite(rangesPtr: usize, nInputs: u32, outSamplesPtr:
 
   let centersPtr = atomicChunkAlloc(k * 8);
   let halfRangesPtr = atomicChunkAlloc(k * 8);
+  let centers = changetype<UnmanagedFloat64Array>(centersPtr);
+  let halfRanges = changetype<UnmanagedFloat64Array>(halfRangesPtr);
 
   for (let d: u32 = 0; d < k; d++) {
-    let minVal = load<f64>(rangesPtr + d * 24);
-    let maxVal = load<f64>(rangesPtr + d * 24 + 8);
-    store<f64>(centersPtr + d * 8, (minVal + maxVal) / 2.0);
-    store<f64>(halfRangesPtr + d * 8, (maxVal - minVal) / 2.0);
+    let range = DoEInputRange.at(rangesPtr, d);
+    centers[d] = (range.min + range.max) / 2.0;
+    halfRanges[d] = (range.max - range.min) / 2.0;
   }
 
+  let totalSamples = (1 << k) + 2 * k + 1;
+  let outSamples = DenseMatrixView.at(outSamplesPtr, totalSamples, k);
   let sampleIdx: u32 = 0;
 
   // 1. Factorial Corners (2^k)
@@ -204,9 +217,9 @@ function generateCentralComposite(rangesPtr: usize, nInputs: u32, outSamplesPtr:
   for (let i: u32 = 0; i < nFactorial; i++) {
     for (let d: u32 = 0; d < k; d++) {
       let coded: f64 = ((i >> d) & 1) != 0 ? 1.0 : -1.0;
-      let center = load<f64>(centersPtr + d * 8);
-      let half = load<f64>(halfRangesPtr + d * 8);
-      store<f64>(outSamplesPtr + (sampleIdx * k + d) * 8, center + coded * half);
+      let center = centers[d];
+      let half = halfRanges[d];
+      outSamples.set(sampleIdx, d, center + coded * half);
     }
     sampleIdx++;
   }
@@ -214,38 +227,35 @@ function generateCentralComposite(rangesPtr: usize, nInputs: u32, outSamplesPtr:
   // 2. Axial (Star) Points at ±alpha
   for (let axis: u32 = 0; axis < k; axis++) {
     for (let d: u32 = 0; d < k; d++) {
-      let center = load<f64>(centersPtr + d * 8);
-      let half = load<f64>(halfRangesPtr + d * 8);
-      let minVal = load<f64>(rangesPtr + d * 24);
-      let maxVal = load<f64>(rangesPtr + d * 24 + 8);
+      let center = centers[d];
+      let half = halfRanges[d];
+      let range = DoEInputRange.at(rangesPtr, d);
       let val = center;
       if (d == axis) {
         val = center + alpha * half;
-        if (val > maxVal) val = maxVal;
+        if (val > range.max) val = range.max;
       }
-      store<f64>(outSamplesPtr + (sampleIdx * k + d) * 8, val);
+      outSamples.set(sampleIdx, d, val);
     }
     sampleIdx++;
 
     for (let d: u32 = 0; d < k; d++) {
-      let center = load<f64>(centersPtr + d * 8);
-      let half = load<f64>(halfRangesPtr + d * 8);
-      let minVal = load<f64>(rangesPtr + d * 24);
-      let maxVal = load<f64>(rangesPtr + d * 24 + 8);
+      let center = centers[d];
+      let half = halfRanges[d];
+      let range = DoEInputRange.at(rangesPtr, d);
       let val = center;
       if (d == axis) {
         val = center - alpha * half;
-        if (val < minVal) val = minVal;
+        if (val < range.min) val = range.min;
       }
-      store<f64>(outSamplesPtr + (sampleIdx * k + d) * 8, val);
+      outSamples.set(sampleIdx, d, val);
     }
     sampleIdx++;
   }
 
   // 3. Center Point
   for (let d: u32 = 0; d < k; d++) {
-    let center = load<f64>(centersPtr + d * 8);
-    store<f64>(outSamplesPtr + (sampleIdx * k + d) * 8, center);
+    outSamples.set(sampleIdx, d, centers[d]);
   }
   sampleIdx++;
 

@@ -49,6 +49,7 @@ import {
   createChunkedInt32Array,
   ChunkedUint8Array,
   createChunkedUint8Array,
+  SourceTextView,
 } from "./array";
 import { UnmanagedMap64, createMap64, UnmanagedSet64, createSet64 } from "./hashmap";
 import { ArenaStringPool } from "./string_pool";
@@ -66,11 +67,11 @@ export const SIZEOF_FLATTENER: u32 = 256;
 
 function parseIntBytes(src: usize, len: u32): i32 {
   if (len == 0 || src == 0) return 0;
-  let isUtf16 = (len >= 2 && load<u8>(src + 1) == 0);
-  let charCount = isUtf16 ? (len >> 1) : len;
+  let text = SourceTextView.at(src, len);
+  let charCount = text.charCount;
   let res: i32 = 0;
   for (let i: u32 = 0; i < charCount; i++) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b >= 48 && b <= 57) {
       res = res * 10 + ((b - 48) as i32);
     }
@@ -80,11 +81,11 @@ function parseIntBytes(src: usize, len: u32): i32 {
 
 function parseRealBytes(src: usize, len: u32): f64 {
   if (len == 0 || src == 0) return 0.0;
-  let isUtf16 = (len >= 2 && load<u8>(src + 1) == 0);
-  let charCount = isUtf16 ? (len >> 1) : len;
+  let text = SourceTextView.at(src, len);
+  let charCount = text.charCount;
   let i: u32 = 0;
   let sign: f64 = 1.0;
-  let firstChar = isUtf16 ? load<u16>(src) : (load<u8>(src) as u16);
+  let firstChar = text.charAt(0);
   if (firstChar == 45) { // '-'
     sign = -1.0;
     i++;
@@ -93,7 +94,7 @@ function parseRealBytes(src: usize, len: u32): f64 {
   }
   let intPart: f64 = 0.0;
   while (i < charCount) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b >= 48 && b <= 57) {
       intPart = intPart * 10.0 + ((b - 48) as f64);
       i++;
@@ -104,11 +105,11 @@ function parseRealBytes(src: usize, len: u32): f64 {
   let fracPart: f64 = 0.0;
   let fracDiv: f64 = 1.0;
   if (i < charCount) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b == 46) { // '.'
       i++;
       while (i < charCount) {
-        let fb = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+        let fb = text.charAt(i);
         if (fb >= 48 && fb <= 57) {
           fracPart = fracPart * 10.0 + ((fb - 48) as f64);
           fracDiv *= 10.0;
@@ -121,12 +122,12 @@ function parseRealBytes(src: usize, len: u32): f64 {
   }
   let val = sign * (intPart + (fracDiv > 1.0 ? fracPart / fracDiv : 0.0));
   if (i < charCount) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b == 101 || b == 69) { // 'e' | 'E'
       i++;
       let expSign: f64 = 1.0;
       if (i < charCount) {
-        let eb = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+        let eb = text.charAt(i);
         if (eb == 45) {
           expSign = -1.0;
           i++;
@@ -136,7 +137,7 @@ function parseRealBytes(src: usize, len: u32): f64 {
       }
       let expVal: f64 = 0.0;
       while (i < charCount) {
-        let eb = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+        let eb = text.charAt(i);
         if (eb >= 48 && eb <= 57) {
           expVal = expVal * 10.0 + ((eb - 48) as f64);
           i++;
@@ -152,10 +153,10 @@ function parseRealBytes(src: usize, len: u32): f64 {
 
 function bytesHaveDotOrExp(src: usize, len: u32): boolean {
   if (len == 0 || src == 0) return false;
-  let isUtf16 = (len >= 2 && load<u8>(src + 1) == 0);
-  let charCount = isUtf16 ? (len >> 1) : len;
+  let text = SourceTextView.at(src, len);
+  let charCount = text.charCount;
   for (let i: u32 = 0; i < charCount; i++) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b == 46 || b == 101 || b == 69) return true;
   }
   return false;
@@ -873,8 +874,8 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64): u64 {
   let len = locLen(subscriptsLoc);
   if (len < 2 || src == 0) return 0;
 
-  let isUtf16 = (len >= 2 && load<u8>(src + 1) == 0);
-  let charCount = isUtf16 ? (len >> 1) : len;
+  let text = SourceTextView.at(src, len);
+  let charCount = text.charCount;
 
   let d1: u32 = 0;
   let d2: u32 = 0;
@@ -885,7 +886,7 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64): u64 {
   let hasDigit = false;
 
   for (let i: u32 = 0; i < charCount; i++) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b == 40) { // '('
       parenDepth++;
     } else if (b == 41) { // ')'
@@ -919,14 +920,14 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64): u64 {
   return ((d1 as u64) << 32) | (d2 as u64);
 }
 
-function parseRangePart(dae: DaeBuilder, pool: ArenaStringPool, src: usize, isUtf16: boolean, startChar: u32, endChar: u32): i32 {
+function parseRangePart(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextView, startChar: u32, endChar: u32): i32 {
   while (startChar < endChar) {
-    let b = isUtf16 ? load<u16>(src + (startChar as usize) * 2) : (load<u8>(src + startChar) as u16);
+    let b = text.charAt(startChar);
     if (b != 32 && b != 9 && b != 10 && b != 13) break;
     startChar++;
   }
   while (endChar > startChar) {
-    let b = isUtf16 ? load<u16>(src + ((endChar - 1) as usize) * 2) : (load<u8>(src + endChar - 1) as u16);
+    let b = text.charAt(endChar - 1);
     if (b != 32 && b != 9 && b != 10 && b != 13) break;
     endChar--;
   }
@@ -934,21 +935,21 @@ function parseRangePart(dae: DaeBuilder, pool: ArenaStringPool, src: usize, isUt
 
   let isDigits = true;
   let s = startChar;
-  let first = isUtf16 ? load<u16>(src + (s as usize) * 2) : (load<u8>(src + s) as u16);
+  let first = text.charAt(s);
   if (first == 43 || first == 45) s++; // '+' or '-'
   for (let i = s; i < endChar; i++) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b < 48 || b > 57) { isDigits = false; break; }
   }
   if (isDigits && s < endChar) {
-    let partBytes = src + (startChar as usize) * (isUtf16 ? 2 : 1);
-    let partLen = (endChar - startChar) * (isUtf16 ? 2 : 1);
+    let partBytes = text.byteOffset(startChar);
+    let partLen = text.byteLength(endChar - startChar);
     return parseIntBytes(partBytes, partLen);
   }
 
-  let partBytes = src + (startChar as usize) * (isUtf16 ? 2 : 1);
-  let partLen = (endChar - startChar) * (isUtf16 ? 2 : 1);
-  let nameId = isUtf16 ? pool.internUtf16(partBytes, partLen) : pool.intern(partBytes, partLen);
+  let partBytes = text.byteOffset(startChar);
+  let partLen = text.byteLength(endChar - startChar);
+  let nameId = text.isUtf16 ? pool.internUtf16(partBytes, partLen) : pool.intern(partBytes, partLen);
   let vIdx = dae.lookupVariableByName(nameId);
   if (vIdx >= 0) {
     let val = dae.getVarStartValue(vIdx as u32);
@@ -961,25 +962,25 @@ function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, 
   let src = locBytes(fiLoc);
   let len = locLen(fiLoc);
   if (len == 0 || src == 0) return 0;
-  let isUtf16 = (len >= 2 && load<u8>(src + 1) == 0);
-  let charCount = isUtf16 ? (len >> 1) : len;
+  let text = SourceTextView.at(src, len);
+  let charCount = text.charCount;
 
   let inPos: u32 = 0;
   let inFound = false;
   for (let i: u32 = 0; i + 1 < charCount; i++) {
-    let c1 = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
-    let c2 = isUtf16 ? load<u16>(src + ((i + 1) as usize) * 2) : (load<u8>(src + i + 1) as u16);
+    let c1 = text.charAt(i);
+    let c2 = text.charAt(i + 1);
     if (c1 == 105 && c2 == 110) { // 'i', 'n'
       let prevIsWord = false;
       if (i > 0) {
-        let prev = isUtf16 ? load<u16>(src + ((i - 1) as usize) * 2) : (load<u8>(src + i - 1) as u16);
+        let prev = text.charAt(i - 1);
         if ((prev >= 97 && prev <= 122) || (prev >= 65 && prev <= 90) || (prev >= 48 && prev <= 57) || prev == 95) {
           prevIsWord = true;
         }
       }
       let nextIsWord = false;
       if (i + 2 < charCount) {
-        let next = isUtf16 ? load<u16>(src + ((i + 2) as usize) * 2) : (load<u8>(src + i + 2) as u16);
+        let next = text.charAt(i + 2);
         if ((next >= 97 && next <= 122) || (next >= 65 && next <= 90) || (next >= 48 && next <= 57) || next == 95) {
           nextIsWord = true;
         }
@@ -1003,18 +1004,18 @@ function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, 
     let varStart: u32 = 0;
     let varEnd = inPos - 2;
     while (varStart < varEnd) {
-      let b = isUtf16 ? load<u16>(src + (varStart as usize) * 2) : (load<u8>(src + varStart) as u16);
+      let b = text.charAt(varStart);
       if (b != 32 && b != 9 && b != 10 && b != 13) break;
       varStart++;
     }
     while (varEnd > varStart) {
-      let b = isUtf16 ? load<u16>(src + ((varEnd - 1) as usize) * 2) : (load<u8>(src + varEnd - 1) as u16);
+      let b = text.charAt(varEnd - 1);
       if (b != 32 && b != 9 && b != 10 && b != 13) break;
       varEnd--;
     }
-    let pBytes = src + (varStart as usize) * (isUtf16 ? 2 : 1);
-    let pLen = (varEnd - varStart) * (isUtf16 ? 2 : 1);
-    varNameId = isUtf16 ? pool.internUtf16(pBytes, pLen) : pool.intern(pBytes, pLen);
+    let pBytes = text.byteOffset(varStart);
+    let pLen = text.byteLength(varEnd - varStart);
+    varNameId = text.isUtf16 ? pool.internUtf16(pBytes, pLen) : pool.intern(pBytes, pLen);
   }
 
   let colon1: u32 = 0;
@@ -1022,7 +1023,7 @@ function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, 
   let colonCount: u32 = 0;
   let parenDepth: i32 = 0;
   for (let i = inPos; i < charCount; i++) {
-    let b = isUtf16 ? load<u16>(src + (i as usize) * 2) : (load<u8>(src + i) as u16);
+    let b = text.charAt(i);
     if (b == 40) parenDepth++;
     else if (b == 41) { if (parenDepth > 0) parenDepth--; }
     else if (parenDepth == 0 && b == 58) { // ':'
@@ -1037,13 +1038,13 @@ function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, 
   let stepVal: i32 = 1;
   let endVal: i32 = 0;
   if (colonCount == 1) {
-    startVal = parseRangePart(dae, pool, src, isUtf16, inPos, colon1);
+    startVal = parseRangePart(dae, pool, text, inPos, colon1);
     stepVal = 1;
-    endVal = parseRangePart(dae, pool, src, isUtf16, colon1 + 1, charCount);
+    endVal = parseRangePart(dae, pool, text, colon1 + 1, charCount);
   } else if (colonCount >= 2) {
-    startVal = parseRangePart(dae, pool, src, isUtf16, inPos, colon1);
-    stepVal = parseRangePart(dae, pool, src, isUtf16, colon1 + 1, colon2);
-    endVal = parseRangePart(dae, pool, src, isUtf16, colon2 + 1, charCount);
+    startVal = parseRangePart(dae, pool, text, inPos, colon1);
+    stepVal = parseRangePart(dae, pool, text, colon1 + 1, colon2);
+    endVal = parseRangePart(dae, pool, text, colon2 + 1, charCount);
   }
 
   outVals.push(varNameId as i32);

@@ -2,6 +2,7 @@
 
 import { DaeBuilder, ExprKind, BinOp, UnaryOp } from "./builder";
 import { ExprAccessor, EqAccessor } from "./accessors";
+import { UnmanagedFloat64Array } from "../core/array";
 
 /**
  * Evaluates an expression tree in the DaeBuilder given a buffer of variable values.
@@ -23,7 +24,7 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
   if (e.kind == ExprKind.Name) {
     let varId = e.varId;
     if (varId == 0xffffffff || varId >= dae.varCount) return 0.0;
-    return load<f64>(varValuesPtr + (varId as usize) * 8);
+    return changetype<UnmanagedFloat64Array>(varValuesPtr)[varId];
   }
 
   if (e.kind == ExprKind.Unary || e.kind == ExprKind.Negate) {

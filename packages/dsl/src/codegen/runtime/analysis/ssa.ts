@@ -3,23 +3,8 @@
 // Dominance Frontiers (DF), and minimal Phi-node placement in AssemblyScript zero-GC linear memory.
 
 import { allocGen0 } from "../arena";
-import {
-  BLOCK_DOMINATOR,
-  BLOCK_FALSE_BRANCH,
-  BLOCK_FIRST_INSTR,
-  BLOCK_LAST_INSTR,
-  BLOCK_NEXT,
-  BLOCK_POST_ORDER,
-  BLOCK_SUCCESSOR_LIST,
-  BLOCK_TRUE_BRANCH,
-  IR_INSTR_NEXT,
-  IR_INSTR_OPCODE,
-  IR_INSTR_OPERAND1,
-  IR_INSTR_OPERAND2,
-  IR_INSTR_SIZE,
-  IR_INSTR_TYPE_ID,
-  IR_OPCODE_PHI,
-} from "../core/ir_layout";
+import { BasicBlock, IRInstruction, IR_INSTR_SIZE, IR_OPCODE_PHI } from "../core/ir_layout";
+import { UnmanagedUint32Array } from "../core/array";
 
 // --- Global SSA State in Linear Memory ---
 
@@ -56,10 +41,11 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
         stackTop--;
         let blk = load<u32>(stackOffset + stackTop * 8);
         let phase = load<u32>(stackOffset + stackTop * 8 + 4);
+        let bb = BasicBlock.at(blk);
 
         if (phase == 1) {
             // Post-order finish: assign post-order index
-            store<u32>(blk + BLOCK_POST_ORDER, postIdx);
+            bb.postOrder = postIdx;
             postIdx++;
             continue;
         }
@@ -88,7 +74,7 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
         }
 
         // Push false branch
-        let fBranch = load<u32>(blk + BLOCK_FALSE_BRANCH, 0);
+        let fBranch = bb.falseBranch;
         if (fBranch != 0 && stackTop < stackCapacity) {
             store<u32>(stackOffset + stackTop * 8, fBranch);
             store<u32>(stackOffset + stackTop * 8 + 4, 0);
@@ -96,15 +82,15 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
         }
 
         // Push true branch
-        let tBranch = load<u32>(blk + BLOCK_TRUE_BRANCH, 0);
+        let tBranch = bb.trueBranch;
         if (tBranch != 0 && stackTop < stackCapacity) {
             store<u32>(stackOffset + stackTop * 8, tBranch);
             store<u32>(stackOffset + stackTop * 8 + 4, 0);
             stackTop++;
         }
 
-        // Push multi-way branch successors from BLOCK_SUCCESSOR_LIST if present
-        let succList = load<u32>(blk + BLOCK_SUCCESSOR_LIST, 0);
+        // Push multi-way branch successors from successorList if present
+        let succList = bb.successorList;
         if (succList != 0) {
             let succCount = load<u32>(succList, 0);
             for (let s: u32 = 0; s < succCount; s++) {
@@ -123,14 +109,15 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
 
     // Allocate dense RPO array
     ssaRPOOffset = allocGen0(ssaBlockCount * 4);
+    let rpo = changetype<UnmanagedUint32Array>(ssaRPOOffset);
 
     // Build Reverse Post-Order array (rpo[0] is entryBlock with max postIdx)
     for (let i: u32 = 0; i < visitedCount; i++) {
         let blk = load<u32>(visitedMap + i * 4);
-        let po = load<u32>(blk + BLOCK_POST_ORDER, 0);
+        let po = BasicBlock.at(blk).postOrder;
         let rpoIdx = ssaBlockCount - 1 - po;
         if (rpoIdx < ssaBlockCount) {
-            store<u32>(ssaRPOOffset + rpoIdx * 4, blk);
+            rpo[rpoIdx] = blk;
         }
     }
 
@@ -146,14 +133,15 @@ export function computeDominators(entryBlock: u32): void {
     let numBlocks = computeSSAPostOrder(entryBlock);
     if (numBlocks == 0) return;
 
+    let rpo = changetype<UnmanagedUint32Array>(ssaRPOOffset);
+
     // Initialize all reachable dominators to 0
     for (let i: u32 = 0; i < numBlocks; i++) {
-        let b = load<u32>(ssaRPOOffset + i * 4);
-        store<u32>(b + BLOCK_DOMINATOR, 0);
+        BasicBlock.at(rpo[i]).dominator = 0;
     }
 
     // Set entry block dominator to itself
-    store<u32>(entryBlock + BLOCK_DOMINATOR, entryBlock);
+    BasicBlock.at(entryBlock).dominator = entryBlock;
 
     let changed = true;
     let iter: u32 = 0;
@@ -164,18 +152,18 @@ export function computeDominators(entryBlock: u32): void {
 
         // Iterate in Reverse Post-Order (skipping entry block at index 0)
         for (let i: u32 = 1; i < numBlocks; i++) {
-            let b = load<u32>(ssaRPOOffset + i * 4);
+            let b = rpo[i];
+            let bb = BasicBlock.at(b);
             let newIdom: u32 = 0;
 
             // Iterate predecessors of b
             for (let j: u32 = 0; j < numBlocks; j++) {
-                let p = load<u32>(ssaRPOOffset + j * 4);
-                let tBranch = load<u32>(p + BLOCK_TRUE_BRANCH, 0);
-                let fBranch = load<u32>(p + BLOCK_FALSE_BRANCH, 0);
-                let isPred = (tBranch == b || fBranch == b);
+                let p = rpo[j];
+                let pb = BasicBlock.at(p);
+                let isPred = (pb.trueBranch == b || pb.falseBranch == b);
 
                 if (!isPred) {
-                    let succList = load<u32>(p + BLOCK_SUCCESSOR_LIST, 0);
+                    let succList = pb.successorList;
                     if (succList != 0) {
                         let succCount = load<u32>(succList, 0);
                         for (let s: u32 = 0; s < succCount; s++) {
@@ -188,7 +176,7 @@ export function computeDominators(entryBlock: u32): void {
                 }
 
                 if (isPred) {
-                    let domP = load<u32>(p + BLOCK_DOMINATOR, 0);
+                    let domP = pb.dominator;
                     if (domP != 0) { // Predecessor has an established dominator
                         if (newIdom == 0) {
                             newIdom = p;
@@ -199,9 +187,9 @@ export function computeDominators(entryBlock: u32): void {
                 }
             }
 
-            let currentDom = load<u32>(b + BLOCK_DOMINATOR, 0);
+            let currentDom = bb.dominator;
             if (newIdom != 0 && newIdom != currentDom) {
-                store<u32>(b + BLOCK_DOMINATOR, newIdom);
+                bb.dominator = newIdom;
                 changed = true;
             }
         }
@@ -215,20 +203,20 @@ export function intersectDominator(b1: u32, b2: u32, entryBlock: u32): u32 {
     let finger1 = b1;
     let finger2 = b2;
     while (finger1 != finger2 && finger1 != 0 && finger2 != 0) {
-        let po1 = load<u32>(finger1 + BLOCK_POST_ORDER, 0);
-        let po2 = load<u32>(finger2 + BLOCK_POST_ORDER, 0);
+        let po1 = BasicBlock.at(finger1).postOrder;
+        let po2 = BasicBlock.at(finger2).postOrder;
 
         while (po1 < po2 && finger1 != entryBlock && finger1 != 0) {
-            let nextDom = load<u32>(finger1 + BLOCK_DOMINATOR, 0);
+            let nextDom = BasicBlock.at(finger1).dominator;
             if (nextDom == finger1 || nextDom == 0) break;
             finger1 = nextDom;
-            po1 = load<u32>(finger1 + BLOCK_POST_ORDER, 0);
+            po1 = BasicBlock.at(finger1).postOrder;
         }
         while (po2 < po1 && finger2 != entryBlock && finger2 != 0) {
-            let nextDom = load<u32>(finger2 + BLOCK_DOMINATOR, 0);
+            let nextDom = BasicBlock.at(finger2).dominator;
             if (nextDom == finger2 || nextDom == 0) break;
             finger2 = nextDom;
-            po2 = load<u32>(finger2 + BLOCK_POST_ORDER, 0);
+            po2 = BasicBlock.at(finger2).postOrder;
         }
 
         if (finger1 == entryBlock && finger2 == entryBlock) return entryBlock;
@@ -248,6 +236,8 @@ export function computeDominanceFrontiers(entryBlock: u32): u32 {
     let numBlocks = ssaBlockCount;
     if (numBlocks == 0) return 0;
 
+    let rpo = changetype<UnmanagedUint32Array>(ssaRPOOffset);
+
     // Allocate array of pointers to DF lists: [listPtr0, listPtr1, ...]
     ssaDFOffset = allocGen0(numBlocks * 4);
     for (let i: u32 = 0; i < numBlocks; i++) {
@@ -260,21 +250,20 @@ export function computeDominanceFrontiers(entryBlock: u32): u32 {
 
     // For all blocks b: if count(preds(b)) >= 2
     for (let i: u32 = 0; i < numBlocks; i++) {
-        let b = load<u32>(ssaRPOOffset + i * 4);
-        let idomB = load<u32>(b + BLOCK_DOMINATOR, 0);
+        let b = rpo[i];
+        let idomB = BasicBlock.at(b).dominator;
 
         // Check each predecessor p of b
         for (let j: u32 = 0; j < numBlocks; j++) {
-            let p = load<u32>(ssaRPOOffset + j * 4);
-            let tBranch = load<u32>(p + BLOCK_TRUE_BRANCH, 0);
-            let fBranch = load<u32>(p + BLOCK_FALSE_BRANCH, 0);
-            let isPred = (tBranch == b || fBranch == b);
+            let p = rpo[j];
+            let pb = BasicBlock.at(p);
+            let isPred = (pb.trueBranch == b || pb.falseBranch == b);
 
             if (isPred) {
                 let runner = p;
                 while (runner != 0 && runner != idomB && runner != entryBlock) {
                     addBlockToDF(runner, b);
-                    let nextRunner = load<u32>(runner + BLOCK_DOMINATOR, 0);
+                    let nextRunner = BasicBlock.at(runner).dominator;
                     if (nextRunner == runner) break;
                     runner = nextRunner;
                 }
@@ -350,35 +339,37 @@ export function placePhiNodes(entryBlock: u32): void {
             let targetBlk = load<u32>(listPtr + 8 + j * 4);
             if (targetBlk == 0) continue;
 
-            // Check if targetBlk already has a Phi instruction
-            let firstInstr = load<u32>(targetBlk + BLOCK_FIRST_INSTR, 0);
+            let target = BasicBlock.at(targetBlk);
+            let firstInstr = target.firstInstr;
             let hasPhi = false;
             let curr = firstInstr;
             while (curr != 0) {
-                let op = load<u16>(curr + IR_INSTR_OPCODE, 0);
-                if (op == <u16>IR_OPCODE_PHI) {
+                let instr = IRInstruction.at(curr);
+                if (instr.opcode == <u16>IR_OPCODE_PHI) {
                     hasPhi = true;
                     break;
                 }
-                curr = load<u32>(curr + IR_INSTR_NEXT, 0);
+                curr = instr.nextInstr;
             }
 
             if (!hasPhi) {
                 // Allocate and prepend Phi node instruction
                 let phiInstr = allocGen0(IR_INSTR_SIZE);
                 if (phiInstr != 0) {
-                    store<u16>(phiInstr + IR_INSTR_OPCODE, <u16>IR_OPCODE_PHI);
-                    store<u16>(phiInstr + IR_INSTR_TYPE_ID, 0);
-                    store<u32>(phiInstr + IR_INSTR_OPERAND1, 0);
-                    store<u32>(phiInstr + IR_INSTR_OPERAND2, 0);
-                    store<u32>(phiInstr + IR_INSTR_NEXT, firstInstr);
+                    let phi = IRInstruction.at(phiInstr);
+                    phi.opcode = <u16>IR_OPCODE_PHI;
+                    phi.typeId = 0;
+                    phi.operand1 = 0;
+                    phi.operand2 = 0;
+                    phi.nextInstr = firstInstr;
 
-                    store<u32>(targetBlk + BLOCK_FIRST_INSTR, phiInstr);
-                    if (load<u32>(targetBlk + BLOCK_LAST_INSTR, 0) == 0) {
-                        store<u32>(targetBlk + BLOCK_LAST_INSTR, phiInstr);
+                    target.firstInstr = phiInstr;
+                    if (target.lastInstr == 0) {
+                        target.lastInstr = phiInstr;
                     }
                 }
             }
         }
     }
 }
+

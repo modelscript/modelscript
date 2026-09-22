@@ -1,4 +1,5 @@
 import { atomicChunkAlloc } from "../arena";
+import { UnmanagedFloat64Array } from "../core/array";
 
 /**
  * Circular Ring Buffer for Modelica delay(expr, delayTime) and spatialDistribution operators.
@@ -29,14 +30,26 @@ export class DelayRingBuffer {
     this.derivPtr = atomicChunkAlloc(cap * 8);
   }
 
+  @inline get times(): UnmanagedFloat64Array {
+    return changetype<UnmanagedFloat64Array>(this.timePtr);
+  }
+
+  @inline get values(): UnmanagedFloat64Array {
+    return changetype<UnmanagedFloat64Array>(this.valuePtr);
+  }
+
+  @inline get derivs(): UnmanagedFloat64Array {
+    return changetype<UnmanagedFloat64Array>(this.derivPtr);
+  }
+
   /**
    * Pushes a new sample (t, value, deriv) to the circular buffer.
    */
   push(t: f64, val: f64, der: f64 = 0.0): void {
     let nextIdx = (this.head + 1) % this.capacity;
-    store<f64>(this.timePtr + nextIdx * 8, t);
-    store<f64>(this.valuePtr + nextIdx * 8, val);
-    store<f64>(this.derivPtr + nextIdx * 8, der);
+    this.times[nextIdx] = t;
+    this.values[nextIdx] = val;
+    this.derivs[nextIdx] = der;
 
     this.head = nextIdx;
     if (this.count < this.capacity) {
@@ -51,12 +64,16 @@ export class DelayRingBuffer {
   evalDelay(t: f64, delayTime: f64): f64 {
     if (this.count == 0) return 0.0;
 
+    let times = this.times;
+    let values = this.values;
+    let derivs = this.derivs;
+
     let targetT = t - delayTime;
     let newestIdx = this.head;
-    let newestT = load<f64>(this.timePtr + newestIdx * 8);
+    let newestT = times[newestIdx];
 
     if (targetT >= newestT) {
-      return load<f64>(this.valuePtr + newestIdx * 8);
+      return values[newestIdx];
     }
 
     // Binary / linear search backward from head
@@ -66,14 +83,14 @@ export class DelayRingBuffer {
     let idx1: u32 = newestIdx;
     let t1: f64 = newestT;
     let idx0: u32 = (newestIdx + cap - 1) % cap;
-    let t0: f64 = load<f64>(this.timePtr + idx0 * 8);
+    let t0: f64 = times[idx0];
 
     for (let i: u32 = 0; i < c - 1; i++) {
       let currIdx = (newestIdx + cap - i) % cap;
       let prevIdx = (newestIdx + cap - i - 1) % cap;
 
-      let cT = load<f64>(this.timePtr + currIdx * 8);
-      let pT = load<f64>(this.timePtr + prevIdx * 8);
+      let cT = times[currIdx];
+      let pT = times[prevIdx];
 
       if (targetT <= cT && targetT >= pT) {
         idx0 = prevIdx;
@@ -85,7 +102,7 @@ export class DelayRingBuffer {
     }
 
     if (t1 <= t0) {
-      return load<f64>(this.valuePtr + idx0 * 8);
+      return values[idx0];
     }
 
     // Cubic Hermite Interpolation
@@ -94,10 +111,10 @@ export class DelayRingBuffer {
     let s2 = s * s;
     let s3 = s2 * s;
 
-    let y0 = load<f64>(this.valuePtr + idx0 * 8);
-    let y1 = load<f64>(this.valuePtr + idx1 * 8);
-    let d0 = load<f64>(this.derivPtr + idx0 * 8) * dt;
-    let d1 = load<f64>(this.derivPtr + idx1 * 8) * dt;
+    let y0 = values[idx0];
+    let y1 = values[idx1];
+    let d0 = derivs[idx0] * dt;
+    let d1 = derivs[idx1] * dt;
 
     let h00 = 2.0 * s3 - 3.0 * s2 + 1.0;
     let h10 = s3 - 2.0 * s2 + s;

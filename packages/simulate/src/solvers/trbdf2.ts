@@ -17,8 +17,8 @@
  *   "Transient simulation of silicon devices and circuits", IEEE Trans. CAD, 4(4), 436-446.
  */
 
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
 import type { CommonSolverResult, DAEProblem, ODEProblem, SolverStats } from "../core/problem-types.js";
+import { factorizeLinearMatrix } from "./sparse-solver-bridge.js";
 
 export const TRBDF2_GAMMA = 2.0 - Math.SQRT2; // ≈ 0.585786437626905
 export const TRBDF2_D = TRBDF2_GAMMA / 2.0; // = 1 - 1/√2 ≈ 0.2928932188134524
@@ -31,6 +31,7 @@ export interface TrBdf2Options {
   minStep?: number;
   maxSteps?: number;
   maxNewtonIters?: number;
+  linearSolver?: "auto" | "dense" | "sparse";
 }
 
 export interface TrBdf2Result extends CommonSolverResult {
@@ -147,8 +148,8 @@ export function trbdf2(
       }
     }
 
-    // LU factorize W
-    const lu = luFactor(W, n);
+    // LU factorize W (sparse or dense according to dimension/option)
+    const solver = factorizeLinearMatrix(W, n, { linearSolver: options.linearSolver });
     stats.luFactorizations!++;
 
     // ── Stage 1: Trapezoidal rule at t + gamma * h ──
@@ -171,7 +172,7 @@ export function trbdf2(
         delta[i] = -(My - d * h * ((f0[i] ?? 0) + (fGamma[i] ?? 0)));
       }
 
-      luSolve(lu, delta);
+      solver.solve(delta);
 
       let maxDelta = 0;
       for (let i = 0; i < n; i++) {
@@ -217,7 +218,7 @@ export function trbdf2(
         delta[i] = -(My - d * h * (fNew[i] ?? 0));
       }
 
-      luSolve(lu, delta);
+      solver.solve(delta);
 
       let maxDelta = 0;
       for (let i = 0; i < n; i++) {

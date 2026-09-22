@@ -1,13 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
-import { BinOp, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime/wasm_dae.js";
-import {
-  containsDerivative,
-  pantelidesIndexReductionArena,
-  WasmPantelides,
-} from "@modelscript/runtime/wasm_pantelides.js";
 import assert from "node:assert";
+import { containsDerivative, pantelidesIndexReductionArena, WasmPantelides } from "../src/analysis/wasm_pantelides.js";
+import { BinOp, DAEBuilder, EqKind, Variability, VarType } from "../src/dae/wasm_dae.js";
 
 console.log("Testing Pantelides Index Reduction & WASM Runtime...");
 
@@ -77,6 +70,45 @@ console.log("Testing Pantelides Index Reduction & WASM Runtime...");
   assert.strictEqual(res.structuralIndex, 2);
   assert.strictEqual(res.dummyDerivativeCount, 1);
   console.log("  ✔ WasmPantelides wrapper passed");
+}
+
+// Test 4: Mattsson-Söderlind Dynamic State Selection
+{
+  const arena = new DAEBuilder();
+  const x = arena.addVariable("x", VarType.Real, Variability.Continuous);
+  const y = arena.addVariable("y", VarType.Real, Variability.Continuous);
+  const derX = arena.addVariable("der(x)", VarType.Real, Variability.Continuous);
+  const derY = arena.addVariable("der(y)", VarType.Real, Variability.Continuous);
+
+  const stateVars = new Set<number>([x, y]);
+  const derivativeVars = new Set<number>([derX, derY]);
+  const parameters = new Set<number>();
+
+  const subExpr = arena.addBinaryExpr(BinOp.Sub, arena.addNameExpr("x"), arena.addNameExpr("y"));
+  arena.addEquation(EqKind.Simple, subExpr, arena.addRealLiteral(0.0));
+
+  // Case A: Prioritize y to be the dummy derivative (leaving x as independent state)
+  const resultA = pantelidesIndexReductionArena(arena, stateVars, derivativeVars, parameters, {
+    statePriority: (varIdx) => (varIdx === y ? 10 : 1),
+  });
+  assert(resultA.dummyDerivatives.has(y), "Mattsson-Söderlind must pick prioritized state y as dummy derivative");
+  assert.strictEqual(resultA.stateSelectionMap?.get(0), y, "Mapping must record eq 0 -> state y");
+
+  // Case B: In a new arena, prioritize x to be the dummy derivative (leaving y as independent state)
+  const arenaB = new DAEBuilder();
+  const xB = arenaB.addVariable("x", VarType.Real, Variability.Continuous);
+  const yB = arenaB.addVariable("y", VarType.Real, Variability.Continuous);
+  const derXB = arenaB.addVariable("der(x)", VarType.Real, Variability.Continuous);
+  const derYB = arenaB.addVariable("der(y)", VarType.Real, Variability.Continuous);
+  const subExprB = arenaB.addBinaryExpr(BinOp.Sub, arenaB.addNameExpr("x"), arenaB.addNameExpr("y"));
+  arenaB.addEquation(EqKind.Simple, subExprB, arenaB.addRealLiteral(0.0));
+
+  const resultB = pantelidesIndexReductionArena(arenaB, new Set([xB, yB]), new Set([derXB, derYB]), new Set(), {
+    statePriority: (varIdx) => (varIdx === xB ? 10 : 1),
+  });
+  assert(resultB.dummyDerivatives.has(xB), "Mattsson-Söderlind must pick prioritized state x as dummy derivative");
+  assert.strictEqual(resultB.stateSelectionMap?.get(0), xB, "Mapping must record eq 0 -> state x");
+  console.log("  ✔ Mattsson-Söderlind dynamic state selection passed");
 }
 
 console.log("=== All Pantelides Index Reduction Tests Passed Cleanly ===");

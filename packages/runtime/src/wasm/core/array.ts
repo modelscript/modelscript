@@ -401,3 +401,193 @@ export class UnmanagedUint8Array {
     store<u8>(changetype<usize>(this) + (index as u32), value);
   }
 }
+
+/**
+ * Unmanaged wrapper for raw 64-bit floating-point memory buffers (f64*).
+ */
+@unmanaged
+export class UnmanagedFloat64Array {
+  @inline @operator("[]") get(index: i32): f64 {
+    if (index < 0) return 0.0;
+    return load<f64>(changetype<usize>(this) + (((index as u32) as usize) << 3));
+  }
+  @inline @operator("[]=") set(index: i32, value: f64): void {
+    if (index < 0) return;
+    store<f64>(changetype<usize>(this) + (((index as u32) as usize) << 3), value);
+  }
+  @inline fill(val: f64, count: i32): void {
+    for (let i: i32 = 0; i < count; i++) {
+      this[i] = val;
+    }
+  }
+}
+
+/**
+ * Unmanaged wrapper for raw 32-bit floating-point memory buffers (f32*).
+ */
+@unmanaged
+export class UnmanagedFloat32Array {
+  @inline @operator("[]") get(index: i32): f32 {
+    if (index < 0) return 0.0;
+    return load<f32>(changetype<usize>(this) + (((index as u32) as usize) << 2));
+  }
+  @inline @operator("[]=") set(index: i32, value: f32): void {
+    if (index < 0) return;
+    store<f32>(changetype<usize>(this) + (((index as u32) as usize) << 2), value);
+  }
+  @inline fill(val: f32, count: i32): void {
+    for (let i: i32 = 0; i < count; i++) {
+      this[i] = val;
+    }
+  }
+}
+
+const MATRIX_VIEW_SLOTS: u32 = 16;
+const MATRIX_VIEW_MASK: u32 = MATRIX_VIEW_SLOTS - 1;
+let g_matrixViewIdx: u32 = 0;
+let g_matrixViewBuf: usize = 0;
+
+/**
+ * Unmanaged zero-overhead view over a 2D dense row-major f64 matrix in linear memory.
+ * Provides type-safe row/col indexing and row-swapping with zero GC allocations.
+ */
+@unmanaged
+export class DenseMatrixView {
+  rows: u32;
+  cols: u32;
+  data: UnmanagedFloat64Array;
+
+  @inline static wrap(data: UnmanagedFloat64Array, rows: u32, cols: u32): DenseMatrixView {
+    if (g_matrixViewBuf == 0) {
+      g_matrixViewBuf = atomicChunkAlloc(MATRIX_VIEW_SLOTS * sizeof<DenseMatrixView>());
+    }
+    let slot = (g_matrixViewIdx++) & MATRIX_VIEW_MASK;
+    let m = changetype<DenseMatrixView>(g_matrixViewBuf + slot * sizeof<DenseMatrixView>());
+    m.rows = rows;
+    m.cols = cols;
+    m.data = data;
+    return m;
+  }
+
+  @inline static at(ptr: usize, rows: u32, cols: u32): DenseMatrixView {
+    return DenseMatrixView.wrap(changetype<UnmanagedFloat64Array>(ptr), rows, cols);
+  }
+
+  @inline get(r: u32, c: u32): f64 {
+    return this.data[r * this.cols + c];
+  }
+
+  @inline set(r: u32, c: u32, val: f64): void {
+    this.data[r * this.cols + c] = val;
+  }
+
+  @inline swapRows(r1: u32, r2: u32): void {
+    let cols = this.cols;
+    let base1 = r1 * cols;
+    let base2 = r2 * cols;
+    for (let c: u32 = 0; c < cols; c++) {
+      let tmp = this.data[base1 + c];
+      this.data[base1 + c] = this.data[base2 + c];
+      this.data[base2 + c] = tmp;
+    }
+  }
+}
+
+const INT32_MATRIX_VIEW_SLOTS: u32 = 16;
+const INT32_MATRIX_VIEW_MASK: u32 = INT32_MATRIX_VIEW_SLOTS - 1;
+let g_int32MatrixViewIdx: u32 = 0;
+let g_int32MatrixViewBuf: usize = 0;
+
+/**
+ * Unmanaged zero-overhead view over a 2D dense row-major i32 matrix in linear memory.
+ * Provides type-safe row/col indexing and row-swapping with zero GC allocations.
+ */
+@unmanaged
+export class DenseInt32MatrixView {
+  rows: u32;
+  cols: u32;
+  data: UnmanagedInt32Array;
+
+  @inline static wrap(data: UnmanagedInt32Array, rows: u32, cols: u32): DenseInt32MatrixView {
+    if (g_int32MatrixViewBuf == 0) {
+      g_int32MatrixViewBuf = atomicChunkAlloc(INT32_MATRIX_VIEW_SLOTS * sizeof<DenseInt32MatrixView>());
+    }
+    let slot = (g_int32MatrixViewIdx++) & INT32_MATRIX_VIEW_MASK;
+    let m = changetype<DenseInt32MatrixView>(g_int32MatrixViewBuf + slot * sizeof<DenseInt32MatrixView>());
+    m.rows = rows;
+    m.cols = cols;
+    m.data = data;
+    return m;
+  }
+
+  @inline static at(ptr: usize, rows: u32, cols: u32): DenseInt32MatrixView {
+    return DenseInt32MatrixView.wrap(changetype<UnmanagedInt32Array>(ptr), rows, cols);
+  }
+
+  @inline get(r: u32, c: u32): i32 {
+    return this.data[r * this.cols + c];
+  }
+
+  @inline set(r: u32, c: u32, val: i32): void {
+    this.data[r * this.cols + c] = val;
+  }
+
+  @inline swapRows(r1: u32, r2: u32): void {
+    let cols = this.cols;
+    let base1 = r1 * cols;
+    let base2 = r2 * cols;
+    for (let c: u32 = 0; c < cols; c++) {
+      let tmp = this.data[base1 + c];
+      this.data[base1 + c] = this.data[base2 + c];
+      this.data[base2 + c] = tmp;
+    }
+  }
+}
+
+const SOURCE_VIEW_SLOTS: u32 = 16;
+const SOURCE_VIEW_MASK: u32 = SOURCE_VIEW_SLOTS - 1;
+let g_sourceViewIdx: u32 = 0;
+let g_sourceViewBuf: usize = 0;
+
+/**
+ * Unmanaged zero-overhead view over source code text (UTF-8 or UTF-16) in linear memory.
+ * Eliminates repetitive isUtf16 branches and manual byte offsets in lexers and flatteners.
+ */
+@unmanaged
+export class SourceTextView {
+  ptr: usize;
+  byteLen: u32;
+  isUtf16: bool;
+  charCount: u32;
+
+  @inline static at(ptr: usize, len: u32): SourceTextView {
+    if (g_sourceViewBuf == 0) {
+      g_sourceViewBuf = atomicChunkAlloc(SOURCE_VIEW_SLOTS * sizeof<SourceTextView>());
+    }
+    let slot = (g_sourceViewIdx++) & SOURCE_VIEW_MASK;
+    let view = changetype<SourceTextView>(g_sourceViewBuf + slot * sizeof<SourceTextView>());
+    view.ptr = ptr;
+    view.byteLen = len;
+    let isUtf16 = (len >= 2 && ptr != 0 && load<u8>(ptr + 1) == 0);
+    view.isUtf16 = isUtf16;
+    view.charCount = isUtf16 ? (len >> 1) : len;
+    return view;
+  }
+
+  @inline charAt(i: u32): u16 {
+    if (this.isUtf16) {
+      return load<u16>(this.ptr + (((i as usize) << 1)));
+    } else {
+      return load<u8>(this.ptr + (i as usize)) as u16;
+    }
+  }
+
+  @inline byteOffset(charIdx: u32): usize {
+    return this.ptr + (charIdx as usize) * (this.isUtf16 ? 2 : 1);
+  }
+
+  @inline byteLength(charCount: u32): u32 {
+    return charCount * (this.isUtf16 ? 2 : 1);
+  }
+}
+

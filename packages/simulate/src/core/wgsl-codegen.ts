@@ -348,6 +348,7 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("@group(0) @binding(4) var<storage, read> deriv_var_indices: array<u32>;");
   lines.push("@group(0) @binding(5) var<storage, read_write> y0: array<vec2<f32>>;");
   lines.push("@group(0) @binding(6) var<storage, read_write> y_acc: array<vec2<f32>>;");
+  lines.push("@group(0) @binding(7) var<storage, read_write> stage_scratch: array<vec2<f32>>;");
   lines.push("");
   lines.push("struct SimParams {");
   lines.push("  time: vec2<f32>,");
@@ -355,6 +356,9 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("  block_count: u32,");
   lines.push("  num_states: u32,");
   lines.push("  rk4_stage: u32,");
+  lines.push("  solver_type: u32,");
+  lines.push("  sub_stage: u32,");
+  lines.push("  pad: u32,");
   lines.push("};");
   lines.push("");
 
@@ -510,6 +514,148 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("    state[state_idx] = ds_add(y0[idx], ds_mul(dt, k));");
   lines.push("  } else if (sim_params.rk4_stage == 3u) {");
   lines.push("    state[state_idx] = ds_add(y_acc[idx], ds_mul(dt_6, k));");
+  lines.push("  }");
+  lines.push("}");
+  lines.push("");
+
+  // ── Tsit5 7-stage adaptive ODE integration kernel ──
+  lines.push(`@compute @workgroup_size(${workgroupSize})`);
+  lines.push("fn tsit5_step(@builtin(global_invocation_id) gid: vec3<u32>) {");
+  lines.push("  let idx = gid.x;");
+  lines.push("  if (idx >= sim_params.num_states) { return; }");
+  lines.push("  let state_idx = state_var_indices[idx];");
+  lines.push("  let deriv_idx = deriv_var_indices[idx];");
+  lines.push("  let k = state[deriv_idx];");
+  lines.push("  let dt = sim_params.dt;");
+  lines.push("  let N = sim_params.num_states;");
+  lines.push("  let stage = sim_params.sub_stage;");
+  lines.push("");
+  lines.push("  // Store current stage derivative");
+  lines.push("  stage_scratch[stage * N + idx] = k;");
+  lines.push("");
+  lines.push("  if (stage == 0u) {");
+  lines.push("    let y = state[state_idx];");
+  lines.push("    y0[idx] = y;");
+  lines.push("    let a21 = ds_from_f32(0.161);");
+  lines.push("    state[state_idx] = ds_add(y, ds_mul(dt, ds_mul(a21, k)));");
+  lines.push("  } else if (stage == 1u) {");
+  lines.push("    let k0 = stage_scratch[0u * N + idx];");
+  lines.push("    let a31 = ds_from_f32(-0.008480655492356989);");
+  lines.push("    let a32 = ds_from_f32(0.335480655492357);");
+  lines.push("    let sum = ds_add(ds_mul(a31, k0), ds_mul(a32, k));");
+  lines.push("    state[state_idx] = ds_add(y0[idx], ds_mul(dt, sum));");
+  lines.push("  } else if (stage == 2u) {");
+  lines.push("    let k0 = stage_scratch[0u * N + idx];");
+  lines.push("    let k1 = stage_scratch[1u * N + idx];");
+  lines.push("    let a41 = ds_from_f32(2.897153052710749);");
+  lines.push("    let a42 = ds_from_f32(-6.888838239993134);");
+  lines.push("    let a43 = ds_from_f32(4.891685187282385);");
+  lines.push("    let sum = ds_add(ds_mul(a41, k0), ds_add(ds_mul(a42, k1), ds_mul(a43, k)));");
+  lines.push("    state[state_idx] = ds_add(y0[idx], ds_mul(dt, sum));");
+  lines.push("  } else if (stage == 3u) {");
+  lines.push("    let k0 = stage_scratch[0u * N + idx];");
+  lines.push("    let k1 = stage_scratch[1u * N + idx];");
+  lines.push("    let k2 = stage_scratch[2u * N + idx];");
+  lines.push("    let a51 = ds_from_f32(1.023998522497125);");
+  lines.push("    let a52 = ds_from_f32(-2.223202490331607);");
+  lines.push("    let a53 = ds_from_f32(1.6499129963539006);");
+  lines.push("    let a54 = ds_from_f32(0.5292910714805814);");
+  lines.push(
+    "    let sum = ds_add(ds_add(ds_mul(a51, k0), ds_mul(a52, k1)), ds_add(ds_mul(a53, k2), ds_mul(a54, k)));",
+  );
+  lines.push("    state[state_idx] = ds_add(y0[idx], ds_mul(dt, sum));");
+  lines.push("  } else if (stage == 4u) {");
+  lines.push("    let k0 = stage_scratch[0u * N + idx];");
+  lines.push("    let k1 = stage_scratch[1u * N + idx];");
+  lines.push("    let k2 = stage_scratch[2u * N + idx];");
+  lines.push("    let k3 = stage_scratch[3u * N + idx];");
+  lines.push("    let a61 = ds_from_f32(0.3412240537877472);");
+  lines.push("    let a62 = ds_from_f32(-0.6204905971302865);");
+  lines.push("    let a63 = ds_from_f32(0.4398418855424759);");
+  lines.push("    let a64 = ds_from_f32(0.6762436790995681);");
+  lines.push("    let a65 = ds_from_f32(0.1631810787004953);");
+  lines.push(
+    "    let sum = ds_add(ds_add(ds_mul(a61, k0), ds_mul(a62, k1)), ds_add(ds_mul(a63, k2), ds_add(ds_mul(a64, k3), ds_mul(a65, k))));",
+  );
+  lines.push("    state[state_idx] = ds_add(y0[idx], ds_mul(dt, sum));");
+  lines.push("  } else if (stage == 5u) {");
+  lines.push("    let k0 = stage_scratch[0u * N + idx];");
+  lines.push("    let k1 = stage_scratch[1u * N + idx];");
+  lines.push("    let k2 = stage_scratch[2u * N + idx];");
+  lines.push("    let k3 = stage_scratch[3u * N + idx];");
+  lines.push("    let k4 = stage_scratch[4u * N + idx];");
+  lines.push("    let b0 = ds_from_f32(0.0964607668120738);");
+  lines.push("    let b1 = ds_from_f32(0.01);");
+  lines.push("    let b2 = ds_from_f32(0.4798896504144996);");
+  lines.push("    let b3 = ds_from_f32(1.379008574103742);");
+  lines.push("    let b4 = ds_from_f32(-3.290069515436081);");
+  lines.push("    let b5 = ds_from_f32(2.3247105241057654);");
+  lines.push(
+    "    let sum = ds_add(ds_add(ds_mul(b0, k0), ds_mul(b1, k1)), ds_add(ds_mul(b2, k2), ds_add(ds_mul(b3, k3)), ds_add(ds_mul(b4, k4), ds_mul(b5, k)))));",
+  );
+  lines.push("    state[state_idx] = ds_add(y0[idx], ds_mul(dt, sum));");
+  lines.push("  } else if (stage == 6u) {");
+  lines.push("    let k0 = stage_scratch[0u * N + idx];");
+  lines.push("    let k1 = stage_scratch[1u * N + idx];");
+  lines.push("    let k2 = stage_scratch[2u * N + idx];");
+  lines.push("    let k3 = stage_scratch[3u * N + idx];");
+  lines.push("    let k4 = stage_scratch[4u * N + idx];");
+  lines.push("    let k5 = stage_scratch[5u * N + idx];");
+  lines.push("    let d0 = ds_from_f32(0.0946807557598478);");
+  lines.push("    let d1 = ds_from_f32(0.009185641321671);");
+  lines.push("    let d2 = ds_from_f32(-0.5064721843617644);");
+  lines.push("    let d3 = ds_from_f32(1.643191441986318);");
+  lines.push("    let d4 = ds_from_f32(-3.6976777292287);");
+  lines.push("    let d5 = ds_from_f32(2.5118683373499944);");
+  lines.push("    let d6 = ds_from_f32(-0.054776262827407);");
+  lines.push(
+    "    let err_sum = ds_add(ds_add(ds_mul(d0, k0), ds_mul(d1, k1)), ds_add(ds_mul(d2, k2), ds_add(ds_mul(d3, k3)), ds_add(ds_mul(d4, k4), ds_add(ds_mul(d5, k5), ds_mul(d6, k))))));",
+  );
+  lines.push("    stage_scratch[7u * N + idx] = ds_mul(dt, err_sum);");
+  lines.push("  }");
+  lines.push("}");
+  lines.push("");
+
+  // ── TR-BDF2 stiff ODE/DAE integration kernel ──
+  lines.push(`@compute @workgroup_size(${workgroupSize})`);
+  lines.push("fn trbdf2_step(@builtin(global_invocation_id) gid: vec3<u32>) {");
+  lines.push("  let idx = gid.x;");
+  lines.push("  if (idx >= sim_params.num_states) { return; }");
+  lines.push("  let state_idx = state_var_indices[idx];");
+  lines.push("  let deriv_idx = deriv_var_indices[idx];");
+  lines.push("  let k = state[deriv_idx];");
+  lines.push("  let dt = sim_params.dt;");
+  lines.push("  let N = sim_params.num_states;");
+  lines.push("  let stage = sim_params.sub_stage;");
+  lines.push("  let gamma = ds_from_f32(0.585786437626905);");
+  lines.push("");
+  lines.push("  if (stage == 0u) {");
+  lines.push("    let y = state[state_idx];");
+  lines.push("    y0[idx] = y;");
+  lines.push("    stage_scratch[0u * N + idx] = k;");
+  lines.push("    let half_gamma_dt = ds_mul(ds_from_f32(0.5), ds_mul(gamma, dt));");
+  lines.push("    let w1 = ds_add(y, ds_mul(half_gamma_dt, k));");
+  lines.push("    y_acc[idx] = w1;");
+  lines.push("    state[state_idx] = ds_add(y, ds_mul(ds_mul(gamma, dt), k));");
+  lines.push("  } else if (stage == 1u) {");
+  lines.push("    let w1 = y_acc[idx];");
+  lines.push("    let half_gamma_dt = ds_mul(ds_from_f32(0.5), ds_mul(gamma, dt));");
+  lines.push("    let target = ds_add(w1, ds_mul(half_gamma_dt, k));");
+  lines.push("    state[state_idx] = target;");
+  lines.push("    stage_scratch[1u * N + idx] = target;");
+  lines.push("  } else if (stage == 2u) {");
+  lines.push("    let y_gamma = stage_scratch[1u * N + idx];");
+  lines.push("    let y_n = y0[idx];");
+  lines.push("    let c_gamma = ds_from_f32(1.2071067811865475);");
+  lines.push("    let c_n = ds_from_f32(0.2071067811865475);");
+  lines.push("    let w2 = ds_sub(ds_mul(c_gamma, y_gamma), ds_mul(c_n, y_n));");
+  lines.push("    y_acc[idx] = w2;");
+  lines.push("    state[state_idx] = ds_add(y_gamma, ds_mul(ds_mul(ds_from_f32(0.41421356237), dt), k));");
+  lines.push("  } else if (stage == 3u) {");
+  lines.push("    let w2 = y_acc[idx];");
+  lines.push("    let d_coeff = ds_from_f32(0.2928932188134524);");
+  lines.push("    let target = ds_add(w2, ds_mul(ds_mul(d_coeff, dt), k));");
+  lines.push("    state[state_idx] = target;");
   lines.push("  }");
   lines.push("}");
   lines.push("");

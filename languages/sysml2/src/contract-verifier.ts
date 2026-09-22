@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
-import { SmtOctagonDBM } from "./smt-bridge.js";
 import { parseGuardConstraints } from "./state-machine-verifier.js";
 
 /**
@@ -21,6 +20,96 @@ export interface ContractViolation {
 export interface ContractVerificationResult {
   isSatisfied: boolean;
   violations: ContractViolation[];
+}
+
+export interface TemporalContract {
+  name?: string;
+  assumption: string;
+  guarantee: string;
+  timeHorizon?: [number, number];
+}
+
+export interface TemporalContractResult {
+  isSatisfied: boolean;
+  minRobustness: number;
+  violationTime?: number;
+  counterexample?: number;
+  reason?: string;
+}
+
+/**
+ * Verifies temporal assume-guarantee entailment: A => G over simulation trajectories.
+ */
+export function verifyTemporalContract(
+  contract: TemporalContract,
+  times: number[],
+  signals: Record<string, number[]>,
+): TemporalContractResult {
+  // Parse assumption and guarantee bounds
+  const aConstraints = parseGuardConstraints(contract.assumption);
+  const gConstraints = parseGuardConstraints(contract.guarantee);
+
+  let worstMargin = Infinity;
+  let violationTime: number | undefined = undefined;
+  let counterexample: number | undefined = undefined;
+  let violationReason: string | undefined = undefined;
+
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i]!;
+    if (contract.timeHorizon) {
+      if (t < contract.timeHorizon[0] || t > contract.timeHorizon[1]) continue;
+    }
+
+    // Check if assumption holds at time t
+    let aHolds = true;
+    for (const a of aConstraints) {
+      const val = signals[a.variable]?.[i];
+      if (val === undefined) continue;
+      if (a.operator === "<=" && val > a.value + 1e-9) aHolds = false;
+      if (a.operator === "<" && val >= a.value - 1e-9) aHolds = false;
+      if (a.operator === ">=" && val < a.value - 1e-9) aHolds = false;
+      if (a.operator === ">" && val <= a.value + 1e-9) aHolds = false;
+      if (a.operator === "==" && Math.abs(val - a.value) > 1e-9) aHolds = false;
+    }
+
+    if (!aHolds) {
+      // If assumption does not hold at time t, contract is vacuously satisfied at this point
+      continue;
+    }
+
+    // Assumption holds -> check if guarantee holds
+    for (const g of gConstraints) {
+      const val = signals[g.variable]?.[i];
+      if (val === undefined) continue;
+
+      let margin = Infinity;
+      if (g.operator === "<=" || g.operator === "<") {
+        margin = g.value - val;
+      } else if (g.operator === ">=" || g.operator === ">") {
+        margin = val - g.value;
+      } else if (g.operator === "==") {
+        margin = -Math.abs(val - g.value);
+      }
+
+      if (margin < worstMargin) {
+        worstMargin = margin;
+      }
+
+      if (margin < 0 && violationTime === undefined) {
+        violationTime = t;
+        counterexample = val;
+        violationReason = `At t = ${t.toFixed(4)}s: assumption '${contract.assumption}' held, but guarantee '${contract.guarantee}' violated with ${g.variable} = ${val.toFixed(4)}`;
+      }
+    }
+  }
+
+  return {
+    isSatisfied: worstMargin >= 0,
+    minRobustness: worstMargin,
+    violationTime,
+    counterexample,
+    reason: violationReason,
+  };
 }
 
 /**
@@ -46,53 +135,36 @@ export function verifyAssumeGuaranteePair(
     return { isSatisfied: true, violations: [] };
   }
 
-  // Map variable names
-  const varMap = new Map<string, number>();
-  let nextId = 0;
-  const getVarId = (name: string): number => {
-    // Strip qualification prefix if any (e.g. "p.voltage" -> "voltage")
-    const shortName = name.includes(".") ? name.split(".").pop()! : name;
-    let id = varMap.get(shortName);
-    if (id === undefined) {
-      id = nextId++;
-      varMap.set(shortName, id);
-    }
-    return id;
-  };
-
-  for (const c of [...gConstraints, ...aConstraints]) {
-    getVarId(c.variable);
-  }
-
-  const numVars = Math.max(nextId, 1);
-  const dbm = new SmtOctagonDBM(numVars);
+  // Exact real bounds per variable
+  const gBounds = new Map<string, { lower: number; upper: number }>();
 
   // Apply supplier guarantees to find bounds
   for (const g of gConstraints) {
-    const v = getVarId(g.variable);
-    const curLo = dbm.getLowerBound(v);
-    const curHi = dbm.getUpperBound(v);
+    const varName = g.variable.includes(".") ? g.variable.split(".").pop()! : g.variable;
+    const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
     if (g.operator === "<=" || g.operator === "<") {
-      dbm.assumeInterval(v, curLo, Math.floor(g.value));
+      b.upper = Math.min(b.upper, g.value);
     } else if (g.operator === ">=" || g.operator === ">") {
-      dbm.assumeInterval(v, Math.ceil(g.value), curHi);
+      b.lower = Math.max(b.lower, g.value);
     } else if (g.operator === "==") {
-      dbm.assumeInterval(v, Math.round(g.value), Math.round(g.value));
+      b.lower = Math.max(b.lower, g.value);
+      b.upper = Math.min(b.upper, g.value);
     }
+    gBounds.set(varName, b);
   }
 
   // Check each consumer assumption
   for (let i = 0; i < aConstraints.length; i++) {
     const a = aConstraints[i]!;
     const varName = a.variable.includes(".") ? a.variable.split(".").pop()! : a.variable;
-    const v = getVarId(a.variable);
-    const gLo = dbm.getLowerBound(v);
-    const gHi = dbm.getUpperBound(v);
+    const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
+    const gLo = b.lower;
+    const gHi = b.upper;
 
     // If consumer assumes x >= min, supplier must guarantee gLo >= min
     if (a.operator === ">=" || a.operator === ">") {
-      const requiredMin = a.operator === ">=" ? Math.ceil(a.value) : Math.floor(a.value + 1);
-      if (gLo < requiredMin) {
+      const requiredMin = a.value;
+      if (gLo < requiredMin - 1e-9) {
         violations.push({
           connectionName,
           sourceEndpoint: supplierName,
@@ -101,16 +173,16 @@ export function verifyAssumeGuaranteePair(
             guarantees.find((g) => g.includes(varName) || g.includes(a.variable)) || `${varName} ∈ [${gLo}, ${gHi}]`,
           assumption: assumptions[i] || `${a.variable} ${a.operator} ${a.value}`,
           variable: varName,
-          counterexample: gLo <= -100000 ? a.value - 1 : gLo,
-          reason: `Supplier '${supplierName}' can deliver ${varName} = ${gLo <= -100000 ? "-∞" : gLo}, violating consumer '${consumerName}' assumption '${a.variable} >= ${a.value}'`,
+          counterexample: !Number.isFinite(gLo) ? a.value - 1 : gLo,
+          reason: `Supplier '${supplierName}' can deliver ${varName} = ${!Number.isFinite(gLo) ? "-∞" : gLo}, violating consumer '${consumerName}' assumption '${a.variable} >= ${a.value}'`,
         });
       }
     }
 
     // If consumer assumes x <= max, supplier must guarantee gHi <= max
     if (a.operator === "<=" || a.operator === "<") {
-      const requiredMax = a.operator === "<=" ? Math.floor(a.value) : Math.ceil(a.value - 1);
-      if (gHi > requiredMax) {
+      const requiredMax = a.value;
+      if (gHi > requiredMax + 1e-9) {
         violations.push({
           connectionName,
           sourceEndpoint: supplierName,
@@ -119,8 +191,8 @@ export function verifyAssumeGuaranteePair(
             guarantees.find((g) => g.includes(varName) || g.includes(a.variable)) || `${varName} ∈ [${gLo}, ${gHi}]`,
           assumption: assumptions[i] || `${a.variable} ${a.operator} ${a.value}`,
           variable: varName,
-          counterexample: gHi >= 100000 ? a.value + 1 : gHi,
-          reason: `Supplier '${supplierName}' can deliver ${varName} = ${gHi >= 100000 ? "∞" : gHi}, violating consumer '${consumerName}' assumption '${a.variable} <= ${a.value}'`,
+          counterexample: !Number.isFinite(gHi) ? a.value + 1 : gHi,
+          reason: `Supplier '${supplierName}' can deliver ${varName} = ${!Number.isFinite(gHi) ? "∞" : gHi}, violating consumer '${consumerName}' assumption '${a.variable} <= ${a.value}'`,
         });
       }
     }

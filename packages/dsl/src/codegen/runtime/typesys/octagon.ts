@@ -3,6 +3,7 @@
 // Operates on +/- x_i +/- x_j <= c linear memory constraints using Floyd-Warshall closure.
 
 import { allocGen0 } from "../arena";
+import { DenseInt32MatrixView } from "../core/array";
 
 // --- Octagon Difference Bound Matrix (DBM) Engine ---
 // Layout: For N variables, DBM is an 2N x 2N matrix of 32-bit signed integers.
@@ -12,16 +13,22 @@ let octagonDBM: u32 = 0;
 let octagonNumVars: u32 = 0;
 export const OCTAGON_INF: i32 = 0x3FFFFFFF;
 
+@inline
+function getDBM(): DenseInt32MatrixView {
+    let dim = octagonNumVars * 2;
+    return DenseInt32MatrixView.at(octagonDBM, dim, dim);
+}
+
 export function initOctagonDBM(numVars: u32): void {
     if (numVars == 0) return;
     octagonNumVars = numVars;
     let dim = numVars * 2;
     octagonDBM = allocGen0(dim * dim * 4);
+    let dbm = getDBM();
 
     for (let i: u32 = 0; i < dim; i++) {
         for (let j: u32 = 0; j < dim; j++) {
-            let val: i32 = (i == j) ? 0 : OCTAGON_INF;
-            store<i32>(octagonDBM + (i * dim + j) * 4, val);
+            dbm.set(i, j, (i == j) ? 0 : OCTAGON_INF);
         }
     }
 }
@@ -31,9 +38,10 @@ export function setOctagonBound(i: u32, j: u32, bound: i32): void {
     let dim = octagonNumVars * 2;
     if (i >= dim || j >= dim) return;
     
-    let current = load<i32>(octagonDBM + (i * dim + j) * 4);
+    let dbm = getDBM();
+    let current = dbm.get(i, j);
     if (bound < current) {
-        store<i32>(octagonDBM + (i * dim + j) * 4, bound);
+        dbm.set(i, j, bound);
     }
 }
 
@@ -41,17 +49,18 @@ export function setOctagonBound(i: u32, j: u32, bound: i32): void {
 export function closeOctagonDBM(): void {
     if (octagonDBM == 0 || octagonNumVars == 0) return;
     let dim = octagonNumVars * 2;
+    let dbm = getDBM();
 
     for (let k: u32 = 0; k < dim; k++) {
         for (let i: u32 = 0; i < dim; i++) {
             for (let j: u32 = 0; j < dim; j++) {
-                let ik = load<i32>(octagonDBM + (i * dim + k) * 4);
-                let kj = load<i32>(octagonDBM + (k * dim + j) * 4);
+                let ik = dbm.get(i, k);
+                let kj = dbm.get(k, j);
                 if (ik != OCTAGON_INF && kj != OCTAGON_INF) {
                     let newBound = ik + kj;
-                    let current = load<i32>(octagonDBM + (i * dim + j) * 4);
+                    let current = dbm.get(i, j);
                     if (newBound < current) {
-                        store<i32>(octagonDBM + (i * dim + j) * 4, newBound);
+                        dbm.set(i, j, newBound);
                     }
                 }
             }
@@ -76,8 +85,8 @@ export function checkOctagonDiff(var1: u32, var2: u32, limit: i32): boolean {
     let p2 = var2 * 2;
     if (p1 >= dim || p2 >= dim) return true;
 
-    let bound = load<i32>(octagonDBM + (p1 * dim + p2) * 4);
-    return bound <= limit;
+    let dbm = getDBM();
+    return dbm.get(p1, p2) <= limit;
 }
 
 // Assume unary interval constraint: lower <= varIdx <= upper
@@ -100,12 +109,13 @@ export function checkOctagonInterval(varIdx: u32, lower: i32, upper: i32): boole
     let dim = octagonNumVars * 2;
     if (p + 1 >= dim) return true;
 
+    let dbm = getDBM();
     if (upper < OCTAGON_INF / 2) {
-        let uBound = load<i32>(octagonDBM + (p * dim + (p + 1)) * 4);
+        let uBound = dbm.get(p, p + 1);
         if (uBound > upper * 2) return false;
     }
     if (lower > -OCTAGON_INF / 2) {
-        let lBound = load<i32>(octagonDBM + ((p + 1) * dim + p) * 4);
+        let lBound = dbm.get(p + 1, p);
         if (lBound > -lower * 2) return false;
     }
     return true;
@@ -117,7 +127,8 @@ export function getOctagonUpperBound(varIdx: u32): i32 {
     let p = varIdx * 2;
     let dim = octagonNumVars * 2;
     if (p + 1 >= dim) return OCTAGON_INF;
-    let raw = load<i32>(octagonDBM + (p * dim + (p + 1)) * 4);
+    let dbm = getDBM();
+    let raw = dbm.get(p, p + 1);
     if (raw >= OCTAGON_INF) return OCTAGON_INF;
     return raw / 2;
 }
@@ -128,7 +139,8 @@ export function getOctagonLowerBound(varIdx: u32): i32 {
     let p = varIdx * 2;
     let dim = octagonNumVars * 2;
     if (p + 1 >= dim) return -OCTAGON_INF;
-    let raw = load<i32>(octagonDBM + ((p + 1) * dim + p) * 4);
+    let dbm = getDBM();
+    let raw = dbm.get(p + 1, p);
     if (raw >= OCTAGON_INF) return -OCTAGON_INF;
     return -raw / 2;
 }
@@ -136,10 +148,10 @@ export function getOctagonLowerBound(varIdx: u32): i32 {
 // Detect if any diagonal entry is negative (indicates inconsistent/contradictory constraints)
 export function hasNegativeCycle(): boolean {
     if (octagonDBM == 0 || octagonNumVars == 0) return false;
+    let dbm = getDBM();
     let dim = octagonNumVars * 2;
     for (let i: u32 = 0; i < dim; i++) {
-        let val = load<i32>(octagonDBM + (i * dim + i) * 4);
-        if (val < 0) return true;
+        if (dbm.get(i, i) < 0) return true;
     }
     return false;
 }
@@ -148,10 +160,10 @@ export function hasNegativeCycle(): boolean {
 export function resetOctagonDBM(): void {
     if (octagonDBM == 0 || octagonNumVars == 0) return;
     let dim = octagonNumVars * 2;
+    let dbm = getDBM();
     for (let i: u32 = 0; i < dim; i++) {
         for (let j: u32 = 0; j < dim; j++) {
-            let val: i32 = (i == j) ? 0 : OCTAGON_INF;
-            store<i32>(octagonDBM + (i * dim + j) * 4, val);
+            dbm.set(i, j, (i == j) ? 0 : OCTAGON_INF);
         }
     }
 }
@@ -160,13 +172,15 @@ export function resetOctagonDBM(): void {
 export function widenOctagonDBM(prevDBM: u32): void {
     if (octagonDBM == 0 || prevDBM == 0 || octagonNumVars == 0) return;
     let dim = octagonNumVars * 2;
+    let curr = getDBM();
+    let prev = DenseInt32MatrixView.at(prevDBM, dim, dim);
 
     for (let i: u32 = 0; i < dim; i++) {
         for (let j: u32 = 0; j < dim; j++) {
-            let prevVal = load<i32>(prevDBM + (i * dim + j) * 4);
-            let currVal = load<i32>(octagonDBM + (i * dim + j) * 4);
+            let prevVal = prev.get(i, j);
+            let currVal = curr.get(i, j);
             if (currVal > prevVal) {
-                store<i32>(octagonDBM + (i * dim + j) * 4, OCTAGON_INF);
+                curr.set(i, j, OCTAGON_INF);
             }
         }
     }
@@ -176,17 +190,19 @@ export function widenOctagonDBM(prevDBM: u32): void {
 export function narrowOctagonDBM(prevDBM: u32): void {
     if (octagonDBM == 0 || prevDBM == 0 || octagonNumVars == 0) return;
     let dim = octagonNumVars * 2;
+    let curr = getDBM();
+    let prev = DenseInt32MatrixView.at(prevDBM, dim, dim);
 
     for (let i: u32 = 0; i < dim; i++) {
         for (let j: u32 = 0; j < dim; j++) {
-            let prevVal = load<i32>(prevDBM + (i * dim + j) * 4);
-            let currVal = load<i32>(octagonDBM + (i * dim + j) * 4);
+            let prevVal = prev.get(i, j);
+            let currVal = curr.get(i, j);
             // If it was widened to infinity but now we have a finite bound, restore to the stable previous/finite bound.
             if (prevVal == OCTAGON_INF && currVal != OCTAGON_INF) {
-                store<i32>(octagonDBM + (i * dim + j) * 4, currVal);
+                curr.set(i, j, currVal);
             } else if (prevVal != OCTAGON_INF) {
                 // Keep the previous finite bound to prevent infinite refinement loops
-                store<i32>(octagonDBM + (i * dim + j) * 4, prevVal);
+                curr.set(i, j, prevVal);
             }
         }
     }

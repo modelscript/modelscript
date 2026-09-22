@@ -13,6 +13,7 @@ import {
 import { evalEquationResidual } from "../dae/eval";
 import { luFactor, luSolve, vectorNormInf } from "../solvers/matrix";
 import { atomicChunkAlloc } from "../arena";
+import { DenseMatrixView, UnmanagedFloat64Array } from "../core/array";
 
 /**
  * Natural Parameter Homotopy Continuation Solver for Modelica 3.7.
@@ -74,11 +75,13 @@ function evalHomotopyResidual(
   let dae = changetype<DaeBuilder>(solver.daePtr);
   let n = solver.nVars;
   let maxRes: f64 = 0.0;
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let outR = changetype<UnmanagedFloat64Array>(outRPtr as usize);
 
   for (let eqIdx: u32 = 0; eqIdx < n; eqIdx++) {
     let baseRes = evalEquationResidual(eqIdx, dae, varValuesPtr);
-    let hVal = lambda * baseRes + (1.0 - lambda) * (load<f64>(varValuesPtr + eqIdx * 8) - 1.0);
-    store<f64>(outRPtr + eqIdx * 8, hVal);
+    let hVal = lambda * baseRes + (1.0 - lambda) * (varValues[eqIdx] - 1.0);
+    outR[eqIdx] = hVal;
     if (Math.abs(hVal) > maxRes) maxRes = Math.abs(hVal);
   }
 
@@ -99,34 +102,37 @@ function evalHomotopyJacobian(
   let dae = changetype<DaeBuilder>(solver.daePtr);
   let n = solver.nVars;
   let eps: f64 = 1e-7;
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let dHdLam = changetype<UnmanagedFloat64Array>(dHdLamPtr as usize);
+  let jMat = DenseMatrixView.at(jPtr as usize, n, n);
 
   // Compute dH/dlambda = f_actual(x) - f_simplified(x)
   for (let eqIdx: u32 = 0; eqIdx < n; eqIdx++) {
     let baseRes = evalEquationResidual(eqIdx, dae, varValuesPtr);
-    let simpleRes = load<f64>(varValuesPtr + eqIdx * 8) - 1.0;
-    store<f64>(dHdLamPtr + eqIdx * 8, baseRes - simpleRes);
+    let simpleRes = varValues[eqIdx] - 1.0;
+    dHdLam[eqIdx] = baseRes - simpleRes;
   }
 
   // Compute J_x via finite difference perturbation
   for (let c: u32 = 0; c < n; c++) {
-    let origVal = load<f64>(varValuesPtr + c * 8);
-    store<f64>(varValuesPtr + c * 8, origVal + eps);
+    let origVal = varValues[c];
+    varValues[c] = origVal + eps;
 
     for (let r: u32 = 0; r < n; r++) {
       let basePert = evalEquationResidual(r, dae, varValuesPtr);
-      let hPert = lambda * basePert + (1.0 - lambda) * ((r == c ? origVal + eps : load<f64>(varValuesPtr + r * 8)) - 1.0);
+      let hPert = lambda * basePert + (1.0 - lambda) * ((r == c ? origVal + eps : varValues[r]) - 1.0);
 
-      store<f64>(varValuesPtr + c * 8, origVal);
+      varValues[c] = origVal;
       let baseOrig = evalEquationResidual(r, dae, varValuesPtr);
-      let hOrig = lambda * baseOrig + (1.0 - lambda) * (load<f64>(varValuesPtr + r * 8) - 1.0);
+      let hOrig = lambda * baseOrig + (1.0 - lambda) * (varValues[r] - 1.0);
 
-      store<f64>(varValuesPtr + c * 8, origVal + eps);
+      varValues[c] = origVal + eps;
 
       let dh_dx = (hPert - hOrig) / eps;
-      store<f64>(jPtr + (r * n + c) * 8, dh_dx);
+      jMat.set(r, c, dh_dx);
     }
 
-    store<f64>(varValuesPtr + c * 8, origVal);
+    varValues[c] = origVal;
   }
 }
 
@@ -149,13 +155,19 @@ export function solveHomotopy(
   let pivSize = (n * 4 + 7) & ~7;
   let scalePtr = pivPtr + pivSize;
   let luScratchPtr = scalePtr + n * 8;
+  let negDHPtr = luScratchPtr;
+
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let dHdLam = changetype<UnmanagedFloat64Array>(dHdLamPtr as usize);
+  let negDH = changetype<UnmanagedFloat64Array>(negDHPtr as usize);
+  let r = changetype<UnmanagedFloat64Array>(rPtr as usize);
 
   solver.lambda = 0.0;
   let step: u32 = 0;
 
   // Initialize at lambda = 0 simplified root (e.g. x = 1.0)
   for (let i: u32 = 0; i < n; i++) {
-    store<f64>(varValuesPtr + i * 8, 1.0);
+    varValues[i] = 1.0;
   }
 
   while (solver.lambda < 1.0 && step < maxSteps) {
@@ -168,17 +180,15 @@ export function solveHomotopy(
     // 1. Predictor Step: Tangent vector dx/dlambda = -J_x^{-1} * (dH/dlambda)
     evalHomotopyJacobian(solver, varValuesPtr, solver.lambda, jPtr as u32, dHdLamPtr as u32);
 
-    let negDHPtr = luScratchPtr;
     for (let i: u32 = 0; i < n; i++) {
-      store<f64>(negDHPtr + i * 8, -load<f64>(dHdLamPtr + i * 8));
+      negDH[i] = -dHdLam[i];
     }
 
     if (luFactor(jPtr as u32, pivPtr as u32, scalePtr as u32, n)) {
       luSolve(jPtr as u32, pivPtr as u32, scalePtr as u32, negDHPtr as u32, dxPtr as u32, n);
       // Euler predictor: x_pred = x + actualStep * (dx/dlambda)
       for (let i: u32 = 0; i < n; i++) {
-        let currX = load<f64>(varValuesPtr + i * 8);
-        store<f64>(varValuesPtr + i * 8, currX + actualStep * load<f64>(negDHPtr + i * 8));
+        varValues[i] += actualStep * negDH[i];
       }
     }
 
@@ -198,7 +208,7 @@ export function solveHomotopy(
 
       evalHomotopyJacobian(solver, varValuesPtr, solver.lambda, jPtr as u32, dHdLamPtr as u32);
       for (let i: u32 = 0; i < n; i++) {
-        store<f64>(negDHPtr + i * 8, -load<f64>(rPtr + i * 8));
+        negDH[i] = -r[i];
       }
 
       if (!luFactor(jPtr as u32, pivPtr as u32, scalePtr as u32, n)) {
@@ -207,8 +217,7 @@ export function solveHomotopy(
 
       luSolve(jPtr as u32, pivPtr as u32, scalePtr as u32, negDHPtr as u32, dxPtr as u32, n);
       for (let i: u32 = 0; i < n; i++) {
-        let currX = load<f64>(varValuesPtr + i * 8);
-        store<f64>(varValuesPtr + i * 8, currX + load<f64>(negDHPtr + i * 8));
+        varValues[i] += negDH[i];
       }
     }
 

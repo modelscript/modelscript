@@ -55,9 +55,15 @@ export function computeTreeEdit(
     startIndex: prefixLen,
     oldEndIndex: oldSuffix,
     newEndIndex: newSuffix,
-    startPosition: indexToPoint(oldText, prefixLen),
-    oldEndPosition: indexToPoint(oldText, oldSuffix),
-    newEndPosition: indexToPoint(newText, newSuffix),
+    get startPosition() {
+      return indexToPoint(oldText, prefixLen);
+    },
+    get oldEndPosition() {
+      return indexToPoint(oldText, oldSuffix);
+    },
+    get newEndPosition() {
+      return indexToPoint(newText, newSuffix);
+    },
   };
 }
 

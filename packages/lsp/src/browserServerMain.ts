@@ -106,7 +106,7 @@ const connection = createConnection(messageReader, messageWriter);
 const sharedFs = new BrowserFileSystem();
 let sharedContext: any | null = null;
 
-/* Loader context — saved from initTreeSitter so notification handlers can reuse it */
+/* Loader context — saved from initWasmParsers so notification handlers can reuse it */
 let savedLoaderCtx: LoaderContext | null = null;
 Object.defineProperty(globalThis, "savedLoaderCtx", { get: () => savedLoaderCtx, set: (v) => (savedLoaderCtx = v) });
 globalThis.flattenArenaFromInstance = flattenArenaFromInstance;
@@ -131,6 +131,8 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 (globalThis as any).ArenaQueryFlattener = ArenaQueryFlattener;
 (globalThis as any).create_modelica_workspace_index = createModelicaWorkspaceIndex;
 (globalThis as any).create_sysml2_workspace_index = createSysML2WorkspaceIndex;
+(globalThis as any).createModelicaWorkspaceIndex = createModelicaWorkspaceIndex;
+(globalThis as any).createSysML2WorkspaceIndex = createSysML2WorkspaceIndex;
 (globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
 (globalThis as any).sysml2DiagramOps = { ...sysml2DiagramOps, buildSysML2DiagramData };
 (globalThis as any).extractSysML2Constraints = extractSysML2Constraints;
@@ -138,7 +140,7 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 (globalThis as any).ArenaScriptInterpreter = ArenaScriptInterpreter;
 (globalThis as any).deriveSimplification = deriveSimplification;
 
-/* Tree-sitter state */
+/* WASM Parser state */
 
 /* Incremental parsing — cache last tree per document for reuse */
 
@@ -439,9 +441,10 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   };
 
   if (extensionUri) {
-    connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
+    connection.console.info(`[lsp] Triggering initWasmParsers with extensionUri=${extensionUri}`);
+    registerBuiltinLanguages();
     parserService
-      .initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl, registerBuiltinLanguages)
+      .initWasmParsers(extensionUri, validationService, projectDependencies, useLocalMsl, registerBuiltinLanguages)
       .then(async () => {
         registerBuiltinLanguages();
 
@@ -488,10 +491,10 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
         }
       })
       .catch((e) => {
-        connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);
+        connection.console.error(`[lsp] initWasmParsers threw an error: ${e}\n${e.stack}`);
       });
   } else {
-    connection.console.warn("No extensionUri provided — tree-sitter disabled");
+    connection.console.warn("No extensionUri provided — WASM parsers disabled");
   }
 
   const capabilities: ServerCapabilities = {
@@ -540,6 +543,8 @@ let activeVerification: AbortController | null = null;
 // Track deferred semantic work so it can be cancelled when new edits arrive
 const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
 globalThis.activeSemanticTimers = activeSemanticTimers;
+const activeShortDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const lastSyntaxErrorsCount = new Map<string, number>();
 // Per-URI revision counter: incremented on every edit, checked before semantic work
 // Track last-indexed text per URI to avoid re-marking dirty when text hasn't changed
 // Track the last semantic diagnostics to avoid flashing when sending early syntax diagnostics
@@ -596,13 +601,13 @@ documents.onDidOpen(async (event) => {
 documents.onDidChangeContent((change) => {
   const tKeypressStart = performance.now();
   const uri = change.document.uri;
-  connection.console.info(`[perf][keypress] onDidChangeContent started for ${uri}`);
   validationService.verificationDiagnosticsByUri.delete(uri);
   validationService.verificationResultsByUri.delete(uri);
 
   // Bump revision — any in-flight deferred semantic work for an older revision
   // will check this and bail out before doing expensive linting.
-  validationService.documentRevisions.set(uri, (validationService.documentRevisions.get(uri) ?? 0) + 1);
+  const currentRevision = (validationService.documentRevisions.get(uri) ?? 0) + 1;
+  validationService.documentRevisions.set(uri, currentRevision);
 
   // Cancel any pending semantic analysis for this URI
   const semanticTimer = activeSemanticTimers.get(uri);
@@ -618,8 +623,20 @@ documents.onDidChangeContent((change) => {
     validationService.revalidationTimer = null;
   }
 
-  // === TIER 1: Instant parse + syntax errors (0ms) ===
-  // Parse and send syntax errors immediately — before any debounce.
+  // Cancel active Tier 2 and Tier 3 timers for this URI
+  const existingTier2 = activeShortDebounceTimers.get(uri);
+  if (existingTier2) {
+    clearTimeout(existingTier2);
+    activeShortDebounceTimers.delete(uri);
+  }
+
+  const existingTier3 = validationService.activeValidationTimers.get(uri);
+  if (existingTier3) {
+    clearTimeout(existingTier3);
+    validationService.activeValidationTimers.delete(uri);
+  }
+
+  // === TIER 1: Keystroke (0ms) — Fast WASM GLR Incremental Parse + Syntax Errors ===
   const plugin = globalLanguageRegistry.getPluginForUri(uri);
   const parser = plugin?.parser ?? (parserService.parserReady ? parserService.parser : undefined);
 
@@ -631,10 +648,7 @@ documents.onDidChangeContent((change) => {
 
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
-        if (typeof (oldCached.tree as any)?.edit === "function") {
-          oldCached.tree.edit(edit as never);
-        }
-        tree = parser.parse(text, oldCached.tree);
+        tree = parser.parse(text, oldCached.tree, edit.startIndex * 2, edit.oldEndIndex * 2, edit.newEndIndex * 2, uri);
       } else if (oldCached) {
         tree = oldCached.tree;
       } else {
@@ -644,50 +658,84 @@ documents.onDidChangeContent((change) => {
       if (tree) {
         documentManager.documentTrees.set(uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
         const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
-        const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
-        const allDiags = [...syntaxDiags, ...cachedSemantic];
-        if (allDiags.length > 1000) allDiags.length = 1000;
-        connection.sendDiagnostics({ uri, diagnostics: allDiags });
+        const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
+
+        // Surface syntax errors if errors are present or if previous errors were just cleared
+        if (syntaxDiags.length > 0 || lastCount > 0) {
+          lastSyntaxErrorsCount.set(uri, syntaxDiags.length);
+          const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
+          const allDiags = [...syntaxDiags, ...cachedSemantic];
+          if (allDiags.length > 1000) allDiags.length = 1000;
+          connection.sendDiagnostics({ uri, diagnostics: allDiags });
+        }
       }
     } catch (e: any) {
       connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
     }
   }
 
-  // === TIER 2: Debounced semantic analysis (300ms) ===
-  const existingTimer = validationService.activeValidationTimers.get(uri);
-  if (existingTimer) clearTimeout(existingTimer);
-
   const tKeypressEnd = performance.now();
-  connection.console.info(`[perf][keypress] Total synchronous work: ${(tKeypressEnd - tKeypressStart).toFixed(2)}ms`);
+  if (tKeypressEnd - tKeypressStart > 15) {
+    connection.console.info(`[perf][keypress] Synchronous Tier 1: ${(tKeypressEnd - tKeypressStart).toFixed(2)}ms`);
+  }
 
-  const expectedRevision = validationService.documentRevisions.get(uri) ?? 0;
+  // === TIER 2: Short Debounce (~60ms) — Local File Index & Outline Update ===
+  activeShortDebounceTimers.set(
+    uri,
+    setTimeout(() => {
+      activeShortDebounceTimers.delete(uri);
+      if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
+
+      const cached = documentManager.documentTrees.get(uri);
+      if (cached?.tree) {
+        const langId = plugin?.id ?? (change.document.languageId || "modelica");
+        const wsIndex = plugin?.workspaceIndex ?? workspaceManager.getWorkspaceIndex(langId);
+        if (wsIndex) {
+          const effectiveUri = uri.startsWith("modelscript-lib://global")
+            ? "file://" + uri.substring("modelscript-lib://global".length)
+            : uri;
+          if (wsIndex.has(effectiveUri)) {
+            wsIndex.markDirty(effectiveUri, () => cached.tree.rootNode);
+          } else {
+            wsIndex.register(effectiveUri, () => cached.tree.rootNode);
+          }
+          wsIndex.getFileIndex(effectiveUri);
+        }
+      }
+    }, 60),
+  );
+
+  // === TIER 3: Longer Debounce (~180ms) — Salsa QueryEngine, Declarative Lints & Semantic Diagnostics ===
   validationService.activeValidationTimers.set(
     uri,
     setTimeout(async () => {
-      connection.console.info(`[timer] 300ms elapsed for ${uri}`);
       validationService.activeValidationTimers.delete(uri);
       // Wait for any in-flight validation to finish before starting a new one.
-      // Guard with a 2-second timeout to prevent deadlocks from stuck background tasks.
       const inflight = validationService.activeValidationPromises.get(uri);
       if (inflight) {
         try {
-          await Promise.race([inflight, new Promise((r) => setTimeout(r, 2000))]);
+          await Promise.race([inflight, new Promise((r) => setTimeout(r, 1000))]);
         } catch {}
       }
       // Re-check staleness: if another edit arrived while we waited, bail out.
-      if ((validationService.documentRevisions.get(uri) ?? 0) !== expectedRevision) {
-        connection.console.info(`[timer] bailed out due to new edit`);
+      if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) {
         return;
       }
       const doc = documents.get(uri);
-      if (doc) validationService.validateTextDocument(doc);
-    }, 300),
+      if (doc) await validationService.validateTextDocument(doc);
+    }, 180),
   );
 });
 
 // Clean up when a document is closed
 documents.onDidClose((event) => {
+  activeShortDebounceTimers.delete(event.document.uri);
+  lastSyntaxErrorsCount.delete(event.document.uri);
+  const timer = validationService.activeValidationTimers.get(event.document.uri);
+  if (timer) {
+    clearTimeout(timer);
+    validationService.activeValidationTimers.delete(event.document.uri);
+  }
   workspaceManager.workspaceInstances.delete(event.document.uri);
   workspaceManager.documentInstances.delete(event.document.uri);
   workspaceManager.documentContexts.delete(event.document.uri);

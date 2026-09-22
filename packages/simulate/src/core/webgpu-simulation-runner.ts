@@ -23,6 +23,8 @@ export class WebGPUSimulationRunner {
   public device!: GPUDevice;
   private evalPipeline!: GPUComputePipeline;
   private rk4Pipeline!: GPUComputePipeline;
+  private tsit5Pipeline!: GPUComputePipeline;
+  private trbdf2Pipeline!: GPUComputePipeline;
   public stateBuffer!: GPUBuffer;
   private residualsBuffer!: GPUBuffer;
   private paramsBuffer!: GPUBuffer;
@@ -30,6 +32,7 @@ export class WebGPUSimulationRunner {
   private derivIndicesBuffer!: GPUBuffer;
   private y0Buffer!: GPUBuffer;
   private yAccBuffer!: GPUBuffer;
+  private stageScratchBuffer!: GPUBuffer;
   private bindGroup!: GPUBindGroup;
 
   /** Total number of blocks to evaluate. */
@@ -88,6 +91,18 @@ export class WebGPUSimulationRunner {
         compute: { module: shaderModule, entryPoint: "rk4_step" },
       });
 
+      this.tsit5Pipeline = this.device.createComputePipeline({
+        label: "DAE Tsit5 Pipeline",
+        layout: "auto",
+        compute: { module: shaderModule, entryPoint: "tsit5_step" },
+      });
+
+      this.trbdf2Pipeline = this.device.createComputePipeline({
+        label: "DAE TR-BDF2 Pipeline",
+        layout: "auto",
+        compute: { module: shaderModule, entryPoint: "trbdf2_step" },
+      });
+
       // 4. Create Buffers
       const numVars = this.buffers.varCount;
       const numEqs = this.buffers.eqCount;
@@ -105,7 +120,7 @@ export class WebGPUSimulationRunner {
       });
 
       this.paramsBuffer = this.device.createBuffer({
-        size: 32, // time(vec2), dt(vec2), block_count(u32), num_states(u32), rk4_stage(u32), pad
+        size: 48, // time(vec2), dt(vec2), block_count(u32), num_states(u32), rk4_stage(u32), solver_type(u32), sub_stage(u32), pad(u32)
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         label: "Simulation Params Buffer",
       });
@@ -134,6 +149,12 @@ export class WebGPUSimulationRunner {
         label: "y_acc Buffer",
       });
 
+      this.stageScratchBuffer = this.device.createBuffer({
+        size: Math.max(8, this.numStates * 8 * 8), // 8 stages * numStates * vec2<f32>
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        label: "stage_scratch Buffer",
+      });
+
       // Upload indices
       if (this.numStates > 0) {
         this.device.queue.writeBuffer(this.stateIndicesBuffer, 0, this.buffers.stateVarIndices as BufferSource);
@@ -141,8 +162,8 @@ export class WebGPUSimulationRunner {
       }
 
       // 5. Create Bind Group
-      // Since layout: "auto" is used and both pipelines share the same bindings,
-      // we can use getBindGroupLayout(0) from either pipeline.
+      // Since layout: "auto" is used and pipelines share bindings,
+      // we can use getBindGroupLayout(0) from evalPipeline.
       this.bindGroup = this.device.createBindGroup({
         layout: this.evalPipeline.getBindGroupLayout(0),
         entries: [
@@ -153,6 +174,7 @@ export class WebGPUSimulationRunner {
           { binding: 4, resource: { buffer: this.derivIndicesBuffer } },
           { binding: 5, resource: { buffer: this.y0Buffer } },
           { binding: 6, resource: { buffer: this.yAccBuffer } },
+          { binding: 7, resource: { buffer: this.stageScratchBuffer } },
         ],
       });
 
@@ -172,7 +194,13 @@ export class WebGPUSimulationRunner {
    * @param startTime - Starting time.
    * @returns Float32Array containing row-major results: [step0_vars..., step1_vars...]
    */
-  async runSimulation(steps: number, stepSize: number, startTime: number): Promise<Float32Array> {
+  async runSimulation(
+    steps: number,
+    stepSize: number,
+    startTime: number,
+    options?: { solver?: "rk4" | "tsit5" | "trbdf2" },
+  ): Promise<Float32Array> {
+    const solver = options?.solver ?? "rk4";
     // 1. Upload initial state
     this.device.queue.writeBuffer(this.stateBuffer, 0, this.buffers.stateBuffer as BufferSource);
 
@@ -190,17 +218,17 @@ export class WebGPUSimulationRunner {
     });
 
     const evalWorkgroupCount = Math.ceil(this.blockCount / 64);
-    const rk4WorkgroupCount = Math.ceil(this.numStates / 64);
-    const paramsData = new ArrayBuffer(32);
+    const odeWorkgroupCount = Math.ceil(this.numStates / 64);
+    const paramsData = new ArrayBuffer(48);
     const paramsF32 = new Float32Array(paramsData);
     const paramsU32 = new Uint32Array(paramsData);
 
     paramsU32[4] = this.blockCount;
     paramsU32[5] = this.numStates;
+    paramsU32[7] = solver === "tsit5" ? 1 : solver === "trbdf2" ? 2 : 0;
 
     let currentTime = startTime;
 
-    // Full RK4 Orchestration on GPU
     for (let s = 1; s <= steps; s++) {
       const commandEncoder = this.device.createCommandEncoder();
 
@@ -209,71 +237,115 @@ export class WebGPUSimulationRunner {
       paramsF32[2] = dtHi;
       paramsF32[3] = dtLo;
 
-      // RK4 Stage 0 (k1)
-      const tHi = Math.fround(currentTime);
-      const tLo = Math.fround(currentTime - tHi);
-      paramsF32[0] = tHi;
-      paramsF32[1] = tLo;
-      paramsU32[6] = 0; // rk4_stage
-      this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+      if (solver === "tsit5") {
+        // Tsit5 7 stages (FSAL)
+        const c = [0.0, 0.161, 0.327, 0.9, 0.9800255404875019, 1.0, 1.0];
+        for (let st = 0; st < 7; st++) {
+          const tStage = currentTime + (c[st] ?? 0.0) * stepSize;
+          paramsF32[0] = Math.fround(tStage);
+          paramsF32[1] = Math.fround(tStage - paramsF32[0]);
+          paramsU32[6] = st; // rk4_stage / sub_stage
+          paramsU32[8] = st; // sub_stage
+          this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
 
-      let passEncoder = commandEncoder.beginComputePass();
-      passEncoder.setPipeline(this.evalPipeline);
-      passEncoder.setBindGroup(0, this.bindGroup);
-      passEncoder.dispatchWorkgroups(evalWorkgroupCount);
-      if (this.numStates > 0) {
-        passEncoder.setPipeline(this.rk4Pipeline);
-        passEncoder.dispatchWorkgroups(rk4WorkgroupCount);
+          const passEncoder = commandEncoder.beginComputePass();
+          passEncoder.setPipeline(this.evalPipeline);
+          passEncoder.setBindGroup(0, this.bindGroup);
+          passEncoder.dispatchWorkgroups(evalWorkgroupCount);
+          if (this.numStates > 0) {
+            passEncoder.setPipeline(this.tsit5Pipeline);
+            passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+          }
+          passEncoder.end();
+        }
+      } else if (solver === "trbdf2") {
+        // TR-BDF2 4 sub-stages
+        const gamma = 0.585786437626905;
+        const timeOffsets = [0.0, gamma, gamma, 1.0];
+        for (let st = 0; st < 4; st++) {
+          const tStage = currentTime + (timeOffsets[st] ?? 0.0) * stepSize;
+          paramsF32[0] = Math.fround(tStage);
+          paramsF32[1] = Math.fround(tStage - paramsF32[0]);
+          paramsU32[6] = st;
+          paramsU32[8] = st;
+          this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+
+          const passEncoder = commandEncoder.beginComputePass();
+          passEncoder.setPipeline(this.evalPipeline);
+          passEncoder.setBindGroup(0, this.bindGroup);
+          passEncoder.dispatchWorkgroups(evalWorkgroupCount);
+          if (this.numStates > 0) {
+            passEncoder.setPipeline(this.trbdf2Pipeline);
+            passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+          }
+          passEncoder.end();
+        }
+      } else {
+        // Default RK4 (4 stages)
+        // Stage 0 (k1)
+        paramsF32[0] = Math.fround(currentTime);
+        paramsF32[1] = Math.fround(currentTime - paramsF32[0]);
+        paramsU32[6] = 0;
+        this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+
+        let passEncoder = commandEncoder.beginComputePass();
+        passEncoder.setPipeline(this.evalPipeline);
+        passEncoder.setBindGroup(0, this.bindGroup);
+        passEncoder.dispatchWorkgroups(evalWorkgroupCount);
+        if (this.numStates > 0) {
+          passEncoder.setPipeline(this.rk4Pipeline);
+          passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+        }
+        passEncoder.end();
+
+        // Stage 1 (k2)
+        const tMid = currentTime + 0.5 * stepSize;
+        paramsF32[0] = Math.fround(tMid);
+        paramsF32[1] = Math.fround(tMid - paramsF32[0]);
+        paramsU32[6] = 1;
+        this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+
+        passEncoder = commandEncoder.beginComputePass();
+        passEncoder.setPipeline(this.evalPipeline);
+        passEncoder.setBindGroup(0, this.bindGroup);
+        passEncoder.dispatchWorkgroups(evalWorkgroupCount);
+        if (this.numStates > 0) {
+          passEncoder.setPipeline(this.rk4Pipeline);
+          passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+        }
+        passEncoder.end();
+
+        // Stage 2 (k3)
+        paramsU32[6] = 2;
+        this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+
+        passEncoder = commandEncoder.beginComputePass();
+        passEncoder.setPipeline(this.evalPipeline);
+        passEncoder.setBindGroup(0, this.bindGroup);
+        passEncoder.dispatchWorkgroups(evalWorkgroupCount);
+        if (this.numStates > 0) {
+          passEncoder.setPipeline(this.rk4Pipeline);
+          passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+        }
+        passEncoder.end();
+
+        // Stage 3 (k4)
+        const tNext = currentTime + stepSize;
+        paramsF32[0] = Math.fround(tNext);
+        paramsF32[1] = Math.fround(tNext - paramsF32[0]);
+        paramsU32[6] = 3;
+        this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+
+        passEncoder = commandEncoder.beginComputePass();
+        passEncoder.setPipeline(this.evalPipeline);
+        passEncoder.setBindGroup(0, this.bindGroup);
+        passEncoder.dispatchWorkgroups(evalWorkgroupCount);
+        if (this.numStates > 0) {
+          passEncoder.setPipeline(this.rk4Pipeline);
+          passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+        }
+        passEncoder.end();
       }
-      passEncoder.end();
-
-      // RK4 Stage 1 (k2)
-      const tMid = currentTime + 0.5 * stepSize;
-      paramsF32[0] = Math.fround(tMid);
-      paramsF32[1] = Math.fround(tMid - paramsF32[0]);
-      paramsU32[6] = 1; // rk4_stage
-      this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
-
-      passEncoder = commandEncoder.beginComputePass();
-      passEncoder.setPipeline(this.evalPipeline);
-      passEncoder.setBindGroup(0, this.bindGroup);
-      passEncoder.dispatchWorkgroups(evalWorkgroupCount);
-      if (this.numStates > 0) {
-        passEncoder.setPipeline(this.rk4Pipeline);
-        passEncoder.dispatchWorkgroups(rk4WorkgroupCount);
-      }
-      passEncoder.end();
-
-      // RK4 Stage 2 (k3)
-      paramsU32[6] = 2; // rk4_stage
-      this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
-
-      passEncoder = commandEncoder.beginComputePass();
-      passEncoder.setPipeline(this.evalPipeline);
-      passEncoder.setBindGroup(0, this.bindGroup);
-      passEncoder.dispatchWorkgroups(evalWorkgroupCount);
-      if (this.numStates > 0) {
-        passEncoder.setPipeline(this.rk4Pipeline);
-        passEncoder.dispatchWorkgroups(rk4WorkgroupCount);
-      }
-      passEncoder.end();
-
-      // RK4 Stage 3 (k4)
-      const tNext = currentTime + stepSize;
-      paramsF32[0] = Math.fround(tNext);
-      paramsF32[1] = Math.fround(tNext - paramsF32[0]);
-      paramsU32[6] = 3; // rk4_stage
-      this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
-
-      passEncoder = commandEncoder.beginComputePass();
-      passEncoder.setPipeline(this.evalPipeline);
-      passEncoder.setBindGroup(0, this.bindGroup);
-      passEncoder.dispatchWorkgroups(evalWorkgroupCount);
-      if (this.numStates > 0) {
-        passEncoder.setPipeline(this.rk4Pipeline);
-        passEncoder.dispatchWorkgroups(rk4WorkgroupCount);
-      }
-      passEncoder.end();
 
       currentTime += stepSize;
 

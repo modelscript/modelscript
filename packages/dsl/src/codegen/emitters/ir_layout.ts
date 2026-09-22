@@ -52,5 +52,48 @@ export const BLOCK_DOMINATOR: u32 = ${BLOCK_DOMINATOR};
 export const BLOCK_STATE_TRUE: u32 = ${BLOCK_STATE_TRUE};
 export const BLOCK_STATE_FALSE: u32 = ${BLOCK_STATE_FALSE};
 export const BLOCK_POST_ORDER: u32 = ${BLOCK_POST_ORDER};
+
+/**
+ * Unmanaged view over a 16-byte IR instruction in linear memory.
+ */
+@unmanaged
+export class IRInstruction {
+  opcode: u16;     // offset 0
+  typeId: u16;     // offset 2
+  operand1: u32;   // offset 4
+  operand2: u32;   // offset 8
+  nextInstr: u32;  // offset 12
+
+  @inline static at(ptr: usize): IRInstruction {
+    return changetype<IRInstruction>(ptr);
+  }
+}
+
+/**
+ * Unmanaged view over a 52-byte Basic Block in linear memory.
+ */
+@unmanaged
+export class BasicBlock {
+  firstInstr: u32;     // offset 0
+  lastInstr: u32;      // offset 4
+  trueBranch: u32;     // offset 8
+  falseBranch: u32;    // offset 12
+  stateIn: u32;        // offset 16
+  stateOut: u32;       // offset 20
+  nextBlock: u32;      // offset 24
+  prevBlock: u32;      // offset 28
+  successorList: u32;  // offset 32
+  dominator: u32;      // offset 36
+  stateTrue: u32;      // offset 40
+  stateFalse: u32;     // offset 44
+  postOrder: u32;      // offset 48
+
+  @inline static at(ptr: usize): BasicBlock {
+    return changetype<BasicBlock>(ptr);
+  }
+
+  @inline get hasTrueBranch(): bool { return this.trueBranch != 0; }
+  @inline get hasFalseBranch(): bool { return this.falseBranch != 0; }
+}
 `;
 }

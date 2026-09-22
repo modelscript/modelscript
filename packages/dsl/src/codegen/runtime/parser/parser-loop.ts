@@ -3524,6 +3524,32 @@ export let t_editRangesPtr: usize = 0;
 export let t_editRangesCount: u32 = 0;
 export let t_defaultSingleEdit: usize = 0;
 
+/**
+ * Unmanaged view over a 12-byte text edit range [start, oldEnd, newEnd] in linear memory.
+ */
+@unmanaged
+export class TextEditRange {
+  start: u32;
+  oldEnd: u32;
+  newEnd: u32;
+
+  @inline static at(ptr: usize, index: u32 = 0): TextEditRange {
+    return changetype<TextEditRange>(ptr + index * sizeof<TextEditRange>());
+  }
+
+  @inline swapWith(other: TextEditRange): void {
+    let s = this.start;
+    let o = this.oldEnd;
+    let n = this.newEnd;
+    this.start = other.start;
+    this.oldEnd = other.oldEnd;
+    this.newEnd = other.newEnd;
+    other.start = s;
+    other.oldEnd = o;
+    other.newEnd = n;
+  }
+}
+
 export function setEditRanges(ptr: usize, count: u32): void {
   t_editRangesPtr = ptr;
   t_editRangesCount = count;
@@ -3531,21 +3557,10 @@ export function setEditRanges(ptr: usize, count: u32): void {
   if (count > 1 && ptr != 0) {
     for (let i: u32 = 0; i < count - 1; i++) {
       for (let j: u32 = 0; j < count - 1 - i; j++) {
-        let b1 = ptr + j * 12;
-        let b2 = b1 + 12;
-        let s1 = load<u32>(b1);
-        let s2 = load<u32>(b2);
-        if (s1 > s2) {
-          let o1 = load<u32>(b1 + 4);
-          let n1 = load<u32>(b1 + 8);
-          let o2 = load<u32>(b2 + 4);
-          let n2 = load<u32>(b2 + 8);
-          store<u32>(b1, s2);
-          store<u32>(b1 + 4, o2);
-          store<u32>(b1 + 8, n2);
-          store<u32>(b2, s1);
-          store<u32>(b2 + 4, o1);
-          store<u32>(b2 + 8, n1);
+        let r1 = TextEditRange.at(ptr, j);
+        let r2 = TextEditRange.at(ptr, j + 1);
+        if (r1.start > r2.start) {
+          r1.swapWith(r2);
         }
       }
     }
@@ -3567,18 +3582,14 @@ export function mapNewPosToOldPos(pos: u32): u32 {
   // Multi-range: displacement calculation across sorted non-overlapping edit intervals
   let delta: i32 = 0;
   for (let i: u32 = 0; i < t_editRangesCount; i++) {
-    let base = t_editRangesPtr + i * 12;
-    let eStart = load<u32>(base);
-    let eOldEnd = load<u32>(base + 4);
-    let eNewEnd = load<u32>(base + 8);
-
-    if (pos < eStart) {
+    let edit = TextEditRange.at(t_editRangesPtr, i);
+    if (pos < edit.start) {
       return (pos as i32 - delta) as u32;
     }
-    if (pos >= eStart && pos < eNewEnd) {
+    if (pos >= edit.start && pos < edit.newEnd) {
       return 0xffffffff;
     }
-    delta += (eNewEnd - eOldEnd) as i32;
+    delta += (edit.newEnd - edit.oldEnd) as i32;
   }
   return (pos as i32 - delta) as u32;
 }
@@ -3591,17 +3602,13 @@ export function isOldRangeEdited(start: u32, end: u32): boolean {
 
   let prevDelta: i32 = 0;
   for (let i: u32 = 0; i < t_editRangesCount; i++) {
-    let base = t_editRangesPtr + i * 12;
-    let eStart = load<u32>(base);
-    let eOldEnd = load<u32>(base + 4);
-    let eNewEnd = load<u32>(base + 8);
-
-    let oldStart = (eStart as i32 - prevDelta) as u32;
-    let oldEnd = (eOldEnd as i32 - prevDelta) as u32;
+    let edit = TextEditRange.at(t_editRangesPtr, i);
+    let oldStart = (edit.start as i32 - prevDelta) as u32;
+    let oldEnd = (edit.oldEnd as i32 - prevDelta) as u32;
     if (end > oldStart && start < oldEnd) {
       return true;
     }
-    prevDelta += (eNewEnd - eOldEnd) as i32;
+    prevDelta += (edit.newEnd - edit.oldEnd) as i32;
   }
   return false;
 }
@@ -4181,9 +4188,10 @@ export function parseWithEdits(oldTree: u32, editsPtr: usize, editsCount: u32): 
   let eOldEnd: u32 = 0;
   let eNewEnd: u32 = 0;
   if (editsCount > 0 && editsPtr != 0) {
-    eStart = load<u32>(editsPtr);
-    eOldEnd = load<u32>(editsPtr + 4);
-    eNewEnd = load<u32>(editsPtr + 8);
+    let first = TextEditRange.at(editsPtr, 0);
+    eStart = first.start;
+    eOldEnd = first.oldEnd;
+    eNewEnd = first.newEnd;
   }
   let res = parse(oldTree, eStart, eOldEnd, eNewEnd);
   g_isMultiEdit = false;
@@ -4205,11 +4213,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     t_editRangesPtr = 0;
     t_editRangesCount = 0;
     if (t_defaultSingleEdit == 0) {
-      t_defaultSingleEdit = atomicChunkAlloc(12);
+      t_defaultSingleEdit = atomicChunkAlloc(sizeof<TextEditRange>());
     }
-    store<u32>(t_defaultSingleEdit, editStart);
-    store<u32>(t_defaultSingleEdit + 4, editOldEnd);
-    store<u32>(t_defaultSingleEdit + 8, editNewEnd);
+    let edit = TextEditRange.at(t_defaultSingleEdit, 0);
+    edit.start = editStart;
+    edit.oldEnd = editOldEnd;
+    edit.newEnd = editNewEnd;
     t_editRangesPtr = t_defaultSingleEdit;
     t_editRangesCount = (editOldEnd > 0 || editNewEnd > 0) ? 1 : 0;
   }

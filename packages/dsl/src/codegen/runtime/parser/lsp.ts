@@ -1050,6 +1050,38 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
   return t_lspBinaryBuffer.length / 4;
 }
 
+/**
+ * Unmanaged view over a 16-byte LSP semantic token record in linear memory.
+ */
+@unmanaged
+export class SemanticTokenRecord {
+  startByte: u32;
+  length: u32;
+  tokenType: u32;
+  modifiers: u32;
+
+  @inline static at(flatPtr: usize, index: u32): SemanticTokenRecord {
+    return changetype<SemanticTokenRecord>(flatPtr + (((index as usize) << 4)));
+  }
+
+  @inline swapWith(other: SemanticTokenRecord): void {
+    let t0 = this.startByte;
+    let t1 = this.length;
+    let t2 = this.tokenType;
+    let t3 = this.modifiers;
+
+    this.startByte = other.startByte;
+    this.length = other.length;
+    this.tokenType = other.tokenType;
+    this.modifiers = other.modifiers;
+
+    other.startByte = t0;
+    other.length = t1;
+    other.tokenType = t2;
+    other.modifiers = t3;
+  }
+}
+
 function sortSemanticTokens(flatPtr: usize, numTokens: u32): void {
   if (numTokens <= 1) return;
   
@@ -1061,7 +1093,7 @@ function sortSemanticTokens(flatPtr: usize, numTokens: u32): void {
   
   // Extract elements from heap one by one
   for (let i = numTokens - 1; i > 0; i--) {
-    swapSemanticTokens(flatPtr, 0, i);
+    SemanticTokenRecord.at(flatPtr, 0).swapWith(SemanticTokenRecord.at(flatPtr, i));
     heapifySemanticTokens(flatPtr, i, 0);
   }
 }
@@ -1074,45 +1106,24 @@ function heapifySemanticTokens(flatPtr: usize, n: u32, i: u32): void {
     let right = (curr << 1) + 2;
 
     if (left < n) {
-      let keyL = load<u32>(flatPtr + (left << 4));
-      let keyLargest = load<u32>(flatPtr + (largest << 4));
-      if (keyL > keyLargest) largest = left;
+      let recL = SemanticTokenRecord.at(flatPtr, left);
+      let recLargest = SemanticTokenRecord.at(flatPtr, largest);
+      if (recL.startByte > recLargest.startByte) largest = left;
     }
 
     if (right < n) {
-      let keyR = load<u32>(flatPtr + (right << 4));
-      let keyLargest = load<u32>(flatPtr + (largest << 4));
-      if (keyR > keyLargest) largest = right;
+      let recR = SemanticTokenRecord.at(flatPtr, right);
+      let recLargest = SemanticTokenRecord.at(flatPtr, largest);
+      if (recR.startByte > recLargest.startByte) largest = right;
     }
 
     if (largest != curr) {
-      swapSemanticTokens(flatPtr, curr, largest);
+      SemanticTokenRecord.at(flatPtr, curr).swapWith(SemanticTokenRecord.at(flatPtr, largest));
       curr = largest;
     } else {
       break;
     }
   }
-}
-
-@inline
-function swapSemanticTokens(flatPtr: usize, a: u32, b: u32): void {
-  let a16 = a << 4;
-  let b16 = b << 4;
-  
-  let temp0 = load<u32>(flatPtr + a16);
-  let temp1 = load<u32>(flatPtr + a16 + 4);
-  let temp2 = load<u32>(flatPtr + a16 + 8);
-  let temp3 = load<u32>(flatPtr + a16 + 12);
-
-  store<u32>(flatPtr + a16, load<u32>(flatPtr + b16));
-  store<u32>(flatPtr + a16 + 4, load<u32>(flatPtr + b16 + 4));
-  store<u32>(flatPtr + a16 + 8, load<u32>(flatPtr + b16 + 8));
-  store<u32>(flatPtr + a16 + 12, load<u32>(flatPtr + b16 + 12));
-
-  store<u32>(flatPtr + b16, temp0);
-  store<u32>(flatPtr + b16 + 4, temp1);
-  store<u32>(flatPtr + b16 + 8, temp2);
-  store<u32>(flatPtr + b16 + 12, temp3);
 }
 
 /**

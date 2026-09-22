@@ -41,6 +41,69 @@ export const PATH_OP_ALTERNATION: u32 = 7;   // | (prop1 | prop2)
 export const AXIOM_STRIDE: u32 = 6; // 24 bytes per axiom
 export const WILDCARD_PATTERN: u32 = 0xffffffff;
 
+const AXIOM_ACCESSOR_SLOTS: u32 = 16;
+const AXIOM_ACCESSOR_MASK: u32 = AXIOM_ACCESSOR_SLOTS - 1;
+let g_axiomAccessorIdx: u32 = 0;
+let g_axiomAccessorBuf: usize = 0;
+
+/**
+ * Lightweight, zero-overhead accessor over a single 24-byte axiom record in `axiomTable`.
+ * Eliminates repetitive baseIdx arithmetic with @inline typed getters/setters.
+ */
+@unmanaged
+export class AxiomAccessor {
+  private _data: ChunkedUint32Array;
+  private _offset: u32;
+
+  @inline static at(data: ChunkedUint32Array, axiomId: u32): AxiomAccessor {
+    if (g_axiomAccessorBuf == 0) {
+      g_axiomAccessorBuf = atomicChunkAlloc(AXIOM_ACCESSOR_SLOTS * (sizeof<usize>() * 2));
+    }
+    let slot = (g_axiomAccessorIdx++) & AXIOM_ACCESSOR_MASK;
+    let a = changetype<AxiomAccessor>(g_axiomAccessorBuf + slot * (sizeof<usize>() * 2));
+    a._data = data;
+    a._offset = axiomId * AXIOM_STRIDE;
+    return a;
+  }
+
+  @inline get typeAndLang(): u32 { return this._data.get(this._offset + 0); }
+  @inline set typeAndLang(v: u32) { this._data.set(this._offset + 0, v); }
+
+  @inline get axiomType(): u16 { return (this._data.get(this._offset + 0) & 0xffff) as u16; }
+  @inline get sourceLangId(): u16 { return ((this._data.get(this._offset + 0) >> 16) & 0xffff) as u16; }
+
+  @inline setTypeAndLang(type: u32, lang: u32): void {
+    this._data.set(this._offset + 0, (type & 0xffff) | ((lang & 0xffff) << 16));
+  }
+
+  @inline get subject(): u32 { return this._data.get(this._offset + 1); }
+  @inline set subject(v: u32) { this._data.set(this._offset + 1, v); }
+
+  @inline get predicate(): u32 { return this._data.get(this._offset + 2); }
+  @inline set predicate(v: u32) { this._data.set(this._offset + 2, v); }
+
+  @inline get object(): u32 { return this._data.get(this._offset + 3); }
+  @inline set object(v: u32) { this._data.set(this._offset + 3, v); }
+
+  @inline get flags(): u32 { return this._data.get(this._offset + 4); }
+  @inline set flags(v: u32) { this._data.set(this._offset + 4, v); }
+
+  @inline get extra(): u32 { return this._data.get(this._offset + 5); }
+  @inline set extra(v: u32) { this._data.set(this._offset + 5, v); }
+
+  @inline writeTo(outBuffer: ChunkedUint32Array): void {
+    for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
+      outBuffer.push(this._data.get(this._offset + w));
+    }
+  }
+
+  @inline copyFrom(other: AxiomAccessor): void {
+    for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
+      this._data.set(this._offset + w, other._data.get(other._offset + w));
+    }
+  }
+}
+
 @unmanaged
 export class OntologyStore {
   axiomTable: ChunkedUint32Array;
@@ -100,15 +163,13 @@ export class OntologyStore {
    */
   addAxiom(axiomType: u32, sourceLangId: u32, subjectHash: u32, predicateHash: u32, objectHash: u32, flags: u32 = 0, extra: u32 = 0): u32 {
     let id = this.axiomCount++;
-    let baseIdx = id * AXIOM_STRIDE;
-
-    let typeAndLang = (axiomType & 0xffff) | ((sourceLangId & 0xffff) << 16);
-    this.axiomTable.set(baseIdx + 0, typeAndLang);
-    this.axiomTable.set(baseIdx + 1, subjectHash);
-    this.axiomTable.set(baseIdx + 2, predicateHash);
-    this.axiomTable.set(baseIdx + 3, objectHash);
-    this.axiomTable.set(baseIdx + 4, flags);
-    this.axiomTable.set(baseIdx + 5, extra);
+    let ax = AxiomAccessor.at(this.axiomTable, id);
+    ax.setTypeAndLang(axiomType, sourceLangId);
+    ax.subject = subjectHash;
+    ax.predicate = predicateHash;
+    ax.object = objectHash;
+    ax.flags = flags;
+    ax.extra = extra;
 
     // 1. Link SPO Index (Subject -> Axiom)
     if (subjectHash != 0) {
@@ -157,24 +218,20 @@ export class OntologyStore {
     this.axiomActive.set(axiomId, 0);
     this.hasIntervalIndex = false;
 
-    let bIdx = axiomId * AXIOM_STRIDE;
-    let typeAndLang = this.axiomTable.get(bIdx + 0);
-    let aType = (typeAndLang & 0xffff) as u16;
-    let s = this.axiomTable.get(bIdx + 1);
-    let p = this.axiomTable.get(bIdx + 2);
-    let o = this.axiomTable.get(bIdx + 3);
+    let target = AxiomAccessor.at(this.axiomTable, axiomId);
+    let s = target.subject;
+    let p = target.predicate;
+    let o = target.object;
 
     // Phase 1 (Over-deletion): If axiom was asserted, find inferred axioms that depended on it
     let overDeleted = createChunkedUint32Array(16);
 
     for (let i: u32 = 1; i < this.axiomCount; i++) {
       if (this.axiomActive.get(i) == 0) continue;
-      let fIdx = i * AXIOM_STRIDE;
-      let flags = this.axiomTable.get(fIdx + 4);
-      if (flags == 1) { // Inferred axiom
-        let infType = (this.axiomTable.get(fIdx + 0) & 0xffff) as u16;
-        let infS = this.axiomTable.get(fIdx + 1);
-        let infO = this.axiomTable.get(fIdx + 3);
+      let ax = AxiomAccessor.at(this.axiomTable, i);
+      if (ax.flags == 1) { // Inferred axiom
+        let infS = ax.subject;
+        let infO = ax.object;
 
         // If inferred relation directly references retracted endpoints, mark for over-deletion
         if (infS == s || infS == o || infO == s || infO == o) {
@@ -210,21 +267,20 @@ export class OntologyStore {
   ): u32 {
     // 1. Process retractions first
     for (let i: u32 = 0; i < retractCount; i++) {
-      let rIdx = i * AXIOM_STRIDE;
-      let aType = (retractArray.get(rIdx + 0) & 0xffff) as u16;
-      let s = retractArray.get(rIdx + 1);
-      let p = retractArray.get(rIdx + 2);
-      let o = retractArray.get(rIdx + 3);
+      let rAx = AxiomAccessor.at(retractArray, i);
+      let aType = rAx.axiomType;
+      let s = rAx.subject;
+      let p = rAx.predicate;
+      let o = rAx.object;
 
       // Find matching active axiom
       for (let k: u32 = 1; k < this.axiomCount; k++) {
         if (this.axiomActive.get(k) == 0) continue;
-        let baseIdx = k * AXIOM_STRIDE;
-        let t = (this.axiomTable.get(baseIdx + 0) & 0xffff) as u16;
-        if (t == aType &&
-            this.axiomTable.get(baseIdx + 1) == s &&
-            this.axiomTable.get(baseIdx + 2) == p &&
-            this.axiomTable.get(baseIdx + 3) == o) {
+        let ax = AxiomAccessor.at(this.axiomTable, k);
+        if (ax.axiomType == aType &&
+            ax.subject == s &&
+            ax.predicate == p &&
+            ax.object == o) {
           this.retractAxiom(k);
           break;
         }
@@ -233,16 +289,8 @@ export class OntologyStore {
 
     // 2. Process additions
     for (let i: u32 = 0; i < addCount; i++) {
-      let aIdx = i * AXIOM_STRIDE;
-      let tLang = addArray.get(aIdx + 0);
-      let aType = (tLang & 0xffff) as u16;
-      let sLang = ((tLang >>> 16) & 0xffff) as u16;
-      let s = addArray.get(aIdx + 1);
-      let p = addArray.get(aIdx + 2);
-      let o = addArray.get(aIdx + 3);
-      let flags = addArray.get(aIdx + 4);
-
-      this.addAxiom(aType, sLang, s, p, o, flags);
+      let aAx = AxiomAccessor.at(addArray, i);
+      this.addAxiom(aAx.axiomType, aAx.sourceLangId as u32, aAx.subject, aAx.predicate, aAx.object, aAx.flags);
     }
 
     // 3. Saturate and recompute index
@@ -395,17 +443,12 @@ export class OntologyStore {
       // Use SPO Index
       let curr = this.spoHead.get(subjectPattern as u64) as u32;
       while (curr != 0) {
-        let baseIdx = curr * AXIOM_STRIDE;
-        let p = this.axiomTable.get(baseIdx + 2);
-        let o = this.axiomTable.get(baseIdx + 3);
-
-        let pMatch = predicatePattern == WILDCARD_PATTERN || predicatePattern == p;
-        let oMatch = objectPattern == WILDCARD_PATTERN || objectPattern == o;
+        let ax = AxiomAccessor.at(this.axiomTable, curr);
+        let pMatch = predicatePattern == WILDCARD_PATTERN || predicatePattern == ax.predicate;
+        let oMatch = objectPattern == WILDCARD_PATTERN || objectPattern == ax.object;
 
         if (pMatch && oMatch) {
-          for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
-            outBuffer.push(this.axiomTable.get(baseIdx + w));
-          }
+          ax.writeTo(outBuffer);
           matchCount++;
         }
         curr = this.nextSpo.get(curr);
@@ -414,17 +457,12 @@ export class OntologyStore {
       // Use POS Index
       let curr = this.posHead.get(predicatePattern as u64) as u32;
       while (curr != 0) {
-        let baseIdx = curr * AXIOM_STRIDE;
-        let s = this.axiomTable.get(baseIdx + 1);
-        let o = this.axiomTable.get(baseIdx + 3);
-
-        let sMatch = subjectPattern == WILDCARD_PATTERN || subjectPattern == s;
-        let oMatch = objectPattern == WILDCARD_PATTERN || objectPattern == o;
+        let ax = AxiomAccessor.at(this.axiomTable, curr);
+        let sMatch = subjectPattern == WILDCARD_PATTERN || subjectPattern == ax.subject;
+        let oMatch = objectPattern == WILDCARD_PATTERN || objectPattern == ax.object;
 
         if (sMatch && oMatch) {
-          for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
-            outBuffer.push(this.axiomTable.get(baseIdx + w));
-          }
+          ax.writeTo(outBuffer);
           matchCount++;
         }
         curr = this.nextPos.get(curr);
@@ -433,17 +471,12 @@ export class OntologyStore {
       // Use OSP Index
       let curr = this.ospHead.get(objectPattern as u64) as u32;
       while (curr != 0) {
-        let baseIdx = curr * AXIOM_STRIDE;
-        let s = this.axiomTable.get(baseIdx + 1);
-        let p = this.axiomTable.get(baseIdx + 2);
-
-        let sMatch = subjectPattern == WILDCARD_PATTERN || subjectPattern == s;
-        let pMatch = predicatePattern == WILDCARD_PATTERN || predicatePattern == p;
+        let ax = AxiomAccessor.at(this.axiomTable, curr);
+        let sMatch = subjectPattern == WILDCARD_PATTERN || subjectPattern == ax.subject;
+        let pMatch = predicatePattern == WILDCARD_PATTERN || predicatePattern == ax.predicate;
 
         if (sMatch && pMatch) {
-          for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
-            outBuffer.push(this.axiomTable.get(baseIdx + w));
-          }
+          ax.writeTo(outBuffer);
           matchCount++;
         }
         curr = this.nextOsp.get(curr);
@@ -451,10 +484,8 @@ export class OntologyStore {
     } else {
       // Full table scan when all patterns are wildcards
       for (let i: u32 = 1; i < this.axiomCount; i++) {
-        let baseIdx = i * AXIOM_STRIDE;
-        for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
-          outBuffer.push(this.axiomTable.get(baseIdx + w));
-        }
+        let ax = AxiomAccessor.at(this.axiomTable, i);
+        ax.writeTo(outBuffer);
         matchCount++;
       }
     }

@@ -62,6 +62,21 @@ export class ValidationService {
     this.reasonerService = new ReasonerService(connection, workspaceManager);
   }
 
+  public sendProjectTreeChanged(): void {
+    if (globalThis.projectTreeChangedTimer) {
+      globalThis.projectTreeChangedPending = true;
+      return;
+    }
+    this.connection.sendNotification("modelscript/projectTreeChanged");
+    globalThis.projectTreeChangedTimer = setTimeout(() => {
+      globalThis.projectTreeChangedTimer = null;
+      if (globalThis.projectTreeChangedPending) {
+        globalThis.projectTreeChangedPending = false;
+        this.connection.sendNotification("modelscript/projectTreeChanged");
+      }
+    }, 500);
+  }
+
   public collectSyntaxErrors(rootNode: any, textDocument: TextDocument, plugin?: LanguagePlugin): Diagnostic[] {
     const t0 = performance.now();
     const diagnostics: Diagnostic[] = [];
@@ -74,7 +89,7 @@ export class ValidationService {
         const rootPtr = rootNode.id ?? rootNode.ptr ?? rootNode?.tree?.rootPtr ?? 0;
         if (rootPtr) {
           const wasmDiags = facade.getDiagnostics(rootPtr);
-          if (Array.isArray(wasmDiags) && wasmDiags.length > 0) {
+          if (Array.isArray(wasmDiags)) {
             for (const d of wasmDiags) {
               // Severity 1 = Error (Syntax Error).
               // Linter warnings (severity 2 / lintId >= 1000) are handled by the semantic pipeline.
@@ -100,9 +115,7 @@ export class ValidationService {
                 });
               }
             }
-            if (diagnostics.length > 0) {
-              return diagnostics;
-            }
+            return diagnostics;
           }
         }
       } catch (e) {
@@ -110,7 +123,9 @@ export class ValidationService {
       }
     }
 
-    // 2. Fallback: CST tree walk
+    // 2. Fallback: CST tree walk (only if native WASM parser diagnostics unavailable and root has error)
+    const hasError = typeof rootNode.hasError === "function" ? rootNode.hasError() : rootNode.hasError;
+    if (!hasError) return diagnostics;
     if (typeof rootNode.walk !== "function") return diagnostics;
     const cursor = rootNode.walk();
     let didDescend = true;
@@ -531,7 +546,7 @@ export class ValidationService {
       const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
       if (diagnostics.length > 1000) diagnostics.length = 1000;
       this.connection.sendDiagnostics({ uri, diagnostics });
-      this.connection.sendNotification("modelscript/projectTreeChanged");
+      this.sendProjectTreeChanged();
     } catch (e: any) {
       this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
@@ -568,15 +583,16 @@ export class ValidationService {
   }
 
   private createDefaultQueryEngine(langId: string, unifiedIndex: any, cstTreeWrapper: any): QueryEngine {
-    const plugin = globalLanguageRegistry.getPluginById(langId);
+    const norm = langId.toLowerCase();
+    const plugin = globalLanguageRegistry.getPluginById(norm);
     const factory =
       plugin?.createQueryEngine ??
-      (globalThis as any)[`create_${langId}_query_engine`] ??
-      (globalThis as any)[`create${langId.charAt(0).toUpperCase() + langId.slice(1)}QueryEngine`];
+      (globalThis as any)[`create_${norm}_query_engine`] ??
+      (globalThis as any)[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}QueryEngine`];
     if (typeof factory === "function") {
       return factory(unifiedIndex, cstTreeWrapper) as any;
     }
-    return new QueryEngine(unifiedIndex, cstTreeWrapper as any);
+    return new QueryEngine(unifiedIndex, new Map(), { tree: cstTreeWrapper });
   }
 
   private validateSidecarDocument(textDocument: TextDocument): void {
@@ -600,7 +616,7 @@ export class ValidationService {
     this.workspaceManager.documentInstances.set(textDocument.uri, [entity]);
     this.workspaceManager.documentContexts.set(textDocument.uri, context);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-    this.connection.sendNotification("modelscript/projectTreeChanged");
+    this.sendProjectTreeChanged();
   }
 
   private async validateStepDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
@@ -746,7 +762,7 @@ export class ValidationService {
 
     this.lastSemanticDiagnostics.set(textDocument.uri, stepDiagnostics);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
-    this.connection.sendNotification("modelscript/projectTreeChanged");
+    this.sendProjectTreeChanged();
 
     if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
     this.revalidationTimer = setTimeout(() => {

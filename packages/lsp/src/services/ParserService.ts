@@ -24,7 +24,6 @@ let savedLoaderCtx: any = undefined;
 let projectTreeChangedTimer: any = undefined;
 let projectTreeChangedPending: any = undefined;
 let documentLSPBridges: any = undefined;
-let createSysML2QueryEngine: any = undefined;
 let ModelicaClassInstance: any = undefined;
 
 export class ParserService {
@@ -436,7 +435,7 @@ export class ParserService {
     return { lineIndex: cached.lineIndex, tokens: cached.tokens };
   }
 
-  async initTreeSitter(
+  async initWasmParsers(
     extensionUri: string,
     validationService?: any,
     projectDependencies: { name: string; version: string }[] = [
@@ -451,8 +450,8 @@ export class ParserService {
       // The extensionUri may be an HTTP URL or a VS Code internal URI scheme.
       // For static deployments, we need to ensure it resolves to an HTTP URL.
       let serverDistBase = `${extensionUri}/server/dist`;
-      this.connection.console.info(`[tree-sitter] extensionUri: ${extensionUri}`);
-      this.connection.console.info(`[tree-sitter] serverDistBase: ${serverDistBase}`);
+      this.connection.console.info(`[wasm-parser] extensionUri: ${extensionUri}`);
+      this.connection.console.info(`[wasm-parser] serverDistBase: ${serverDistBase}`);
 
       // If the URI isn't HTTP(S), try to construct an HTTP URL from the worker's location
       if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
@@ -460,7 +459,7 @@ export class ParserService {
         const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
         if (origin && (origin.startsWith("http://") || origin.startsWith("https://"))) {
           serverDistBase = `${origin}/static/devextensions/server/dist`;
-          this.connection.console.info(`[tree-sitter] Using fallback serverDistBase: ${serverDistBase}`);
+          this.connection.console.info(`[wasm-parser] Using fallback serverDistBase: ${serverDistBase}`);
         }
       }
 
@@ -630,7 +629,11 @@ export class ParserService {
         `[lsp] Parser ready. Early-validating ${this.documents.all().length} open documents for syntax errors.`,
       );
       for (const doc of this.documents.all()) {
-        await (validationService?.validateTextDocument?.(doc) ?? (globalThis as any).validateTextDocument?.(doc));
+        try {
+          await (validationService?.validateTextDocument?.(doc) ?? (globalThis as any).validateTextDocument?.(doc));
+        } catch (err: any) {
+          this.connection.console.warn(`[lsp] Early validation failed for ${doc.uri}: ${err?.message ?? err}`);
+        }
       }
       this.connection.sendNotification("modelscript/status", {
         state: "loading",
@@ -646,24 +649,31 @@ export class ParserService {
       });
       const MAX_MEMOS = 2_000_000; // Limit in-memory memos
 
-      const createModelicaQE = (globalThis as any).createModelicaQueryEngine;
+      const createModelicaQE =
+        (globalThis as any).createModelicaQueryEngine ?? (globalThis as any).create_modelica_query_engine;
       if (createModelicaQE) {
-        this.workspaceManager.globalModelicaQueryEngine = createModelicaQE(
-          this.workspaceManager.globalWorkspaceIndex.toUnified(),
-          { getText: () => null, getNode: () => null },
-          cacheStore,
-          MAX_MEMOS,
-        ) as any;
+        try {
+          const unified =
+            this.workspaceManager.globalWorkspaceIndex?.toUnified?.() ??
+            this.workspaceManager.unifiedWorkspace?.toUnifiedPartial?.();
+          if (unified) {
+            this.workspaceManager.globalModelicaQueryEngine = createModelicaQE(
+              unified,
+              { getText: () => null, getNode: () => null },
+              cacheStore,
+              MAX_MEMOS,
+            ) as any;
+          }
+        } catch (qeErr: any) {
+          this.connection.console.warn(
+            `[lsp] Failed to initialize globalModelicaQueryEngine: ${qeErr?.message ?? qeErr}`,
+          );
+        }
       }
-      this.sharedContext = {
-        fs: (globalThis as any).sharedFs,
-        parse: (ext: string, input: string) => {
-          if (ext === ".sysml" || ext === ".sysml2") return this.sysml2Parser?.parse(input);
-          return this.parser?.parse(input);
-        },
-      };
-      (globalThis as any).sharedContext = this.sharedContext;
-      this.workspaceManager.globalModelicaQueryEngine!.updateTree(this.getSharedCstTreeWrapper());
+      if (this.sharedContext) {
+        this.sharedContext.queryEngine = this.workspaceManager.globalModelicaQueryEngine;
+      }
+      this.workspaceManager.globalModelicaQueryEngine?.updateTree(this.getSharedCstTreeWrapper());
 
       // Early callback: notify that all parsers and query engines are ready
       if (typeof onParsersReady === "function") {
@@ -752,7 +762,7 @@ export class ParserService {
         message: (globalThis as any).getReadyMessage?.() ?? "ModelScript",
       });
     } catch (e: any) {
-      this.connection.console.error(`Failed to initialize tree-sitter: ${e}\n${e.stack}`);
+      this.connection.console.error(`Failed to initialize WASM parsers: ${e}\n${e.stack}`);
       this.parserReady = false;
       this.connection.sendNotification("modelscript/status", {
         state: "error",
@@ -761,14 +771,18 @@ export class ParserService {
     }
   }
 
-  public async initWasmParsers(
+  /**
+   * Backward-compatible alias for third-party consumers.
+   * @deprecated Use `initWasmParsers` instead.
+   */
+  public async initTreeSitter(
     extensionUri: string,
     validationService?: any,
     projectDependencies?: { name: string; version: string }[],
     useLocalMsl = false,
     onParsersReady?: () => void,
   ): Promise<void> {
-    return this.initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl, onParsersReady);
+    return this.initWasmParsers(extensionUri, validationService, projectDependencies, useLocalMsl, onParsersReady);
   }
 
   sendProjectTreeChanged() {
@@ -834,10 +848,15 @@ export class ParserService {
       : this.workspaceManager.globalModelicaQueryEngine;
     if (!engine) {
       if (isSysmlUri) {
-        engine = createSysML2QueryEngine(unifiedIndex) as any;
-        this.workspaceManager.globalSysML2QueryEngine = engine;
+        const sysmlFactory =
+          (globalThis as any).createSysML2QueryEngine ?? (globalThis as any).create_sysml2_query_engine;
+        if (typeof sysmlFactory === "function") {
+          engine = sysmlFactory(unifiedIndex) as any;
+          this.workspaceManager.globalSysML2QueryEngine = engine;
+        }
       } else {
-        const createModelicaQE = (globalThis as any).createModelicaQueryEngine;
+        const createModelicaQE =
+          (globalThis as any).createModelicaQueryEngine ?? (globalThis as any).create_modelica_query_engine;
         if (createModelicaQE) {
           engine = createModelicaQE(
             unifiedIndex,

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { QueryDB } from "@modelscript/runtime";
-import { type ExtractedConstraint, extractSysML2Constraints } from "./constraint-extractor.js";
+import { extractSysML2Constraints, type ExtractedConstraint } from "./constraint-extractor.js";
+import { RealSimplexSolver, parseLinearExpression } from "./real-simplex.js";
+export { RealSimplexSolver, parseLinearExpression, type LinearConstraint } from "./real-simplex.js";
 
 export const OCTAGON_INF = 0x3fffffff;
 
@@ -125,71 +127,67 @@ export interface SMTRequirementCheckResult {
  * to detect contradictory intervals, impossible budgets, or cycle violations.
  */
 export function verifyConstraintSet(constraints: ExtractedConstraint[]): SMTRequirementCheckResult {
-  const varMap = new Map<string, number>();
-  let nextVarId = 0;
-  const getVarId = (name: string): number => {
-    let id = varMap.get(name);
-    if (id === undefined) {
-      id = nextVarId++;
-      varMap.set(name, id);
-    }
-    return id;
-  };
-
-  // Collect all unique variable names
-  for (const c of constraints) {
-    getVarId(c.lhs);
-    // If difference constraint: e.g. "x - y <= 5"
-    const diffMatch = c.lhs.match(/^([a-zA-Z0-9_.]+)\s*-\s*([a-zA-Z0-9_.]+)$/);
-    if (diffMatch) {
-      getVarId(diffMatch[1]);
-      getVarId(diffMatch[2]);
-    }
-  }
-
-  const numVars = Math.max(nextVarId, 1);
-  const dbm = new SmtOctagonDBM(numVars);
-
+  const solver = new RealSimplexSolver();
   const conflictingReqs = new Set<string>();
   const violatedConstraints: { expression: string; requirementName?: string; reason: string }[] = [];
+  const bounds = new Map<string, { lower: number; upper: number }>();
 
-  // Ingest each constraint incrementally to isolate conflict causes
   for (const c of constraints) {
     if (typeof c.rhs !== "number") continue;
 
     const rhs = c.rhs;
-    const diffMatch = c.lhs.match(/^([a-zA-Z0-9_.]+)\s*-\s*([a-zA-Z0-9_.]+)$/);
+    const { terms, constant } = parseLinearExpression(c.lhs);
+    const effectiveRhs = rhs - constant;
 
-    if (diffMatch) {
-      const v1 = getVarId(diffMatch[1]);
-      const v2 = getVarId(diffMatch[2]);
+    // Check single-variable bound consistency
+    if (terms.length === 1 && Math.abs((terms[0]?.coeff ?? 0) - 1.0) < 1e-12) {
+      const varName = terms[0]!.varName;
+      const b = bounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
+      let violated = false;
       if (c.operator === "<=" || c.operator === "<") {
-        dbm.assumeDiff(v1, v2, Math.floor(rhs));
+        if (effectiveRhs < b.lower - 1e-9) violated = true;
+        b.upper = Math.min(b.upper, effectiveRhs);
       } else if (c.operator === ">=" || c.operator === ">") {
-        dbm.assumeDiff(v2, v1, Math.floor(-rhs));
-      }
-    } else {
-      const v = getVarId(c.lhs);
-      const currentLower = dbm.getLowerBound(v);
-      const currentUpper = dbm.getUpperBound(v);
-
-      if (c.operator === "<=" || c.operator === "<") {
-        dbm.assumeInterval(v, currentLower, Math.floor(rhs));
-      } else if (c.operator === ">=" || c.operator === ">") {
-        dbm.assumeInterval(v, Math.ceil(rhs), currentUpper);
+        if (effectiveRhs > b.upper + 1e-9) violated = true;
+        b.lower = Math.max(b.lower, effectiveRhs);
       } else if (c.operator === "==") {
-        dbm.assumeInterval(v, Math.round(rhs), Math.round(rhs));
+        if (effectiveRhs < b.lower - 1e-9 || effectiveRhs > b.upper + 1e-9) violated = true;
+        b.lower = Math.max(b.lower, effectiveRhs);
+        b.upper = Math.min(b.upper, effectiveRhs);
+      }
+      bounds.set(varName, b);
+
+      if (violated) {
+        if (c.requirementName) conflictingReqs.add(c.requirementName);
+        violatedConstraints.push({
+          expression: c.expression,
+          requirementName: c.requirementName,
+          reason: `Contradiction with prior bound for variable '${c.lhs}' (evaluated bound: ${rhs})`,
+        });
+        break;
       }
     }
 
-    if (dbm.hasNegativeCycle()) {
-      if (c.requirementName) {
-        conflictingReqs.add(c.requirementName);
+    // Add to RealSimplexSolver
+    solver.addConstraint({
+      requirementName: c.requirementName,
+      terms: terms.length > 0 ? terms : [{ varName: c.lhs, coeff: 1 }],
+      operator: c.operator,
+      rhs: effectiveRhs,
+      expression: c.expression,
+    });
+
+    const res = solver.solve();
+    if (!res.isFeasible) {
+      if (c.requirementName) conflictingReqs.add(c.requirementName);
+      if (res.unsatCore) {
+        for (const req of res.unsatCore) conflictingReqs.add(req);
       }
       violatedConstraints.push({
         expression: c.expression,
         requirementName: c.requirementName,
-        reason: `Contradiction with prior bound for variable '${c.lhs}' (evaluated bound: ${rhs})`,
+        reason:
+          res.conflictExplanation ?? `Contradiction with prior bound for variable '${c.lhs}' (evaluated bound: ${rhs})`,
       });
       break;
     }

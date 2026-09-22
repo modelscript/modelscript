@@ -21,6 +21,13 @@ export interface ArenaPantelidesResult {
   generatedEquations: number[];
   /** Structural index computed (defaults to 1 for index-1 ODE systems). */
   structuralIndex?: number;
+  /** Mattsson-Söderlind dynamic state selection mapping: constraint eqIdx -> chosen dummy derivative state */
+  stateSelectionMap?: Map<number, number>;
+}
+
+export interface PantelidesOptions {
+  /** Optional state prioritization for Mattsson-Söderlind dynamic state selection (higher score preferred) */
+  statePriority?: Map<number, number> | ((varIdx: number) => number);
 }
 
 /**
@@ -70,9 +77,11 @@ export function pantelidesIndexReductionArena(
   stateVars: Set<number>,
   derivativeVars: Set<number>,
   parameters: Set<number>,
+  options?: PantelidesOptions,
 ): ArenaPantelidesResult {
   const dummyDerivatives = new Set<number>();
   const generatedEquations: number[] = [];
+  const stateSelectionMap = new Map<number, number>();
 
   // We need the string IDs for state vars for the CAS differentiator
   const stateVarStringIds = new Set<StringId>();
@@ -108,13 +117,30 @@ export function pantelidesIndexReductionArena(
 
     if (involvedStates.size < 2 || hasUndefinedNonState) continue;
 
-    // We found a constraint equation involving only states and parameters.
-    // E.g., C1.v - C2.v = 0
-    // Pick one state to demote. For now, just pick the first one.
-    const constrainedState = Array.from(involvedStates)[0] ?? -1;
+    // Mattsson-Söderlind Dynamic State Selection:
+    // Select the state with highest pivot score/priority to become the dummy derivative.
+    const candidates = Array.from(involvedStates);
+    let bestScore = -Infinity;
+    let constrainedState = candidates[0] ?? -1;
+
+    for (const s of candidates) {
+      let score = 0;
+      if (typeof options?.statePriority === "function") {
+        score = options.statePriority(s);
+      } else if (options?.statePriority instanceof Map) {
+        score = options.statePriority.get(s) ?? 0;
+      } else {
+        score = dummyDerivatives.has(s) ? -100 : 1;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        constrainedState = s;
+      }
+    }
 
     if (dummyDerivatives.has(constrainedState)) continue;
     dummyDerivatives.add(constrainedState);
+    stateSelectionMap.set(i, constrainedState);
 
     // Differentiate the constraint: d/dt (LHS) = d/dt (RHS)
     const dLeft = differentiateArenaExpression(arena, left, stateVarStringIds);
@@ -127,7 +153,12 @@ export function pantelidesIndexReductionArena(
     generatedEquations.push(newEqIdx);
   }
 
-  return { dummyDerivatives, generatedEquations, structuralIndex: dummyDerivatives.size > 0 ? 2 : 1 };
+  return {
+    dummyDerivatives,
+    generatedEquations,
+    structuralIndex: dummyDerivatives.size > 0 ? 2 : 1,
+    stateSelectionMap,
+  };
 }
 
 /**

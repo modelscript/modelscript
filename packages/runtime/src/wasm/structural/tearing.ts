@@ -35,25 +35,25 @@ export class TornBlock {
   nTear: u32;
   nInner: u32;
 
-  tearVarIndicesPtr: usize;
-  innerVarIndicesPtr: usize;
-  innerEqIndicesPtr: usize;
-  residualEqIndicesPtr: usize;
+  tearVarIndices: ChunkedInt32Array;
+  innerVarIndices: ChunkedInt32Array;
+  innerEqIndices: ChunkedInt32Array;
+  residualEqIndices: ChunkedInt32Array;
 
-  @inline getTearVarIndices(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<TornBlock>("tearVarIndicesPtr"))); }
-  @inline getInnerVarIndices(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<TornBlock>("innerVarIndicesPtr"))); }
-  @inline getInnerEqIndices(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<TornBlock>("innerEqIndicesPtr"))); }
-  @inline getResidualEqIndices(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<TornBlock>("residualEqIndicesPtr"))); }
+  @inline getTearVarIndices(): ChunkedInt32Array { return this.tearVarIndices; }
+  @inline getInnerVarIndices(): ChunkedInt32Array { return this.innerVarIndices; }
+  @inline getInnerEqIndices(): ChunkedInt32Array { return this.innerEqIndices; }
+  @inline getResidualEqIndices(): ChunkedInt32Array { return this.residualEqIndices; }
 
   init(): void {
     this.blockSize = 0;
     this.nTear = 0;
     this.nInner = 0;
 
-    this.tearVarIndicesPtr = changetype<usize>(createChunkedInt32Array(16));
-    this.innerVarIndicesPtr = changetype<usize>(createChunkedInt32Array(64));
-    this.innerEqIndicesPtr = changetype<usize>(createChunkedInt32Array(64));
-    this.residualEqIndicesPtr = changetype<usize>(createChunkedInt32Array(16));
+    this.tearVarIndices = createChunkedInt32Array(16);
+    this.innerVarIndices = createChunkedInt32Array(64);
+    this.innerEqIndices = createChunkedInt32Array(64);
+    this.residualEqIndices = createChunkedInt32Array(16);
   }
 }
 

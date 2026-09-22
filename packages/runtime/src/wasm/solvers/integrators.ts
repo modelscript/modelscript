@@ -2,6 +2,7 @@ import { DaeBuilder, EQ_STRIDE, EQ_KIND, EqKind, EQ_LHS, EQ_RHS, EXPR_STRIDE, EX
 import { evalEquationResidual } from "../dae/eval";
 import { EventDetector } from "../simulation/events";
 import { luFactor, luSolve, vectorNormInf } from "./matrix";
+import { UnmanagedUint32Array, UnmanagedFloat64Array, DenseMatrixView } from "../core/array";
 
 /**
  * Solves N x N coupled algebraic constraints using multi-variable Newton-Raphson
@@ -41,12 +42,19 @@ export function solveBlockAlgebraicConstraints(
   let scalePtr = pivPtr + pivSize;
   let luScratchPtr = scalePtr + n * 8;
 
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr as usize);
+  let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr as usize);
+  let r = changetype<UnmanagedFloat64Array>(rPtr as usize);
+  let dx = changetype<UnmanagedFloat64Array>(dxPtr as usize);
+  let jMat = DenseMatrixView.at(jPtr as usize, n, n);
+
   // Warm-start variables if cached values exist
   for (let i: u32 = 0; i < n; i++) {
-    let vIdx = load<u32>(varIndicesPtr + i * 4);
+    let vIdx = varIndices[i];
     let warmVal = dae.getWarmStartValue(vIdx);
     if (warmVal != 0.0) {
-      store<f64>(varValuesPtr + vIdx * 8, warmVal);
+      varValues[vIdx] = warmVal;
     }
   }
 
@@ -60,9 +68,9 @@ export function solveBlockAlgebraicConstraints(
 
     // 1. Evaluate Residual Vector R
     for (let i: u32 = 0; i < n; i++) {
-      let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+      let eqIdx = eqIndices[i];
       let res = evalEquationResidual(eqIdx, dae, varValuesPtr);
-      store<f64>(rPtr + i * 8, res);
+      r[i] = res;
     }
 
     // 2. Check Convergence: ||R||_inf < tol
@@ -71,24 +79,24 @@ export function solveBlockAlgebraicConstraints(
 
     // 3. Construct Finite-Difference Jacobian Matrix J (N x N)
     for (let j: u32 = 0; j < n; j++) {
-      let vIdx = load<u32>(varIndicesPtr + j * 4);
-      let xOrig = load<f64>(varValuesPtr + vIdx * 8);
+      let vIdx = varIndices[j];
+      let xOrig = varValues[vIdx];
 
       // Perturb variable x_j
-      store<f64>(varValuesPtr + vIdx * 8, xOrig + eps);
+      varValues[vIdx] = xOrig + eps;
 
       for (let i: u32 = 0; i < n; i++) {
-        let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+        let eqIdx = eqIndices[i];
         let resPlus = evalEquationResidual(eqIdx, dae, varValuesPtr);
-        let resOrig = load<f64>(rPtr + i * 8);
+        let resOrig = r[i];
         let der = (resPlus - resOrig) / eps;
 
         // Store into J[i, j] (row-major)
-        store<f64>(jPtr + (i * n + j) * 8, der);
+        jMat.set(i, j, der);
       }
 
       // Restore variable x_j
-      store<f64>(varValuesPtr + vIdx * 8, xOrig);
+      varValues[vIdx] = xOrig;
     }
 
     // 4. LU Factorization of J
@@ -97,7 +105,7 @@ export function solveBlockAlgebraicConstraints(
 
     // 5. Solve J * dx = R (dxPtr initially holds RHS = R)
     for (let i: u32 = 0; i < n; i++) {
-      store<f64>(dxPtr + i * 8, load<f64>(rPtr + i * 8));
+      dx[i] = r[i];
     }
     luSolve(jPtr, pivPtr, scalePtr, dxPtr, luScratchPtr, n);
 
@@ -108,16 +116,16 @@ export function solveBlockAlgebraicConstraints(
     while (alpha > 0.0625) {
       // Apply candidate update: x_new = x_old - alpha * dx
       for (let j: u32 = 0; j < n; j++) {
-        let vIdx = load<u32>(varIndicesPtr + j * 4);
-        let xOrig = load<f64>(varValuesPtr + vIdx * 8);
-        let delta = load<f64>(dxPtr + j * 8);
-        store<f64>(varValuesPtr + vIdx * 8, xOrig - alpha * delta);
+        let vIdx = varIndices[j];
+        let xOrig = varValues[vIdx];
+        let delta = dx[j];
+        varValues[vIdx] = xOrig - alpha * delta;
       }
 
       // Evaluate new residual norm
       let maxNewRes: f64 = 0.0;
       for (let i: u32 = 0; i < n; i++) {
-        let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+        let eqIdx = eqIndices[i];
         let resNew = Math.abs(evalEquationResidual(eqIdx, dae, varValuesPtr));
         if (resNew > maxNewRes) maxNewRes = resNew;
       }
@@ -129,10 +137,10 @@ export function solveBlockAlgebraicConstraints(
 
       // Revert state update before reducing alpha
       for (let j: u32 = 0; j < n; j++) {
-        let vIdx = load<u32>(varIndicesPtr + j * 4);
-        let xOrig = load<f64>(varValuesPtr + vIdx * 8);
-        let delta = load<f64>(dxPtr + j * 8);
-        store<f64>(varValuesPtr + vIdx * 8, xOrig + alpha * delta);
+        let vIdx = varIndices[j];
+        let xOrig = varValues[vIdx];
+        let delta = dx[j];
+        varValues[vIdx] = xOrig + alpha * delta;
       }
 
       alpha *= 0.5;
@@ -141,18 +149,18 @@ export function solveBlockAlgebraicConstraints(
     if (!stepAccepted) {
       // If line search failed to reduce residual, take full step as fallback
       for (let j: u32 = 0; j < n; j++) {
-        let vIdx = load<u32>(varIndicesPtr + j * 4);
-        let xOrig = load<f64>(varValuesPtr + vIdx * 8);
-        let delta = load<f64>(dxPtr + j * 8);
-        store<f64>(varValuesPtr + vIdx * 8, xOrig - delta);
+        let vIdx = varIndices[j];
+        let xOrig = varValues[vIdx];
+        let delta = dx[j];
+        varValues[vIdx] = xOrig - delta;
       }
     }
   }
 
   // Update warm-start cache for all variables in block
   for (let i: u32 = 0; i < n; i++) {
-    let vIdx = load<u32>(varIndicesPtr + i * 4);
-    let xFinal = load<f64>(varValuesPtr + vIdx * 8);
+    let vIdx = varIndices[i];
+    let xFinal = varValues[vIdx];
     dae.setWarmStartValue(vIdx, xFinal);
   }
 
@@ -165,6 +173,8 @@ export function solveBlockAlgebraicConstraints(
  */
 @inline
 export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): void {
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let offset = i * EQ_STRIDE;
     if (dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
@@ -183,10 +193,10 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
     // Retrieve warm start value if available
     let warmVal = dae.getWarmStartValue(targetVarIdx);
     if (warmVal != 0.0) {
-      store<f64>(varValuesPtr + targetVarIdx * 8, warmVal);
+      varValues[targetVarIdx] = warmVal;
     }
 
-    let x: f64 = load<f64>(varValuesPtr + targetVarIdx * 8);
+    let x: f64 = varValues[targetVarIdx];
     let tol: f64 = 1e-10;
     let maxIter: u32 = 25;
     let iter: u32 = 0;
@@ -198,9 +208,9 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
 
       // Numerical finite difference derivative in CPU registers
       let eps: f64 = 1e-7;
-      store<f64>(varValuesPtr + targetVarIdx * 8, x + eps);
+      varValues[targetVarIdx] = x + eps;
       let resPlus = evalEquationResidual(i, dae, varValuesPtr);
-      store<f64>(varValuesPtr + targetVarIdx * 8, x);
+      varValues[targetVarIdx] = x;
 
       let der = (resPlus - res) / eps;
       if (Math.abs(der) < 1e-14) der = der >= 0 ? 1e-6 : -1e-6;
@@ -210,20 +220,20 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
       // Armijo backtracking
       let alpha: f64 = 1.0;
       let xNew = x - step;
-      store<f64>(varValuesPtr + targetVarIdx * 8, xNew);
+      varValues[targetVarIdx] = xNew;
       let resNew = Math.abs(evalEquationResidual(i, dae, varValuesPtr));
 
       while (resNew >= Math.abs(res) && alpha > 0.0625) {
         alpha *= 0.5;
         xNew = x - alpha * step;
-        store<f64>(varValuesPtr + targetVarIdx * 8, xNew);
+        varValues[targetVarIdx] = xNew;
         resNew = Math.abs(evalEquationResidual(i, dae, varValuesPtr));
       }
 
       x = xNew;
     }
 
-    store<f64>(varValuesPtr + targetVarIdx * 8, x);
+    varValues[targetVarIdx] = x;
     dae.setWarmStartValue(targetVarIdx, x);
   }
 }
@@ -233,6 +243,8 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
  */
 @inline
 export function stepEuler(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+
   // 1. Explicit ODE State Update
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let offset = i * EQ_STRIDE;
@@ -245,8 +257,8 @@ export function stepEuler(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
     if (dae.getExprData().get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
       let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1);
       let res = evalEquationResidual(i, dae, varValuesPtr);
-      let stateVal = load<f64>(varValuesPtr + stateVarIdx * 8);
-      store<f64>(varValuesPtr + stateVarIdx * 8, stateVal + dt * res);
+      let stateVal = varValues[stateVarIdx];
+      varValues[stateVarIdx] = stateVal + dt * res;
     }
   }
 
@@ -268,48 +280,53 @@ export function stepRK4(
   k4Ptr: u32,
   dt: f64
 ): void {
-  let numVars = dae.varCount;
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let temp = changetype<UnmanagedFloat64Array>(tempPtr as usize);
+  let k1Arr = changetype<UnmanagedFloat64Array>(k1Ptr as usize);
+  let k2Arr = changetype<UnmanagedFloat64Array>(k2Ptr as usize);
+  let k3Arr = changetype<UnmanagedFloat64Array>(k3Ptr as usize);
+  let k4Arr = changetype<UnmanagedFloat64Array>(k4Ptr as usize);
 
   // 1. Compute k1 = f(y_n)
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let k1 = evalEquationResidual(i, dae, varValuesPtr);
-    store<f64>(k1Ptr + i * 8, k1);
-    let y0 = load<f64>(varValuesPtr + i * 8);
-    store<f64>(tempPtr + i * 8, y0 + 0.5 * dt * k1);
+    k1Arr[i] = k1;
+    let y0 = varValues[i];
+    temp[i] = y0 + 0.5 * dt * k1;
   }
 
   // 2. Compute k2 = f(y_n + 0.5*dt*k1)
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let k2 = evalEquationResidual(i, dae, tempPtr);
-    store<f64>(k2Ptr + i * 8, k2);
-    let y0 = load<f64>(varValuesPtr + i * 8);
-    store<f64>(tempPtr + i * 8, y0 + 0.5 * dt * k2);
+    k2Arr[i] = k2;
+    let y0 = varValues[i];
+    temp[i] = y0 + 0.5 * dt * k2;
   }
 
   // 3. Compute k3 = f(y_n + 0.5*dt*k2)
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let k3 = evalEquationResidual(i, dae, tempPtr);
-    store<f64>(k3Ptr + i * 8, k3);
-    let y0 = load<f64>(varValuesPtr + i * 8);
-    store<f64>(tempPtr + i * 8, y0 + dt * k3);
+    k3Arr[i] = k3;
+    let y0 = varValues[i];
+    temp[i] = y0 + dt * k3;
   }
 
   // 4. Compute k4 = f(y_n + dt*k3)
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let k4 = evalEquationResidual(i, dae, tempPtr);
-    store<f64>(k4Ptr + i * 8, k4);
+    k4Arr[i] = k4;
   }
 
   // 5. Final update: y_{n+1} = y_n + (dt/6) * (k1 + 2*k2 + 2*k3 + k4)
   for (let i: u32 = 0; i < dae.eqCount; i++) {
-    let y0 = load<f64>(varValuesPtr + i * 8);
-    let k1 = load<f64>(k1Ptr + i * 8);
-    let k2 = load<f64>(k2Ptr + i * 8);
-    let k3 = load<f64>(k3Ptr + i * 8);
-    let k4 = load<f64>(k4Ptr + i * 8);
+    let y0 = varValues[i];
+    let k1 = k1Arr[i];
+    let k2 = k2Arr[i];
+    let k3 = k3Arr[i];
+    let k4 = k4Arr[i];
 
     let yNext = y0 + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
-    store<f64>(varValuesPtr + i * 8, yNext);
+    varValues[i] = yNext;
   }
 
   // 6. Algebraic Constraint Enforcement
@@ -359,13 +376,15 @@ export function runSimulationLoopWithEvents(
 ): u32 {
   let steps = ((stopTime - startTime) / stepSize) as u32;
   let numVars = dae.varCount;
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let tempValues = changetype<UnmanagedFloat64Array>(tempValuesPtr as usize);
 
   for (let step: u32 = 0; step < steps; step++) {
     let t0 = startTime + (step as f64) * stepSize;
 
     // 1. Copy starting state to temp buffer
     for (let v: u32 = 0; v < numVars; v++) {
-      store<f64>(tempValuesPtr + v * 8, load<f64>(varValuesPtr + v * 8));
+      tempValues[v] = varValues[v];
     }
 
     // 2. Take candidate continuous step
@@ -399,8 +418,10 @@ export function runSimulationLoopWithEvents(
 @inline
 export function computeDerivatives(dae: DaeBuilder, varValuesPtr: u32, kOutPtr: u32): void {
   let numVars = dae.varCount;
+  let kOut = changetype<UnmanagedFloat64Array>(kOutPtr as usize);
+
   for (let v: u32 = 0; v < numVars; v++) {
-    store<f64>(kOutPtr + v * 8, 0.0);
+    kOut[v] = 0.0;
   }
 
   for (let i: u32 = 0; i < dae.eqCount; i++) {
@@ -415,7 +436,7 @@ export function computeDerivatives(dae: DaeBuilder, varValuesPtr: u32, kOutPtr: 
       let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
       if (stateVarIdx < numVars) {
         let res = evalEquationResidual(i, dae, varValuesPtr);
-        store<f64>(kOutPtr + stateVarIdx * 8, res);
+        kOut[stateVarIdx] = res;
       }
     }
   }
@@ -444,12 +465,18 @@ export function hermiteInterpolate(
   let h01 = -2.0 * theta3 + 3.0 * theta2;
   let h11 = theta3 - theta2;
 
+  let y0Arr = changetype<UnmanagedFloat64Array>(y0Ptr as usize);
+  let y1Arr = changetype<UnmanagedFloat64Array>(y1Ptr as usize);
+  let k1Arr = changetype<UnmanagedFloat64Array>(k1Ptr as usize);
+  let k7Arr = changetype<UnmanagedFloat64Array>(k7Ptr as usize);
+  let outArr = changetype<UnmanagedFloat64Array>(outPtr as usize);
+
   for (let i: u32 = 0; i < numVars; i++) {
-    let y0 = load<f64>(y0Ptr + i * 8);
-    let y1 = load<f64>(y1Ptr + i * 8);
-    let f0 = load<f64>(k1Ptr + i * 8) * dt;
-    let f1 = load<f64>(k7Ptr + i * 8) * dt;
-    store<f64>(outPtr + i * 8, h00 * y0 + h10 * f0 + h01 * y1 + h11 * f1);
+    let y0 = y0Arr[i];
+    let y1 = y1Arr[i];
+    let f0 = k1Arr[i] * dt;
+    let f1 = k7Arr[i] * dt;
+    outArr[i] = h00 * y0 + h10 * f0 + h01 * y1 + h11 * f1;
   }
 }
 
@@ -479,75 +506,75 @@ export function stepDopri5(
   let k5Ptr = kStagesPtr + numVars * 8 * 5;
   let k6Ptr = kStagesPtr + numVars * 8 * 6;
 
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let tempValues = changetype<UnmanagedFloat64Array>(tempValuesPtr as usize);
+  let yNew = changetype<UnmanagedFloat64Array>(yNewPtr as usize);
+  let k0 = changetype<UnmanagedFloat64Array>(k0Ptr as usize);
+  let k1 = changetype<UnmanagedFloat64Array>(k1Ptr as usize);
+  let k2 = changetype<UnmanagedFloat64Array>(k2Ptr as usize);
+  let k3 = changetype<UnmanagedFloat64Array>(k3Ptr as usize);
+  let k4 = changetype<UnmanagedFloat64Array>(k4Ptr as usize);
+  let k5 = changetype<UnmanagedFloat64Array>(k5Ptr as usize);
+  let k6 = changetype<UnmanagedFloat64Array>(k6Ptr as usize);
+
   // Stage 0: k0 = f(y0)
   computeDerivatives(dae, varValuesPtr, k0Ptr);
 
   // Stage 1
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    let k0 = load<f64>(k0Ptr + v * 8);
-    store<f64>(tempValuesPtr + v * 8, y0 + dt * (0.2) * k0);
+    let y0 = varValues[v];
+    tempValues[v] = y0 + dt * (0.2) * k0[v];
   }
   computeDerivatives(dae, tempValuesPtr, k1Ptr);
 
   // Stage 2
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    let k0 = load<f64>(k0Ptr + v * 8);
-    let k1 = load<f64>(k1Ptr + v * 8);
-    store<f64>(tempValuesPtr + v * 8, y0 + dt * ((3.0 / 40.0) * k0 + (9.0 / 40.0) * k1));
+    let y0 = varValues[v];
+    tempValues[v] = y0 + dt * ((3.0 / 40.0) * k0[v] + (9.0 / 40.0) * k1[v]);
   }
   computeDerivatives(dae, tempValuesPtr, k2Ptr);
 
   // Stage 3
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    let k0 = load<f64>(k0Ptr + v * 8);
-    let k1 = load<f64>(k1Ptr + v * 8);
-    let k2 = load<f64>(k2Ptr + v * 8);
-    store<f64>(tempValuesPtr + v * 8, y0 + dt * ((44.0 / 45.0) * k0 - (56.0 / 15.0) * k1 + (32.0 / 9.0) * k2));
+    let y0 = varValues[v];
+    tempValues[v] = y0 + dt * ((44.0 / 45.0) * k0[v] - (56.0 / 15.0) * k1[v] + (32.0 / 9.0) * k2[v]);
   }
   computeDerivatives(dae, tempValuesPtr, k3Ptr);
 
   // Stage 4
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    let k0 = load<f64>(k0Ptr + v * 8);
-    let k1 = load<f64>(k1Ptr + v * 8);
-    let k2 = load<f64>(k2Ptr + v * 8);
-    let k3 = load<f64>(k3Ptr + v * 8);
-    store<f64>(
-      tempValuesPtr + v * 8,
-      y0 + dt * ((19372.0 / 6561.0) * k0 - (25360.0 / 2187.0) * k1 + (64448.0 / 6561.0) * k2 - (212.0 / 729.0) * k3)
-    );
+    let y0 = varValues[v];
+    tempValues[v] =
+      y0 + dt * ((19372.0 / 6561.0) * k0[v] - (25360.0 / 2187.0) * k1[v] + (64448.0 / 6561.0) * k2[v] - (212.0 / 729.0) * k3[v]);
   }
   computeDerivatives(dae, tempValuesPtr, k4Ptr);
 
   // Stage 5
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    let k0 = load<f64>(k0Ptr + v * 8);
-    let k1 = load<f64>(k1Ptr + v * 8);
-    let k2 = load<f64>(k2Ptr + v * 8);
-    let k3 = load<f64>(k3Ptr + v * 8);
-    let k4 = load<f64>(k4Ptr + v * 8);
-    store<f64>(
-      tempValuesPtr + v * 8,
-      y0 + dt * ((9017.0 / 3168.0) * k0 - (355.0 / 33.0) * k1 + (46732.0 / 5247.0) * k2 + (49.0 / 176.0) * k3 - (5103.0 / 18656.0) * k4)
-    );
+    let y0 = varValues[v];
+    tempValues[v] =
+      y0 +
+      dt *
+        ((9017.0 / 3168.0) * k0[v] -
+          (355.0 / 33.0) * k1[v] +
+          (46732.0 / 5247.0) * k2[v] +
+          (49.0 / 176.0) * k3[v] -
+          (5103.0 / 18656.0) * k4[v]);
   }
   computeDerivatives(dae, tempValuesPtr, k5Ptr);
 
   // Stage 6 (5th order solution)
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    let k0 = load<f64>(k0Ptr + v * 8);
-    let k2 = load<f64>(k2Ptr + v * 8);
-    let k3 = load<f64>(k3Ptr + v * 8);
-    let k4 = load<f64>(k4Ptr + v * 8);
-    let k5 = load<f64>(k5Ptr + v * 8);
-    let y5th = y0 + dt * ((35.0 / 384.0) * k0 + (500.0 / 1113.0) * k2 + (125.0 / 192.0) * k3 - (2187.0 / 6784.0) * k4 + (11.0 / 84.0) * k5);
-    store<f64>(yNewPtr + v * 8, y5th);
+    let y0 = varValues[v];
+    let y5th =
+      y0 +
+      dt *
+        ((35.0 / 384.0) * k0[v] +
+          (500.0 / 1113.0) * k2[v] +
+          (125.0 / 192.0) * k3[v] -
+          (2187.0 / 6784.0) * k4[v] +
+          (11.0 / 84.0) * k5[v]);
+    yNew[v] = y5th;
   }
 
   // FSAL Stage 7: f(y5th)
@@ -556,16 +583,17 @@ export function stepDopri5(
   // Error evaluation against scaled norm
   let maxErrNorm: f64 = 0.0;
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    let y5th = load<f64>(yNewPtr + v * 8);
-    let k0 = load<f64>(k0Ptr + v * 8);
-    let k2 = load<f64>(k2Ptr + v * 8);
-    let k3 = load<f64>(k3Ptr + v * 8);
-    let k4 = load<f64>(k4Ptr + v * 8);
-    let k5 = load<f64>(k5Ptr + v * 8);
-    let k6 = load<f64>(k6Ptr + v * 8);
+    let y0 = varValues[v];
+    let y5th = yNew[v];
 
-    let errI = dt * ((71.0 / 57600.0) * k0 - (71.0 / 16695.0) * k2 + (71.0 / 1920.0) * k3 - (17253.0 / 339200.0) * k4 + (22.0 / 525.0) * k5 - (1.0 / 40.0) * k6);
+    let errI =
+      dt *
+      ((71.0 / 57600.0) * k0[v] -
+        (71.0 / 16695.0) * k2[v] +
+        (71.0 / 1920.0) * k3[v] -
+        (17253.0 / 339200.0) * k4[v] +
+        (22.0 / 525.0) * k5[v] -
+        (1.0 / 40.0) * k6[v]);
     let absY0 = Math.abs(y0);
     let absY5th = Math.abs(y5th);
     let maxY = absY0 > absY5th ? absY0 : absY5th;
@@ -577,7 +605,7 @@ export function stepDopri5(
 
   if (maxErrNorm <= 1.0) {
     for (let v: u32 = 0; v < numVars; v++) {
-      store<f64>(varValuesPtr + v * 8, load<f64>(yNewPtr + v * 8));
+      varValues[v] = yNew[v];
     }
     solveAlgebraicConstraints(dae, varValuesPtr);
     return true;
@@ -630,15 +658,24 @@ export function stepBDF(
   let fEvalPtr = luScratchPtr + numVars * 8;
   let fPerturbPtr = fEvalPtr + numVars * 8;
 
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let yPred = changetype<UnmanagedFloat64Array>(yPredPtr as usize);
+  let r = changetype<UnmanagedFloat64Array>(rPtr as usize);
+  let dx = changetype<UnmanagedFloat64Array>(dxPtr as usize);
+  let jMat = DenseMatrixView.at(jPtr as usize, numVars, numVars);
+  let fEval = changetype<UnmanagedFloat64Array>(fEvalPtr as usize);
+  let fPerturb = changetype<UnmanagedFloat64Array>(fPerturbPtr as usize);
+  let historyBuf = DenseMatrixView.at(historyBufPtr as usize, 3, numVars);
+
   // Compute predictor y_pred from history steps
   for (let v: u32 = 0; v < numVars; v++) {
-    let yHist1 = load<f64>(historyBufPtr + 0 * numVars * 8 + v * 8);
-    let yHist2 = load<f64>(historyBufPtr + 1 * numVars * 8 + v * 8);
-    let yHist3 = load<f64>(historyBufPtr + 2 * numVars * 8 + v * 8);
+    let yHist1 = historyBuf.get(0, v);
+    let yHist2 = historyBuf.get(1, v);
+    let yHist3 = historyBuf.get(2, v);
 
     let pred = c1 * yHist1 + c2 * yHist2 + c3 * yHist3;
-    store<f64>(yPredPtr + v * 8, pred);
-    store<f64>(varValuesPtr + v * 8, pred); // Initial guess
+    yPred[v] = pred;
+    varValues[v] = pred; // Initial guess
   }
 
   let betaDt = beta0 * dt;
@@ -651,10 +688,10 @@ export function stepBDF(
 
     // Compute residual R = y - yPred - betaDt * f(y)
     for (let i: u32 = 0; i < numVars; i++) {
-      let yVal = load<f64>(varValuesPtr + i * 8);
-      let yPred = load<f64>(yPredPtr + i * 8);
-      let fVal = load<f64>(fEvalPtr + i * 8);
-      store<f64>(rPtr + i * 8, yVal - yPred - betaDt * fVal);
+      let yVal = varValues[i];
+      let yPredVal = yPred[i];
+      let fVal = fEval[i];
+      r[i] = yVal - yPredVal - betaDt * fVal;
     }
 
     // Check convergence: ||R||_inf < tol
@@ -666,35 +703,33 @@ export function stepBDF(
 
     // Build Jacobian J = I - betaDt * df/dy via finite differences
     for (let j: u32 = 0; j < numVars; j++) {
-      let origY = load<f64>(varValuesPtr + j * 8);
+      let origY = varValues[j];
       let hJ = eps * Math.max(Math.abs(origY), 1.0);
-      store<f64>(varValuesPtr + j * 8, origY + hJ);
+      varValues[j] = origY + hJ;
 
       computeDerivatives(dae, varValuesPtr, fPerturbPtr);
-      store<f64>(varValuesPtr + j * 8, origY); // restore
+      varValues[j] = origY; // restore
 
       for (let i: u32 = 0; i < numVars; i++) {
-        let fOrig = load<f64>(fEvalPtr + i * 8);
-        let fPert = load<f64>(fPerturbPtr + i * 8);
+        let fOrig = fEval[i];
+        let fPert = fPerturb[i];
         let dfdy = (fPert - fOrig) / hJ;
 
         let ji = (i == j ? 1.0 : 0.0) - betaDt * dfdy;
-        store<f64>(jPtr + (i * numVars + j) * 8, ji);
+        jMat.set(i, j, ji);
       }
     }
 
     // Solve J * dx = R
     if (!luFactor(jPtr, pivPtr, scalePtr, numVars)) return false;
     for (let i: u32 = 0; i < numVars; i++) {
-      store<f64>(dxPtr + i * 8, load<f64>(rPtr + i * 8));
+      dx[i] = r[i];
     }
     luSolve(jPtr, pivPtr, scalePtr, dxPtr, luScratchPtr, numVars);
 
     // Apply Newton step: y = y - dx
     for (let i: u32 = 0; i < numVars; i++) {
-      let yVal = load<f64>(varValuesPtr + i * 8);
-      let dxVal = load<f64>(dxPtr + i * 8);
-      store<f64>(varValuesPtr + i * 8, yVal - dxVal);
+      varValues[i] -= dx[i];
     }
   }
 
@@ -737,11 +772,21 @@ export function stepRadauIIA(
   let luScratchPtr = scalePtr + dim2N * 8;
   let fPerturbPtr = luScratchPtr + dim2N * 8;
 
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let y1 = changetype<UnmanagedFloat64Array>(y1Ptr as usize);
+  let y2 = changetype<UnmanagedFloat64Array>(y2Ptr as usize);
+  let f1 = changetype<UnmanagedFloat64Array>(f1Ptr as usize);
+  let f2 = changetype<UnmanagedFloat64Array>(f2Ptr as usize);
+  let r = changetype<UnmanagedFloat64Array>(rPtr as usize);
+  let dx = changetype<UnmanagedFloat64Array>(dxPtr as usize);
+  let jMat = DenseMatrixView.at(jPtr as usize, dim2N, dim2N);
+  let fPerturb = changetype<UnmanagedFloat64Array>(fPerturbPtr as usize);
+
   // Initial stage guess: Y1 = y_n, Y2 = y_n
   for (let v: u32 = 0; v < numVars; v++) {
-    let y0 = load<f64>(varValuesPtr + v * 8);
-    store<f64>(y1Ptr + v * 8, y0);
-    store<f64>(y2Ptr + v * 8, y0);
+    let y0 = varValues[v];
+    y1[v] = y0;
+    y2[v] = y0;
   }
 
   let maxIter: u32 = 25;
@@ -754,17 +799,17 @@ export function stepRadauIIA(
 
     // 1. Evaluate Residual R1 and R2
     for (let i: u32 = 0; i < numVars; i++) {
-      let y0 = load<f64>(varValuesPtr + i * 8);
-      let y1 = load<f64>(y1Ptr + i * 8);
-      let y2 = load<f64>(y2Ptr + i * 8);
-      let f1 = load<f64>(f1Ptr + i * 8);
-      let f2 = load<f64>(f2Ptr + i * 8);
+      let y0 = varValues[i];
+      let y1Val = y1[i];
+      let y2Val = y2[i];
+      let f1Val = f1[i];
+      let f2Val = f2[i];
 
-      let r1 = y1 - y0 - dt * (a11 * f1 + a12 * f2);
-      let r2 = y2 - y0 - dt * (a21 * f1 + a22 * f2);
+      let r1 = y1Val - y0 - dt * (a11 * f1Val + a12 * f2Val);
+      let r2 = y2Val - y0 - dt * (a21 * f1Val + a22 * f2Val);
 
-      store<f64>(rPtr + i * 8, r1);
-      store<f64>(rPtr + (numVars + i) * 8, r2);
+      r[i] = r1;
+      r[numVars + i] = r2;
     }
 
     // Check convergence: ||R||_inf < tol
@@ -772,7 +817,7 @@ export function stepRadauIIA(
     if (normR < tol) {
       // Radau IIA is stiffly accurate: y_{n+1} = Y2
       for (let v: u32 = 0; v < numVars; v++) {
-        store<f64>(varValuesPtr + v * 8, load<f64>(y2Ptr + v * 8));
+        varValues[v] = y2[v];
       }
       solveAlgebraicConstraints(dae, varValuesPtr);
       return true;
@@ -780,61 +825,56 @@ export function stepRadauIIA(
 
     // 2. Build Block 2N x 2N Jacobian via finite differences
     for (let j: u32 = 0; j < numVars; j++) {
-      let y1Orig = load<f64>(y1Ptr + j * 8);
+      let y1Orig = y1[j];
       let hJ1 = eps * Math.max(Math.abs(y1Orig), 1.0);
-      store<f64>(y1Ptr + j * 8, y1Orig + hJ1);
+      y1[j] = y1Orig + hJ1;
       computeDerivatives(dae, y1Ptr, fPerturbPtr);
-      store<f64>(y1Ptr + j * 8, y1Orig);
+      y1[j] = y1Orig;
 
       for (let i: u32 = 0; i < numVars; i++) {
-        let f1Orig = load<f64>(f1Ptr + i * 8);
-        let df1dy1 = (load<f64>(fPerturbPtr + i * 8) - f1Orig) / hJ1;
+        let f1Orig = f1[i];
+        let df1dy1 = (fPerturb[i] - f1Orig) / hJ1;
 
         // Block (1, 1): I - dt * a11 * df1/dy1
         let j11 = (i == j ? 1.0 : 0.0) - dt * a11 * df1dy1;
-        store<f64>(jPtr + (i * dim2N + j) * 8, j11);
+        jMat.set(i, j, j11);
 
         // Block (2, 1): -dt * a21 * df1/dy1
         let j21 = -dt * a21 * df1dy1;
-        store<f64>(jPtr + ((numVars + i) * dim2N + j) * 8, j21);
+        jMat.set(numVars + i, j, j21);
       }
 
-      let y2Orig = load<f64>(y2Ptr + j * 8);
+      let y2Orig = y2[j];
       let hJ2 = eps * Math.max(Math.abs(y2Orig), 1.0);
-      store<f64>(y2Ptr + j * 8, y2Orig + hJ2);
+      y2[j] = y2Orig + hJ2;
       computeDerivatives(dae, y2Ptr, fPerturbPtr);
-      store<f64>(y2Ptr + j * 8, y2Orig);
+      y2[j] = y2Orig;
 
       for (let i: u32 = 0; i < numVars; i++) {
-        let f2Orig = load<f64>(f2Ptr + i * 8);
-        let df2dy2 = (load<f64>(fPerturbPtr + i * 8) - f2Orig) / hJ2;
+        let f2Orig = f2[i];
+        let df2dy2 = (fPerturb[i] - f2Orig) / hJ2;
 
         // Block (1, 2): -dt * a12 * df2/dy2
         let j12 = -dt * a12 * df2dy2;
-        store<f64>(jPtr + (i * dim2N + (numVars + j)) * 8, j12);
+        jMat.set(i, numVars + j, j12);
 
         // Block (2, 2): I - dt * a22 * df2/dy2
         let j22 = (i == j ? 1.0 : 0.0) - dt * a22 * df2dy2;
-        store<f64>(jPtr + ((numVars + i) * dim2N + (numVars + j)) * 8, j22);
+        jMat.set(numVars + i, numVars + j, j22);
       }
     }
 
     // 3. Solve J * dx = R
     if (!luFactor(jPtr, pivPtr, scalePtr, dim2N)) return false;
     for (let i: u32 = 0; i < dim2N; i++) {
-      store<f64>(dxPtr + i * 8, load<f64>(rPtr + i * 8));
+      dx[i] = r[i];
     }
     luSolve(jPtr, pivPtr, scalePtr, dxPtr, luScratchPtr, dim2N);
 
     // 4. Update stages: Y1 = Y1 - dx1, Y2 = Y2 - dx2
     for (let i: u32 = 0; i < numVars; i++) {
-      let y1 = load<f64>(y1Ptr + i * 8);
-      let dx1 = load<f64>(dxPtr + i * 8);
-      store<f64>(y1Ptr + i * 8, y1 - dx1);
-
-      let y2 = load<f64>(y2Ptr + i * 8);
-      let dx2 = load<f64>(dxPtr + (numVars + i) * 8);
-      store<f64>(y2Ptr + i * 8, y2 - dx2);
+      y1[i] -= dx[i];
+      y2[i] -= dx[numVars + i];
     }
   }
 

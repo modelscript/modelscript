@@ -14,6 +14,7 @@
 import { computeRotationMatrix, encloseRotatedBox } from "../solvers/wasm_qr.js";
 import type { FlowpipeReachabilityResult, FlowpipeRequirement, FlowpipeStepResult } from "./wasm_taylor_model.js";
 import { Interval, TaylorModel } from "./wasm_taylor_model.js";
+import { Zonotope } from "./wasm_zonotope.js";
 
 export interface HybridMode {
   id: string;
@@ -93,6 +94,8 @@ export interface HybridFlowpipeProblemOptions {
   requirements?: FlowpipeRequirement[];
   maxPicardIterations?: number;
   maxJumps?: number;
+  enableSetBranching?: boolean;
+  maxBranches?: number;
 }
 
 /**
@@ -196,6 +199,8 @@ export class HybridFlowpipeSolver {
       requirements = [],
       maxPicardIterations = 5,
       maxJumps = 16,
+      enableSetBranching = false,
+      maxBranches = 8,
     } = options;
 
     // Index modes by ID
@@ -420,6 +425,13 @@ export class HybridFlowpipeSolver {
         }
 
         const preJumpNominal = picardTMs.map((tm) => tm.evaluateAt([localDt, ...new Array(nStates).fill(0)]));
+
+        if (enableSetBranching) {
+          const zCrossing = Zonotope.fromIntervals(preJumpEnclosure);
+          const [z1, z2] = zCrossing.split();
+          const clustered = Zonotope.enclose(z1, z2).reduce(maxBranches).toIntervals();
+          preJumpEnclosure.splice(0, preJumpEnclosure.length, ...clustered);
+        }
 
         // Record final step in current mode
         currentSegmentSteps.push({

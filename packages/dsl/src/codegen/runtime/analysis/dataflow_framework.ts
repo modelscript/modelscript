@@ -5,13 +5,11 @@
 
 import { allocGen0, getNodePadding, getNodeByteLength, getNodeFlags, FLAG_IS_SYNTHETIC } from "./arena";
 import {
+  BasicBlock,
   BLOCK_STATE_IN,
   BLOCK_STATE_OUT,
   BLOCK_STATE_TRUE,
   BLOCK_STATE_FALSE,
-  BLOCK_TRUE_BRANCH,
-  BLOCK_FALSE_BRANCH,
-  BLOCK_NEXT,
   BLOCK_FIRST_INSTR,
   IR_INSTR_NEXT,
 } from "./ir_layout";
@@ -31,7 +29,7 @@ export function dataflowError(nodeId: u32, code: u32): void {
 
 export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: usize): void {
   let numBlocks: u32 = 0;
-  for (let ptr = firstBlock; ptr != 0; ptr = load<u32>(ptr + BLOCK_NEXT, 0)) {
+  for (let ptr = firstBlock; ptr != 0; ptr = BasicBlock.at(ptr as usize).nextBlock) {
     numBlocks++;
   }
   if (numBlocks == 0) {
@@ -44,7 +42,7 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
   let blockIndexMap = allocGen0(numBlocks * 8);
 
   let idx: u32 = 0;
-  for (let ptr = firstBlock; ptr != 0; ptr = load<u32>(ptr + BLOCK_NEXT, 0)) {
+  for (let ptr = firstBlock; ptr != 0; ptr = BasicBlock.at(ptr as usize).nextBlock) {
     store<u32>(blockIndexMap + idx * 8, ptr);
     store<u32>(blockIndexMap + idx * 8 + 4, idx);
     store<u32>(visitedOffset + idx * 4, 0);
@@ -85,7 +83,8 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
     store<u32>(stackOffset + stackTop * 8 + 4, 1);
     stackTop++;
 
-    let fBranch = load<u32>(blk + BLOCK_FALSE_BRANCH, 0);
+    let blockObj = BasicBlock.at(blk as usize);
+    let fBranch = blockObj.falseBranch;
     if (fBranch != 0) {
       let fIdx: u32 = 0xffffffff;
       for (let i: u32 = 0; i < numBlocks; i++) {
@@ -100,7 +99,7 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
         stackTop++;
       }
     }
-    let tBranch = load<u32>(blk + BLOCK_TRUE_BRANCH, 0);
+    let tBranch = blockObj.trueBranch;
     if (tBranch != 0) {
       let tIdx: u32 = 0xffffffff;
       for (let i: u32 = 0; i < numBlocks; i++) {

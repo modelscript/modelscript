@@ -1,6 +1,7 @@
 import { AdTape } from "../autodiff/tape";
 import { McCormickTuple, tape_evaluateMcCormick } from "../autodiff/mccormick";
 import { tape_evaluateInterval } from "../autodiff/interval";
+import { UnmanagedFloat64Array } from "../core/array";
 
 /**
  * Result of WASM Spatial Branch & Bound Global Optimization.
@@ -71,10 +72,14 @@ export function bnb_solveGlobalMin(
   let loPtr = changetype<usize>(loBuf);
   let hiPtr = changetype<usize>(hiBuf);
 
+  let initBoundsLo = changetype<UnmanagedFloat64Array>(initBoundsLoPtr);
+  let initBoundsHi = changetype<UnmanagedFloat64Array>(initBoundsHiPtr);
+  let outBestSolution = changetype<UnmanagedFloat64Array>(outBestSolutionPtr);
+
   let rootBox = new SpatialBox(nVars);
   for (let i: u32 = 0; i < nVars; i++) {
-    rootBox.lo[i] = load<f64>(initBoundsLoPtr + (i << 3));
-    rootBox.hi[i] = load<f64>(initBoundsHiPtr + (i << 3));
+    rootBox.lo[i] = initBoundsLo[i];
+    rootBox.hi[i] = initBoundsHi[i];
     varVals[i] = 0.5 * (rootBox.lo[i] + rootBox.hi[i]);
   }
 
@@ -90,11 +95,11 @@ export function bnb_solveGlobalMin(
     hiPtr,
   );
 
-  rootBox.lowerBound = load<f64>(cvPtr + (targetTapeNode << 3));
-  let bestUB = load<f64>(ccPtr + (targetTapeNode << 3));
+  rootBox.lowerBound = cvBuf[targetTapeNode];
+  let bestUB = ccBuf[targetTapeNode];
 
   for (let i: u32 = 0; i < nVars; i++) {
-    store<f64>(outBestSolutionPtr + (i << 3), varVals[i]);
+    outBestSolution[i] = varVals[i];
   }
 
   let queue = new Array<SpatialBox>();
@@ -159,12 +164,12 @@ export function bnb_solveGlobalMin(
       loPtr,
       hiPtr,
     );
-    box1.lowerBound = load<f64>(cvPtr + (targetTapeNode << 3));
-    let ub1 = load<f64>(ccPtr + (targetTapeNode << 3));
+    box1.lowerBound = cvBuf[targetTapeNode];
+    let ub1 = ccBuf[targetTapeNode];
     if (ub1 < bestUB) {
       bestUB = ub1;
       for (let i: u32 = 0; i < nVars; i++) {
-        store<f64>(outBestSolutionPtr + (i << 3), varVals[i]);
+        outBestSolution[i] = varVals[i];
       }
     }
     if (box1.lowerBound <= bestUB) {
@@ -185,12 +190,12 @@ export function bnb_solveGlobalMin(
       loPtr,
       hiPtr,
     );
-    box2.lowerBound = load<f64>(cvPtr + (targetTapeNode << 3));
-    let ub2 = load<f64>(ccPtr + (targetTapeNode << 3));
+    box2.lowerBound = cvBuf[targetTapeNode];
+    let ub2 = ccBuf[targetTapeNode];
     if (ub2 < bestUB) {
       bestUB = ub2;
       for (let i: u32 = 0; i < nVars; i++) {
-        store<f64>(outBestSolutionPtr + (i << 3), varVals[i]);
+        outBestSolution[i] = varVals[i];
       }
     }
     if (box2.lowerBound <= bestUB) {

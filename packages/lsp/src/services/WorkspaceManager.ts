@@ -40,7 +40,10 @@ export class WorkspaceManager {
       const s2 = this.getWorkspaceIndex("sysml2");
       if (s2) return s2;
     }
-    const factory = (globalThis as any)[`create_${norm}_workspace_index`];
+    const factory =
+      (plugin as any)?.createWorkspaceIndex ??
+      (globalThis as any)[`create_${norm}_workspace_index`] ??
+      (globalThis as any)[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}WorkspaceIndex`];
     if (typeof factory === "function") {
       const idx = factory();
       this.setWorkspaceIndex(norm, idx);

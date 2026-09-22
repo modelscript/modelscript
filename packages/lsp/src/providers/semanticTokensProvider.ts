@@ -405,7 +405,18 @@ export function registerSemanticTokensProvider(
   isSysml2ParserReady: () => boolean,
   parseFallback?: (ext: string, text: string) => any,
 ) {
+  const tokensCache = new Map<string, { version: number; tokens: SemanticTokens }>();
+
+  documents.onDidClose((e) => {
+    tokensCache.delete(e.document.uri);
+  });
+
   function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
+    const cached = tokensCache.get(textDocument.uri);
+    if (cached && cached.version === textDocument.version) {
+      return cached.tokens;
+    }
+
     const builder = new SemanticTokensBuilder();
     const text = textDocument.getText();
 
@@ -547,7 +558,9 @@ export function registerSemanticTokensProvider(
       builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
     }
 
-    return builder.build();
+    const result = builder.build();
+    tokensCache.set(textDocument.uri, { version: textDocument.version, tokens: result });
+    return result;
   }
 
   connection.onRequest("textDocument/semanticTokens/full", (params) => {

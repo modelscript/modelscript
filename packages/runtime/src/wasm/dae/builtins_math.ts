@@ -35,14 +35,17 @@ export function math_noEvent(expr: f64): f64 { return expr; }
 // Matrix & Vector Linear Algebra
 // ----------------------------------------------------------------------------
 
+import { DenseMatrixView, UnmanagedFloat64Array } from "../core/array";
+
 /**
  * Transposes an M x N row-major matrix into an N x M matrix.
  */
 export function matrix_transpose(srcPtr: usize, dstPtr: usize, rows: u32, cols: u32): void {
+  let src = DenseMatrixView.at(srcPtr, rows, cols);
+  let dst = DenseMatrixView.at(dstPtr, cols, rows);
   for (let r: u32 = 0; r < rows; r++) {
     for (let c: u32 = 0; c < cols; c++) {
-      let val = load<f64>(srcPtr + (r * cols + c) * 8);
-      store<f64>(dstPtr + (c * rows + r) * 8, val);
+      dst.set(c, r, src.get(r, c));
     }
   }
 }
@@ -58,15 +61,16 @@ export function matrix_multiply(
   k: u32,
   n: u32
 ): void {
+  let a = DenseMatrixView.at(aPtr, m, k);
+  let b = DenseMatrixView.at(bPtr, k, n);
+  let c = DenseMatrixView.at(cPtr, m, n);
   for (let i: u32 = 0; i < m; i++) {
     for (let j: u32 = 0; j < n; j++) {
       let sum: f64 = 0.0;
       for (let p: u32 = 0; p < k; p++) {
-        let aVal = load<f64>(aPtr + (i * k + p) * 8);
-        let bVal = load<f64>(bPtr + (p * n + j) * 8);
-        sum += aVal * bVal;
+        sum += a.get(i, p) * b.get(p, j);
       }
-      store<f64>(cPtr + (i * n + j) * 8, sum);
+      c.set(i, j, sum);
     }
   }
 }
@@ -75,9 +79,10 @@ export function matrix_multiply(
  * Computes the Euclidean 2-norm of an N-dimensional vector.
  */
 export function vector_norm2(vecPtr: usize, n: u32): f64 {
+  let vec = changetype<UnmanagedFloat64Array>(vecPtr);
   let sumSq: f64 = 0.0;
   for (let i: u32 = 0; i < n; i++) {
-    let v = load<f64>(vecPtr + i * 8);
+    let v = vec[i];
     sumSq += v * v;
   }
   return Math.sqrt(sumSq);
@@ -87,22 +92,26 @@ export function vector_norm2(vecPtr: usize, n: u32): f64 {
  * Solves a 2x2 linear system A * x = b via Cramer's rule.
  */
 export function matrix_solve2x2(aPtr: usize, bPtr: usize, xPtr: usize): boolean {
-  let a00 = load<f64>(aPtr + 0 * 8);
-  let a01 = load<f64>(aPtr + 1 * 8);
-  let a10 = load<f64>(aPtr + 2 * 8);
-  let a11 = load<f64>(aPtr + 3 * 8);
+  let a = changetype<UnmanagedFloat64Array>(aPtr);
+  let b = changetype<UnmanagedFloat64Array>(bPtr);
+  let x = changetype<UnmanagedFloat64Array>(xPtr);
+
+  let a00 = a[0];
+  let a01 = a[1];
+  let a10 = a[2];
+  let a11 = a[3];
 
   let det = a00 * a11 - a01 * a10;
   if (Math.abs(det) < 1e-14) return false; // Singular matrix
 
-  let b0 = load<f64>(bPtr + 0 * 8);
-  let b1 = load<f64>(bPtr + 1 * 8);
+  let b0 = b[0];
+  let b1 = b[1];
 
   let x0 = (b0 * a11 - a01 * b1) / det;
   let x1 = (a00 * b1 - b0 * a10) / det;
 
-  store<f64>(xPtr + 0 * 8, x0);
-  store<f64>(xPtr + 1 * 8, x1);
+  x[0] = x0;
+  x[1] = x1;
   return true;
 }
 

@@ -2,6 +2,7 @@
 
 export * from "./ad-transforms.js";
 export * from "./adjoint-integrator.js";
+export * from "./falsification-runner.js";
 export * from "./gpu-buffers.js";
 export * from "./live-cosim-orchestrator.js";
 export * from "./problem-types.js";

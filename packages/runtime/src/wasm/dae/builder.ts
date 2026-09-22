@@ -46,64 +46,64 @@ export { VarAccessor, ExprAccessor, EqAccessor, StmtAccessor } from "./accessors
 @unmanaged
 export class DaeBuilder {
   // Core SoA
-  varDataPtr: usize;
+  varData: ChunkedInt32Array;
   varCount: u32;
 
-  eqDataPtr: usize;
+  eqData: ChunkedInt32Array;
   eqCount: u32;
 
-  exprDataPtr: usize;
+  exprData: ChunkedInt32Array;
   exprCount: u32;
 
-  stmtDataPtr: usize;
+  stmtData: ChunkedInt32Array;
   stmtCount: u32;
 
   // Secondary Indices & Maps
-  nameIndexPtr: usize;
-  aliasDataPtr: usize;
-  stringPoolPtr: usize;
+  nameIndex: UnmanagedMap64;
+  aliasData: ChunkedInt32Array;
+  stringPool: ArenaStringPool;
 
   // Attributes & Shapes
-  varAttrDataPtr: usize;
-  varShapesPtr: usize;
-  varSymbolicShapesPtr: usize;
+  varAttrData: ChunkedInt32Array;
+  varShapes: ChunkedInt32Array;
+  varSymbolicShapes: ChunkedInt32Array;
 
   // Clocks (§16)
-  clocksDataPtr: usize;
+  clocksData: ChunkedInt32Array;
   clockCount: u32;
-  varClockMapPtr: usize;
-  eqClockMapPtr: usize;
+  varClockMap: ChunkedInt32Array;
+  eqClockMap: ChunkedInt32Array;
 
   // Compound Equation Side-Tables
-  whenMetaPtr: usize;
+  whenMeta: ChunkedInt32Array;
   whenCount: u32;
-  whenBodyEqsPtr: usize;
+  whenBodyEqs: ChunkedInt32Array;
   whenBodyEqCount: u32;
 
-  forMetaPtr: usize;
+  forMeta: ChunkedInt32Array;
   forCount: u32;
-  forBodyEqsPtr: usize;
+  forBodyEqs: ChunkedInt32Array;
   forBodyEqCount: u32;
 
-  ifMetaPtr: usize;
+  ifMeta: ChunkedInt32Array;
   ifCount: u32;
-  ifBranchEqsPtr: usize;
+  ifBranchEqs: ChunkedInt32Array;
   ifBranchEqCount: u32;
 
   // State Machines (§17)
-  stateMachinesPtr: usize;
+  stateMachines: ChunkedInt32Array;
   smCount: u32;
-  stateDataPtr: usize;
+  stateData: ChunkedInt32Array;
   stateCount: u32;
-  stateEqsPtr: usize;
+  stateEqs: ChunkedInt32Array;
   stateEqCount: u32;
-  stateVarsPtr: usize;
+  stateVars: ChunkedInt32Array;
   stateVarCount: u32;
-  transitionsPtr: usize;
+  transitions: ChunkedInt32Array;
   transitionCount: u32;
 
   // Event Indicators & Optimization
-  eventIndicatorsPtr: usize;
+  eventIndicators: ChunkedInt32Array;
   eventIndicatorCount: u32;
   objectiveExprId: u32;
   objectiveIntegrandExprId: u32;
@@ -122,120 +122,93 @@ export class DaeBuilder {
   snapshotSmCount: u32;
   snapshotEventIndicatorCount: u32;
 
-  // Accessors with explicit dereference
-  @inline getVarData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varDataPtr"))); }
-  @inline getEqData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("eqDataPtr"))); }
-  @inline getExprData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("exprDataPtr"))); }
-  @inline getStmtData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stmtDataPtr"))); }
-  @inline getNameIndex(): UnmanagedMap64 { return changetype<UnmanagedMap64>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("nameIndexPtr"))); }
-  @inline getAliasData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("aliasDataPtr"))); }
-  @inline getStringPool(): ArenaStringPool { return changetype<ArenaStringPool>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stringPoolPtr"))); }
-  @inline getVarAttrData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varAttrDataPtr"))); }
-  @inline getVarShapes(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varShapesPtr"))); }
-  @inline getVarSymbolicShapes(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varSymbolicShapesPtr"))); }
-  @inline getClocksData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("clocksDataPtr"))); }
-  @inline getVarClockMap(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("varClockMapPtr"))); }
-  @inline getEqClockMap(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("eqClockMapPtr"))); }
-  @inline getWhenMeta(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("whenMetaPtr"))); }
-  @inline getWhenBodyEqs(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("whenBodyEqsPtr"))); }
-  @inline getForMeta(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("forMetaPtr"))); }
-  @inline getForBodyEqs(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("forBodyEqsPtr"))); }
-  @inline getIfMeta(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("ifMetaPtr"))); }
-  @inline getIfBranchEqs(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("ifBranchEqsPtr"))); }
-  @inline getStateMachines(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stateMachinesPtr"))); }
-  @inline getStateData(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stateDataPtr"))); }
-  @inline getStateEqs(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stateEqsPtr"))); }
-  @inline getStateVars(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("stateVarsPtr"))); }
-  @inline getTransitions(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("transitionsPtr"))); }
-  @inline getEventIndicators(): ChunkedInt32Array { return changetype<ChunkedInt32Array>(load<usize>(changetype<usize>(this) + offsetof<DaeBuilder>("eventIndicatorsPtr"))); }
-
-  // Property getters for idiomatic access
-  @inline get varData(): ChunkedInt32Array { return this.getVarData(); }
-  @inline get eqData(): ChunkedInt32Array { return this.getEqData(); }
-  @inline get exprData(): ChunkedInt32Array { return this.getExprData(); }
-  @inline get stmtData(): ChunkedInt32Array { return this.getStmtData(); }
-  @inline get nameIndex(): UnmanagedMap64 { return this.getNameIndex(); }
-  @inline get aliasData(): ChunkedInt32Array { return this.getAliasData(); }
-  @inline get stringPool(): ArenaStringPool { return this.getStringPool(); }
-  @inline get varAttrData(): ChunkedInt32Array { return this.getVarAttrData(); }
-  @inline get varShapes(): ChunkedInt32Array { return this.getVarShapes(); }
-  @inline get varSymbolicShapes(): ChunkedInt32Array { return this.getVarSymbolicShapes(); }
-  @inline get clocksData(): ChunkedInt32Array { return this.getClocksData(); }
-  @inline get varClockMap(): ChunkedInt32Array { return this.getVarClockMap(); }
-  @inline get eqClockMap(): ChunkedInt32Array { return this.getEqClockMap(); }
-  @inline get whenMeta(): ChunkedInt32Array { return this.getWhenMeta(); }
-  @inline get whenBodyEqs(): ChunkedInt32Array { return this.getWhenBodyEqs(); }
-  @inline get forMeta(): ChunkedInt32Array { return this.getForMeta(); }
-  @inline get forBodyEqs(): ChunkedInt32Array { return this.getForBodyEqs(); }
-  @inline get ifMeta(): ChunkedInt32Array { return this.getIfMeta(); }
-  @inline get ifBranchEqs(): ChunkedInt32Array { return this.getIfBranchEqs(); }
-  @inline get stateMachines(): ChunkedInt32Array { return this.getStateMachines(); }
-  @inline get stateData(): ChunkedInt32Array { return this.getStateData(); }
-  @inline get stateEqs(): ChunkedInt32Array { return this.getStateEqs(); }
-  @inline get stateVars(): ChunkedInt32Array { return this.getStateVars(); }
-  @inline get transitions(): ChunkedInt32Array { return this.getTransitions(); }
-  @inline get eventIndicators(): ChunkedInt32Array { return this.getEventIndicators(); }
+  // Method Accessors for backwards compatibility
+  @inline getVarData(): ChunkedInt32Array { return this.varData; }
+  @inline getEqData(): ChunkedInt32Array { return this.eqData; }
+  @inline getExprData(): ChunkedInt32Array { return this.exprData; }
+  @inline getStmtData(): ChunkedInt32Array { return this.stmtData; }
+  @inline getNameIndex(): UnmanagedMap64 { return this.nameIndex; }
+  @inline getAliasData(): ChunkedInt32Array { return this.aliasData; }
+  @inline getStringPool(): ArenaStringPool { return this.stringPool; }
+  @inline getVarAttrData(): ChunkedInt32Array { return this.varAttrData; }
+  @inline getVarShapes(): ChunkedInt32Array { return this.varShapes; }
+  @inline getVarSymbolicShapes(): ChunkedInt32Array { return this.varSymbolicShapes; }
+  @inline getClocksData(): ChunkedInt32Array { return this.clocksData; }
+  @inline getVarClockMap(): ChunkedInt32Array { return this.varClockMap; }
+  @inline getEqClockMap(): ChunkedInt32Array { return this.eqClockMap; }
+  @inline getWhenMeta(): ChunkedInt32Array { return this.whenMeta; }
+  @inline getWhenBodyEqs(): ChunkedInt32Array { return this.whenBodyEqs; }
+  @inline getForMeta(): ChunkedInt32Array { return this.forMeta; }
+  @inline getForBodyEqs(): ChunkedInt32Array { return this.forBodyEqs; }
+  @inline getIfMeta(): ChunkedInt32Array { return this.ifMeta; }
+  @inline getIfBranchEqs(): ChunkedInt32Array { return this.ifBranchEqs; }
+  @inline getStateMachines(): ChunkedInt32Array { return this.stateMachines; }
+  @inline getStateData(): ChunkedInt32Array { return this.stateData; }
+  @inline getStateEqs(): ChunkedInt32Array { return this.stateEqs; }
+  @inline getStateVars(): ChunkedInt32Array { return this.stateVars; }
+  @inline getTransitions(): ChunkedInt32Array { return this.transitions; }
+  @inline getEventIndicators(): ChunkedInt32Array { return this.eventIndicators; }
 
   /**
    * Initializes chunked memory arrays and hash structures.
    */
   init(): void {
-    this.varDataPtr = changetype<usize>(createChunkedInt32Array(512 * VAR_STRIDE));
+    this.varData = createChunkedInt32Array(512 * VAR_STRIDE);
     this.varCount = 0;
 
-    this.eqDataPtr = changetype<usize>(createChunkedInt32Array(1024 * EQ_STRIDE));
+    this.eqData = createChunkedInt32Array(1024 * EQ_STRIDE);
     this.eqCount = 0;
 
-    this.exprDataPtr = changetype<usize>(createChunkedInt32Array(4096 * EXPR_STRIDE));
+    this.exprData = createChunkedInt32Array(4096 * EXPR_STRIDE);
     this.exprCount = 0;
 
-    this.stmtDataPtr = changetype<usize>(createChunkedInt32Array(256 * STMT_STRIDE));
+    this.stmtData = createChunkedInt32Array(256 * STMT_STRIDE);
     this.stmtCount = 0;
 
-    this.nameIndexPtr = createMap64();
-    this.getNameIndex().init(512);
-    this.aliasDataPtr = changetype<usize>(createChunkedInt32Array(512));
+    this.nameIndex = changetype<UnmanagedMap64>(createMap64());
+    this.nameIndex.init(512);
+    this.aliasData = createChunkedInt32Array(512);
 
     let spPtr = atomicChunkAlloc(sizeof<ArenaStringPool>());
-    this.stringPoolPtr = spPtr;
-    this.getStringPool().init();
+    this.stringPool = changetype<ArenaStringPool>(spPtr);
+    this.stringPool.init();
 
-    this.varAttrDataPtr = changetype<usize>(createChunkedInt32Array(512 * VAR_ATTR_STRIDE));
-    this.varShapesPtr = changetype<usize>(createChunkedInt32Array(512 * 4));
-    this.varSymbolicShapesPtr = changetype<usize>(createChunkedInt32Array(512 * 4));
+    this.varAttrData = createChunkedInt32Array(512 * VAR_ATTR_STRIDE);
+    this.varShapes = createChunkedInt32Array(512 * 4);
+    this.varSymbolicShapes = createChunkedInt32Array(512 * 4);
 
-    this.clocksDataPtr = changetype<usize>(createChunkedInt32Array(32 * CLOCK_STRIDE));
+    this.clocksData = createChunkedInt32Array(32 * CLOCK_STRIDE);
     this.clockCount = 0;
-    this.varClockMapPtr = changetype<usize>(createChunkedInt32Array(512));
-    this.eqClockMapPtr = changetype<usize>(createChunkedInt32Array(1024));
+    this.varClockMap = createChunkedInt32Array(512);
+    this.eqClockMap = createChunkedInt32Array(1024);
 
-    this.whenMetaPtr = changetype<usize>(createChunkedInt32Array(128 * WHEN_STRIDE));
+    this.whenMeta = createChunkedInt32Array(128 * WHEN_STRIDE);
     this.whenCount = 0;
-    this.whenBodyEqsPtr = changetype<usize>(createChunkedInt32Array(256 * EQ_STRIDE));
+    this.whenBodyEqs = createChunkedInt32Array(256 * EQ_STRIDE);
     this.whenBodyEqCount = 0;
 
-    this.forMetaPtr = changetype<usize>(createChunkedInt32Array(128 * FOR_STRIDE));
+    this.forMeta = createChunkedInt32Array(128 * FOR_STRIDE);
     this.forCount = 0;
-    this.forBodyEqsPtr = changetype<usize>(createChunkedInt32Array(256 * EQ_STRIDE));
+    this.forBodyEqs = createChunkedInt32Array(256 * EQ_STRIDE);
     this.forBodyEqCount = 0;
 
-    this.ifMetaPtr = changetype<usize>(createChunkedInt32Array(128 * IF_STRIDE));
+    this.ifMeta = createChunkedInt32Array(128 * IF_STRIDE);
     this.ifCount = 0;
-    this.ifBranchEqsPtr = changetype<usize>(createChunkedInt32Array(256 * EQ_STRIDE));
+    this.ifBranchEqs = createChunkedInt32Array(256 * EQ_STRIDE);
     this.ifBranchEqCount = 0;
 
-    this.stateMachinesPtr = changetype<usize>(createChunkedInt32Array(16 * SM_STRIDE));
+    this.stateMachines = createChunkedInt32Array(16 * SM_STRIDE);
     this.smCount = 0;
-    this.stateDataPtr = changetype<usize>(createChunkedInt32Array(64 * STATE_STRIDE));
+    this.stateData = createChunkedInt32Array(64 * STATE_STRIDE);
     this.stateCount = 0;
-    this.stateEqsPtr = changetype<usize>(createChunkedInt32Array(128 * 4));
+    this.stateEqs = createChunkedInt32Array(128 * 4);
     this.stateEqCount = 0;
-    this.stateVarsPtr = changetype<usize>(createChunkedInt32Array(128 * 4));
+    this.stateVars = createChunkedInt32Array(128 * 4);
     this.stateVarCount = 0;
-    this.transitionsPtr = changetype<usize>(createChunkedInt32Array(64 * TRANSITION_STRIDE));
+    this.transitions = createChunkedInt32Array(64 * TRANSITION_STRIDE);
     this.transitionCount = 0;
 
-    this.eventIndicatorsPtr = changetype<usize>(createChunkedInt32Array(128));
+    this.eventIndicators = createChunkedInt32Array(128);
     this.eventIndicatorCount = 0;
     this.objectiveExprId = 0xffffffff;
     this.objectiveIntegrandExprId = 0xffffffff;
@@ -280,7 +253,7 @@ export class DaeBuilder {
     this.objectiveIntegrandExprId = 0xffffffff;
     this.startTimeExprId = 0xffffffff;
     this.finalTimeExprId = 0xffffffff;
-    if (this.nameIndexPtr != 0) {
+    if (changetype<usize>(this.nameIndex) != 0) {
       this.getNameIndex().init(512);
     }
   }
@@ -331,7 +304,7 @@ export class DaeBuilder {
     }
 
     // Populate O(1) name index
-    if (nameId != 0 && this.nameIndexPtr != 0) {
+    if (nameId != 0 && changetype<usize>(this.nameIndex) != 0) {
       this.getNameIndex().set(nameId as u64, (idx + 1) as u32);
     }
 
@@ -344,7 +317,7 @@ export class DaeBuilder {
    */
   @inline
   lookupVariableByName(nameId: u32): i32 {
-    if (nameId == 0 || this.nameIndexPtr == 0) return -1;
+    if (nameId == 0 || changetype<usize>(this.nameIndex) == 0) return -1;
     let val = this.getNameIndex().get(nameId as u64);
     return val > 0 ? ((val - 1) as i32) : -1;
   }
@@ -1001,7 +974,7 @@ export function dae_getEqClock(ptr: u32, eqIdx: u32): u32 {
 
 export function dae_getPointers(ptr: u32): u32 {
   let b = changetype<DaeBuilder>(ptr);
-  return (changetype<u32>(b.clocksDataPtr) & 0xffff) | ((changetype<u32>(b.varClockMapPtr) & 0xffff) << 16);
+  return (changetype<u32>(b.clocksData) & 0xffff) | ((changetype<u32>(b.varClockMap) & 0xffff) << 16);
 }
 
 export function dae_getOffsets(): u32 {
@@ -1303,7 +1276,7 @@ export function dae_setSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32, v
 
 export function dae_getStringPool(builderPtr: u32): u32 {
   if (builderPtr == 0) return 0;
-  return changetype<DaeBuilder>(builderPtr).stringPoolPtr as u32;
+  return changetype<u32>(changetype<DaeBuilder>(builderPtr).stringPool);
 }
 
 

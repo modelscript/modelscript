@@ -13,6 +13,7 @@ export * from "./analysis/wasm_hybrid_flowpipe.js";
 export * from "./analysis/wasm_interval.js";
 export * from "./analysis/wasm_pantelides.js";
 export * from "./analysis/wasm_taylor_model.js";
+export * from "./analysis/wasm_zonotope.js";
 export * from "./autodiff/wasm_fused_kernel.js";
 export * from "./autodiff/wasm_isolation.js";
 export * from "./autodiff/wasm_tape.js";
