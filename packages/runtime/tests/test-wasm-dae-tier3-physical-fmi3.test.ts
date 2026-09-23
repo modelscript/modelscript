@@ -41,7 +41,7 @@ describe("Tier 3: WASM DAE Homotopy Continuation, Delay Operators, Stream Connec
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     try {
       childProcess.execSync(ascCmd, { stdio: "pipe" });
     } catch (err: any) {

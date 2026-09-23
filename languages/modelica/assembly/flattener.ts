@@ -3756,9 +3756,15 @@ export class ModelicaFlattener {
         isPrimitive = true;
       } else {
         // Resolve type alias / short class definition (e.g. type Angle = Real(unit="rad"))
+        // IMPORTANT: Only check immediate class_specifier child, NOT deep descendants.
+        // Using locFindDescendant here would recurse into the entire class body (e.g.
+        // package Modelica) and match unrelated nested short class specifiers like
+        // "replaceable type SignalType = Real", incorrectly resolving packages as primitives.
         let defLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
         if (!locIsNull(defLoc)) {
-          let shortSpec = locFindDescendant(defLoc, SyntaxType.SHORT_CLASS_SPECIFIER);
+          let classSpecLoc = locFindChild(defLoc, SyntaxType.CLASS_SPECIFIER);
+          if (locIsNull(classSpecLoc)) classSpecLoc = defLoc;
+          let shortSpec = locFindChild(classSpecLoc, SyntaxType.SHORT_CLASS_SPECIFIER);
           if (!locIsNull(shortSpec)) {
             let baseTypeSpec = locFindDescendant(shortSpec, SyntaxType.TYPE_SPECIFIER);
             if (!locIsNull(baseTypeSpec)) {

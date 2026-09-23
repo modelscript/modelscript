@@ -2,7 +2,19 @@
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "plugins": ["@nx/js"],
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "!{projectRoot}/**/scratch*/**",
+      "!{projectRoot}/**/scratch_*/**",
+      "!{projectRoot}/**/.cache/**",
+      "!{projectRoot}/**/ctrf/**",
+      "!{projectRoot}/**/coverage/**",
+      "!{projectRoot}/**/*.tsbuildinfo",
+      "!{projectRoot}/as-gen/**",
+      "!{projectRoot}/src/src-gen/**",
+      "!{projectRoot}/src-gen/**"
+    ],
     "production": [
       "default",
       "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)?(.snap)",
@@ -21,21 +33,27 @@
         "{projectRoot}/dist",
         "{projectRoot}/build",
         "{projectRoot}/src-gen",
+        "{projectRoot}/src/src-gen",
+        "{projectRoot}/as-gen",
         "{projectRoot}/public",
         "{projectRoot}/src/**/*.js",
         "{projectRoot}/*.wasm",
-        "{projectRoot}/build/**/*.wasm"
-      ]
+        "{projectRoot}/build/**/*.wasm",
+        "{projectRoot}/.cache"
+      ],
+      "maxParallel": 4
     },
     "test": {
       "cache": true,
       "dependsOn": ["^build", "build"],
+      "inputs": ["default", "^production"],
       "outputs": ["{projectRoot}/coverage", "{projectRoot}/ctrf"],
-      "maxParallel": 1
+      "maxParallel": 2
     },
     "lint": {
       "cache": true,
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "maxParallel": 4
     }
   },
   "release": {
@@ -59,7 +77,5 @@
     }
   },
   "analytics": false,
-  "tui": {
-    "autoExit": true
-  }
+  "tui": false
 }

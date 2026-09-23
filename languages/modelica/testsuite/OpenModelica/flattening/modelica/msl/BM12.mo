@@ -1,7 +1,6 @@
 // name:     BM5 -  Feedback component
 // keywords: Feedback
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Math.Feedback component.
 //

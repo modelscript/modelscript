@@ -1,7 +1,6 @@
 // name:     BS10 - Step component
 // keywords: Step
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Step component.
 //

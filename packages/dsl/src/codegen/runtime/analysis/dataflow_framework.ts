@@ -14,7 +14,7 @@ import {
   BLOCK_FIRST_INSTR,
   IR_INSTR_NEXT,
 } from "./ir_layout";
-import { UnmanagedUint32Array } from "../core/array";
+import { UnmanagedUint32Array } from "./array";
 
 export const DATAFLOW_MAX_ITERATIONS: u32 = 1000;
 

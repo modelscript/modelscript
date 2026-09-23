@@ -378,6 +378,9 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       get queryEngine() {
         return workspaceManager.globalModelicaQueryEngine ?? undefined;
       },
+      set queryEngine(val) {
+        workspaceManager.globalModelicaQueryEngine = val ?? null;
+      },
       languageDef: modelicaLanguage,
       handlers: modelicaLanguage.lsp?.handlers,
       actionHandlers: modelicaActionHandlers,
@@ -392,6 +395,9 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       get queryEngine() {
         return workspaceManager.globalSysML2QueryEngine ?? undefined;
       },
+      set queryEngine(val) {
+        workspaceManager.globalSysML2QueryEngine = val ?? null;
+      },
       languageDef: sysml2LangFallback,
     });
     globalLanguageRegistry.register({
@@ -404,6 +410,9 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       get queryEngine() {
         return workspaceManager.globalSysML2QueryEngine ?? undefined;
       },
+      set queryEngine(val) {
+        workspaceManager.globalSysML2QueryEngine = val ?? null;
+      },
       languageDef: sysml2LangFallback,
     });
     globalLanguageRegistry.register({
@@ -414,6 +423,9 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       workspaceIndex: workspaceManager.stepWorkspaceIndex,
       get queryEngine() {
         return workspaceManager.globalStepQueryEngine ?? undefined;
+      },
+      set queryEngine(val) {
+        workspaceManager.globalStepQueryEngine = val ?? null;
       },
       languageDef: stepLanguage,
       handlers: stepLanguage.lsp?.handlers,
@@ -427,6 +439,9 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       workspaceIndex: workspaceManager.owl2WorkspaceIndex,
       get queryEngine() {
         return workspaceManager.globalOWL2QueryEngine ?? undefined;
+      },
+      set queryEngine(val) {
+        workspaceManager.globalOWL2QueryEngine = val ?? null;
       },
       languageDef: owl2LangFallback,
     });

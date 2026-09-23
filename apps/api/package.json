@@ -27,7 +27,7 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run clean && tsc",
+    "build": "tsc",
     "clean": "rimraf dist",
     "dev": "PORT=3000 NODE_OPTIONS='--max-old-space-size=8192 --dns-result-order=ipv4first' tsx watch src/main.ts",
     "lint": "eslint src",

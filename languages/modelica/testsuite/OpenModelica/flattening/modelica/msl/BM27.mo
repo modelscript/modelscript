@@ -1,7 +1,6 @@
 // name:     BM27 -  TwoInputs component
 // keywords: TwoInputs
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Math.TwoInputs component.
 //

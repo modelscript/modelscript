@@ -261,10 +261,10 @@
     "asbuild": "npm run asbuild:debug && npm run asbuild:release",
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "asbuild:release": "asc assembly/index.ts --target release",
-    "build": "npm run clean && npm run asbuild && tsc",
+    "build": "npm run asbuild && tsc",
     "clean": "rimraf dist build",
     "lint": "eslint src --no-warn-ignored",
-    "test": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=4 --test-timeout=120000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
+    "test": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=2 --test-timeout=120000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/dsl": "*"

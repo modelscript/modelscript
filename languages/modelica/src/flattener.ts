@@ -9527,7 +9527,9 @@ export class ModelicaFlattener {
           if (typeof dae.exports.flattener_getErrorCode === "function") {
             (dae as any).wasmErrorCode = dae.exports.flattener_getErrorCode(wasmFlattener);
           }
-          if (varCount > 0) {
+          // In hybrid mode, if WASM flattener set a non-zero error code, fall back to TS
+          const wasmErrorCode = (dae as any).wasmErrorCode ?? 0;
+          if (varCount > 0 && (wasmErrorCode === 0 || isStrictWasm)) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
             for (let i = 0; i < dae.eqCount; i++) {

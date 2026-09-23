@@ -47,7 +47,7 @@ describe("DAE Algebraic Loop Tearing Engine", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);

@@ -29,7 +29,7 @@
     "modelscript-mcp": "./dist/main.js"
   },
   "scripts": {
-    "build": "npm run clean && tsc",
+    "build": "tsc",
     "clean": "rimraf dist",
     "lint": "eslint src --no-warn-ignored"
   },

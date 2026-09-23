@@ -38,14 +38,27 @@ export class ParserService {
       plugin.parser = parser;
       plugin.facade = facade;
     }
+    const alt = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+    if (alt) {
+      this.parserEntries.set(alt, { parser, facade, ready: !!parser });
+      const altPlugin = globalLanguageRegistry.getPluginById(alt);
+      if (altPlugin) {
+        altPlugin.parser = parser;
+        altPlugin.facade = facade;
+      }
+    }
   }
 
   public getParser(langId: string): any | null {
     const norm = langId.toLowerCase();
     const p = this.parserEntries.get(norm)?.parser ?? globalLanguageRegistry.getPluginById(norm)?.parser;
     if (p) return p;
-    if (norm === "sysml") return this.getParser("sysml2");
-    if (norm === "sysml2") return this.getParser("sysml");
+    const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+    if (alternate) {
+      return (
+        this.parserEntries.get(alternate)?.parser ?? globalLanguageRegistry.getPluginById(alternate)?.parser ?? null
+      );
+    }
     return null;
   }
 
@@ -53,17 +66,25 @@ export class ParserService {
     const norm = langId.toLowerCase();
     const f = this.parserEntries.get(norm)?.facade ?? globalLanguageRegistry.getPluginById(norm)?.facade;
     if (f) return f;
-    if (norm === "sysml") return this.getFacade("sysml2");
-    if (norm === "sysml2") return this.getFacade("sysml");
+    const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+    if (alternate) {
+      return (
+        this.parserEntries.get(alternate)?.facade ?? globalLanguageRegistry.getPluginById(alternate)?.facade ?? null
+      );
+    }
     return null;
   }
 
   public isParserReady(langId: string): boolean {
     const norm = langId.toLowerCase();
-    const r = this.parserEntries.get(norm)?.ready ?? !!globalLanguageRegistry.getPluginById(norm)?.parser;
+    const r = this.parserEntries.get(norm)?.ready ?? Boolean(globalLanguageRegistry.getPluginById(norm)?.parser);
     if (r) return true;
-    if (norm === "sysml") return this.isParserReady("sysml2");
-    if (norm === "sysml2") return this.isParserReady("sysml");
+    const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+    if (alternate) {
+      return (
+        this.parserEntries.get(alternate)?.ready ?? Boolean(globalLanguageRegistry.getPluginById(alternate)?.parser)
+      );
+    }
     return false;
   }
 

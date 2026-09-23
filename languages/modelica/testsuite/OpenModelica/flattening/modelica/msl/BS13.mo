@@ -1,7 +1,6 @@
 // name:     BS13 - IntegerConstant component
 // keywords: IntegerConstant
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the IntegerConstant component.
 //

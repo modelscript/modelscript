@@ -1,7 +1,6 @@
 // name:     BN3 -  VariableLimiter component
 // keywords: VariableLimiter
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Nonlinear.VariableLimiter component.
 //

@@ -43,7 +43,7 @@ describe("High-Impact WASM Array Optimizations", () => {
 
     try {
       childProcess.execSync(
-        `${ascPath} ${parserTs} -o ${wasmOut} --exportRuntime --enable threads --optimize --runtime stub`,
+        `${ascPath} ${parserTs} -o ${wasmOut} --exportRuntime --enable threads -O0 --runtime stub`,
         { stdio: "pipe" },
       );
     } catch (e: any) {

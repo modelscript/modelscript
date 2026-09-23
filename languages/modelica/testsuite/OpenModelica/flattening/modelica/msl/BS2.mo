@@ -1,7 +1,6 @@
 // name:     BS2 - Constant component
 // keywords: Constant
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Constant component.
 //

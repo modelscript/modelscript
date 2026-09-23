@@ -1,7 +1,6 @@
 // name:     BM18 -  Min component
 // keywords: Min
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Math.Min component.
 //

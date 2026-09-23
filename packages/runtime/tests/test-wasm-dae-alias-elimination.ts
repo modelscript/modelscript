@@ -39,7 +39,7 @@ async function runTests() {
   const outWasm = path.join(tmpDir, "parser.wasm");
 
   console.log("Compiling AssemblyScript to WASM via asc...");
-  const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+  const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
   try {
     childProcess.execSync(ascCmd, { stdio: "pipe" });
   } catch (err: any) {

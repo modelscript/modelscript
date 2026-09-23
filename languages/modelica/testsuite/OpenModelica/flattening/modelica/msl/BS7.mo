@@ -1,7 +1,6 @@
 // name:     BS7 - Ramp component
 // keywords: Ramp
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Ramp component.
 //

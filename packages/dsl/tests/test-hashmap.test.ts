@@ -105,7 +105,7 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
     fs.writeFileSync(harnessTs, code);
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
-    const ascCmd = `${ascPath} ${harnessTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${harnessTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     try {
       childProcess.execSync(ascCmd, { stdio: "pipe" });
     } catch (e: any) {

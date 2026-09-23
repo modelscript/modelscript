@@ -89,7 +89,7 @@ describe("Playground Model Test", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);
@@ -782,7 +782,7 @@ end ElectricalCircuit;
     const parserTs = path.join(tmpDirLocal, "parser.ts");
     const outWasm = path.join(tmpDirLocal, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);
@@ -950,7 +950,7 @@ end ThermalSystem;
     const parserTs = path.join(tmpDirLocal, "parser.ts");
     const outWasm = path.join(tmpDirLocal, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);
@@ -1123,7 +1123,7 @@ end ThermalSystem;
     const parserTs = path.join(tmpDirLocal, "parser.ts");
     const outWasm = path.join(tmpDirLocal, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);
@@ -1325,7 +1325,7 @@ end ThermalSystem;`;
     const parserTs = path.join(tmpDirLocal, "parser.ts");
     const outWasm = path.join(tmpDirLocal, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);
@@ -1462,7 +1462,7 @@ end ThermalSystem;`;
     const parserTs = path.join(tmpDirLocal, "parser.ts");
     const outWasm = path.join(tmpDirLocal, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);
@@ -1728,7 +1728,7 @@ end ThermalSystem;
     const parserTs = path.join(tmpDirLocal, "parser.ts");
     const outWasm = path.join(tmpDirLocal, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
     childProcess.execSync(ascCmd, { stdio: "inherit" });
 
     const wasm = fs.readFileSync(outWasm);

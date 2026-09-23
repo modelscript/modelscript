@@ -1,7 +1,6 @@
 // name:     BM20 -  Sign component
 // keywords: Sign
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Math.Sign component.
 //

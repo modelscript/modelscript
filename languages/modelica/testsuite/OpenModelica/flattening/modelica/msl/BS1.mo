@@ -1,7 +1,6 @@
 // name:     BS1 - Clock component
 // keywords: Clock
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Clock component.
 //

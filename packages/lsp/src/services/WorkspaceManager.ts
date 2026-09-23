@@ -73,22 +73,61 @@ export class WorkspaceManager {
     return undefined;
   }
 
+  private activeQueryEngineLookups = new Set<string>();
+
   public setWorkspaceIndex(langId: string, index: any): void {
     const norm = langId.toLowerCase();
     const existing = this.languageContexts.get(norm) ?? { index: null, queryEngine: null };
     existing.index = index;
     this.languageContexts.set(norm, existing);
     this.allWorkspaceIndices.set(norm, index);
+
+    const alt = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+    if (alt) {
+      const altExisting = this.languageContexts.get(alt) ?? { index: null, queryEngine: null };
+      altExisting.index = index;
+      this.languageContexts.set(alt, altExisting);
+      this.allWorkspaceIndices.set(alt, index);
+    }
   }
 
   public getQueryEngine(langId: string): QueryEngine | null {
     const norm = langId.toLowerCase();
-    const qe =
-      this.languageContexts.get(norm)?.queryEngine ?? globalLanguageRegistry.getPluginById(norm)?.queryEngine ?? null;
-    if (qe) return qe;
-    if (norm === "sysml") return this.getQueryEngine("sysml2");
-    if (norm === "sysml2") return this.getQueryEngine("sysml");
-    return null;
+    if (this.activeQueryEngineLookups.has(norm)) {
+      return null;
+    }
+    this.activeQueryEngineLookups.add(norm);
+    try {
+      const qe = this.languageContexts.get(norm)?.queryEngine;
+      if (qe) return qe;
+
+      const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+      if (alternate) {
+        const altQe = this.languageContexts.get(alternate)?.queryEngine;
+        if (altQe) return altQe;
+      }
+
+      const plugin = globalLanguageRegistry.getPluginById(norm);
+      if (plugin) {
+        const desc = Object.getOwnPropertyDescriptor(plugin, "queryEngine");
+        if (!desc?.get && plugin.queryEngine) {
+          return plugin.queryEngine;
+        }
+      }
+      if (alternate) {
+        const altPlugin = globalLanguageRegistry.getPluginById(alternate);
+        if (altPlugin) {
+          const desc = Object.getOwnPropertyDescriptor(altPlugin, "queryEngine");
+          if (!desc?.get && altPlugin.queryEngine) {
+            return altPlugin.queryEngine;
+          }
+        }
+      }
+
+      return null;
+    } finally {
+      this.activeQueryEngineLookups.delete(norm);
+    }
   }
 
   public setQueryEngine(langId: string, qe: QueryEngine | null): void {
@@ -96,8 +135,30 @@ export class WorkspaceManager {
     const existing = this.languageContexts.get(norm) ?? { index: null, queryEngine: null };
     existing.queryEngine = qe;
     this.languageContexts.set(norm, existing);
+
+    const alt = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+    if (alt) {
+      const altExisting = this.languageContexts.get(alt) ?? { index: null, queryEngine: null };
+      altExisting.queryEngine = qe;
+      this.languageContexts.set(alt, altExisting);
+    }
+
     const plugin = globalLanguageRegistry.getPluginById(norm);
-    if (plugin) plugin.queryEngine = qe ?? undefined;
+    if (plugin) {
+      const desc = Object.getOwnPropertyDescriptor(plugin, "queryEngine");
+      if (!desc?.get) {
+        plugin.queryEngine = qe ?? undefined;
+      }
+    }
+    if (alt) {
+      const altPlugin = globalLanguageRegistry.getPluginById(alt);
+      if (altPlugin) {
+        const desc = Object.getOwnPropertyDescriptor(altPlugin, "queryEngine");
+        if (!desc?.get) {
+          altPlugin.queryEngine = qe ?? undefined;
+        }
+      }
+    }
   }
 
   // Compatibility getters/setters for legacy callers

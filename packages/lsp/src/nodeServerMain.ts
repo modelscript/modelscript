@@ -303,6 +303,7 @@ export function startNodeServer(input?: any, output?: any) {
 
             let wsIndex: any;
             let queryEngineGetter: (() => any) | undefined;
+            let queryEngineSetter: ((v: any) => void) | undefined;
             let langDef: any;
             let handlers: any;
             let actionHandlers: any;
@@ -310,21 +311,25 @@ export function startNodeServer(input?: any, output?: any) {
             if (item.id === "modelica") {
               wsIndex = workspaceManager.globalWorkspaceIndex;
               queryEngineGetter = () => workspaceManager.globalModelicaQueryEngine ?? undefined;
+              queryEngineSetter = (v) => (workspaceManager.globalModelicaQueryEngine = v ?? null);
               langDef = modelicaLanguage;
               handlers = modelicaLanguage.lsp?.handlers;
               actionHandlers = modelicaActionHandlers;
             } else if (item.id === "sysml2" || item.id === "sysml") {
               wsIndex = workspaceManager.sysml2WorkspaceIndex;
               queryEngineGetter = () => workspaceManager.globalSysML2QueryEngine ?? undefined;
+              queryEngineSetter = (v) => (workspaceManager.globalSysML2QueryEngine = v ?? null);
               langDef = sysml2LangFallback;
             } else if (item.id === "step") {
               wsIndex = workspaceManager.stepWorkspaceIndex;
               queryEngineGetter = () => workspaceManager.globalStepQueryEngine ?? undefined;
+              queryEngineSetter = (v) => (workspaceManager.globalStepQueryEngine = v ?? null);
               langDef = stepLanguage;
               handlers = stepLanguage.lsp?.handlers;
             } else if (item.id === "owl2") {
               wsIndex = workspaceManager.owl2WorkspaceIndex;
               queryEngineGetter = () => workspaceManager.globalOWL2QueryEngine ?? undefined;
+              queryEngineSetter = (v) => (workspaceManager.globalOWL2QueryEngine = v ?? null);
               langDef = owl2LangFallback;
             } else if (item.id === "csv") {
               langDef = csvLangFallback;
@@ -339,6 +344,9 @@ export function startNodeServer(input?: any, output?: any) {
               workspaceIndex: wsIndex,
               get queryEngine() {
                 return queryEngineGetter ? queryEngineGetter() : undefined;
+              },
+              set queryEngine(val) {
+                if (queryEngineSetter) queryEngineSetter(val);
               },
               languageDef: langDef,
               handlers,

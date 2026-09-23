@@ -1,7 +1,6 @@
 // name:     BM28 -  TwoOutputs component
 // keywords: TwoOutputs
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Math.TwoOutputs component.
 //

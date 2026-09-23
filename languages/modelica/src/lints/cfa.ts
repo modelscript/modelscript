@@ -198,10 +198,32 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
   const className: string = self.name || "Anonymous";
 
   // Check if class is a function
-  const isFunction =
-    Boolean((self as any).attributes?.classPrefixes?.includes("function")) ||
-    /\bfunction\s+[a-zA-Z0-9_]+/.test(text) ||
-    /^\s*(?:operator\s+)?function\b/.test(text);
+  const meta = (self.metadata as any) || (self as any).attributes || {};
+  const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
+  const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+  const words = cleanKind.split(/\s+/).filter(Boolean);
+  let isFunction = words.includes("function");
+
+  if (!isFunction && cst) {
+    for (const child of cst.children || []) {
+      if (child.type === "class_prefixes") {
+        const childText = (child.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+        const childWords = childText.split(/\s+/).filter(Boolean);
+        if (childWords.includes("function")) {
+          isFunction = true;
+          break;
+        }
+      }
+    }
+    if (!isFunction) {
+      const trimmedText = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+      if (/^(?:(?:encapsulated|partial|replaceable|pure|impure)\s+)*(?:operator\s+)?function\b/.test(trimmedText)) {
+        isFunction = true;
+      }
+    }
+  }
+
+  if (!isFunction) return results;
 
   // 1. Extract variables (inputs, outputs, locals)
   const inputs = new Map<string, VariableInfo>();

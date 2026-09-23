@@ -1,7 +1,6 @@
 // name:     BC10 - StateSpace component
 // keywords: StateSpace
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the StateSpace component.
 //
