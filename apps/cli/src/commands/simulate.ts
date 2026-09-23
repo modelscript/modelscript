@@ -5,7 +5,7 @@ import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { foldArenaConstants, initBltWasm, scalarizeArena, type DAEBuilder } from "@modelscript/runtime";
 import { simulateArena, simulateArenaAsync, snapshotMemory, type MemorySnapshot } from "@modelscript/simulate";
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -332,38 +332,26 @@ async function simulateWasm(
 
   fs.writeFileSync(cFile, cSource);
 
-  const emcc = process.env.EMCC ?? "emcc";
+  const rawEmcc = process.env.EMCC ?? "emcc";
+  const emcc = /^[a-zA-Z0-9_./-]+$/.test(rawEmcc) ? rawEmcc : "emcc";
   const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1" : "-O3";
-  let cvodeFlags = "";
+  const emccArgs: string[] = [optFlag, "-w", cFile];
   if (isCvode) {
     const sundialsInstall = path.resolve(
       path.dirname(require.resolve("@modelscript/dsl/package.json")),
       ".build/sundials/install",
     );
-    cvodeFlags = [
+    emccArgs.push(
       `-I${path.join(sundialsInstall, "include")}`,
       path.join(sundialsInstall, "lib/libsundials_cvode.a"),
       path.join(sundialsInstall, "lib/libsundials_nvecserial.a"),
       path.join(sundialsInstall, "lib/libsundials_core.a"),
-    ].join(" ");
+    );
   }
-
-  const emccCmd = [
-    emcc,
-    optFlag,
-    "-w",
-    cFile,
-    cvodeFlags,
-    "-s ALLOW_MEMORY_GROWTH=1",
-    "-s NODEJS_CATCH_EXIT=0",
-    "-o",
-    jsFile,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  emccArgs.push("-s", "ALLOW_MEMORY_GROWTH=1", "-s", "NODEJS_CATCH_EXIT=0", "-o", jsFile);
 
   try {
-    execSync(emccCmd, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
+    execFileSync(emcc, emccArgs, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
   } catch (e: unknown) {
     const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
     console.error(`WASM compilation failed:\n${stderr}`);

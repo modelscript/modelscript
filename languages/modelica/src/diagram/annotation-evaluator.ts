@@ -134,7 +134,7 @@ export function evaluateCSTExpression(node: any, evalScope?: any): any {
   if (/^[+-]?\d+$/.test(rawText)) {
     return parseInt(rawText, 10);
   }
-  if (/^[+-]?\d+\.?\d*(?:[eE][+-]?\d+)?$/.test(rawText) && !isNaN(Number(rawText))) {
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(rawText) && !isNaN(Number(rawText))) {
     return parseFloat(rawText);
   }
   if (rawText.startsWith("{") && rawText.endsWith("}")) {

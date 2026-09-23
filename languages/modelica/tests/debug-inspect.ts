@@ -11,7 +11,7 @@ async function main() {
 
   const argFile = process.argv[2];
   const testFile = argFile
-    ? path.resolve(import.meta.dirname, "../testsuite", argFile.replace(/^OpenModelica\//, "OpenModelica/"))
+    ? path.resolve(import.meta.dirname, "../testsuite", argFile)
     : path.resolve(import.meta.dirname, "../testsuite/OpenModelica/flattening/modelica/expandable/07.mo");
   const content = fs.readFileSync(testFile, "utf-8");
   const base = path.basename(testFile, ".mo");

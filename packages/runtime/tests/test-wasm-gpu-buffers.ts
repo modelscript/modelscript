@@ -2,7 +2,7 @@
 import type { ArenaBltResult } from "@modelscript/runtime/wasm_blt.js";
 import { BinOp, Causality, DAEBuilder, EqKind, ExprKind, VarType, Variability } from "@modelscript/runtime/wasm_dae.js";
 import assert from "node:assert";
-import { estimateGPUMemoryBytes, serializeArenaForGPU } from "../src/compiler/simulator/core/gpu-buffers.js";
+import { estimateGPUMemoryBytes, serializeArenaForGPU } from "../../simulate/src/core/gpu-buffers.js";
 
 async function runTests() {
   console.log("Testing WASM GPU Buffer Serialization...");

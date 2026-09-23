@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { atomicChunkAlloc } from "../arena";
+import { UnmanagedUint32Array, UnmanagedFloat64Array } from "../core/array";
 
 /**
  * 64-bit high-speed zero-GC PRNG (Xoshiro256++).
@@ -83,6 +84,9 @@ export class SobolSequence {
   xPtr: usize;
   vPtr: usize;
 
+  @inline get x(): UnmanagedUint32Array { return changetype<UnmanagedUint32Array>(this.xPtr); }
+  @inline get v(): UnmanagedUint32Array { return changetype<UnmanagedUint32Array>(this.vPtr); }
+
   init(dim: u32): void {
     this.dim = dim > 16 ? 16 : dim;
     this.index = 0;
@@ -90,6 +94,7 @@ export class SobolSequence {
     this.vPtr = atomicChunkAlloc(this.dim * 32 * 4);
 
     // Initialize direction numbers
+    let vArr = this.v;
     for (let d: u32 = 0; d < this.dim; d++) {
       for (let i: u32 = 0; i < 32; i++) {
         let v: u32 = 1 << (31 - i);
@@ -97,7 +102,7 @@ export class SobolSequence {
           v = ((d * 3 + i * 5 + 1) % 32) << (31 - i);
           if (v == 0) v = 1 << (31 - i);
         }
-        store<u32>(this.vPtr + (d * 32 + i) * 4, v);
+        vArr[d * 32 + i] = v;
       }
     }
   }
@@ -111,12 +116,16 @@ export class SobolSequence {
       n >>>= 1;
     }
 
+    let xArr = this.x;
+    let vArr = this.v;
+    let out = changetype<UnmanagedFloat64Array>(outPtr);
+
     for (let d: u32 = 0; d < this.dim; d++) {
-      let prev: u32 = load<u32>(this.xPtr + d * 4);
-      let v: u32 = load<u32>(this.vPtr + (d * 32 + c) * 4);
+      let prev: u32 = xArr[d];
+      let v: u32 = vArr[d * 32 + c];
       let nextVal = prev ^ v;
-      store<u32>(this.xPtr + d * 4, nextVal);
-      store<f64>(outPtr + d * 8, (nextVal as f64) / 4294967296.0);
+      xArr[d] = nextVal;
+      out[d] = (nextVal as f64) / 4294967296.0;
     }
   }
 }

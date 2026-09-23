@@ -6,6 +6,7 @@ import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
+import { isSafePublicUrl } from "../util/ssrf.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
 
 // OptionalAuth middleware to allow endpoints to work for both logged in and out users
@@ -207,7 +208,7 @@ export function socialRouter(database: LibraryDatabase): Router {
               if (!artifact_view_id) {
                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                 const urlMatch = urlRegex.exec(content);
-                if (urlMatch && urlMatch[1]) {
+                if (urlMatch && urlMatch[1] && isSafePublicUrl(urlMatch[1])) {
                   const url = urlMatch[1];
                   // Fire and forget
                   (async () => {
@@ -605,7 +606,7 @@ export function socialRouter(database: LibraryDatabase): Router {
       if (handleMatch) {
         const handle = handleMatch[1];
         try {
-          const ytRes = await fetch(`https://www.youtube.com/${handle}`);
+          const ytRes = await fetch(`https://www.youtube.com/${encodeURIComponent(handle)}`);
           const ytHtml = await ytRes.text();
           const idMatch = ytHtml.match(/channel_id=([^"&']+)/);
           if (idMatch && idMatch[1]) {
@@ -656,7 +657,7 @@ export function socialRouter(database: LibraryDatabase): Router {
         const description = parsed.description || "";
         const siteUrl = parsed.link || targetUrl;
         let avatarUrl = parsed.image?.url;
-        if (!avatarUrl && siteUrl && siteUrl.startsWith("http")) {
+        if (!avatarUrl && siteUrl && isSafePublicUrl(siteUrl)) {
           try {
             const htmlRes = await fetch(siteUrl, {
               headers: {

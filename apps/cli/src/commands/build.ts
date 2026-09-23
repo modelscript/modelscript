@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -77,8 +77,28 @@ export const Build: CommandModule<{}, BuildArgs> = {
 
     console.log(`Compiling AssemblyScript to WASM...`);
     try {
-      execSync(
-        `npx --no asc ${absoluteEntry} -o ${wasmPath} --exportRuntime --runtime stub -O1 --importMemory --initialMemory 4000 --maximumMemory 16000 --sharedMemory --enable threads --disableWarning`,
+      execFileSync(
+        "npx",
+        [
+          "--no",
+          "asc",
+          absoluteEntry,
+          "-o",
+          wasmPath,
+          "--exportRuntime",
+          "--runtime",
+          "stub",
+          "-O1",
+          "--importMemory",
+          "--initialMemory",
+          "4000",
+          "--maximumMemory",
+          "16000",
+          "--sharedMemory",
+          "--enable",
+          "threads",
+          "--disableWarning",
+        ],
         { stdio: "inherit" },
       );
     } catch {
@@ -96,7 +116,9 @@ export const Build: CommandModule<{}, BuildArgs> = {
       const wasm2cOut = path.join(nativeDir, "parser_wasm2c.c");
       console.log(`Generating native C code via wasm2c...`);
       try {
-        execSync(`npx --no wasm2c -- --enable-threads ${wasmPath} -o ${wasm2cOut}`, { stdio: "inherit" });
+        execFileSync("npx", ["--no", "wasm2c", "--enable-threads", wasmPath, "-o", wasm2cOut], {
+          stdio: "inherit",
+        });
         console.log(`Successfully generated wasm2c output at ${wasm2cOut}`);
 
         // Patch wabt's generated memory_fill and memory_copy for shared memories
@@ -139,13 +161,25 @@ export const Build: CommandModule<{}, BuildArgs> = {
         }
 
         const nativeSo = path.join(distDir, `${langName}.so`);
-        const cc = process.env.CC || "cc";
-        const cflags = process.env.CFLAGS || "-O3";
-        const compileCmd = `${cc} ${cflags} -shared -fPIC ${wasm2cOut} ${path.join(nativeDir, "wasm-rt-impl.c")} ${path.join(nativeDir, "wasm-rt-exceptions-impl.c")} -I${nativeDir} -o ${nativeSo}`;
+        const rawCc = process.env.CC || "cc";
+        const cc = /^[a-zA-Z0-9_./-]+$/.test(rawCc) ? rawCc : "cc";
+        const rawCflags = process.env.CFLAGS || "-O3";
+        const cflags = rawCflags.split(/\s+/).filter((f) => /^[a-zA-Z0-9_./=-]+$/.test(f));
+        const compileArgs = [
+          ...cflags,
+          "-shared",
+          "-fPIC",
+          wasm2cOut,
+          path.join(nativeDir, "wasm-rt-impl.c"),
+          path.join(nativeDir, "wasm-rt-exceptions-impl.c"),
+          `-I${nativeDir}`,
+          "-o",
+          nativeSo,
+        ];
 
         console.log(`Compiling native C code to shared library...`);
-        console.log(`> ${compileCmd}`);
-        execSync(compileCmd, { stdio: "inherit" });
+        console.log(`> ${cc} ${compileArgs.join(" ")}`);
+        execFileSync(cc, compileArgs, { stdio: "inherit" });
         console.log(`Successfully compiled native shared library at ${nativeSo}`);
       } catch {
         console.warn(

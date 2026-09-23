@@ -1,5 +1,5 @@
 import { CCSMatrix } from "../autodiff/coloring";
-import { ChunkedInt32Array, createChunkedInt32Array } from "../core/array";
+import { ChunkedInt32Array, createChunkedInt32Array, UnmanagedFloat64Array, UnmanagedInt32Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 
 /**
@@ -19,6 +19,9 @@ export class SparseLU {
   // Row permutation vector P
   perm: ChunkedInt32Array;
   permInv: ChunkedInt32Array;
+
+  @inline get lValues(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.lValuesPtr); }
+  @inline get uValues(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.uValuesPtr); }
 
   init(n: u32): void {
     this.n = n;
@@ -53,51 +56,56 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
   // Dense working accumulator vector
   let denseXPtr = atomicChunkAlloc(n * 8);
   let touchedPtr = atomicChunkAlloc(n * 4);
+  let denseX = changetype<UnmanagedFloat64Array>(denseXPtr);
+  let touched = changetype<UnmanagedInt32Array>(touchedPtr);
 
   // Allocate max estimation buffers for L and U values
   let maxNnz = A.nnz * 4 + n * 4;
   lu.lValuesPtr = atomicChunkAlloc(maxNnz * 8);
   lu.uValuesPtr = atomicChunkAlloc(maxNnz * 8);
+  let lValues = lu.lValues;
+  let uValues = lu.uValues;
+  let aValues = A.values;
 
   for (let k: u32 = 0; k < n; k++) {
     // 1. Unpack column k of A into dense accumulator
     for (let i: u32 = 0; i < n; i++) {
-      store<f64>(denseXPtr + i * 8, 0.0);
-      store<i32>(touchedPtr + i * 4, 0);
+      denseX[i] = 0.0;
+      touched[i] = 0;
     }
 
     let aStart = A.colPtr.get(k) as u32;
     let aEnd = A.colPtr.get(k + 1) as u32;
     for (let p: u32 = aStart; p < aEnd; p++) {
       let r = A.rowIndices.get(p) as u32;
-      let val = load<f64>(A.valuesPtr + p * 8);
+      let val = aValues[p];
       let permR = lu.perm.get(r) as u32;
-      store<f64>(denseXPtr + permR * 8, val);
-      store<i32>(touchedPtr + permR * 4, 1);
+      denseX[permR] = val;
+      touched[permR] = 1;
     }
 
     // 2. Triangular solve with previously computed L columns: L[0..k-1] * u = a_k
     for (let j: u32 = 0; j < k; j++) {
-      let xj = load<f64>(denseXPtr + j * 8);
+      let xj = denseX[j];
       if (Math.abs(xj) < 1e-15) continue;
 
       let lStart = lu.lColPtr.get(j) as u32;
       let lEnd = lu.lColPtr.get(j + 1) as u32;
       for (let p: u32 = lStart + 1; p < lEnd; p++) {
         let r = lu.lRowIndices.get(p) as u32;
-        let lVal = load<f64>(lu.lValuesPtr + p * 8);
-        let curr = load<f64>(denseXPtr + r * 8);
-        store<f64>(denseXPtr + r * 8, curr - xj * lVal);
-        store<i32>(touchedPtr + r * 4, 1);
+        let lVal = lValues[p];
+        let curr = denseX[r];
+        denseX[r] = curr - xj * lVal;
+        touched[r] = 1;
       }
     }
 
     // 3. Partial Pivoting: Find maximum entry in denseX[k..n-1]
-    let maxVal: f64 = Math.abs(load<f64>(denseXPtr + k * 8));
+    let maxVal: f64 = Math.abs(denseX[k]);
     let pivotRow: u32 = k;
 
     for (let r: u32 = k + 1; r < n; r++) {
-      let val = Math.abs(load<f64>(denseXPtr + r * 8));
+      let val = Math.abs(denseX[r]);
       if (val > maxVal) {
         maxVal = val;
         pivotRow = r;
@@ -106,15 +114,15 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
 
     if (maxVal < 1e-14) {
       // Perturb near-singular pivot for numerical stability
-      store<f64>(denseXPtr + k * 8, 1e-6);
+      denseX[k] = 1e-6;
       maxVal = 1e-6;
     }
 
     // Swap pivot rows if needed
     if (pivotRow != k) {
-      let tmp = load<f64>(denseXPtr + k * 8);
-      store<f64>(denseXPtr + k * 8, load<f64>(denseXPtr + pivotRow * 8));
-      store<f64>(denseXPtr + pivotRow * 8, tmp);
+      let tmp = denseX[k];
+      denseX[k] = denseX[pivotRow];
+      denseX[pivotRow] = tmp;
 
       let pK = lu.perm.get(k);
       let pPiv = lu.perm.get(pivotRow);
@@ -122,14 +130,14 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
       lu.perm.set(pivotRow, pK);
     }
 
-    let pivotVal = load<f64>(denseXPtr + k * 8);
+    let pivotVal = denseX[k];
 
     // 4. Store U factor column k (rows 0..k)
     for (let r: u32 = 0; r <= k; r++) {
-      let val = load<f64>(denseXPtr + r * 8);
+      let val = denseX[r];
       if (Math.abs(val) > 1e-15 || r == k) {
         lu.uRowIndices.push(r as i32);
-        store<f64>(lu.uValuesPtr + unnz * 8, val);
+        uValues[unnz] = val;
         unnz++;
       }
     }
@@ -137,15 +145,15 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
 
     // 5. Store L factor column k (rows k..n-1, normalized by pivotVal)
     lu.lRowIndices.push(k as i32);
-    store<f64>(lu.lValuesPtr + lnnz * 8, 1.0); // Unit diagonal
+    lValues[lnnz] = 1.0; // Unit diagonal
     lnnz++;
 
     for (let r: u32 = k + 1; r < n; r++) {
-      let val = load<f64>(denseXPtr + r * 8);
+      let val = denseX[r];
       if (Math.abs(val) > 1e-15) {
         let lVal = val / pivotVal;
         lu.lRowIndices.push(r as i32);
-        store<f64>(lu.lValuesPtr + lnnz * 8, lVal);
+        lValues[lnnz] = lVal;
         lnnz++;
       }
     }
@@ -164,32 +172,36 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
 export function sparseLuSolve(lu: SparseLU, bPtr: usize, xPtr: usize): boolean {
   let n = lu.n;
   let yPtr = atomicChunkAlloc(n * 8);
+  let y = changetype<UnmanagedFloat64Array>(yPtr);
+  let b = changetype<UnmanagedFloat64Array>(bPtr);
+  let x = changetype<UnmanagedFloat64Array>(xPtr);
+  let lValues = lu.lValues;
+  let uValues = lu.uValues;
 
   // 1. Permute RHS
   for (let i: u32 = 0; i < n; i++) {
     let pIdx = lu.perm.get(i) as u32;
-    let bVal = load<f64>(bPtr + pIdx * 8);
-    store<f64>(yPtr + i * 8, bVal);
+    y[i] = b[pIdx];
   }
 
   // 2. Forward Solve: L * y = y
   for (let j: u32 = 0; j < n; j++) {
-    let yj = load<f64>(yPtr + j * 8);
+    let yj = y[j];
     if (Math.abs(yj) < 1e-15) continue;
 
     let start = lu.lColPtr.get(j) as u32;
     let end = lu.lColPtr.get(j + 1) as u32;
     for (let p: u32 = start + 1; p < end; p++) {
       let r = lu.lRowIndices.get(p) as u32;
-      let lVal = load<f64>(lu.lValuesPtr + p * 8);
-      let curr = load<f64>(yPtr + r * 8);
-      store<f64>(yPtr + r * 8, curr - yj * lVal);
+      let lVal = lValues[p];
+      let curr = y[r];
+      y[r] = curr - yj * lVal;
     }
   }
 
   // 3. Backward Solve: U * x = y
   for (let j: i32 = (n as i32) - 1; j >= 0; j--) {
-    let yj = load<f64>(yPtr + (j as u32) * 8);
+    let yj = y[j as u32];
     let start = lu.uColPtr.get(j as u32) as u32;
     let end = lu.uColPtr.get((j as u32) + 1) as u32;
 
@@ -198,7 +210,7 @@ export function sparseLuSolve(lu: SparseLU, bPtr: usize, xPtr: usize): boolean {
 
     for (let p: u32 = start; p < end; p++) {
       let r = lu.uRowIndices.get(p) as u32;
-      let uVal = load<f64>(lu.uValuesPtr + p * 8);
+      let uVal = uValues[p];
       if (r == (j as u32)) {
         diagVal = uVal;
       }
@@ -206,15 +218,15 @@ export function sparseLuSolve(lu: SparseLU, bPtr: usize, xPtr: usize): boolean {
 
     if (Math.abs(diagVal) < 1e-14) diagVal = 1e-6;
     let xj = sum / diagVal;
-    store<f64>(xPtr + (j as u32) * 8, xj);
+    x[j as u32] = xj;
 
     // Subtract contribution from remaining upper rows
     for (let p: u32 = start; p < end; p++) {
       let r = lu.uRowIndices.get(p) as u32;
       if (r < (j as u32)) {
-        let uVal = load<f64>(lu.uValuesPtr + p * 8);
-        let curr = load<f64>(yPtr + r * 8);
-        store<f64>(yPtr + r * 8, curr - uVal * xj);
+        let uVal = uValues[p];
+        let curr = y[r];
+        y[r] = curr - uVal * xj;
       }
     }
   }

@@ -6,6 +6,7 @@
 import { allocGen0, getNodePadding, getNodeByteLength, getNodeFlags, FLAG_IS_SYNTHETIC } from "./arena";
 import {
   BasicBlock,
+  DfsStackFrame,
   BLOCK_STATE_IN,
   BLOCK_STATE_OUT,
   BLOCK_STATE_TRUE,
@@ -13,6 +14,7 @@ import {
   BLOCK_FIRST_INSTR,
   IR_INSTR_NEXT,
 } from "./ir_layout";
+import { UnmanagedUint32Array } from "../core/array";
 
 export const DATAFLOW_MAX_ITERATIONS: u32 = 1000;
 
@@ -38,28 +40,32 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
   }
 
   let visitedOffset = allocGen0(numBlocks * 4);
+  let visited = changetype<UnmanagedUint32Array>(visitedOffset);
   let postOrderOffset = allocGen0(numBlocks * 4);
+  let postOrder = changetype<UnmanagedUint32Array>(postOrderOffset);
   let blockIndexMap = allocGen0(numBlocks * 8);
 
   let idx: u32 = 0;
   for (let ptr = firstBlock; ptr != 0; ptr = BasicBlock.at(ptr as usize).nextBlock) {
     store<u32>(blockIndexMap + idx * 8, ptr);
     store<u32>(blockIndexMap + idx * 8 + 4, idx);
-    store<u32>(visitedOffset + idx * 4, 0);
+    visited[idx] = 0;
     idx++;
   }
 
   let postIdx: u32 = 0;
   let stackOffset = allocGen0(numBlocks * 8);
 
-  store<u32>(stackOffset, firstBlock);
-  store<u32>(stackOffset + 4, 0);
+  let f0 = DfsStackFrame.at(stackOffset, 0);
+  f0.blk = firstBlock;
+  f0.phase = 0;
   let stackTop: u32 = 1;
 
   while (stackTop > 0) {
     stackTop--;
-    let blk = load<u32>(stackOffset + stackTop * 8);
-    let phase = load<u32>(stackOffset + stackTop * 8 + 4);
+    let frame = DfsStackFrame.at(stackOffset, stackTop);
+    let blk = frame.blk;
+    let phase = frame.phase;
 
     let blkIdx: u32 = 0xffffffff;
     for (let i: u32 = 0; i < numBlocks; i++) {
@@ -71,16 +77,17 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
     if (blkIdx == 0xffffffff) continue;
 
     if (phase == 1) {
-      store<u32>(postOrderOffset + postIdx * 4, blk);
+      postOrder[postIdx] = blk;
       postIdx++;
       continue;
     }
 
-    if (load<u32>(visitedOffset + blkIdx * 4) != 0) continue;
-    store<u32>(visitedOffset + blkIdx * 4, 1);
+    if (visited[blkIdx] != 0) continue;
+    visited[blkIdx] = 1;
 
-    store<u32>(stackOffset + stackTop * 8, blk);
-    store<u32>(stackOffset + stackTop * 8 + 4, 1);
+    let fRet = DfsStackFrame.at(stackOffset, stackTop);
+    fRet.blk = blk;
+    fRet.phase = 1;
     stackTop++;
 
     let blockObj = BasicBlock.at(blk as usize);
@@ -93,9 +100,10 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
           break;
         }
       }
-      if (fIdx != 0xffffffff && load<u32>(visitedOffset + fIdx * 4) == 0) {
-        store<u32>(stackOffset + stackTop * 8, fBranch);
-        store<u32>(stackOffset + stackTop * 8 + 4, 0);
+      if (fIdx != 0xffffffff && visited[fIdx] == 0) {
+        let fNext = DfsStackFrame.at(stackOffset, stackTop);
+        fNext.blk = fBranch;
+        fNext.phase = 0;
         stackTop++;
       }
     }
@@ -108,9 +116,10 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
           break;
         }
       }
-      if (tIdx != 0xffffffff && load<u32>(visitedOffset + tIdx * 4) == 0) {
-        store<u32>(stackOffset + stackTop * 8, tBranch);
-        store<u32>(stackOffset + stackTop * 8 + 4, 0);
+      if (tIdx != 0xffffffff && visited[tIdx] == 0) {
+        let tNext = DfsStackFrame.at(stackOffset, stackTop);
+        tNext.blk = tBranch;
+        tNext.phase = 0;
         stackTop++;
       }
     }
@@ -118,8 +127,9 @@ export function computeBlockRPO(firstBlock: u32, outRpoBuf: usize, outCountPtr: 
 
   store<u32>(outCountPtr, postIdx);
   let rpoBuf = allocGen0(postIdx * 4);
+  let rpo = changetype<UnmanagedUint32Array>(rpoBuf);
   for (let i: u32 = 0; i < postIdx; i++) {
-    store<u32>(rpoBuf + i * 4, load<u32>(postOrderOffset + (postIdx - 1 - i) * 4));
+    rpo[i] = postOrder[postIdx - 1 - i];
   }
   store<usize>(outRpoBuf, rpoBuf);
 }

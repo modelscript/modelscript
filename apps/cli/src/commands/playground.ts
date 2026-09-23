@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { dirname, join, resolve } from "node:path";
+import path, { basename, dirname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandModule } from "yargs";
 
@@ -157,17 +157,29 @@ end ChuaCircuit;`;
       } else if (urlPath?.startsWith("/vendor/")) {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const fileName = urlPath.slice(8);
-        const vendorDist = join(__dirname, "../vendor", fileName);
-        const vendorSrc = join(__dirname, "../../src/vendor", fileName);
-        const vendorPath = existsSync(vendorDist) ? vendorDist : vendorSrc;
-        res.end(existsSync(vendorPath) ? readFileSync(vendorPath) : "");
+        const fileName = basename(urlPath.slice(8));
+        const vendorDistDir = resolve(__dirname, "../vendor");
+        const vendorSrcDir = resolve(__dirname, "../../src/vendor");
+        const vendorDist = resolve(vendorDistDir, fileName);
+        const vendorSrc = resolve(vendorSrcDir, fileName);
+        let vendorPath = "";
+        if (vendorDist.startsWith(vendorDistDir + path.sep) && existsSync(vendorDist)) {
+          vendorPath = vendorDist;
+        } else if (vendorSrc.startsWith(vendorSrcDir + path.sep) && existsSync(vendorSrc)) {
+          vendorPath = vendorSrc;
+        }
+        res.end(vendorPath ? readFileSync(vendorPath) : "");
       } else if (urlPath?.startsWith("/node_modules/")) {
-        const rootNodeModules = join(__dirname, "../../../../node_modules");
-        const cliNodeModules = join(__dirname, "../../node_modules");
-        let filePath = join(cliNodeModules, urlPath.slice(14));
-        if (!existsSync(filePath)) {
-          filePath = join(rootNodeModules, urlPath.slice(14));
+        const rootNodeModules = resolve(__dirname, "../../../../node_modules");
+        const cliNodeModules = resolve(__dirname, "../../node_modules");
+        const safeSubPath = normalize(urlPath.slice(14)).replace(/^(\.\.[/\\])+/, "");
+        const cliPath = resolve(cliNodeModules, safeSubPath);
+        const rootPath = resolve(rootNodeModules, safeSubPath);
+        let filePath = "";
+        if (cliPath.startsWith(cliNodeModules + path.sep) && existsSync(cliPath)) {
+          filePath = cliPath;
+        } else if (rootPath.startsWith(rootNodeModules + path.sep) && existsSync(rootPath)) {
+          filePath = rootPath;
         }
 
         const ext = urlPath.split(".").pop()?.toLowerCase();
@@ -259,7 +271,7 @@ end ChuaCircuit;`;
             res.end(JSON.stringify({ success: true, files }));
           } catch (e: any) {
             res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));
+            res.end(JSON.stringify({ success: false, error: "Failed to bundle extension" }));
           }
         });
       } else if (urlPath === "/api/thread/hypergraph") {

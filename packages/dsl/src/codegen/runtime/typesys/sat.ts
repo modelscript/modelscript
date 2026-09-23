@@ -2,7 +2,50 @@
 // Incremental SAT Solver using Two-Watched Literals, 1-UIP Conflict Analysis,
 // VSIDS Branching, Luby Restarts, and Theory Solvers (LRA & E-Graph / EUF).
 
-import { ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
+import { ChunkedUint32Array, createChunkedUint32Array, UnmanagedUint32Array } from "../core/array";
+
+@unmanaged
+export class SatClause {
+    size: u32;
+    isLearned: u32;
+
+    @inline static at(ptr: usize): SatClause {
+        return changetype<SatClause>(ptr);
+    }
+
+    @inline getLit(index: u32): u32 {
+        return load<u32>(changetype<usize>(this) + 8 + (index << 2));
+    }
+
+    @inline setLit(index: u32, lit: u32): void {
+        store<u32>(changetype<usize>(this) + 8 + (index << 2), lit);
+    }
+
+    @inline get lit0(): u32 {
+        return load<u32>(changetype<usize>(this) + 8);
+    }
+    @inline set lit0(val: u32) {
+        store<u32>(changetype<usize>(this) + 8, val);
+    }
+
+    @inline get lit1(): u32 {
+        return load<u32>(changetype<usize>(this) + 12);
+    }
+    @inline set lit1(val: u32) {
+        store<u32>(changetype<usize>(this) + 12, val);
+    }
+}
+
+@unmanaged
+export class SatModelEntry {
+    nodeId: u32;
+    boolVal: u32;
+    numVal: f64;
+
+    @inline static at(ptr: usize): SatModelEntry {
+        return changetype<SatModelEntry>(ptr);
+    }
+}
 
 export const SAT_TRUE: u8 = 1;
 export const SAT_FALSE: u8 = 2;
@@ -209,10 +252,11 @@ export function addWatcher(lit: u32, clausePtr: u32): void {
 export function addClause(lits: ChunkedUint32Array, count: u32): u32 {
     if (count == 0) return 0;
     let clausePtr = satArenaOffset;
-    store<u32>(clausePtr, count);
-    store<u32>(clausePtr + 4, 0); // isLearned = 0
+    let cl = SatClause.at(clausePtr);
+    cl.size = count;
+    cl.isLearned = 0;
     for (let i: u32 = 0; i < count; i++) {
-        store<u32>(clausePtr + 8 + i * 4, lits[i]);
+        cl.setLit(i, lits[i]);
     }
     satArenaOffset += 8 + count * 4;
     if (count >= 2) {
@@ -226,10 +270,11 @@ export function addClause(lits: ChunkedUint32Array, count: u32): u32 {
 
 export function addClause2(lit0: u32, lit1: u32): u32 {
     let clausePtr = satArenaOffset;
-    store<u32>(clausePtr, 2);
-    store<u32>(clausePtr + 4, 0);
-    store<u32>(clausePtr + 8, lit0);
-    store<u32>(clausePtr + 12, lit1);
+    let cl = SatClause.at(clausePtr);
+    cl.size = 2;
+    cl.isLearned = 0;
+    cl.lit0 = lit0;
+    cl.lit1 = lit1;
     satArenaOffset += 16;
     addWatcher(lit0 ^ 1, clausePtr);
     addWatcher(lit1 ^ 1, clausePtr);
@@ -274,14 +319,15 @@ export function propagateBCP(): u32 {
         while (currIdx != 0) {
             let clausePtr = watcherClause[currIdx];
             let nextIdx = watcherNext[currIdx];
-            let clauseSize = load<u32>(clausePtr);
+            let cl = SatClause.at(clausePtr);
+            let clauseSize = cl.size;
             
-            let lit0 = load<u32>(clausePtr + 8);
-            let lit1 = load<u32>(clausePtr + 12);
+            let lit0 = cl.lit0;
+            let lit1 = cl.lit1;
             
             if (lit0 == falseLit) {
-                store<u32>(clausePtr + 8, lit1);
-                store<u32>(clausePtr + 12, lit0);
+                cl.lit0 = lit1;
+                cl.lit1 = lit0;
                 lit0 = lit1;
                 lit1 = falseLit;
             }
@@ -294,10 +340,10 @@ export function propagateBCP(): u32 {
             
             let foundReplacement: boolean = false;
             for (let k: u32 = 2; k < clauseSize; k++) {
-                let litK = load<u32>(clausePtr + 8 + k * 4);
+                let litK = cl.getLit(k);
                 if (litValue(litK) != SAT_FALSE) {
-                    store<u32>(clausePtr + 12, litK);
-                    store<u32>(clausePtr + 8 + k * 4, lit1);
+                    cl.lit1 = litK;
+                    cl.setLit(k, lit1);
                     
                     if (prevIdx == 0) {
                         watchersHead[falseLit] = nextIdx;
@@ -341,9 +387,10 @@ export function analyzeConflict(conflictClausePtr: u32): u32 {
     let p: u32 = 0xFFFFFFFF;
     
     while (true) {
-        let rSize = load<u32>(resolvePtr);
+        let cl = SatClause.at(resolvePtr);
+        let rSize = cl.size;
         for (let i: u32 = 0; i < rSize; i++) {
-            let lit = load<u32>(resolvePtr + 8 + i * 4);
+            let lit = cl.getLit(i);
             let v = lit >> 1;
             
             if (seen[v] != 0) continue;
@@ -397,21 +444,20 @@ export function analyzeConflict(conflictClausePtr: u32): u32 {
 }
 
 export function addLearnedClause(clausePtr: u32): void {
-    let size = load<u32>(clausePtr);
-    if (size >= 2) {
-        let lit0 = load<u32>(clausePtr + 8);
-        let lit1 = load<u32>(clausePtr + 12);
-        addWatcher(lit0 ^ 1, clausePtr);
-        addWatcher(lit1 ^ 1, clausePtr);
+    let cl = SatClause.at(clausePtr);
+    if (cl.size >= 2) {
+        addWatcher(cl.lit0 ^ 1, clausePtr);
+        addWatcher(cl.lit1 ^ 1, clausePtr);
     }
 }
 
 function commitLearnedClause(): u32 {
     let clausePtr = satArenaOffset;
-    store<u32>(clausePtr, learntSize);
-    store<u32>(clausePtr + 4, 1);
+    let cl = SatClause.at(clausePtr);
+    cl.size = learntSize;
+    cl.isLearned = 1;
     for (let i: u32 = 0; i < learntSize; i++) {
-        store<u32>(clausePtr + 8 + i * 4, learntBuf[i]);
+        cl.setLit(i, learntBuf[i]);
     }
     satArenaOffset += 8 + learntSize * 4;
     
@@ -446,7 +492,7 @@ function reduceLearnedClauses(): void {
     let writeIdx: u32 = 0;
     for (let i: u32 = 0; i < learnedClauseCount; i++) {
         let lbd = learnedClauseLBDs[i];
-        let size = load<u32>(learnedClausePtrs[i]);
+        let size = SatClause.at(learnedClausePtrs[i]).size;
         if (lbd <= LBD_KEEP_THRESHOLD || size <= 2) {
             learnedClausePtrs[writeIdx] = learnedClausePtrs[i];
             learnedClauseLBDs[writeIdx] = lbd;
@@ -504,8 +550,9 @@ export function registerLraConstraint(satVar: u32, coeffsPtr: u32, limit: f64, i
 
 export function satAddClause(clausePtr: u32, len: u32): boolean {
     let chunk = createChunkedUint32Array(len);
+    let clView = changetype<UnmanagedUint32Array>(clausePtr);
     for (let i: u32 = 0; i < len; i++) {
-        chunk[i] = load<u32>(clausePtr + i * 4);
+        chunk[i] = clView[i];
     }
     return addClause(chunk, len) != 0;
 }
@@ -519,16 +566,18 @@ export function checkTheoryLRA(): u32 {
     let feasible = checkSimplexFeasibility();
     if (!feasible) {
         let corePtr = extractUnsatCore(0);
-        let coreSize = load<u32>(corePtr);
+        let core = changetype<UnmanagedUint32Array>(corePtr);
+        let coreSize = core[0];
         if (coreSize == 0) return 0;
         
         let conflictClausePtr = satArenaOffset;
-        store<u32>(conflictClausePtr, coreSize);
-        store<u32>(conflictClausePtr + 4, 1);
+        let cl = SatClause.at(conflictClausePtr);
+        cl.size = coreSize;
+        cl.isLearned = 1;
         for (let i: u32 = 0; i < coreSize; i++) {
-            let nodeId = load<u32>(corePtr + 4 + i * 4);
+            let nodeId = core[1 + i];
             let satVar = nodeToSatVar[nodeId];
-            store<u32>(conflictClausePtr + 8 + i * 4, (satVar << 1) ^ 1);
+            cl.setLit(i, (satVar << 1) ^ 1);
         }
         satArenaOffset += 8 + coreSize * 4;
         return conflictClausePtr;
@@ -601,10 +650,11 @@ function checkTheoryEUF(): u32 {
             } else {
                 if (ufFind(t1) == ufFind(t2)) {
                     let conflictClausePtr = satArenaOffset;
-                    store<u32>(conflictClausePtr, 2);
-                    store<u32>(conflictClausePtr + 4, 1);
-                    store<u32>(conflictClausePtr + 8, (v << 1));
-                    store<u32>(conflictClausePtr + 12, (v << 1) ^ 1);
+                    let cl = SatClause.at(conflictClausePtr);
+                    cl.size = 2;
+                    cl.isLearned = 1;
+                    cl.lit0 = (v << 1);
+                    cl.lit1 = (v << 1) ^ 1;
                     satArenaOffset += 16;
                     return conflictClausePtr;
                 }
@@ -671,15 +721,15 @@ export function extractModel(): u32 {
         let nodeId = satVarToNode[v];
         if (nodeId == 0) continue;
         
-        let entryPtr = modelDataOffset + modelEntryCount * 16;
-        store<u32>(entryPtr, nodeId);
-        store<u32>(entryPtr + 4, val == SAT_TRUE ? 1 : 0);
-        store<f64>(entryPtr + 8, val == SAT_TRUE ? 1.0 : 0.0);
+        let entry = SatModelEntry.at(modelDataOffset + modelEntryCount * sizeof<SatModelEntry>());
+        entry.nodeId = nodeId;
+        entry.boolVal = val == SAT_TRUE ? 1 : 0;
+        entry.numVal = val == SAT_TRUE ? 1.0 : 0.0;
         modelEntryCount++;
     }
     
-    let headerPtr = modelDataOffset + modelEntryCount * 16;
-    store<u32>(headerPtr, modelEntryCount);
+    let headerPtr = modelDataOffset + modelEntryCount * sizeof<SatModelEntry>();
+    changetype<UnmanagedUint32Array>(headerPtr)[0] = modelEntryCount;
     satArenaOffset = headerPtr + 4;
     return modelDataOffset;
 }

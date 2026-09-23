@@ -5,6 +5,16 @@
 
 import { dropComponentGhost, initGraph, setDiagramOptions, updateParameterText } from "@modelscript/diagram";
 
+function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // Add global binding for close button
 window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("properties-close")?.addEventListener("click", () => {
@@ -250,8 +260,9 @@ function showProperties(nodeData: any) {
           `;
           for (const field of group.fields || []) {
             const val = props.values?.[field.key] ?? field.defaultValue ?? "";
-            const escapedVal = String(val).replace(/"/g, "&quot;");
-            const escapedDesc = (field.description || "").replace(/"/g, "&quot;");
+            const escapedVal = escapeHtml(val);
+            const escapedDesc = escapeHtml(field.description || "");
+            const escapedLabel = escapeHtml(field.label);
 
             let isDisabled = false;
             if (field.enabledIf && props.values) {
@@ -267,20 +278,20 @@ function showProperties(nodeData: any) {
               const isChecked = val === true || val === "true";
               html += `
                 <div class="prop-group" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; opacity: ${isDisabled ? 0.5 : 1};">
-                  <label class="prop-label" title="${escapedDesc}">${field.label}</label>
+                  <label class="prop-label" title="${escapedDesc}">${escapedLabel}</label>
                   <input type="checkbox" class="prop-checkbox prop-input-property" data-prop="${field.key}" ${isChecked ? "checked" : ""} ${isDisabled ? "disabled" : ""} />
                 </div>
               `;
             } else if (field.kind === "choice" && Array.isArray(field.choices)) {
               html += `
                 <div class="prop-group" style="opacity: ${isDisabled ? 0.5 : 1};">
-                  <label class="prop-label" title="${escapedDesc}">${field.label}</label>
+                  <label class="prop-label" title="${escapedDesc}">${escapedLabel}</label>
                   <select class="prop-select prop-input-property" data-prop="${field.key}" style="width: 100%; border-radius: 4px; padding: 4px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border);" ${isDisabled ? "disabled" : ""}>
                     ${field.choices
                       .map((c: any) => {
                         const cVal = typeof c === "string" ? c : c.value;
                         const cLabel = typeof c === "string" ? c : c.label;
-                        return `<option value="${cVal}" ${String(cVal) === String(val) ? "selected" : ""}>${cLabel}</option>`;
+                        return `<option value="${escapeHtml(cVal)}" ${String(cVal) === String(val) ? "selected" : ""}>${escapeHtml(cLabel)}</option>`;
                       })
                       .join("")}
                   </select>
@@ -289,19 +300,20 @@ function showProperties(nodeData: any) {
             } else if (field.kind === "codeBlock") {
               html += `
                 <div class="prop-group" style="display: flex; flex-direction: column; gap: 4px;">
-                  <label class="prop-label" title="${escapedDesc}">${field.label}</label>
+                  <label class="prop-label" title="${escapedDesc}">${escapedLabel}</label>
                   <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.4; max-height: 200px; overflow-y: auto;">
-                    ${val}
+                    ${escapedVal}
                   </div>
                 </div>
               `;
             } else {
+              const escapedUnit = field.unit ? `[${escapeHtml(field.unit)}]` : "";
               html += `
                 <div class="prop-group" style="opacity: ${isDisabled ? 0.5 : 1};">
-                  <label class="prop-label" title="${escapedDesc}">${field.label} ${field.unit ? `[${field.unit}]` : ""}</label>
+                  <label class="prop-label" title="${escapedDesc}">${escapedLabel} ${escapedUnit}</label>
                   <div style="display: flex; gap: 4px; align-items: center;">
                     <input type="text" class="prop-input prop-input-property" data-prop="${field.key}" value="${escapedVal}" ${field.readOnly ? "readonly" : ""} ${isDisabled ? "disabled" : ""} style="flex: 1;" />
-                    ${field.unit ? `<span style="font-size: 11px; color: var(--vscode-descriptionForeground);">${field.unit}</span>` : ""}
+                    ${field.unit ? `<span style="font-size: 11px; color: var(--vscode-descriptionForeground);">${escapeHtml(field.unit)}</span>` : ""}
                   </div>
                 </div>
               `;
@@ -318,12 +330,14 @@ function showProperties(nodeData: any) {
       if (props.parameters && props.parameters.length > 0) {
         html += `<div style="margin-top:24px; margin-bottom:12px; font-weight:600; text-transform:uppercase; font-size:11px; color:var(--vscode-sideBarTitle-foreground)">Parameters</div>`;
         for (const p of props.parameters as any[]) {
-          const escapedValue = (p.value || "").replace(/"/g, "&quot;");
-          const escapedDescParam = (p.description || "").replace(/"/g, "&quot;");
+          const escapedValue = escapeHtml(p.value || "");
+          const escapedDescParam = escapeHtml(p.description || "");
+          const escapedParamName = escapeHtml(p.name);
+          const escapedUnit = p.unit ? `[${escapeHtml(p.unit)}]` : "";
           html += `
             <div class="prop-group">
-              <label class="prop-label" title="${escapedDescParam}">${p.name} ${p.unit ? `[${p.unit}]` : ""}</label>
-              <input type="text" class="prop-input prop-input-param prop-input-property" data-param="${p.name}" data-prop="${p.name}" value="${escapedValue}" />
+              <label class="prop-label" title="${escapedDescParam}">${escapedParamName} ${escapedUnit}</label>
+              <input type="text" class="prop-input prop-input-param prop-input-property" data-param="${escapedParamName}" data-prop="${escapedParamName}" value="${escapedValue}" />
             </div>
           `;
         }
@@ -334,7 +348,7 @@ function showProperties(nodeData: any) {
           <details open style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
             <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Information</summary>
             <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
-              ${props.docInfo}
+              ${escapeHtml(props.docInfo)}
             </div>
           </details>
         `;
@@ -345,7 +359,7 @@ function showProperties(nodeData: any) {
           <details style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
             <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Revisions</summary>
             <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
-              ${props.docRevisions}
+              ${escapeHtml(props.docRevisions)}
             </div>
           </details>
         `;

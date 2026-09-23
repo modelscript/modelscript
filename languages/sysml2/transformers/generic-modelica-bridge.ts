@@ -182,7 +182,7 @@ export class GenericModelicaBridge {
     const constraints: string[] = [];
 
     // Extract attributes
-    const attrRegex = /attribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\s*=\s*([^;]+))?;/g;
+    const attrRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\s*=\s*([^;]*?))?\s*;/g;
     let aMatch: RegExpExecArray | null;
     while ((aMatch = attrRegex.exec(targetSource)) !== null) {
       attributes.push({
@@ -194,12 +194,14 @@ export class GenericModelicaBridge {
     }
 
     // Extract ports (supporting port p : Type, port ~p : Type, port p : ~Type)
-    const portRegex = /port\s+(~)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(~)?\s*([A-Za-z0-9_.]+);/g;
+    const portRegex = /\bport\s+(~?\s*[A-Za-z_][A-Za-z0-9_]*)\s*:\s*(~?\s*[A-Za-z0-9_.]+)\s*;/g;
     let pMatch: RegExpExecArray | null;
     while ((pMatch = portRegex.exec(targetSource)) !== null) {
-      const isConjugated = Boolean(pMatch[1] || pMatch[3]);
-      const portName = pMatch[2];
-      const portType = pMatch[4];
+      const rawName = pMatch[1].trim();
+      const rawType = pMatch[2].trim();
+      const isConjugated = rawName.startsWith("~") || rawType.startsWith("~");
+      const portName = rawName.replace(/^~\s*/, "");
+      const portType = rawType.replace(/^~\s*/, "");
       const isInput = portType.toLowerCase().includes("in") && !portType.toLowerCase().includes("pin");
       const isOutput = portType.toLowerCase().includes("out");
 
@@ -212,17 +214,28 @@ export class GenericModelicaBridge {
     }
 
     // Extract part usages (e.g., part batt : Battery; or part m1 : Motor;)
-    const partUsageRegex =
-      /\bpart\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\[([0-9.]+)\])?(?:\s*\{([^}]*)\})?(?:\s*=\s*([^;]+))?;/g;
+    const partHeaderRegex = /\bpart\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)/g;
     let puMatch: RegExpExecArray | null;
-    while ((puMatch = partUsageRegex.exec(targetSource)) !== null) {
+    while ((puMatch = partHeaderRegex.exec(targetSource)) !== null) {
       const partName = puMatch[1];
       const partType = puMatch[2];
-      const multiplicity = puMatch[3];
-      const body = puMatch[4];
+      const afterPos = puMatch.index + puMatch[0].length;
+      const semiPos = targetSource.indexOf(";", afterPos);
+      if (semiPos === -1) break;
+      const rest = targetSource.slice(afterPos, semiPos);
+      partHeaderRegex.lastIndex = semiPos + 1;
+
+      // Extract multiplicity [1..*] or [3]
+      const multMatch = rest.match(/\[([0-9.]+)\]/);
+      const multiplicity = multMatch ? multMatch[1] : undefined;
+
+      // Extract body if { ... }
       const inlineAttributes: Record<string, string | number> = {};
-      if (body) {
-        const bodyAttrRegex = /attribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/g;
+      const openBrace = rest.indexOf("{");
+      const closeBrace = rest.lastIndexOf("}");
+      if (openBrace !== -1 && closeBrace > openBrace) {
+        const body = rest.slice(openBrace + 1, closeBrace);
+        const bodyAttrRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]*?)\s*;/g;
         let baMatch: RegExpExecArray | null;
         while ((baMatch = bodyAttrRegex.exec(body)) !== null) {
           const valStr = baMatch[2].trim();
@@ -230,6 +243,7 @@ export class GenericModelicaBridge {
           inlineAttributes[baMatch[1]] = Number.isNaN(num) ? valStr : num;
         }
       }
+
       parts.push({
         name: partName,
         type: partType,
@@ -250,10 +264,15 @@ export class GenericModelicaBridge {
     }
 
     // Extract constraints
-    const constrRegex = /assert\s+constraint\s*\{([^}]+)\}/g;
+    const constrRegex = /\bassert\s+constraint\s*\{/g;
     let constrMatch: RegExpExecArray | null;
     while ((constrMatch = constrRegex.exec(targetSource)) !== null) {
-      constraints.push(constrMatch[1].trim());
+      const start = constrMatch.index + constrMatch[0].length;
+      const end = targetSource.indexOf("}", start);
+      if (end !== -1) {
+        constraints.push(targetSource.slice(start, end).trim());
+        constrRegex.lastIndex = end + 1;
+      }
     }
 
     return {
@@ -283,7 +302,7 @@ export class GenericModelicaBridge {
 
     // Extract parameters and variables
     const declRegex =
-      /(?:^|\s)(parameter\s+)?\b(Real|Integer|Boolean|String)\b\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;]+))?;/g;
+      /\b(?:(parameter)\s+)?(Real|Integer|Boolean|String)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;]*?))?\s*;/g;
     let dMatch: RegExpExecArray | null;
     while ((dMatch = declRegex.exec(modelicaSource)) !== null) {
       attributes.push({
@@ -295,12 +314,18 @@ export class GenericModelicaBridge {
     }
 
     // Extract connectors / ports (e.g., Flange_a, Flange_b, Pin, PositivePin, NegativePin, HeatPort_a, RealInput, RealOutput)
-    const portRegex =
-      /(?:[A-Za-z0-9_]+\.)*([A-Za-z0-9_]*?(?:Pin|Flange|Flange_[ab]|Port|HeatPort_[ab]|Terminal|Plug|RealInput|RealOutput))\s+([A-Za-z_][A-Za-z0-9_]*);/g;
+    const portDeclRegex = /\b([A-Za-z0-9_.]+)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     let pMatch: RegExpExecArray | null;
-    while ((pMatch = portRegex.exec(modelicaSource)) !== null) {
-      const rawType = pMatch[1];
-      const name = pMatch[2];
+    while ((pMatch = portDeclRegex.exec(modelicaSource)) !== null) {
+      const fullType = pMatch[1];
+      const typeParts = fullType.split(".");
+      const rawType = typeParts[typeParts.length - 1];
+      const isKnownPort =
+        /^(?:Pin|PositivePin|NegativePin|Flange|Flange_[ab]|Port|HeatPort_[ab]|Terminal|Plug|RealInput|RealOutput)$/.test(
+          rawType,
+        );
+      if (!isKnownPort) continue;
+      const portName = pMatch[2];
       const isConjugated = rawType.endsWith("_b") || rawType.includes("NegativePin") || rawType === "RealOutput";
 
       let baseType = rawType;
@@ -312,7 +337,7 @@ export class GenericModelicaBridge {
 
       ports.push({
         type: baseType,
-        name,
+        name: portName,
         direction: rawType === "RealInput" ? "in" : rawType === "RealOutput" ? "out" : "inout",
         isConjugated,
       });

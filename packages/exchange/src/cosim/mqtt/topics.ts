@@ -117,11 +117,19 @@ export function parseDataTopic(topic: string): {
   participantId: string;
   variableName: string;
 } | null {
-  const match = topic.match(/\/line\/([^/]+)\/cell\/([^/]+)\/data\/(.+)$/);
-  if (!match?.[1] || !match[2] || !match[3]) return null;
-  return {
-    sessionId: match[1],
-    participantId: match[2],
-    variableName: match[3],
-  };
+  const parts = topic.split("/");
+  const lineIdx = parts.lastIndexOf("line");
+  if (lineIdx >= 0 && parts[lineIdx + 2] === "cell" && parts[lineIdx + 4] === "data") {
+    const sessionId = parts[lineIdx + 1];
+    const participantId = parts[lineIdx + 3];
+    const variableName = parts.slice(lineIdx + 5).join("/");
+    if (sessionId && participantId && variableName) {
+      return {
+        sessionId,
+        participantId,
+        variableName,
+      };
+    }
+  }
+  return null;
 }

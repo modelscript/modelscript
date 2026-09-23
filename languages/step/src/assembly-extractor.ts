@@ -23,13 +23,45 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   const datums = new Map<string, StepDatum>();
   const datumSystems: StepDatumSystem[] = [];
 
-  const entityPattern = /#(\d+)\s*=\s*([A-Z][A-Z0-9_]*)\(([^]*?)\)\s*;/g;
-  let match: RegExpExecArray | null;
-
   // First pass: collect all entities into a map for easy cross-referencing
   const entities = new Map<string, { type: string; args: string }>();
-  while ((match = entityPattern.exec(text)) !== null) {
-    entities.set(`#${match[1]}`, { type: match[2], args: match[3] });
+  const headerRegex = /#(\d+)\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
+  let headerMatch: RegExpExecArray | null;
+
+  while ((headerMatch = headerRegex.exec(text)) !== null) {
+    const id = `#${headerMatch[1]}`;
+    const type = headerMatch[2];
+    const argsStart = headerMatch.index + headerMatch[0].length;
+    let depth = 1;
+    let pos = argsStart;
+    let inString = false;
+    while (pos < text.length) {
+      const ch = text[pos];
+      if (ch === "'" && text[pos - 1] !== "\\") {
+        inString = !inString;
+      } else if (!inString) {
+        if (ch === "(") depth++;
+        else if (ch === ")") {
+          depth--;
+          if (depth === 0) break;
+        } else if (ch === ";") {
+          break;
+        }
+      }
+      pos++;
+    }
+    const args = text.slice(argsStart, pos);
+    entities.set(id, { type, args });
+    let endPos = pos;
+    if (text[endPos] === ")") endPos++;
+    while (
+      endPos < text.length &&
+      (text[endPos] === " " || text[endPos] === "\t" || text[endPos] === "\r" || text[endPos] === "\n")
+    ) {
+      endPos++;
+    }
+    if (text[endPos] === ";") endPos++;
+    headerRegex.lastIndex = endPos;
   }
 
   // Helper to parse arguments (handles simple nested parens/strings)

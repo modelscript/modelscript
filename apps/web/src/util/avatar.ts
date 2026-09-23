@@ -1,6 +1,13 @@
 export function getAvatarUrl(username: string, originalUrl?: string): string {
-  if (originalUrl && !originalUrl.includes("ui-avatars.com")) {
-    return originalUrl;
+  if (originalUrl) {
+    try {
+      const hostname = new URL(originalUrl).hostname;
+      if (hostname !== "ui-avatars.com" && !hostname.endsWith(".ui-avatars.com")) {
+        return originalUrl;
+      }
+    } catch {
+      // Invalid URL, continue to generated avatar
+    }
   }
 
   const initials = (username || "?").substring(0, 2).toUpperCase();

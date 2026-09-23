@@ -16,7 +16,14 @@ interface FeedItemProcessor {
 const feedProcessors: FeedItemProcessor[] = [
   // YouTube Handler
   {
-    matchUrl: (url) => url.includes("youtube.com"),
+    matchUrl: (url) => {
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+        return host === "youtube.com" || host.endsWith(".youtube.com");
+      } catch {
+        return false;
+      }
+    },
     processItem: (item, feed, database) => {
       let content = `**${item.title}**\n\n`;
       let artifactViewId: number | undefined;
@@ -52,7 +59,14 @@ const feedProcessors: FeedItemProcessor[] = [
   },
   // DailyMotion Handler (Example template)
   {
-    matchUrl: (url) => url.includes("dailymotion.com"),
+    matchUrl: (url) => {
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+        return host === "dailymotion.com" || host.endsWith(".dailymotion.com");
+      } catch {
+        return false;
+      }
+    },
     processItem: (item) => {
       // Implement specific DailyMotion media extraction here
       let content = `**${item.title}**\n\n`;

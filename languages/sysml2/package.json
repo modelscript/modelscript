@@ -23,6 +23,14 @@
       "types": "./dist/src/constraint-extractor.d.ts",
       "default": "./dist/src/constraint-extractor.js"
     },
+    "./dimensions": {
+      "types": "./dist/src/dimensions.d.ts",
+      "default": "./dist/src/dimensions.js"
+    },
+    "./smt-bridge": {
+      "types": "./dist/src/smt-bridge.d.ts",
+      "default": "./dist/src/smt-bridge.js"
+    },
     "./reasoner-bridge": {
       "types": "./dist/src/reasoner-bridge.d.ts",
       "default": "./dist/src/reasoner-bridge.js"

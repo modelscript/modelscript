@@ -295,3 +295,426 @@ export function analyzeSafetyAndFaultTree(
     summary,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Dynamic Fault Trees (DFT): Temporal Gates & Minimal Cut Sequences (MCSQ)
+// ---------------------------------------------------------------------------
+
+export type DftGateType = "AND" | "OR" | "VOT" | "PAND" | "SEQ" | "FDEP" | "SPARE";
+
+export interface DftGate {
+  id: string;
+  name: string;
+  type: DftGateType;
+  inputs: string[];
+  k?: number; // for VOT (k-out-of-n)
+  trigger?: string; // for FDEP
+  dependents?: string[]; // for FDEP
+  primary?: string; // for SPARE
+  spares?: string[]; // for SPARE
+}
+
+export interface DftModel {
+  topGateId: string;
+  gates: Map<string, DftGate>;
+  basicEvents: Map<string, FailureMode>;
+}
+
+export interface MinimalCutSequence {
+  order: number;
+  sequence: string[]; // Ordered sequence of basic event IDs
+  names: string[];
+  description: string;
+}
+
+export interface DftAnalysisResult {
+  topGateId: string;
+  isHazardTriggerable: boolean;
+  cutSequences: MinimalCutSequence[];
+  summary: string;
+}
+
+/**
+ * Computes event arrival times for DFT nodes under a given arrival sequence.
+ * Returns Infinity if an event/gate does not trigger.
+ */
+export function computeDftEventTimes(dft: DftModel, eventSequence: string[]): Map<string, number> {
+  const times = new Map<string, number>();
+
+  // 1. Assign basic event arrival indices (0, 1, 2, ...)
+  eventSequence.forEach((id, idx) => {
+    times.set(id, idx);
+  });
+
+  // 2. Propagate FDEP gates: when trigger fires, dependents fire at max(triggerTime, existingTime)
+  for (const gate of dft.gates.values()) {
+    if (gate.type === "FDEP" && gate.trigger && gate.dependents) {
+      const trigTime = times.get(gate.trigger);
+      if (trigTime !== undefined && trigTime < Infinity) {
+        for (const dep of gate.dependents) {
+          const prev = times.get(dep) ?? Infinity;
+          times.set(dep, Math.min(prev, trigTime));
+        }
+      }
+    }
+  }
+
+  // 3. Memoized recursive evaluation of gates
+  function getGateTime(id: string, visited: Set<string>): number {
+    if (times.has(id)) return times.get(id)!;
+    if (visited.has(id)) return Infinity; // Cycle guard
+    visited.add(id);
+
+    const gate = dft.gates.get(id);
+    if (!gate) return Infinity; // Unknown node
+
+    let resultTime = Infinity;
+
+    switch (gate.type) {
+      case "AND": {
+        let maxTime = -1;
+        for (const inputId of gate.inputs) {
+          const t = getGateTime(inputId, visited);
+          if (t === Infinity) {
+            maxTime = Infinity;
+            break;
+          }
+          if (t > maxTime) maxTime = t;
+        }
+        resultTime = maxTime;
+        break;
+      }
+
+      case "OR": {
+        let minTime = Infinity;
+        for (const inputId of gate.inputs) {
+          const t = getGateTime(inputId, visited);
+          if (t < minTime) minTime = t;
+        }
+        resultTime = minTime;
+        break;
+      }
+
+      case "VOT": {
+        const k = gate.k ?? Math.ceil(gate.inputs.length / 2);
+        const inputTimes = gate.inputs
+          .map((inId) => getGateTime(inId, visited))
+          .filter((t) => t < Infinity)
+          .sort((a, b) => a - b);
+        if (inputTimes.length >= k) {
+          resultTime = inputTimes[k - 1]!;
+        } else {
+          resultTime = Infinity;
+        }
+        break;
+      }
+
+      case "PAND": {
+        // Priority-AND: all inputs must trigger in strictly increasing order
+        const inputTimes = gate.inputs.map((inId) => getGateTime(inId, visited));
+        let valid = true;
+        for (let i = 0; i < inputTimes.length; i++) {
+          if (inputTimes[i] === Infinity) {
+            valid = false;
+            break;
+          }
+          if (i > 0 && inputTimes[i]! <= inputTimes[i - 1]!) {
+            valid = false;
+            break;
+          }
+        }
+        resultTime = valid ? inputTimes[inputTimes.length - 1]! : Infinity;
+        break;
+      }
+
+      case "SEQ": {
+        // Sequence Enforcing: must appear in sequence
+        const inputTimes = gate.inputs.map((inId) => getGateTime(inId, visited));
+        let valid = true;
+        for (let i = 0; i < inputTimes.length; i++) {
+          if (inputTimes[i] === Infinity) {
+            valid = false;
+            break;
+          }
+          if (i > 0 && inputTimes[i]! <= inputTimes[i - 1]!) {
+            valid = false;
+            break;
+          }
+        }
+        resultTime = valid ? inputTimes[inputTimes.length - 1]! : Infinity;
+        break;
+      }
+
+      case "SPARE": {
+        // Primary fails first, then spares fail sequentially
+        const pTime = gate.primary ? getGateTime(gate.primary, visited) : Infinity;
+        if (pTime === Infinity) {
+          resultTime = Infinity;
+          break;
+        }
+        const spareTimes = (gate.spares || []).map((sId) => getGateTime(sId, visited));
+        if (spareTimes.length === 0 || spareTimes.some((t) => t === Infinity || t <= pTime)) {
+          // If any spare is not failed or failed before primary was active
+          resultTime = Infinity;
+        } else {
+          resultTime = Math.max(pTime, ...spareTimes);
+        }
+        break;
+      }
+
+      default:
+        resultTime = Infinity;
+    }
+
+    visited.delete(id);
+    times.set(id, resultTime);
+    return resultTime;
+  }
+
+  getGateTime(dft.topGateId, new Set());
+  return times;
+}
+
+/**
+ * Evaluates whether a DFT triggers under a given sequence of failure events.
+ */
+export function evaluateDftSequence(dft: DftModel, eventSequence: string[]): boolean {
+  const times = computeDftEventTimes(dft, eventSequence);
+  const topTime = times.get(dft.topGateId);
+  return topTime !== undefined && topTime < Infinity;
+}
+
+/**
+ * Analyzes Dynamic Fault Trees to synthesize order-sensitive Minimal Cut Sequences (MCSQ).
+ */
+export function analyzeDynamicFaultTree(dft: DftModel, maxOrder = 3): DftAnalysisResult {
+  const basicEventIds = Array.from(dft.basicEvents.keys());
+  const discoveredSequences: string[][] = [];
+
+  // Helper: generate permutations of length k
+  function generatePermutations(arr: string[], k: number, current: string[] = []): string[][] {
+    if (current.length === k) return [current];
+    const res: string[][] = [];
+    for (const item of arr) {
+      if (!current.includes(item)) {
+        res.push(...generatePermutations(arr, k, [...current, item]));
+      }
+    }
+    return res;
+  }
+
+  for (let k = 1; k <= maxOrder; k++) {
+    const candidatePermutations = generatePermutations(basicEventIds, k);
+    for (const perm of candidatePermutations) {
+      if (evaluateDftSequence(dft, perm)) {
+        // Check minimality: is there already a subsequence/prefix in discoveredSequences?
+        const isSubsumed = discoveredSequences.some((existing) => {
+          if (existing.length >= perm.length) return false;
+          let idx = 0;
+          for (const item of perm) {
+            if (item === existing[idx]) idx++;
+            if (idx === existing.length) return true;
+          }
+          return false;
+        });
+
+        if (!isSubsumed) {
+          discoveredSequences.push(perm);
+        }
+      }
+    }
+  }
+
+  const cutSequences: MinimalCutSequence[] = discoveredSequences.map((seq) => {
+    const names = seq.map((id) => dft.basicEvents.get(id)?.name || id);
+    return {
+      order: seq.length,
+      sequence: seq,
+      names,
+      description: `Order-${seq.length} sequence: <${names.join(" -> ")}>`,
+    };
+  });
+
+  const isHazardTriggerable = cutSequences.length > 0;
+  const summary = isHazardTriggerable
+    ? `DFT synthesized ${cutSequences.length} Minimal Cut Sequences for top gate '${dft.topGateId}'.`
+    : `DFT top gate '${dft.topGateId}' is safe / unreachable under all analyzed event sequences up to order ${maxOrder}.`;
+
+  return {
+    topGateId: dft.topGateId,
+    isHazardTriggerable,
+    cutSequences,
+    summary,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// STPA (System-Theoretic Process Analysis): Unsafe Control Action (UCA) Synthesis
+// ---------------------------------------------------------------------------
+
+export type UcaCategory = "NOT_PROVIDING" | "PROVIDING_INCORRECTLY" | "TIMING_ORDER" | "DURATION";
+
+export interface ControlLoop {
+  id: string;
+  controller: string;
+  controlAction: string;
+  controlledProcess: string;
+  feedback?: string[];
+  context?: string;
+}
+
+export interface UnsafeControlAction {
+  id: string;
+  controlLoopId: string;
+  controller: string;
+  controlAction: string;
+  category: UcaCategory;
+  description: string;
+  hazardRef: string;
+  contextCondition: string;
+  safetyConstraint: string;
+}
+
+export interface StpaAnalysisResult {
+  controlLoopsCount: number;
+  totalUcasSynthesized: number;
+  ucasByCategory: Record<UcaCategory, UnsafeControlAction[]>;
+  allUcas: UnsafeControlAction[];
+  summary: string;
+}
+
+/**
+ * Synthesizes the 4 canonical STPA Unsafe Control Actions (UCAs) for each control loop.
+ */
+export function synthesizeStpaUcas(controlLoops: ControlLoop[], defaultHazard = "SystemHazard"): StpaAnalysisResult {
+  const allUcas: UnsafeControlAction[] = [];
+  const ucasByCategory: Record<UcaCategory, UnsafeControlAction[]> = {
+    NOT_PROVIDING: [],
+    PROVIDING_INCORRECTLY: [],
+    TIMING_ORDER: [],
+    DURATION: [],
+  };
+
+  let ucaCounter = 1;
+
+  for (const loop of controlLoops) {
+    const cName = loop.controller;
+    const aName = loop.controlAction;
+    const pName = loop.controlledProcess;
+    const ctx = loop.context || "critical nominal operation";
+
+    // 1. Not Providing
+    const uca1: UnsafeControlAction = {
+      id: `UCA-${ucaCounter++}`,
+      controlLoopId: loop.id,
+      controller: cName,
+      controlAction: aName,
+      category: "NOT_PROVIDING",
+      description: `Controller '${cName}' does not provide '${aName}' when required during ${ctx}.`,
+      hazardRef: defaultHazard,
+      contextCondition: `Hazard condition present but action '${aName}' is withheld.`,
+      safetyConstraint: `'${cName}' must provide '${aName}' whenever hazard conditions are detected.`,
+    };
+
+    // 2. Providing Incorrectly
+    const uca2: UnsafeControlAction = {
+      id: `UCA-${ucaCounter++}`,
+      controlLoopId: loop.id,
+      controller: cName,
+      controlAction: aName,
+      category: "PROVIDING_INCORRECTLY",
+      description: `Controller '${cName}' provides '${aName}' inappropriately or with unsafe magnitude.`,
+      hazardRef: defaultHazard,
+      contextCondition: `Action '${aName}' is commanded during safe steady-state or with invalid setpoint.`,
+      safetyConstraint: `'${cName}' must never command '${aName}' unless preconditions are verified.`,
+    };
+
+    // 3. Timing / Order
+    const uca3: UnsafeControlAction = {
+      id: `UCA-${ucaCounter++}`,
+      controlLoopId: loop.id,
+      controller: cName,
+      controlAction: aName,
+      category: "TIMING_ORDER",
+      description: `Controller '${cName}' provides '${aName}' too late, too early, or out of sequence.`,
+      hazardRef: defaultHazard,
+      contextCondition: `Action '${aName}' is delayed past maximum response deadline.`,
+      safetyConstraint: `'${cName}' must issue '${aName}' within strict bounded latency upon trigger.`,
+    };
+
+    // 4. Stopped Too Soon / Applied Too Long
+    const uca4: UnsafeControlAction = {
+      id: `UCA-${ucaCounter++}`,
+      controlLoopId: loop.id,
+      controller: cName,
+      controlAction: aName,
+      category: "DURATION",
+      description: `Controller '${cName}' stops '${aName}' prematurely or applies it for too long.`,
+      hazardRef: defaultHazard,
+      contextCondition: `Action '${aName}' duration does not match process '${pName}' response dynamics.`,
+      safetyConstraint: `'${cName}' must sustain '${aName}' until '${pName}' completes transition to safe state.`,
+    };
+
+    const group = [uca1, uca2, uca3, uca4];
+    for (const uca of group) {
+      allUcas.push(uca);
+      ucasByCategory[uca.category].push(uca);
+    }
+  }
+
+  const summary = `Synthesized ${allUcas.length} Unsafe Control Actions across ${controlLoops.length} control loop(s).`;
+
+  return {
+    controlLoopsCount: controlLoops.length,
+    totalUcasSynthesized: allUcas.length,
+    ucasByCategory,
+    allUcas,
+    summary,
+  };
+}
+
+/**
+ * Extracts candidate control loops from SysML v2 QueryDB symbols.
+ */
+export function extractSysML2ControlLoops(queryDB: QueryDB): ControlLoop[] {
+  const loops: ControlLoop[] = [];
+  const symbols = queryDB.allEntries ? queryDB.allEntries() : [];
+
+  let controller: string | undefined;
+  let action: string | undefined;
+  let process: string | undefined;
+
+  for (const sym of symbols) {
+    const name = sym.name || "";
+    const lower = name.toLowerCase();
+
+    if (lower.includes("controller") || lower.includes("ecu") || lower.includes("manager")) {
+      controller = name;
+    } else if (
+      lower.includes("action") ||
+      lower.includes("command") ||
+      lower.includes("brake") ||
+      lower.includes("thrust")
+    ) {
+      action = name;
+    } else if (
+      lower.includes("plant") ||
+      lower.includes("actuator") ||
+      lower.includes("engine") ||
+      lower.includes("process")
+    ) {
+      process = name;
+    }
+  }
+
+  if (controller && action) {
+    loops.push({
+      id: `loop_${controller}_${action}`,
+      controller,
+      controlAction: action,
+      controlledProcess: process || "Plant",
+    });
+  }
+
+  return loops;
+}

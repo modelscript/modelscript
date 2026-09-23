@@ -1,6 +1,8 @@
 // --- WASM-Native Non-Linear Newton-Raphson Algebraic Solver ---
 // Solves non-linear algebraic loops using automatic differentiation, LU factorization, and line-search damping
 
+import { DenseMatrixView, UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
+
 export let arenaOffset: u32 = 0;
 
 @external("env", "evalEquationResidual")
@@ -35,6 +37,14 @@ export function solveNewtonRaphson(
     let trialPtr = arenaOffset;
     arenaOffset += vecSize;
 
+    let jac = DenseMatrixView.at(jacPtr, dim, dim);
+    let resVec = changetype<UnmanagedFloat64Array>(resPtr);
+    let deltaVec = changetype<UnmanagedFloat64Array>(deltaPtr);
+    let trialVec = changetype<UnmanagedFloat64Array>(trialPtr);
+    let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
+    let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr);
+    let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+
     let iter: u32 = 0;
     while (iter < maxIter) {
         iter++;
@@ -42,9 +52,9 @@ export function solveNewtonRaphson(
         // 1. Evaluate Residuals F(x) and compute L2 Residual Norm
         let normSq: f64 = 0.0;
         for (let i: u32 = 0; i < dim; i++) {
-            let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+            let eqIdx = eqIndices[i];
             let res = evalEquationResidual(eqIdx, daePtr, varValuesPtr);
-            store<f64>(resPtr + i * 8, res);
+            resVec[i] = res;
             normSq += res * res;
         }
 
@@ -55,26 +65,26 @@ export function solveNewtonRaphson(
         // 2. Evaluate Jacobian Matrix J_ij = dF_i / dx_j using AD / Numerical Finite Differences
         let eps: f64 = 1e-7;
         for (let j: u32 = 0; j < dim; j++) {
-            let varIdx = load<u32>(varIndicesPtr + j * 4);
-            let origVal = load<f64>(varValuesPtr + varIdx * 8);
+            let varIdx = varIndices[j];
+            let origVal = varValues[varIdx];
 
             // Perturb x_j + eps
-            store<f64>(varValuesPtr + varIdx * 8, origVal + eps);
+            varValues[varIdx] = origVal + eps;
             for (let i: u32 = 0; i < dim; i++) {
-                let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+                let eqIdx = eqIndices[i];
                 let resPlus = evalEquationResidual(eqIdx, daePtr, varValuesPtr);
-                let baseRes = load<f64>(resPtr + i * 8);
+                let baseRes = resVec[i];
                 let deriv = (resPlus - baseRes) / eps;
-                store<f64>(jacPtr + (i * dim + j) * 8, deriv);
+                jac.set(i, j, deriv);
             }
             // Restore original x_j
-            store<f64>(varValuesPtr + varIdx * 8, origVal);
+            varValues[varIdx] = origVal;
         }
 
         // 3. Solve Linear System J * delta = -res via LU Factorization with Partial Pivoting
         // Copy -res into deltaPtr
         for (let i: u32 = 0; i < dim; i++) {
-            store<f64>(deltaPtr + i * 8, -load<f64>(resPtr + i * 8));
+            deltaVec[i] = -resVec[i];
         }
 
         let solved = solveLUInPlace(dim, jacPtr, deltaPtr);
@@ -87,33 +97,33 @@ export function solveNewtonRaphson(
 
         while (alpha >= minAlpha) {
             for (let i: u32 = 0; i < dim; i++) {
-                let varIdx = load<u32>(varIndicesPtr + i * 4);
-                let origVal = load<f64>(varValuesPtr + varIdx * 8);
-                let step = load<f64>(deltaPtr + i * 8);
-                store<f64>(trialPtr + i * 8, origVal + alpha * step);
+                let varIdx = varIndices[i];
+                let origVal = varValues[varIdx];
+                let step = deltaVec[i];
+                trialVec[i] = origVal + alpha * step;
             }
 
             // Compute Trial Residual Norm
             let trialNormSq: f64 = 0.0;
             for (let i: u32 = 0; i < dim; i++) {
-                let varIdx = load<u32>(varIndicesPtr + i * 4);
-                let trialVal = load<f64>(trialPtr + i * 8);
-                let origVal = load<f64>(varValuesPtr + varIdx * 8);
-                store<f64>(varValuesPtr + varIdx * 8, trialVal);
+                let varIdx = varIndices[i];
+                let trialVal = trialVec[i];
+                let origVal = varValues[varIdx];
+                varValues[varIdx] = trialVal;
 
-                let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+                let eqIdx = eqIndices[i];
                 let trialRes = evalEquationResidual(eqIdx, daePtr, varValuesPtr);
                 trialNormSq += trialRes * trialRes;
 
                 // Revert
-                store<f64>(varValuesPtr + varIdx * 8, origVal);
+                varValues[varIdx] = origVal;
             }
 
             if (trialNormSq < normSq) {
                 // Apply update to varValuesPtr
                 for (let i: u32 = 0; i < dim; i++) {
-                    let varIdx = load<u32>(varIndicesPtr + i * 4);
-                    store<f64>(varValuesPtr + varIdx * 8, load<f64>(trialPtr + i * 8));
+                    let varIdx = varIndices[i];
+                    varValues[varIdx] = trialVec[i];
                 }
                 stepAccepted = true;
                 break;

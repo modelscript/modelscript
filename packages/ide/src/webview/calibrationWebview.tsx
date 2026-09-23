@@ -224,6 +224,15 @@ function setStatus(text: string): void {
   if (el) el.textContent = text;
 }
 
+function escapeCalHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function showResults(): void {
   if (!finalResult) return;
   const section = document.getElementById("cal-results");
@@ -235,7 +244,7 @@ function showResults(): void {
     html += `<div>Iterations: <strong>${finalResult.iterations}</strong></div>`;
     html += `<div style="margin-top:4px;font-weight:600;">Optimal Parameters:</div>`;
     for (const [name, value] of Object.entries(params)) {
-      html += `<div style="padding-left:8px;">${name} = ${value.toPrecision(6)}</div>`;
+      html += `<div style="padding-left:8px;">${escapeCalHtml(name)} = ${value.toPrecision(6)}</div>`;
     }
     body.innerHTML = html;
   }

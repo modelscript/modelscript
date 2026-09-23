@@ -383,3 +383,47 @@ export interface DiagramExportResult {
   format: "svg" | "png" | "jpeg";
   data: string; // SVG XML string or base64 data URL
 }
+
+// ── Multi-User Collaboration Protocol ──
+
+export interface PeerPresence {
+  peerId: string;
+  name: string;
+  color: string;
+  cursor?: Point;
+  selection?: string[];
+  viewport?: { x: number; y: number; zoom: number };
+  lastActive: number;
+}
+
+export interface SpatialDelta {
+  peerId: string;
+  items: PlacementItem[];
+  timestamp: number;
+}
+
+export interface SelectionLock {
+  peerId: string;
+  peerName: string;
+  color: string;
+  componentNames: string[];
+  timestamp: number;
+}
+
+export interface DiagramComment {
+  id: string;
+  peerId: string;
+  authorName: string;
+  x: number;
+  y: number;
+  text: string;
+  timestamp: number;
+  resolved?: boolean;
+}
+
+export type CollabMessage =
+  | { type: "presence"; presence: PeerPresence }
+  | { type: "spatialDelta"; delta: SpatialDelta }
+  | { type: "selectionLock"; lock: SelectionLock }
+  | { type: "comment"; comment: DiagramComment }
+  | { type: "peerLeave"; peerId: string };

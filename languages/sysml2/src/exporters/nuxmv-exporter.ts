@@ -16,12 +16,13 @@ export interface NuXmvExportOptions {
  */
 function normalizeGuardToNuXmv(guard: string): string {
   return guard
-    .replace(/\s*&&\s*/g, " & ")
-    .replace(/\s*\band\b\s*/gi, " & ")
-    .replace(/\s*\|\|\s*/g, " | ")
-    .replace(/\s*\bor\b\s*/gi, " | ")
+    .replace(/&&/g, " & ")
+    .replace(/\band\b/gi, " & ")
+    .replace(/\|\|/g, " | ")
+    .replace(/\bor\b/gi, " | ")
     .replace(/!([^=])/g, "!$1")
     .replace(/==/g, "=")
+    .replace(/\s+/g, " ")
     .trim();
 }
 

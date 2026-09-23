@@ -1,4 +1,4 @@
-import { ChunkedInt32Array, createChunkedInt32Array } from "../core/array";
+import { ChunkedInt32Array, createChunkedInt32Array, UnmanagedFloat64Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 import { CCSMatrix } from "../autodiff/coloring";
 
@@ -24,6 +24,10 @@ export class SparseCholesky {
   // Scratch buffers for factorization and solve
   workArray: ChunkedInt32Array;
   denseCol: usize; // Pointer to f64[n]
+
+  @inline get lValues(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.lValuesPtr); }
+  @inline get dValues(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.dValuesPtr); }
+  @inline get denseColValues(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.denseCol); }
 
   init(n: u32): void {
     this.n = n;
@@ -94,10 +98,14 @@ export class SparseCholesky {
    */
   factorize(ccs: CCSMatrix, delta: f64 = 1e-9): bool {
     let n = this.n;
+    let denseCol = this.denseColValues;
+    let aValues = ccs.values;
+    let lValues = this.lValues;
+    let dValues = this.dValues;
 
     // Reset dense workspace
     for (let i: u32 = 0; i < n; i++) {
-      store<f64>(this.denseCol + i * 8, 0.0);
+      denseCol[i] = 0.0;
     }
 
     for (let j: u32 = 0; j < n; j++) {
@@ -108,28 +116,28 @@ export class SparseCholesky {
       for (let p: u32 = cStart; p < cEnd; p++) {
         let r = ccs.rowIndices.get(p) as u32;
         if (r >= j) {
-          let aVal = load<f64>(ccs.valuesPtr + p * 8);
-          store<f64>(this.denseCol + r * 8, aVal);
+          let aVal = aValues[p];
+          denseCol[r] = aVal;
         }
       }
 
       // Add dynamic diagonal regularization
-      let diagVal = load<f64>(this.denseCol + j * 8);
-      store<f64>(this.denseCol + j * 8, diagVal + delta);
+      let diagVal = denseCol[j];
+      denseCol[j] = diagVal + delta;
 
       // 2. Elimination: subtract contributions from previously computed columns k < j
       for (let k: u32 = 0; k < j; k++) {
         let lStart = this.lColPtr.get(k) as u32;
         let lEnd = this.lColPtr.get(k + 1) as u32;
 
-        let dK = load<f64>(this.dValuesPtr + k * 8);
+        let dK = dValues[k];
         if (Math.abs(dK) < 1e-14) continue;
 
         // Find L(j, k)
         let lJK: f64 = 0.0;
         for (let p: u32 = lStart; p < lEnd; p++) {
           if ((this.lRowIndices.get(p) as u32) == j) {
-            lJK = load<f64>(this.lValuesPtr + p * 8);
+            lJK = lValues[p];
             break;
           }
         }
@@ -139,20 +147,20 @@ export class SparseCholesky {
           for (let p: u32 = lStart; p < lEnd; p++) {
             let r = this.lRowIndices.get(p) as u32;
             if (r >= j) {
-              let lRK = load<f64>(this.lValuesPtr + p * 8);
-              let cur = load<f64>(this.denseCol + r * 8);
-              store<f64>(this.denseCol + r * 8, cur - lRK * scale);
+              let lRK = lValues[p];
+              let cur = denseCol[r];
+              denseCol[r] = cur - lRK * scale;
             }
           }
         }
       }
 
       // 3. Compute D(j, j) and unit diagonal L(j, j) = 1.0
-      let dJ = load<f64>(this.denseCol + j * 8);
+      let dJ = denseCol[j];
       if (dJ <= 1e-12) {
         dJ += delta > 0.0 ? delta : 1e-6;
       }
-      store<f64>(this.dValuesPtr + j * 8, dJ);
+      dValues[j] = dJ;
 
       let lStart = this.lColPtr.get(j) as u32;
       let lEnd = this.lColPtr.get(j + 1) as u32;
@@ -160,17 +168,17 @@ export class SparseCholesky {
       for (let p: u32 = lStart; p < lEnd; p++) {
         let r = this.lRowIndices.get(p) as u32;
         if (r == j) {
-          store<f64>(this.lValuesPtr + p * 8, 1.0); // Unit diagonal
+          lValues[p] = 1.0; // Unit diagonal
         } else if (r > j) {
-          let val = load<f64>(this.denseCol + r * 8);
-          store<f64>(this.lValuesPtr + p * 8, val / dJ);
+          let val = denseCol[r];
+          lValues[p] = val / dJ;
         }
       }
 
       // Reset dense workspace for next column
       for (let p: u32 = cStart; p < cEnd; p++) {
         let r = ccs.rowIndices.get(p) as u32;
-        if (r >= j) store<f64>(this.denseCol + r * 8, 0.0);
+        if (r >= j) denseCol[r] = 0.0;
       }
     }
 
@@ -184,51 +192,55 @@ export class SparseCholesky {
    */
   solve(bPtr: usize, xPtr: usize): void {
     let n = this.n;
+    let b = changetype<UnmanagedFloat64Array>(bPtr);
+    let x = changetype<UnmanagedFloat64Array>(xPtr);
+    let lValues = this.lValues;
+    let dValues = this.dValues;
 
     // 1. Forward substitution: L * y = b
     for (let i: u32 = 0; i < n; i++) {
-      store<f64>(xPtr + i * 8, load<f64>(bPtr + i * 8));
+      x[i] = b[i];
     }
 
     for (let j: u32 = 0; j < n; j++) {
-      let yJ = load<f64>(xPtr + j * 8);
+      let yJ = x[j];
       let lStart = this.lColPtr.get(j) as u32;
       let lEnd = this.lColPtr.get(j + 1) as u32;
 
       for (let p: u32 = lStart; p < lEnd; p++) {
         let r = this.lRowIndices.get(p) as u32;
         if (r > j) {
-          let lVal = load<f64>(this.lValuesPtr + p * 8);
-          let cur = load<f64>(xPtr + r * 8);
-          store<f64>(xPtr + r * 8, cur - lVal * yJ);
+          let lVal = lValues[p];
+          let cur = x[r];
+          x[r] = cur - lVal * yJ;
         }
       }
     }
 
     // 2. Diagonal scale: D * z = y => z = y / D
     for (let j: u32 = 0; j < n; j++) {
-      let yJ = load<f64>(xPtr + j * 8);
-      let dJ = load<f64>(this.dValuesPtr + j * 8);
-      store<f64>(xPtr + j * 8, yJ / dJ);
+      let yJ = x[j];
+      let dJ = dValues[j];
+      x[j] = yJ / dJ;
     }
 
     // 3. Backward substitution: L^T * x = z
     for (let j: i32 = (n - 1) as i32; j >= 0; j--) {
       let uJ = j as u32;
-      let sum = load<f64>(xPtr + uJ * 8);
+      let sum = x[uJ];
       let lStart = this.lColPtr.get(uJ) as u32;
       let lEnd = this.lColPtr.get(uJ + 1) as u32;
 
       for (let p: u32 = lStart; p < lEnd; p++) {
         let r = this.lRowIndices.get(p) as u32;
         if (r > uJ) {
-          let lVal = load<f64>(this.lValuesPtr + p * 8);
-          let xR = load<f64>(xPtr + r * 8);
+          let lVal = lValues[p];
+          let xR = x[r];
           sum -= lVal * xR;
         }
       }
 
-      store<f64>(xPtr + uJ * 8, sum);
+      x[uJ] = sum;
     }
   }
 }

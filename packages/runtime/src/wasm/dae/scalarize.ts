@@ -28,6 +28,8 @@ import {
 import {
   ChunkedInt32Array,
   createChunkedInt32Array,
+  UnmanagedFloat64Array,
+  UnmanagedUint32Array,
 } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 
@@ -65,12 +67,13 @@ export function computeFlatIndexOffset(
 
   let flatIdx: u32 = 0;
   let stride: u32 = 1;
+  let indices = changetype<UnmanagedUint32Array>(indicesPtr);
 
   for (let d: i32 = (dimCount as i32) - 1; d >= 0; d--) {
     let extent = dae.getVarShapeDim(varId, d as u32) as u32;
     let idxVal: u32 = 1;
     if ((d as u32) < numIndices) {
-      idxVal = load<u32>(indicesPtr + (d as u32) * 4);
+      idxVal = indices[d as u32];
     }
     if (idxVal > 0) idxVal -= 1; // Convert 1-based to 0-based
 
@@ -285,13 +288,15 @@ export class UniformArrayBlock {
     let cC = this.coeffCenter;
     let cL = this.coeffLeft;
     let cR = this.coeffRight;
+    let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
+    let derValues = changetype<UnmanagedFloat64Array>(derValuesPtr);
 
     for (let i: u32 = this.startIdx; i <= this.endIdx; i++) {
-      let xCenter = load<f64>(varValuesPtr + (sBase + i) * 8);
-      let xLeft = load<f64>(varValuesPtr + (sBase + i - 1) * 8);
-      let xRight = load<f64>(varValuesPtr + (sBase + i + 1) * 8);
+      let xCenter = varValues[sBase + i];
+      let xLeft = varValues[sBase + i - 1];
+      let xRight = varValues[sBase + i + 1];
       let der = cC * xCenter + cL * xLeft + cR * xRight;
-      store<f64>(derValuesPtr + (dBase + i) * 8, der);
+      derValues[dBase + i] = der;
     }
   }
 }

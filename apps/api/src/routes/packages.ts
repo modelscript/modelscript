@@ -19,6 +19,19 @@ import type { LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
+function isValidPackageName(name: string): boolean {
+  return /^[a-zA-Z0-9_.-]+$/.test(name);
+}
+
+function safeUpstreamUrl(pathname: string): URL {
+  const base = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
+  const url = new URL(pathname, base);
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Invalid protocol for upstream hub");
+  }
+  return url;
+}
+
 function walkDir(dir: string, callback: (relPath: string, content: string) => void, baseDir = dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
@@ -176,7 +189,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    */
   router.get("/:name", async (req: Request, res: Response): Promise<void> => {
     const name = req.params["name"];
-    if (typeof name !== "string") {
+    if (typeof name !== "string" || !isValidPackageName(name)) {
       res.status(400).json({ error: "Package name is required" });
       return;
     }
@@ -184,9 +197,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const versions = storage.versions(name);
     if (versions.length === 0) {
       // FEDERATION: Proxy list from upstream
-      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
       try {
-        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}`);
+        const upstreamUrl = safeUpstreamUrl(`/api/v1/libraries/${encodeURIComponent(name)}`);
+        const upstreamRes = await fetch(upstreamUrl.toString());
         if (upstreamRes.ok) {
           const data = await upstreamRes.json();
           res.json(data);
@@ -213,7 +226,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const name = req.params["name"];
     const version = req.params["version"];
 
-    if (typeof name !== "string" || typeof version !== "string") {
+    if (typeof name !== "string" || typeof version !== "string" || !isValidPackageName(name)) {
       res.status(400).json({ error: "Package name and version are required" });
       return;
     }
@@ -226,9 +239,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const file = storage.read(name, version);
     if (!file) {
       // FEDERATION: Proxy metadata from upstream
-      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
       try {
-        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}`);
+        const upstreamUrl = safeUpstreamUrl(
+          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+        );
+        const upstreamRes = await fetch(upstreamUrl.toString());
         if (upstreamRes.ok) {
           const data = await upstreamRes.json();
           res.json(data);
@@ -284,13 +299,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const extractedDir = storage.getExtractedPath(name, version);
     if (!fs.existsSync(extractedDir)) {
       // FEDERATION: Proxy from upstream
-      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
       try {
-        const upstreamUrl = isStream
-          ? `${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/files?stream=true`
-          : `${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/files`;
+        const upstreamUrl = safeUpstreamUrl(
+          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/files${isStream ? "?stream=true" : ""}`,
+        );
 
-        const upstreamRes = await fetch(upstreamUrl);
+        const upstreamRes = await fetch(upstreamUrl.toString());
         if (upstreamRes.ok) {
           if (isStream && upstreamRes.body) {
             res.setHeader("Content-Type", "application/x-ndjson");
@@ -352,9 +366,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const file = storage.read(name, version);
     if (!file) {
       // FEDERATION: Proxy download from upstream and cache it
-      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
       try {
-        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/download`);
+        const upstreamUrl = safeUpstreamUrl(
+          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/download`,
+        );
+        const upstreamRes = await fetch(upstreamUrl.toString());
         if (upstreamRes.ok) {
           const buffer = await upstreamRes.arrayBuffer();
           const nodeBuffer = Buffer.from(buffer);
@@ -547,9 +563,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     if (!fs.existsSync(bundlePath)) {
       // FEDERATION: Proxy download from upstream and cache it
-      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
       try {
-        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/lsp-bundle`);
+        const upstreamUrl = safeUpstreamUrl(
+          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/lsp-bundle`,
+        );
+        const upstreamRes = await fetch(upstreamUrl.toString());
         if (upstreamRes.ok) {
           const buffer = await upstreamRes.arrayBuffer();
           const nodeBuffer = Buffer.from(buffer);

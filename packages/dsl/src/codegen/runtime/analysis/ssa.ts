@@ -3,7 +3,7 @@
 // Dominance Frontiers (DF), and minimal Phi-node placement in AssemblyScript zero-GC linear memory.
 
 import { allocGen0 } from "../arena";
-import { BasicBlock, IRInstruction, IR_INSTR_SIZE, IR_OPCODE_PHI } from "../core/ir_layout";
+import { BasicBlock, IRInstruction, DfsStackFrame, UnmanagedUint32List, IR_INSTR_SIZE, IR_OPCODE_PHI } from "../core/ir_layout";
 import { UnmanagedUint32Array } from "../core/array";
 
 // --- Global SSA State in Linear Memory ---
@@ -28,19 +28,22 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
     let stackCapacity: u32 = maxCapacity * 4;
     let stackOffset = allocGen0(stackCapacity * 8); // [blockPtr, phase]
     let visitedMap = allocGen0(maxCapacity * 4);    // dense array of visited block pointers
+    let visited = changetype<UnmanagedUint32Array>(visitedMap);
     let visitedCount: u32 = 0;
 
     let stackTop: u32 = 0;
-    store<u32>(stackOffset, entryBlock);
-    store<u32>(stackOffset + 4, 0); // phase 0: discover
+    let f0 = DfsStackFrame.at(stackOffset, 0);
+    f0.blk = entryBlock;
+    f0.phase = 0; // phase 0: discover
     stackTop = 1;
 
     let postIdx: u32 = 0;
 
     while (stackTop > 0) {
         stackTop--;
-        let blk = load<u32>(stackOffset + stackTop * 8);
-        let phase = load<u32>(stackOffset + stackTop * 8 + 4);
+        let frame = DfsStackFrame.at(stackOffset, stackTop);
+        let blk = frame.blk;
+        let phase = frame.phase;
         let bb = BasicBlock.at(blk);
 
         if (phase == 1) {
@@ -53,7 +56,7 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
         // Check if already visited
         let alreadyVisited = false;
         for (let i: u32 = 0; i < visitedCount; i++) {
-            if (load<u32>(visitedMap + i * 4) == blk) {
+            if (visited[i] == blk) {
                 alreadyVisited = true;
                 break;
             }
@@ -62,42 +65,46 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
 
         // Record visited block
         if (visitedCount < maxCapacity) {
-            store<u32>(visitedMap + visitedCount * 4, blk);
+            visited[visitedCount] = blk;
             visitedCount++;
         }
 
         // Push phase 1 (finish / post-order assignment)
         if (stackTop < stackCapacity) {
-            store<u32>(stackOffset + stackTop * 8, blk);
-            store<u32>(stackOffset + stackTop * 8 + 4, 1);
+            let f = DfsStackFrame.at(stackOffset, stackTop);
+            f.blk = blk;
+            f.phase = 1;
             stackTop++;
         }
 
         // Push false branch
         let fBranch = bb.falseBranch;
         if (fBranch != 0 && stackTop < stackCapacity) {
-            store<u32>(stackOffset + stackTop * 8, fBranch);
-            store<u32>(stackOffset + stackTop * 8 + 4, 0);
+            let f = DfsStackFrame.at(stackOffset, stackTop);
+            f.blk = fBranch;
+            f.phase = 0;
             stackTop++;
         }
 
         // Push true branch
         let tBranch = bb.trueBranch;
         if (tBranch != 0 && stackTop < stackCapacity) {
-            store<u32>(stackOffset + stackTop * 8, tBranch);
-            store<u32>(stackOffset + stackTop * 8 + 4, 0);
+            let f = DfsStackFrame.at(stackOffset, stackTop);
+            f.blk = tBranch;
+            f.phase = 0;
             stackTop++;
         }
 
         // Push multi-way branch successors from successorList if present
         let succList = bb.successorList;
         if (succList != 0) {
-            let succCount = load<u32>(succList, 0);
-            for (let s: u32 = 0; s < succCount; s++) {
-                let sBlk = load<u32>(succList + 4 + s * 4);
+            let succs = UnmanagedUint32List.at(succList);
+            for (let s: u32 = 0; s < succs.count; s++) {
+                let sBlk = succs.get(s);
                 if (sBlk != 0 && stackTop < stackCapacity) {
-                    store<u32>(stackOffset + stackTop * 8, sBlk);
-                    store<u32>(stackOffset + stackTop * 8 + 4, 0);
+                    let f = DfsStackFrame.at(stackOffset, stackTop);
+                    f.blk = sBlk;
+                    f.phase = 0;
                     stackTop++;
                 }
             }
@@ -113,7 +120,7 @@ export function computeSSAPostOrder(entryBlock: u32): u32 {
 
     // Build Reverse Post-Order array (rpo[0] is entryBlock with max postIdx)
     for (let i: u32 = 0; i < visitedCount; i++) {
-        let blk = load<u32>(visitedMap + i * 4);
+        let blk = visited[i];
         let po = BasicBlock.at(blk).postOrder;
         let rpoIdx = ssaBlockCount - 1 - po;
         if (rpoIdx < ssaBlockCount) {
@@ -165,9 +172,9 @@ export function computeDominators(entryBlock: u32): void {
                 if (!isPred) {
                     let succList = pb.successorList;
                     if (succList != 0) {
-                        let succCount = load<u32>(succList, 0);
-                        for (let s: u32 = 0; s < succCount; s++) {
-                            if (load<u32>(succList + 4 + s * 4) == b) {
+                        let succs = UnmanagedUint32List.at(succList);
+                        for (let s: u32 = 0; s < succs.count; s++) {
+                            if (succs.get(s) == b) {
                                 isPred = true;
                                 break;
                             }
@@ -280,8 +287,9 @@ export function computeDominanceFrontiers(entryBlock: u32): u32 {
 function addBlockToDF(blockPtr: u32, dfTargetBlock: u32): void {
     let rpoIdx: u32 = 0;
     let found = false;
+    let rpo = changetype<UnmanagedUint32Array>(ssaRPOOffset);
     for (let i: u32 = 0; i < ssaBlockCount; i++) {
-        if (load<u32>(ssaRPOOffset + i * 4) == blockPtr) {
+        if (rpo[i] == blockPtr) {
             rpoIdx = i;
             found = true;
             break;
@@ -289,20 +297,13 @@ function addBlockToDF(blockPtr: u32, dfTargetBlock: u32): void {
     }
     if (!found || ssaDFOffset == 0) return;
 
-    let listPtr = load<u32>(ssaDFOffset + rpoIdx * 4);
+    let ssaDF = changetype<UnmanagedUint32Array>(ssaDFOffset);
+    let listPtr = ssaDF[rpoIdx];
     if (listPtr == 0) return;
 
-    let count = load<u32>(listPtr);
-    let cap = load<u32>(listPtr + 4);
-
-    // Check for duplicate
-    for (let i: u32 = 0; i < count; i++) {
-        if (load<u32>(listPtr + 8 + i * 4) == dfTargetBlock) return;
-    }
-
-    if (count < cap) {
-        store<u32>(listPtr + 8 + count * 4, dfTargetBlock);
-        store<u32>(listPtr, count + 1);
+    let list = UnmanagedUint32List.at(listPtr);
+    if (!list.contains(dfTargetBlock)) {
+        list.push(dfTargetBlock);
     }
 }
 
@@ -311,9 +312,11 @@ function addBlockToDF(blockPtr: u32, dfTargetBlock: u32): void {
  */
 export function getDominanceFrontier(blockPtr: u32): u32 {
     if (ssaDFOffset == 0 || ssaBlockCount == 0) return 0;
+    let rpo = changetype<UnmanagedUint32Array>(ssaRPOOffset);
+    let ssaDF = changetype<UnmanagedUint32Array>(ssaDFOffset);
     for (let i: u32 = 0; i < ssaBlockCount; i++) {
-        if (load<u32>(ssaRPOOffset + i * 4) == blockPtr) {
-            return load<u32>(ssaDFOffset + i * 4);
+        if (rpo[i] == blockPtr) {
+            return ssaDF[i];
         }
     }
     return 0;
@@ -329,14 +332,16 @@ export function placePhiNodes(entryBlock: u32): void {
     let numBlocks = ssaBlockCount;
     if (numBlocks == 0 || ssaDFOffset == 0) return;
 
+    let ssaDF = changetype<UnmanagedUint32Array>(ssaDFOffset);
+
     // For all blocks with non-empty dominance frontiers, insert Phi instructions
     for (let i: u32 = 0; i < numBlocks; i++) {
-        let listPtr = load<u32>(ssaDFOffset + i * 4);
+        let listPtr = ssaDF[i];
         if (listPtr == 0) continue;
-        let count = load<u32>(listPtr);
+        let list = UnmanagedUint32List.at(listPtr);
 
-        for (let j: u32 = 0; j < count; j++) {
-            let targetBlk = load<u32>(listPtr + 8 + j * 4);
+        for (let j: u32 = 0; j < list.count; j++) {
+            let targetBlk = list.get(j);
             if (targetBlk == 0) continue;
 
             let target = BasicBlock.at(targetBlk);

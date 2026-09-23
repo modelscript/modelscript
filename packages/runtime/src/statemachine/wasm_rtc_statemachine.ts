@@ -159,6 +159,20 @@ export class WasmRtcStateMachine {
   }
 
   /**
+   * Returns all states registered in this state machine.
+   */
+  getAllStates(): StateNode[] {
+    return Array.from(this.states.values());
+  }
+
+  /**
+   * Returns all transitions registered in this state machine.
+   */
+  getAllTransitions(): StateTransition[] {
+    return Array.from(this.transitions.values());
+  }
+
+  /**
    * Posts an event to the state machine's event queue.
    */
   postEvent(name: string, payload?: any): void {

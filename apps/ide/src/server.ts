@@ -4,9 +4,10 @@
 // and a GitHub FileSystemProvider for loading GitHub repositories.
 
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { existsSync, readFileSync, watch } from "fs";
 import { createProxyMiddleware } from "http-proxy-middleware";
-import { join, resolve } from "path";
+import path, { join, resolve } from "path";
 
 const __dirname = import.meta.dirname;
 const PORT = parseInt(process.env.PORT || "3003", 10);
@@ -190,6 +191,14 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 
 const app = express();
 
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(apiLimiter);
+
 // CORS headers for VS Code Web — the extension host runs in a blob worker
 // with a different origin, so we need permissive CORS.
 app.use((_req, res, next) => {
@@ -310,8 +319,16 @@ app.get("/api/languages/user", (_req, res) => {
 });
 
 app.get("/api/languages/user/:id/parser.wasm", (req, res) => {
-  const langId = req.params.id;
-  const langDir = join(getUserLanguagesDir(), langId);
+  const rawId = req.params.id;
+  if (!rawId || typeof rawId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(rawId)) {
+    return res.status(400).type("text/plain").send("Invalid language ID");
+  }
+  const langId = path.basename(rawId);
+  const baseDir = getUserLanguagesDir();
+  const langDir = resolve(baseDir, langId);
+  if (!langDir.startsWith(baseDir + path.sep) && langDir !== baseDir) {
+    return res.status(400).type("text/plain").send("Invalid language directory");
+  }
   const candidates = [
     join(langDir, "parser.wasm"),
     join(langDir, "dist", "parser.wasm"),
@@ -321,7 +338,7 @@ app.get("/api/languages/user/:id/parser.wasm", (req, res) => {
   if (found) {
     res.type("application/wasm").sendFile(found);
   } else {
-    res.status(404).send(`parser.wasm for user language '${langId}' not found`);
+    res.status(404).type("text/plain").send(`parser.wasm for user language '${langId}' not found`);
   }
 });
 

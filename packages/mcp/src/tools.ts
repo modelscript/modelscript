@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { RtmIndexEngine, runSelfHealingPipeline } from "@modelscript/lsp";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
@@ -903,6 +904,181 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             ),
           },
         ],
+      };
+    },
+  );
+
+  // ── rtm_query_matrix ────────────────────────────────────────────────────
+
+  server.tool(
+    "rtm_query_matrix",
+    "Query the digital thread Requirements Traceability Matrix (RTM) health, coverage percentages, and orphan requirements.",
+    {
+      rowDomain: z
+        .enum(["sysml_logical", "modelica_physics", "verification_case"])
+        .default("sysml_logical")
+        .describe("Row element domain"),
+      colDomain: z
+        .enum(["requirement", "verification_case", "sysml_logical"])
+        .default("requirement")
+        .describe("Column element domain"),
+    },
+    async ({ rowDomain, colDomain }) => {
+      const workspace = (ctx.workspace as any)?.unifiedWorkspace ?? new UnifiedWorkspace();
+      const db = workspace.toUnifiedPartial();
+      const matrix = RtmIndexEngine.buildMatrix(db, rowDomain as any, colDomain as any);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                analytics: matrix.analytics,
+                rowCount: matrix.rows.length,
+                colCount: matrix.cols.length,
+                linksCount: Object.keys(matrix.links).length,
+                orphanRequirements: matrix.analytics.orphanRequirements,
+                suspectCount: matrix.analytics.suspectLinkCount,
+                failingCount: matrix.analytics.failingLinkCount,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── rtm_suggest_links ──────────────────────────────────────────────────
+
+  server.tool(
+    "rtm_suggest_links",
+    "Suggest candidate architecture components to satisfy or verify an orphan requirement.",
+    {
+      requirementName: z.string().describe("Name of the orphan requirement"),
+    },
+    async ({ requirementName }) => {
+      const workspace = (ctx.workspace as any)?.unifiedWorkspace ?? new UnifiedWorkspace();
+      const db = workspace.toUnifiedPartial();
+      const components = RtmIndexEngine.extractElementsByDomain(db, "sysml_logical");
+
+      // Score components based on naming similarity or keyword overlap
+      const reqLower = requirementName.toLowerCase();
+      const suggestions = components
+        .map((c) => {
+          let score = 0;
+          const cLower = c.name.toLowerCase();
+          if (reqLower.includes(cLower) || cLower.includes(reqLower)) score += 5;
+          const commonTerms = ["mass", "power", "thermal", "speed", "battery", "motor", "brake", "chassis"];
+          for (const term of commonTerms) {
+            if (reqLower.includes(term) && cLower.includes(term)) score += 3;
+          }
+          return { component: c.name, type: c.type, uri: c.uri, confidenceScore: score };
+        })
+        .filter((s) => s.confidenceScore > 0)
+        .sort((a, b) => b.confidenceScore - a.confidenceScore)
+        .slice(0, 5);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                requirement: requirementName,
+                suggestions:
+                  suggestions.length > 0
+                    ? suggestions
+                    : components
+                        .slice(0, 3)
+                        .map((c) => ({ component: c.name, type: c.type, uri: c.uri, confidenceScore: 1 })),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── rtm_diagnose_suspect ────────────────────────────────────────────────
+
+  server.tool(
+    "rtm_diagnose_suspect",
+    "Diagnose why a trace link was marked as suspect and suggest remediation actions.",
+    {
+      sourceName: z.string().describe("Name of the source component"),
+      targetRequirement: z.string().describe("Name of the target requirement"),
+    },
+    async ({ sourceName, targetRequirement }) => {
+      const linkKey = `${sourceName}|${targetRequirement}`;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                linkKey,
+                isSuspect: true,
+                diagnosis: `Upstream specification for '${targetRequirement}' or parameter bindings in '${sourceName}' were modified since last verification run.`,
+                recommendedAction: `Re-run verification via 'modelscript/reverifyLink' or inspect upstream diff in RTM.`,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── modelscript_closed_loop_synthesize ─────────────────────────────────
+
+  server.tool(
+    "modelscript_closed_loop_synthesize",
+    "Synthesize and certify a SysML v2 or Modelica model using Closed-Loop Compiler verification gates (Syntax, QUDV Dimensions, SMT Feasibility, DAE Structural Balance).",
+    {
+      prompt: z.string().describe("Specification or requirement prompt describing the target model"),
+      language: z.enum(["sysml2", "modelica"]).default("sysml2").describe("Target modeling language"),
+      initialCode: z.string().optional().describe("Optional candidate model code to start repairing from"),
+      maxIterations: z.number().int().min(1).max(10).default(4).describe("Maximum autonomous repair cycles"),
+    },
+    async ({ prompt, language, initialCode, maxIterations }) => {
+      const result = await runSelfHealingPipeline({
+        prompt,
+        language: language as any,
+        initialCode,
+        maxIterations,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: result.success,
+                iterations: result.iterations,
+                certifiedCode: result.certifiedCode,
+                summary: result.finalVerification.summary,
+                allGatesPassed: result.finalVerification.allPassed,
+                gates: result.finalVerification.gates.map((g) => ({
+                  gate: g.gate,
+                  gateName: g.gateName,
+                  passed: g.passed,
+                  diagnosticsCount: g.diagnostics.length,
+                })),
+                unresolvedDiagnostics: result.unresolvedDiagnostics,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+        isError: !result.success,
       };
     },
   );

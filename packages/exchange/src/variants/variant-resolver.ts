@@ -47,9 +47,11 @@ export class VariantResolver {
         // Support conditional BOM items if variant tags are encoded
         // (e.g. partNumber: "Askoll-230V [variant:eu]" vs "Askoll-120V [variant:us]")
         if (item.partNumber && item.partNumber.includes("[variant:")) {
-          const match = /\[variant:([^\]]+)\]/.exec(item.partNumber);
-          if (match && match[1]) {
-            const allowedVariants = match[1].split(",").map((v) => v.trim());
+          const start = item.partNumber.indexOf("[variant:");
+          const end = item.partNumber.indexOf("]", start);
+          if (start !== -1 && end !== -1) {
+            const raw = item.partNumber.slice(start + "[variant:".length, end);
+            const allowedVariants = raw.split(",").map((v) => v.trim());
             if (!allowedVariants.includes(variantId)) {
               include = false;
             }

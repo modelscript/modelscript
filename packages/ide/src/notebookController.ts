@@ -52,7 +52,7 @@ export class ModelicaNotebookController implements vscode.Disposable {
     const key = notebook.uri.toString();
     let id = this._sessions.get(key);
     if (!id) {
-      id = `nb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      id = `nb-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
       this._sessions.set(key, id);
     }
     return id;

@@ -1923,12 +1923,16 @@ export function triggerInteractiveInput(
 }
 
 export * from "./affine-matrix.js";
+export * from "./collab-manager.js";
+export * from "./collab-overlay.js";
 export * from "./color-inversion.js";
 export * from "./fault-tree.js";
 export * from "./glyphs.js";
 export * from "./interactive.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-router.js";
+export * from "./protocol.js";
+export type { ReactiveAnimationBinding, X6Markup } from "./protocol.js";
 export * from "./svg-renderer.js";
 export * from "./swimlane-layout.js";
 export * from "./telemetry.js";

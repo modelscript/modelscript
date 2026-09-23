@@ -6,6 +6,7 @@
  * and multi-file workspace indexing for ModelScript.
  */
 
+export * from "./agent/index.js";
 export * from "./diagramApi.js";
 export * from "./diagramData.js";
 export * from "./diagramEdits.js";
@@ -17,6 +18,7 @@ export { startNodeServer } from "./nodeServerMain.js";
 export * from "./providers/index.js";
 export * from "./registry/index.js";
 export * from "./requirements.js";
+export * from "./rtm/index.js";
 export * from "./services/index.js";
 export * from "./utils/hook-extractor.js";
 export {

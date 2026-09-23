@@ -133,7 +133,7 @@ getErrorString();
       } catch (err) {
         // If it's a simulation failure, we might want to keep the tmp dir for debugging
         // but for now, we'll just log the error and clean up.
-        console.error(`Simulation Job ${jobId} failed:`, err);
+        console.error("Simulation Job %s failed:", jobId, err);
         fs.rmSync(tmpDir, { recursive: true, force: true });
         throw err;
       }

@@ -877,15 +877,22 @@ export function evaluateMacroExpression(
   componentInstance?: ModelicaComponentInstance,
 ): string {
   const trimmed = expr.trim();
-  const ifMatch = /^if\s+(.+?)\s+then\s+(.+?)\s+else\s+(.+)$/is.exec(trimmed);
-  if (ifMatch) {
-    const condStr = ifMatch[1].trim();
-    const thenVal = ifMatch[2].trim();
-    const elseVal = ifMatch[3].trim();
+  if (/^if\s+/i.test(trimmed)) {
+    const thenMatch = trimmed.match(/\s+then\s+/i);
+    if (thenMatch && thenMatch.index !== undefined) {
+      const thenIdx = thenMatch.index;
+      const afterThen = trimmed.slice(thenIdx + thenMatch[0].length);
+      const elseMatch = afterThen.match(/\s+else\s+/i);
+      if (elseMatch && elseMatch.index !== undefined) {
+        const condStr = trimmed.slice(2, thenIdx).trim();
+        const thenVal = afterThen.slice(0, elseMatch.index).trim();
+        const elseVal = afterThen.slice(elseMatch.index + elseMatch[0].length).trim();
 
-    const isTrue = evalMacroCondition(condStr, classInstance, componentInstance);
-    const chosen = isTrue ? thenVal : elseVal;
-    return stripQuotes(evaluateMacroExpression(chosen, classInstance, componentInstance));
+        const isTrue = evalMacroCondition(condStr, classInstance, componentInstance);
+        const chosen = isTrue ? thenVal : elseVal;
+        return stripQuotes(evaluateMacroExpression(chosen, classInstance, componentInstance));
+      }
+    }
   }
 
   const name = trimmed;

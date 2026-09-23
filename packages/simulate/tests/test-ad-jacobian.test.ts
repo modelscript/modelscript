@@ -1,4 +1,6 @@
 import { generateAdJacobian } from "@modelscript/dsl/codegen/ad_jacobian";
+import expect from "expect";
+import { describe, it } from "node:test";
 
 describe("Analytical Jacobians (AD) Codegen", () => {
   it("should generate AssemblyScript code for AD Jacobians when acausal flag is set", () => {

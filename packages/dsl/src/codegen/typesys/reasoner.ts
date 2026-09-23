@@ -228,7 +228,10 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
   const parsedRules: ParsedRule[] = [];
 
   for (const ruleStr of rules) {
-    let ruleMatch = (ruleStr as string).match(/^(\w+)\(([^)]+)\)\s*:-\s*(.+)\.$/);
+    const trimmedRule = (ruleStr as string).trim();
+    if (!trimmedRule.endsWith(".")) continue;
+    const withoutDot = trimmedRule.slice(0, -1);
+    const ruleMatch = withoutDot.match(/^(\w+)\(([^)]+)\)\s*:-\s*(.+)$/);
     if (!ruleMatch) continue;
 
     let headPred = ruleMatch[1];

@@ -254,7 +254,7 @@ export class ArenaDAEPrinter {
           .replace(/\\n/g, "\n" + indent)
           .replace(/\\t/g, "\t")
           .replace(/\\r/g, "\r")
-          .replace(/\\\\/g, "\\")
+          .replace(/\\/g, "\\\\")
           .replace(/"/g, '\\"');
         this.out.write('"' + result + '"');
         break;
@@ -1824,7 +1824,7 @@ export class ArenaDAEPrinter {
 
     if (fn.externalDecl) {
       let decl = fn.externalDecl.replace(/\s+/g, " ").trim();
-      decl = decl.replace(/\s*=\s*/, " = ");
+      decl = decl.replace(/ ?= ?/, " = ");
       decl = decl.replace(/,([^\s])/g, ", $1");
       if (!decl.endsWith(";")) decl += ";";
       this.out.write("\n  " + decl + "\n");

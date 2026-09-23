@@ -1,0 +1,9 @@
+name: "ModelScript CodeQL Config"
+
+paths-ignore:
+  - "**/tests/**"
+  - "**/test/**"
+  - "**/testsuite/**"
+  - "**/validation/**"
+  - "scripts/**"
+  - "languages/*/build.js"

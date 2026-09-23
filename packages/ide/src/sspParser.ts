@@ -240,13 +240,14 @@ function parseDefaultExperiment(xml: string): SspDefaultExperiment | undefined {
 }
 
 function extractAttr(xml: string, element: string, attr: string): string | undefined {
-  const escapedElement = element.replace(/\./g, "\\.");
+  const escapedElement = element.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const elemMatch = xml.match(new RegExp(`<${escapedElement}\\s+([^>]*)>`, "s"));
   if (!elemMatch) return undefined;
   return extractAttrFromStr(elemMatch[1] ?? "", attr);
 }
 
 function extractAttrFromStr(attrs: string, attr: string): string | undefined {
-  const match = attrs.match(new RegExp(`${attr}\\s*=\\s*"([^"]*)"`, "s"));
+  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*"([^"]*)"`, "s"));
   return match ? (match[1] ?? undefined) : undefined;
 }

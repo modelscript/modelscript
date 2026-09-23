@@ -80,10 +80,14 @@ function App() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let obj: any = c;
       for (let i = 0; i < keys.length - 1; i++) {
-        if (!obj[keys[i] as string]) obj[keys[i] as string] = {};
-        obj = obj[keys[i] as string];
+        const k = keys[i] as string;
+        if (k === "__proto__" || k === "constructor" || k === "prototype") return;
+        if (!obj[k]) obj[k] = {};
+        obj = obj[k];
       }
-      obj[keys[keys.length - 1] as string] = value;
+      const lastKey = keys[keys.length - 1] as string;
+      if (lastKey === "__proto__" || lastKey === "constructor" || lastKey === "prototype") return;
+      obj[lastKey] = value;
       saveConfig(c as unknown as MsimConfig);
     },
     [saveConfig],

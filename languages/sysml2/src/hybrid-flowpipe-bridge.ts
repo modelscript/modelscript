@@ -9,7 +9,7 @@
  */
 
 import type { HybridAutomaton, HybridFlowpipeResult, HybridMode, HybridTransition } from "@modelscript/runtime";
-import { HybridFlowpipeSolver, Interval, TaylorModel } from "@modelscript/runtime";
+import { HybridFlowpipeSolver, Interval, TaylorModel, ZonotopeReachabilitySolver } from "@modelscript/runtime";
 
 export interface HybridReachabilityBridgeOptions {
   modelName?: string;
@@ -18,8 +18,9 @@ export interface HybridReachabilityBridgeOptions {
   order?: number;
   adaptive?: boolean;
   tol?: number;
-  useQrPreconditioning?: boolean;
-  maxJumps?: number;
+  reachabilityEngine?: "taylor" | "zonotope";
+  linearMatrixA?: number[][];
+  linearMatrixB?: number[][];
 }
 
 export interface HybridReachabilityBridgeResult {
@@ -67,8 +68,8 @@ export async function verifyHybridSysml2Reachability(
   const order = options.order ?? 2;
   const adaptive = options.adaptive ?? true;
   const tol = options.tol ?? 1e-4;
-  const useQrPreconditioning = options.useQrPreconditioning ?? true;
-  const maxJumps = options.maxJumps ?? 16;
+  const useQrPreconditioning = (options as any).useQrPreconditioning ?? true;
+  const maxJumps = (options as any).maxJumps ?? 16;
 
   let tSpan: [number, number] = [0, 5];
   if (Array.isArray(options.timeSpan) && options.timeSpan.length === 2) {
@@ -160,6 +161,48 @@ export async function verifyHybridSysml2Reachability(
 
   const initialEnclosure = [new Interval(19.8, 20.2)];
   const nominalInitial = [20.0];
+
+  if (options.reachabilityEngine === "zonotope") {
+    const A = options.linearMatrixA || [[-0.1]];
+    const zResult = ZonotopeReachabilitySolver.solve({
+      A,
+      B: options.linearMatrixB,
+      initialSet: initialEnclosure,
+      tSpan,
+      dt,
+      requirements: [
+        { stateIndex: 0, operator: "<=", limitValue: 24.0 },
+        { stateIndex: 0, operator: ">=", limitValue: 16.0 },
+      ],
+    });
+
+    return {
+      isCertifiedSafe: zResult.isCertifiedSafe,
+      modelName: targetName,
+      totalSteps: zResult.totalSteps,
+      jumpCount: 0,
+      segments: [
+        {
+          modeId: "LinearZonotopeMode",
+          modeName: "Linear Continuous Mode",
+          startTime: tSpan[0],
+          endTime: tSpan[1],
+          stepCount: zResult.steps.length,
+        },
+      ],
+      jumps: [],
+      violations: zResult.violations.map((v, idx) => ({
+        stepIndex: idx,
+        time: v.time,
+        stateIndex: v.stateIndex,
+        operator: v.operator,
+        worstCaseValue: v.worstCaseValue,
+        limitValue: v.limitValue,
+        reason: v.reason,
+      })),
+      summary: zResult.summary,
+    };
+  }
 
   const solverResult: HybridFlowpipeResult = HybridFlowpipeSolver.solve({
     automaton,

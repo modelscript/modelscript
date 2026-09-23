@@ -52,6 +52,7 @@ import { registerMiscEndpoints } from "./handlers/miscEndpoints.js";
 import { registerOwl2Endpoints } from "./handlers/owl2Endpoints.js";
 import { registerPolyglotEndpoints } from "./handlers/polyglotEndpoints.js";
 import { registerReplEndpoints } from "./handlers/replEndpoints.js";
+import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
 import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
@@ -766,6 +767,7 @@ export function startNodeServer(input?: any, output?: any) {
   registerTreeHandlers(lspContext);
   registerSimulationEndpoints(lspContext);
   registerAnalysisEndpoints(lspContext);
+  registerRtmEndpoints(lspContext);
   registerInteropEndpoints(lspContext);
   registerClassQueryEndpoints(lspContext);
   registerOwl2Endpoints(lspContext);

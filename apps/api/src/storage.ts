@@ -53,7 +53,7 @@ export class LibraryStorage {
    * List all versions for a given package, sorted descending by semver.
    */
   versions(name: string): string[] {
-    const dir = path.join(this.#dataDir, name);
+    const dir = path.resolve(this.#dataDir, this.#safe(name));
     if (!fs.existsSync(dir)) {
       return [];
     }
@@ -136,7 +136,7 @@ export class LibraryStorage {
    * List class names that have generated SVGs for a library version.
    */
   listClasses(name: string, version: string): string[] {
-    const dir = path.join(this.#dataDir, name, version, "svgs");
+    const dir = path.resolve(this.#dataDir, this.#safe(name), this.#safe(version), "svgs");
     if (!fs.existsSync(dir)) {
       return [];
     }
@@ -244,13 +244,13 @@ export class LibraryStorage {
     fs.rmSync(zipPath, { force: true });
 
     // Remove the version data directory (svgs, extracted, etc.)
-    const versionDir = path.join(this.#dataDir, name, version);
+    const versionDir = path.resolve(this.#dataDir, this.#safe(name), this.#safe(version));
     if (fs.existsSync(versionDir)) {
       fs.rmSync(versionDir, { recursive: true, force: true });
     }
 
     // Clean up the library directory if no more versions exist
-    const libraryDir = path.join(this.#dataDir, name);
+    const libraryDir = path.resolve(this.#dataDir, this.#safe(name));
     if (fs.existsSync(libraryDir)) {
       const remaining = fs.readdirSync(libraryDir);
       if (remaining.length === 0) {
@@ -262,10 +262,18 @@ export class LibraryStorage {
   }
 
   #safe(val: string): string {
-    if (val.includes("..") || val === "." || val.startsWith("/")) {
+    if (typeof val !== "string") {
+      throw new Error("Invalid path component: expected string");
+    }
+    const clean = path.basename(val).replace(/[^a-zA-Z0-9_.-]/g, "_");
+    if (!clean || clean === "." || clean === "..") {
       throw new Error(`Invalid path component: ${val}`);
     }
-    return val;
+    const resolved = path.resolve(this.#dataDir, clean);
+    if (!resolved.startsWith(this.#dataDir + path.sep) && resolved !== this.#dataDir) {
+      throw new Error(`Path traversal detected: ${val}`);
+    }
+    return clean;
   }
 
   #svgDir(name: string, version: string, className: string): string {

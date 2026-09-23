@@ -11,13 +11,9 @@ export class DelayRingBuffer {
   head: u32; // Index of newest sample
   count: u32; // Current number of stored samples
 
-  // Pointers to contiguous arrays:
-  // - timePtr: f64[capacity]
-  // - valuePtr: f64[capacity]
-  // - derivPtr: f64[capacity]
-  timePtr: usize;
-  valuePtr: usize;
-  derivPtr: usize;
+  times: UnmanagedFloat64Array;
+  values: UnmanagedFloat64Array;
+  derivs: UnmanagedFloat64Array;
 
   init(capacity: u32): void {
     this.capacity = capacity > 16 ? capacity : 16;
@@ -25,21 +21,9 @@ export class DelayRingBuffer {
     this.count = 0;
 
     let cap = this.capacity;
-    this.timePtr = atomicChunkAlloc(cap * 8);
-    this.valuePtr = atomicChunkAlloc(cap * 8);
-    this.derivPtr = atomicChunkAlloc(cap * 8);
-  }
-
-  @inline get times(): UnmanagedFloat64Array {
-    return changetype<UnmanagedFloat64Array>(this.timePtr);
-  }
-
-  @inline get values(): UnmanagedFloat64Array {
-    return changetype<UnmanagedFloat64Array>(this.valuePtr);
-  }
-
-  @inline get derivs(): UnmanagedFloat64Array {
-    return changetype<UnmanagedFloat64Array>(this.derivPtr);
+    this.times = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(cap * 8));
+    this.values = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(cap * 8));
+    this.derivs = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(cap * 8));
   }
 
   /**

@@ -277,3 +277,110 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string): 
     violations: allViolations,
   };
 }
+
+export interface AssumeGuaranteeContract {
+  name: string;
+  assumptions: string[];
+  guarantees: string[];
+}
+
+export interface RefinementResult {
+  isRefined: boolean;
+  assumptionViolations: string[];
+  guaranteeViolations: string[];
+  summary: string;
+}
+
+export class ContractAlgebra {
+  /**
+   * Evaluates contract refinement C1 <= C2:
+   * C1 refines C2 iff (A2 => A1) and (G1 => G2).
+   */
+  public static refines(c1: AssumeGuaranteeContract, c2: AssumeGuaranteeContract): RefinementResult {
+    // 1. Check A2 => A1 (c1 makes weaker/equal assumptions than c2)
+    const aCheck = verifyAssumeGuaranteePair(c2.name, c1.name, c2.assumptions, c1.assumptions);
+
+    // 2. Check G1 => G2 (c1 provides stronger/equal guarantees than c2)
+    const gCheck = verifyAssumeGuaranteePair(c1.name, c2.name, c1.guarantees, c2.guarantees);
+
+    const aViolations = aCheck.violations.map((v) => v.reason);
+    const gViolations = gCheck.violations.map((v) => v.reason);
+    const isRefined = aCheck.isSatisfied && gCheck.isSatisfied;
+
+    let summary = `Contract '${c1.name}' ${isRefined ? "successfully refines" : "fails to refine"} '${c2.name}'.`;
+    if (!isRefined) {
+      if (!aCheck.isSatisfied) summary += ` Assumption weakening violated (${aViolations.length} issues).`;
+      if (!gCheck.isSatisfied) summary += ` Guarantee strengthening violated (${gViolations.length} issues).`;
+    }
+
+    return {
+      isRefined,
+      assumptionViolations: aViolations,
+      guaranteeViolations: gViolations,
+      summary,
+    };
+  }
+
+  /**
+   * Parallel composition C = C1 (x) C2:
+   * G = G1 /\ G2
+   * A = (A1 /\ A2) \/ ~(G1 /\ G2)
+   */
+  public static composeParallel(
+    c1: AssumeGuaranteeContract,
+    c2: AssumeGuaranteeContract,
+    compositeName?: string,
+  ): AssumeGuaranteeContract {
+    const name = compositeName ?? `(${c1.name} ⊗ ${c2.name})`;
+
+    // Combined guarantees
+    const guarantees = [...new Set([...c1.guarantees, ...c2.guarantees])];
+
+    // Filter assumptions satisfied by the partner's guarantees (internal feedback)
+    const externalAssumptions: string[] = [];
+
+    for (const a of c1.assumptions) {
+      const gCheck = verifyAssumeGuaranteePair(c2.name, c1.name, c2.guarantees, [a]);
+      if (!gCheck.isSatisfied) {
+        externalAssumptions.push(a);
+      }
+    }
+
+    for (const a of c2.assumptions) {
+      const gCheck = verifyAssumeGuaranteePair(c1.name, c2.name, c1.guarantees, [a]);
+      if (!gCheck.isSatisfied) {
+        externalAssumptions.push(a);
+      }
+    }
+
+    return {
+      name,
+      assumptions: [...new Set(externalAssumptions)],
+      guarantees,
+    };
+  }
+
+  /**
+   * Quotient / Residual composition C_res = C_sys / C1:
+   * Computes the specification required of component C2 such that C1 (x) C2 <= C_sys.
+   */
+  public static quotient(
+    cSys: AssumeGuaranteeContract,
+    c1: AssumeGuaranteeContract,
+    resName?: string,
+  ): AssumeGuaranteeContract {
+    const name = resName ?? `(${cSys.name} / ${c1.name})`;
+
+    // The residual component must assume what cSys assumes + what c1 guarantees
+    const assumptions = [...new Set([...cSys.assumptions, ...c1.guarantees])];
+
+    // The residual component must guarantee what cSys guarantees, minus what c1 already provides
+    const guarantees = [...cSys.guarantees];
+
+    return {
+      name,
+      assumptions,
+      guarantees,
+    };
+  }
+}

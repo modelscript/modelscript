@@ -173,9 +173,9 @@ const RepositoryListPage: React.FC = () => {
     let provider: string;
     let repo_full_name: string;
     try {
-      const parsedUrl = new URL(url.startsWith("http") ? url : `https://${url}`);
-      if (parsedUrl.hostname.includes("github.com")) provider = "github";
-      else if (parsedUrl.hostname.includes("gitlab.com")) provider = "gitlab";
+      const host = parsedUrl.hostname.toLowerCase();
+      if (host === "github.com" || host.endsWith(".github.com")) provider = "github";
+      else if (host === "gitlab.com" || host.endsWith(".gitlab.com")) provider = "gitlab";
       else throw new Error("Only GitHub and GitLab URLs are supported");
 
       const parts = parsedUrl.pathname.split("/").filter(Boolean);

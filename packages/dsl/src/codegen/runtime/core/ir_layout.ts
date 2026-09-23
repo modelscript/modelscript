@@ -69,3 +69,52 @@ export class BasicBlock {
   @inline get hasTrueBranch(): bool { return this.trueBranch != 0; }
   @inline get hasFalseBranch(): bool { return this.falseBranch != 0; }
 }
+
+/**
+ * Unmanaged view over an 8-byte DFS traversal stack frame (block ptr, phase).
+ */
+@unmanaged
+export class DfsStackFrame {
+  blk: u32;
+  phase: u32;
+
+  @inline static at(ptr: usize, index: u32): DfsStackFrame {
+    return changetype<DfsStackFrame>(ptr + (((index as usize) << 3)));
+  }
+}
+
+/**
+ * Unmanaged view over a count-prefixed list of u32 values [count, cap, item0, item1, ...]
+ * used for dominance frontiers and successor lists.
+ */
+@unmanaged
+export class UnmanagedUint32List {
+  count: u32;
+  cap: u32;
+
+  @inline static at(ptr: usize): UnmanagedUint32List {
+    return changetype<UnmanagedUint32List>(ptr);
+  }
+
+  @inline get(index: u32): u32 {
+    return load<u32>(changetype<usize>(this) + 8 + (((index as usize) << 2)));
+  }
+
+  @inline set(index: u32, value: u32): void {
+    store<u32>(changetype<usize>(this) + 8 + (((index as usize) << 2)), value);
+  }
+
+  @inline push(value: u32): bool {
+    if (this.count >= this.cap) return false;
+    this.set(this.count, value);
+    this.count++;
+    return true;
+  }
+
+  @inline contains(value: u32): bool {
+    for (let i: u32 = 0; i < this.count; i++) {
+      if (this.get(i) == value) return true;
+    }
+    return false;
+  }
+}

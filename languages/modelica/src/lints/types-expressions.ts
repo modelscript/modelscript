@@ -569,7 +569,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const rIdx = rhsType && rhsType.asNumber ? rhsType.asNumber() : Number(rhsType);
       const lName = lIdx >= 0 && lIdx < typeNames.length ? typeNames[lIdx] : "Unknown";
       const rName = rIdx >= 0 && rIdx < typeNames.length ? typeNames[rIdx] : "Unknown";
-      const eqText = target.text.replace(/\s*=\s*/, "=").trim();
+      const eqText = target.text.replace(/\s+/g, " ").replace(" = ", "=").trim();
       return `Type mismatch in equation ${eqText} of type ${lName}=${rName}.`;
     },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {

@@ -2415,6 +2415,29 @@ export const sysml2Language = language({
     bounds: domain.octagon(),
   },
 
+  cfgNodes: {
+    ActionUsage: {
+      trueBranch: "body",
+    },
+    DecisionNode: {
+      condition: "condition",
+      trueBranch: "body",
+    },
+    MergeNode: {
+      trueBranch: "body",
+    },
+    ForkNode: {
+      branchList: "branches",
+    },
+    JoinNode: {
+      trueBranch: "body",
+    },
+    TransitionUsage: {
+      condition: "guard",
+      trueBranch: "effect",
+    },
+  },
+
   actions: [
     {
       id: "extract_topology",

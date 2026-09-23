@@ -12,7 +12,7 @@ import {
   BinOp,
   UnaryOp,
 } from "../dae/builder";
-import { ChunkedInt32Array, createChunkedInt32Array } from "../core/array";
+import { ChunkedInt32Array, createChunkedInt32Array, UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 import { evalEquationResidual, evalExpr } from "../dae/eval";
 import { BuiltinMathFunc } from "../dae/fold";
@@ -28,6 +28,10 @@ export class CCSMatrix {
   nRows: u32;
   nCols: u32;
   nnz: u32;
+
+  @inline get values(): UnmanagedFloat64Array {
+    return changetype<UnmanagedFloat64Array>(this.valuesPtr);
+  }
 
   init(nRows: u32, nCols: u32): void {
     this.nRows = nRows;
@@ -115,11 +119,14 @@ export function buildJacobianSparsity(
 
   ccs.colPtr.push(0);
 
+  let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr);
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+
   for (let c: u32 = 0; c < nCols; c++) {
-    let varIdx = load<u32>(varIndicesPtr + c * 4);
+    let varIdx = varIndices[c];
 
     for (let r: u32 = 0; r < nRows; r++) {
-      let eqIdx = load<u32>(eqIndicesPtr + r * 4);
+      let eqIdx = eqIndices[r];
       let eqOffset = eqIdx * EQ_STRIDE;
       let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
       let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
@@ -465,22 +472,25 @@ export function evalAnalyticalSparseJacobian(
   varValuesPtr: u32
 ): void {
   if (ccs.nnz == 0 || ccs.valuesPtr == 0) return;
+  let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr);
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+  let values = ccs.values;
 
   for (let c: u32 = 0; c < ccs.nCols; c++) {
-    let varIdx = load<u32>(varIndicesPtr + c * 4);
+    let varIdx = varIndices[c];
     let cStart = ccs.colPtr.get(c) as u32;
     let cEnd = ccs.colPtr.get(c + 1) as u32;
 
     for (let p: u32 = cStart; p < cEnd; p++) {
       let r = ccs.rowIndices.get(p) as u32;
-      let eqIdx = load<u32>(eqIndicesPtr + r * 4);
+      let eqIdx = eqIndices[r];
       let eqOffset = eqIdx * EQ_STRIDE;
       let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
       let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
 
       let dLhs = evalExprDerivative(lhs, dae, varIdx, varValuesPtr);
       let dRhs = evalExprDerivative(rhs, dae, varIdx, varValuesPtr);
-      store<f64>(ccs.valuesPtr + p * 8, dLhs - dRhs);
+      values[p] = dLhs - dRhs;
     }
   }
 }
@@ -500,6 +510,11 @@ export function evalCompressedJacobian(
 ): void {
   let numColors = coloring.numColors;
   let nRows = ccs.nRows;
+  let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr);
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
+  let baseResiduals = changetype<UnmanagedFloat64Array>(baseResidualsPtr);
+  let values = ccs.values;
 
   // Perturbation vector per color
   for (let c: u32 = 0; c < numColors; c++) {
@@ -509,16 +524,16 @@ export function evalCompressedJacobian(
     // Apply simultaneous perturbation to all columns in this color group
     for (let k: u32 = startIdx; k < endIdx; k++) {
       let colIdx = coloring.colorCols.get(k) as u32;
-      let varIdx = load<u32>(varIndicesPtr + colIdx * 4);
-      let val = load<f64>(varValuesPtr + varIdx * 8);
-      store<f64>(varValuesPtr + varIdx * 8, val + eps);
+      let varIdx = varIndices[colIdx];
+      let val = varValues[varIdx];
+      varValues[varIdx] = val + eps;
     }
 
     // Evaluate perturbed residuals across all rows
     for (let r: u32 = 0; r < nRows; r++) {
-      let eqIdx = load<u32>(eqIndicesPtr + r * 4);
+      let eqIdx = eqIndices[r];
       let resPert = evalEquationResidual(eqIdx, dae, varValuesPtr);
-      let resBase = load<f64>(baseResidualsPtr + r * 8);
+      let resBase = baseResiduals[r];
       let diff = (resPert - resBase) / eps;
 
       // Identify which column in this color group owns row r
@@ -529,7 +544,7 @@ export function evalCompressedJacobian(
 
         for (let p: u32 = cStart; p < cEnd; p++) {
           if ((ccs.rowIndices.get(p) as u32) == r) {
-            store<f64>(ccs.valuesPtr + p * 8, diff);
+            values[p] = diff;
             break;
           }
         }
@@ -539,9 +554,9 @@ export function evalCompressedJacobian(
     // Restore original variable values
     for (let k: u32 = startIdx; k < endIdx; k++) {
       let colIdx = coloring.colorCols.get(k) as u32;
-      let varIdx = load<u32>(varIndicesPtr + colIdx * 4);
-      let val = load<f64>(varValuesPtr + varIdx * 8);
-      store<f64>(varValuesPtr + varIdx * 8, val - eps);
+      let varIdx = varIndices[colIdx];
+      let val = varValues[varIdx];
+      varValues[varIdx] = val - eps;
     }
   }
 }
@@ -563,11 +578,14 @@ export function buildHessianSparsity(
 
   ccs.colPtr.push(0);
 
+  let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr);
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+
   for (let c: u32 = 0; c < nVars; c++) {
-    let varC = load<u32>(varIndicesPtr + c * 4);
+    let varC = varIndices[c];
 
     for (let r: u32 = 0; r < nVars; r++) {
-      let varR = load<u32>(varIndicesPtr + r * 4);
+      let varR = varIndices[r];
 
       let coupled = false;
       if (r == c) {
@@ -581,7 +599,7 @@ export function buildHessianSparsity(
         // Check coupling in constraint equations
         if (!coupled) {
           for (let eq: u32 = 0; eq < nEqs; eq++) {
-            let eqIdx = load<u32>(eqIndicesPtr + eq * 4);
+            let eqIdx = eqIndices[eq];
             let eqOffset = eqIdx * EQ_STRIDE;
             let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
             let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
@@ -726,15 +744,19 @@ export function evalLagrangianHessian(
   varValuesPtr: u32
 ): void {
   if (ccs.nnz == 0 || ccs.valuesPtr == 0) return;
+  let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr);
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+  let lambda = changetype<UnmanagedFloat64Array>(lambdaPtr);
+  let values = ccs.values;
 
   for (let c: u32 = 0; c < nVars; c++) {
-    let varC = load<u32>(varIndicesPtr + c * 4);
+    let varC = varIndices[c];
     let cStart = ccs.colPtr.get(c) as u32;
     let cEnd = ccs.colPtr.get(c + 1) as u32;
 
     for (let p: u32 = cStart; p < cEnd; p++) {
       let r = ccs.rowIndices.get(p) as u32;
-      let varR = load<u32>(varIndicesPtr + r * 4);
+      let varR = varIndices[r];
 
       let hVal: f64 = 0.0;
 
@@ -747,10 +769,10 @@ export function evalLagrangianHessian(
       // 2. Constraint equations contribution: sum_k lambda_k * d^2(res_k) / (dx_r dx_c)
       if (lambdaPtr != 0) {
         for (let eq: u32 = 0; eq < nEqs; eq++) {
-          let lam = load<f64>(lambdaPtr + eq * 8);
+          let lam = lambda[eq];
           if (lam == 0.0) continue;
 
-          let eqIdx = load<u32>(eqIndicesPtr + eq * 4);
+          let eqIdx = eqIndices[eq];
           let eqOffset = eqIdx * EQ_STRIDE;
           let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
           let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
@@ -761,7 +783,7 @@ export function evalLagrangianHessian(
         }
       }
 
-      store<f64>(ccs.valuesPtr + p * 8, hVal);
+      values[p] = hVal;
     }
   }
 }

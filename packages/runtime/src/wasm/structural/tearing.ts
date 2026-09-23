@@ -16,7 +16,7 @@ import {
   VAR_FLAGS,
   FLAG_TEARING_VAR
 } from "../dae/builder";
-import { ChunkedInt32Array, createChunkedInt32Array } from "../core/array";
+import { ChunkedInt32Array, createChunkedInt32Array, UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 import { evalExpr, evalEquationResidual } from "../dae/eval";
 import { luFactor, luSolve, vectorNormInf } from "../solvers/matrix";
@@ -24,9 +24,10 @@ import { evalExprDerivative } from "../autodiff/coloring";
 import { UnmanagedMap64, createMap64 } from "../core/hashmap";
 
 /**
- * Representation of an algebraic loop partitioned by tearing into:
- * 1. Tearing variables (k variables)
- * 2. Causal forward evaluation sequence (N - k inner variables and equations)
+ * High-Performance WASM Tearing & Sparse Dynamic Solvers for Large-Scale DAEs.
+ * Implements Cellier-Elmqvist Minimum Degree Tearing Algorithm with:
+ * 1. Reduced-order Newton-Raphson iteration on tearing variables
+ * 2. Automatic inner forward substitution chain (explicit assignments)
  * 3. Residual equations (k residual constraints: r(x_tear) = 0)
  */
 @unmanaged
@@ -73,10 +74,13 @@ export function createTornBlock(
   torn.init();
   torn.blockSize = n;
 
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+  let varIndices = changetype<UnmanagedUint32Array>(varIndicesPtr);
+
   if (n <= 1) {
     if (n == 1) {
-      let v0 = load<u32>(varIndicesPtr);
-      let e0 = load<u32>(eqIndicesPtr);
+      let v0 = varIndices[0];
+      let e0 = eqIndices[0];
       torn.getInnerVarIndices().push(v0 as i32);
       torn.getInnerEqIndices().push(e0 as i32);
       torn.nInner = 1;
@@ -87,15 +91,15 @@ export function createTornBlock(
   // Minimum Degree Heuristic:
   // Select tearing variable with lowest non-zero incidence degree
   let minDegree: u32 = 0xffffffff;
-  let selectedTearVar: u32 = load<u32>(varIndicesPtr);
+  let selectedTearVar: u32 = varIndices[0];
   let selectedTearIdx: u32 = 0;
 
   for (let i: u32 = 0; i < n; i++) {
-    let varIdx = load<u32>(varIndicesPtr + i * 4);
+    let varIdx = varIndices[i];
     let degree: u32 = 0;
 
     for (let j: u32 = 0; j < n; j++) {
-      let eqIdx = load<u32>(eqIndicesPtr + j * 4);
+      let eqIdx = eqIndices[j];
       let eqOffset = eqIdx * EQ_STRIDE;
       let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
       let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
@@ -122,8 +126,8 @@ export function createTornBlock(
   // Partition the remaining equations into inner forward chain and residual
   // Equations 0 to n-2 -> Inner chain; Equation n-1 -> Residual equation
   for (let i: u32 = 0; i < n; i++) {
-    let vIdx = load<u32>(varIndicesPtr + i * 4);
-    let eIdx = load<u32>(eqIndicesPtr + i * 4);
+    let vIdx = varIndices[i];
+    let eIdx = eqIndices[i];
 
     if (i != selectedTearIdx) {
       torn.getInnerVarIndices().push(vIdx as i32);
@@ -162,6 +166,7 @@ function exprContainsVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): bool {
  * Evaluates the inner forward-substitution chain for a torn block.
  */
 export function evalInnerChain(dae: DaeBuilder, torn: TornBlock, varValuesPtr: u32): void {
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
   for (let i: u32 = 0; i < torn.nInner; i++) {
     let eqIdx = torn.getInnerEqIndices().get(i) as u32;
     let varIdx = torn.getInnerVarIndices().get(i) as u32;
@@ -176,20 +181,20 @@ export function evalInnerChain(dae: DaeBuilder, torn: TornBlock, varValuesPtr: u
       if (targetV == varIdx) {
         // Direct assignment: x_inner = RHS
         let rhsVal = evalExpr(rhs, dae, varValuesPtr);
-        store<f64>(varValuesPtr + varIdx * 8, rhsVal);
+        varValues[varIdx] = rhsVal;
         continue;
       }
     }
 
     // 1D Newton fallback for inner equation using analytical derivative
-    let x = load<f64>(varValuesPtr + varIdx * 8);
+    let x = varValues[varIdx];
     for (let iter: u32 = 0; iter < 10; iter++) {
       let r = evalEquationResidual(eqIdx, dae, varValuesPtr);
       if (Math.abs(r) < 1e-10) break;
       let der = evalExprDerivative(rhs, dae, varIdx, varValuesPtr) - evalExprDerivative(lhs, dae, varIdx, varValuesPtr);
       if (Math.abs(der) < 1e-14) der = 1e-6;
       x -= r / der;
-      store<f64>(varValuesPtr + varIdx * 8, x);
+      varValues[varIdx] = x;
     }
   }
 }
@@ -210,6 +215,8 @@ export function solveTornBlock(
     return true;
   }
 
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
+
   let rPtr = scratchPtr;
   let dxPtr = rPtr + k * 8;
   let jPtr = dxPtr + k * 8;
@@ -217,6 +224,10 @@ export function solveTornBlock(
   let pivSize = (k * 4 + 7) & ~7;
   let scalePtr = pivPtr + pivSize;
   let luScratchPtr = scalePtr + k * 8;
+
+  let r = changetype<UnmanagedFloat64Array>(rPtr);
+  let dx = changetype<UnmanagedFloat64Array>(dxPtr);
+  let jMat = changetype<UnmanagedFloat64Array>(jPtr);
 
   let tol: f64 = 1e-10;
   let maxIter: u32 = 25;
@@ -230,7 +241,7 @@ export function solveTornBlock(
     for (let i: u32 = 0; i < k; i++) {
       let resEq = torn.getResidualEqIndices().get(i) as u32;
       let res = evalEquationResidual(resEq, dae, varValuesPtr);
-      store<f64>(rPtr + i * 8, res);
+      r[i] = res;
     }
 
     // 3. Check convergence
@@ -240,28 +251,28 @@ export function solveTornBlock(
     // 4. Construct k x k Reduced Jacobian J_tear via perturbation
     for (let j: u32 = 0; j < k; j++) {
       let tearV = torn.getTearVarIndices().get(j) as u32;
-      let xOrig = load<f64>(varValuesPtr + tearV * 8);
+      let xOrig = varValues[tearV];
 
       // Perturb tearing variable
-      store<f64>(varValuesPtr + tearV * 8, xOrig + eps);
+      varValues[tearV] = xOrig + eps;
       evalInnerChain(dae, torn, varValuesPtr);
 
       for (let i: u32 = 0; i < k; i++) {
         let resEq = torn.getResidualEqIndices().get(i) as u32;
         let resPlus = evalEquationResidual(resEq, dae, varValuesPtr);
-        let resOrig = load<f64>(rPtr + i * 8);
+        let resOrig = r[i];
         let der = (resPlus - resOrig) / eps;
-        store<f64>(jPtr + (i * k + j) * 8, der);
+        jMat[i * k + j] = der;
       }
 
       // Restore
-      store<f64>(varValuesPtr + tearV * 8, xOrig);
+      varValues[tearV] = xOrig;
     }
 
     // 5. Solve J_tear * dx = R
     if (!luFactor(jPtr, pivPtr, scalePtr, k)) return false;
     for (let i: u32 = 0; i < k; i++) {
-      store<f64>(dxPtr + i * 8, load<f64>(rPtr + i * 8));
+      dx[i] = r[i];
     }
     luSolve(jPtr, pivPtr, scalePtr, dxPtr, luScratchPtr, k);
 
@@ -272,9 +283,9 @@ export function solveTornBlock(
     while (alpha > 0.0625) {
       for (let j: u32 = 0; j < k; j++) {
         let tearV = torn.getTearVarIndices().get(j) as u32;
-        let xOrig = load<f64>(varValuesPtr + tearV * 8);
-        let delta = load<f64>(dxPtr + j * 8);
-        store<f64>(varValuesPtr + tearV * 8, xOrig - alpha * delta);
+        let xOrig = varValues[tearV];
+        let delta = dx[j];
+        varValues[tearV] = xOrig - alpha * delta;
       }
 
       evalInnerChain(dae, torn, varValuesPtr);
@@ -294,9 +305,9 @@ export function solveTornBlock(
       // Revert step
       for (let j: u32 = 0; j < k; j++) {
         let tearV = torn.getTearVarIndices().get(j) as u32;
-        let xOrig = load<f64>(varValuesPtr + tearV * 8);
-        let delta = load<f64>(dxPtr + j * 8);
-        store<f64>(varValuesPtr + tearV * 8, xOrig + alpha * delta);
+        let xOrig = varValues[tearV];
+        let delta = dx[j];
+        varValues[tearV] = xOrig + alpha * delta;
       }
 
       alpha *= 0.5;
@@ -305,15 +316,14 @@ export function solveTornBlock(
     if (!stepAccepted) {
       for (let j: u32 = 0; j < k; j++) {
         let tearV = torn.getTearVarIndices().get(j) as u32;
-        let xOrig = load<f64>(varValuesPtr + tearV * 8);
-        let delta = load<f64>(dxPtr + j * 8);
-        store<f64>(varValuesPtr + tearV * 8, xOrig - delta);
+        let xOrig = varValues[tearV];
+        let delta = dx[j];
+        varValues[tearV] = xOrig - delta;
       }
+      evalInnerChain(dae, torn, varValuesPtr);
     }
   }
 
-  // Final evaluation of inner chain
-  evalInnerChain(dae, torn, varValuesPtr);
   return true;
 }
 

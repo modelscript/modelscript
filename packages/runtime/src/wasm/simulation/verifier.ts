@@ -2,6 +2,7 @@
 
 import { DaeBuilder } from "../dae/builder";
 import { evalExpr } from "../dae/eval";
+import { UnmanagedFloat64Array, UnmanagedUint8Array } from "../core/array";
 
 export const VERIFY_OP_LT: u32 = 0;   // <
 export const VERIFY_OP_LTE: u32 = 1;  // <=
@@ -37,16 +38,16 @@ export class TrajectoryVerifier {
   }
 
   /**
-   * Evaluates a requirement constraint over a full simulation time-series trajectory.
+   * Verifies an invariant formula across all steps of an ODE/DAE trajectory.
    *
-   * @param lhsExprId Expression ID for LHS (or 0xffffffff if using direct state index)
-   * @param lhsStateIdx Direct state index for LHS if lhsExprId == 0xffffffff
-   * @param rhsExprId Expression ID for RHS (or 0xffffffff if using constant limit)
-   * @param rhsConstant Constant RHS limit value if rhsExprId == 0xffffffff
+   * @param lhsExprId Expression ID for LHS, or 0xffffffff if referencing state variable directly
+   * @param lhsStateIdx Index of state variable in state vector (used if lhsExprId == 0xffffffff)
+   * @param rhsExprId Expression ID for RHS, or 0xffffffff if constant
+   * @param rhsConstant Constant value for RHS (used if rhsExprId == 0xffffffff)
    * @param op Comparison operator (VERIFY_OP_*)
-   * @param numSteps Number of time steps in simulation result
-   * @param numStates Number of state variables per time step
-   * @param tPtr Pointer to f64 array of time points [numSteps]
+   * @param numSteps Total simulation steps in trajectory
+   * @param numStates Number of continuous state variables
+   * @param tPtr Pointer to f64 array of time values [numSteps]
    * @param yPtr Pointer to f64 array of state trajectories [numSteps * numStates] (row-major: step, state)
    * @param varValuesBuffer Temp buffer for DaeBuilder evaluation [varCount]
    * @param outTimeSeriesPtr Pointer to write u8 array of boolean results [numSteps] (can be 0 if not needed)
@@ -78,13 +79,18 @@ export class TrajectoryVerifier {
     let firstViolationTime: f64 = -1.0;
     let firstViolationStep: f64 = -1.0;
 
+    let tArr = changetype<UnmanagedFloat64Array>(tPtr);
+    let yArr = changetype<UnmanagedFloat64Array>(yPtr);
+    let outSeries = changetype<UnmanagedUint8Array>(outTimeSeriesPtr);
+    let outStats = changetype<UnmanagedFloat64Array>(outStatsPtr);
+
     for (let step: u32 = 0; step < numSteps; step++) {
-      let t = load<f64>(tPtr + (step as usize) * 8);
-      let stepStateOffset = (step as usize) * (numStates as usize) * 8;
+      let t = tArr[step];
+      let stepStateOffset = (step as usize) * (numStates as usize);
 
       // Copy state values into DaeBuilder varValuesBuffer if needed for expr evaluation
       if (varValuesBuffer != 0 && numStates > 0) {
-        memory.copy(varValuesBuffer, yPtr + stepStateOffset, (numStates as usize) * 8);
+        memory.copy(varValuesBuffer, yPtr + (stepStateOffset << 3), (numStates as usize) * 8);
       }
 
       // 1. Evaluate LHS value
@@ -92,7 +98,7 @@ export class TrajectoryVerifier {
       if (lhsExprId != 0xffffffff) {
         lhsVal = evalExpr(lhsExprId, this.dae, varValuesBuffer);
       } else if (lhsStateIdx >= 0 && (lhsStateIdx as u32) < numStates) {
-        lhsVal = load<f64>(yPtr + stepStateOffset + (lhsStateIdx as usize) * 8);
+        lhsVal = yArr[(stepStateOffset + (lhsStateIdx as u32)) as i32];
       }
 
       // Track peak LHS value
@@ -111,7 +117,7 @@ export class TrajectoryVerifier {
       let isMet = this.checkComparison(lhsVal, rhsVal, op, tol);
 
       if (outTimeSeriesPtr != 0) {
-        store<u8>(outTimeSeriesPtr + (step as usize), isMet ? 1 : 0);
+        outSeries[step] = isMet ? 1 : 0;
       }
 
       if (!isMet) {
@@ -124,11 +130,11 @@ export class TrajectoryVerifier {
     }
 
     if (outStatsPtr != 0) {
-      store<f64>(outStatsPtr + 0 * 8, allSatisfied ? 1.0 : 0.0);
-      store<f64>(outStatsPtr + 1 * 8, peakLhs);
-      store<f64>(outStatsPtr + 2 * 8, limitRhs);
-      store<f64>(outStatsPtr + 3 * 8, firstViolationTime);
-      store<f64>(outStatsPtr + 4 * 8, firstViolationStep);
+      outStats[0] = allSatisfied ? 1.0 : 0.0;
+      outStats[1] = peakLhs;
+      outStats[2] = limitRhs;
+      outStats[3] = firstViolationTime;
+      outStats[4] = firstViolationStep;
     }
 
     return allSatisfied ? 1 : 0;

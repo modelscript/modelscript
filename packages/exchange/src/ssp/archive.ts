@@ -69,11 +69,11 @@ export function parseSspArchive(data: Uint8Array): SspArchiveMetadata | null {
   const version = extractAttr(ssdXml, "ssd:SystemStructureDescription", "version") ?? "1.0";
 
   // Extract the <ssd:System> element
-  const systemMatch = ssdXml.match(/<ssd:System\s+([^>]*)>([\s\S]*?)<\/ssd:System>/);
-  if (!systemMatch) return null;
+  const systemBlock = extractTagBlock(ssdXml, "ssd:System");
+  if (!systemBlock) return null;
 
-  const systemAttrs = systemMatch[1] ?? "";
-  const systemBody = systemMatch[2] ?? "";
+  const systemAttrs = systemBlock.attrs;
+  const systemBody = systemBlock.body;
   const systemName = extractAttrStr(systemAttrs, "name") ?? "System";
   const description = extractAttrStr(systemAttrs, "description");
 
@@ -82,20 +82,19 @@ export function parseSspArchive(data: Uint8Array): SspArchiveMetadata | null {
 
   // Extract component names
   const componentNames: string[] = [];
-  const compRegex = /<ssd:Component\s+([^>]*)/g;
-  let compMatch: RegExpExecArray | null;
-  while ((compMatch = compRegex.exec(systemBody)) !== null) {
-    const name = extractAttrStr(compMatch[1] ?? "", "name");
+  const compElements = extractTagElements(systemBody, "ssd:Component");
+  for (const comp of compElements) {
+    const name = extractAttrStr(comp.attrs, "name");
     if (name) componentNames.push(name);
   }
 
   // Default experiment
   let startTime: number | undefined;
   let stopTime: number | undefined;
-  const expMatch = ssdXml.match(/<ssd:DefaultExperiment\s+([^>]*)\/?>/);
-  if (expMatch) {
-    const startStr = extractAttrStr(expMatch[1] ?? "", "startTime");
-    const stopStr = extractAttrStr(expMatch[1] ?? "", "stopTime");
+  const expBlock = extractTagBlock(ssdXml, "ssd:DefaultExperiment") ?? extractTagBlock(ssdXml, "DefaultExperiment");
+  if (expBlock) {
+    const startStr = extractAttrStr(expBlock.attrs, "startTime");
+    const stopStr = extractAttrStr(expBlock.attrs, "stopTime");
     if (startStr) startTime = parseFloat(startStr);
     if (stopStr) stopTime = parseFloat(stopStr);
   }
@@ -179,34 +178,28 @@ function extractSystemConnectors(systemBody: string): SspBoundaryVariable[] {
   // Look for <ssd:Connectors> block that is NOT inside a <ssd:Component>
   // Simple approach: find connectors before <ssd:Elements>
   const elementsIdx = systemBody.indexOf("<ssd:Elements>");
-  const connectorsBlock = elementsIdx >= 0 ? systemBody.substring(0, elementsIdx) : systemBody;
+  const connectorsBlockStr = elementsIdx >= 0 ? systemBody.substring(0, elementsIdx) : systemBody;
 
-  const connectorsMatch = connectorsBlock.match(/<ssd:Connectors>([\s\S]*?)<\/ssd:Connectors>/);
-  if (!connectorsMatch) return variables;
+  const connectorsBlock = extractTagBlock(connectorsBlockStr, "ssd:Connectors");
+  if (!connectorsBlock) return variables;
 
-  const connectorsBody = connectorsMatch[1] ?? "";
-  const connRegex = /<ssd:Connector\s+([^>]*)>([\s\S]*?)<\/ssd:Connector>|<ssd:Connector\s+([^>]*)\/?>/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = connRegex.exec(connectorsBody)) !== null) {
-    const attrs = match[1] ?? match[3] ?? "";
-    const body = match[2] ?? "";
-
+  const connElements = extractTagElements(connectorsBlock.body, "ssd:Connector");
+  for (const { attrs, body } of connElements) {
     const name = extractAttrStr(attrs, "name") ?? "";
     const kind = extractAttrStr(attrs, "kind") ?? "input";
 
     let type: SspBoundaryVariable["type"] = "Real";
     let unit: string | undefined;
 
-    if (body.match(/<ssc:Real/)) {
+    const realBlock = extractTagBlock(body, "ssc:Real");
+    if (realBlock) {
       type = "Real";
-      const realMatch = body.match(/<ssc:Real\s+([^>]*)\/?>/);
-      if (realMatch) unit = extractAttrStr(realMatch[1] ?? "", "unit");
-    } else if (body.match(/<ssc:Integer/)) {
+      unit = extractAttrStr(realBlock.attrs, "unit");
+    } else if (body.includes("<ssc:Integer")) {
       type = "Integer";
-    } else if (body.match(/<ssc:Boolean/)) {
+    } else if (body.includes("<ssc:Boolean")) {
       type = "Boolean";
-    } else if (body.match(/<ssc:String/)) {
+    } else if (body.includes("<ssc:String")) {
       type = "String";
     }
 
@@ -277,16 +270,94 @@ function extractFileFromZip(zipData: Uint8Array, targetName: string): string | n
   return null;
 }
 
+function extractTagBlock(xml: string, tag: string): { attrs: string; body: string } | null {
+  const openTag = `<${tag}`;
+  const startIdx = xml.indexOf(openTag);
+  if (startIdx === -1) return null;
+  const charAfter = xml[startIdx + openTag.length];
+  if (
+    charAfter !== undefined &&
+    charAfter !== " " &&
+    charAfter !== "\t" &&
+    charAfter !== "\r" &&
+    charAfter !== "\n" &&
+    charAfter !== ">" &&
+    charAfter !== "/"
+  ) {
+    return null;
+  }
+  const tagEnd = xml.indexOf(">", startIdx + openTag.length);
+  if (tagEnd === -1) return null;
+  const isSelfClosing = xml[tagEnd - 1] === "/";
+  const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
+  const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
+  if (isSelfClosing) {
+    return { attrs, body: "" };
+  }
+  const closeTag = `</${tag}>`;
+  const endIdx = xml.indexOf(closeTag, tagEnd + 1);
+  if (endIdx === -1) {
+    return { attrs, body: "" };
+  }
+  const body = xml.slice(tagEnd + 1, endIdx);
+  return { attrs, body };
+}
+
+function extractTagElements(xml: string, tag: string): { attrs: string; body: string }[] {
+  const result: { attrs: string; body: string }[] = [];
+  const openTag = `<${tag}`;
+  const closeTag = `</${tag}>`;
+  let pos = 0;
+  while (pos < xml.length) {
+    const startIdx = xml.indexOf(openTag, pos);
+    if (startIdx === -1) break;
+    const charAfter = xml[startIdx + openTag.length];
+    if (
+      charAfter !== undefined &&
+      charAfter !== " " &&
+      charAfter !== "\t" &&
+      charAfter !== "\r" &&
+      charAfter !== "\n" &&
+      charAfter !== ">" &&
+      charAfter !== "/"
+    ) {
+      pos = startIdx + openTag.length;
+      continue;
+    }
+    const tagEnd = xml.indexOf(">", startIdx + openTag.length);
+    if (tagEnd === -1) break;
+    const isSelfClosing = xml[tagEnd - 1] === "/";
+    const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
+    const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
+    if (isSelfClosing) {
+      result.push({ attrs, body: "" });
+      pos = tagEnd + 1;
+    } else {
+      const endIdx = xml.indexOf(closeTag, tagEnd + 1);
+      if (endIdx === -1) {
+        result.push({ attrs, body: "" });
+        pos = tagEnd + 1;
+      } else {
+        result.push({ attrs, body: xml.slice(tagEnd + 1, endIdx) });
+        pos = endIdx + closeTag.length;
+      }
+    }
+  }
+  return result;
+}
+
 function extractAttr(xml: string, element: string, attr: string): string | undefined {
-  const escapedElement = element.replace(/\./g, "\\.");
-  const elemMatch = xml.match(new RegExp(`<${escapedElement}\\s+([^>]*)>`, "s"));
-  if (!elemMatch) return undefined;
-  return extractAttrStr(elemMatch[1] ?? "", attr);
+  const block = extractTagBlock(xml, element);
+  if (!block) return undefined;
+  return extractAttrStr(block.attrs, attr);
 }
 
 function extractAttrStr(attrs: string, attr: string): string | undefined {
-  const match = attrs.match(new RegExp(`${attr}\\s*=\\s*"([^"]*)"`, "s"));
-  return match ? (match[1] ?? undefined) : undefined;
+  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*"([^"]*)"`));
+  if (match) return match[1];
+  const singleMatch = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*'([^']*)'`));
+  return singleMatch ? singleMatch[1] : undefined;
 }
 
 function escapeXml(str: string): string {

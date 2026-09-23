@@ -1,4 +1,4 @@
-import { ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
+import { ChunkedUint32Array, createChunkedUint32Array, UnmanagedFloat64Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 import {
   DaeBuilder,
@@ -27,6 +27,70 @@ export const TAPE_OP_LOG: u32 = 9;
 export const TAPE_STRIDE: u32 = 8; // 32 bytes per tape node: [op, left, right, aux, valLo, valHi, gradLo, gradHi]
 
 /**
+ * Zero-cost unmanaged accessor for an 8-word (32-byte) tape node:
+ * [op, left, right, aux, valLo, valHi, gradLo, gradHi]
+ */
+@unmanaged
+export class TapeNodeAccessor {
+  private _table: ChunkedUint32Array;
+  private _offset: u32;
+
+  static pool: usize = 0;
+  static poolIdx: u32 = 0;
+
+  @inline static at(table: ChunkedUint32Array, nodeIdx: u32): TapeNodeAccessor {
+    if (TapeNodeAccessor.pool == 0) {
+      TapeNodeAccessor.pool = atomicChunkAlloc(8 * sizeof<TapeNodeAccessor>());
+    }
+    let acc = changetype<TapeNodeAccessor>(TapeNodeAccessor.pool + (TapeNodeAccessor.poolIdx * sizeof<TapeNodeAccessor>()));
+    TapeNodeAccessor.poolIdx = (TapeNodeAccessor.poolIdx + 1) & 7;
+    acc._table = table;
+    acc._offset = nodeIdx * TAPE_STRIDE;
+    return acc;
+  }
+
+  @inline get op(): u32 { return this._table.get(this._offset + 0); }
+  @inline set op(v: u32) { this._table.set(this._offset + 0, v); }
+
+  @inline get left(): u32 { return this._table.get(this._offset + 1); }
+  @inline set left(v: u32) { this._table.set(this._offset + 1, v); }
+
+  @inline get right(): u32 { return this._table.get(this._offset + 2); }
+  @inline set right(v: u32) { this._table.set(this._offset + 2, v); }
+
+  @inline get aux(): u32 { return this._table.get(this._offset + 3); }
+  @inline set aux(v: u32) { this._table.set(this._offset + 3, v); }
+
+  @inline get value(): f64 {
+    let lo = this._table.get(this._offset + 4) as u32;
+    let hi = this._table.get(this._offset + 5) as u32;
+    let bits = ((hi as u64) << 32) | (lo as u64);
+    return f64.reinterpret_i64(bits as i64);
+  }
+  @inline set value(val: f64) {
+    let bits = i64.reinterpret_f64(val) as u64;
+    this._table.set(this._offset + 4, (bits & 0xffffffff) as u32);
+    this._table.set(this._offset + 5, (bits >>> 32) as u32);
+  }
+
+  @inline get grad(): f64 {
+    let lo = this._table.get(this._offset + 6) as u32;
+    let hi = this._table.get(this._offset + 7) as u32;
+    let bits = ((hi as u64) << 32) | (lo as u64);
+    return f64.reinterpret_i64(bits as i64);
+  }
+  @inline set grad(grad: f64) {
+    let bits = i64.reinterpret_f64(grad) as u64;
+    this._table.set(this._offset + 6, (bits & 0xffffffff) as u32);
+    this._table.set(this._offset + 7, (bits >>> 32) as u32);
+  }
+
+  @inline addGrad(delta: f64): void {
+    this.grad = this.grad + delta;
+  }
+}
+
+/**
  * High-Performance, Zero-GC Reverse-Mode Automatic Differentiation Tape.
  * Computes exact analytical gradients and Jacobians without finite differencing.
  */
@@ -45,57 +109,44 @@ export class AdTape {
   }
 
   @inline
+  nodeAt(nodeIdx: u32): TapeNodeAccessor {
+    return TapeNodeAccessor.at(this.nodeTable, nodeIdx);
+  }
+
+  @inline
   getNodeValue(nodeIdx: u32): f64 {
-    let offset = nodeIdx * TAPE_STRIDE;
-    let lo = this.nodeTable.get(offset + 4) as u32;
-    let hi = this.nodeTable.get(offset + 5) as u32;
-    let bits = ((hi as u64) << 32) | (lo as u64);
-    return f64.reinterpret_i64(bits as i64);
+    return this.nodeAt(nodeIdx).value;
   }
 
   @inline
   setNodeValue(nodeIdx: u32, val: f64): void {
-    let offset = nodeIdx * TAPE_STRIDE;
-    let bits = i64.reinterpret_f64(val) as u64;
-    this.nodeTable.set(offset + 4, (bits & 0xffffffff) as u32);
-    this.nodeTable.set(offset + 5, (bits >>> 32) as u32);
+    this.nodeAt(nodeIdx).value = val;
   }
 
   @inline
   getNodeGrad(nodeIdx: u32): f64 {
-    let offset = nodeIdx * TAPE_STRIDE;
-    let lo = this.nodeTable.get(offset + 6) as u32;
-    let hi = this.nodeTable.get(offset + 7) as u32;
-    let bits = ((hi as u64) << 32) | (lo as u64);
-    return f64.reinterpret_i64(bits as i64);
+    return this.nodeAt(nodeIdx).grad;
   }
 
   @inline
   setNodeGrad(nodeIdx: u32, grad: f64): void {
-    let offset = nodeIdx * TAPE_STRIDE;
-    let bits = i64.reinterpret_f64(grad) as u64;
-    this.nodeTable.set(offset + 6, (bits & 0xffffffff) as u32);
-    this.nodeTable.set(offset + 7, (bits >>> 32) as u32);
+    this.nodeAt(nodeIdx).grad = grad;
   }
 
   @inline
   addNodeGrad(nodeIdx: u32, delta: f64): void {
-    let current = this.getNodeGrad(nodeIdx);
-    this.setNodeGrad(nodeIdx, current + delta);
+    this.nodeAt(nodeIdx).addGrad(delta);
   }
 
   pushOp(op: u32, left: u32, right: u32, val: f64): u32 {
     let idx = this.nodeCount++;
-    let offset = idx * TAPE_STRIDE;
-
-    this.nodeTable.set(offset + 0, op);
-    this.nodeTable.set(offset + 1, left);
-    this.nodeTable.set(offset + 2, right);
-    this.nodeTable.set(offset + 3, 0);
-
-    this.setNodeValue(idx, val);
-    this.setNodeGrad(idx, 0.0);
-
+    let node = this.nodeAt(idx);
+    node.op = op;
+    node.left = left;
+    node.right = right;
+    node.aux = 0;
+    node.value = val;
+    node.grad = 0.0;
     return idx;
   }
 
@@ -116,13 +167,14 @@ export class AdTape {
 
     // Reverse sweep
     for (let i: i32 = rootNode; i >= 0; i--) {
-      let offset = (i as u32) * TAPE_STRIDE;
-      let op = this.nodeTable.get(offset + 0);
-      let left = this.nodeTable.get(offset + 1);
-      let right = this.nodeTable.get(offset + 2);
-      let adj = this.getNodeGrad(i as u32);
+      let node = this.nodeAt(i as u32);
+      let adj = node.grad;
 
       if (adj == 0.0) continue;
+
+      let op = node.op;
+      let left = node.left;
+      let right = node.right;
 
       if (op == TAPE_OP_ADD) {
         this.addNodeGrad(left, adj);
@@ -164,6 +216,7 @@ export class AdTape {
 export function recordExpr(tape: AdTape, exprId: u32, dae: DaeBuilder, varValuesPtr: u32): u32 {
   if (exprId >= dae.exprCount) return tape.pushOp(TAPE_OP_CONST, 0, 0, 0.0);
 
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
   let offset = exprId * EXPR_STRIDE;
   let kind = dae.getExprData().get(offset + EXPR_KIND);
 
@@ -182,7 +235,7 @@ export function recordExpr(tape: AdTape, exprId: u32, dae: DaeBuilder, varValues
 
   if (kind == ExprKind.Name) {
     let varId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
-    let val = load<f64>(varValuesPtr + varId * 8);
+    let val = varValues[varId];
     return tape.pushOp(TAPE_OP_VAR, varId, 0, val);
   }
 
@@ -190,7 +243,7 @@ export function recordExpr(tape: AdTape, exprId: u32, dae: DaeBuilder, varValues
     let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
       let varId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
-      let val = load<f64>(varValuesPtr + varId * 8);
+      let val = varValues[varId];
       return tape.pushOp(TAPE_OP_VAR, varId, 0, val);
     }
   }
@@ -317,11 +370,9 @@ export function dae_tapeGetVarGrad(tapePtr: u32, varId: u32): f64 {
   let tape = changetype<AdTape>(tapePtr);
   let gradSum: f64 = 0.0;
   for (let i: u32 = 0; i < tape.nodeCount; i++) {
-    let offset = i * TAPE_STRIDE;
-    let op = tape.nodeTable.get(offset + 0);
-    let vId = tape.nodeTable.get(offset + 1);
-    if (op == TAPE_OP_VAR && vId == varId) {
-      gradSum += tape.getNodeGrad(i);
+    let node = tape.nodeAt(i);
+    if (node.op == TAPE_OP_VAR && node.left == varId) {
+      gradSum += node.grad;
     }
   }
   return gradSum;

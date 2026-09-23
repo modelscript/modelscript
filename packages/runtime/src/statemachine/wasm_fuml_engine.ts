@@ -235,6 +235,10 @@ export class WasmFumlEngine {
     return this.nodes.get(id);
   }
 
+  getAllNodes(): ActivityNode[] {
+    return Array.from(this.nodes.values());
+  }
+
   getEdge(id: EdgeId): ActivityEdge | undefined {
     return this.edges.get(id);
   }
@@ -485,8 +489,8 @@ export class WasmFumlEngine {
           }
         }
 
-        // If no incoming control edges and no incoming pins, action is not self-starting unless it's the root
-        if (controlEdges.length === 0 && node.inputPins.length === 0 && node.incomingEdges.length > 0) {
+        // If no incoming control edges and no incoming pins, action has no trigger and cannot be enabled
+        if (controlEdges.length === 0 && node.inputPins.length === 0) {
           return false;
         }
 

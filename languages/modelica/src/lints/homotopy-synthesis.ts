@@ -149,7 +149,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       }
 
       // 3. Exponentials: exp(...)
-      const expRegex = /\bexp\(\s*([^()]+)\s*\)/g;
+      const expRegex = /\bexp\(([^()]+)\)/g;
       while ((match = expRegex.exec(text)) !== null) {
         const fullMatch = match[0];
         const arg = match[1].trim();
@@ -178,7 +178,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       }
 
       // 4. Square roots: sqrt(...)
-      const sqrtRegex = /\bsqrt\(\s*([^()]+)\s*\)/g;
+      const sqrtRegex = /\bsqrt\(([^()]+)\)/g;
       while ((match = sqrtRegex.exec(text)) !== null) {
         const fullMatch = match[0];
         const arg = match[1].trim();

@@ -11,7 +11,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
-import { join } from "path";
+import path, { basename, join, resolve } from "path";
 import { inflateRawSync } from "zlib";
 import type { FmiModelDescription, FmiTerminal } from "./model-description.js";
 import { parseModelDescription, parseTerminalsAndIcons } from "./model-description.js";
@@ -51,6 +51,21 @@ export class FmuStorage {
     }
   }
 
+  private safeId(id: string): string {
+    if (typeof id !== "string") {
+      throw new TypeError("Invalid FMU id: expected string");
+    }
+    const clean = basename(id).replace(/[^a-zA-Z0-9_.-]/g, "_");
+    if (!clean || clean === "." || clean === "..") {
+      throw new Error(`Invalid FMU id: ${id}`);
+    }
+    const resolved = resolve(this.storageDir, clean);
+    if (!resolved.startsWith(resolve(this.storageDir) + path.sep) && resolved !== resolve(this.storageDir)) {
+      throw new Error(`Path traversal detected: ${id}`);
+    }
+    return clean;
+  }
+
   /**
    * Store an uploaded FMU archive.
    *
@@ -60,13 +75,20 @@ export class FmuStorage {
    * @returns Parsed metadata
    */
   store(id: string, filename: string, data: Buffer): StoredFmu {
-    const dir = join(this.storageDir, id);
+    if (typeof id !== "string" || typeof filename !== "string") {
+      throw new TypeError("Expected string for id and filename");
+    }
+    if (!Buffer.isBuffer(data)) {
+      throw new TypeError("Expected Buffer for FMU archive data");
+    }
+    const safe = this.safeId(id);
+    const dir = resolve(this.storageDir, safe);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
 
     // Write the archive
-    writeFileSync(join(dir, "archive.fmu"), data);
+    writeFileSync(resolve(dir, "archive.fmu"), data);
 
     // Extract modelDescription.xml from the ZIP
     // FMU is a ZIP file — modelDescription.xml is always at the root
@@ -77,7 +99,7 @@ export class FmuStorage {
       throw new Error("Invalid FMU archive: modelDescription.xml not found");
     }
 
-    writeFileSync(join(dir, "modelDescription.xml"), xmlContent);
+    writeFileSync(resolve(dir, "modelDescription.xml"), xmlContent);
 
     // Parse the model description
     const modelDescription = parseModelDescription(xmlContent);
@@ -86,13 +108,13 @@ export class FmuStorage {
     let terminalsAndIcons: FmiTerminal[] | undefined;
     const terminalsXml = extractFileFromZip(data, "terminalsAndIcons/terminalsAndIcons.xml");
     if (terminalsXml) {
-      writeFileSync(join(dir, "terminalsAndIcons.xml"), terminalsXml);
+      writeFileSync(resolve(dir, "terminalsAndIcons.xml"), terminalsXml);
       terminalsAndIcons = parseTerminalsAndIcons(terminalsXml);
     }
 
     // Store metadata
     const stored: StoredFmu = {
-      id,
+      id: safe,
       filename,
       modelDescription,
       terminalsAndIcons,
@@ -100,7 +122,7 @@ export class FmuStorage {
       uploadedAt: new Date().toISOString(),
     };
 
-    writeFileSync(join(dir, "metadata.json"), JSON.stringify(stored, null, 2));
+    writeFileSync(resolve(dir, "metadata.json"), JSON.stringify(stored, null, 2));
 
     return stored;
   }
@@ -129,7 +151,8 @@ export class FmuStorage {
 
   /** Get a stored FMU by ID. */
   get(id: string): StoredFmu | null {
-    const metadataPath = join(this.storageDir, id, "metadata.json");
+    const safe = this.safeId(id);
+    const metadataPath = resolve(this.storageDir, safe, "metadata.json");
     if (!existsSync(metadataPath)) return null;
     try {
       return JSON.parse(readFileSync(metadataPath, "utf-8")) as StoredFmu;
@@ -140,14 +163,16 @@ export class FmuStorage {
 
   /** Get the raw FMU archive bytes. */
   getArchive(id: string): Buffer | null {
-    const archivePath = join(this.storageDir, id, "archive.fmu");
+    const safe = this.safeId(id);
+    const archivePath = resolve(this.storageDir, safe, "archive.fmu");
     if (!existsSync(archivePath)) return null;
     return readFileSync(archivePath);
   }
 
   /** Get the modelDescription.xml content. */
   getModelDescription(id: string): string | null {
-    const xmlPath = join(this.storageDir, id, "modelDescription.xml");
+    const safe = this.safeId(id);
+    const xmlPath = resolve(this.storageDir, safe, "modelDescription.xml");
     if (!existsSync(xmlPath)) return null;
     return readFileSync(xmlPath, "utf-8");
   }
@@ -168,14 +193,16 @@ export class FmuStorage {
 
   /** Get the terminalsAndIcons.xml content (if it exists). */
   getTerminalsAndIcons(id: string): string | null {
-    const xmlPath = join(this.storageDir, id, "terminalsAndIcons.xml");
+    const safe = this.safeId(id);
+    const xmlPath = resolve(this.storageDir, safe, "terminalsAndIcons.xml");
     if (!existsSync(xmlPath)) return null;
     return readFileSync(xmlPath, "utf-8");
   }
 
   /** Delete a stored FMU. */
   delete(id: string): boolean {
-    const dir = join(this.storageDir, id);
+    const safe = this.safeId(id);
+    const dir = resolve(this.storageDir, safe);
     if (!existsSync(dir)) return false;
     rmSync(dir, { recursive: true, force: true });
     return true;
@@ -192,6 +219,7 @@ export class FmuStorage {
  * No external dependency required.
  */
 export function extractFileFromZip(zipData: Buffer, targetName: string): string | null {
+  if (!Buffer.isBuffer(zipData) || typeof targetName !== "string") return null;
   // Find End of Central Directory record
   let eocdOffset = -1;
   for (let i = zipData.length - 22; i >= 0; i--) {

@@ -8,6 +8,7 @@
  * `FmuStorage`, and constructs a fully wired `CoSimSession`.
  */
 
+import crypto from "node:crypto";
 import { inflateRawSync } from "zlib";
 import { CoSimSession } from "../cosim/session.js";
 import type { FmuStorage } from "../fmu/storage.js";
@@ -45,6 +46,9 @@ export interface SspImportResult {
  * @returns Import result with the configured session
  */
 export function importSsp(data: Buffer, storage: FmuStorage, options?: SspImportOptions): SspImportResult {
+  if (!Buffer.isBuffer(data)) {
+    throw new TypeError("Expected Buffer for SSP archive data");
+  }
   const warnings: string[] = [];
   const fmuIds = new Map<string, string>();
 
@@ -63,7 +67,7 @@ export function importSsp(data: Buffer, storage: FmuStorage, options?: SspImport
   const stepSize = options?.stepSize ?? 0.01;
 
   // 4. Create the session
-  const sessionId = `ssp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sessionId = `ssp-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
   const session = new CoSimSession(sessionId, { startTime, stopTime, stepSize });
 
   // 5. Extract and store embedded FMUs
@@ -189,6 +193,7 @@ function extractFileFromSspZip(zipData: Buffer, targetName: string): string | nu
  * Extract a binary file from a ZIP archive by name.
  */
 function extractBinaryFromSspZip(zipData: Buffer, targetName: string): Buffer | null {
+  if (!Buffer.isBuffer(zipData) || typeof targetName !== "string") return null;
   // Find End of Central Directory record
   let eocdOffset = -1;
   for (let i = zipData.length - 22; i >= 0; i--) {

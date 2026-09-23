@@ -34,11 +34,38 @@ export class SysML2FumlBridge {
 
     // 1. Extract action definitions and action usages
     // Format: action [name] { ... } or action [name];
-    const actionRegex = /\baction\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\{([^}]*)\}|\s*;)/g;
+    const actionHeaderRegex = /\baction\s+([A-Za-z_][A-Za-z0-9_]*)/g;
     let aMatch: RegExpExecArray | null;
-    while ((aMatch = actionRegex.exec(sysmlSource)) !== null) {
+    while ((aMatch = actionHeaderRegex.exec(sysmlSource)) !== null) {
       const name = aMatch[1];
-      const body = aMatch[2] || "";
+      const afterNamePos = aMatch.index + aMatch[0].length;
+      let delimPos = -1;
+      let isBrace = false;
+      for (let i = afterNamePos; i < sysmlSource.length; i++) {
+        const c = sysmlSource[i];
+        if (c === ";") {
+          delimPos = i;
+          isBrace = false;
+          break;
+        } else if (c === "{") {
+          delimPos = i;
+          isBrace = true;
+          break;
+        }
+      }
+      if (delimPos === -1) break;
+      let body = "";
+      if (isBrace) {
+        const closeBrace = sysmlSource.indexOf("}", delimPos + 1);
+        if (closeBrace !== -1) {
+          body = sysmlSource.slice(delimPos + 1, closeBrace);
+          actionHeaderRegex.lastIndex = closeBrace + 1;
+        } else {
+          actionHeaderRegex.lastIndex = delimPos + 1;
+        }
+      } else {
+        actionHeaderRegex.lastIndex = delimPos + 1;
+      }
 
       // Extract pins within action body
       const inputs: { name: string; type: string }[] = [];
@@ -146,11 +173,19 @@ export class SysML2FumlBridge {
     const targets = new Set(successions.map((s) => s.target));
     const sources = new Set(successions.map((s) => s.source));
 
-    // Connect Initial node to actions that have no incoming succession
-    for (const act of actions) {
-      if (!targets.has(act.name) && act.kind !== "merge" && act.kind !== "join") {
-        const tgtId = nodeMap.get(act.name)!;
+    // Connect Initial node to actions that are entry points
+    if (successions.length === 0) {
+      if (actions.length > 0) {
+        const tgtId = nodeMap.get(actions[0].name)!;
         engine.addEdge(initNodeId, tgtId, ActivityEdgeKind.Control);
+      }
+    } else {
+      for (const act of actions) {
+        // Must have outgoing transitions (or be the single designated root) and no incoming transitions
+        if (!targets.has(act.name) && sources.has(act.name) && act.kind !== "merge" && act.kind !== "join") {
+          const tgtId = nodeMap.get(act.name)!;
+          engine.addEdge(initNodeId, tgtId, ActivityEdgeKind.Control);
+        }
       }
     }
 
@@ -164,10 +199,17 @@ export class SysML2FumlBridge {
     }
 
     // Connect terminal actions to ActivityFinal
-    for (const act of actions) {
-      if (!sources.has(act.name) && act.kind !== "fork" && act.kind !== "decide") {
-        const srcId = nodeMap.get(act.name)!;
+    if (successions.length === 0) {
+      if (actions.length > 0) {
+        const srcId = nodeMap.get(actions[actions.length - 1].name)!;
         engine.addEdge(srcId, finalNodeId, ActivityEdgeKind.Control);
+      }
+    } else {
+      for (const act of actions) {
+        if (targets.has(act.name) && !sources.has(act.name) && act.kind !== "fork" && act.kind !== "decide") {
+          const srcId = nodeMap.get(act.name)!;
+          engine.addEdge(srcId, finalNodeId, ActivityEdgeKind.Control);
+        }
       }
     }
 

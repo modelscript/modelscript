@@ -532,6 +532,28 @@ export const modelicaLanguage = language({
     },
   },
 
+  cfgNodes: {
+    if_statement: {
+      condition: "condition",
+      trueBranch: "body",
+      falseBranch: "finalBody",
+    },
+    while_statement: {
+      condition: "condition",
+      trueBranch: "body",
+      isLoop: true,
+    },
+    for_statement: {
+      trueBranch: "body",
+      isLoop: true,
+    },
+    when_statement: {
+      condition: "condition",
+      trueBranch: "body",
+      falseBranch: "elseBody",
+    },
+  },
+
   rules: {
     program: ($) => $.stored_definition,
 

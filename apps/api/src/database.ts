@@ -1498,7 +1498,7 @@ export class LibraryDatabase {
       } catch (e) {
         // Ignore parsing error
       }
-      const uniqueSuffix = Math.floor(Math.random() * 1000000);
+      const uniqueSuffix = crypto.randomInt(1000000);
       const username = customUsername || `rss_${domain}_${uniqueSuffix}`;
 
       const userResult = this.#db

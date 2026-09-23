@@ -2,6 +2,7 @@
 
 import { DaeBuilder, StmtKind, EXPR_STRIDE, EXPR_DATA1, STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT } from "./builder";
 import { evalExpr } from "./eval";
+import { UnmanagedFloat64Array } from "../core/array";
 
 export const SIGNAL_NONE: u32 = 0;
 export const SIGNAL_BREAK: u32 = 1;
@@ -24,6 +25,7 @@ export function executeStatements(
 
   let stmtData = dae.getStmtData();
   let exprData = dae.getExprData();
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
   let i = startStmtIdx;
   let endIdx = startStmtIdx + stmtCount;
 
@@ -45,7 +47,7 @@ export function executeStatements(
       let targetOffset = targetExprId * EXPR_STRIDE;
       let varId = exprData.get(targetOffset + EXPR_DATA1) as u32;
       if (varId != 0xffffffff && varId < dae.varCount) {
-        store<f64>(varValuesPtr + (varId as usize) * 8, val);
+        varValues[varId] = val;
       }
     } else if (kind == StmtKind.If) {
       let condExprId = data1 as u32;
@@ -87,7 +89,7 @@ export function executeStatements(
       let count: u32 = 0;
       for (let v = startVal; v <= endVal && count < MAX_FOR_ITERATIONS; v++) {
         if (varId != 0xffffffff && varId < dae.varCount) {
-          store<f64>(varValuesPtr + (varId as usize) * 8, v as f64);
+          varValues[varId] = v as f64;
         }
         let sig = executeStatements(i + 1, bodyStmtCount, dae, varValuesPtr);
         if (sig == SIGNAL_BREAK) break;

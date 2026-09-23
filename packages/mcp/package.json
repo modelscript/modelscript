@@ -37,6 +37,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
+    "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",

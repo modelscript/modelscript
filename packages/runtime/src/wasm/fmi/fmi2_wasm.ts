@@ -1,6 +1,7 @@
 import { DaeBuilder, VAR_STRIDE, VAR_FLAGS, FLAG_VAR_STATE } from "../dae/builder";
 import { computeDerivatives, stepEuler } from "../solvers/integrators";
 import { atomicChunkAlloc } from "../arena";
+import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 
 // FMI 2.0 Status Enums
 export const FMI2_OK: i32 = 0;
@@ -30,11 +31,17 @@ export class Fmi2Instance {
   nVars: u32;
   nEventIndicators: u32;
 
-  varValuesPtr: usize;
-  derivativesPtr: usize;
-  eventIndicatorsPtr: usize;
-  continuousStatesPtr: usize;
-  stateVarIndicesPtr: usize;
+  varValues: UnmanagedFloat64Array;
+  derivatives: UnmanagedFloat64Array;
+  eventIndicators: UnmanagedFloat64Array;
+  continuousStates: UnmanagedFloat64Array;
+  stateVarIndices: UnmanagedUint32Array;
+
+  @inline get varValuesPtr(): usize { return changetype<usize>(this.varValues); }
+  @inline get derivativesPtr(): usize { return changetype<usize>(this.derivatives); }
+  @inline get eventIndicatorsPtr(): usize { return changetype<usize>(this.eventIndicators); }
+  @inline get continuousStatesPtr(): usize { return changetype<usize>(this.continuousStates); }
+  @inline get stateVarIndicesPtr(): usize { return changetype<usize>(this.stateVarIndices); }
 
   init(daePtr: u32, nEventIndicators: u32): void {
     this.daePtr = daePtr;
@@ -59,20 +66,20 @@ export class Fmi2Instance {
     let nS = stateCount > 0 ? stateCount : 1;
     let nE = nEventIndicators > 0 ? nEventIndicators : 1;
 
-    this.varValuesPtr = atomicChunkAlloc(nV * 8);
-    this.derivativesPtr = atomicChunkAlloc(nS * 8);
-    this.continuousStatesPtr = atomicChunkAlloc(nS * 8);
-    this.eventIndicatorsPtr = atomicChunkAlloc(nE * 8);
-    this.stateVarIndicesPtr = atomicChunkAlloc(nS * 4);
+    this.varValues = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nV * 8));
+    this.derivatives = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nS * 8));
+    this.continuousStates = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nS * 8));
+    this.eventIndicators = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nE * 8));
+    this.stateVarIndices = changetype<UnmanagedUint32Array>(atomicChunkAlloc(nS * 4));
 
     let sIdx: u32 = 0;
     for (let v: u32 = 0; v < totalVars; v++) {
       let startVal = dae.getVarStartValue(v);
-      store<f64>(this.varValuesPtr + v * 8, startVal);
+      this.varValues[v] = startVal;
 
       if ((dae.getVarData().get(v * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_STATE) != 0) {
-        store<u32>(this.stateVarIndicesPtr + sIdx * 4, v);
-        store<f64>(this.continuousStatesPtr + sIdx * 8, startVal);
+        this.stateVarIndices[sIdx] = v;
+        this.continuousStates[sIdx] = startVal;
         sIdx++;
       }
     }
@@ -125,11 +132,11 @@ export function fmi2GetContinuousStates(instancePtr: u32, statesPtr: u32, nState
   if (instancePtr == 0) return FMI2_FATAL;
   let inst = changetype<Fmi2Instance>(instancePtr);
   let count = nStates < inst.nStates ? nStates : inst.nStates;
+  let states = changetype<UnmanagedFloat64Array>(statesPtr);
 
   for (let i: u32 = 0; i < count; i++) {
-    let vIdx = load<u32>(inst.stateVarIndicesPtr + i * 4);
-    let val = load<f64>(inst.varValuesPtr + vIdx * 8);
-    store<f64>(statesPtr + i * 8, val);
+    let vIdx = inst.stateVarIndices[i];
+    states[i] = inst.varValues[vIdx];
   }
   return FMI2_OK;
 }
@@ -138,12 +145,13 @@ export function fmi2SetContinuousStates(instancePtr: u32, statesPtr: u32, nState
   if (instancePtr == 0) return FMI2_FATAL;
   let inst = changetype<Fmi2Instance>(instancePtr);
   let count = nStates < inst.nStates ? nStates : inst.nStates;
+  let states = changetype<UnmanagedFloat64Array>(statesPtr);
 
   for (let i: u32 = 0; i < count; i++) {
-    let vIdx = load<u32>(inst.stateVarIndicesPtr + i * 4);
-    let val = load<f64>(statesPtr + i * 8);
-    store<f64>(inst.varValuesPtr + vIdx * 8, val);
-    store<f64>(inst.continuousStatesPtr + i * 8, val);
+    let vIdx = inst.stateVarIndices[i];
+    let val = states[i];
+    inst.varValues[vIdx] = val;
+    inst.continuousStates[i] = val;
   }
   return FMI2_OK;
 }
@@ -155,10 +163,10 @@ export function fmi2GetDerivatives(instancePtr: u32, derivativesPtr: u32, nDeriv
 
   computeDerivatives(dae, inst.varValuesPtr as u32, inst.derivativesPtr as u32);
   let count = nDerivatives < inst.nStates ? nDerivatives : inst.nStates;
+  let derivatives = changetype<UnmanagedFloat64Array>(derivativesPtr);
 
   for (let i: u32 = 0; i < count; i++) {
-    let dVal = load<f64>(inst.derivativesPtr + i * 8);
-    store<f64>(derivativesPtr + i * 8, dVal);
+    derivatives[i] = inst.derivatives[i];
   }
   return FMI2_OK;
 }
@@ -182,11 +190,13 @@ export function fmi2DoStep(
 export function fmi2GetReal(instancePtr: u32, vrPtr: u32, nvr: u32, valuePtr: u32): i32 {
   if (instancePtr == 0) return FMI2_FATAL;
   let inst = changetype<Fmi2Instance>(instancePtr);
+  let vr = changetype<UnmanagedUint32Array>(vrPtr);
+  let vals = changetype<UnmanagedFloat64Array>(valuePtr);
+
   for (let i: u32 = 0; i < nvr; i++) {
-    let vr = load<u32>(vrPtr + i * 4);
-    if (vr < inst.nVars) {
-      let val = load<f64>(inst.varValuesPtr + vr * 8);
-      store<f64>(valuePtr + i * 8, val);
+    let v = vr[i];
+    if (v < inst.nVars) {
+      vals[i] = inst.varValues[v];
     }
   }
   return FMI2_OK;
@@ -195,11 +205,13 @@ export function fmi2GetReal(instancePtr: u32, vrPtr: u32, nvr: u32, valuePtr: u3
 export function fmi2SetReal(instancePtr: u32, vrPtr: u32, nvr: u32, valuePtr: u32): i32 {
   if (instancePtr == 0) return FMI2_FATAL;
   let inst = changetype<Fmi2Instance>(instancePtr);
+  let vr = changetype<UnmanagedUint32Array>(vrPtr);
+  let vals = changetype<UnmanagedFloat64Array>(valuePtr);
+
   for (let i: u32 = 0; i < nvr; i++) {
-    let vr = load<u32>(vrPtr + i * 4);
-    if (vr < inst.nVars) {
-      let val = load<f64>(valuePtr + i * 8);
-      store<f64>(inst.varValuesPtr + vr * 8, val);
+    let v = vr[i];
+    if (v < inst.nVars) {
+      inst.varValues[v] = vals[i];
     }
   }
   return FMI2_OK;

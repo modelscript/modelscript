@@ -224,7 +224,34 @@ export class WasmIntervalEngine {
 // Universal Spatial Branch-and-Bound (sBB) Solver & Tape Utilities
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Interval representation for Spatial Branch & Bound */
+const EPS = Number.EPSILON;
+
+/**
+ * Decrements a floating-point number outwards (downwards) by machine epsilon.
+ */
+export function subMachineEps(x: number): number {
+  if (!Number.isFinite(x)) return x;
+  const delta = Math.max(Math.abs(x) * EPS, 1e-300);
+  return x - delta;
+}
+
+/**
+ * Increments a floating-point number outwards (upwards) by machine epsilon.
+ */
+export function addMachineEps(x: number): number {
+  if (!Number.isFinite(x)) return x;
+  const delta = Math.max(Math.abs(x) * EPS, 1e-300);
+  return x + delta;
+}
+
+/**
+ * Returns an interval guaranteed to conservatively enclose the exact mathematical bounds.
+ */
+export function outwardRoundInterval(lo: number, hi: number): Interval {
+  return new Interval(subMachineEps(lo), addMachineEps(hi));
+}
+
+/** Interval representation for Spatial Branch & Bound and rigorous reachability */
 export class Interval {
   constructor(
     public lo: number,
@@ -235,6 +262,49 @@ export class Interval {
   }
   get width(): number {
     return this.hi - this.lo;
+  }
+
+  /**
+   * Addition with outward directed rounding.
+   */
+  public static addOutward(a: Interval, b: Interval): Interval {
+    return new Interval(subMachineEps(a.lo + b.lo), addMachineEps(a.hi + b.hi));
+  }
+
+  /**
+   * Subtraction with outward directed rounding.
+   */
+  public static subOutward(a: Interval, b: Interval): Interval {
+    return new Interval(subMachineEps(a.lo - b.hi), addMachineEps(a.hi - b.lo));
+  }
+
+  /**
+   * Multiplication with outward directed rounding.
+   */
+  public static mulOutward(a: Interval, b: Interval): Interval {
+    const p1 = a.lo * b.lo;
+    const p2 = a.lo * b.hi;
+    const p3 = a.hi * b.lo;
+    const p4 = a.hi * b.hi;
+    const minP = Math.min(p1, p2, p3, p4);
+    const maxP = Math.max(p1, p2, p3, p4);
+    return new Interval(subMachineEps(minP), addMachineEps(maxP));
+  }
+
+  /**
+   * Division with outward directed rounding.
+   */
+  public static divOutward(a: Interval, b: Interval): Interval {
+    if (b.lo <= 0 && b.hi >= 0) {
+      return new Interval(-Infinity, Infinity);
+    }
+    const p1 = a.lo / b.lo;
+    const p2 = a.lo / b.hi;
+    const p3 = a.hi / b.lo;
+    const p4 = a.hi / b.hi;
+    const minP = Math.min(p1, p2, p3, p4);
+    const maxP = Math.max(p1, p2, p3, p4);
+    return new Interval(subMachineEps(minP), addMachineEps(maxP));
   }
 }
 

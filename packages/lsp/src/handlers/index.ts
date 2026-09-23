@@ -10,5 +10,6 @@ export * from "./miscEndpoints.js";
 export * from "./modelscriptParticipant.js";
 export * from "./polyglotEndpoints.js";
 export * from "./replEndpoints.js";
+export * from "./rtmEndpoints.js";
 export * from "./simulationEndpoints.js";
 export * from "./treeHandler.js";

@@ -32,9 +32,24 @@ function sha256(data: Buffer): string {
   return crypto.createHash("sha256").update(data).digest("hex");
 }
 
+/** Sanitize and validate a SHA-256 or hex hash string. */
+function sanitizeHash(hash: string): string {
+  if (typeof hash !== "string") throw new Error("Invalid hash: expected string");
+  const safe = path.basename(hash).replace(/[^a-f0-9]/gi, "");
+  if (!safe || safe.length < 16) {
+    throw new Error("Invalid geometry/config hash");
+  }
+  return safe;
+}
+
 /** Resolve the cached geometry path for a given hash. */
 function geometryCachePath(hash: string): string {
-  return path.join(PHYSICS_CACHE_DIR, hash, "geometry.step");
+  const safeHash = sanitizeHash(hash);
+  const targetPath = path.resolve(PHYSICS_CACHE_DIR, safeHash, "geometry.step");
+  if (!targetPath.startsWith(PHYSICS_CACHE_DIR + path.sep)) {
+    throw new Error("Invalid cache path");
+  }
+  return targetPath;
 }
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
@@ -67,9 +82,13 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   // ── Check if a geometry hash already exists (HEAD request) ──
 
   router.head("/physics/upload/:hash", (req, res) => {
-    const cachedPath = geometryCachePath(req.params.hash);
-    if (fs.existsSync(cachedPath)) {
-      return res.status(200).end();
+    try {
+      const cachedPath = geometryCachePath(req.params.hash);
+      if (fs.existsSync(cachedPath)) {
+        return res.status(200).end();
+      }
+    } catch {
+      // Invalid hash format
     }
     res.status(404).end();
   });
@@ -121,7 +140,14 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       return res.status(400).json({ error: "Missing geometryHash or config." });
     }
 
-    const cachedGeometry = geometryCachePath(geometryHash);
+    let safeGeometryHash: string;
+    try {
+      safeGeometryHash = sanitizeHash(geometryHash);
+    } catch {
+      return res.status(400).json({ error: "Invalid geometryHash." });
+    }
+
+    const cachedGeometry = geometryCachePath(safeGeometryHash);
     if (!fs.existsSync(cachedGeometry)) {
       return res.status(404).json({ error: "Geometry not found in cache. Upload it first via /physics/upload." });
     }
@@ -133,14 +159,18 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       else simType = String(config.workflowClass);
     }
     const configHash = sha256(Buffer.from(JSON.stringify(config)));
+    const safeConfigHash = sanitizeHash(configHash);
 
     // Check if a result already exists for this exact config + geometry combination
-    const resultDir = path.join(PHYSICS_CACHE_DIR, geometryHash, configHash);
+    const resultDir = path.resolve(PHYSICS_CACHE_DIR, safeGeometryHash, safeConfigHash);
+    if (!resultDir.startsWith(PHYSICS_CACHE_DIR + path.sep)) {
+      return res.status(400).json({ error: "Invalid result directory." });
+    }
 
     // Create job in the database
     const dbJobId = database.createJob(`Physics ${simType}`, "RUNNING", "ADHOC", "ide", null, { resultDir });
-    const cachedResult = path.join(resultDir, "result.vtu");
-    const cachedScalars = path.join(resultDir, "scalars.json");
+    const cachedResult = path.resolve(resultDir, "result.vtu");
+    const cachedScalars = path.resolve(resultDir, "scalars.json");
 
     if (fs.existsSync(cachedResult) && fs.existsSync(cachedScalars)) {
       database.updateJobStatus(dbJobId, "SUCCESS");
@@ -238,17 +268,28 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       return res.status(400).json({ error: "Missing geometryHash or config." });
     }
 
-    const cachedGeometry = geometryCachePath(geometryHash);
+    let safeGeometryHash: string;
+    try {
+      safeGeometryHash = sanitizeHash(geometryHash);
+    } catch {
+      return res.status(400).json({ error: "Invalid geometryHash." });
+    }
+
+    const cachedGeometry = geometryCachePath(safeGeometryHash);
     if (!fs.existsSync(cachedGeometry)) {
       return res.status(404).json({ error: "Geometry not found in cache. Upload it first via /physics/upload." });
     }
 
     const configHash = sha256(Buffer.from(JSON.stringify(config)));
-    const resultDir = path.join(PHYSICS_CACHE_DIR, geometryHash, "cam_" + configHash);
+    const safeConfigHash = sanitizeHash(configHash);
+    const resultDir = path.resolve(PHYSICS_CACHE_DIR, safeGeometryHash, "cam_" + safeConfigHash);
+    if (!resultDir.startsWith(PHYSICS_CACHE_DIR + path.sep)) {
+      return res.status(400).json({ error: "Invalid result directory." });
+    }
 
     // Create job in the database
     const dbJobId = database.createJob(`CAM Generation`, "RUNNING", "ADHOC", "ide", null, { resultDir });
-    const cachedResult = path.join(resultDir, "toolpath.gcode");
+    const cachedResult = path.resolve(resultDir, "toolpath.gcode");
 
     if (fs.existsSync(cachedResult)) {
       database.updateJobStatus(dbJobId, "SUCCESS");
@@ -357,7 +398,11 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
  * when only scalar values are needed (e.g., for Modelica parameter binding).
  */
 function extractScalarsFromVtu(vtuPath: string): Record<string, Record<string, number>> {
-  const xml = fs.readFileSync(vtuPath, "utf8");
+  const resolved = path.resolve(vtuPath);
+  if (!resolved.startsWith(PHYSICS_CACHE_DIR + path.sep) && !resolved.startsWith(os.tmpdir())) {
+    throw new Error("Access denied: invalid VTU path");
+  }
+  const xml = fs.readFileSync(resolved, "utf8");
   const result: Record<string, Record<string, number>> = {};
 
   // Simple regex-based extraction for ASCII VTU format

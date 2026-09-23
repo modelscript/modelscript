@@ -341,6 +341,21 @@ export class UnmanagedInt32Array {
 }
 
 /**
+ * Unmanaged wrapper for raw 64-bit unsigned integer memory buffers (u64*).
+ */
+@unmanaged
+export class UnmanagedUint64Array {
+  @inline @operator("[]") get(index: i32): u64 {
+    if (index < 0) return 0;
+    return load<u64>(changetype<usize>(this) + (((index as u32) as usize) << 3));
+  }
+  @inline @operator("[]=") set(index: i32, value: u64): void {
+    if (index < 0) return;
+    store<u64>(changetype<usize>(this) + (((index as u32) as usize) << 3), value);
+  }
+}
+
+/**
  * Unmanaged wrapper for raw 32-bit unsigned integer memory buffers.
  * Supports atomic operations for concurrent multithreaded WASM access.
  */

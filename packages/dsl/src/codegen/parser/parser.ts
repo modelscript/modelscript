@@ -994,7 +994,7 @@ export function generateParserTables(
       for (const item of items) {
         const trimmed = item
           .trim()
-          .split(/\s+as\s+/)[0]
+          .split(/\bas\b/)[0]
           .trim();
         if (trimmed && !ignoreList.has(trimmed) && !exports.includes(trimmed)) {
           exports.push(trimmed);

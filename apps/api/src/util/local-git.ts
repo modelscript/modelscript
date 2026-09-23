@@ -21,8 +21,11 @@ export class LocalGitProvider implements IGitProvider {
     await fs.mkdir(CACHE_DIR, { recursive: true });
 
     // Hash the URL or use a safe folder name
-    const safeName = url.replace(/[^a-zA-Z0-9]/g, "_");
-    const repoPath = path.join(CACHE_DIR, safeName);
+    const safeName = path.basename(url.replace(/[^a-zA-Z0-9_-]/g, "_"));
+    const repoPath = path.resolve(CACHE_DIR, safeName);
+    if (!repoPath.startsWith(path.resolve(CACHE_DIR) + path.sep)) {
+      throw new Error("Invalid git repository cache path");
+    }
 
     const git: SimpleGit = simpleGit();
 

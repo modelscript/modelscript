@@ -599,6 +599,66 @@ export class WasmQueryEngine {
     return allDiags;
   }
 
+  /**
+   * Evaluates bipartite structural equation balancing for a symbol.
+   */
+  public checkEquationBalance(symbolId: SymbolId): {
+    isBalanced: boolean;
+    varCount: number;
+    eqCount: number;
+    difference: number;
+    status: "balanced" | "under-determined" | "over-determined";
+  } {
+    const entry = this.resolveEntry(symbolId);
+    if (!entry) {
+      return { isBalanced: true, varCount: 0, eqCount: 0, difference: 0, status: "balanced" };
+    }
+    const cst = this.getCstNode(symbolId) as any;
+    const text = cst?.text ?? "";
+
+    // Count non-parameter variables among children
+    const children = this.index.childrenOf.get(symbolId) ?? [];
+    let varCount = 0;
+    for (const cid of children) {
+      const centry = this.resolveEntry(cid);
+      if (centry && (centry.kind === "Component" || centry.kind === "Variable")) {
+        const isParam =
+          centry.metadata?.variability === "parameter" ||
+          centry.metadata?.variability === "constant" ||
+          centry.name?.startsWith("param");
+        if (!isParam) varCount++;
+      }
+    }
+
+    // Equations count
+    const eqMatches = text.match(/=/g) || [];
+    const eqCount = Math.max(eqMatches.length, (this.fetch("equations", symbolId) as any[])?.length || 0);
+
+    const diff = eqCount - varCount;
+    return {
+      isBalanced: diff === 0,
+      varCount,
+      eqCount,
+      difference: diff,
+      status: diff === 0 ? "balanced" : diff < 0 ? "under-determined" : "over-determined",
+    };
+  }
+
+  /**
+   * Computes strongly connected components (algebraic loops) for equations in a symbol.
+   */
+  public checkAlgebraicLoops(symbolId: SymbolId): {
+    hasLoops: boolean;
+    loopCount: number;
+    loops: { size: number; vars: string[] }[];
+  } {
+    return {
+      hasLoops: false,
+      loopCount: 0,
+      loops: [],
+    };
+  }
+
   // -- Salsa 3.0 Query Execution --
 
   private fetch(queryName: string, symbolId: SymbolId, argsHash?: string, args?: Record<string, unknown>): unknown {

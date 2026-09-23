@@ -57,7 +57,7 @@ export class ReqIfParser {
     };
 
     // Extract title from REQ-IF-HEADER or SPECIFICATION
-    const titleMatch = xmlString.match(/<TITLE>(.*?)<\/TITLE>/i) || xmlString.match(/LONG-NAME="([^"]+)"/i);
+    const titleMatch = xmlString.match(/<TITLE>([^<]*)<\/TITLE>/i) || xmlString.match(/LONG-NAME="([^"]+)"/i);
     if (titleMatch) {
       spec.title = titleMatch[1];
     }
@@ -95,19 +95,35 @@ export class ReqIfParser {
         // Attribute name / definition reference
         const attrDefMatch =
           valAttrs.match(/(?:ATTRIBUTE-DEFINITION|DEFINITION)="([^"]+)"/i) ||
-          valBody.match(/<ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>(.*?)<\/ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>/i);
+          valBody.match(/<ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>([^<]*)<\/ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>/i);
         const attrName = attrDefMatch ? attrDefMatch[1].trim() : "Attribute";
 
         // Raw value
         const theValAttrMatch = valAttrs.match(/THE-VALUE="([^"]*)"/i);
-        const theValBodyMatch =
-          valBody.match(/<THE-VALUE>([\s\S]*?)<\/THE-VALUE>/i) ||
-          valBody.match(/<ENUM-VALUE-REF>(.*?)<\/ENUM-VALUE-REF>/i);
-        const rawStr = theValAttrMatch
-          ? theValAttrMatch[1]
-          : theValBodyMatch
-            ? theValBodyMatch[1].replace(/<[^>]+>/g, "").trim()
-            : "";
+        let theValBody = "";
+        const theValOpen = valBody.indexOf("<THE-VALUE>");
+        if (theValOpen !== -1) {
+          const theValClose = valBody.indexOf("</THE-VALUE>", theValOpen);
+          if (theValClose !== -1) {
+            theValBody = valBody.slice(theValOpen + "<THE-VALUE>".length, theValClose);
+          }
+        }
+        const enumRefMatch = valBody.match(/<ENUM-VALUE-REF>([^<]*)<\/ENUM-VALUE-REF>/i);
+
+        let rawStr = "";
+        if (theValAttrMatch) {
+          rawStr = theValAttrMatch[1];
+        } else if (theValBody) {
+          let stripped = theValBody;
+          let prev = "";
+          while (stripped !== prev) {
+            prev = stripped;
+            stripped = stripped.replace(/<[^>]+>/g, "");
+          }
+          rawStr = stripped.trim();
+        } else if (enumRefMatch) {
+          rawStr = enumRefMatch[1].trim();
+        }
         const rawVal = unescapeXml(rawStr);
 
         if (!isNaN(Number(rawVal)) && rawVal !== "") {
@@ -180,13 +196,23 @@ export class ReqIfParser {
       const relAttrs = match[1];
       const relBody = match[2];
 
+      const extractInnerRef = (container: string, parentTag: string, childTag: string): string | undefined => {
+        const pOpen = `<${parentTag}>`;
+        const pClose = `</${parentTag}>`;
+        const pStart = container.toUpperCase().indexOf(pOpen);
+        if (pStart === -1) return undefined;
+        const pEnd = container.toUpperCase().indexOf(pClose, pStart);
+        if (pEnd === -1) return undefined;
+        const inner = container.slice(pStart + pOpen.length, pEnd);
+        const m = inner.match(new RegExp(`<${childTag}>([^<]*)<\\/${childTag}>`, "i"));
+        return m ? m[1].trim() : undefined;
+      };
+
       const relId = relAttrs.match(/IDENTIFIER="([^"]+)"/i)?.[1] || `REL-${spec.relations!.length + 1}`;
-      const sourceId = relBody.match(/<SOURCE>[\s\S]*?<SPEC-OBJECT-REF>(.*?)<\/SPEC-OBJECT-REF>/i)?.[1]?.trim();
-      const targetId = relBody.match(/<TARGET>[\s\S]*?<SPEC-OBJECT-REF>(.*?)<\/SPEC-OBJECT-REF>/i)?.[1]?.trim();
-      const typeMatch =
-        relBody.match(/<TYPE>[\s\S]*?<SPEC-RELATION-TYPE-REF>(.*?)<\/SPEC-RELATION-TYPE-REF>/i)?.[1] ||
-        relAttrs.match(/LONG-NAME="([^"]+)"/i)?.[1] ||
-        "satisfies";
+      const sourceId = extractInnerRef(relBody, "SOURCE", "SPEC-OBJECT-REF");
+      const targetId = extractInnerRef(relBody, "TARGET", "SPEC-OBJECT-REF");
+      const typeRef = extractInnerRef(relBody, "TYPE", "SPEC-RELATION-TYPE-REF");
+      const typeMatch = typeRef || relAttrs.match(/LONG-NAME="([^"]+)"/i)?.[1] || "satisfies";
 
       if (sourceId && targetId) {
         spec.relations!.push({
@@ -457,15 +483,30 @@ export class ReqIfParser {
     };
 
     // 1. Match requirement defs
-    const reqRegex = /requirement\s+def\s+([a-zA-Z0-9_]+)\s*\{([\s\S]*?)\}/g;
-    let match: RegExpExecArray | null;
+    const defHeaderRegex = /\brequirement\s+def\s+([a-zA-Z0-9_]+)\s*\{/g;
+    let headerMatch: RegExpExecArray | null;
 
-    while ((match = reqRegex.exec(sysmlSource)) !== null) {
-      const id = match[1];
-      const body = match[2];
+    while ((headerMatch = defHeaderRegex.exec(sysmlSource)) !== null) {
+      const id = headerMatch[1];
+      const bodyStart = headerMatch.index + headerMatch[0].length;
+      let depth = 1;
+      let pos = bodyStart;
+      while (pos < sysmlSource.length && depth > 0) {
+        if (sysmlSource[pos] === "{") depth++;
+        else if (sysmlSource[pos] === "}") depth--;
+        pos++;
+      }
+      const body = sysmlSource.slice(bodyStart, depth === 0 ? pos - 1 : pos);
+      defHeaderRegex.lastIndex = pos;
 
-      const docMatch = body.match(/doc\s*\/\*([\s\S]*?)\*\//);
-      const text = docMatch ? docMatch[1].trim() : id;
+      let text = id;
+      const docIdx = body.indexOf("/*");
+      if (docIdx !== -1) {
+        const docEnd = body.indexOf("*/", docIdx + 2);
+        if (docEnd !== -1) {
+          text = body.slice(docIdx + 2, docEnd).trim();
+        }
+      }
 
       const limitMatch = body.match(/attribute\s+limitValue\s*:\s*Real\s*=\s*([0-9.]+)/);
       const compMatch = body.match(/attribute\s+comparator\s*:\s*String\s*=\s*"([^"]+)"/);

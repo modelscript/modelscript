@@ -23,6 +23,7 @@ import {
   EXPR_LEFT,
   EXPR_RIGHT,
 } from "../dae/builder";
+import { UnmanagedFloat64Array } from "../core/array";
 
 export const INF: f64 = f64.POSITIVE_INFINITY;
 export const NEG_INF: f64 = f64.NEGATIVE_INFINITY;
@@ -376,6 +377,11 @@ export function tape_evaluateInterval(
   let rRes = getScratchInterval();
   let outIv = getScratchInterval();
 
+  let varBoundsLo = changetype<UnmanagedFloat64Array>(varBoundsLoPtr);
+  let varBoundsHi = changetype<UnmanagedFloat64Array>(varBoundsHiPtr);
+  let outLo = changetype<UnmanagedFloat64Array>(outLoPtr);
+  let outHi = changetype<UnmanagedFloat64Array>(outHiPtr);
+
   for (let i: u32 = 0; i < count; i++) {
     let offset = i * TAPE_STRIDE;
     let op = tape.nodeTable.get(offset + 0);
@@ -387,23 +393,23 @@ export function tape_evaluateInterval(
       outIv.setPoint(val);
     } else if (op == TAPE_OP_VAR) {
       let varId = left;
-      let lo = load<f64>(varBoundsLoPtr + (varId << 3));
-      let hi = load<f64>(varBoundsHiPtr + (varId << 3));
+      let lo = varBoundsLo[varId];
+      let hi = varBoundsHi[varId];
       outIv.set(lo, hi);
     } else {
-      lRes.set(load<f64>(outLoPtr + (left << 3)), load<f64>(outHiPtr + (left << 3)));
+      lRes.set(outLo[left], outHi[left]);
 
       if (op == TAPE_OP_ADD) {
-        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        rRes.set(outLo[right], outHi[right]);
         iaAdd(lRes, rRes, outIv);
       } else if (op == TAPE_OP_SUB) {
-        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        rRes.set(outLo[right], outHi[right]);
         iaSub(lRes, rRes, outIv);
       } else if (op == TAPE_OP_MUL) {
-        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        rRes.set(outLo[right], outHi[right]);
         iaMul(lRes, rRes, outIv);
       } else if (op == TAPE_OP_DIV) {
-        rRes.set(load<f64>(outLoPtr + (right << 3)), load<f64>(outHiPtr + (right << 3)));
+        rRes.set(outLo[right], outHi[right]);
         iaDiv(lRes, rRes, outIv);
       } else if (op == TAPE_OP_SIN) {
         iaSin(lRes, outIv);
@@ -418,8 +424,8 @@ export function tape_evaluateInterval(
       }
     }
 
-    store<f64>(outLoPtr + (i << 3), outIv.lo);
-    store<f64>(outHiPtr + (i << 3), outIv.hi);
+    outLo[i] = outIv.lo;
+    outHi[i] = outIv.hi;
   }
 
   resetScratchInterval(mark);
@@ -466,8 +472,8 @@ export function dae_evaluateExprInterval(
       out.setPoint(0.0);
       return;
     }
-    let lo = load<f64>(varBoundsLoPtr + (varId << 3));
-    let hi = load<f64>(varBoundsHiPtr + (varId << 3));
+    let lo = changetype<UnmanagedFloat64Array>(varBoundsLoPtr)[varId];
+    let hi = changetype<UnmanagedFloat64Array>(varBoundsHiPtr)[varId];
     out.set(lo, hi);
     return;
   }
@@ -524,7 +530,7 @@ export function dae_evalInterval(
   let mark = markScratchInterval();
   let out = getScratchInterval();
   dae_evaluateExprInterval(dae, exprId, varBoundsLoPtr, varBoundsHiPtr, out);
-  if (outLoPtr != 0) store<f64>(outLoPtr, out.lo);
-  if (outHiPtr != 0) store<f64>(outHiPtr, out.hi);
+  if (outLoPtr != 0) changetype<UnmanagedFloat64Array>(outLoPtr)[0] = out.lo;
+  if (outHiPtr != 0) changetype<UnmanagedFloat64Array>(outHiPtr)[0] = out.hi;
   resetScratchInterval(mark);
 }

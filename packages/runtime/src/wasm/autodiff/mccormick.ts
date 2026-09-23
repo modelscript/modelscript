@@ -37,6 +37,7 @@ import {
   EXPR_LEFT,
   EXPR_RIGHT,
 } from "../dae/builder";
+import { UnmanagedFloat64Array } from "../core/array";
 
 /**
  * Unmanaged McCormick Relaxation Tuple for non-convex optimization in WASM.
@@ -389,59 +390,63 @@ export function tape_evaluateMcCormick(
   let rRes = getScratchMcCormick();
   let outMc = getScratchMcCormick();
 
+  let varVals = changetype<UnmanagedFloat64Array>(varValsPtr);
+  let varBoundsLo = changetype<UnmanagedFloat64Array>(varBoundsLoPtr);
+  let varBoundsHi = changetype<UnmanagedFloat64Array>(varBoundsHiPtr);
+  let outCv = changetype<UnmanagedFloat64Array>(outCvPtr);
+  let outCc = changetype<UnmanagedFloat64Array>(outCcPtr);
+  let outLo = changetype<UnmanagedFloat64Array>(outLoPtr);
+  let outHi = changetype<UnmanagedFloat64Array>(outHiPtr);
+
   for (let i: u32 = 0; i < count; i++) {
-    let offset = i * TAPE_STRIDE;
-    let op = tape.nodeTable.get(offset + 0);
-    let left = tape.nodeTable.get(offset + 1);
-    let right = tape.nodeTable.get(offset + 2);
+    let node = tape.nodeAt(i);
+    let op = node.op;
+    let left = node.left;
+    let right = node.right;
 
     if (op == TAPE_OP_CONST) {
-      let val = tape.getNodeValue(i);
-      outMc.setConst(val);
+      outMc.setConst(node.value);
     } else if (op == TAPE_OP_VAR) {
       let varId = left;
-      let val = load<f64>(varValsPtr + (varId << 3));
-      let lo = load<f64>(varBoundsLoPtr + (varId << 3));
-      let hi = load<f64>(varBoundsHiPtr + (varId << 3));
-      outMc.setVar(val, lo, hi);
+      outMc.setVar(varVals[varId], varBoundsLo[varId], varBoundsHi[varId]);
     } else {
       lRes.set(
-        load<f64>(outCvPtr + (left << 3)),
-        load<f64>(outCcPtr + (left << 3)),
-        load<f64>(outLoPtr + (left << 3)),
-        load<f64>(outHiPtr + (left << 3)),
+        outCv[left],
+        outCc[left],
+        outLo[left],
+        outHi[left],
       );
 
       if (op == TAPE_OP_ADD) {
         rRes.set(
-          load<f64>(outCvPtr + (right << 3)),
-          load<f64>(outCcPtr + (right << 3)),
-          load<f64>(outLoPtr + (right << 3)),
-          load<f64>(outHiPtr + (right << 3)),
+          outCv[right],
+          outCc[right],
+          outLo[right],
+          outHi[right],
         );
         mcAdd(lRes, rRes, outMc);
       } else if (op == TAPE_OP_SUB) {
         rRes.set(
-          load<f64>(outCvPtr + (right << 3)),
-          load<f64>(outCcPtr + (right << 3)),
-          load<f64>(outLoPtr + (right << 3)),
-          load<f64>(outHiPtr + (right << 3)),
+          outCv[right],
+          outCc[right],
+          outLo[right],
+          outHi[right],
         );
         mcSub(lRes, rRes, outMc);
       } else if (op == TAPE_OP_MUL) {
         rRes.set(
-          load<f64>(outCvPtr + (right << 3)),
-          load<f64>(outCcPtr + (right << 3)),
-          load<f64>(outLoPtr + (right << 3)),
-          load<f64>(outHiPtr + (right << 3)),
+          outCv[right],
+          outCc[right],
+          outLo[right],
+          outHi[right],
         );
         mcMul(lRes, rRes, outMc);
       } else if (op == TAPE_OP_DIV) {
         rRes.set(
-          load<f64>(outCvPtr + (right << 3)),
-          load<f64>(outCcPtr + (right << 3)),
-          load<f64>(outLoPtr + (right << 3)),
-          load<f64>(outHiPtr + (right << 3)),
+          outCv[right],
+          outCc[right],
+          outLo[right],
+          outHi[right],
         );
         mcDiv(lRes, rRes, outMc);
       } else if (op == TAPE_OP_SIN) {
@@ -457,10 +462,10 @@ export function tape_evaluateMcCormick(
       }
     }
 
-    store<f64>(outCvPtr + (i << 3), outMc.cv);
-    store<f64>(outCcPtr + (i << 3), outMc.cc);
-    store<f64>(outLoPtr + (i << 3), outMc.lo);
-    store<f64>(outHiPtr + (i << 3), outMc.hi);
+    outCv[i] = outMc.cv;
+    outCc[i] = outMc.cc;
+    outLo[i] = outMc.lo;
+    outHi[i] = outMc.hi;
   }
 
   resetScratchMcCormick(mark);

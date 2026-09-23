@@ -1,6 +1,7 @@
 import { DaeBuilder, VAR_STRIDE, VAR_FLAGS, FLAG_VAR_STATE } from "../dae/builder";
 import { computeDerivatives, stepEuler } from "../solvers/integrators";
 import { atomicChunkAlloc } from "../arena";
+import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 
 // FMI 3.0 Status Enums
 export const FMI3_OK: i32 = 0;
@@ -29,17 +30,23 @@ export class Fmi3Instance {
   nVars: u32;
   nEventIndicators: u32;
 
-  // Zero-copy memory pointers:
-  // - varValuesPtr: f64[nVars]
-  // - derivativesPtr: f64[nStates]
-  // - eventIndicatorsPtr: f64[nEventIndicators]
-  // - continuousStatesPtr: f64[nStates]
-  // - stateVarIndicesPtr: u32[nStates]
-  varValuesPtr: usize;
-  derivativesPtr: usize;
-  eventIndicatorsPtr: usize;
-  continuousStatesPtr: usize;
-  stateVarIndicesPtr: usize;
+  // Zero-copy memory arrays:
+  // - varValues: f64[nVars]
+  // - derivatives: f64[nStates]
+  // - eventIndicators: f64[nEventIndicators]
+  // - continuousStates: f64[nStates]
+  // - stateVarIndices: u32[nStates]
+  varValues: UnmanagedFloat64Array;
+  derivatives: UnmanagedFloat64Array;
+  eventIndicators: UnmanagedFloat64Array;
+  continuousStates: UnmanagedFloat64Array;
+  stateVarIndices: UnmanagedUint32Array;
+
+  @inline get varValuesPtr(): usize { return changetype<usize>(this.varValues); }
+  @inline get derivativesPtr(): usize { return changetype<usize>(this.derivatives); }
+  @inline get eventIndicatorsPtr(): usize { return changetype<usize>(this.eventIndicators); }
+  @inline get continuousStatesPtr(): usize { return changetype<usize>(this.continuousStates); }
+  @inline get stateVarIndicesPtr(): usize { return changetype<usize>(this.stateVarIndices); }
 
   init(daePtr: u32, nEventIndicators: u32): void {
     this.daePtr = daePtr;
@@ -64,21 +71,21 @@ export class Fmi3Instance {
     let nS = stateCount > 0 ? stateCount : 1;
     let nE = nEventIndicators > 0 ? nEventIndicators : 1;
 
-    this.varValuesPtr = atomicChunkAlloc(nV * 8);
-    this.derivativesPtr = atomicChunkAlloc(nS * 8);
-    this.continuousStatesPtr = atomicChunkAlloc(nS * 8);
-    this.eventIndicatorsPtr = atomicChunkAlloc(nE * 8);
-    this.stateVarIndicesPtr = atomicChunkAlloc(nS * 4);
+    this.varValues = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nV * 8));
+    this.derivatives = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nS * 8));
+    this.continuousStates = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nS * 8));
+    this.eventIndicators = changetype<UnmanagedFloat64Array>(atomicChunkAlloc(nE * 8));
+    this.stateVarIndices = changetype<UnmanagedUint32Array>(atomicChunkAlloc(nS * 4));
 
     // Initialize state mapping
     let sIdx: u32 = 0;
     for (let v: u32 = 0; v < totalVars; v++) {
       let startVal = dae.getVarStartValue(v);
-      store<f64>(this.varValuesPtr + v * 8, startVal);
+      this.varValues[v] = startVal;
 
       if ((dae.getVarData().get(v * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_STATE) != 0) {
-        store<u32>(this.stateVarIndicesPtr + sIdx * 4, v);
-        store<f64>(this.continuousStatesPtr + sIdx * 8, startVal);
+        this.stateVarIndices[sIdx] = v;
+        this.continuousStates[sIdx] = startVal;
         sIdx++;
       }
     }
@@ -131,11 +138,11 @@ export function fmi3GetContinuousStates(instancePtr: u32, statesPtr: u32, nState
   if (instancePtr == 0) return FMI3_FATAL;
   let inst = changetype<Fmi3Instance>(instancePtr);
   let count = nStates < inst.nStates ? nStates : inst.nStates;
+  let states = changetype<UnmanagedFloat64Array>(statesPtr);
 
   for (let i: u32 = 0; i < count; i++) {
-    let vIdx = load<u32>(inst.stateVarIndicesPtr + i * 4);
-    let val = load<f64>(inst.varValuesPtr + vIdx * 8);
-    store<f64>(statesPtr + i * 8, val);
+    let vIdx = inst.stateVarIndices[i];
+    states[i] = inst.varValues[vIdx];
   }
   return FMI3_OK;
 }
@@ -144,12 +151,13 @@ export function fmi3SetContinuousStates(instancePtr: u32, statesPtr: u32, nState
   if (instancePtr == 0) return FMI3_FATAL;
   let inst = changetype<Fmi3Instance>(instancePtr);
   let count = nStates < inst.nStates ? nStates : inst.nStates;
+  let states = changetype<UnmanagedFloat64Array>(statesPtr);
 
   for (let i: u32 = 0; i < count; i++) {
-    let vIdx = load<u32>(inst.stateVarIndicesPtr + i * 4);
-    let val = load<f64>(statesPtr + i * 8);
-    store<f64>(inst.varValuesPtr + vIdx * 8, val);
-    store<f64>(inst.continuousStatesPtr + i * 8, val);
+    let vIdx = inst.stateVarIndices[i];
+    let val = states[i];
+    inst.varValues[vIdx] = val;
+    inst.continuousStates[i] = val;
   }
   return FMI3_OK;
 }
@@ -161,10 +169,10 @@ export function fmi3GetDerivatives(instancePtr: u32, derivativesPtr: u32, nDeriv
 
   computeDerivatives(dae, inst.varValuesPtr as u32, inst.derivativesPtr as u32);
   let count = nDerivatives < inst.nStates ? nDerivatives : inst.nStates;
+  let derivatives = changetype<UnmanagedFloat64Array>(derivativesPtr);
 
   for (let i: u32 = 0; i < count; i++) {
-    let dVal = load<f64>(inst.derivativesPtr + i * 8);
-    store<f64>(derivativesPtr + i * 8, dVal);
+    derivatives[i] = inst.derivatives[i];
   }
   return FMI3_OK;
 }
@@ -189,14 +197,14 @@ export function fmi3GetFloat64(instancePtr: u32, valueReference: u32): f64 {
   if (instancePtr == 0) return 0.0;
   let inst = changetype<Fmi3Instance>(instancePtr);
   if (valueReference >= inst.nVars) return 0.0;
-  return load<f64>(inst.varValuesPtr + valueReference * 8);
+  return inst.varValues[valueReference];
 }
 
 export function fmi3SetFloat64(instancePtr: u32, valueReference: u32, value: f64): i32 {
   if (instancePtr == 0) return FMI3_FATAL;
   let inst = changetype<Fmi3Instance>(instancePtr);
   if (valueReference >= inst.nVars) return FMI3_ERROR;
-  store<f64>(inst.varValuesPtr + valueReference * 8, value);
+  inst.varValues[valueReference] = value;
   return FMI3_OK;
 }
 
@@ -205,7 +213,7 @@ export function fmi3SetFloat64(instancePtr: u32, valueReference: u32, value: f64
  */
 export function fmi3GetGpuBufferPointer(instancePtr: u32): u32 {
   if (instancePtr == 0) return 0;
-  return changetype<Fmi3Instance>(instancePtr).varValuesPtr as u32;
+  return changetype<usize>(changetype<Fmi3Instance>(instancePtr).varValues) as u32;
 }
 
 /**

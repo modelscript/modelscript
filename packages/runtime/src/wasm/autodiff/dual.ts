@@ -13,6 +13,7 @@ import {
   EQ_RHS,
 } from "../dae/builder";
 import { BuiltinMathFunc } from "../dae/fold";
+import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 
 /**
  * Unmanaged Dual number structure (16 bytes: val f64, dot f64) for
@@ -22,6 +23,11 @@ import { BuiltinMathFunc } from "../dae/fold";
 export class Dual {
   val: f64;
   dot: f64;
+
+  @inline
+  static at(ptr: usize, index: u32): Dual {
+    return changetype<Dual>(ptr + (((index as usize) << 4)));
+  }
 
   @inline
   set(val: f64, dot: f64 = 0.0): void {
@@ -344,9 +350,7 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
       outDual.set(0.0, 0.0);
       return;
     }
-    let v = load<f64>(dualVarsPtr + (varId << 4));
-    let d = load<f64>(dualVarsPtr + (varId << 4) + 8);
-    outDual.set(v, d);
+    outDual.copyFrom(Dual.at(dualVarsPtr, varId));
     return;
   }
 
@@ -354,9 +358,7 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
     let inner = exprData.get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && exprData.get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
       let varId = exprData.get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
-      let v = load<f64>(dualVarsPtr + (varId << 4));
-      let d = load<f64>(dualVarsPtr + (varId << 4) + 8);
-      outDual.set(v, d);
+      outDual.copyFrom(Dual.at(dualVarsPtr, varId));
       return;
     }
     outDual.set(0.0, 0.0);
@@ -603,19 +605,21 @@ export function evalDualJacobianColumn(
   outColPtr: usize,
 ): void {
   // Seed the target variable: dx_seed / dx_seed = 1.0
-  let seedOffset = (seedVarId << 4) + 8;
-  store<f64>(dualVarsPtr + seedOffset, 1.0);
+  let seedDual = Dual.at(dualVarsPtr, seedVarId);
+  seedDual.dot = 1.0;
 
   let resDual = new Dual();
+  let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
+  let outCol = changetype<UnmanagedFloat64Array>(outColPtr);
 
   for (let i: u32 = 0; i < nEqs; i++) {
-    let eqIdx = load<u32>(eqIndicesPtr + (i << 2));
+    let eqIdx = eqIndices[i];
     evalDualEquationResidual(eqIdx, dae, dualVarsPtr, resDual);
-    store<f64>(outColPtr + (i << 3), resDual.dot);
+    outCol[i] = resDual.dot;
   }
 
   // Reset seed
-  store<f64>(dualVarsPtr + seedOffset, 0.0);
+  seedDual.dot = 0.0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

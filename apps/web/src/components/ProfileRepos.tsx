@@ -52,8 +52,8 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
     let fullName = repoUrl;
 
     try {
-      const url = new URL(repoUrl);
-      if (url.hostname.includes("github.com")) provider = "github";
+      const host = url.hostname.toLowerCase();
+      if (host === "github.com" || host.endsWith(".github.com")) provider = "github";
       fullName = url.pathname.replace(/^\//, "").replace(/\/$/, "");
     } catch {
       // if not a URL, assume it's just namespace/project

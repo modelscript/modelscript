@@ -10,14 +10,18 @@ export async function verifyActivityPubSignature(req: Request, res: Response, ne
     }
 
     // Parse Signature header
-    const parts = signatureHeader.split(",").reduce(
-      (acc, part) => {
-        const match = part.match(/([^=]+)="([^"]+)"/);
-        if (match) acc[match[1] as string] = match[2] as string;
-        return acc;
-      },
-      {} as Record<string, string>,
-    );
+    const parts: Record<string, string> = {};
+    for (const part of signatureHeader.split(",")) {
+      const eqIdx = part.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = part.slice(0, eqIdx).trim();
+        let val = part.slice(eqIdx + 1).trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.slice(1, -1);
+        }
+        parts[key] = val;
+      }
+    }
 
     if (!parts.keyId || !parts.signature || !parts.headers) {
       res.status(401).json({ error: "Invalid Signature header format" });

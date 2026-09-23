@@ -3,8 +3,36 @@
 // All data structures use the arena allocator (zero-GC).
 
 import { getNodeFirstChild, getNodeNextSibling, getNodeType } from "../arena";
+import { UnmanagedMap64 } from "../core/hashmap";
+import { UnmanagedUint32Array, UnmanagedFloat32Array } from "../core/array";
 
 export let arenaOffset: u32 = 0;
+
+/**
+ * Result structure in linear memory containing CCS format sparsity metadata (16 bytes).
+ */
+@unmanaged
+export class SparsityPatternResult {
+    nnz: u32;
+    colPtrOffset: u32;
+    rowIdxOffset: u32;
+    valuesOffset: u32;
+
+    @inline static at(ptr: usize): SparsityPatternResult {
+        return changetype<SparsityPatternResult>(ptr);
+    }
+
+    @inline init(nnz: u32, colPtr: u32, rowIdx: u32, values: u32): void {
+        this.nnz = nnz;
+        this.colPtrOffset = colPtr;
+        this.rowIdxOffset = rowIdx;
+        this.valuesOffset = values;
+    }
+}
+
+// Aliases for backwards compatibility with tests
+export const computeJacobianCCS = buildJacobianSparsity;
+export const computeHessianCCS = buildHessianSparsity;
 
 // ========================================================================
 // Dependency Bitset — tracks which variables appear in each equation
@@ -18,33 +46,33 @@ export function initDependencies(numVars: u32, numEqns: u32): void {
     depsBitsetOffset = arenaOffset;
     let totalWords = depsWordsPerEqn * numEqns;
     arenaOffset += totalWords * 4;
+    let bitset = changetype<UnmanagedUint32Array>(depsBitsetOffset);
     for (let i: u32 = 0; i < totalWords; i++) {
-        store<u32>(depsBitsetOffset + i * 4, 0);
+        bitset[i] = 0;
     }
 }
 
 function setDependency(eqnIdx: u32, varIdx: u32): void {
     let wordIdx = eqnIdx * depsWordsPerEqn + (varIdx >> 5);
     let bitIdx = varIdx & 31;
-    let current = load<u32>(depsBitsetOffset + wordIdx * 4);
-    store<u32>(depsBitsetOffset + wordIdx * 4, current | (1 << bitIdx));
+    let bitset = changetype<UnmanagedUint32Array>(depsBitsetOffset);
+    bitset[wordIdx] = bitset[wordIdx] | (1 << bitIdx);
 }
 
 function hasDependency(eqnIdx: u32, varIdx: u32): boolean {
     let wordIdx = eqnIdx * depsWordsPerEqn + (varIdx >> 5);
     let bitIdx = varIdx & 31;
-    let current = load<u32>(depsBitsetOffset + wordIdx * 4);
-    return (current & (1 << bitIdx)) != 0;
+    let bitset = changetype<UnmanagedUint32Array>(depsBitsetOffset);
+    return (bitset[wordIdx] & (1 << bitIdx)) != 0;
 }
 
 // ========================================================================
 // Variable Lookup — hash table for O(1) nodePtr → varIdx resolution
 // ========================================================================
 
-let varHashTableOffset: u32 = 0;
-let varHashTableCapacity: u32 = 0;
+let varMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 
-function fnvHashPtr(ptr: u32): u32 {
+export function fnvHashPtr(ptr: u32): u32 {
     let h: u32 = 0x811c9dc5;
     h ^= ptr & 0xFF;        h = (h * 0x01000193) >>> 0;
     h ^= (ptr >> 8) & 0xFF; h = (h * 0x01000193) >>> 0;
@@ -53,47 +81,27 @@ function fnvHashPtr(ptr: u32): u32 {
     return h;
 }
 
-function initVarHashTable(varMappingsPtr: u32, numMappings: u32): void {
-    varHashTableCapacity = numMappings < 4 ? 8 : numMappings * 2;
-    let cap = varHashTableCapacity;
-    cap--;
-    cap |= cap >> 1; cap |= cap >> 2; cap |= cap >> 4;
-    cap |= cap >> 8; cap |= cap >> 16;
-    cap++;
-    varHashTableCapacity = cap;
-
-    varHashTableOffset = arenaOffset;
-    arenaOffset += varHashTableCapacity * 8;
-
-    for (let i: u32 = 0; i < varHashTableCapacity; i++) {
-        store<u32>(varHashTableOffset + i * 8, 0);
-        store<u32>(varHashTableOffset + i * 8 + 4, 0xFFFFFFFF);
+export function initVarHashTable(varMappingsPtr: u32, numMappings: u32): void {
+    if (varMap == changetype<UnmanagedMap64>(0)) {
+        varMap = changetype<UnmanagedMap64>(UnmanagedMap64.create(numMappings < 8 ? 16 : numMappings * 2));
+    } else {
+        varMap.clear();
     }
 
-    let mask = varHashTableCapacity - 1;
+    let mappings = changetype<UnmanagedUint32Array>(varMappingsPtr);
     for (let v: u32 = 0; v < numMappings; v++) {
-        let vNode = load<u32>(varMappingsPtr + v * 8);
-        let varIdx = load<u32>(varMappingsPtr + v * 8 + 4);
+        let vNode = mappings[v * 2];
+        let varIdx = mappings[v * 2 + 1];
         if (vNode == 0) continue;
-        let slot = fnvHashPtr(vNode) & mask;
-        while (load<u32>(varHashTableOffset + slot * 8) != 0) {
-            slot = (slot + 1) & mask;
-        }
-        store<u32>(varHashTableOffset + slot * 8, vNode);
-        store<u32>(varHashTableOffset + slot * 8 + 4, varIdx);
+        varMap.set(vNode as u64, varIdx + 1);
     }
 }
 
-function lookupVarIdx(nodePtr: u32): u32 {
-    if (nodePtr == 0 || varHashTableCapacity == 0) return 0xFFFFFFFF;
-    let mask = varHashTableCapacity - 1;
-    let slot = fnvHashPtr(nodePtr) & mask;
-    while (true) {
-        let key = load<u32>(varHashTableOffset + slot * 8);
-        if (key == 0) return 0xFFFFFFFF;
-        if (key == nodePtr) return load<u32>(varHashTableOffset + slot * 8 + 4);
-        slot = (slot + 1) & mask;
-    }
+export function lookupVarIdx(nodePtr: u32): u32 {
+    if (nodePtr == 0 || varMap == changetype<UnmanagedMap64>(0)) return 0xFFFFFFFF;
+    let val = varMap.get(nodePtr as u64);
+    if (val == 0) return 0xFFFFFFFF;
+    return val - 1;
 }
 
 // ========================================================================
@@ -124,20 +132,18 @@ export function buildJacobianSparsity(
     numVars: u32
 ): u32 {
     if (numEqns == 0 || numVars == 0) {
-        let emptyResult = arenaOffset;
-        arenaOffset += 16;
-        store<u32>(emptyResult, 0);
-        store<u32>(emptyResult + 4, 0);
-        store<u32>(emptyResult + 8, 0);
-        store<u32>(emptyResult + 12, 0);
-        return emptyResult;
+        let emptyRes = SparsityPatternResult.at(arenaOffset);
+        arenaOffset += sizeof<SparsityPatternResult>();
+        emptyRes.init(0, 0, 0, 0);
+        return changetype<usize>(emptyRes) as u32;
     }
 
     initDependencies(numVars, numEqns);
     initVarHashTable(varMappingsPtr, numVars);
 
+    let eqRoots = changetype<UnmanagedUint32Array>(equationRootsPtr);
     for (let e: u32 = 0; e < numEqns; e++) {
-        let eqNode = load<u32>(equationRootsPtr + e * 4);
+        let eqNode = eqRoots[e];
         if (eqNode != 0) {
             harvestVariables(eqNode, e);
         }
@@ -145,43 +151,43 @@ export function buildJacobianSparsity(
 
     let colPtrOffset = arenaOffset;
     arenaOffset += (numVars + 1) * 4;
+    let colPtr = changetype<UnmanagedUint32Array>(colPtrOffset);
 
     let nnz: u32 = 0;
     for (let j: u32 = 0; j < numVars; j++) {
-        store<u32>(colPtrOffset + j * 4, nnz);
+        colPtr[j] = nnz;
         for (let i: u32 = 0; i < numEqns; i++) {
             if (hasDependency(i, j)) {
                 nnz++;
             }
         }
     }
-    store<u32>(colPtrOffset + numVars * 4, nnz);
+    colPtr[numVars] = nnz;
 
     let rowIdxOffset = arenaOffset;
     arenaOffset += nnz * 4;
+    let rowIdx = changetype<UnmanagedUint32Array>(rowIdxOffset);
 
     let valuesOffset = arenaOffset;
     arenaOffset += nnz * 4;
+    let values = changetype<UnmanagedFloat32Array>(valuesOffset);
 
     let currentK: u32 = 0;
     for (let j: u32 = 0; j < numVars; j++) {
         for (let i: u32 = 0; i < numEqns; i++) {
             if (hasDependency(i, j)) {
-                store<u32>(rowIdxOffset + currentK * 4, i);
-                store<f32>(valuesOffset + currentK * 4, 1.0);
+                rowIdx[currentK] = i;
+                values[currentK] = 1.0;
                 currentK++;
             }
         }
     }
 
-    let resultStruct = arenaOffset;
-    arenaOffset += 16;
-    store<u32>(resultStruct, nnz);
-    store<u32>(resultStruct + 4, colPtrOffset);
-    store<u32>(resultStruct + 8, rowIdxOffset);
-    store<u32>(resultStruct + 12, valuesOffset);
+    let resultStruct = SparsityPatternResult.at(arenaOffset);
+    arenaOffset += sizeof<SparsityPatternResult>();
+    resultStruct.init(nnz, colPtrOffset, rowIdxOffset, valuesOffset);
 
-    return resultStruct;
+    return changetype<usize>(resultStruct) as u32;
 }
 
 // ========================================================================
@@ -196,28 +202,28 @@ export function initHessian(numVars: u32): void {
     hessianBitsetOffset = arenaOffset;
     let totalWords = hessianWordsPerVar * numVars;
     arenaOffset += totalWords * 4;
+    let bitset = changetype<UnmanagedUint32Array>(hessianBitsetOffset);
     for (let i: u32 = 0; i < totalWords; i++) {
-        store<u32>(hessianBitsetOffset + i * 4, 0);
+        bitset[i] = 0;
     }
 }
 
 function setHessianEntry(varIdx1: u32, varIdx2: u32): void {
+    let bitset = changetype<UnmanagedUint32Array>(hessianBitsetOffset);
     let wordIdx1 = varIdx1 * hessianWordsPerVar + (varIdx2 >> 5);
     let bitIdx1 = varIdx2 & 31;
-    let cur1 = load<u32>(hessianBitsetOffset + wordIdx1 * 4);
-    store<u32>(hessianBitsetOffset + wordIdx1 * 4, cur1 | (1 << bitIdx1));
+    bitset[wordIdx1] = bitset[wordIdx1] | (1 << bitIdx1);
 
     let wordIdx2 = varIdx2 * hessianWordsPerVar + (varIdx1 >> 5);
     let bitIdx2 = varIdx1 & 31;
-    let cur2 = load<u32>(hessianBitsetOffset + wordIdx2 * 4);
-    store<u32>(hessianBitsetOffset + wordIdx2 * 4, cur2 | (1 << bitIdx2));
+    bitset[wordIdx2] = bitset[wordIdx2] | (1 << bitIdx2);
 }
 
 function hasHessianEntry(varIdx1: u32, varIdx2: u32): boolean {
     let wordIdx = varIdx1 * hessianWordsPerVar + (varIdx2 >> 5);
     let bitIdx = varIdx2 & 31;
-    let cur = load<u32>(hessianBitsetOffset + wordIdx * 4);
-    return (cur & (1 << bitIdx)) != 0;
+    let bitset = changetype<UnmanagedUint32Array>(hessianBitsetOffset);
+    return (bitset[wordIdx] & (1 << bitIdx)) != 0;
 }
 
 // Variable-set pool for AST nodes (scratch space in arena)
@@ -235,30 +241,33 @@ function getVarSetPtr(slotIdx: u32): u32 {
 }
 
 function clearVarSet(setPtr: u32): void {
+    let s = changetype<UnmanagedUint32Array>(setPtr);
     for (let i: u32 = 0; i < varSetWordsPerNode; i++) {
-        store<u32>(setPtr + i * 4, 0);
+        s[i] = 0;
     }
 }
 
 function addVarToSet(setPtr: u32, varIdx: u32): void {
     let wordIdx = varIdx >> 5;
     let bitIdx = varIdx & 31;
-    let cur = load<u32>(setPtr + wordIdx * 4);
-    store<u32>(setPtr + wordIdx * 4, cur | (1 << bitIdx));
+    let s = changetype<UnmanagedUint32Array>(setPtr);
+    s[wordIdx] = s[wordIdx] | (1 << bitIdx);
 }
 
 function unionVarSets(destPtr: u32, srcPtr: u32): void {
+    let d = changetype<UnmanagedUint32Array>(destPtr);
+    let s = changetype<UnmanagedUint32Array>(srcPtr);
     for (let i: u32 = 0; i < varSetWordsPerNode; i++) {
-        let d = load<u32>(destPtr + i * 4);
-        let s = load<u32>(srcPtr + i * 4);
-        store<u32>(destPtr + i * 4, d | s);
+        d[i] = d[i] | s[i];
     }
 }
 
 // Cross-product of two variable sets — records cross-derivatives d2f/(dx_i dx_j)
 function crossProductVarSets(set1Ptr: u32, set2Ptr: u32, numVars: u32): void {
+    let s1 = changetype<UnmanagedUint32Array>(set1Ptr);
+    let s2 = changetype<UnmanagedUint32Array>(set2Ptr);
     for (let w1: u32 = 0; w1 < varSetWordsPerNode; w1++) {
-        let word1 = load<u32>(set1Ptr + w1 * 4);
+        let word1 = s1[w1];
         if (word1 == 0) continue;
         for (let b1: u32 = 0; b1 < 32; b1++) {
             if ((word1 & (1 << b1)) != 0) {
@@ -266,7 +275,7 @@ function crossProductVarSets(set1Ptr: u32, set2Ptr: u32, numVars: u32): void {
                 if (v1 >= numVars) break;
 
                 for (let w2: u32 = 0; w2 < varSetWordsPerNode; w2++) {
-                    let word2 = load<u32>(set2Ptr + w2 * 4);
+                    let word2 = s2[w2];
                     if (word2 == 0) continue;
                     for (let b2: u32 = 0; b2 < 32; b2++) {
                         if ((word2 & (1 << b2)) != 0) {
@@ -303,7 +312,6 @@ function propagateHessian(nodeId: u32, outSetPtr: u32, numVars: u32, scratchSlot
         child = getNodeNextSibling(child);
     }
 
-    let nodeType = getNodeType(nodeId);
     let isNonlinear = (childCount >= 2);
 
     if (isNonlinear) {
@@ -324,13 +332,10 @@ export function buildHessianSparsity(
     numVars: u32
 ): u32 {
     if (numEqns == 0 || numVars == 0) {
-        let emptyResult = arenaOffset;
-        arenaOffset += 16;
-        store<u32>(emptyResult, 0);
-        store<u32>(emptyResult + 4, 0);
-        store<u32>(emptyResult + 8, 0);
-        store<u32>(emptyResult + 12, 0);
-        return emptyResult;
+        let emptyRes = SparsityPatternResult.at(arenaOffset);
+        arenaOffset += sizeof<SparsityPatternResult>();
+        emptyRes.init(0, 0, 0, 0);
+        return changetype<usize>(emptyRes) as u32;
     }
 
     initHessian(numVars);
@@ -339,8 +344,9 @@ export function buildHessianSparsity(
 
     let topSetPtr = getVarSetPtr(30);
 
+    let eqRoots = changetype<UnmanagedUint32Array>(equationRootsPtr);
     for (let e: u32 = 0; e < numEqns; e++) {
-        let eqNode = load<u32>(equationRootsPtr + e * 4);
+        let eqNode = eqRoots[e];
         if (eqNode != 0) {
             propagateHessian(eqNode, topSetPtr, numVars, 0);
         }
@@ -348,50 +354,49 @@ export function buildHessianSparsity(
 
     let colPtrOffsetH = arenaOffset;
     arenaOffset += (numVars + 1) * 4;
+    let colPtrH = changetype<UnmanagedUint32Array>(colPtrOffsetH);
 
     let nnzH: u32 = 0;
     for (let j: u32 = 0; j < numVars; j++) {
-        store<u32>(colPtrOffsetH + j * 4, nnzH);
+        colPtrH[j] = nnzH;
         for (let i: u32 = j; i < numVars; i++) {
             if (hasHessianEntry(i, j)) {
                 nnzH++;
             }
         }
     }
-    store<u32>(colPtrOffsetH + numVars * 4, nnzH);
+    colPtrH[numVars] = nnzH;
 
     let rowIdxOffsetH = arenaOffset;
     arenaOffset += nnzH * 4;
+    let rowIdxH = changetype<UnmanagedUint32Array>(rowIdxOffsetH);
 
     let currentK: u32 = 0;
     for (let j: u32 = 0; j < numVars; j++) {
         for (let i: u32 = j; i < numVars; i++) {
             if (hasHessianEntry(i, j)) {
-                store<u32>(rowIdxOffsetH + currentK * 4, i);
+                rowIdxH[currentK] = i;
                 currentK++;
             }
         }
     }
 
-    let resultStruct = arenaOffset;
-    arenaOffset += 16;
-    store<u32>(resultStruct, nnzH);
-    store<u32>(resultStruct + 4, colPtrOffsetH);
-    store<u32>(resultStruct + 8, rowIdxOffsetH);
-    store<u32>(resultStruct + 12, 0);
+    let resultStruct = SparsityPatternResult.at(arenaOffset);
+    arenaOffset += sizeof<SparsityPatternResult>();
+    resultStruct.init(nnzH, colPtrOffsetH, rowIdxOffsetH, 0);
 
-    return resultStruct;
+    return changetype<usize>(resultStruct) as u32;
 }
 
 export function getJacobianNnz(resultPtr: u32): u32 {
-    return load<u32>(resultPtr);
+    return SparsityPatternResult.at(resultPtr).nnz;
 }
 export function getJacobianColPtr(resultPtr: u32): u32 {
-    return load<u32>(resultPtr + 4);
+    return SparsityPatternResult.at(resultPtr).colPtrOffset;
 }
 export function getJacobianRowIdx(resultPtr: u32): u32 {
-    return load<u32>(resultPtr + 8);
+    return SparsityPatternResult.at(resultPtr).rowIdxOffset;
 }
 export function getJacobianValues(resultPtr: u32): u32 {
-    return load<u32>(resultPtr + 12);
+    return SparsityPatternResult.at(resultPtr).valuesOffset;
 }

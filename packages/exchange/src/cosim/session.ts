@@ -7,6 +7,7 @@
  * coupling configuration, and state transitions.
  */
 
+import crypto from "node:crypto";
 import type { CosimValue } from "./coupling.js";
 import { CouplingGraph, type VariableCoupling } from "./coupling.js";
 import type { CoSimParticipant } from "./participant.js";
@@ -202,7 +203,7 @@ export class SessionManager {
 
   /** Create a new session. */
   createSession(experiment: SessionExperiment, realtimeFactor = 0): CoSimSession {
-    const sessionId = `cosim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = `cosim-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     const session = new CoSimSession(sessionId, experiment, realtimeFactor);
     this.sessions.set(sessionId, session);
     this.sessionTimestamps.set(sessionId, Date.now());

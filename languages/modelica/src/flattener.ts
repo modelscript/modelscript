@@ -58,6 +58,39 @@ export interface FlattenOptions {
   flowThreshold?: number | undefined;
 }
 
+function stripArraySubscripts(s: string): string {
+  let result = "";
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "[") {
+      depth++;
+    } else if (s[i] === "]") {
+      if (depth > 0) depth--;
+    } else if (depth === 0) {
+      result += s[i];
+    }
+  }
+  return result;
+}
+
+function stripComments(s: string): string {
+  let result = "";
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === "/" && s[i + 1] === "/") {
+      const nl = s.indexOf("\n", i + 2);
+      i = nl === -1 ? s.length : nl + 1;
+    } else if (s[i] === "/" && s[i + 1] === "*") {
+      const end = s.indexOf("*/", i + 2);
+      i = end === -1 ? s.length : end + 2;
+    } else {
+      result += s[i];
+      i++;
+    }
+  }
+  return result;
+}
+
 function inferArenaExprShapeAndType(dae: DAEBuilder, exprId: number): { shape: number[]; typeName: string } {
   const shape: number[] = [];
   let curr = exprId;
@@ -1322,7 +1355,7 @@ function resolveScopedName(name: string, prefix: string, dae: DAEBuilder, innerO
 
   let resolvedName: string | null = null;
   if (!isInnerOuter) {
-    const basePrefix = prefix.replace(/\[[^\]]+\]/g, "");
+    const basePrefix = stripArraySubscripts(prefix);
     if (scopeDeclaredNames?.get(prefix)?.has(rootComp) || scopeDeclaredNames?.get(basePrefix)?.has(rootComp)) {
       resolvedName = `${prefix}.${name}`;
     } else {
@@ -2757,11 +2790,11 @@ function findOperatorRecordComponentType(
   let compSym: any = null;
   if (flattener?.currentRootClassId) {
     const comps = db.childrenOf(flattener.currentRootClassId).filter((c: any) => c.kind === "Component");
-    compSym = comps.find((c: any) => c.name?.replace(/\[.*\]$/, "") === baseName);
+    compSym = comps.find((c: any) => (c.name ? c.name.split("[")[0] : "") === baseName);
     if (!compSym) {
       const instComps = db.query<any[]>("instantiate", flattener.currentRootClassId);
       if (instComps) {
-        compSym = instComps.find((c: any) => c.name?.replace(/\[.*\]$/, "") === baseName);
+        compSym = instComps.find((c: any) => (c.name ? c.name.split("[")[0] : "") === baseName);
       }
     }
   }
@@ -2804,7 +2837,7 @@ function resolveOperatorRecord(
   const resolvePath = (pathStr: string) => {
     const parts = pathStr
       .split(".")
-      .map((p) => p.replace(/\[.*\]$/, "").trim())
+      .map((p) => p.split("[")[0].trim())
       .filter(Boolean);
     if (parts.length === 0) return null;
     let curr = findCompType(parts[0]!);
@@ -8427,14 +8460,14 @@ export class ModelicaFlattener {
     if (!sym || sym.id < 0 || (sym.metadata as any)?.isPredefined) return false;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-    const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+    const cleanKind = stripComments(rawKind).trim();
     const words = cleanKind.split(/\s+/).filter(Boolean);
     if (words.includes("record")) return true;
     const cst = this.db.cstNode(sym.id) as any;
     if (cst) {
       for (const child of cst.children || []) {
         if (child.type === "class_prefixes") {
-          const childText = (child.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+          const childText = stripComments(child.text ?? "").trim();
           const childWords = childText.split(/\s+/).filter(Boolean);
           if (childWords.includes("record")) return true;
         }
@@ -9921,7 +9954,7 @@ export class ModelicaFlattener {
         if (effectiveNode) {
           const modText = effectiveNode.text ?? "";
           let varName = targetVarIdx >= 0 ? dae.getVarName(targetVarIdx) : "";
-          let baseName = varName.replace(/\[.*\]$/, "");
+          let baseName = varName.split("[")[0];
 
           // 3a. Check variable renaming first (e.g. parameter Real L_new = 1.0; or parameter Real my_alpha = 1e-4;)
           const nameMatch = modText.match(
@@ -11577,7 +11610,7 @@ export class ModelicaFlattener {
       (dae as any).scopeDeclaredNames = new Map<string, Set<string>>();
     }
     (dae as any).scopeDeclaredNames.set(prefix, declaredNames);
-    const basePrefix = prefix.replace(/\[[^\]]+\]/g, "");
+    const basePrefix = stripArraySubscripts(prefix);
     if (basePrefix !== prefix) {
       (dae as any).scopeDeclaredNames.set(basePrefix, declaredNames);
     }
@@ -13212,7 +13245,7 @@ export class ModelicaFlattener {
 
             if (exprId === null) {
               const isPureInt = /^[+-]?\d+$/.test(bText);
-              const isPureReal = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(bText);
+              const isPureReal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(bText);
               if (varType === VarType.Real && (isPureReal || isPureInt)) {
                 exprId = dae.addRealLiteral(parseFloat(bText));
               } else if (varType === VarType.Integer && isPureInt) {

@@ -15,6 +15,7 @@ import {
   ExprKind,
 } from "../dae/builder";
 import { atomicChunkAlloc } from "../arena";
+import { UnmanagedFloat32Array, UnmanagedUint32Array, UnmanagedInt32Array } from "../core/array";
 
 /**
  * Packed WebGPU Arena Buffers.
@@ -25,19 +26,19 @@ export class GpuBufferPack {
   daePtr: usize;
 
   // State Buffer: Float32Array (high/low vec2<f32> double-single per variable)
-  stateBufferPtr: usize;
+  stateBuffer: UnmanagedFloat32Array;
   stateBufferSize: u32; // in f32 elements (varCount * 2)
 
   // Name to VarIdx lookup table: Int32Array indexed by StringId
-  nameToVarIdxPtr: usize;
+  nameToVarIdx: UnmanagedInt32Array;
   nameToVarIdxCap: u32;
 
   // Packed CSR Block Plan
-  blockStartsPtr: usize;       // Uint32Array (blockCount + 1)
-  sortedEqsPtr: usize;         // Uint32Array (totalEqs)
-  blockFlagsPtr: usize;        // Uint32Array (blockCount)
-  blockVarsPtr: usize;         // Uint32Array (totalVars)
-  blockVarStartsPtr: usize;    // Uint32Array (blockCount + 1)
+  blockStarts: UnmanagedUint32Array;       // Uint32Array (blockCount + 1)
+  sortedEqs: UnmanagedUint32Array;         // Uint32Array (totalEqs)
+  blockFlags: UnmanagedUint32Array;        // Uint32Array (blockCount)
+  blockVars: UnmanagedUint32Array;         // Uint32Array (totalVars)
+  blockVarStarts: UnmanagedUint32Array;    // Uint32Array (blockCount + 1)
 
   blockCount: u32;
   scalarBlockCount: u32;
@@ -47,9 +48,19 @@ export class GpuBufferPack {
   totalVars: u32;
 
   // State & Derivative Indices
-  stateVarIndicesPtr: usize;   // Uint32Array (stateCount)
-  derivVarIndicesPtr: usize;   // Uint32Array (stateCount)
+  stateVarIndices: UnmanagedUint32Array;   // Uint32Array (stateCount)
+  derivVarIndices: UnmanagedUint32Array;   // Uint32Array (stateCount)
   stateCount: u32;
+
+  @inline get stateBufferPtr(): usize { return changetype<usize>(this.stateBuffer); }
+  @inline get nameToVarIdxPtr(): usize { return changetype<usize>(this.nameToVarIdx); }
+  @inline get blockStartsPtr(): usize { return changetype<usize>(this.blockStarts); }
+  @inline get sortedEqsPtr(): usize { return changetype<usize>(this.sortedEqs); }
+  @inline get blockFlagsPtr(): usize { return changetype<usize>(this.blockFlags); }
+  @inline get blockVarsPtr(): usize { return changetype<usize>(this.blockVars); }
+  @inline get blockVarStartsPtr(): usize { return changetype<usize>(this.blockVarStarts); }
+  @inline get stateVarIndicesPtr(): usize { return changetype<usize>(this.stateVarIndices); }
+  @inline get derivVarIndicesPtr(): usize { return changetype<usize>(this.derivVarIndices); }
 }
 
 /**
@@ -74,16 +85,16 @@ export function gpu_serializeBuffers(
   // 1. Pack stateBuffer (Double-Single vec2<f32>)
   let stateSize = varCount * 2;
   let stateBytes: u32 = stateSize << 2;
-  let stateBufPtr = atomicChunkAlloc(stateBytes);
+  let stateBuf = changetype<UnmanagedFloat32Array>(atomicChunkAlloc(stateBytes));
   for (let i: u32 = 0; i < varCount; i++) {
     let val: f64 = dae.getVarStartValue(i);
     let high: f32 = f32(val);
     let low: f32 = f32(val - f64(high));
-    let byteOffset: u32 = i << 3;
-    store<f32>(stateBufPtr + byteOffset, high);
-    store<f32>(stateBufPtr + byteOffset + 4, low);
+    let baseIdx: u32 = i << 1;
+    stateBuf[baseIdx] = high;
+    stateBuf[baseIdx + 1] = low;
   }
-  pack.stateBufferPtr = stateBufPtr as usize;
+  pack.stateBuffer = stateBuf;
   pack.stateBufferSize = stateSize;
 
   // 2. Pack nameToVarIdx table
@@ -93,16 +104,17 @@ export function gpu_serializeBuffers(
   let nameBytes: u32 = nameCap << 2;
   let nameTablePtr = atomicChunkAlloc(nameBytes);
   memory.fill(nameTablePtr, 0xff, nameBytes as usize); // fill with -1
+  let nameTable = changetype<UnmanagedInt32Array>(nameTablePtr);
 
   for (let i: u32 = 0; i < varCount; i++) {
     if (!dae.isVarRemoved(i)) {
       let nameId = dae.getVarNameId(i);
       if (nameId < nameCap) {
-        store<i32>(nameTablePtr + (nameId << 2), i as i32);
+        nameTable[nameId] = i as i32;
       }
     }
   }
-  pack.nameToVarIdxPtr = nameTablePtr as usize;
+  pack.nameToVarIdx = nameTable;
   pack.nameToVarIdxCap = nameCap;
 
   // 3. Pack BLT Block Plan
@@ -146,11 +158,11 @@ export function gpu_serializeBuffers(
   pack.totalEqs = totalEqs;
   pack.totalVars = totalVars;
 
-  let blockStartsPtr = atomicChunkAlloc((numBlocks + 1) << 2);
-  let sortedEqsPtr = atomicChunkAlloc(totalEqs << 2);
-  let blockFlagsPtr = atomicChunkAlloc(numBlocks << 2);
-  let blockVarsPtr = atomicChunkAlloc(totalVars << 2);
-  let blockVarStartsPtr = atomicChunkAlloc((numBlocks + 1) << 2);
+  let blockStarts = changetype<UnmanagedUint32Array>(atomicChunkAlloc((numBlocks + 1) << 2));
+  let sortedEqs = changetype<UnmanagedUint32Array>(atomicChunkAlloc(totalEqs << 2));
+  let blockFlags = changetype<UnmanagedUint32Array>(atomicChunkAlloc(numBlocks << 2));
+  let blockVars = changetype<UnmanagedUint32Array>(atomicChunkAlloc(totalVars << 2));
+  let blockVarStarts = changetype<UnmanagedUint32Array>(atomicChunkAlloc((numBlocks + 1) << 2));
 
   let eqOffset: u32 = 0;
   let varOffset: u32 = 0;
@@ -163,14 +175,14 @@ export function gpu_serializeBuffers(
       let varLen = load<u32>(cursor);
       cursor += 4;
 
-      store<u32>(blockStartsPtr + (b << 2), eqOffset);
-      store<u32>(blockVarStartsPtr + (b << 2), varOffset);
+      blockStarts[b] = eqOffset;
+      blockVarStarts[b] = varOffset;
 
       // Copy equations
       for (let k: u32 = 0; k < eqLen; k++) {
         let eqIdx = load<u32>(cursor);
         cursor += 4;
-        store<u32>(sortedEqsPtr + ((eqOffset + k) << 2), eqIdx);
+        sortedEqs[eqOffset + k] = eqIdx;
       }
       eqOffset += eqLen;
 
@@ -178,39 +190,40 @@ export function gpu_serializeBuffers(
       for (let k: u32 = 0; k < varLen; k++) {
         let vIdx = load<u32>(cursor);
         cursor += 4;
-        store<u32>(blockVarsPtr + ((varOffset + k) << 2), vIdx);
+        blockVars[varOffset + k] = vIdx;
       }
       varOffset += varLen;
 
       // Set block flag: bit 0 = 1 if algebraic loop
-      store<u32>(blockFlagsPtr + (b << 2), eqLen > 1 ? 1 : 0);
+      blockFlags[b] = eqLen > 1 ? 1 : 0;
     }
   }
 
-  store<u32>(blockStartsPtr + (numBlocks << 2), eqOffset);
-  store<u32>(blockVarStartsPtr + (numBlocks << 2), varOffset);
+  blockStarts[numBlocks] = eqOffset;
+  blockVarStarts[numBlocks] = varOffset;
 
-  pack.blockStartsPtr = blockStartsPtr as usize;
-  pack.sortedEqsPtr = sortedEqsPtr as usize;
-  pack.blockFlagsPtr = blockFlagsPtr as usize;
-  pack.blockVarsPtr = blockVarsPtr as usize;
-  pack.blockVarStartsPtr = blockVarStartsPtr as usize;
+  pack.blockStarts = blockStarts;
+  pack.sortedEqs = sortedEqs;
+  pack.blockFlags = blockFlags;
+  pack.blockVars = blockVars;
+  pack.blockVarStarts = blockVarStarts;
 
   // 4. Pack State & Derivative Indices
   pack.stateCount = numStateVars;
   if (numStateVars > 0 && stateVarsPtr != 0) {
     let stateIndicesBytes: u32 = numStateVars << 2;
-    let sIndicesPtr = atomicChunkAlloc(stateIndicesBytes);
-    let dIndicesPtr = atomicChunkAlloc(stateIndicesBytes);
+    let sIndices = changetype<UnmanagedUint32Array>(atomicChunkAlloc(stateIndicesBytes));
+    let dIndices = changetype<UnmanagedUint32Array>(atomicChunkAlloc(stateIndicesBytes));
 
-    memory.copy(sIndicesPtr as usize, stateVarsPtr as usize, stateIndicesBytes as usize);
+    memory.copy(changetype<usize>(sIndices), stateVarsPtr as usize, stateIndicesBytes as usize);
 
     if (derivVarsPtr != 0) {
-      memory.copy(dIndicesPtr as usize, derivVarsPtr as usize, stateIndicesBytes as usize);
+      memory.copy(changetype<usize>(dIndices), derivVarsPtr as usize, stateIndicesBytes as usize);
     } else {
       // Resolve derivative variable companion for each state variable
+      let stateVars = changetype<UnmanagedUint32Array>(stateVarsPtr);
       for (let s: u32 = 0; s < numStateVars; s++) {
-        let stateIdx = load<u32>((stateVarsPtr as usize) + ((s as usize) << 2));
+        let stateIdx = stateVars[s];
         let derIdx: u32 = 0;
 
         // Check if an equation has der(stateIdx) on LHS
@@ -230,15 +243,15 @@ export function gpu_serializeBuffers(
             }
           }
         }
-        store<u32>((dIndicesPtr as usize) + ((s as usize) << 2), derIdx);
+        dIndices[s] = derIdx;
       }
     }
 
-    pack.stateVarIndicesPtr = sIndicesPtr as usize;
-    pack.derivVarIndicesPtr = dIndicesPtr as usize;
+    pack.stateVarIndices = sIndices;
+    pack.derivVarIndices = dIndices;
   } else {
-    pack.stateVarIndicesPtr = 0;
-    pack.derivVarIndicesPtr = 0;
+    pack.stateVarIndices = changetype<UnmanagedUint32Array>(0);
+    pack.derivVarIndices = changetype<UnmanagedUint32Array>(0);
   }
 
   return packPtr as u32;
@@ -325,6 +338,7 @@ export function gpu_initializeStateBuffer(daePtr: u32, stateBufferPtr: u32): voi
   let dae = changetype<DaeBuilder>(daePtr);
   let varCount = dae.varCount;
   let varData = dae.getVarData();
+  let stateBuf = changetype<UnmanagedFloat32Array>(stateBufferPtr);
 
   for (let i: u32 = 0; i < varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
@@ -333,9 +347,9 @@ export function gpu_initializeStateBuffer(daePtr: u32, stateBufferPtr: u32): voi
       let val = dae.getVarStartValue(i);
       let high: f32 = f32(val);
       let low: f32 = f32(val - f64(high));
-      let byteOffset = (i << 3) as usize;
-      store<f32>((stateBufferPtr as usize) + byteOffset, high);
-      store<f32>((stateBufferPtr as usize) + byteOffset + 4, low);
+      let baseIdx = i << 1;
+      stateBuf[baseIdx] = high;
+      stateBuf[baseIdx + 1] = low;
     }
   }
 }

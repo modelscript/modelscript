@@ -45,6 +45,16 @@ export class AffineTerm {
   symbolId: u32;
   pad: u32;
   coeff: f64;
+
+  @inline static at(ptr: usize, idx: u32): AffineTerm {
+    return changetype<AffineTerm>(ptr + (((idx as usize) << 4)));
+  }
+
+  @inline set(sym: u32, c: f64): void {
+    this.symbolId = sym;
+    this.pad = 0;
+    this.coeff = c;
+  }
 }
 
 /**
@@ -85,31 +95,33 @@ export class AffineNoisePool {
   }
 
   @inline
+  termAt(idx: u32): AffineTerm {
+    return AffineTerm.at(this.termsPtr, idx);
+  }
+
+  @inline
   getSymbolId(idx: u32): u32 {
-    return load<u32>(this.termsPtr + (((idx as usize) << 4) + 0));
+    return this.termAt(idx).symbolId;
   }
 
   @inline
   setSymbolId(idx: u32, sym: u32): void {
-    store<u32>(this.termsPtr + (((idx as usize) << 4) + 0), sym);
+    this.termAt(idx).symbolId = sym;
   }
 
   @inline
   getCoeff(idx: u32): f64 {
-    return load<f64>(this.termsPtr + (((idx as usize) << 4) + 8));
+    return this.termAt(idx).coeff;
   }
 
   @inline
   setCoeff(idx: u32, coeff: f64): void {
-    store<f64>(this.termsPtr + (((idx as usize) << 4) + 8), coeff);
+    this.termAt(idx).coeff = coeff;
   }
 
   @inline
   setTerm(idx: u32, sym: u32, coeff: f64): void {
-    let offset = (idx as usize) << 4;
-    store<u32>(this.termsPtr + offset + 0, sym);
-    store<u32>(this.termsPtr + offset + 4, 0);
-    store<f64>(this.termsPtr + offset + 8, coeff);
+    this.termAt(idx).set(sym, coeff);
   }
 }
 

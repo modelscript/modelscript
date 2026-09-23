@@ -51,7 +51,7 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
   }
 
   // Split on "&&" or "and"
-  const tokens = cleaned.split(/\s*(?:&&|\band\b)\s*/i);
+  const tokens = cleaned.split(/&&|\band\b/i);
 
   for (const token of tokens) {
     const trimmed = token.trim();

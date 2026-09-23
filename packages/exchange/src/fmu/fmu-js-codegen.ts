@@ -55,7 +55,7 @@ function exprToJs(dae: DAEBuilder, id: number): string {
         const msgExpr = dae.getExprLeft(id + 1);
         const msg =
           dae.getExprKind(msgExpr) === ExprKind.StringLiteral
-            ? dae.interner.resolve(dae.getExprData1(msgExpr)).replace(/"/g, '\\"')
+            ? dae.interner.resolve(dae.getExprData1(msgExpr)).replace(/\\/g, "\\\\").replace(/"/g, '\\"')
             : "Assertion failed";
         return `((${cond}) ? 0.0 : (console.error("${msg}"), this.terminate = true, 0.0))`;
       }

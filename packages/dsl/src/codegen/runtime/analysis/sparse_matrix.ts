@@ -1,6 +1,8 @@
 // --- Sparse Matrix (CSR) Data Structure ---
 // Compressed Sparse Row format for high-performance pantelides and bipartite matching
 
+import { UnmanagedUint32Array, UnmanagedUint8Array } from "../core/array";
+
 export class CSRMatrix {
     public numRows: u32;
     public numCols: u32;
@@ -11,6 +13,16 @@ export class CSRMatrix {
     
     public nnz: u32;
     public capacity: u32;
+
+    @inline get rowPtrsArr(): UnmanagedUint32Array {
+        return changetype<UnmanagedUint32Array>(this.rowPtrs);
+    }
+    @inline get colIndicesArr(): UnmanagedUint32Array {
+        return changetype<UnmanagedUint32Array>(this.colIndices);
+    }
+    @inline get valuesArr(): UnmanagedUint8Array {
+        return changetype<UnmanagedUint8Array>(this.values);
+    }
 
     constructor(numRows: u32, numCols: u32, initialCapacity: u32 = 1000) {
         this.numRows = numRows;
@@ -23,7 +35,7 @@ export class CSRMatrix {
         this.values = heap.alloc(initialCapacity) as u32;
         
         for (let i: u32 = 0; i <= numRows; i++) {
-            store<u32>(this.rowPtrs + i * 4, 0);
+            this.rowPtrsArr[i] = 0;
         }
     }
 
@@ -42,22 +54,22 @@ export class CSRMatrix {
             this.capacity = newCap;
         }
         
-        store<u32>(this.colIndices + this.nnz * 4, col);
-        store<u8>(this.values + this.nnz, value);
+        this.colIndicesArr[this.nnz] = col;
+        this.valuesArr[this.nnz] = value;
         
         // Update row pointers for all subsequent rows until the next insertion
         // Since we insert ordered by row, this is efficient.
-        store<u32>(this.rowPtrs + (row + 1) * 4, this.nnz + 1);
+        this.rowPtrsArr[row + 1] = this.nnz + 1;
         this.nnz++;
     }
 
     public finalize(): void {
         // Ensure all remaining row pointers are filled
-        let lastNnz = load<u32>(this.rowPtrs);
+        let lastNnz = this.rowPtrsArr[0];
         for (let r: u32 = 0; r <= this.numRows; r++) {
-            let ptr = load<u32>(this.rowPtrs + r * 4);
+            let ptr = this.rowPtrsArr[r];
             if (ptr == 0 && r > 0) {
-                store<u32>(this.rowPtrs + r * 4, lastNnz);
+                this.rowPtrsArr[r] = lastNnz;
             } else {
                 lastNnz = ptr;
             }
@@ -65,13 +77,13 @@ export class CSRMatrix {
     }
 
     public get(row: u32, col: u32): u8 {
-        let rowStart = load<u32>(this.rowPtrs + row * 4);
-        let rowEnd = load<u32>(this.rowPtrs + (row + 1) * 4);
+        let rowStart = this.rowPtrsArr[row];
+        let rowEnd = this.rowPtrsArr[row + 1];
         
         for (let i: u32 = rowStart; i < rowEnd; i++) {
-            let c = load<u32>(this.colIndices + i * 4);
+            let c = this.colIndicesArr[i];
             if (c == col) {
-                return load<u8>(this.values + i);
+                return this.valuesArr[i];
             }
         }
         return 0;

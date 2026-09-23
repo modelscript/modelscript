@@ -2184,24 +2184,24 @@ export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
   }
 
   let maxStack: u32 = 2048;
-  let oStack = atomicChunkAlloc(maxStack * 4);
-  let nStack = atomicChunkAlloc(maxStack * 4);
-  let oOffsetStack = atomicChunkAlloc(maxStack * 4);
-  let nOffsetStack = atomicChunkAlloc(maxStack * 4);
+  let oStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+  let nStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+  let oOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+  let nOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
   let sp: u32 = 0;
 
-  store<u32>(oStack, oldTree);
-  store<u32>(nStack, newTree);
-  store<u32>(oOffsetStack, getNodePadding(oldTree));
-  store<u32>(nOffsetStack, getNodePadding(newTree));
+  oStack[0] = oldTree;
+  nStack[0] = newTree;
+  oOffsetStack[0] = getNodePadding(oldTree);
+  nOffsetStack[0] = getNodePadding(newTree);
   sp++;
 
   while (sp > 0) {
     sp--;
-    let oNode = load<u32>(oStack + (sp << 2));
-    let nNode = load<u32>(nStack + (sp << 2));
-    let oStart = load<u32>(oOffsetStack + (sp << 2));
-    let nStart = load<u32>(nOffsetStack + (sp << 2));
+    let oNode = oStack[sp];
+    let nNode = nStack[sp];
+    let oStart = oOffsetStack[sp];
+    let nStart = nOffsetStack[sp];
 
     if (oNode == nNode) continue;
 
@@ -2235,17 +2235,17 @@ export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
     while (nc != 0) { nChildCount++; nc = getNodeNextSibling(nc); }
 
     if (oChildCount == nChildCount && sp + oChildCount < maxStack) {
-      let oOffsets = atomicChunkAlloc(oChildCount * 4);
-      let nOffsets = atomicChunkAlloc(nChildCount * 4);
-      let oNodes = atomicChunkAlloc(oChildCount * 4);
-      let nNodes = atomicChunkAlloc(nChildCount * 4);
+      let oOffsets = changetype<UnmanagedUint32Array>(atomicChunkAlloc(oChildCount * 4));
+      let nOffsets = changetype<UnmanagedUint32Array>(atomicChunkAlloc(nChildCount * 4));
+      let oNodes = changetype<UnmanagedUint32Array>(atomicChunkAlloc(oChildCount * 4));
+      let nNodes = changetype<UnmanagedUint32Array>(atomicChunkAlloc(nChildCount * 4));
 
       let currO = oStart;
       let curChild = oChild;
       for (let i: u32 = 0; i < oChildCount; i++) {
         if (i > 0) currO += getNodePadding(curChild);
-        store<u32>(oOffsets + (i << 2), currO);
-        store<u32>(oNodes + (i << 2), curChild);
+        oOffsets[i] = currO;
+        oNodes[i] = curChild;
         currO += getNodeByteLength(curChild);
         curChild = getNodeNextSibling(curChild);
       }
@@ -2254,19 +2254,19 @@ export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
       curChild = nChild;
       for (let i: u32 = 0; i < nChildCount; i++) {
         if (i > 0) currN += getNodePadding(curChild);
-        store<u32>(nOffsets + (i << 2), currN);
-        store<u32>(nNodes + (i << 2), curChild);
+        nOffsets[i] = currN;
+        nNodes[i] = curChild;
         currN += getNodeByteLength(curChild);
         curChild = getNodeNextSibling(curChild);
       }
 
       for (let i: i32 = (oChildCount as i32) - 1; i >= 0; i--) {
-        let oC = load<u32>(oNodes + (i << 2));
-        let nC = load<u32>(nNodes + (i << 2));
-        store<u32>(oStack + (sp << 2), oC);
-        store<u32>(nStack + (sp << 2), nC);
-        store<u32>(oOffsetStack + (sp << 2), load<u32>(oOffsets + (i << 2)));
-        store<u32>(nOffsetStack + (sp << 2), load<u32>(nOffsets + (i << 2)));
+        let oC = oNodes[i as u32];
+        let nC = nNodes[i as u32];
+        oStack[sp] = oC;
+        nStack[sp] = nC;
+        oOffsetStack[sp] = oOffsets[i as u32];
+        nOffsetStack[sp] = nOffsets[i as u32];
         sp++;
       }
     } else {

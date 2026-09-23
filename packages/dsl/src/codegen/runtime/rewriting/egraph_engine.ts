@@ -3,6 +3,8 @@
 
 import { atomicChunkAlloc, getNodeType, getNodeFirstChild, getNodeNextSibling, allocNode } from "../arena";
 import { DaeBuilder } from "../dae";
+import { UnmanagedMap64 } from "../core/hashmap";
+import { UnmanagedUint64Array, UnmanagedUint32Array, UnmanagedUint8Array } from "../core/array";
 
 export const MAX_ECLASSES: u32 = 65536;
 export const MAX_ENODES: u32 = 65536;
@@ -15,14 +17,18 @@ export function unwrapNode(node: u32): u32 {
 }
 
 // --- Union-Find Disjoint Set ---
-let ufParentOffset: u32 = 0;
-let ufRankOffset: u32 = 0;
+let ufParents: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let ufRanks: UnmanagedUint8Array = changetype<UnmanagedUint8Array>(0);
 export let ufCount: u32 = 0;
 
+export function getUfParentOffset(): u32 {
+    return changetype<usize>(ufParents) as u32;
+}
+
 export function initEGraph(): void {
-    if (ufParentOffset == 0) {
-        ufParentOffset = atomicChunkAlloc(MAX_ECLASSES * 4);
-        ufRankOffset = atomicChunkAlloc(MAX_ECLASSES);
+    if (ufParents == changetype<UnmanagedUint32Array>(0)) {
+        ufParents = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ECLASSES * 4));
+        ufRanks = changetype<UnmanagedUint8Array>(atomicChunkAlloc(MAX_ECLASSES));
     }
     ufCount = 0;
 }
@@ -30,23 +36,23 @@ export function initEGraph(): void {
 export function ufMakeSet(): u32 {
     if (ufCount >= MAX_ECLASSES) return 0xFFFFFFFF;
     let id = ufCount++;
-    store<u32>(ufParentOffset + id * 4, id);
-    store<u8>(ufRankOffset + id, 0);
+    ufParents[id] = id;
+    ufRanks[id] = 0;
     return id;
 }
 
 export function ufFind(x: u32): u32 {
-    if (x >= MAX_ECLASSES || x == 0xFFFFFFFF || ufParentOffset == 0) return x;
+    if (x >= MAX_ECLASSES || x == 0xFFFFFFFF || ufParents == changetype<UnmanagedUint32Array>(0)) return x;
     let root = x;
     while (true) {
-        let parent = load<u32>(ufParentOffset + root * 4);
+        let parent = ufParents[root];
         if (parent == root || parent >= MAX_ECLASSES) break;
         root = parent;
     }
     let curr = x;
     while (curr != root && curr < MAX_ECLASSES) {
-        let nxt = load<u32>(ufParentOffset + curr * 4);
-        store<u32>(ufParentOffset + curr * 4, root);
+        let nxt = ufParents[curr];
+        ufParents[curr] = root;
         curr = nxt;
     }
     return root;
@@ -56,17 +62,17 @@ export function ufUnion(a: u32, b: u32): u32 {
     let rootA = ufFind(a);
     let rootB = ufFind(b);
     if (rootA == rootB) return rootA;
-    let rankA = load<u8>(ufRankOffset + rootA);
-    let rankB = load<u8>(ufRankOffset + rootB);
+    let rankA = ufRanks[rootA];
+    let rankB = ufRanks[rootB];
     if (rankA < rankB) {
-        store<u32>(ufParentOffset + rootA * 4, rootB);
+        ufParents[rootA] = rootB;
         return rootB;
     } else if (rankA > rankB) {
-        store<u32>(ufParentOffset + rootB * 4, rootA);
+        ufParents[rootB] = rootA;
         return rootA;
     } else {
-        store<u32>(ufParentOffset + rootB * 4, rootA);
-        store<u8>(ufRankOffset + rootA, rankA + 1);
+        ufParents[rootB] = rootA;
+        ufRanks[rootA] = rankA + 1;
         return rootA;
     }
 }
@@ -76,21 +82,19 @@ export let eNodeKeysOffset: u32 = 0;
 export let eNodeClassesOffset: u32 = 0;
 export let eNodeCount: u32 = 0;
 
-let hashKeysOffset: u32 = 0;
-let hashValsOffset: u32 = 0;
+let eNodeMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 export let hashOccupied: u32 = 0;
 
 export function initHashCons(): void {
-    if (hashKeysOffset == 0) {
-        hashKeysOffset = atomicChunkAlloc(HASH_CAPACITY * 8);
-        hashValsOffset = atomicChunkAlloc(HASH_CAPACITY * 4);
+    if (eNodeMap == changetype<UnmanagedMap64>(0)) {
+        eNodeMap = changetype<UnmanagedMap64>(UnmanagedMap64.create(HASH_CAPACITY));
         eNodeKeysOffset = atomicChunkAlloc(MAX_ENODES * 8);
         eNodeClassesOffset = atomicChunkAlloc(MAX_ENODES * 4);
+    } else {
+        eNodeMap.clear();
     }
     eNodeCount = 0;
     hashOccupied = 0;
-    // Set all key slots to EMPTY_KEY sentinel (0xFFFFFFFFFFFFFFFF)
-    memory.fill(hashKeysOffset, 0xFF, HASH_CAPACITY * 8);
 }
 
 export function hashProbe(key: u64): u32 {
@@ -101,50 +105,42 @@ export function hashProbe(key: u64): u32 {
 }
 
 export function hashFind(key: u64): u32 {
-    let slot = hashProbe(key);
-    let guard: u32 = 0;
-    while (guard < HASH_CAPACITY) {
-        let storedKey = load<u64>(hashKeysOffset + slot * 8);
-        if (storedKey == EMPTY_KEY) return 0xFFFFFFFF; // Empty slot
-        if (storedKey == key) return load<u32>(hashValsOffset + slot * 4);
-        slot = (slot + 1) & HASH_MASK;
-        guard++;
-    }
-    return 0xFFFFFFFF;
+    if (eNodeMap == changetype<UnmanagedMap64>(0)) return 0xFFFFFFFF;
+    let v = eNodeMap.get(key);
+    if (v == 0) return 0xFFFFFFFF;
+    return v - 1;
 }
 
 export function hashInsert(key: u64, val: u32): void {
-    let slot = hashProbe(key);
-    let guard: u32 = 0;
-    while (guard < HASH_CAPACITY) {
-        let storedKey = load<u64>(hashKeysOffset + slot * 8);
-        if (storedKey == EMPTY_KEY) {
-            store<u64>(hashKeysOffset + slot * 8, key);
-            store<u32>(hashValsOffset + slot * 4, val);
-            if (eNodeCount < MAX_ENODES) {
-                store<u64>(eNodeKeysOffset + eNodeCount * 8, key);
-                store<u32>(eNodeClassesOffset + eNodeCount * 4, val);
-                eNodeCount++;
-            }
-            hashOccupied++;
-            return;
+    if (eNodeMap == changetype<UnmanagedMap64>(0)) initHashCons();
+    let existing = eNodeMap.get(key);
+    if (existing == 0) {
+        eNodeMap.set(key, val + 1);
+        if (eNodeCount < MAX_ENODES) {
+            let eNodeKeys = changetype<UnmanagedUint64Array>(eNodeKeysOffset);
+            let eNodeClasses = changetype<UnmanagedUint32Array>(eNodeClassesOffset);
+            eNodeKeys[eNodeCount] = key;
+            eNodeClasses[eNodeCount] = val;
+            eNodeCount++;
         }
-        if (storedKey == key) {
-            store<u32>(hashValsOffset + slot * 4, val);
-            return;
-        }
-        slot = (slot + 1) & HASH_MASK;
-        guard++;
+        hashOccupied++;
+    } else {
+        eNodeMap.set(key, val + 1);
     }
 }
 
 export function rebuildEGraph(): void {
-    memory.fill(hashKeysOffset, 0xFF, HASH_CAPACITY * 8);
+    if (eNodeMap != changetype<UnmanagedMap64>(0)) {
+        eNodeMap.clear();
+    }
     hashOccupied = 0;
     let writeIdx: u32 = 0;
+    let eNodeKeys = changetype<UnmanagedUint64Array>(eNodeKeysOffset);
+    let eNodeClasses = changetype<UnmanagedUint32Array>(eNodeClassesOffset);
+
     for (let i: u32 = 0; i < eNodeCount; i++) {
-        let key = load<u64>(eNodeKeysOffset + i * 8);
-        let eClass = ufFind(load<u32>(eNodeClassesOffset + i * 4));
+        let key = eNodeKeys[i];
+        let eClass = ufFind(eNodeClasses[i]);
         let op = (key >> 48) as u16;
         let left = ((key >> 24) & 0xFFFFFF) as u32;
         let right = (key & 0xFFFFFF) as u32;
@@ -162,21 +158,10 @@ export function rebuildEGraph(): void {
         if (existing != 0xFFFFFFFF) {
             ufUnion(eClass, existing);
         } else {
-            let slot = hashProbe(key);
-            let guard: u32 = 0;
-            while (guard < HASH_CAPACITY) {
-                let storedKey = load<u64>(hashKeysOffset + slot * 8);
-                if (storedKey == EMPTY_KEY) {
-                    store<u64>(hashKeysOffset + slot * 8, key);
-                    store<u32>(hashValsOffset + slot * 4, eClass);
-                    hashOccupied++;
-                    break;
-                }
-                slot = (slot + 1) & HASH_MASK;
-                guard++;
-            }
-            store<u64>(eNodeKeysOffset + writeIdx * 8, key);
-            store<u32>(eNodeClassesOffset + writeIdx * 4, eClass);
+            eNodeMap.set(key, eClass + 1);
+            hashOccupied++;
+            eNodeKeys[writeIdx] = key;
+            eNodeClasses[writeIdx] = eClass;
             writeIdx++;
         }
     }

@@ -587,6 +587,25 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (funcName: string) => `Internal error NFCeval.evalBuiltinCall: unimplemented case for ${funcName}`,
   },
+  OUTPUT_NOT_DEFINITELY_ASSIGNED: {
+    code: 5020,
+    rule: "output-not-definitely-assigned",
+    severity: "error",
+    message: (varName: string, funcName: string) =>
+      `Output variable '${varName}' in function '${funcName}' is not definitely assigned on all control flow paths.`,
+  },
+  UNINITIALIZED_VARIABLE_READ: {
+    code: 5021,
+    rule: "uninitialized-variable-read",
+    severity: "error",
+    message: (varName: string) => `Variable '${varName}' is read before being definitely assigned.`,
+  },
+  UNREACHABLE_STATEMENT: {
+    code: 5022,
+    rule: "unreachable-statement",
+    severity: "warning",
+    message: () => `Unreachable statement detected.`,
+  },
   PACKAGE_VARIABLE_NOT_CONSTANT: {
     code: 4036,
     rule: "package-variable-not-constant",

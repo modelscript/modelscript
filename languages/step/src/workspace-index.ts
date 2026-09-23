@@ -69,14 +69,45 @@ function extractStepNames(text: string): {
 
   const encoder = new TextEncoder();
 
-  const entityPattern = /#\d+=\s*([A-Z][A-Z0-9_]*)\(([^;]*)\)\s*;/g;
-  let match: RegExpExecArray | null;
+  const headerRegex = /#\d+=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
+  let headerMatch: RegExpExecArray | null;
 
-  while ((match = entityPattern.exec(text)) !== null) {
-    const entityType = match[1];
-    const args = match[2];
-    const matchStart = match.index;
-    const matchEnd = matchStart + match[0].length;
+  while ((headerMatch = headerRegex.exec(text)) !== null) {
+    const entityType = headerMatch[1];
+    const matchStart = headerMatch.index;
+    const argsStart = matchStart + headerMatch[0].length;
+    let depth = 1;
+    let pos = argsStart;
+    let inString = false;
+    while (pos < text.length) {
+      const ch = text[pos];
+      if (ch === "'" && text[pos - 1] !== "\\") {
+        inString = !inString;
+      } else if (!inString) {
+        if (ch === "(") depth++;
+        else if (ch === ")") {
+          depth--;
+          if (depth === 0) break;
+        } else if (ch === ";") {
+          break;
+        }
+      }
+      pos++;
+    }
+    const args = text.slice(argsStart, pos);
+    let endPos = pos;
+    if (text[endPos] === ")") endPos++;
+    while (
+      endPos < text.length &&
+      (text[endPos] === " " || text[endPos] === "\t" || text[endPos] === "\r" || text[endPos] === "\n")
+    ) {
+      endPos++;
+    }
+    if (text[endPos] === ";") endPos++;
+    headerRegex.lastIndex = endPos;
+
+    const matchEnd = endPos;
+    const fullMatch = text.slice(matchStart, matchEnd);
 
     const startByte = encoder.encode(text.substring(0, matchStart)).length;
     const endByte = encoder.encode(text.substring(0, matchEnd)).length;
@@ -84,7 +115,7 @@ function extractStepNames(text: string): {
     if (entityType === "PRODUCT") {
       const name = extractFirstString(args);
       if (name) {
-        const nameIdx = match[0].indexOf(`'${name}'`);
+        const nameIdx = fullMatch.indexOf(`'${name}'`);
         const nameStart = nameIdx >= 0 ? startByte + nameIdx + 1 : startByte;
         const nameEnd = nameIdx >= 0 ? nameStart + encoder.encode(name).length : endByte;
         products.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
@@ -96,7 +127,7 @@ function extractStepNames(text: string): {
     ) {
       const name = extractFirstString(args);
       if (name && name.length > 0) {
-        const nameIdx = match[0].indexOf(`'${name}'`);
+        const nameIdx = fullMatch.indexOf(`'${name}'`);
         const nameStart = nameIdx >= 0 ? startByte + nameIdx + 1 : startByte;
         const nameEnd = nameIdx >= 0 ? nameStart + encoder.encode(name).length : endByte;
         shapes.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
@@ -104,7 +135,7 @@ function extractStepNames(text: string): {
     } else if (entityType === "GEOMETRIC_TOLERANCE") {
       const name = extractFirstString(args);
       if (name && name.length > 0) {
-        const nameIdx = match[0].indexOf(`'${name}'`);
+        const nameIdx = fullMatch.indexOf(`'${name}'`);
         const nameStart = nameIdx >= 0 ? startByte + nameIdx + 1 : startByte;
         const nameEnd = nameIdx >= 0 ? nameStart + encoder.encode(name).length : endByte;
         shapes.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });

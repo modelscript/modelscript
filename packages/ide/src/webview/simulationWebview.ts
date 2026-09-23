@@ -1546,7 +1546,7 @@ canvas.addEventListener("mousemove", (e) => {
       const val = sweepResults ? sweepResults[si].y[closest]?.[vi] : y[closest]?.[vi];
       const color = COLORS[(vi * sweepCount + si) % COLORS.length];
       const baseName = escapeHtmlSim(states[vi]);
-      const safeName = sweepResults ? `${baseName} (${sweepResults[si].value})` : baseName;
+      const safeName = sweepResults ? `${baseName} (${escapeHtmlSim(String(sweepResults[si].value))})` : baseName;
       html += `<div><span style="color:${color}">●</span> ${safeName}: ${val !== undefined ? val.toFixed(6) : "N/A"}`;
 
       // Add MC uncertainty info

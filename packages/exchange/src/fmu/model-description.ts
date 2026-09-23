@@ -70,20 +70,20 @@ export function parseModelDescription(xml: string): FmiModelDescription {
   const numberOfEventIndicatorsStr = extractAttr(xml, "fmiModelDescription", "numberOfEventIndicators");
 
   // Co-Simulation support
-  const csMatch = xml.match(/<CoSimulation\s+([^>]*)\/?>/);
-  const supportsCoSimulation = csMatch !== null;
-  const coSimulationModelIdentifier = csMatch ? extractAttrFromStr(csMatch[1] ?? "", "modelIdentifier") : undefined;
+  const csBlock = extractTagBlock(xml, "CoSimulation");
+  const supportsCoSimulation = csBlock !== null;
+  const coSimulationModelIdentifier = csBlock ? extractAttrFromStr(csBlock.attrs, "modelIdentifier") : undefined;
 
   // Model Exchange support
-  const meMatch = xml.match(/<ModelExchange\s+([^>]*)\/?>/);
-  const supportsModelExchange = meMatch !== null;
-  const modelExchangeModelIdentifier = meMatch ? extractAttrFromStr(meMatch[1] ?? "", "modelIdentifier") : undefined;
+  const meBlock = extractTagBlock(xml, "ModelExchange");
+  const supportsModelExchange = meBlock !== null;
+  const modelExchangeModelIdentifier = meBlock ? extractAttrFromStr(meBlock.attrs, "modelIdentifier") : undefined;
 
   // Default experiment
-  const expMatch = xml.match(/<DefaultExperiment\s+([^>]*)\/?>/);
+  const expBlock = extractTagBlock(xml, "DefaultExperiment");
   let defaultExperiment: FmiDefaultExperiment | undefined;
-  if (expMatch) {
-    const attrs = expMatch[1] ?? "";
+  if (expBlock) {
+    const attrs = expBlock.attrs;
     const startTimeStr = extractAttrFromStr(attrs, "startTime");
     const stopTimeStr = extractAttrFromStr(attrs, "stopTime");
     const toleranceStr = extractAttrFromStr(attrs, "tolerance");
@@ -98,13 +98,9 @@ export function parseModelDescription(xml: string): FmiModelDescription {
 
   // Parse scalar variables
   const variables: FmiScalarVariable[] = [];
-  const svRegex = /<ScalarVariable\s+([^>]*)>([\s\S]*?)<\/ScalarVariable>/g;
-  let svMatch: RegExpExecArray | null;
+  const svElements = extractTagElements(xml, "ScalarVariable");
 
-  while ((svMatch = svRegex.exec(xml)) !== null) {
-    const attrs = svMatch[1] ?? "";
-    const body = svMatch[2] ?? "";
-
+  for (const { attrs, body } of svElements) {
     const name = extractAttrFromStr(attrs, "name") ?? "";
     const valueReference = parseInt(extractAttrFromStr(attrs, "valueReference") ?? "0", 10);
     const svDescription = extractAttrFromStr(attrs, "description");
@@ -117,11 +113,17 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     let unit: string | undefined;
     let displayUnit: string | undefined;
 
-    const typeMatch = body.match(/<(Real|Integer|Boolean|String|Enumeration)\s*([^>]*)\/?>/);
-    if (typeMatch) {
-      type = (typeMatch[1] ?? "Real") as FmiScalarVariable["type"];
-      const typeAttrs = typeMatch[2] ?? "";
-
+    let typeBlock: { attrs: string; body: string } | null = null;
+    for (const t of ["Real", "Integer", "Boolean", "String", "Enumeration"] as const) {
+      const b = extractTagBlock(body, t);
+      if (b) {
+        type = t;
+        typeBlock = b;
+        break;
+      }
+    }
+    if (typeBlock) {
+      const typeAttrs = typeBlock.attrs;
       const startStr = extractAttrFromStr(typeAttrs, "start");
       if (startStr !== undefined) {
         if (type === "Real") {
@@ -171,17 +173,96 @@ export function parseModelDescription(xml: string): FmiModelDescription {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
+function extractTagBlock(xml: string, tag: string): { attrs: string; body: string } | null {
+  const openTag = `<${tag}`;
+  const startIdx = xml.indexOf(openTag);
+  if (startIdx === -1) return null;
+  const charAfter = xml[startIdx + openTag.length];
+  if (
+    charAfter !== undefined &&
+    charAfter !== " " &&
+    charAfter !== "\t" &&
+    charAfter !== "\r" &&
+    charAfter !== "\n" &&
+    charAfter !== ">" &&
+    charAfter !== "/"
+  ) {
+    return null;
+  }
+  const tagEnd = xml.indexOf(">", startIdx + openTag.length);
+  if (tagEnd === -1) return null;
+  const isSelfClosing = xml[tagEnd - 1] === "/";
+  const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
+  const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
+  if (isSelfClosing) {
+    return { attrs, body: "" };
+  }
+  const closeTag = `</${tag}>`;
+  const endIdx = xml.indexOf(closeTag, tagEnd + 1);
+  if (endIdx === -1) {
+    return { attrs, body: "" };
+  }
+  const body = xml.slice(tagEnd + 1, endIdx);
+  return { attrs, body };
+}
+
+function extractTagElements(xml: string, tag: string): { attrs: string; body: string }[] {
+  const result: { attrs: string; body: string }[] = [];
+  const openTag = `<${tag}`;
+  const closeTag = `</${tag}>`;
+  let pos = 0;
+  while (pos < xml.length) {
+    const startIdx = xml.indexOf(openTag, pos);
+    if (startIdx === -1) break;
+    const charAfter = xml[startIdx + openTag.length];
+    if (
+      charAfter !== undefined &&
+      charAfter !== " " &&
+      charAfter !== "\t" &&
+      charAfter !== "\r" &&
+      charAfter !== "\n" &&
+      charAfter !== ">" &&
+      charAfter !== "/"
+    ) {
+      pos = startIdx + openTag.length;
+      continue;
+    }
+    const tagEnd = xml.indexOf(">", startIdx + openTag.length);
+    if (tagEnd === -1) break;
+    const isSelfClosing = xml[tagEnd - 1] === "/";
+    const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
+    const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
+    if (isSelfClosing) {
+      result.push({ attrs, body: "" });
+      pos = tagEnd + 1;
+    } else {
+      const endIdx = xml.indexOf(closeTag, tagEnd + 1);
+      if (endIdx === -1) {
+        result.push({ attrs, body: "" });
+        pos = tagEnd + 1;
+      } else {
+        result.push({ attrs, body: xml.slice(tagEnd + 1, endIdx) });
+        pos = endIdx + closeTag.length;
+      }
+    }
+  }
+  return result;
+}
+
 /** Extract an attribute value from the first occurrence of an XML element. */
 function extractAttr(xml: string, element: string, attr: string): string | undefined {
-  const elemMatch = xml.match(new RegExp(`<${element}\\s+([^>]*)>`, "s"));
-  if (!elemMatch) return undefined;
-  return extractAttrFromStr(elemMatch[1] ?? "", attr);
+  const block = extractTagBlock(xml, element);
+  if (!block) return undefined;
+  return extractAttrFromStr(block.attrs, attr);
 }
 
 /** Extract an attribute value from a raw attribute string. */
 function extractAttrFromStr(attrs: string, attr: string): string | undefined {
-  const match = attrs.match(new RegExp(`${attr}\\s*=\\s*"([^"]*)"`, "s"));
-  return match ? (match[1] ?? undefined) : undefined;
+  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*"([^"]*)"`));
+  if (match) return match[1];
+  const singleMatch = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*'([^']*)'`));
+  return singleMatch ? singleMatch[1] : undefined;
 }
 
 // ── FMI 3.0 Terminals and Icons ──────────────────────────────────
@@ -209,23 +290,18 @@ export interface FmiTerminal {
  */
 export function parseTerminalsAndIcons(xml: string): FmiTerminal[] {
   const terminals: FmiTerminal[] = [];
-  const termRegex = /<Terminal\s+([^>]*)>([\s\S]*?)<\/Terminal>/g;
-  let termMatch: RegExpExecArray | null;
+  const termElements = extractTagElements(xml, "Terminal");
 
-  while ((termMatch = termRegex.exec(xml)) !== null) {
-    const attrs = termMatch[1] ?? "";
-    const body = termMatch[2] ?? "";
-
+  for (const { attrs, body } of termElements) {
     const name = extractAttrFromStr(attrs, "name") ?? "Unknown";
     const terminalKind = extractAttrFromStr(attrs, "terminalKind");
     const description = extractAttrFromStr(attrs, "description");
 
     const memberVariables: FmiTerminalMemberVariable[] = [];
-    const mvRegex = /<TerminalMemberVariable\s+([^>]*)\/?>/g;
-    let mvMatch: RegExpExecArray | null;
+    const mvElements = extractTagElements(body, "TerminalMemberVariable");
 
-    while ((mvMatch = mvRegex.exec(body)) !== null) {
-      const mvAttrs = mvMatch[1] ?? "";
+    for (const mv of mvElements) {
+      const mvAttrs = mv.attrs;
       const variableName = extractAttrFromStr(mvAttrs, "variableName") ?? "";
       const memberName = extractAttrFromStr(mvAttrs, "memberName") ?? "";
       const variableKind = extractAttrFromStr(mvAttrs, "variableKind") ?? "signal";

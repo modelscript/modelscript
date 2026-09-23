@@ -10,6 +10,7 @@ import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
 import { Cst } from "../src-gen/bindings.js";
 import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "./errors.js";
+import { runModelicaCfaAnalysis } from "./lints/cfa.js";
 import { findNonlinearTermsInCst } from "./lints/homotopy-synthesis.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 import type { OperatorOverload, OperatorOverloadParam } from "./types.js";
@@ -1416,6 +1417,14 @@ export const classDefinitionQueries: Record<string, any> = {
         code: ModelicaErrorCode.HOMOTOPY_RECOMMENDED.code,
       }),
     );
+  },
+
+  /** Control Flow Analysis (CFA): Definite assignment (M5020), uninitialized reads (M5021), unreachable statements (M5022). */
+  lint__cfaAnalysis: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    if (!cst) return null;
+    const diags = runModelicaCfaAnalysis(db, self, cst);
+    return diags && diags.length > 0 ? diags : null;
   },
 
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {

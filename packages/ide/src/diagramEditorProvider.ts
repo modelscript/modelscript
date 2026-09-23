@@ -41,6 +41,16 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       panel.webview.postMessage(message);
     }
   }
+
+  /** Post a message to all active diagram webviews except the sender */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public postToActiveWebviewsExcept(sourcePanel: vscode.WebviewPanel, message: any): void {
+    for (const panel of this.activeWebviews) {
+      if (panel !== sourcePanel) {
+        panel.webview.postMessage(message);
+      }
+    }
+  }
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
@@ -207,6 +217,13 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             case "changeDiagramType": {
               currentDiagramType = message.diagramType;
               immediateUpdate();
+              break;
+            }
+            case "collabMessage": {
+              this.postToActiveWebviewsExcept(webviewPanel, {
+                type: "collabMessage",
+                data: message.data,
+              });
               break;
             }
             case "undo": {

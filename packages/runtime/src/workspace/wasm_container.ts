@@ -281,15 +281,23 @@ export function extractXmlTags(xml: string, tag: string): { attrs: string; body:
 /** Lightweight XML tag parser into a key-value structure. */
 export function parseXmlSimple(xml: string): Record<string, any> {
   const result: Record<string, any> = {};
-  const rootMatch = xml.match(/<([a-zA-Z0-9_:-]+)\s*([^>]*)>/);
-  if (!rootMatch) return result;
+  const start = xml.indexOf("<");
+  if (start === -1) return result;
+  const end = xml.indexOf(">", start);
+  if (end === -1) return result;
 
-  const rootTag = rootMatch[1];
-  const rootAttrs = rootMatch[2];
+  let content = xml.slice(start + 1, end).trim();
+  if (content.endsWith("/")) {
+    content = content.slice(0, -1).trim();
+  }
+  const spaceIdx = content.search(/\s/);
+  const rootTag = spaceIdx === -1 ? content : content.slice(0, spaceIdx);
+  const rootAttrs = spaceIdx === -1 ? "" : content.slice(spaceIdx).trim();
+
   result["@tag"] = rootTag;
 
   // Extract attributes
-  const attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*"([^"]*)"/g;
+  const attrRegex = /\b([a-zA-Z0-9_:-]+)\s*=\s*"([^"]*)"/g;
   let attrMatch: RegExpExecArray | null;
   while ((attrMatch = attrRegex.exec(rootAttrs)) !== null) {
     result[attrMatch[1]] = attrMatch[2];
@@ -306,8 +314,8 @@ export function matchPath(filePath: string, pattern: string | RegExp): boolean {
     return pattern.test(filePath);
   }
   const normalizedPath = filePath.replace(/\\/g, "/");
-  let regexStr = pattern.replace(/\\/g, "/");
-  regexStr = regexStr.replace(/\./g, "\\.");
+  const normalizedPattern = pattern.replace(/\\/g, "/");
+  let regexStr = normalizedPattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   regexStr = regexStr.replace(/\*\*/g, "§§GLOBSTAR§§");
   regexStr = regexStr.replace(/\*/g, "[^/]*");
   regexStr = regexStr.replace(/§§GLOBSTAR§§\//g, "(?:.*/)?");

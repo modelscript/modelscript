@@ -35,7 +35,9 @@ export function parseFmuModelDescription(xml: string): {
   const modelName = nameMatch?.[1] ?? "FMU";
 
   // Extract top-level description
-  const descMatch = xml.match(/<fmiModelDescription[^>]*\bdescription\s*=\s*"([^"]*)"/);
+  const rootTagEnd = xml.indexOf(">");
+  const rootTag = rootTagEnd !== -1 ? xml.slice(0, rootTagEnd) : "";
+  const descMatch = rootTag.match(/\bdescription\s*=\s*"([^"]*)"/);
   const description = descMatch?.[1] ?? "";
 
   // Extract scalar variables

@@ -1,6 +1,8 @@
 // --- Native LRA Simplex Tableau (Phase 3) ---
 // High-performance linear constraint solver using flat arrays
 
+import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
+
 export const SIMPLEX_MAX_VARS: u32 = 200;
 export const SIMPLEX_MAX_ROWS: u32 = 200;
 
@@ -48,8 +50,9 @@ export function addLinearConstraint(coeffsPtr: u32, limit: f64, isUpper: u8): bo
     boundsHi[slackVar] = isUpper ? limit : 1e100;
     
     // Load constraint coefficients from the Arena into the tableau
+    let coeffs = changetype<UnmanagedFloat64Array>(coeffsPtr);
     for (let c: u32 = 0; c < numCols; c++) {
-        tableauData[rowIdx * MAX_COLS + c] = load<f64>(coeffsPtr + c * 8);
+        tableauData[rowIdx * MAX_COLS + c] = coeffs[c];
     }
     
     // Compute the initial basic variable value (dot product of row * nonBasicValues)
@@ -163,12 +166,12 @@ export function extractUnsatCore(rowIdx: u32): u32 {
     let MAX_COLS: u32 = SIMPLEX_MAX_VARS;
     let corePtr = simplexArenaOffset;
     let coreSize: u32 = 0;
-    
+    let core = changetype<UnmanagedUint32Array>(corePtr + 4);
+
     if (constraintNodeIds[rowIdx] != 0) {
-        store<u32>(corePtr + 4 + coreSize * 4, constraintNodeIds[rowIdx]);
-        coreSize++;
+        core[coreSize++] = constraintNodeIds[rowIdx];
     }
-    
+
     for (let c: u32 = 0; c < numCols; c++) {
         let coeff = tableauData[rowIdx * MAX_COLS + c];
         if (coeff != 0.0) {
@@ -176,19 +179,18 @@ export function extractUnsatCore(rowIdx: u32): u32 {
                 if (r != rowIdx && tableauData[r * MAX_COLS + c] != 0.0 && constraintNodeIds[r] != 0) {
                     let dup = false;
                     for (let j: u32 = 0; j < coreSize; j++) {
-                        if (load<u32>(corePtr + 4 + j * 4) == constraintNodeIds[r]) { dup = true; break; }
+                        if (core[j] == constraintNodeIds[r]) { dup = true; break; }
                     }
                     if (!dup) {
-                        store<u32>(corePtr + 4 + coreSize * 4, constraintNodeIds[r]);
-                        coreSize++;
+                        core[coreSize++] = constraintNodeIds[r];
                     }
                 }
             }
         }
     }
-    
+
     store<u32>(corePtr, coreSize);
     simplexArenaOffset += 4 + coreSize * 4;
-    
+
     return corePtr;
 }

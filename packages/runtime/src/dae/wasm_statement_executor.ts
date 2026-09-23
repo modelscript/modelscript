@@ -1801,7 +1801,7 @@ export function evaluateArenaFunctionCall(
     }
 
     if (funcArena.algorithmSections.length === 0 && funcArena.externalDecl) {
-      const extMatch = funcArena.externalDecl.match(/(?:external\s+"C"\s+)?(\w+)\s*=\s*(\w+)\s*\(([^)]*)\)/);
+      const extMatch = funcArena.externalDecl.trim().match(/^(?:external\s+"C"\s+)?(\w+)\s*=\s*(\w+)\s*\(([^)]*)\)/);
       if (extMatch) {
         const [, outName, cFuncName, argList] = extMatch;
         const cArgNames = argList ? argList.split(",").map((s: string) => s.trim()) : [];
