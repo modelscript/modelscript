@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ActivityEdgeKind, ActivityNodeKind, PinDirection, WasmFumlEngine } from "@modelscript/runtime";
+import {
+  ActivityEdgeKind,
+  ActivityNodeKind,
+  PinDirection,
+  WasmFumlEngine,
+  type QueryDB,
+  type SymbolEntry,
+} from "@modelscript/runtime";
+import { extractActivityGraphFromQueryDB, extractActivityGraphFromText, type ActivityGraph } from "./activity-cfa.js";
 
 export interface ParsedActionElement {
   name: string;
@@ -8,20 +16,28 @@ export interface ParsedActionElement {
   inputs: { name: string; type: string }[];
   outputs: { name: string; type: string }[];
   assignments: { target: string; expr: string }[];
+  startByte?: number;
+  endByte?: number;
 }
 
 export interface ParsedSuccession {
   source: string;
   target: string;
   guard?: string;
+  startByte?: number;
+  endByte?: number;
 }
 
 export class SysML2FumlBridge {
   /**
-   * Compiles SysML v2 action / activity textual model into an executable WasmFumlEngine.
+   * Compiles SysML v2 action / activity model into an executable WasmFumlEngine.
+   * Accepts either raw SysML v2 source string or Salsa QueryDB + root SymbolEntry.
    */
   static compile(
-    sysmlSource: string,
+    input: string | QueryDB,
+    customBehaviorsOrSymbol?:
+      | Record<string, (inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined>
+      | SymbolEntry,
     customBehaviors?: Record<
       string,
       (inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined
@@ -29,101 +45,24 @@ export class SysML2FumlBridge {
   ): WasmFumlEngine {
     const engine = new WasmFumlEngine();
 
-    const actions: ParsedActionElement[] = [];
-    const successions: ParsedSuccession[] = [];
+    let graph: ActivityGraph;
+    let behaviors:
+      | Record<string, (inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined>
+      | undefined;
 
-    // 1. Extract action definitions and action usages
-    // Format: action [name] { ... } or action [name];
-    const actionHeaderRegex = /\baction\s+([A-Za-z_][A-Za-z0-9_]*)/g;
-    let aMatch: RegExpExecArray | null;
-    while ((aMatch = actionHeaderRegex.exec(sysmlSource)) !== null) {
-      const name = aMatch[1];
-      const afterNamePos = aMatch.index + aMatch[0].length;
-      let delimPos = -1;
-      let isBrace = false;
-      for (let i = afterNamePos; i < sysmlSource.length; i++) {
-        const c = sysmlSource[i];
-        if (c === ";") {
-          delimPos = i;
-          isBrace = false;
-          break;
-        } else if (c === "{") {
-          delimPos = i;
-          isBrace = true;
-          break;
-        }
-      }
-      if (delimPos === -1) break;
-      let body = "";
-      if (isBrace) {
-        const closeBrace = sysmlSource.indexOf("}", delimPos + 1);
-        if (closeBrace !== -1) {
-          body = sysmlSource.slice(delimPos + 1, closeBrace);
-          actionHeaderRegex.lastIndex = closeBrace + 1;
-        } else {
-          actionHeaderRegex.lastIndex = delimPos + 1;
-        }
-      } else {
-        actionHeaderRegex.lastIndex = delimPos + 1;
-      }
-
-      // Extract pins within action body
-      const inputs: { name: string; type: string }[] = [];
-      const outputs: { name: string; type: string }[] = [];
-      const assignments: { target: string; expr: string }[] = [];
-
-      const pinRegex = /\b(in|out)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+);/g;
-      let pMatch: RegExpExecArray | null;
-      while ((pMatch = pinRegex.exec(body)) !== null) {
-        if (pMatch[1] === "in") {
-          inputs.push({ name: pMatch[2], type: pMatch[3] });
-        } else {
-          outputs.push({ name: pMatch[2], type: pMatch[3] });
-        }
-      }
-
-      // Extract assignments: assign [var] := [expr];
-      const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;]+);/g;
-      let asMatch: RegExpExecArray | null;
-      while ((asMatch = assignRegex.exec(body)) !== null) {
-        assignments.push({ target: asMatch[1], expr: asMatch[2].trim() });
-      }
-
-      actions.push({
-        name,
-        kind: "action",
-        inputs,
-        outputs,
-        assignments,
-      });
+    if (typeof input === "string") {
+      graph = extractActivityGraphFromText(input);
+      behaviors = customBehaviorsOrSymbol as Record<string, any>;
+    } else {
+      const db = input as QueryDB;
+      const rootSym = customBehaviorsOrSymbol as SymbolEntry;
+      graph = extractActivityGraphFromQueryDB(db, rootSym);
+      behaviors = customBehaviors;
     }
 
-    // 2. Extract control nodes (merge, decide, fork, join)
-    const controlNodeRegex = /\b(merge|decide|fork|join)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
-    let cMatch: RegExpExecArray | null;
-    while ((cMatch = controlNodeRegex.exec(sysmlSource)) !== null) {
-      const cKind = cMatch[1] as "merge" | "decide" | "fork" | "join";
-      const cName = cMatch[2];
-      actions.push({
-        name: cName,
-        kind: cKind,
-        inputs: [],
-        outputs: [],
-        assignments: [],
-      });
-    }
+    const { nodes: actions, flows: successions } = graph;
 
-    // 3. Extract successions: first [source] then [target];
-    const succRegex =
-      /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+));/g;
-    let sMatch: RegExpExecArray | null;
-    while ((sMatch = succRegex.exec(sysmlSource)) !== null) {
-      const src = sMatch[1] || sMatch[3];
-      const tgt = sMatch[2] || sMatch[4];
-      successions.push({ source: src, target: tgt });
-    }
-
-    // 4. Register nodes in WasmFumlEngine
+    // 1. Register nodes in WasmFumlEngine
     const nodeMap = new Map<string, number>();
 
     // Initial node
@@ -137,12 +76,12 @@ export class SysML2FumlBridge {
       else if (act.kind === "join") nodeKind = ActivityNodeKind.Join;
 
       // Behavior builder
-      let behavior = customBehaviors?.[act.name];
+      let behavior = behaviors?.[act.name];
       if (!behavior && act.assignments.length > 0) {
         behavior = (_inputs, context) => {
           for (const asgn of act.assignments) {
             try {
-              // Basic arithmetic evaluation supporting context variable references
+              // Arithmetic evaluation supporting context variable references
               const evaluated = evaluateExpression(asgn.expr, context);
               context[asgn.target] = evaluated;
             } catch {
@@ -169,19 +108,19 @@ export class SysML2FumlBridge {
     // ActivityFinal node
     const finalNodeId = engine.addNode("__final__", ActivityNodeKind.ActivityFinal);
 
-    // 5. Connect edges
+    // 2. Connect edges
     const targets = new Set(successions.map((s) => s.target));
     const sources = new Set(successions.map((s) => s.source));
 
     // Connect Initial node to actions that are entry points
     if (successions.length === 0) {
       if (actions.length > 0) {
-        const tgtId = nodeMap.get(actions[0].name)!;
+        const tgtId = nodeMap.get(actions[0]!.name)!;
         engine.addEdge(initNodeId, tgtId, ActivityEdgeKind.Control);
       }
     } else {
       for (const act of actions) {
-        // Must have outgoing transitions (or be the single designated root) and no incoming transitions
+        // Must have outgoing transitions (or be root) and no incoming transitions
         if (!targets.has(act.name) && sources.has(act.name) && act.kind !== "merge" && act.kind !== "join") {
           const tgtId = nodeMap.get(act.name)!;
           engine.addEdge(initNodeId, tgtId, ActivityEdgeKind.Control);
@@ -194,14 +133,15 @@ export class SysML2FumlBridge {
       const srcId = nodeMap.get(s.source);
       const tgtId = nodeMap.get(s.target);
       if (srcId && tgtId) {
-        engine.addEdge(srcId, tgtId, ActivityEdgeKind.Control);
+        const edgeKind = s.kind === "object" ? ActivityEdgeKind.Object : ActivityEdgeKind.Control;
+        engine.addEdge(srcId, tgtId, edgeKind);
       }
     }
 
     // Connect terminal actions to ActivityFinal
     if (successions.length === 0) {
       if (actions.length > 0) {
-        const srcId = nodeMap.get(actions[actions.length - 1].name)!;
+        const srcId = nodeMap.get(actions[actions.length - 1]!.name)!;
         engine.addEdge(srcId, finalNodeId, ActivityEdgeKind.Control);
       }
     } else {

@@ -16,6 +16,7 @@ type Real
   parameter Boolean fixed = false "Fixed during initialization";
   parameter Real nominal = 1.0 "Nominal value for scaling";
   parameter StateSelect stateSelect = StateSelect.default "Priority for state selection";
+  parameter Boolean unbounded = false "Unbounded variable";
 end Real;
 
 type Integer
@@ -38,6 +39,7 @@ type String
   "Built-in String type"
   extends /* primitive */;
   parameter String start = "" "Default start value";
+  parameter Boolean fixed = false "Fixed during initialization";
 end String;
 
 type Clock
@@ -54,6 +56,6 @@ type StateSelect = enumeration(
 ) "Priority for state variable selection";
 
 type AssertionLevel = enumeration(
-  error "Raises a simulation error",
-  warning "Produces a warning message"
+  warning "Produces a warning message",
+  error "Raises a simulation error"
 ) "Level for assert() and terminate()";

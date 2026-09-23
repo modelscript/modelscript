@@ -1,7 +1,6 @@
 // name: PropagateRedeclareMod1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

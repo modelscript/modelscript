@@ -50,6 +50,7 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
       fixed: false,
       nominal: 1.0,
       stateSelect: "default",
+      unbounded: false,
     },
   },
   {
@@ -81,6 +82,7 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
     attributes: {
       quantity: "",
       start: "",
+      fixed: false,
     },
   },
   {
@@ -104,7 +106,7 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
       "An enumeration type indicating the severity of an `assert` or `terminate` failure (`error` or `warning`).",
     attributes: {
       isEnumeration: true,
-      literals: ["error", "warning"],
+      literals: ["warning", "error"],
     },
   },
 ];

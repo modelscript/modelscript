@@ -8,6 +8,8 @@
  * @license LGPL-3.0-or-later
  */
 
+import { analyzeInterproceduralCfa } from "./activity-cfa.js";
+import { checkActivitySoundnessForSymbol } from "./activity-soundness.js";
 import {
   areDimensionsEqual,
   getDimensionLabel,
@@ -15,6 +17,7 @@ import {
   isDimensionless,
   resolveTypeDimension,
 } from "./dimensions.js";
+import { LoopInvariantAnalyzer } from "./loop-invariant-analyzer.js";
 import { emitAxioms } from "./reasoner-bridge.js";
 
 import {
@@ -1939,6 +1942,78 @@ const verifyRequirementLints = {
   },
 };
 
+/** Lint rules for ActionDefinition and ActionUsage: Activity CFA, Definite Assignment, Soundness */
+const actionCommonLints = {
+  activitySoundness: (db: QueryDB, self: SymbolEntry) => {
+    // Only check if it defines an activity with child nodes or parameters
+    const children = db.childrenOf(self.id);
+    const hasActivityMembers = children.some(
+      (c) =>
+        c.ruleName === "ActionUsage" ||
+        c.ruleName === "PerformActionUsage" ||
+        c.ruleName === "DecisionNode" ||
+        c.ruleName === "MergeNode" ||
+        c.ruleName === "ForkNode" ||
+        c.ruleName === "JoinNode" ||
+        c.ruleName === "SuccessionAsUsage" ||
+        c.ruleName === "SuccessionFlowUsage",
+    );
+    if (!hasActivityMembers) return null;
+    const res = checkActivitySoundnessForSymbol(db, self);
+    if (!res.isSound && res.diagnostics.length > 0) {
+      const firstErr = res.diagnostics.find((d) => d.severity === "error") || res.diagnostics[0]!;
+      return error(firstErr.message, {
+        startByte: firstErr.startByte ?? self.startByte,
+        endByte: firstErr.endByte ?? self.endByte,
+      });
+    }
+    return null;
+  },
+  interproceduralContracts: (db: QueryDB, self: SymbolEntry) => {
+    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    if (/\b(?:perform|:\s*[A-Za-z_])/.test(text)) {
+      const res = analyzeInterproceduralCfa(db, self.name);
+      const myErr = res.diagnostics.find((d) => d.nodeName === self.name && d.severity === "error");
+      if (myErr) {
+        return error(myErr.message, {
+          startByte: myErr.startByte ?? self.startByte,
+          endByte: myErr.endByte ?? self.endByte,
+        });
+      }
+    }
+    return null;
+  },
+  loopTermination: (db: QueryDB, self: SymbolEntry) => {
+    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    const whileMatch = /while\s*\(([^)]+)\)\s*\{/.exec(text);
+    if (whileMatch) {
+      const cond = whileMatch[1]!;
+      const openBrace = text.indexOf("{", whileMatch.index);
+      const closeBrace = text.lastIndexOf("}");
+      const body = openBrace !== -1 && closeBrace > openBrace ? text.slice(openBrace + 1, closeBrace) : "";
+      const loopRes = LoopInvariantAnalyzer.analyzeLoop({ condition: cond, body });
+      if (!loopRes.isTerminating && loopRes.diagnostics.length > 0) {
+        const firstErr = loopRes.diagnostics[0]!;
+        return error(firstErr.message, {
+          startByte: self.startByte + whileMatch.index,
+          endByte: self.endByte,
+        });
+      }
+    }
+    return null;
+  },
+};
+
+const actionDefinitionLints = {
+  ...definitionLints,
+  ...actionCommonLints,
+};
+
+const actionUsageLints = {
+  ...usageLints,
+  ...actionCommonLints,
+};
+
 // ---------------------------------------------------------------------------
 // RequirementUsage — promoted model and queries
 // ---------------------------------------------------------------------------
@@ -2416,21 +2491,15 @@ export const sysml2Language = language({
   },
 
   cfgNodes: {
-    ActionUsage: {
-      trueBranch: "body",
-    },
-    DecisionNode: {
+    IfNode: {
       condition: "condition",
-      trueBranch: "body",
+      trueBranch: "thenBody",
+      falseBranch: "elseBody",
     },
-    MergeNode: {
-      trueBranch: "body",
-    },
-    ForkNode: {
-      branchList: "branches",
-    },
-    JoinNode: {
-      trueBranch: "body",
+    WhileLoopNode: {
+      condition: "condition",
+      trueBranch: "ActionBodyParameter",
+      isLoop: true,
     },
     TransitionUsage: {
       condition: "guard",
@@ -2675,6 +2744,41 @@ export const sysml2Language = language({
           name: "sysml2_hybrid_simulate",
           displayName: "Simulate Hybrid SysML v2 / Modelica System",
           modelDescription: "Flatten and simulate a hybrid SysML v2 / Modelica system.",
+        },
+      },
+    },
+    {
+      id: "verify_activity_soundness",
+      title: "Verify Activity Soundness",
+      description:
+        "Verifies workflow soundness, deadlock freedom, and definite output assignment in SysML v2 activities.",
+      category: "verify",
+      inputs: {
+        actionName: { type: "string", description: "Target action or activity name" },
+      },
+      execute: async (ctx: any, params: { actionName?: string }) => {
+        const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
+        if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
+        const { checkActivitySoundnessForSymbol } = await import("./activity-soundness.js");
+        const actions = queryDB
+          .allEntries()
+          .filter(
+            (e: any) =>
+              (e.ruleName === "ActionDefinition" || e.ruleName === "ActionUsage") &&
+              (!params?.actionName || e.name === params.actionName),
+          );
+        return actions.map((act: any) => checkActivitySoundnessForSymbol(queryDB, act));
+      },
+      ui: {
+        editorTitle: {
+          icon: "$(check-all)",
+          group: "navigation@1",
+        },
+        languageModelTool: {
+          name: "sysml2_verify_activity_soundness",
+          displayName: "Verify SysML v2 Activity Soundness",
+          modelDescription:
+            "Verifies workflow soundness, deadlock freedom, and definite output assignment in SysML v2 activities.",
         },
       },
     },
@@ -3910,7 +4014,7 @@ export const sysml2Language = language({
         symbol: defAttrs("action"),
         queries: definitionStructuralQueries,
         model: definitionModel,
-        lints: definitionLints,
+        lints: actionDefinitionLints,
         graphics: () => sysmlNodeGraphics({ stereotype: "action def", fill: "#e3f2fd", stroke: "#1565c0" }),
       }),
 
@@ -4023,7 +4127,7 @@ export const sysml2Language = language({
         symbol: usageAttrs("action"),
         queries: usageQueries,
         model: usageModel,
-        lints: usageLints,
+        lints: actionUsageLints,
         graphics: () => sysmlUsageGraphics({ stereotype: "action", fill: "#e3f2fd", stroke: "#1976d2" }),
       }),
 
@@ -4093,7 +4197,7 @@ export const sysml2Language = language({
         symbol: usageAttrs("action"),
         queries: usageQueries,
         model: usageModel,
-        lints: usageLints,
+        lints: actionUsageLints,
         graphics: () => sysmlUsageGraphics({ stereotype: "perform", fill: "#e3f2fd", stroke: "#0d47a1" }),
       }),
 

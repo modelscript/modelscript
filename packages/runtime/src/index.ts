@@ -6,6 +6,7 @@
  * structural analysis, numerical integrators, and symbolic solvers.
  */
 
+export * from "./analysis/octagon_dbm.js";
 export * from "./analysis/parametric_verifier.js";
 export * from "./analysis/stl_robustness.js";
 export * from "./analysis/wasm_blt.js";

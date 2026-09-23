@@ -1,7 +1,6 @@
 // name: FuncBuiltinMod
 // keywords: mod
 // status: correct
-// xfail:    true
 //
 // Tests the builtin mod function.
 //

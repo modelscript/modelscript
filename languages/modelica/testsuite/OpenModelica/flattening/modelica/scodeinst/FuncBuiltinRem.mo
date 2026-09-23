@@ -1,7 +1,6 @@
 // name: FuncBuiltinRem
 // keywords: rem
 // status: correct
-// xfail:    true
 //
 // Tests the builtin rem function.
 //

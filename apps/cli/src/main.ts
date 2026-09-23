@@ -241,6 +241,14 @@ await yargs(rawArgs)
       "Ddp",
     ),
   )
+  .command(
+    lazy(
+      "dhf <action> [paths..]",
+      "Design History File (FDA 21 CFR 820.30 / ISO 14971 / IEC 62304) regulatory compliance exporter",
+      () => import("./commands/dhf.js"),
+      "Dhf",
+    ),
+  )
   // Language Engineering & DSL Tooling
   .command(
     lazy(

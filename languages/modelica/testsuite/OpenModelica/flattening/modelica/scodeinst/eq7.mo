@@ -1,7 +1,6 @@
 // name: eq7.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

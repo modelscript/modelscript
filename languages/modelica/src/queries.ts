@@ -123,6 +123,7 @@ export function checkModifierNotFound(
     declaredNames.add("fixed");
     declaredNames.add("nominal");
     declaredNames.add("stateSelect");
+    declaredNames.add("unbounded");
     for (const k of Object.keys(currentEntry?.metadata || {})) {
       if (
         k !== "classKind" &&
@@ -1399,10 +1400,44 @@ export function getShortClassSpecifierNode(cst: any): any {
   return null;
 }
 
+function isRedeclareQuery(db: QueryDB, self: SymbolEntry): boolean {
+  if ((self.metadata as any)?.redeclare) return true;
+  let current = db.cstNode(self.id) as any;
+  if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
+    current = current.parent;
+  }
+  while (current) {
+    if (
+      current.type === "ComponentClause" ||
+      current.type === "component_clause" ||
+      current.type === "element" ||
+      current.type === "Element"
+    ) {
+      if (
+        current.children?.some(
+          (c: any) => c.text?.trim() === "redeclare" || c.type === "redeclare" || c.type === '"redeclare"',
+        )
+      ) {
+        return true;
+      }
+    }
+    if (
+      current.type === "composition" ||
+      current.type === "Composition" ||
+      (current !== db.cstNode(self.id) && (current.type === "class_definition" || current.type === "ClassDefinition"))
+    ) {
+      break;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
 export const classDefinitionQueries: Record<string, any> = {
   /** All direct children of this class. */
 
   members: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id),
+  isRedeclare: (db: QueryDB, self: SymbolEntry) => isRedeclareQuery(db, self),
 
   /** Recommends homotopy operator for steep nonlinear equations. */
   lint__homotopyRecommended: (db: QueryDB, self: SymbolEntry) => {
@@ -1584,10 +1619,10 @@ export const classDefinitionQueries: Record<string, any> = {
       const children = db.childrenOf(self.id);
 
       for (const child of children) {
-        if (child.kind === "Component" && (child.metadata as Record<string, unknown>)?.redeclare) {
-          redeclaredNames.add(child.name);
-        }
-        if (child.kind === "Class" && (child.metadata as Record<string, unknown>)?.redeclare) {
+        if (
+          (child.kind === "Component" || child.kind === "Class") &&
+          ((child.metadata as Record<string, unknown>)?.redeclare || db.query<boolean>("isRedeclare", child.id))
+        ) {
           redeclaredNames.add(child.name);
         }
       }
@@ -2104,7 +2139,7 @@ export const classDefinitionQueries: Record<string, any> = {
       const redeclaredNames = new Set<string>();
       for (const child of children) {
         const meta = child.metadata as Record<string, unknown>;
-        if (meta?.redeclare) {
+        if (meta?.redeclare || db.query<boolean>("isRedeclare", child.id)) {
           redeclaredNames.add(child.name);
         }
       }
@@ -2209,13 +2244,16 @@ export const classDefinitionQueries: Record<string, any> = {
           if (isBroken(outerMod, child.name)) continue;
 
           // Resolve the base class
-          const resolveName = db.query<(n: string) => SymbolEntry | null>("resolveName", self.id);
-          let baseClass: SymbolEntry | null | undefined = undefined;
-          if (resolveName) {
-            baseClass = resolveName(child.name);
-          }
+          let baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
           if (!baseClass) {
-            baseClass = db.byName(child.name)?.find((e) => e.kind === "Class" || e.kind === "Package") ?? null;
+            const resolveName = db.query<(n: string) => SymbolEntry | null>("resolveName", self.id);
+            if (resolveName) {
+              baseClass = resolveName(child.name);
+            }
+          }
+          if (!baseClass || baseClass.id === self.id) {
+            const entries = db.byName(child.name);
+            baseClass = entries?.find((e) => (e.kind === "Class" || e.kind === "Package") && e.id !== self.id) ?? null;
           }
 
           if (!baseClass) {
@@ -2309,12 +2347,20 @@ export const classDefinitionQueries: Record<string, any> = {
 export const extendsClauseQueries: Record<string, any> = {
   modificationText: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
-    const modNode = (cst?.children || []).find(
-      (c: any) =>
-        c.type === "classOrInheritanceModification" ||
-        c.type === "class_or_inheritance_modification" ||
-        c.type === "ClassOrInheritanceModification",
-    );
+    const modNode =
+      cst?.type === "class_modification" ||
+      cst?.type === "ClassModification" ||
+      cst?.type === "classOrInheritanceModification" ||
+      cst?.type === "class_or_inheritance_modification"
+        ? cst
+        : (cst?.children || []).find(
+            (c: any) =>
+              c.type === "classOrInheritanceModification" ||
+              c.type === "class_or_inheritance_modification" ||
+              c.type === "ClassOrInheritanceModification" ||
+              c.type === "class_modification" ||
+              c.type === "ClassModification",
+          );
     return modNode?.text ?? null;
   },
   /**
@@ -2389,12 +2435,20 @@ export const extendsClauseQueries: Record<string, any> = {
    */
   extendsModificationParsed: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
-    const modNode = (cst?.children || []).find(
-      (c: any) =>
-        c.type === "classOrInheritanceModification" ||
-        c.type === "class_or_inheritance_modification" ||
-        c.type === "ClassOrInheritanceModification",
-    );
+    const modNode =
+      cst?.type === "class_modification" ||
+      cst?.type === "ClassModification" ||
+      cst?.type === "classOrInheritanceModification" ||
+      cst?.type === "class_or_inheritance_modification"
+        ? cst
+        : (cst?.children || []).find(
+            (c: any) =>
+              c.type === "classOrInheritanceModification" ||
+              c.type === "class_or_inheritance_modification" ||
+              c.type === "ClassOrInheritanceModification" ||
+              c.type === "class_modification" ||
+              c.type === "ClassModification",
+          );
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
   },
@@ -2659,12 +2713,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     return false;
   },
 
-  isRedeclare: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "ComponentClause" && current.type !== "component_clause")
-      current = current.parent;
-    return !!(current?.children || []).some((c: any) => c.type === "redeclare" || c.text === "redeclare");
-  },
+  isRedeclare: (db: QueryDB, self: SymbolEntry) => isRedeclareQuery(db, self),
 
   isInner: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;

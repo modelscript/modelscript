@@ -1632,8 +1632,13 @@ function getEnumLiteralIndex(text: string, db: any): number | null {
   for (const s of candidateSyms as any[]) {
     const cstText = (db.cstNode(s.id) as any)?.text ?? "";
     const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-    if (match && match[1]) {
-      const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
+    const lits =
+      match && match[1]
+        ? match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0])
+        : Array.isArray(s.metadata?.literals)
+          ? s.metadata.literals
+          : null;
+    if (lits) {
       const idx = lits.indexOf(litName);
       if (idx >= 0) return idx + 1;
     }
@@ -1747,8 +1752,12 @@ function getExprDims(exprId: number, dae: DAEBuilder, db?: any): number[] | null
               Boolean(cstText.includes("enumeration("));
             if (isEnum) {
               const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-              if (enumMatch) {
-                const literals = enumMatch[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
+              const literals = enumMatch
+                ? enumMatch[1].split(",").map((x: string) => x.trim().split(/\s+/)[0])
+                : Array.isArray(targetMeta?.literals)
+                  ? targetMeta.literals
+                  : null;
+              if (literals) {
                 return [literals.length];
               }
             }
@@ -7696,8 +7705,12 @@ function lowerCSTExpression(
       for (const candidate of typeTargets) {
         const cstText = (db.cstNode(candidate.id) as any)?.text ?? "";
         const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-        if (enumMatch) {
-          const literals = enumMatch[1].split(",").map((s) => s.trim());
+        const literals: string[] | null = enumMatch
+          ? enumMatch[1].split(",").map((s) => s.trim().split(/\s+/)[0])
+          : Array.isArray(candidate.metadata?.literals)
+            ? candidate.metadata.literals
+            : null;
+        if (literals) {
           const idx = literals.indexOf(litName);
           if (idx >= 0) {
             const pathParts: string[] = [candidate.name, litName];
@@ -9022,6 +9035,38 @@ export class ModelicaFlattener {
     return dae;
   }
 
+  private classHasRedeclare(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
+    if (!classId || visited.has(classId)) return false;
+    visited.add(classId);
+
+    const children = this.db.childrenOf(classId);
+    for (const child of children) {
+      if (this.db.query<boolean>("isRedeclare", child.id)) {
+        return true;
+      }
+      if (child.kind === "Extends") {
+        const extendsModParsedRaw = this.db.query<any>("extendsModificationParsed", child.id);
+        const extendsModParsed: any[] = Array.isArray(extendsModParsedRaw)
+          ? extendsModParsedRaw
+          : (extendsModParsedRaw?.args ?? []);
+        for (const arg of extendsModParsed) {
+          if (arg.isRedeclaration || arg.redeclaredTypeSpecifier) return true;
+        }
+        const baseClass = this.db.query<any>("resolvedBaseClass", child.id) ?? this.db.byName(child.name)?.[0];
+        if (baseClass && this.classHasRedeclare(baseClass.id, visited)) return true;
+      }
+      if (child.kind === "Component") {
+        const compInst = this.db.query<any>("componentInstance", child.id);
+        if (compInst?.modification?.args) {
+          for (const arg of compInst.modification.args) {
+            if (arg.isRedeclaration || arg.redeclaredTypeSpecifier) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   flattenClass(rootClassId: SymbolId, cachedArena?: DAEBuilder | null): DAEBuilder {
     this.currentRootClassId = rootClassId;
     this.currentClassId = rootClassId;
@@ -9502,7 +9547,9 @@ export class ModelicaFlattener {
     const isDiffMode = this.options.backend === "diff";
     const allowWasm =
       this.options.backend === "wasm" ||
-      ((this.options.backend === "hybrid" || !this.options.backend) && Boolean(this.options.useWasmKernel));
+      ((this.options.backend === "hybrid" || !this.options.backend) &&
+        Boolean(this.options.useWasmKernel) &&
+        !this.classHasRedeclare(rootClassId));
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
@@ -10204,11 +10251,50 @@ export class ModelicaFlattener {
         if (comp && comp.kind === "Component") comps.push(comp);
       }
     }
+    const symMod = this.db.query<any>("effectiveModification", sym.id);
+    const redeclArgs = symMod?.args?.filter((a: any) => a.isRedeclaration) ?? [];
+    const redeclaredCompNames = new Set(redeclArgs.map((a: any) => a.name));
+
+    if (
+      comps.some((c) => {
+        const ci = this.db.query<ComponentInstanceData>("componentInstance", c.id);
+        return ci?.isReplaceable && !redeclaredCompNames.has(c.name);
+      })
+    ) {
+      return null;
+    }
+
     for (const comp of comps) {
       if (comp && comp.kind === "Component") {
         const compInst = this.db.query<ComponentInstanceData>("componentInstance", comp.id);
         const cMeta = (comp.metadata as any) || {};
-        const typeSpec = compInst?.typeSpecifier ?? cMeta.typeSpecifier;
+        const redeclForComp = redeclArgs.find((a: any) => a.name === comp.name);
+        let typeSpec = redeclForComp?.redeclaredTypeSpecifier ?? compInst?.typeSpecifier ?? cMeta.typeSpecifier;
+        let compTargetId: SymbolId | null = null;
+        if (typeSpec) {
+          const simple = typeSpec.split(".").pop()!;
+          const targets = this.db.byName(simple);
+          const found = targets.find((t) => t.kind === "Class" || (t.metadata as any)?.classKind === "type");
+          if (found) compTargetId = found.id;
+        }
+
+        const compTypeMods: any[] = [];
+        if (compTargetId && this.isClassType(compTargetId)) {
+          let currTypeId: SymbolId | null = compTargetId;
+          while (currTypeId) {
+            const mod = this.db.query<any>("effectiveModification", currTypeId);
+            if (mod?.args) compTypeMods.unshift(...mod.args);
+            let base: any = this.db.query("resolvedBaseClass", currTypeId);
+            const extChild = this.db.childrenOf(currTypeId).find((c) => c.kind === "Extends");
+            if (extChild && !base) {
+              base = this.db.query("resolvedBaseClass", extChild.id) ?? this.db.byName(extChild.name)[0];
+            }
+            if (!base || base.id === currTypeId) break;
+            typeSpec = base.name;
+            currTypeId = this.isClassType(base.id) ? base.id : null;
+          }
+        }
+
         let vType = VarType.Real;
         if (typeSpec === "Integer" || cMeta.varType === VarType.Integer) vType = VarType.Integer;
         else if (typeSpec === "Boolean" || cMeta.varType === VarType.Boolean) vType = VarType.Boolean;
@@ -10225,7 +10311,7 @@ export class ModelicaFlattener {
           cMeta.isConstant === true ||
           /\bconstant\b/.test(cstText);
         const isCompProt = this.isCstNodeProtected(compCst) && !isInput && !isOutput;
-        const causality = isOutput ? Causality.Output : isInput ? Causality.Input : Causality.Local;
+        const causality = isOutput ? Causality.Output : isCompProt ? Causality.Local : Causality.Input;
         const variability = isConstant ? Variability.Constant : Variability.Continuous;
         const varIdx = fn.addVariable(comp.name, vType, variability, causality);
         if (isCompProt) {
@@ -10236,6 +10322,27 @@ export class ModelicaFlattener {
         }
         if (compInst?.arrayDimensions && compInst.arrayDimensions.length > 0) {
           fn.setVarShape(varIdx, compInst.arrayDimensions);
+        }
+        for (const attr of compTypeMods) {
+          if (attr.value) {
+            const val = attr.value;
+            let exprId: number | null = null;
+            if (val.kind === "literal") {
+              if (typeof val.value === "number") exprId = fn.addRealLiteral(val.value);
+              else if (typeof val.value === "string") exprId = fn.addStringLiteral(val.value);
+            } else if (val.text) {
+              const t = val.text.trim();
+              if (t.startsWith('"') && t.endsWith('"')) {
+                exprId = fn.addStringLiteral(t.slice(1, -1));
+              } else {
+                const num = Number(t);
+                if (!isNaN(num)) exprId = fn.addRealLiteral(num);
+              }
+            }
+            if (exprId !== null) {
+              fn.setVarAttr(varIdx, attr.name, exprId);
+            }
+          }
         }
         const bText = compInst?.modification?.bindingExpression?.text?.trim();
         if (bText) {
@@ -11919,6 +12026,28 @@ export class ModelicaFlattener {
         }
 
         let classTargetId = compInst.classInstance;
+        if (this.currentClassId && compInst.typeSpecifier) {
+          const origClassSym = classTargetId ? this.db.symbol(classTargetId) : null;
+          if (origClassSym && origClassSym.parentId !== null) {
+            const scopeTarget = compInst.typeSpecifier.includes(".")
+              ? this.db.query<(n: string) => SymbolEntry | null>(
+                  "resolveName",
+                  this.currentClassId,
+                )?.(compInst.typeSpecifier)
+              : this.db.query<(n: string) => SymbolEntry | null>(
+                  "resolveSimpleName",
+                  this.currentClassId,
+                )?.(compInst.typeSpecifier);
+            if (
+              scopeTarget &&
+              scopeTarget.id !== classTargetId &&
+              !(scopeTarget.metadata as any)?.isPredefined &&
+              (scopeTarget.kind === "Class" || (scopeTarget.metadata as any)?.classKind === "type")
+            ) {
+              classTargetId = scopeTarget.id;
+            }
+          }
+        }
         if (!classTargetId && compInst.typeSpecifier) {
           if (compInst.typeSpecifier.includes(".")) {
             const elemParent = this.db.symbol(elemId)?.parentId;
@@ -11994,7 +12123,9 @@ export class ModelicaFlattener {
             ? effectiveParentArg
             : effectiveClassArg?.isRedeclaration && effectiveClassArg?.redeclaredTypeSpecifier
               ? effectiveClassArg
-              : null;
+              : (parentMods?.args?.find(
+                  (a: any) => a.name === compInst.name && a.isRedeclaration && a.redeclaredTypeSpecifier,
+                ) ?? null);
         if (redeclArg?.redeclaredTypeSpecifier) {
           let redeclTargetId: SymbolId | null = null;
           if (redeclArg.redeclaredTypeSpecifier.includes(".")) {
@@ -12547,7 +12678,7 @@ export class ModelicaFlattener {
               ? (effectiveType ?? classTarget.name)
               : null;
         const typeMods: any[] = [];
-        if (isType && classTargetId && !redeclArg) {
+        if (isType && classTargetId) {
           let currId: number | null = classTargetId;
           const collectedTypeMods: any[] = [];
           while (currId) {
@@ -12625,6 +12756,8 @@ export class ModelicaFlattener {
               const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
               if (enumMatch) {
                 enumLiterals = enumMatch[1].split(",").map((s) => ({ stringValue: s.trim().split(/\s+/)[0] }));
+              } else if (Array.isArray(targetMeta?.literals)) {
+                enumLiterals = targetMeta.literals.map((s: string) => ({ stringValue: s }));
               }
             }
           }
@@ -13553,7 +13686,18 @@ export class ModelicaFlattener {
                         }
                       }
                     }
-                    if (typeof evalVal === "number") {
+                    if (arg.name === "stateSelect") {
+                      const ssLiterals = ["never", "avoid", "default", "prefer", "always"];
+                      if (typeof evalVal === "number" && evalVal >= 1 && evalVal <= ssLiterals.length) {
+                        attrExprId = dae.addEnumLiteral(evalVal, `StateSelect.${ssLiterals[evalVal - 1]}`);
+                      } else if (t.startsWith("StateSelect.")) {
+                        const litName = t.slice("StateSelect.".length);
+                        const idx = ssLiterals.indexOf(litName);
+                        attrExprId = dae.addEnumLiteral(idx >= 0 ? idx + 1 : 1, `StateSelect.${litName}`);
+                      } else if (typeof evalVal === "number") {
+                        attrExprId = dae.addRealLiteral(evalVal);
+                      }
+                    } else if (typeof evalVal === "number") {
                       attrExprId =
                         varType === VarType.Integer
                           ? dae.addIntLiteral(Math.trunc(evalVal))
@@ -13622,12 +13766,24 @@ export class ModelicaFlattener {
         }
         let typeDims: number[] | null = null;
         if (classTargetId) {
-          typeDims =
-            this.db.query<number[] | null>("arrayDimensions", classTargetId) ??
-            this.db.query<number[] | null>("resolvedArrayDimensions", classTargetId);
-          if ((!arrayDims || arrayDims.length === 0) && typeDims && typeDims.length > 0) {
+          const rawTypeDims =
+            this.db.query<any[] | null>("resolvedArrayDimensions", classTargetId) ??
+            this.db.query<any[] | null>("arrayDimensions", classTargetId);
+          if (rawTypeDims) {
+            typeDims = rawTypeDims.map((d: any) =>
+              typeof d === "number" ? d : d?.kind === "literal" && typeof d.value === "number" ? d.value : -1,
+            );
+          }
+          if (redeclArg && typeDims && typeDims.length > 0) {
+            arrayDims = typeDims;
+          } else if ((!arrayDims || arrayDims.length === 0) && typeDims && typeDims.length > 0) {
             arrayDims = typeDims;
           }
+        }
+        if (redeclArg?.redeclaredArrayDimensionsRaw && redeclArg.redeclaredArrayDimensionsRaw.length > 0) {
+          arrayDims = redeclArg.redeclaredArrayDimensionsRaw.map((d: any) =>
+            d.kind === "literal" && typeof d.value === "number" ? d.value : -1,
+          );
         }
         if ((!arrayDims || arrayDims.length === 0) && rawDimsInitial && rawDimsInitial.length > 0) {
           arrayDims = rawDimsInitial.map((d: any) =>
@@ -14309,9 +14465,13 @@ export class ModelicaFlattener {
                 if (enumSym) {
                   const cstText = (this.db.cstNode(enumSym.id) as any)?.text ?? "";
                   const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+                  const qual = getSymbolQualifiedName(this.db, enumSym.id);
                   if (match) {
-                    const qual = getSymbolQualifiedName(this.db, enumSym.id);
                     const lits = match[1].split(",").map((s) => `${qual}.${s.trim().split(/\s+/)[0]}`);
+                    dimLabels.push(lits);
+                    continue;
+                  } else if (Array.isArray(enumSym.metadata?.literals)) {
+                    const lits = (enumSym.metadata.literals as string[]).map((s) => `${qual}.${s}`);
                     dimLabels.push(lits);
                     continue;
                   }
@@ -14652,6 +14812,7 @@ export class ModelicaFlattener {
       brokenComponents: Set<string>;
       brokenConnections: Set<string>;
     },
+    parentMods?: any,
   ): void {
     const curBreakContext = breakContext ?? {
       brokenComponents: new Set<string>(),
@@ -14673,11 +14834,45 @@ export class ModelicaFlattener {
         if (curBreakContext.brokenComponents.has(child.name)) {
           continue;
         }
-        const typeSpec = (child.metadata as any)?.typeSpecifier ?? (child.metadata as any)?.type_specifier;
+        const compInst = this.db.query<ComponentInstanceData>("componentInstance", child.id);
+        const typeSpec =
+          compInst?.typeSpecifier ?? (child.metadata as any)?.typeSpecifier ?? (child.metadata as any)?.type_specifier;
         if (typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String") {
           continue;
         }
         let compClassId = this.db.query<SymbolId | null>("classInstance", child.id);
+        if (classId && typeSpec) {
+          const origClassSym = compClassId ? this.db.symbol(compClassId) : null;
+          if (origClassSym && origClassSym.parentId !== null) {
+            const scopeTarget = typeSpec.includes(".")
+              ? this.db.query<(n: string) => SymbolEntry | null>("resolveName", classId)?.(typeSpec)
+              : this.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", classId)?.(typeSpec);
+            if (
+              scopeTarget &&
+              scopeTarget.id !== compClassId &&
+              !(scopeTarget.metadata as any)?.isPredefined &&
+              (scopeTarget.kind === "Class" || (scopeTarget.metadata as any)?.classKind === "type")
+            ) {
+              compClassId = scopeTarget.id;
+            }
+          }
+        }
+        const matchingClassArg = parentMods?.args?.find(
+          (a: any) =>
+            !a.isBreak &&
+            a.isRedeclaration &&
+            a.redeclaredTypeSpecifier &&
+            (a.name === typeSpec || a.name === child.name),
+        );
+        if (matchingClassArg?.redeclaredTypeSpecifier) {
+          const simple = matchingClassArg.redeclaredTypeSpecifier.split(".").pop()!;
+          const redeclTarget = this.db
+            .byName(simple)
+            .find((c) => c.kind === "Class" || (c.metadata as any)?.classKind === "type");
+          if (redeclTarget) {
+            compClassId = redeclTarget.id;
+          }
+        }
         if (!compClassId) {
           if (typeSpec) {
             const targets = this.db.byName(typeSpec);
@@ -14697,14 +14892,24 @@ export class ModelicaFlattener {
             !isPredefinedType(compClassSym)
           ) {
             const childPrefix = prefix ? `${prefix}.${child.name}` : child.name;
+            const matchingArg = parentMods?.args?.find((a: any) => !a.isBreak && a.name === child.name);
+            const compInst = this.db.query<ComponentInstanceData>("componentInstance", child.id);
+            const compMods = compInst?.modification?.args || [];
+            const childSubMod = {
+              args: [
+                ...compMods,
+                ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
+                ...(matchingArg?.nestedArgs || matchingArg?.args || []),
+              ],
+            };
             const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", child.id);
             if (arrayDims && arrayDims.length > 0) {
               const indices = generateArrayIndices(arrayDims);
               for (const indexStr of indices) {
-                this.extractClassEquations(compClassId, `${childPrefix}${indexStr}`, dae, curBreakContext);
+                this.extractClassEquations(compClassId, `${childPrefix}${indexStr}`, dae, curBreakContext, childSubMod);
               }
             } else {
-              this.extractClassEquations(compClassId, childPrefix, dae, curBreakContext);
+              this.extractClassEquations(compClassId, childPrefix, dae, curBreakContext, childSubMod);
             }
           }
         }
@@ -16067,9 +16272,13 @@ export class ModelicaFlattener {
                       Boolean(cstText.includes("enumeration("));
                     if (isEnum) {
                       const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-                      if (enumMatch) {
+                      const literals = enumMatch
+                        ? enumMatch[1].split(",").map((x: string) => x.trim().split(/\s+/)[0])
+                        : Array.isArray(targetMeta?.literals)
+                          ? targetMeta.literals
+                          : null;
+                      if (literals) {
                         const qualType = getSymbolQualifiedName(this.db, s.id);
-                        const literals = enumMatch[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
                         const litExprIds = literals.map((lit: string) =>
                           dae.addExpression(ExprKind.Name, dae.interner.intern(`${qualType}.${lit}`)),
                         );
@@ -16528,7 +16737,10 @@ export class ModelicaFlattener {
       if (typeName) {
         const matches = this.db.byName(typeName);
         if (matches.length > 0 && matches[0].kind === "Class") {
-          this.extractClassEquations(matches[0].id, prefix, dae, curBreakContext);
+          const shortMod = this.db.query<any>("effectiveModification", classId);
+          const shortArgs = shortMod?.args ?? [];
+          const combinedMods = { args: [...shortArgs, ...(parentMods?.args ?? [])] };
+          this.extractClassEquations(matches[0].id, prefix, dae, curBreakContext, combinedMods);
         }
       }
     }
@@ -16554,14 +16766,23 @@ export class ModelicaFlattener {
           }
         }
 
+        const extSubMod = {
+          args: [...(extendsModParsed || []), ...(parentMods?.args || [])],
+        };
         const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
         const baseTargets = baseClass ? [baseClass] : this.db.byName(child.name);
         for (const target of baseTargets) {
           if (target.kind === "Class") {
-            this.extractClassEquations(target.id, prefix, dae, {
-              brokenComponents: childBrokenComponents,
-              brokenConnections: childBrokenConnections,
-            });
+            this.extractClassEquations(
+              target.id,
+              prefix,
+              dae,
+              {
+                brokenComponents: childBrokenComponents,
+                brokenConnections: childBrokenConnections,
+              },
+              extSubMod,
+            );
           }
         }
       }

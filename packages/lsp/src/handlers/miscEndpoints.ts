@@ -229,6 +229,23 @@ export function registerMiscEndpoints(context: LspContext) {
         const newDb = new QueryEngine(newIndex, qHooks);
         const newRootEntries = newIndex.childrenOf.get(null) || [];
 
+        // Pre-build index of safety critical symbols and their mitigations
+        const hazardSymbols = new Map<string, any>();
+        const mitigatedReqs = new Map<string, string>();
+
+        for (const entry of newIndex.symbols.values()) {
+          const rule = entry.ruleName ?? "";
+          if (rule.includes("Hazard") || entry.metadata?.defKind === "hazard" || entry.metadata?.hazardId) {
+            hazardSymbols.set(entry.name, entry);
+            if (entry.metadata?.mitigates) {
+              mitigatedReqs.set(String(entry.metadata.mitigates), entry.metadata?.hazardId ?? entry.name);
+            }
+            if (entry.metadata?.mitigatedBy) {
+              mitigatedReqs.set(String(entry.metadata.mitigatedBy), entry.metadata?.hazardId ?? entry.name);
+            }
+          }
+        }
+
         const maxLen = Math.max(oldRootEntries.length, newRootEntries.length);
         const diffs: FlatSemanticEdit[] = [];
 
@@ -274,6 +291,41 @@ export function registerMiscEndpoints(context: LspContext) {
                   endCharacter: endPos.character,
                 };
                 flatEdit.kind = edit.newEntry.kind;
+              }
+
+              // Assess regulatory impact (ISO 14971 / IEC 62304)
+              const targetEntry = edit.newEntry ?? edit.oldEntry;
+              if (targetEntry) {
+                const entryName = targetEntry.name ?? "";
+                const isHazard =
+                  hazardSymbols.has(entryName) ||
+                  targetEntry.ruleName?.includes("Hazard") ||
+                  Boolean(targetEntry.metadata?.hazardId);
+                const isMitigated =
+                  mitigatedReqs.has(entryName) ||
+                  Boolean(targetEntry.metadata?.mitigates) ||
+                  Boolean(targetEntry.metadata?.mitigatedBy);
+                const isReq = targetEntry.ruleName?.includes("Requirement") || Boolean(targetEntry.metadata?.reqId);
+
+                if (isHazard || isMitigated || isReq) {
+                  const hId = isHazard
+                    ? (targetEntry.metadata?.hazardId ?? targetEntry.name)
+                    : (mitigatedReqs.get(entryName) ?? (targetEntry.metadata?.mitigates as string) ?? undefined);
+                  flatEdit.regulatoryImpact = {
+                    isSafetyCritical: true,
+                    hazardId: hId ? String(hId) : undefined,
+                    hazardName: isHazard ? targetEntry.name : undefined,
+                    requirementId: isReq ? String(targetEntry.metadata?.reqId ?? targetEntry.name) : undefined,
+                    riskSeverity: Number(targetEntry.metadata?.severity ?? 4),
+                    invalidatedLinks: [
+                      {
+                        targetName: `${entryName}_verification`,
+                        targetKind: "verification_case",
+                        reason: `Semantic change in ${targetEntry.kind} '${entryName}' marks downstream verification suspect`,
+                      },
+                    ],
+                  };
+                }
               }
 
               diffs.push(flatEdit);

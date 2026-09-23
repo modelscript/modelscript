@@ -1,7 +1,6 @@
 // name: RedeclareMod7
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

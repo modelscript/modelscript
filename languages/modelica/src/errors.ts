@@ -597,7 +597,7 @@ export const ModelicaErrorCode = {
   UNINITIALIZED_VARIABLE_READ: {
     code: 5021,
     rule: "uninitialized-variable-read",
-    severity: "error",
+    severity: "warning",
     message: (varName: string) => `Variable '${varName}' is read before being definitely assigned.`,
   },
   UNREACHABLE_STATEMENT: {

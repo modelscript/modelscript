@@ -1,6 +1,5 @@
 // name: ImportUnqualified4.mo
 // status: correct
-// xfail:    true
 
 package A
   import A.Units.*;

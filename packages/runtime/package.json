@@ -86,6 +86,10 @@
       "types": "./dist/analysis/wasm_interval.d.ts",
       "default": "./dist/analysis/wasm_interval.js"
     },
+    "./octagon_dbm.js": {
+      "types": "./dist/analysis/octagon_dbm.d.ts",
+      "default": "./dist/analysis/octagon_dbm.js"
+    },
     "./wasm_workspace.js": {
       "types": "./dist/workspace/wasm_workspace.d.ts",
       "default": "./dist/workspace/wasm_workspace.js"

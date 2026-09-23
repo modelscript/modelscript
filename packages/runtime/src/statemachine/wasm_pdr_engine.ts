@@ -11,6 +11,8 @@
  *   4. Concrete counterexample witness extraction when bad state is reachable
  */
 
+import type { LitId, VarId } from "../formal/cdcl_sat.js";
+import { IC3Engine, type TransitionSystem } from "../formal/ic3_engine.js";
 import type { StateId, WasmRtcStateMachine } from "./wasm_rtc_statemachine.js";
 
 export interface PdrSafetyProperty {
@@ -152,5 +154,195 @@ export class PdrEngine {
       framesCount: maxDepth,
       summary: `PDR bounded exploration reached depth ${maxDepth} without discovering violations or convergence. Inconclusive within bound.`,
     };
+  }
+
+  /**
+   * Symbolic PDR verification using the IC3 engine with CDCL SAT backend.
+   *
+   * Encodes the state machine into a Boolean transition system:
+   *   - One variable per state: active(s)
+   *   - Initial: exactly one initial state active
+   *   - Transition: for each (src, tgt), active(src) => active'(tgt)
+   *   - Property: ¬active(forbidden) for each forbidden state
+   *
+   * Scales beyond the explicit enumeration limit of check().
+   */
+  public checkSymbolic(property: PdrSafetyProperty, maxDepth: number = 50): PdrResult {
+    const states = this.sm.getAllStates();
+    const transitions = this.sm.getAllTransitions();
+
+    const stateNameToId = new Map<string, StateId>();
+    const stateIdToName = new Map<StateId, string>();
+    for (const s of states) {
+      stateNameToId.set(s.name, s.id);
+      stateIdToName.set(s.id, s.name);
+    }
+
+    // Resolve forbidden states
+    const forbiddenIds = new Set<StateId>();
+    for (const fs of property.forbiddenStates) {
+      if (typeof fs === "number") {
+        forbiddenIds.add(fs);
+      } else {
+        const id = stateNameToId.get(fs);
+        if (id !== undefined) forbiddenIds.add(id);
+      }
+    }
+
+    // Map each state to a SAT variable (1-indexed)
+    const stateToVar = new Map<StateId, VarId>();
+    const stateToNextVar = new Map<StateId, VarId>();
+    let nextVarId: VarId = 1;
+
+    for (const s of states) {
+      stateToVar.set(s.id, nextVarId);
+      nextVarId++;
+    }
+    for (const s of states) {
+      stateToNextVar.set(s.id, nextVarId);
+      nextVarId++;
+    }
+
+    const stateVars: VarId[] = [];
+    const nextStateVars: VarId[] = [];
+    for (const s of states) {
+      stateVars.push(stateToVar.get(s.id)!);
+      nextStateVars.push(stateToNextVar.get(s.id)!);
+    }
+
+    // Initial state clauses: exactly one initial state is active
+    const initClauses: LitId[][] = [];
+    const initialStates = states.filter((s) => s.kind === 0);
+    if (initialStates.length === 0 && states.length > 0) {
+      initialStates.push(states[0]!);
+    }
+
+    // At least one initial state active
+    initClauses.push(initialStates.map((s) => stateToVar.get(s.id)!));
+
+    // Non-initial states are inactive
+    for (const s of states) {
+      if (!initialStates.some((init) => init.id === s.id)) {
+        initClauses.push([-stateToVar.get(s.id)!]);
+      }
+    }
+
+    // Transition relation clauses T(V, V')
+    const transClauses: LitId[][] = [];
+
+    // Build successor map
+    const successorMap = new Map<StateId, StateId[]>();
+    for (const t of transitions) {
+      if (!successorMap.has(t.sourceId)) successorMap.set(t.sourceId, []);
+      successorMap.get(t.sourceId)!.push(t.targetId);
+    }
+
+    for (const s of states) {
+      const v = stateToVar.get(s.id)!;
+      const succs = successorMap.get(s.id) || [];
+
+      if (succs.length > 0) {
+        // If active(s), then at least one successor must be active in next state
+        // ¬v ∨ succ1' ∨ succ2' ∨ ...
+        const clause: LitId[] = [-v];
+        for (const succId of succs) {
+          clause.push(stateToNextVar.get(succId)!);
+        }
+        transClauses.push(clause);
+      } else {
+        // No outgoing transitions: if active, stays active (self-loop) or disappears
+        // For safety: if no transitions, the state persists
+        const vNext = stateToNextVar.get(s.id)!;
+        transClauses.push([-v, vNext]); // active => active'
+      }
+    }
+
+    // Frame constraint: exactly one state active (at-most-one via pairwise exclusion)
+    for (let i = 0; i < states.length; i++) {
+      for (let j = i + 1; j < states.length; j++) {
+        const vi = stateToNextVar.get(states[i]!.id)!;
+        const vj = stateToNextVar.get(states[j]!.id)!;
+        transClauses.push([-vi, -vj]);
+      }
+    }
+    // At least one next state active
+    transClauses.push(states.map((s) => stateToNextVar.get(s.id)!));
+
+    // Safety property clauses: ¬active(forbidden) for each forbidden state
+    const propClauses: LitId[][] = [];
+    for (const fId of forbiddenIds) {
+      const v = stateToVar.get(fId);
+      if (v !== undefined) {
+        propClauses.push([-v]);
+      }
+    }
+
+    // Run IC3
+    const ts: TransitionSystem = {
+      stateVars,
+      nextStateVars,
+      initClauses,
+      transClauses,
+      propClauses,
+    };
+
+    const ic3 = new IC3Engine(ts);
+    const ic3Result = ic3.verify(maxDepth);
+
+    // Translate IC3 result back to PdrResult
+    if (ic3Result.isProvenInvariant) {
+      return {
+        isProvenUniversal: true,
+        convergedDepth: ic3Result.depthReached,
+        inductiveLemmas: ic3Result.invariantClauses?.map((clause) =>
+          clause
+            .map((lit) => {
+              const v = Math.abs(lit);
+              for (const [sId, varId] of stateToVar.entries()) {
+                if (varId === v) {
+                  const name = stateIdToName.get(sId) || `state_${sId}`;
+                  return lit > 0 ? `Reachable(${name})` : `¬Reachable(${name})`;
+                }
+              }
+              return `lit_${lit}`;
+            })
+            .join(" ∨ "),
+        ),
+        framesCount: ic3Result.depthReached,
+        summary: `Symbolic IC3 proved safety invariant for '${property.name}' at depth ${ic3Result.depthReached}. ${ic3Result.summary}`,
+      };
+    }
+
+    // Translate counterexample
+    let counterexample: { step: number; stateName: string }[] | undefined;
+    if (ic3Result.counterexampleTrace) {
+      counterexample = ic3Result.counterexampleTrace.map((assignment, step) => {
+        for (const [sId, varId] of stateToVar.entries()) {
+          if (assignment.get(varId)) {
+            return { step, stateName: stateIdToName.get(sId) || `state_${sId}` };
+          }
+        }
+        return { step, stateName: "unknown" };
+      });
+    }
+
+    return {
+      isProvenUniversal: false,
+      framesCount: ic3Result.depthReached,
+      counterexample,
+      summary: `Symbolic IC3 exploration for '${property.name}' reached depth ${ic3Result.depthReached}. ${ic3Result.summary}`,
+    };
+  }
+
+  /**
+   * Auto-selects between explicit BFS (for small state machines) and symbolic IC3
+   * (for large state machines) based on the number of states.
+   */
+  public checkAuto(property: PdrSafetyProperty, maxDepth: number = 20, symbolicThreshold: number = 1000): PdrResult {
+    const stateCount = this.sm.getAllStates().length;
+    if (stateCount <= symbolicThreshold) {
+      return this.check(property, maxDepth);
+    }
+    return this.checkSymbolic(property, maxDepth);
   }
 }

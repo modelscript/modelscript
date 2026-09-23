@@ -1,7 +1,6 @@
 // name: RedeclareMod11
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 partial package PartialMedium

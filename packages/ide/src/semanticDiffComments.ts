@@ -2,12 +2,26 @@ import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { isSupportedModelFile } from "./utils/fileUtils";
 
+export interface RegulatoryImpact {
+  isSafetyCritical: boolean;
+  hazardId?: string;
+  hazardName?: string;
+  requirementId?: string;
+  riskSeverity?: number;
+  invalidatedLinks?: {
+    targetName: string;
+    targetKind: string;
+    reason: string;
+  }[];
+}
+
 export interface FlatSemanticEdit {
   action: "insert" | "delete" | "update" | "none";
   description: string;
   oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
   newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
   kind?: string;
+  regulatoryImpact?: RegulatoryImpact;
 }
 
 class SemanticDiffComment implements vscode.Comment {
@@ -101,7 +115,28 @@ export function registerSemanticDiffComments(context: vscode.ExtensionContext, c
         if (edit.action === "delete") icon = "$(trash)";
         if (edit.action === "update") icon = "$(edit)";
 
-        const msg = `${icon} **${edit.action.toUpperCase()}**: ${edit.description}`;
+        let msg = `${icon} **${edit.action.toUpperCase()}**: ${edit.description}`;
+        let label = edit.kind;
+
+        if (edit.regulatoryImpact?.isSafetyCritical) {
+          const impact = edit.regulatoryImpact;
+          label = "⚠️ ISO 14971 SAFETY IMPACT";
+          const invList =
+            impact.invalidatedLinks && impact.invalidatedLinks.length > 0
+              ? impact.invalidatedLinks.map((l) => `* ❌ \`${l.targetName}\` (${l.targetKind}): ${l.reason}`).join("\n")
+              : "* None directly indexed";
+
+          msg = `### ⚠️ REGULATORY IMPACT DETECTED (ISO 14971 / IEC 62304)
+**Action**: ${icon} ${edit.action.toUpperCase()} ${edit.description}
+* **Safety Severity**: Level ${impact.riskSeverity ?? 4}
+${impact.hazardId ? `* **Upstream Hazard**: \`${impact.hazardId}\` (${impact.hazardName ?? "Unspecified"})` : ""}
+${impact.requirementId ? `* **Mitigation Requirement**: \`${impact.requirementId}\`` : ""}
+
+**Downstream Trace Links Marked SUSPECT**:
+${invList}
+
+*Formal re-verification & safety justification required before PR merge.*`;
+        }
 
         // We attach comments to the newRange in the working tree file (the right side of the diff editor)
         // If it's a delete, newRange might not exist, so we map it to line 0 or the closest context.
@@ -113,13 +148,13 @@ export function registerSemanticDiffComments(context: vscode.ExtensionContext, c
             edit.newRange.endCharacter,
           );
 
-          const thread = commentController.createCommentThread(uri, range, [new SemanticDiffComment(msg, edit.kind)]);
+          const thread = commentController.createCommentThread(uri, range, [new SemanticDiffComment(msg, label)]);
           thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
           activeThreads.push(thread);
         } else if (edit.action === "delete" && edit.oldRange) {
           // For deletions, attach to the first line so it shows up in the file
           const range = new vscode.Range(0, 0, 0, 0);
-          const thread = commentController.createCommentThread(uri, range, [new SemanticDiffComment(msg, edit.kind)]);
+          const thread = commentController.createCommentThread(uri, range, [new SemanticDiffComment(msg, label)]);
           thread.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed;
           activeThreads.push(thread);
         }

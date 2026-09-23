@@ -1,7 +1,6 @@
 // name: ExtendSelf1.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 // Checks that a class can extend a local class via itself.
 //

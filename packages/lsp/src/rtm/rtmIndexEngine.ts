@@ -23,6 +23,16 @@ export class RtmIndexEngine {
     const resId = entry.resourceId ?? "";
 
     if (
+      rule === "HazardDefinition" ||
+      rule === "HazardUsage" ||
+      entry.metadata?.defKind === "hazard" ||
+      entry.metadata?.hazardId ||
+      rule.toLowerCase().includes("hazard")
+    ) {
+      return "hazard";
+    }
+
+    if (
       rule === "RequirementDefinition" ||
       rule === "RequirementUsage" ||
       rule === "ConcernDefinition" ||
@@ -75,11 +85,45 @@ export class RtmIndexEngine {
         (entry.metadata?.reqId as string) ??
         (domain === "requirement" ? `REQ-${String(seqId++).padStart(3, "0")}` : undefined);
 
+      const hazardId =
+        (entry.metadata?.hazardId as string) ??
+        (entry.metadata?.id as string) ??
+        (domain === "hazard" ? `HAZ-${String(seqId++).padStart(3, "0")}` : undefined);
+
       const text =
         (entry.metadata?.doc as string) ??
         (entry.metadata?.description as string) ??
         (entry.metadata?.text as string) ??
         "";
+
+      let iso14971Data: any = undefined;
+      if (domain === "hazard") {
+        const sev = Number(entry.metadata?.severity ?? entry.metadata?.initialSeverity ?? 4);
+        const prob = Number(entry.metadata?.probability ?? entry.metadata?.initialProbability ?? 3);
+        const rpn = sev * prob;
+        const resSev = Number(entry.metadata?.residualSeverity ?? Math.min(sev, 2));
+        const resProb = Number(entry.metadata?.residualProbability ?? 1);
+        const resRpn = resSev * resProb;
+        iso14971Data = {
+          hazardId: hazardId ?? entry.name,
+          name: entry.name,
+          description: text,
+          initialSeverity: sev,
+          initialProbability: prob,
+          initialRpn: rpn,
+          initialAcceptability: rpn >= 15 ? "Unacceptable" : rpn >= 8 ? "ALARP" : "Broadly Acceptable",
+          residualSeverity: resSev,
+          residualProbability: resProb,
+          residualRpn: resRpn,
+          residualAcceptability: resRpn >= 15 ? "Unacceptable" : resRpn >= 8 ? "ALARP" : "Broadly Acceptable",
+          mitigationRequirementIds: entry.metadata?.mitigates
+            ? [String(entry.metadata.mitigates)]
+            : entry.metadata?.mitigatedBy
+              ? [String(entry.metadata.mitigatedBy)]
+              : [],
+          status: entry.metadata?.mitigates || entry.metadata?.mitigatedBy ? "Mitigated" : "Unmitigated",
+        };
+      }
 
       elements.push({
         id: entry.id,
@@ -92,8 +136,10 @@ export class RtmIndexEngine {
         endByte: entry.endByte,
         metadata: {
           reqId,
+          hazardId,
           text,
           category: (entry.metadata?.category as string) ?? undefined,
+          iso14971: iso14971Data,
           ...entry.metadata,
         },
       });
@@ -120,27 +166,29 @@ export class RtmIndexEngine {
       if (rule === "SatisfyRequirementUsage") linkKind = "satisfy";
       else if (rule === "VerifyRequirementUsage") linkKind = "verify";
       else if (rule === "AllocateDefinition" || rule === "AllocationUsage") linkKind = "allocate";
+      else if (rule === "MitigateRequirementUsage" || rule.includes("Mitigate")) linkKind = "mitigate";
       else if (rule.includes("Refine")) linkKind = "refine";
       else if (rule.includes("Derive")) linkKind = "derive";
 
-      // Also check Modelica metadata annotations for satisfies / verifies
+      // Also check Modelica/SysML metadata annotations for satisfies / verifies / mitigates
       const metaSatisfies = entry.metadata?.satisfies as string | undefined;
       const metaVerifies = entry.metadata?.verifies as string | undefined;
+      const metaMitigates = (entry.metadata?.mitigates ?? entry.metadata?.mitigatedBy) as string | undefined;
 
-      if (!linkKind && !metaSatisfies && !metaVerifies) continue;
+      if (!linkKind && !metaSatisfies && !metaVerifies && !metaMitigates) continue;
 
       let targetName = entry.name;
       let sourceName = "<unknown>";
       let sourceId = -1;
       let sourceUri = entry.resourceId ?? "";
 
-      if (metaSatisfies || metaVerifies) {
-        linkKind = metaSatisfies ? "satisfy" : "verify";
-        targetName = metaSatisfies ?? metaVerifies ?? "";
+      if (metaSatisfies || metaVerifies || metaMitigates) {
+        linkKind = metaSatisfies ? "satisfy" : metaVerifies ? "verify" : "mitigate";
+        targetName = metaSatisfies ?? metaVerifies ?? metaMitigates ?? "";
         sourceName = entry.name;
         sourceId = entry.id;
       } else {
-        // Parent in SysML is the component or test case that owns the satisfy/verify clause
+        // Parent in SysML is the component or test case that owns the satisfy/verify/mitigate clause
         if (entry.parentId !== null) {
           const parent = index.symbols.get(entry.parentId);
           if (parent) {
@@ -160,7 +208,10 @@ export class RtmIndexEngine {
       if (targetMatches && targetMatches.length > 0) {
         for (const tid of targetMatches) {
           const t = index.symbols.get(tid);
-          if (t && (t.ruleName?.includes("Requirement") || t.ruleName?.includes("Case"))) {
+          if (
+            t &&
+            (t.ruleName?.includes("Requirement") || t.ruleName?.includes("Case") || t.ruleName?.includes("Hazard"))
+          ) {
             targetId = tid;
             targetUri = t.resourceId ?? "";
             break;
@@ -181,7 +232,7 @@ export class RtmIndexEngine {
         status = "suspect";
       } else if (evidence) {
         status = evidence.isSatisfied ? "passed" : "failed";
-      } else if (linkKind === "satisfy" || linkKind === "allocate") {
+      } else if (linkKind === "satisfy" || linkKind === "allocate" || linkKind === "mitigate") {
         status = "pending";
       }
 
@@ -214,10 +265,16 @@ export class RtmIndexEngine {
   /**
    * Computes holistic digital thread health metrics.
    */
-  static computeAnalytics(allRequirements: RtmElement[], allComponents: RtmElement[], links: RtmLink[]): RtmAnalytics {
+  static computeAnalytics(
+    allRequirements: RtmElement[],
+    allComponents: RtmElement[],
+    links: RtmLink[],
+    allHazards: RtmElement[] = [],
+  ): RtmAnalytics {
     const satisfiedReqNames = new Set<string>();
     const verifiedReqNames = new Set<string>();
     const connectedComponentNames = new Set<string>();
+    const mitigatedHazardNames = new Set<string>();
     let suspectCount = 0;
     let failingCount = 0;
 
@@ -228,6 +285,10 @@ export class RtmIndexEngine {
       }
       if (link.linkKind === "verify") {
         verifiedReqNames.add(link.targetName);
+      }
+      if (link.linkKind === "mitigate") {
+        mitigatedHazardNames.add(link.sourceName);
+        mitigatedHazardNames.add(link.targetName);
       }
       if (link.isSuspect) suspectCount++;
       if (link.status === "failed") failingCount++;
@@ -251,6 +312,33 @@ export class RtmIndexEngine {
     const satCount = satisfiedReqNames.size;
     const verCount = verifiedReqNames.size;
 
+    // ISO 14971 Risk Analytics
+    let unmitigatedHazardsCount = 0;
+    let mitigatedHazardsCount = 0;
+    let unacceptableResidualCount = 0;
+    let totalRpnReduction = 0;
+
+    for (const hazard of allHazards) {
+      const isMitigated = mitigatedHazardNames.has(hazard.name);
+      if (isMitigated) {
+        mitigatedHazardsCount++;
+      } else {
+        unmitigatedHazardsCount++;
+      }
+      const iso = hazard.metadata?.iso14971;
+      if (iso) {
+        if (iso.residualAcceptability === "Unacceptable") {
+          unacceptableResidualCount++;
+        }
+        if (iso.initialRpn && iso.residualRpn) {
+          totalRpnReduction += iso.initialRpn - iso.residualRpn;
+        }
+      }
+    }
+
+    const avgRpnReduction =
+      allHazards.length > 0 ? Math.round((totalRpnReduction / allHazards.length) * 10) / 10 : undefined;
+
     return {
       totalRequirements: allRequirements.length,
       satisfiedCount: satCount,
@@ -261,6 +349,11 @@ export class RtmIndexEngine {
       unallocatedComponents,
       suspectLinkCount: suspectCount,
       failingLinkCount: failingCount,
+      totalHazards: allHazards.length,
+      mitigatedHazardsCount,
+      unmitigatedHazardsCount,
+      unacceptableResidualRiskCount: unacceptableResidualCount,
+      averageRpnReduction: avgRpnReduction,
     };
   }
 
@@ -283,8 +376,9 @@ export class RtmIndexEngine {
       colDomain === "requirement" ? cols : this.extractElementsByDomain(index, "requirement", uriFilter);
     const allComponents =
       rowDomain === "sysml_logical" ? rows : this.extractElementsByDomain(index, "sysml_logical", uriFilter);
+    const allHazards = this.extractElementsByDomain(index, "hazard", uriFilter);
 
-    const analytics = this.computeAnalytics(allRequirements, allComponents, links);
+    const analytics = this.computeAnalytics(allRequirements, allComponents, links, allHazards);
 
     return {
       rowDomain,

@@ -23,6 +23,13 @@ export interface HazardDefinition {
   id: string;
   name: string;
   description?: string;
+  severity?: number; // 1-5 (Negligible to Catastrophic)
+  probability?: number; // 1-5 (Improbable to Frequent)
+  initialRpn?: number;
+  residualSeverity?: number;
+  residualProbability?: number;
+  residualRpn?: number;
+  mitigationRequirementId?: string;
   /**
    * Predicate that evaluates whether a given set of active failure IDs triggers the hazard.
    */
@@ -188,6 +195,8 @@ export function enumerateAllMinimalCutSets(
 
 /**
  * Extracts declared failure modes and hazards from SysML v2 symbols in the QueryDB.
+ * Employs structured AST/QueryDB traversal based on typing, stereotypes, and metadata,
+ * gracefully falling back to lexical name heuristics when unannotated.
  */
 export function extractSysML2FailureModes(queryDB: QueryDB): {
   failureModes: FailureMode[];
@@ -197,28 +206,109 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
   const hazards: HazardDefinition[] = [];
 
   const symbols = queryDB.allEntries ? queryDB.allEntries() : [];
+
+  const getComponentName = (parentId: number | null): string => {
+    if (parentId == null) return "System";
+    const parentSym = queryDB.symbol(parentId);
+    return parentSym?.name || String(parentId);
+  };
+
+  // 1. Structured extraction pass
   for (const sym of symbols) {
-    const name = sym.name || "";
-    // Check for failure mode attributes or definitions
-    if (
-      name.toLowerCase().includes("fail") ||
-      name.toLowerCase().includes("loss") ||
-      name.toLowerCase().includes("fault")
-    ) {
+    const children = queryDB.childrenOf ? queryDB.childrenOf(sym.id) : [];
+
+    // Check if symbol is explicitly typed as a FailureMode or Fault
+    const hasFailureType = children.some((c) => {
+      const isTypeRef =
+        c.ruleName === "OwnedSubclassification" ||
+        c.ruleName === "OwnedFeatureTyping" ||
+        c.ruleName === "FeatureTyping" ||
+        c.fieldName === "type" ||
+        c.fieldName === "superclassifier";
+      const typeName = (c.name || "").toLowerCase();
+      return (
+        isTypeRef &&
+        (typeName === "failuremode" ||
+          typeName === "fault" ||
+          typeName.endsWith("::failuremode") ||
+          typeName.endsWith("::fault"))
+      );
+    });
+
+    const hasFailureMeta =
+      sym.metadata?.defKind === "failure_mode" ||
+      sym.metadata?.defKind === "fault" ||
+      sym.metadata?.stereotype === "FailureMode" ||
+      sym.metadata?.stereotype === "Fault";
+
+    if (hasFailureType || hasFailureMeta) {
+      let prob: number | undefined = undefined;
+      for (const ch of children) {
+        if ((ch.name === "probability" || ch.name === "prob" || ch.name === "rate") && ch.metadata?.val !== undefined) {
+          const v = Number(ch.metadata.val);
+          if (!Number.isNaN(v)) prob = v;
+        }
+      }
+
       failureModes.push({
-        id: name,
-        name,
-        component: sym.parentId ? String(sym.parentId) : "System",
+        id: sym.name,
+        name: sym.name,
+        component: getComponentName(sym.parentId),
+        probability: prob,
       });
+      continue;
     }
 
-    // Check for hazard or critical failure conditions
-    if (name.toLowerCase().includes("hazard") || name.toLowerCase().includes("critical")) {
+    // Check if symbol is explicitly typed as a Hazard
+    const hasHazardType = children.some((c) => {
+      const isTypeRef =
+        c.ruleName === "OwnedSubclassification" ||
+        c.ruleName === "OwnedFeatureTyping" ||
+        c.ruleName === "FeatureTyping" ||
+        c.fieldName === "type" ||
+        c.fieldName === "superclassifier";
+      const typeName = (c.name || "").toLowerCase();
+      return isTypeRef && (typeName === "hazard" || typeName.endsWith("::hazard"));
+    });
+
+    const hasHazardMeta = sym.metadata?.defKind === "hazard" || sym.metadata?.stereotype === "Hazard";
+
+    if (hasHazardType || hasHazardMeta) {
       hazards.push({
-        id: name,
-        name,
-        causesHazard: (active) => active.size >= 2, // Fallback threshold
+        id: sym.name,
+        name: sym.name,
+        causesHazard: (active) => active.size >= 2,
       });
+    }
+  }
+
+  // 2. Fallback to name heuristics if structured extraction yielded no failure modes
+  if (failureModes.length === 0) {
+    for (const sym of symbols) {
+      const name = sym.name || "";
+      const lower = name.toLowerCase();
+      if (lower.includes("fail") || lower.includes("loss") || lower.includes("fault")) {
+        failureModes.push({
+          id: name,
+          name,
+          component: getComponentName(sym.parentId),
+        });
+      }
+    }
+  }
+
+  // Fallback to name heuristics if structured extraction yielded no hazards
+  if (hazards.length === 0) {
+    for (const sym of symbols) {
+      const name = sym.name || "";
+      const lower = name.toLowerCase();
+      if (lower.includes("hazard") || lower.includes("critical")) {
+        hazards.push({
+          id: name,
+          name,
+          causesHazard: (active) => active.size >= 2,
+        });
+      }
     }
   }
 

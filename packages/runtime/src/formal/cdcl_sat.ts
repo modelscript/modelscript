@@ -6,7 +6,7 @@
  * Implements:
  *   - Two-Watched-Literals scheme for O(1) Boolean Constraint Propagation (BCP).
  *   - 1-UIP (Unique Implication Point) conflict graph analysis and non-chronological backjumping.
- *   - VSIDS (Variable State Independent Decaying Sum) decision heuristics with Luby restarts.
+ *   - VSIDS (Variable State Independent Decaying Sum) decision heuristics with geometric restarts (1.5× conflict limit growth).
  *   - Tseitin CNF transformation from propositional logic ASTs into equisatisfiable 3-CNF.
  *   - Incremental solving with assumptions and UNSAT core extraction for IC3/PDR.
  */
@@ -36,7 +36,7 @@ export interface SatResult {
 
 /** Propositional AST for Tseitin transformation */
 export type PropExpr =
-  | { op: "var"; name: string; id?: VarId }
+  | { op: "var"; name?: string; id?: VarId }
   | { op: "const"; value: boolean }
   | { op: "not"; child: PropExpr }
   | { op: "and"; children: PropExpr[] }
@@ -83,7 +83,7 @@ export class TseitinEncoder {
   public encode(expr: PropExpr): LitId {
     switch (expr.op) {
       case "var": {
-        const v = expr.id ?? this.getOrCreateVar(expr.name);
+        const v = expr.id ?? (expr.name !== undefined ? this.getOrCreateVar(expr.name) : this.newAnonymousVar());
         return v;
       }
       case "const": {
@@ -153,6 +153,147 @@ export class TseitinEncoder {
       }
     }
   }
+
+  /**
+   * Encodes a Boolean cardinality upper bound constraint (\sum_{i=1}^n lits[i] <= k) into CNF
+   * using Carsten Sinz's sequential counter encoding.
+   *
+   * @param lits Array of input literals
+   * @param k Maximum number of literals allowed to be true
+   * @returns Array of CNF clauses enforcing \sum lits <= k
+   */
+  public encodeAtMostK(lits: LitId[], k: number): LitId[][] {
+    const n = lits.length;
+    if (k >= n) {
+      return []; // Trivially satisfied
+    }
+    if (k < 0) {
+      const aux = this.newAnonymousVar();
+      const c: LitId[][] = [[aux], [-aux]];
+      this.clauses.push(...c);
+      return c;
+    }
+    if (k === 0) {
+      const c = lits.map((l) => [-l]);
+      this.clauses.push(...c);
+      return c;
+    }
+
+    const clauses: LitId[][] = [];
+    const s: VarId[][] = [];
+
+    for (let i = 1; i <= n - 1; i++) {
+      s[i] = [];
+      for (let j = 1; j <= k; j++) {
+        s[i]![j] = this.newAnonymousVar();
+      }
+    }
+
+    // 1. For i = 1:
+    clauses.push([-lits[0]!, s[1]![1]!]);
+    for (let j = 2; j <= k; j++) {
+      clauses.push([-s[1]![j]!]);
+    }
+
+    // 2. For 1 < i < n:
+    for (let i = 2; i <= n - 1; i++) {
+      const xi = lits[i - 1]!;
+      clauses.push([-xi, s[i]![1]!]);
+      clauses.push([-s[i - 1]![1]!, s[i]![1]!]);
+
+      for (let j = 2; j <= k; j++) {
+        clauses.push([-xi, -s[i - 1]![j - 1]!, s[i]![j]!]);
+        clauses.push([-s[i - 1]![j]!, s[i]![j]!]);
+      }
+    }
+
+    // 3. Overflow prohibition: for 1 < i <= n:
+    for (let i = 2; i <= n; i++) {
+      const xi = lits[i - 1]!;
+      clauses.push([-xi, -s[i - 1]![k]!]);
+    }
+
+    this.clauses.push(...clauses);
+    return clauses;
+  }
+
+  /**
+   * Encodes a Boolean cardinality lower bound violation condition (\sum_{i=1}^n lits[i] > k),
+   * returning a representative literal that is true iff the bound is exceeded.
+   *
+   * @param lits Array of input literals
+   * @param k Cardinality threshold
+   * @returns Representative LitId that is true iff \sum lits > k
+   */
+  public encodeGreaterThanK(lits: LitId[], k: number): LitId {
+    const n = lits.length;
+    if (k >= n) {
+      return this.encode({ op: "const", value: false });
+    }
+    if (k < 0) {
+      return this.encode({ op: "const", value: true });
+    }
+    if (k === 0) {
+      return this.encode({ op: "or", children: lits.map((id) => ({ op: "var", id })) });
+    }
+
+    // Sinz sequential counter up to k without overflow prohibition:
+    // s[i][j] indicates at least j of the first i literals are true.
+    const s: VarId[][] = [];
+    for (let i = 1; i <= n - 1; i++) {
+      s[i] = [];
+      for (let j = 1; j <= k; j++) {
+        s[i]![j] = this.newAnonymousVar();
+      }
+    }
+
+    // 1. For i = 1:
+    this.clauses.push([-lits[0]!, s[1]![1]!]);
+    this.clauses.push([-s[1]![1]!, lits[0]!]); // s_{1,1} => x_1
+    for (let j = 2; j <= k; j++) {
+      this.clauses.push([-s[1]![j]!]);
+    }
+
+    // 2. For 1 < i < n:
+    for (let i = 2; i <= n - 1; i++) {
+      const xi = lits[i - 1]!;
+      // Forward: x_i => s_{i,1}, s_{i-1,1} => s_{i,1}
+      this.clauses.push([-xi, s[i]![1]!]);
+      this.clauses.push([-s[i - 1]![1]!, s[i]![1]!]);
+      // Backward: s_{i,1} => (x_i | s_{i-1,1})
+      this.clauses.push([-s[i]![1]!, xi, s[i - 1]![1]!]);
+
+      for (let j = 2; j <= k; j++) {
+        // Forward: (x_i & s_{i-1,j-1}) => s_{i,j}, s_{i-1,j} => s_{i,j}
+        this.clauses.push([-xi, -s[i - 1]![j - 1]!, s[i]![j]!]);
+        this.clauses.push([-s[i - 1]![j]!, s[i]![j]!]);
+        // Backward: s_{i,j} => (s_{i-1,j} | s_{i-1,j-1}) and s_{i,j} => (s_{i-1,j} | x_i)
+        this.clauses.push([-s[i]![j]!, s[i - 1]![j]!, s[i - 1]![j - 1]!]);
+        this.clauses.push([-s[i]![j]!, s[i - 1]![j]!, xi]);
+      }
+    }
+
+    // 3. Overflow condition:
+    // Exceeding k occurs iff for some i in (k+1)..n, s[i-1][k] is true AND xi is true
+    const overflowLits: LitId[] = [];
+    for (let i = k + 1; i <= n; i++) {
+      const xi = lits[i - 1]!;
+      const prevK = s[i - 1]![k]!;
+      const oLit = this.encode({
+        op: "and",
+        children: [
+          { op: "var", id: prevK },
+          { op: "var", id: xi },
+        ],
+      });
+      overflowLits.push(oLit);
+    }
+
+    return this.encode({
+      op: "or",
+      children: overflowLits.map((id) => ({ op: "var", id })),
+    });
+  }
 }
 
 /**
@@ -175,6 +316,7 @@ export class CdclSatSolver {
 
   private currentLevel = 0;
   private maxVarId = 0;
+  private isRootUnsat = false;
 
   public ensureVar(v: VarId): void {
     if (v > this.maxVarId) {
@@ -186,6 +328,7 @@ export class CdclSatSolver {
   }
 
   public addClause(clause: LitId[]): boolean {
+    if (this.isRootUnsat) return false;
     // Simplify clause: remove duplicate literals, check for tautology (l and ~l)
     const set = new Set<LitId>();
     for (const lit of clause) {
@@ -196,6 +339,7 @@ export class CdclSatSolver {
 
     const simplified = Array.from(set);
     if (simplified.length === 0) {
+      this.isRootUnsat = true;
       return false; // Empty clause = unsatisfiable
     }
 
@@ -203,7 +347,12 @@ export class CdclSatSolver {
       const lit = simplified[0]!;
       this.clauses.push(simplified);
       const cIdx = this.clauses.length - 1;
-      return this.enqueue(lit, cIdx);
+      const ok = this.enqueue(lit, cIdx);
+      if (!ok) {
+        this.isRootUnsat = true;
+        return false;
+      }
+      return true;
     }
 
     const cIdx = this.clauses.length;
@@ -431,6 +580,10 @@ export class CdclSatSolver {
    * Solves the propositional SAT problem under optional assumptions.
    */
   public solve(assumptions: LitId[] = []): SatResult {
+    if (this.isRootUnsat) {
+      return { status: "UNSAT" };
+    }
+
     // Check level 0 consistency
     if (this.propagate() !== -1) {
       return { status: "UNSAT" };

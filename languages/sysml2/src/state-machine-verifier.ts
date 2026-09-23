@@ -1,6 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
-import type { QueryDB } from "@modelscript/runtime";
+import { DpllTSolver, Interval, type ExprNode, type NonlinearConstraint, type QueryDB } from "@modelscript/runtime";
 import { SmtOctagonDBM } from "./smt-bridge.js";
 
 /**
@@ -33,6 +31,213 @@ export interface GuardConstraint {
   variable: string;
   operator: "<=" | "<" | ">=" | ">" | "==" | "!=";
   value: number;
+  nonlinear?: NonlinearConstraint;
+}
+
+/**
+ * Recursively extracts all variable names referenced in an arithmetic expression DAG.
+ */
+function extractVariables(node: ExprNode, out: Set<string>): void {
+  switch (node.kind) {
+    case "var":
+      out.add(node.name);
+      break;
+    case "const":
+      break;
+    case "neg":
+    case "sqr":
+    case "sqrt":
+    case "sin":
+    case "cos":
+      extractVariables(node.child, out);
+      break;
+    case "add":
+    case "sub":
+    case "mul":
+    case "div":
+      extractVariables(node.left, out);
+      extractVariables(node.right, out);
+      break;
+  }
+}
+
+/**
+ * Parses an arithmetic expression supporting +, -, *, /, ^2, sin, cos, sqrt.
+ */
+function parseArithmeticExpression(str: string): ExprNode | undefined {
+  const tokens: string[] = [];
+  const regex = /\s*([a-zA-Z_][a-zA-Z0-9_.]*|\d+(?:\.\d+)?|\+|-|\*|\/|\^|\(|\))\s*/g;
+  let match: RegExpExecArray | null;
+  let lastIndex = 0;
+  while ((match = regex.exec(str)) !== null) {
+    if (match.index !== lastIndex) {
+      return undefined;
+    }
+    tokens.push(match[1]!);
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex !== str.length && str.substring(lastIndex).trim().length > 0) {
+    return undefined;
+  }
+  if (tokens.length === 0) return undefined;
+
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const consume = () => tokens[pos++];
+
+  function parseExpr(): ExprNode | undefined {
+    return parseAdditive();
+  }
+
+  function parseAdditive(): ExprNode | undefined {
+    let node = parseMultiplicative();
+    if (!node) return undefined;
+
+    while (peek() === "+" || peek() === "-") {
+      const op = consume();
+      const right = parseMultiplicative();
+      if (!right) return undefined;
+      node = op === "+" ? { kind: "add", left: node, right } : { kind: "sub", left: node, right };
+    }
+    return node;
+  }
+
+  function parseMultiplicative(): ExprNode | undefined {
+    let node = parsePower();
+    if (!node) return undefined;
+
+    while (peek() === "*" || peek() === "/") {
+      const op = consume();
+      const right = parsePower();
+      if (!right) return undefined;
+      node = op === "*" ? { kind: "mul", left: node, right } : { kind: "div", left: node, right };
+    }
+    return node;
+  }
+
+  function parsePower(): ExprNode | undefined {
+    let node = parseUnary();
+    if (!node) return undefined;
+
+    if (peek() === "^") {
+      consume();
+      const right = parseUnary();
+      if (!right) return undefined;
+      if (right.kind === "const" && right.value === 2) {
+        node = { kind: "sqr", child: node };
+      } else {
+        return undefined;
+      }
+    }
+    return node;
+  }
+
+  function parseUnary(): ExprNode | undefined {
+    if (peek() === "-") {
+      consume();
+      const child = parseUnary();
+      if (!child) return undefined;
+      if (child.kind === "const") {
+        return { kind: "const", value: -child.value };
+      }
+      return { kind: "neg", child };
+    }
+    if (peek() === "+") {
+      consume();
+      return parseUnary();
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): ExprNode | undefined {
+    const t = peek();
+    if (!t) return undefined;
+
+    if (t === "(") {
+      consume();
+      const inner = parseExpr();
+      if (!inner || consume() !== ")") return undefined;
+      return inner;
+    }
+
+    if (/^\d+(?:\.\d+)?$/.test(t)) {
+      consume();
+      return { kind: "const", value: parseFloat(t) };
+    }
+
+    // Function call: sin(x), cos(x), sqrt(x), sqr(x)
+    if (tokens[pos + 1] === "(") {
+      const fn = consume();
+      consume(); // '('
+      const arg = parseExpr();
+      if (!arg || consume() !== ")") return undefined;
+      const lower = fn.toLowerCase();
+      if (lower === "sin") return { kind: "sin", child: arg };
+      if (lower === "cos") return { kind: "cos", child: arg };
+      if (lower === "sqrt") return { kind: "sqrt", child: arg };
+      if (lower === "sqr") return { kind: "sqr", child: arg };
+      return undefined;
+    }
+
+    // Variable identifier
+    if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(t)) {
+      consume();
+      return { kind: "var", name: t };
+    }
+
+    return undefined;
+  }
+
+  const result = parseExpr();
+  if (pos !== tokens.length) return undefined;
+  return result;
+}
+
+/**
+ * Attempts to parse a nonlinear comparison constraint (e.g., "x^2 + y^2 <= 1", "sin(x) > 0.8").
+ */
+export function parseNonlinearGuardConstraint(token: string): GuardConstraint | undefined {
+  const opMatch = token.match(/(<=|>=|==|!=|<|>)/);
+  if (!opMatch || opMatch.index === undefined) return undefined;
+
+  const op = opMatch[1] as GuardConstraint["operator"];
+  const lhsStr = token.substring(0, opMatch.index).trim();
+  const rhsStr = token.substring(opMatch.index + op.length).trim();
+
+  const lhsNode = parseArithmeticExpression(lhsStr);
+  const rhsNode = parseArithmeticExpression(rhsStr);
+  if (!lhsNode || !rhsNode) return undefined;
+
+  let expr: ExprNode;
+  let rhsVal: number;
+
+  if (rhsNode.kind === "const") {
+    expr = lhsNode;
+    rhsVal = rhsNode.value;
+  } else if (lhsNode.kind === "const") {
+    expr = rhsNode;
+    rhsVal = lhsNode.value;
+  } else {
+    expr = { kind: "sub", left: lhsNode, right: rhsNode };
+    rhsVal = 0;
+  }
+
+  const varNames = new Set<string>();
+  extractVariables(expr, varNames);
+  const primaryVar = Array.from(varNames)[0] || "$nl";
+
+  const rel: "<=" | ">=" | "==" = op === "<=" || op === "<" ? "<=" : op === ">=" || op === ">" ? ">=" : "==";
+
+  return {
+    variable: primaryVar,
+    operator: op,
+    value: rhsVal,
+    nonlinear: {
+      expr,
+      rel,
+      rhs: rhsVal,
+    },
+  };
 }
 
 /**
@@ -96,6 +301,13 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
         operator: invertedOp,
         value: val,
       });
+      continue;
+    }
+
+    // Fall back to nonlinear expression parser
+    const nlConstraint = parseNonlinearGuardConstraint(trimmed);
+    if (nlConstraint) {
+      constraints.push(nlConstraint);
     }
   }
 
@@ -103,82 +315,188 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
 }
 
 /**
- * Checks whether two guard conditions are mutually exclusive or can overlap.
- * Uses an Octagon DBM to determine feasibility of guardA && guardB.
+ * Represents a guard in Disjunctive Normal Form (DNF):
+ * a list of conjunctive clauses, where the guard is satisfied if ANY clause is satisfied.
  */
-export function checkGuardsMutuallyExclusive(
-  guardA: string,
-  guardB: string,
-): { mutuallyExclusive: boolean; overlap?: string } {
-  const cA = parseGuardConstraints(guardA);
-  const cB = parseGuardConstraints(guardB);
+export type GuardDNF = GuardConstraint[][];
 
-  // If either guard cannot be parsed into numeric constraints, assume they might overlap
-  if (cA.length === 0 || cB.length === 0) {
-    return { mutuallyExclusive: false, overlap: "non-numeric or complex condition" };
+/**
+ * Parses a guard expression supporting both conjunctions (`&&`, `and`)
+ * and disjunctions (`||`, `or`) into Disjunctive Normal Form (DNF).
+ *
+ * @returns Array of conjunctive clauses (DNF). Empty array if unparseable.
+ */
+export function parseGuardDNF(guardText: string): GuardDNF {
+  let cleaned = guardText.trim();
+  if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+    cleaned = cleaned.substring(1, cleaned.length - 1).trim();
   }
 
-  // Collect all unique variables
+  // Split on "||" or " or " at top-level (respecting parenthesized groups)
+  const disjuncts: string[] = [];
+  let depth = 0;
+  let current = "";
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i]!;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+
+    if (depth === 0) {
+      if (cleaned.substring(i, i + 2) === "||") {
+        disjuncts.push(current.trim());
+        current = "";
+        i += 1;
+        continue;
+      }
+      if (cleaned.substring(i, i + 4).toLowerCase() === " or " && i > 0) {
+        disjuncts.push(current.trim());
+        current = "";
+        i += 3;
+        continue;
+      }
+    }
+
+    current += ch;
+  }
+  if (current.trim()) {
+    disjuncts.push(current.trim());
+  }
+
+  const dnf: GuardDNF = [];
+  for (const disj of disjuncts) {
+    const conj = parseGuardConstraints(disj);
+    if (conj.length > 0) {
+      dnf.push(conj);
+    }
+  }
+
+  return dnf;
+}
+
+/**
+ * Checks a single pair of conjunctive constraints for mutual exclusion using the Octagon DBM.
+ */
+function checkConjunctPairMutuallyExclusive(
+  conjA: GuardConstraint[],
+  conjB: GuardConstraint[],
+): { mutuallyExclusive: boolean; overlap?: string } {
+  const allConstraints = [...conjA, ...conjB];
+  const hasNonlinear = allConstraints.some((c) => c.nonlinear !== undefined);
+
+  if (hasNonlinear) {
+    // --- Route to delta-complete DPLL(T) + HC4 contractor ---
+    const theoryLiterals = new Map<number, NonlinearConstraint>();
+    const clauses: number[][] = [];
+    const allVarNames = new Set<string>();
+
+    let litId = 1;
+    for (const c of allConstraints) {
+      let nl: NonlinearConstraint;
+      if (c.nonlinear) {
+        nl = c.nonlinear;
+      } else {
+        const rel =
+          c.operator === "<=" || c.operator === "<" ? "<=" : c.operator === ">=" || c.operator === ">" ? ">=" : "==";
+        nl = {
+          expr: { kind: "var", name: c.variable },
+          rel,
+          rhs: c.value,
+        };
+      }
+      extractVariables(nl.expr, allVarNames);
+      theoryLiterals.set(litId, nl);
+      clauses.push([litId]); // Conjunction: all constraints must hold
+      litId++;
+    }
+
+    const initialBox = new Map<string, Interval>();
+    for (const vName of allVarNames) {
+      initialBox.set(vName, new Interval(-1000, 1000));
+    }
+
+    // Direct bounds propagation from linear atomic constraints
+    for (const c of allConstraints) {
+      if (!c.nonlinear && initialBox.has(c.variable)) {
+        const cur = initialBox.get(c.variable)!;
+        if (c.operator === ">=" || c.operator === ">") {
+          initialBox.set(c.variable, new Interval(Math.max(cur.lo, c.value), cur.hi));
+        } else if (c.operator === "<=" || c.operator === "<") {
+          initialBox.set(c.variable, new Interval(cur.lo, Math.min(cur.hi, c.value)));
+        } else if (c.operator === "==") {
+          initialBox.set(c.variable, new Interval(c.value, c.value));
+        }
+      }
+    }
+
+    const solver = new DpllTSolver({
+      clauses,
+      theoryLiterals,
+      initialBox,
+      delta: 1e-3,
+      maxSubdivisions: 1500,
+    });
+
+    const res = solver.solve(initialBox);
+
+    if (res.status === "UNSAT") {
+      return { mutuallyExclusive: true };
+    }
+
+    const parts: string[] = [];
+    if (res.solutionBox) {
+      for (const [name, inv] of res.solutionBox.entries()) {
+        parts.push(`${name} ∈ [${inv.lo.toFixed(3)}, ${inv.hi.toFixed(3)}]`);
+      }
+    }
+
+    return {
+      mutuallyExclusive: false,
+      overlap: parts.length > 0 ? parts.join(", ") : "satisfiable nonlinear overlap",
+    };
+  }
+
   const varMap = new Map<string, number>();
   let nextId = 0;
-  const getVarId = (name: string): number => {
-    let id = varMap.get(name);
-    if (id === undefined) {
-      id = nextId++;
-      varMap.set(name, id);
+  for (const c of allConstraints) {
+    if (!varMap.has(c.variable)) {
+      varMap.set(c.variable, nextId++);
     }
-    return id;
-  };
-
-  for (const c of [...cA, ...cB]) {
-    getVarId(c.variable);
   }
 
   const numVars = Math.max(nextId, 1);
   const dbm = new SmtOctagonDBM(numVars);
 
-  const applyConstraints = (list: GuardConstraint[]): boolean => {
-    for (const c of list) {
-      const v = getVarId(c.variable);
-      const curLo = dbm.getLowerBound(v);
-      const curHi = dbm.getUpperBound(v);
+  for (const c of allConstraints) {
+    const v = varMap.get(c.variable)!;
+    const curLo = dbm.getLowerBound(v);
+    const curHi = dbm.getUpperBound(v);
 
-      switch (c.operator) {
-        case "<=":
-          dbm.assumeInterval(v, curLo, Math.floor(c.value));
-          break;
-        case "<":
-          dbm.assumeInterval(v, curLo, Math.floor(c.value - 1e-6));
-          break;
-        case ">=":
-          dbm.assumeInterval(v, Math.ceil(c.value), curHi);
-          break;
-        case ">":
-          dbm.assumeInterval(v, Math.ceil(c.value + 1e-6), curHi);
-          break;
-        case "==":
-          dbm.assumeInterval(v, Math.round(c.value), Math.round(c.value));
-          break;
-        case "!=":
-          // In DBM, != is non-convex; skip or treat conservatively
-          break;
-      }
-      if (dbm.hasNegativeCycle()) return false;
-      if (dbm.getLowerBound(v) > dbm.getUpperBound(v)) return false;
+    switch (c.operator) {
+      case "<=":
+        dbm.assumeInterval(v, curLo, Math.floor(c.value));
+        break;
+      case "<":
+        dbm.assumeInterval(v, curLo, Math.floor(c.value - 1e-6));
+        break;
+      case ">=":
+        dbm.assumeInterval(v, Math.ceil(c.value), curHi);
+        break;
+      case ">":
+        dbm.assumeInterval(v, Math.ceil(c.value + 1e-6), curHi);
+        break;
+      case "==":
+        dbm.assumeInterval(v, Math.round(c.value), Math.round(c.value));
+        break;
+      case "!=":
+        // In DBM, != is non-convex; skip or treat conservatively
+        break;
     }
-    return true;
-  };
-
-  // Conjoin guard A and guard B
-  const validA = applyConstraints(cA);
-  if (!validA) return { mutuallyExclusive: true }; // Guard A itself is unsatisfiable
-
-  const validBoth = applyConstraints(cB);
-  if (!validBoth || dbm.hasNegativeCycle()) {
-    return { mutuallyExclusive: true };
+    if (dbm.hasNegativeCycle() || dbm.getLowerBound(v) > dbm.getUpperBound(v)) {
+      return { mutuallyExclusive: true };
+    }
   }
 
-  // Check if every variable has valid bounds
   for (const [name, id] of varMap) {
     const lo = dbm.getLowerBound(id);
     const hi = dbm.getUpperBound(id);
@@ -201,6 +519,41 @@ export function checkGuardsMutuallyExclusive(
     mutuallyExclusive: false,
     overlap: parts.join(", "),
   };
+}
+
+/**
+ * Checks whether two guard conditions are mutually exclusive or can overlap.
+ * Supports both simple conjunctive guards and DNF guards with disjunctions.
+ * Uses an Octagon DBM to determine feasibility of guardA && guardB.
+ */
+export function checkGuardsMutuallyExclusive(
+  guardA: string,
+  guardB: string,
+): { mutuallyExclusive: boolean; overlap?: string } {
+  // Try DNF parsing first (handles both simple and disjunctive guards)
+  const dnfA = parseGuardDNF(guardA);
+  const dnfB = parseGuardDNF(guardB);
+
+  // If either guard cannot be parsed, fall back
+  if (dnfA.length === 0 || dnfB.length === 0) {
+    return { mutuallyExclusive: false, overlap: "non-numeric or complex condition" };
+  }
+
+  // Two DNF guards overlap iff ∃ a clause from A and a clause from B
+  // whose conjunction is satisfiable in the Octagon DBM
+  for (const conjA of dnfA) {
+    for (const conjB of dnfB) {
+      const res = checkConjunctPairMutuallyExclusive(conjA, conjB);
+      if (!res.mutuallyExclusive) {
+        return {
+          mutuallyExclusive: false,
+          overlap: res.overlap,
+        };
+      }
+    }
+  }
+
+  return { mutuallyExclusive: true };
 }
 
 /**

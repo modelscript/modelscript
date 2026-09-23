@@ -1,7 +1,6 @@
 // name: ConnectExtendsBuiltin1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model ConnectExtendsBuiltin1

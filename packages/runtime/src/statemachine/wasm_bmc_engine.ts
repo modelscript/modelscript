@@ -106,6 +106,16 @@ export class ActivityBmcEngine {
     // 3. Check token capacity
     if (invariant.maxTokenCapacity !== undefined) {
       const cap = invariant.maxTokenCapacity;
+      let totalTokens = 0;
+      for (const tokens of Object.values(marking.nodeTokens)) totalTokens += tokens.length;
+      for (const tokens of Object.values(marking.edgeTokens)) totalTokens += tokens.length;
+      for (const tokens of Object.values(marking.pinTokens)) totalTokens += tokens.length;
+      if (totalTokens > cap) {
+        return {
+          holds: false,
+          reason: `Total activity token capacity exceeded (${totalTokens} > ${cap})`,
+        };
+      }
       for (const [edgeId, tokens] of Object.entries(marking.edgeTokens)) {
         if (tokens.length > cap) {
           return {
@@ -201,6 +211,11 @@ export class ActivityBmcEngine {
    * Formal k-Induction Proof:
    * 1. Base Step: Invariant holds for all reachable states from step 0 to k.
    * 2. Inductive Step: If invariant holds for k consecutive steps, does any transition lead to violation?
+   *
+   * The inductive step encodes the activity graph's transition relation into a propositional
+   * SAT problem and checks whether the invariant can be violated at step k+1 given it holds
+   * at steps 0..k. If the SAT solver returns UNSAT, the property is proven invariant for all
+   * time steps (unbounded).
    */
   checkKInduction(invariant: ActivitySafetyInvariant, k: number = 10): KInductionResult {
     // 1. Base step
@@ -227,33 +242,253 @@ export class ActivityBmcEngine {
       };
     }
 
-    // 2. Inductive step: Check if any valid state sequence satisfying Invariant can transition to !Invariant
-    // We encode the marking transition relation using the CDCL solver
+    // Custom predicates cannot be encoded into SAT — fall back to bounded verification
+    if (invariant.predicate) {
+      return {
+        isProvenInvariant: false,
+        baseStepSatisfied: true,
+        inductiveStepSatisfied: false,
+        depth: k,
+        message: `Property '${invariant.name}' holds up to bounded depth k=${k}. Unbounded k-induction is unavailable because a custom predicate invariant cannot be encoded into the SAT solver.`,
+      };
+    }
+
+    // 2. Inductive step: encode activity transition relation and check if invariant can be
+    //    violated at step k+1 assuming it holds at steps 0..k.
     const sat = new CdclSatSolver();
     const encoder = new TseitinEncoder();
+    const allNodes = this.engine.getAllNodes();
 
-    // Model nodes and edges as Boolean token occupancy variables
-    const nodes = this.engine.getAllNodes();
-    for (let step = 0; step <= k + 1; step++) {
-      for (const n of nodes) {
-        encoder.getOrCreateVar(`node_${n.id}_step_${step}`);
+    // Create Boolean variables: token(nodeId, step) — whether node holds a token at step s
+    const tokenVar = (nodeId: NodeId | number, step: number): number => {
+      return encoder.getOrCreateVar(`tok_${nodeId}_s${step}`);
+    };
+
+    // --- Encode transition relation T(s, s+1) for each step s in [0, k] ---
+    for (let s = 0; s <= k; s++) {
+      // Backward frame axiom: node at step s+1 can only hold a token if at least one predecessor had a token at step s
+      for (const node of allNodes) {
+        const nextVar = tokenVar(node.id, s + 1);
+        const inEdges = node.incomingEdges;
+        const predNodeIds: NodeId[] = [];
+        for (const eId of inEdges) {
+          const edge = this.engine.getEdge(eId);
+          if (edge) predNodeIds.push(edge.sourceNodeId);
+        }
+        if (predNodeIds.length === 0) {
+          // No incoming edges -> cannot hold a token at s + 1
+          sat.addClause([-nextVar]);
+        } else {
+          // ~nextVar | pred1(s) | pred2(s) | ...
+          const predVars = predNodeIds.map((pId) => tokenVar(pId, s));
+          sat.addClause([-nextVar, ...predVars]);
+        }
+      }
+
+      for (const node of allNodes) {
+        const currVar = tokenVar(node.id, s);
+        const outEdges = node.outgoingEdges;
+        const successorNodeIds: NodeId[] = [];
+
+        for (const eId of outEdges) {
+          const edge = this.engine.getEdge(eId);
+          if (edge) successorNodeIds.push(edge.targetNodeId);
+        }
+
+        switch (node.kind) {
+          case 0: // Initial — token moves to all successors at step 0 only (handled by init)
+          case 1: {
+            // Action — if token(node, s), then token moves to successors at s+1
+            // For each successor: token(node, s) => token(succ, s+1)
+            for (const succId of successorNodeIds) {
+              const succNext = tokenVar(succId, s + 1);
+              // ~currVar | succNext (if node active, successor gets token)
+              sat.addClause([-currVar, succNext]);
+            }
+            break;
+          }
+
+          case 4: {
+            // Fork — if token(fork, s), ALL successors get tokens at s+1
+            for (const succId of successorNodeIds) {
+              const succNext = tokenVar(succId, s + 1);
+              sat.addClause([-currVar, succNext]);
+            }
+            break;
+          }
+
+          case 5: {
+            // Join — token at s+1 only if ALL predecessors have tokens at s
+            const inEdges = node.incomingEdges;
+            const predNodeIds: NodeId[] = [];
+            for (const eId of inEdges) {
+              const edge = this.engine.getEdge(eId);
+              if (edge) predNodeIds.push(edge.sourceNodeId);
+            }
+
+            if (predNodeIds.length > 0 && successorNodeIds.length > 0) {
+              // join fires at step s if all predecessors have tokens
+              const joinFiredVar = encoder.getOrCreateVar(`joinFire_${node.id}_s${s}`);
+
+              // joinFiredVar => pred_i(s) for each predecessor
+              for (const predId of predNodeIds) {
+                sat.addClause([-joinFiredVar, tokenVar(predId, s)]);
+              }
+              // pred_1(s) & pred_2(s) & ... => joinFiredVar
+              // Equivalently: ~pred_1(s) | ~pred_2(s) | ... | joinFiredVar
+              const allPredNeg = predNodeIds.map((pid) => -tokenVar(pid, s));
+              sat.addClause([...allPredNeg, joinFiredVar]);
+
+              // If join fires, successors get tokens
+              for (const succId of successorNodeIds) {
+                sat.addClause([-joinFiredVar, tokenVar(succId, s + 1)]);
+              }
+            }
+            break;
+          }
+
+          case 2: {
+            // Decide — if token(decide, s), exactly one successor gets token (nondeterministic)
+            // At least one successor: ~currVar | succ1(s+1) | succ2(s+1) | ...
+            if (successorNodeIds.length > 0) {
+              const succVars = successorNodeIds.map((sid) => tokenVar(sid, s + 1));
+              sat.addClause([-currVar, ...succVars]);
+            }
+            break;
+          }
+
+          case 3: {
+            // Merge — if ANY predecessor has a token, merge gets token and passes to successors
+            // For each predecessor: pred(s) => succ(s+1) for each successor
+            const inEdges = node.incomingEdges;
+            for (const eId of inEdges) {
+              const edge = this.engine.getEdge(eId);
+              if (edge) {
+                const predVar = tokenVar(edge.sourceNodeId, s);
+                for (const succId of successorNodeIds) {
+                  sat.addClause([-predVar, tokenVar(succId, s + 1)]);
+                }
+              }
+            }
+            break;
+          }
+
+          case 6: // ActivityFinal — absorbs token, no successors
+          case 7: // FlowFinal — absorbs token, no successors
+            break;
+        }
       }
     }
 
-    // Encode transition step constraints and invariant condition
+    // --- Encode invariant P(s) for steps 0..k ---
+    // Resolve node names/ids for invariant properties
+    const resolveNodeId = (ref: NodeId | string): NodeId | undefined => {
+      if (typeof ref === "number") return ref;
+      for (const n of allNodes) {
+        if (n.name === ref) return n.id;
+      }
+      return undefined;
+    };
+
+    // Forbidden nodes: ¬token(forbidden, s) for s ∈ [0, k]
+    if (invariant.forbiddenNodes) {
+      for (const fn of invariant.forbiddenNodes) {
+        const nId = resolveNodeId(fn);
+        if (nId === undefined) continue;
+        for (let s = 0; s <= k; s++) {
+          sat.addClause([-tokenVar(nId, s)]);
+        }
+      }
+    }
+
+    // Mutual exclusion: ¬(token(a, s) ∧ token(b, s)) for s ∈ [0, k]
+    if (invariant.mutuallyExclusiveNodes) {
+      for (const [a, b] of invariant.mutuallyExclusiveNodes) {
+        const aId = resolveNodeId(a);
+        const bId = resolveNodeId(b);
+        if (aId === undefined || bId === undefined) continue;
+        for (let s = 0; s <= k; s++) {
+          sat.addClause([-tokenVar(aId, s), -tokenVar(bId, s)]);
+        }
+      }
+    }
+
+    // Token capacity: encode \sum token(node, s) <= maxTokenCapacity for s \in [0, k]
+    if (invariant.maxTokenCapacity !== undefined) {
+      for (let s = 0; s <= k; s++) {
+        const stepLits = allNodes.map((n) => tokenVar(n.id, s));
+        encoder.encodeAtMostK(stepLits, invariant.maxTokenCapacity);
+      }
+    }
+
+    // --- Encode negated invariant ¬P(k+1) ---
+    // At least one forbidden node has a token at step k+1, OR a mutual exclusion pair is active,
+    // OR total token capacity exceeds maxTokenCapacity.
+    const violationLits: number[] = [];
+
+    if (invariant.forbiddenNodes) {
+      for (const fn of invariant.forbiddenNodes) {
+        const nId = resolveNodeId(fn);
+        if (nId !== undefined) {
+          violationLits.push(tokenVar(nId, k + 1));
+        }
+      }
+    }
+
+    if (invariant.mutuallyExclusiveNodes) {
+      for (const [a, b] of invariant.mutuallyExclusiveNodes) {
+        const aId = resolveNodeId(a);
+        const bId = resolveNodeId(b);
+        if (aId === undefined || bId === undefined) continue;
+        // Auxiliary variable for (token(a, k+1) ∧ token(b, k+1))
+        const bothActive = encoder.encode({
+          op: "and",
+          children: [
+            { op: "var", name: `tok_${aId}_s${k + 1}` },
+            { op: "var", name: `tok_${bId}_s${k + 1}` },
+          ],
+        });
+        violationLits.push(bothActive);
+      }
+    }
+
+    if (invariant.maxTokenCapacity !== undefined) {
+      const nextStepLits = allNodes.map((n) => tokenVar(n.id, k + 1));
+      const capViolLit = encoder.encodeGreaterThanK(nextStepLits, invariant.maxTokenCapacity);
+      violationLits.push(capViolLit);
+    }
+
+    // Add all auxiliary clauses generated by TseitinEncoder (cardinality, conjunctions, etc.)
     for (const clause of encoder.clauses) {
       sat.addClause(clause);
     }
 
-    // Inductive check: assume invariant holds at steps 0..k, does it hold at step k+1?
-    const inductiveHolds = true; // Established by transition relation induction
+    if (violationLits.length === 0) {
+      // No encodable violation condition — cannot prove via k-induction
+      return {
+        isProvenInvariant: false,
+        baseStepSatisfied: true,
+        inductiveStepSatisfied: false,
+        depth: k,
+        message: `Property '${invariant.name}' holds up to bounded depth k=${k}. No SAT-encodable violation condition found for unbounded induction.`,
+      };
+    }
+
+    // Assert that the violation must happen at step k+1
+    sat.addClause(violationLits);
+
+    // --- Solve ---
+    const result = sat.solve();
+    const inductiveHolds = result.status === "UNSAT";
 
     return {
       isProvenInvariant: inductiveHolds,
       baseStepSatisfied: true,
       inductiveStepSatisfied: inductiveHolds,
       depth: k,
-      message: `Property '${invariant.name}' formally proven invariant by k-induction (depth k=${k}).`,
+      message: inductiveHolds
+        ? `Property '${invariant.name}' formally proven invariant by k-induction (depth k=${k}). Inductive step certified UNSAT.`
+        : `Property '${invariant.name}' holds up to bounded depth k=${k}, but the inductive step is inconclusive (SAT). The property may require strengthening or a deeper induction depth.`,
     };
   }
 }

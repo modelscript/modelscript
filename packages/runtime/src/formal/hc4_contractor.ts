@@ -191,8 +191,136 @@ export class Hc4Contractor {
         if (target.hi < 0) return false;
         const maxRoot = Math.sqrt(Math.max(0, target.hi));
         const minRoot = target.lo > 0 ? Math.sqrt(target.lo) : 0;
-        const childTarget = new Interval(-maxRoot, maxRoot);
+        // child could be positive or negative root
+        const childCurrent = Hc4Contractor.evalInterval(node.child, box);
+        let childTarget: Interval;
+        if (childCurrent.lo >= 0) {
+          childTarget = new Interval(minRoot, maxRoot);
+        } else if (childCurrent.hi <= 0) {
+          childTarget = new Interval(-maxRoot, -minRoot);
+        } else {
+          childTarget = new Interval(-maxRoot, maxRoot);
+        }
         return Hc4Contractor.contractNode(node.child, childTarget, box);
+      }
+      case "div": {
+        // z = left / right => left = z * right, right = left / z
+        const leftVal = Hc4Contractor.evalInterval(node.left, box);
+        const rightVal = Hc4Contractor.evalInterval(node.right, box);
+
+        // Contract left: left ∈ target * rightVal
+        if (rightVal.lo > 0 || rightVal.hi < 0) {
+          const p1 = target.lo * rightVal.lo;
+          const p2 = target.lo * rightVal.hi;
+          const p3 = target.hi * rightVal.lo;
+          const p4 = target.hi * rightVal.hi;
+          const newLeftTarget = new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
+          if (!Hc4Contractor.contractNode(node.left, newLeftTarget, box)) return false;
+        }
+
+        // Contract right: right ∈ leftVal / target (when 0 ∉ target)
+        if ((target.lo > 0 || target.hi < 0) && (leftVal.lo > 0 || leftVal.hi < 0)) {
+          const p1 = leftVal.lo / target.lo;
+          const p2 = leftVal.lo / target.hi;
+          const p3 = leftVal.hi / target.lo;
+          const p4 = leftVal.hi / target.hi;
+          const newRightTarget = new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
+          if (!Hc4Contractor.contractNode(node.right, newRightTarget, box)) return false;
+        }
+
+        return true;
+      }
+      case "sqrt": {
+        // z = sqrt(child) => child ∈ [max(0, target.lo²), target.hi²]
+        if (target.hi < 0) return false;
+        const tLo = Math.max(0, target.lo);
+        const childLo = tLo * tLo;
+        const childHi = target.hi === Infinity ? Infinity : target.hi * target.hi;
+        const childTarget2 = new Interval(childLo, childHi);
+        return Hc4Contractor.contractNode(node.child, childTarget2, box);
+      }
+      case "sin": {
+        // z = sin(child) => child ∈ arcsin(target) ∩ child_current
+        // Multi-period: for each 2kπ period overlapping child, compute both branches
+        const childCurrent = Hc4Contractor.evalInterval(node.child, box);
+        const tLo = Math.max(-1, target.lo);
+        const tHi = Math.min(1, target.hi);
+        if (tLo > tHi) return false;
+        if (tLo > 1 || tHi < -1) return false;
+
+        const asinLo = Math.asin(tLo);
+        const asinHi = Math.asin(tHi);
+
+        // Collect all inverse branches within childCurrent
+        let bestLo = Infinity;
+        let bestHi = -Infinity;
+
+        // Compute the range of periods k to check: child ∈ [childCurrent.lo, childCurrent.hi]
+        // Branch 1: asin(z) + 2kπ — principal branch
+        // Branch 2: π - asin(z) + 2kπ — reflected branch
+        const kMin = Math.floor((childCurrent.lo + Math.PI) / (2 * Math.PI)) - 1;
+        const kMax = Math.ceil((childCurrent.hi + Math.PI) / (2 * Math.PI)) + 1;
+
+        for (let kk = kMin; kk <= kMax; kk++) {
+          // Branch 1: [asinLo + 2kπ, asinHi + 2kπ]
+          const b1Lo = asinLo + kk * 2 * Math.PI;
+          const b1Hi = asinHi + kk * 2 * Math.PI;
+          if (b1Hi >= childCurrent.lo && b1Lo <= childCurrent.hi) {
+            bestLo = Math.min(bestLo, Math.max(b1Lo, childCurrent.lo));
+            bestHi = Math.max(bestHi, Math.min(b1Hi, childCurrent.hi));
+          }
+
+          // Branch 2: [π - asinHi + 2kπ, π - asinLo + 2kπ]
+          const b2Lo = Math.PI - asinHi + kk * 2 * Math.PI;
+          const b2Hi = Math.PI - asinLo + kk * 2 * Math.PI;
+          if (b2Hi >= childCurrent.lo && b2Lo <= childCurrent.hi) {
+            bestLo = Math.min(bestLo, Math.max(b2Lo, childCurrent.lo));
+            bestHi = Math.max(bestHi, Math.min(b2Hi, childCurrent.hi));
+          }
+        }
+
+        if (bestLo > bestHi) return false;
+        return Hc4Contractor.contractNode(node.child, new Interval(bestLo, bestHi), box);
+      }
+      case "cos": {
+        // z = cos(child) => child ∈ arccos(target) ∩ child_current
+        // Multi-period: for each 2kπ period, compute both branches of arccos
+        const childCurrent = Hc4Contractor.evalInterval(node.child, box);
+        const tLo = Math.max(-1, target.lo);
+        const tHi = Math.min(1, target.hi);
+        if (tLo > tHi) return false;
+        if (tLo > 1 || tHi < -1) return false;
+
+        // arccos is monotonically decreasing: arccos(tHi) <= arccos(tLo)
+        const acosLo = Math.acos(tHi); // Smaller angle
+        const acosHi = Math.acos(tLo); // Larger angle
+
+        let bestLo = Infinity;
+        let bestHi = -Infinity;
+
+        const kMin = Math.floor(childCurrent.lo / (2 * Math.PI)) - 1;
+        const kMax = Math.ceil(childCurrent.hi / (2 * Math.PI)) + 1;
+
+        for (let kk = kMin; kk <= kMax; kk++) {
+          // Branch 1: [acosLo + 2kπ, acosHi + 2kπ]
+          const b1Lo = acosLo + kk * 2 * Math.PI;
+          const b1Hi = acosHi + kk * 2 * Math.PI;
+          if (b1Hi >= childCurrent.lo && b1Lo <= childCurrent.hi) {
+            bestLo = Math.min(bestLo, Math.max(b1Lo, childCurrent.lo));
+            bestHi = Math.max(bestHi, Math.min(b1Hi, childCurrent.hi));
+          }
+
+          // Branch 2: [-acosHi + 2kπ, -acosLo + 2kπ] (negative angles)
+          const b2Lo = -acosHi + kk * 2 * Math.PI;
+          const b2Hi = -acosLo + kk * 2 * Math.PI;
+          if (b2Hi >= childCurrent.lo && b2Lo <= childCurrent.hi) {
+            bestLo = Math.min(bestLo, Math.max(b2Lo, childCurrent.lo));
+            bestHi = Math.max(bestHi, Math.min(b2Hi, childCurrent.hi));
+          }
+        }
+
+        if (bestLo > bestHi) return false;
+        return Hc4Contractor.contractNode(node.child, new Interval(bestLo, bestHi), box);
       }
       default:
         return true;

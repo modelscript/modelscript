@@ -1,7 +1,6 @@
 // name: FuncBuiltinNdims
 // keywords: ndims
 // status: correct
-// xfail:    true
 //
 // Tests the builtin ndims operator.
 //

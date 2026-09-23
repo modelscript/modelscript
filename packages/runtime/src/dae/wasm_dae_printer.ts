@@ -987,10 +987,35 @@ export class ArenaDAEPrinter {
         "stateSelect",
       ];
       const isParamOrConst = variability === Variability.Parameter || variability === Variability.Constant;
+      const isStartSameAsBinding = (startId: number | undefined, bindId: number): boolean => {
+        if (startId === undefined) return false;
+        if (startId === bindId) return true;
+        if (this.isNumericLiteral(startId) && this.isNumericLiteral(bindId)) {
+          return this.getNumericValue(startId) === this.getNumericValue(bindId);
+        }
+        if (this.printExprToString(startId) === this.printExprToString(bindId)) {
+          return true;
+        }
+        if (this.arena.getExprKind(bindId) === ExprKind.Name) {
+          const varName = this.arena.interner.resolve(this.arena.getExprData1(bindId));
+          if (varName) {
+            const vIdx = this.arena.getVarIdxByName(varName);
+            if (vIdx >= 0) {
+              const vExpr = this.arena.getVarExpression(vIdx);
+              if (vExpr !== undefined && isStartSameAsBinding(startId, vExpr)) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      };
       const sortedKeys = [...attrs.keys()]
         .filter(
           (k) =>
-            k !== "unbounded" && !(k === "start" && hasBindingExpr && (attrs.get("start") === expr || isParamOrConst)),
+            k !== "unbounded" &&
+            !(type === VarType.String && k === "fixed") &&
+            !(k === "start" && hasBindingExpr && (isStartSameAsBinding(attrs.get("start"), expr) || isParamOrConst)),
         )
         .sort((a, b) => {
           const ai = ORDER.indexOf(a);

@@ -114,4 +114,87 @@ describe("Native In-Process delta-Complete SMT (DPLL(T)) Solver Suite", () => {
     const xSol = result.solutionBox!.get("x")!;
     assert(xSol.lo >= 0.99, `x solution [${xSol.lo}, ${xSol.hi}] should be >= 1`);
   });
+
+  it("should contract interval boxes accurately using HC4 backward div contractor", () => {
+    // x in [10, 20], y in [1, 10]
+    // Constraint: x / y <= 2.0  => y >= x / 2 >= 5
+    const constraint: NonlinearConstraint = {
+      expr: {
+        kind: "div",
+        left: { kind: "var", name: "x" },
+        right: { kind: "var", name: "y" },
+      },
+      rel: "<=",
+      rhs: 2.0,
+    };
+
+    const box = new Map<string, Interval>([
+      ["x", new Interval(10, 20)],
+      ["y", new Interval(1, 10)],
+    ]);
+
+    const valid = Hc4Contractor.revise(constraint, box);
+    assert(valid, "Division contraction should be satisfiable");
+
+    const yInv = box.get("y")!;
+    assert(yInv.lo >= 4.999, `y should be contracted to >= 5, got [${yInv.lo}, ${yInv.hi}]`);
+  });
+
+  it("should contract interval boxes accurately using HC4 backward sqrt contractor", () => {
+    // x in [0, 25], sqrt(x) <= 3 => x in [0, 9]
+    const constraint: NonlinearConstraint = {
+      expr: {
+        kind: "sqrt",
+        child: { kind: "var", name: "x" },
+      },
+      rel: "<=",
+      rhs: 3.0,
+    };
+
+    const box = new Map<string, Interval>([["x", new Interval(0, 25)]]);
+    const valid = Hc4Contractor.revise(constraint, box);
+    assert(valid, "Sqrt contraction should be satisfiable");
+
+    const xInv = box.get("x")!;
+    assert(xInv.lo >= 0 && xInv.hi <= 9.001, `x should be contracted to [0, 9], got [${xInv.lo}, ${xInv.hi}]`);
+  });
+
+  it("should contract interval boxes accurately using HC4 backward sin and cos contractors", () => {
+    // x in [0, pi], sin(x) >= 0.5 => x in [pi/6, 5*pi/6] ~ [0.523, 2.618]
+    const sinConstraint: NonlinearConstraint = {
+      expr: {
+        kind: "sin",
+        child: { kind: "var", name: "x" },
+      },
+      rel: ">=",
+      rhs: 0.5,
+    };
+
+    const sinBox = new Map<string, Interval>([["x", new Interval(0, Math.PI)]]);
+    const sinValid = Hc4Contractor.revise(sinConstraint, sinBox);
+    assert(sinValid, "Sin contraction should be satisfiable");
+
+    const sinX = sinBox.get("x")!;
+    assert(
+      sinX.lo >= 0.52 && sinX.hi <= 2.62,
+      `sin(x) >= 0.5 should contract to ~[0.523, 2.618], got [${sinX.lo}, ${sinX.hi}]`,
+    );
+
+    // y in [0, pi], cos(y) >= 0.5 => y in [0, pi/3] ~ [0, 1.047]
+    const cosConstraint: NonlinearConstraint = {
+      expr: {
+        kind: "cos",
+        child: { kind: "var", name: "y" },
+      },
+      rel: ">=",
+      rhs: 0.5,
+    };
+
+    const cosBox = new Map<string, Interval>([["y", new Interval(0, Math.PI)]]);
+    const cosValid = Hc4Contractor.revise(cosConstraint, cosBox);
+    assert(cosValid, "Cos contraction should be satisfiable");
+
+    const cosY = cosBox.get("y")!;
+    assert(cosY.lo >= 0 && cosY.hi <= 1.05, `cos(y) >= 0.5 should contract to [0, pi/3], got [${cosY.lo}, ${cosY.hi}]`);
+  });
 });

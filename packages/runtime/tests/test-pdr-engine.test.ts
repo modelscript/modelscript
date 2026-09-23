@@ -76,4 +76,61 @@ test("WasmPdrEngine - Property Directed Reachability (IC3)", async (t) => {
     assert.strictEqual(result.counterexample?.length, 1);
     assert.strictEqual(result.counterexample[0]?.stateName, "FaultyInit");
   });
+
+  await t.test("proves inductive safety invariant using symbolic IC3 checkSymbolic()", () => {
+    const sm = new WasmRtcStateMachine();
+
+    const sInit = sm.addState("Initial", StateKind.Initial);
+    const sActive = sm.addState("Active", StateKind.Simple);
+    const sDone = sm.addState("Done", StateKind.Simple);
+    const sHazard = sm.addState("Hazard", StateKind.Simple);
+
+    // Initial -> Active -> Done. Hazard unreachable.
+    sm.addTransition(sInit, sActive);
+    sm.addTransition(sActive, sDone);
+    sm.addTransition(sDone, sDone);
+
+    const pdr = new PdrEngine(sm);
+    const result = pdr.checkSymbolic({
+      name: "SymbolicSafety_NoHazard",
+      forbiddenStates: ["Hazard"],
+    });
+
+    assert.strictEqual(result.isProvenUniversal, true);
+    assert.match(result.summary, /Symbolic IC3 proved safety invariant/);
+  });
+
+  await t.test("dispatches via checkAuto() based on state threshold", () => {
+    const sm = new WasmRtcStateMachine();
+
+    const sInit = sm.addState("Initial", StateKind.Initial);
+    const sOk = sm.addState("Ok", StateKind.Simple);
+    sm.addTransition(sInit, sOk);
+
+    const pdr = new PdrEngine(sm);
+
+    // With threshold = 1000, 2 states <= 1000 => explicit BFS
+    const explicitRes = pdr.checkAuto(
+      {
+        name: "AutoExplicit",
+        forbiddenStates: ["Unreachable"],
+      },
+      10,
+      1000,
+    );
+    assert.strictEqual(explicitRes.isProvenUniversal, true);
+    assert.match(explicitRes.summary, /Inductive safety proof certified by PDR/);
+
+    // With threshold = 1, 2 states > 1 => symbolic IC3
+    const symbolicRes = pdr.checkAuto(
+      {
+        name: "AutoSymbolic",
+        forbiddenStates: ["Unreachable"],
+      },
+      10,
+      1,
+    );
+    assert.strictEqual(symbolicRes.isProvenUniversal, true);
+    assert.match(symbolicRes.summary, /Symbolic IC3 proved safety invariant/);
+  });
 });

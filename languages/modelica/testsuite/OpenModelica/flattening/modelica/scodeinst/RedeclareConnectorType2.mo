@@ -1,7 +1,6 @@
 // name: RedeclareConnectorType2
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 connector C

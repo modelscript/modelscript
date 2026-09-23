@@ -3,17 +3,64 @@
 /**
  * Domain categories participating in the multi-tier Digital Thread.
  */
-export type RtmDomain = "requirement" | "sysml_logical" | "modelica_physics" | "verification_case" | "test_run";
+export type RtmDomain =
+  | "hazard"
+  | "requirement"
+  | "sysml_logical"
+  | "modelica_physics"
+  | "verification_case"
+  | "test_run";
 
 /**
  * Semantic kind of traceability connection.
  */
-export type RtmLinkKind = "satisfy" | "verify" | "allocate" | "refine" | "derive";
+export type RtmLinkKind = "mitigate" | "satisfy" | "verify" | "allocate" | "refine" | "derive";
 
 /**
  * Live verification and health status of a trace link.
  */
 export type RtmLinkStatus = "passed" | "failed" | "pending" | "suspect" | "unverified";
+
+/**
+ * ISO 14971 quantitative risk evaluation and mitigation record.
+ */
+export interface Iso14971Hazard {
+  id: string;
+  hazardId: string;
+  name: string;
+  description?: string;
+  initialSeverity: number; // 1-5 (Negligible to Catastrophic)
+  initialProbability: number; // 1-5 (Improbable to Frequent)
+  initialRpn: number; // Severity * Probability (1-25)
+  initialAcceptability: "Broadly Acceptable" | "ALARP" | "Unacceptable";
+  mitigationRequirementIds: string[];
+  mitigationRequirements?: string[];
+  residualSeverity: number;
+  residualProbability: number;
+  residualRpn: number;
+  residualAcceptability: "Broadly Acceptable" | "ALARP" | "Unacceptable";
+  status: "Unmitigated" | "Mitigated" | "Verified";
+}
+
+/**
+ * FMECA Failure Mode, Effects, and Criticality Analysis line item.
+ */
+export interface FmecaRiskRecord {
+  itemOrFunction: string;
+  failureMode: string;
+  potentialEffects: string;
+  causes: string;
+  initialSeverity: number;
+  initialOccurrence: number;
+  initialRpn: number;
+  mitigationMeasure: string;
+  mitigationRequirementId?: string;
+  residualSeverity: number;
+  residualOccurrence: number;
+  residualRpn: number;
+  rpnReductionPercentage: number;
+  status: "open" | "mitigated" | "verified";
+}
 
 /**
  * An indexed element participating as a row or column in the RTM.
@@ -29,9 +76,11 @@ export interface RtmElement {
   endByte: number;
   metadata: {
     reqId?: string;
+    hazardId?: string;
     text?: string;
     category?: string;
     allocatedTo?: string[];
+    iso14971?: Partial<Iso14971Hazard>;
     [key: string]: any;
   };
 }
@@ -86,6 +135,12 @@ export interface RtmAnalytics {
   unallocatedComponents: string[];
   suspectLinkCount: number;
   failingLinkCount: number;
+  // ISO 14971 Risk Analytics
+  totalHazards?: number;
+  mitigatedHazardsCount?: number;
+  unmitigatedHazardsCount?: number;
+  unacceptableResidualRiskCount?: number;
+  averageRpnReduction?: number;
 }
 
 /**

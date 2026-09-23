@@ -1,7 +1,6 @@
 // name: redeclare13.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 // Checks that redeclares are propagated to the correct element when there's
 // multiple extends.

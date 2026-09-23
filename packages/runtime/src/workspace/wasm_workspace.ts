@@ -608,6 +608,77 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       let currentId = parentId;
       const hook = this.hookMap.get(node.type);
 
+      if (node.type === "long_class_specifier" || node.type === "LongClassSpecifier") {
+        const firstChild = (node.children || [])[0];
+        const isExtends =
+          firstChild &&
+          (firstChild.text === "extends" || firstChild.type === '"extends"' || firstChild.type === "extends");
+        if (isExtends && parentId !== null) {
+          const identChild = (node.children || []).find((c: any) => c.type === "identifier" || c.type === "IDENT");
+          const extName = identChild ? getNodeText(identChild) : "";
+          if (extName) {
+            const extHook: IndexerHook = {
+              ruleName: "extends_clause",
+              kind: "Extends",
+              namePath: "name",
+              exportPaths: [],
+              inheritPaths: [],
+              metadataFieldPaths: {
+                typeSpecifier: "name",
+              },
+            };
+            const parentKey = String(parentId);
+            const matchKey = `${parentKey}:${extHook.kind}:${extName}:${extHook.ruleName}`;
+            let extSymId: SymbolId;
+            const existingEntry = oldEntriesByKey.get(matchKey);
+            const modChild = (node.children || []).find(
+              (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+            );
+            const extEnd = modChild
+              ? (modChild.endByte ?? modChild.endIndex ?? 0)
+              : (identChild.endByte ?? identChild.endIndex ?? 0);
+            const extStart = firstChild.startByte ?? firstChild.startIndex ?? node.startByte ?? node.startIndex ?? 0;
+            if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
+              extSymId = existingEntry.id;
+              oldSymbolsToDelete.delete(extSymId);
+              this.globalChangedIds.add(extSymId);
+            } else {
+              extSymId = this.nextSymbolId++;
+              this.globalChangedIds.add(extSymId);
+              this.globalStructuralChangedIds.add(extSymId);
+              this.globalChangedIds.add(parentId);
+              this.globalStructuralChangedIds.add(parentId);
+            }
+            newIds.push(extSymId);
+            const extEntry: SymbolEntry = {
+              id: extSymId,
+              kind: "Extends",
+              name: extName,
+              ruleName: "extends_clause",
+              namePath: "name",
+              fieldName: null,
+              parentId,
+              resourceId: uri,
+              startByte: extStart,
+              endByte: extEnd,
+              exports: [],
+              inherits: [],
+              metadata: {
+                typeSpecifier: extName,
+              },
+            };
+            this.unifiedIndex.symbols.set(extSymId, extEntry);
+            const list = this.unifiedIndex.byName.get(extName) || [];
+            list.push(extSymId);
+            this.unifiedIndex.byName.set(extName, list);
+
+            const childList = this.unifiedIndex.childrenOf.get(parentId) || [];
+            childList.push(extSymId);
+            this.unifiedIndex.childrenOf.set(parentId, childList);
+          }
+        }
+      }
+
       if (hook) {
         const nameNode = hook.namePath ? resolveFieldPath(node, hook.namePath) : null;
         let name = nameNode ? getNodeText(nameNode) : "";

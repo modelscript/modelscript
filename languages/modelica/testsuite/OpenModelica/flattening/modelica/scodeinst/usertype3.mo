@@ -1,7 +1,6 @@
 // name: usertype3.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 type MyReal = Real;

@@ -99,4 +99,54 @@ describe("SysML v2 State-Machine Determinism & Completeness Verifier", () => {
     assert.strictEqual(fallbackResult.isComplete, true);
     assert.strictEqual(fallbackResult.diagnostics.length, 0);
   });
+
+  it("should parse and verify disjunctive DNF guards with || and or", () => {
+    // Guard A: x < 5 || x > 20
+    // Guard B: x >= 8 && x <= 15
+    // Should be mutually exclusive!
+    const res = checkGuardsMutuallyExclusive("x < 5 || x > 20", "x >= 8 && x <= 15");
+    assert.strictEqual(res.mutuallyExclusive, true);
+
+    // Guard A: x < 10 || x > 20
+    // Guard B: x >= 5 && x <= 15
+    // Overlaps in [5, 10)!
+    const resOverlap = checkGuardsMutuallyExclusive("x < 10 || x > 20", "x >= 5 && x <= 15");
+    assert.strictEqual(resOverlap.mutuallyExclusive, false);
+    assert(resOverlap.overlap !== undefined);
+  });
+
+  it("should verify nonlinear guards for mutual exclusion via DPLL(T) and HC4-Revise", () => {
+    // Circle of radius 1 vs outside circle of radius 2: strictly disjoint!
+    const resCircle = checkGuardsMutuallyExclusive("x^2 + y^2 <= 1", "x^2 + y^2 >= 4");
+    assert.strictEqual(
+      resCircle.mutuallyExclusive,
+      true,
+      "Disjoint concentric circles x^2 + y^2 <= 1 and x^2 + y^2 >= 4 must be mutually exclusive",
+    );
+
+    // Trigonometric disjoint guards: sin(x) >= 0.8 vs sin(x) <= 0.2
+    const resTrig = checkGuardsMutuallyExclusive("sin(x) >= 0.8", "sin(x) <= 0.2");
+    assert.strictEqual(
+      resTrig.mutuallyExclusive,
+      true,
+      "Trigonometric bands sin(x) >= 0.8 and sin(x) <= 0.2 must be mutually exclusive",
+    );
+  });
+
+  it("should detect overlap and provide witness box for overlapping nonlinear guards", () => {
+    // Circle of radius 2 (x^2 + y^2 <= 4) vs half-plane x >= 1 overlaps in x in [1, 2]
+    const res = checkGuardsMutuallyExclusive("x^2 + y^2 <= 4", "x >= 1");
+    assert.strictEqual(res.mutuallyExclusive, false, "Circle and intersecting half-plane must overlap");
+    assert(res.overlap !== undefined, "Overlap witness must be provided");
+    assert(res.overlap.includes("x ∈ ["), `Overlap witness should contain x interval, got: ${res.overlap}`);
+  });
+
+  it("should verify state transitions with nonlinear guards end-to-end", () => {
+    const res = verifyStateTransitions("Orbiting", [
+      { id: 10, name: "lowAltitude", source: "Orbiting", target: "Perigee", guardText: "x^2 + y^2 <= 1" },
+      { id: 11, name: "highAltitude", source: "Orbiting", target: "Apogee", guardText: "x^2 + y^2 >= 4" },
+    ]);
+
+    assert.strictEqual(res.isDeterministic, true, "Disjoint nonlinear orbits must be deterministic");
+  });
 });

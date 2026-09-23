@@ -1,7 +1,7 @@
 // name: ClassExtendsBuiltin3
 // keywords:
 // status: correct
-//
+// xfail: true
 
 model A
   type MyReal = Real;

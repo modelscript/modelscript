@@ -1,7 +1,6 @@
 // name: FuncBuiltinScalar
 // keywords: scalar
 // status: correct
-// xfail:    true
 //
 // Tests the builtin scalar operator.
 //

@@ -152,7 +152,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(rootId, "diagonal") ||
         db.ast.textEquals(rootId, "StateSelect") ||
         db.ast.startsWith(rootId, "StateSelect.") ||
-        db.ast.startsWith(node, "StateSelect.")
+        db.ast.startsWith(node, "StateSelect.") ||
+        db.ast.textEquals(rootId, "AssertionLevel") ||
+        db.ast.startsWith(rootId, "AssertionLevel.") ||
+        db.ast.startsWith(node, "AssertionLevel.")
       ) {
         return;
       }
@@ -283,6 +286,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(node, "String") ||
         db.ast.startsWith(node, "Clock") ||
         db.ast.textEquals(node, "Clock") ||
+        db.ast.startsWith(node, "StateSelect") ||
+        db.ast.textEquals(node, "StateSelect") ||
+        db.ast.startsWith(node, "AssertionLevel") ||
+        db.ast.textEquals(node, "AssertionLevel") ||
         db.ast.startsWith(node, "ExternalObject") ||
         db.ast.textEquals(node, "ExternalObject") ||
         db.ast.textEquals(node, "Modelica.SIunits.Voltage") ||
@@ -302,6 +309,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             db.ast.startsWith(firstIdent, "String") ||
             db.ast.textEquals(firstIdent, "Clock") ||
             db.ast.startsWith(firstIdent, "Clock") ||
+            db.ast.textEquals(firstIdent, "StateSelect") ||
+            db.ast.startsWith(firstIdent, "StateSelect") ||
+            db.ast.textEquals(firstIdent, "AssertionLevel") ||
+            db.ast.startsWith(firstIdent, "AssertionLevel") ||
             db.ast.textEquals(firstIdent, "ExternalObject") ||
             db.ast.startsWith(firstIdent, "ExternalObject") ||
             db.ast.textEquals(firstIdent, "Modelica") ||

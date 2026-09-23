@@ -147,9 +147,10 @@ export class GenericModelicaBridge {
       let foundComposite = false;
       for (const m of defMatches) {
         const defName = m[1]!;
-        const bodyStart = sysmlSource.indexOf(defName) + defName.length;
+        const bodyStart = (m.index ?? sysmlSource.indexOf(m[0])) + m[0].length;
         const openBrace = sysmlSource.indexOf("{", bodyStart);
-        if (openBrace !== -1) {
+        const nextSemi = sysmlSource.indexOf(";", bodyStart);
+        if (openBrace !== -1 && (nextSemi === -1 || openBrace < nextSemi)) {
           let depth = 1;
           let closeBrace = openBrace + 1;
           while (closeBrace < sysmlSource.length && depth > 0) {
@@ -220,10 +221,26 @@ export class GenericModelicaBridge {
       const partName = puMatch[1];
       const partType = puMatch[2];
       const afterPos = puMatch.index + puMatch[0].length;
-      const semiPos = targetSource.indexOf(";", afterPos);
-      if (semiPos === -1) break;
-      const rest = targetSource.slice(afterPos, semiPos);
-      partHeaderRegex.lastIndex = semiPos + 1;
+      let rest = "";
+      const openBrace = targetSource.indexOf("{", afterPos);
+      const nextSemi = targetSource.indexOf(";", afterPos);
+      if (openBrace !== -1 && (nextSemi === -1 || openBrace < nextSemi)) {
+        let depth = 1;
+        let p = openBrace + 1;
+        while (p < targetSource.length && depth > 0) {
+          if (targetSource[p] === "{") depth++;
+          else if (targetSource[p] === "}") depth--;
+          p++;
+        }
+        let semiPos = targetSource.indexOf(";", p);
+        if (semiPos === -1) semiPos = p;
+        rest = targetSource.slice(afterPos, semiPos);
+        partHeaderRegex.lastIndex = semiPos + 1;
+      } else {
+        if (nextSemi === -1) break;
+        rest = targetSource.slice(afterPos, nextSemi);
+        partHeaderRegex.lastIndex = nextSemi + 1;
+      }
 
       // Extract multiplicity [1..*] or [3]
       const multMatch = rest.match(/\[([0-9.]+)\]/);
@@ -231,10 +248,10 @@ export class GenericModelicaBridge {
 
       // Extract body if { ... }
       const inlineAttributes: Record<string, string | number> = {};
-      const openBrace = rest.indexOf("{");
-      const closeBrace = rest.lastIndexOf("}");
-      if (openBrace !== -1 && closeBrace > openBrace) {
-        const body = rest.slice(openBrace + 1, closeBrace);
+      const inlineOpenBrace = rest.indexOf("{");
+      const inlineCloseBrace = rest.lastIndexOf("}");
+      if (inlineOpenBrace !== -1 && inlineCloseBrace > inlineOpenBrace) {
+        const body = rest.slice(inlineOpenBrace + 1, inlineCloseBrace);
         const bodyAttrRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]*?)\s*;/g;
         let baMatch: RegExpExecArray | null;
         while ((baMatch = bodyAttrRegex.exec(body)) !== null) {
