@@ -3,9 +3,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  assignChannelTracks,
+  computeBusBundle,
+  computeFilletedOrthogonalPath,
   computeOrthogonalRoute,
+  computePortStub,
   computeSmoothBezierPath,
   computeStemLines,
+  findInternalChannelRoute,
   segmentIntersectsRect,
   type PointLike,
   type RectLike,
@@ -179,5 +184,102 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
         `Segment ${i} intersected obstacle`,
       );
     }
+  });
+
+  it("should route through internal corridor channels between two blocks using A* channel router", () => {
+    // Two blocks with an internal channel corridor between y=80 and y=120
+    const obstacles: RectLike[] = [
+      { x: 60, y: 20, width: 50, height: 60 },
+      { x: 60, y: 120, width: 50, height: 60 },
+    ];
+    const source: PointLike = { x: 20, y: 100 };
+    const target: PointLike = { x: 180, y: 100 };
+
+    const route = findInternalChannelRoute(source, target, obstacles);
+    assert.ok(route, "Expected to find internal channel route");
+    assert.strictEqual(route[0].x, 20);
+    assert.strictEqual(route[route.length - 1].x, 180);
+
+    // Route should navigate cleanly through the corridor (around y=100) without colliding
+    for (let i = 0; i < route.length - 1; i++) {
+      for (const obs of obstacles) {
+        assert.strictEqual(
+          segmentIntersectsRect(route[i], route[i + 1], obs, 0),
+          false,
+          `Segment ${i} collided with obstacle`,
+        );
+      }
+    }
+  });
+
+  it("should compute perpendicular port departure stubs and stagger coplanar ports", () => {
+    const portA: PointLike = { x: 100, y: 50 };
+    const stub0 = computePortStub(portA, "right", 0, 14);
+    const stub1 = computePortStub(portA, "right", 1, 14);
+    const stub2 = computePortStub(portA, "right", 2, 14);
+
+    assert.strictEqual(stub0.side, "right");
+    assert.strictEqual(stub0.stubPoint.x, 114); // 100 + 14
+    assert.strictEqual(stub1.stubPoint.x, 120); // 100 + 14 + 6
+    assert.strictEqual(stub2.stubPoint.x, 126); // 100 + 14 + 12
+
+    const stubLeft = computePortStub(portA, "left", 0, 15);
+    assert.strictEqual(stubLeft.stubPoint.x, 85); // 100 - 15
+
+    const stubTop = computePortStub(portA, "top", 0, 15);
+    assert.strictEqual(stubTop.stubPoint.y, 35); // 50 - 15
+  });
+
+  it("should assign non-overlapping channel tracks via Left-Edge algorithm", () => {
+    const segments = [
+      { id: "s1", start: 10, end: 100 },
+      { id: "s2", start: 50, end: 150 }, // Overlaps with s1 -> track 1
+      { id: "s3", start: 110, end: 200 }, // Disjoint from s1 -> can reuse track 0
+    ];
+
+    const assignments = assignChannelTracks(segments, 10, 4);
+    assert.strictEqual(assignments.length, 3);
+
+    const a1 = assignments.find((a) => a.item.id === "s1");
+    const a2 = assignments.find((a) => a.item.id === "s2");
+    const a3 = assignments.find((a) => a.item.id === "s3");
+
+    assert.ok(a1 && a2 && a3);
+    assert.strictEqual(a1.track, 0);
+    assert.strictEqual(a2.track, 1);
+    assert.strictEqual(a3.track, 0); // Reused track 0 because 110 >= 100 + 4
+    assert.strictEqual(a1.totalTracks, 2);
+  });
+
+  it("should aggregate parallel signals into a bus bundle with trunk and breakout stems", () => {
+    const connections = [
+      { edgeId: "e1", source: { x: 50, y: 100 }, target: { x: 200, y: 100 } },
+      { edgeId: "e2", source: { x: 50, y: 120 }, target: { x: 200, y: 120 } },
+      { edgeId: "e3", source: { x: 50, y: 140 }, target: { x: 200, y: 140 } },
+    ];
+
+    const bundle = computeBusBundle("nodeA", "nodeB", connections, { channelAxis: "x", trunkCoord: 120 });
+    assert.strictEqual(bundle.edgeIds.length, 3);
+    assert.strictEqual(bundle.trunk[0].y, 120);
+    assert.strictEqual(bundle.trunk[1].y, 120);
+    assert.strictEqual(bundle.stems.length, 3);
+
+    const stem1 = bundle.stems.find((s) => s.edgeId === "e1");
+    assert.ok(stem1);
+    assert.strictEqual(stem1.sourceStem[0].y, 100);
+    assert.strictEqual(stem1.sourceStem[1].y, 120); // Connects to trunk
+  });
+
+  it("should compute smooth rounded corner fillets on orthogonal routes", () => {
+    const waypoints: PointLike[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ];
+
+    const filletedPath = computeFilletedOrthogonalPath(waypoints, 10);
+    assert.ok(filletedPath.startsWith("M 0 0"));
+    assert.ok(filletedPath.includes("Q 100 0"), "Should contain quadratic Bezier fillet at corner");
+    assert.ok(filletedPath.endsWith("L 100 100"));
   });
 });

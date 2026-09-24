@@ -4,7 +4,9 @@ import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import { generateRomWasmSource } from "@modelscript/exchange/fmu";
 import {
   EqKind,
+  formatConstraint,
   performBltTransformationArena,
+  RegionDecomposer,
   SosBarrierSynthesizer,
   TraceRecordNormalizer,
   Variability,
@@ -17,6 +19,15 @@ import {
   type ArenaDoEInputRange,
 } from "@modelscript/simulate";
 import { ModelicaCalibrator, ModelicaOptimizer } from "@modelscript/simulate/optimizer";
+import {
+  BoundaryTestSynthesizer,
+  ContractAlgebra,
+  DecisionTableVerifier,
+  EventTraceExplorer,
+  LoopInvariantAnalyzer,
+  type AssumeGuaranteeContract,
+  type WhileLoopInfo,
+} from "@modelscript/sysml2";
 import { ClosedLoopCompilerEngine, runSelfHealingPipeline } from "../agent/index.js";
 import { LspContext } from "../LspContext.js";
 import { getRequirements } from "../requirements.js";
@@ -1740,6 +1751,227 @@ export function registerAnalysisEndpoints(context: LspContext) {
           parser,
         });
         return { success: true, result };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/exploreEventTraces",
+    async (params: { uri: string; scope?: number; maxTraces?: number; activityName?: string }) => {
+      try {
+        const qe =
+          context.workspaceManager.getQueryEngine("sysml2") ?? context.workspaceManager.globalSysML2QueryEngine;
+        if (!qe) {
+          return { success: false, error: "No SysML v2 query engine available." };
+        }
+        const doc = context.documents.get(params.uri);
+        if (doc) await context.validationService.validateTextDocument(doc);
+
+        const db = qe.toQueryDB();
+        const res = EventTraceExplorer.exploreTraces(db, {
+          scope: params.scope ?? 2,
+          maxTraces: params.maxTraces ?? 100,
+          activityName: params.activityName,
+        });
+
+        return {
+          success: true,
+          traces: res.traces,
+          hasDeadlocks: res.hasDeadlocks,
+          deadlockTraces: res.deadlockTraces,
+          assertionViolations: res.violations,
+          summary: res.summary,
+        };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/checkSymbolicContracts",
+    async (params: {
+      uri?: string;
+      systemContract?: AssumeGuaranteeContract;
+      componentContracts?: AssumeGuaranteeContract[];
+      pair?: {
+        guaranteeContract: AssumeGuaranteeContract;
+        assumptionContract: AssumeGuaranteeContract;
+      };
+    }) => {
+      try {
+        if (params.systemContract && params.componentContracts) {
+          const compResult = ContractAlgebra.verifySystemComposition(params.systemContract, params.componentContracts);
+          return {
+            success: true,
+            isCompatible: compResult.isCompatible,
+            isRefined: compResult.isRefined,
+            compatibilityViolations: compResult.compatibilityViolations,
+            refinementViolations: compResult.refinementViolations,
+            summary: compResult.summary,
+          };
+        } else if (params.pair) {
+          const pairResult = ContractAlgebra.verifyAssumeGuaranteePair(
+            params.pair.guaranteeContract,
+            params.pair.assumptionContract,
+          );
+          return {
+            success: true,
+            isRefined: pairResult.isRefined,
+            assumptionViolations: pairResult.assumptionViolations,
+            guaranteeViolations: pairResult.guaranteeViolations,
+            summary: pairResult.summary,
+          };
+        } else {
+          return {
+            success: false,
+            error: "Must provide either systemContract + componentContracts or a contract pair.",
+          };
+        }
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/proveInductiveInvariant",
+    async (params: {
+      uri?: string;
+      loop: WhileLoopInfo;
+      initialBounds?: Record<string, { lower: number; upper: number }>;
+    }) => {
+      try {
+        const boundsMap = params.initialBounds ? new Map(Object.entries(params.initialBounds)) : undefined;
+
+        const proof = LoopInvariantAnalyzer.proveInductiveInvariant(params.loop, boundsMap);
+        return {
+          success: true,
+          status: proof.status,
+          isInductive: proof.isInductive,
+          initiationHolds: proof.initiationHolds,
+          consecutionHolds: proof.consecutionHolds,
+          strengtheningLemmas: proof.strengtheningLemmas?.map(formatConstraint),
+          counterexample: proof.counterexample,
+          summary: proof.summary,
+        };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/verifyDecisionLogic",
+    async (params: {
+      uri?: string;
+      sourceText?: string;
+      branches?: { id: string; guardText: string; targetName?: string }[];
+      domainBounds?: Record<string, [number, number]>;
+    }) => {
+      try {
+        const boundsMap = params.domainBounds ? new Map(Object.entries(params.domainBounds)) : undefined;
+
+        if (params.branches && params.branches.length > 0) {
+          const res = DecisionTableVerifier.verifyDecisionTable(params.branches, {
+            domainBounds: boundsMap,
+          });
+          return { success: true, result: res };
+        } else if (params.sourceText) {
+          const resultsMap = DecisionTableVerifier.verifyAllDecisionsFromText(params.sourceText, {
+            domainBounds: boundsMap,
+          });
+          const serialized: Record<string, any> = {};
+          for (const [k, v] of resultsMap.entries()) {
+            serialized[k] = v;
+          }
+          return { success: true, decisions: serialized };
+        } else {
+          return { success: false, error: "Must provide either branches array or sourceText." };
+        }
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/decomposeRegions",
+    async (params: {
+      conditions?: any[];
+      branches?: { id: string; constraints: any[]; terminalValue?: any }[];
+      domainBounds?: Record<string, [number, number]>;
+      maxDepth?: number;
+      maxRegions?: number;
+    }) => {
+      try {
+        const boundsMap = params.domainBounds ? new Map(Object.entries(params.domainBounds)) : undefined;
+
+        if (params.branches && params.branches.length > 0) {
+          const res = RegionDecomposer.decomposeBranches(params.branches, {
+            domainBounds: boundsMap,
+            maxDepth: params.maxDepth,
+            maxRegions: params.maxRegions,
+          });
+          return { success: true, result: res };
+        } else if (params.conditions && params.conditions.length > 0) {
+          const res = RegionDecomposer.decompose(params.conditions, {
+            domainBounds: boundsMap,
+            maxDepth: params.maxDepth,
+            maxRegions: params.maxRegions,
+          });
+          return { success: true, result: res };
+        } else {
+          return { success: false, error: "Must provide either branches or conditions." };
+        }
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/generateBoundaryTests",
+    async (params: {
+      decomposition?: any;
+      branches?: { id: string; constraints: any[]; terminalValue?: any }[];
+      domainBounds?: Record<string, [number, number]>;
+      suiteName?: string;
+      format?: "json" | "ctrf" | "junit" | "modelica";
+      modelName?: string;
+    }) => {
+      try {
+        let decomp = params.decomposition;
+        if (!decomp && params.branches) {
+          const boundsMap = params.domainBounds ? new Map(Object.entries(params.domainBounds)) : undefined;
+          decomp = RegionDecomposer.decomposeBranches(params.branches, {
+            domainBounds: boundsMap,
+          });
+        }
+        if (!decomp) {
+          return { success: false, error: "Must provide either decomposition or branches." };
+        }
+
+        const suite = BoundaryTestSynthesizer.synthesizeTestSuite(decomp, {
+          suiteName: params.suiteName,
+        });
+
+        let formattedOutput: string | undefined;
+        if (params.format === "ctrf") {
+          formattedOutput = BoundaryTestSynthesizer.exportToCtrfJson(suite);
+        } else if (params.format === "junit") {
+          formattedOutput = BoundaryTestSynthesizer.exportToJUnitXml(suite);
+        } else if (params.format === "modelica") {
+          formattedOutput = BoundaryTestSynthesizer.exportToModelicaMos(suite, params.modelName ?? "Model");
+        }
+
+        return {
+          success: true,
+          suite,
+          formattedOutput,
+        };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : String(e) };
       }

@@ -56,6 +56,146 @@ export function segmentIntersectsRect(p1: PointLike, p2: PointLike, rect: RectLi
   return true;
 }
 
+interface GridNode {
+  x: number;
+  y: number;
+  dir: "h" | "v" | "none";
+  cost: number;
+  bends: number;
+  parent?: GridNode;
+}
+
+/**
+ * Discovers and traverses internal corridor channels between obstacles using A* pathfinding.
+ * Prefers minimal-bend highway corridors through inter-block gaps over outer bounding box detours.
+ */
+export function findInternalChannelRoute(
+  source: PointLike,
+  target: PointLike,
+  obstacles: RectLike[],
+  padding = 10,
+  bendPenalty = 35,
+): PointLike[] | null {
+  if (obstacles.length === 0) return null;
+
+  const xs = new Set<number>([source.x, target.x]);
+  const ys = new Set<number>([source.y, target.y]);
+
+  for (const obs of obstacles) {
+    xs.add(obs.x - padding);
+    xs.add(obs.x + obs.width + padding);
+    ys.add(obs.y - padding);
+    ys.add(obs.y + obs.height + padding);
+  }
+
+  // Add midpoints between obstacles if they form a corridor
+  const sortedObsByX = [...obstacles].sort((a, b) => a.x - b.x);
+  for (let i = 0; i < sortedObsByX.length - 1; i++) {
+    const o1 = sortedObsByX[i];
+    const o2 = sortedObsByX[i + 1];
+    const gap = o2.x - (o1.x + o1.width);
+    if (gap > padding * 2) {
+      xs.add(Math.round((o1.x + o1.width + o2.x) / 2));
+    }
+  }
+
+  const sortedObsByY = [...obstacles].sort((a, b) => a.y - b.y);
+  for (let i = 0; i < sortedObsByY.length - 1; i++) {
+    const o1 = sortedObsByY[i];
+    const o2 = sortedObsByY[i + 1];
+    const gap = o2.y - (o1.y + o1.height);
+    if (gap > padding * 2) {
+      ys.add(Math.round((o1.y + o1.height + o2.y) / 2));
+    }
+  }
+
+  const sortedX = Array.from(xs).sort((a, b) => a - b);
+  const sortedY = Array.from(ys).sort((a, b) => a - b);
+
+  const open: GridNode[] = [{ x: source.x, y: source.y, dir: "none", cost: 0, bends: 0 }];
+  const closed = new Set<string>();
+
+  const isSegmentValid = (p1: PointLike, p2: PointLike): boolean => {
+    return !obstacles.some((r) => segmentIntersectsRect(p1, p2, r, padding - 2));
+  };
+
+  while (open.length > 0) {
+    open.sort((a, b) => {
+      const hA = Math.abs(target.x - a.x) + Math.abs(target.y - a.y) + a.bends * bendPenalty;
+      const hB = Math.abs(target.x - b.x) + Math.abs(target.y - b.y) + b.bends * bendPenalty;
+      return a.cost + hA - (b.cost + hB);
+    });
+
+    const curr = open.shift()!;
+    if (curr.x === target.x && curr.y === target.y) {
+      const path: PointLike[] = [];
+      let c: GridNode | undefined = curr;
+      while (c) {
+        path.push({ x: c.x, y: c.y });
+        c = c.parent;
+      }
+      path.reverse();
+
+      // Simplify collinear points
+      const simplified: PointLike[] = [path[0]];
+      for (let i = 1; i < path.length - 1; i++) {
+        const prev = simplified[simplified.length - 1];
+        const next = path[i + 1];
+        const p = path[i];
+        const isCollinearH = Math.abs(prev.y - p.y) < 0.001 && Math.abs(p.y - next.y) < 0.001;
+        const isCollinearV = Math.abs(prev.x - p.x) < 0.001 && Math.abs(p.x - next.x) < 0.001;
+        if (!isCollinearH && !isCollinearV) {
+          simplified.push(p);
+        }
+      }
+      if (path.length > 1) {
+        simplified.push(path[path.length - 1]);
+      }
+      return simplified;
+    }
+
+    const stateKey = `${curr.x},${curr.y},${curr.dir}`;
+    if (closed.has(stateKey)) continue;
+    closed.add(stateKey);
+
+    // Expand horizontal moves
+    for (const nx of sortedX) {
+      if (nx === curr.x) continue;
+      const nextP: PointLike = { x: nx, y: curr.y };
+      if (!isSegmentValid(curr, nextP)) continue;
+      const dist = Math.abs(nx - curr.x);
+      const isBend = curr.dir === "v";
+      open.push({
+        x: nx,
+        y: curr.y,
+        dir: "h",
+        cost: curr.cost + dist,
+        bends: curr.bends + (isBend ? 1 : 0),
+        parent: curr,
+      });
+    }
+
+    // Expand vertical moves
+    for (const ny of sortedY) {
+      if (ny === curr.y) continue;
+      const nextP: PointLike = { x: curr.x, y: ny };
+      if (!isSegmentValid(curr, nextP)) continue;
+      const dist = Math.abs(ny - curr.y);
+      const isBend = curr.dir === "h";
+      open.push({
+        x: curr.x,
+        y: ny,
+        dir: "v",
+        cost: curr.cost + dist,
+        bends: curr.bends + (isBend ? 1 : 0),
+        parent: curr,
+      });
+    }
+  }
+
+  return null;
+}
+
 /**
  * Computes an obstacle-free orthogonal route between source and target points,
  * supporting 4-way obstacle detours and parallel bus connection staggering.
@@ -115,6 +255,13 @@ export function computeOrthogonalRoute(
 
   if (!collidesB) {
     return routeB;
+  }
+
+  // Option 2.5: Internal Channel Corridor Routing via A*
+  // Attempt to find a path weaving through inter-block corridors before outer perimeter detours
+  const internalRoute = findInternalChannelRoute(source, target, obstacles, padding, 35);
+  if (internalRoute && internalRoute.length >= 2) {
+    return internalRoute.slice(1, -1);
   }
 
   // Option 3: 4-Way Detour evaluation around colliding obstacles
@@ -480,5 +627,255 @@ export function computeSmoothBezierPath(points: PointLike[]): string {
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
 
+  return d;
+}
+
+export type PortSide = "top" | "bottom" | "left" | "right";
+
+export interface PortStubInfo {
+  stubPoint: PointLike;
+  stubLine: [PointLike, PointLike];
+  side: PortSide;
+}
+
+/**
+ * Computes a mandatory perpendicular departure stub vector from a node face,
+ * staggering stub lengths across coplanar ports to prevent immediate collinear wire overlap.
+ */
+export function computePortStub(
+  portPoint: PointLike,
+  side: PortSide = "right",
+  portIndex = 0,
+  baseLength = 14,
+): PortStubInfo {
+  const stagger = (portIndex % 3) * 6;
+  const length = baseLength + stagger;
+
+  let endX = portPoint.x;
+  let endY = portPoint.y;
+
+  switch (side) {
+    case "left":
+      endX = portPoint.x - length;
+      break;
+    case "right":
+      endX = portPoint.x + length;
+      break;
+    case "top":
+      endY = portPoint.y - length;
+      break;
+    case "bottom":
+      endY = portPoint.y + length;
+      break;
+  }
+
+  const stubPoint: PointLike = { x: endX, y: endY };
+  return {
+    stubPoint,
+    stubLine: [portPoint, stubPoint],
+    side,
+  };
+}
+
+export interface ChannelTrackAssignment<T> {
+  item: T;
+  track: number;
+  offset: number;
+  totalTracks: number;
+}
+
+/**
+ * Assigns non-overlapping parallel tracks using Left-Edge Channel Routing (track assignment).
+ * Given a collection of segments along an axis with [start, end] intervals,
+ * allocates tracks so concurrent segments don't overlap, centering tracks along the channel corridor.
+ */
+export function assignChannelTracks<T extends { start: number; end: number }>(
+  intervals: T[],
+  channelSpacing = 10,
+  minGap = 4,
+): ChannelTrackAssignment<T>[] {
+  if (intervals.length === 0) return [];
+
+  const normalized = intervals.map((it) => ({
+    item: it,
+    start: Math.min(it.start, it.end),
+    end: Math.max(it.start, it.end),
+  }));
+
+  // Sort by start coordinate ascending
+  normalized.sort((a, b) => a.start - b.start);
+
+  const tracks: { end: number }[] = [];
+  const assignments: { item: T; track: number }[] = [];
+
+  for (const seg of normalized) {
+    let placed = false;
+    for (let t = 0; t < tracks.length; t++) {
+      if (tracks[t].end + minGap <= seg.start) {
+        tracks[t].end = seg.end;
+        assignments.push({ item: seg.item, track: t });
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      tracks.push({ end: seg.end });
+      assignments.push({ item: seg.item, track: tracks.length - 1 });
+    }
+  }
+
+  const totalTracks = Math.max(1, tracks.length);
+  return assignments.map((a) => {
+    const offset = (a.track - (totalTracks - 1) / 2) * channelSpacing;
+    return {
+      item: a.item,
+      track: a.track,
+      offset,
+      totalTracks,
+    };
+  });
+}
+
+export interface BusBundle {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  edgeIds: string[];
+  trunk: [PointLike, PointLike];
+  stems: { edgeId: string; sourceStem: [PointLike, PointLike]; targetStem: [PointLike, PointLike] }[];
+}
+
+/**
+ * Aggregates multiple parallel connections between two nodes into a condensed bus trunk line
+ * with breakout stems at source and target ports.
+ */
+export function computeBusBundle(
+  sourceNodeId: string,
+  targetNodeId: string,
+  connections: { edgeId: string; source: PointLike; target: PointLike }[],
+  options: { channelAxis?: "x" | "y"; trunkCoord?: number } = {},
+): BusBundle {
+  const edgeIds = connections.map((c) => c.edgeId);
+  if (connections.length === 0) {
+    return {
+      id: `bus_${sourceNodeId}_${targetNodeId}`,
+      sourceNodeId,
+      targetNodeId,
+      edgeIds: [],
+      trunk: [
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+      ],
+      stems: [],
+    };
+  }
+
+  const avgSourceX = connections.reduce((s, c) => s + c.source.x, 0) / connections.length;
+  const avgTargetX = connections.reduce((s, c) => s + c.target.x, 0) / connections.length;
+  const avgSourceY = connections.reduce((s, c) => s + c.source.y, 0) / connections.length;
+  const avgTargetY = connections.reduce((s, c) => s + c.target.y, 0) / connections.length;
+
+  const dx = Math.abs(avgTargetX - avgSourceX);
+  const dy = Math.abs(avgTargetY - avgSourceY);
+
+  const axis = options.channelAxis ?? (dx >= dy ? "x" : "y");
+  const stems: BusBundle["stems"] = [];
+
+  if (axis === "x") {
+    const trunkY = options.trunkCoord ?? Math.round((avgSourceY + avgTargetY) / 2);
+    const minX = Math.min(...connections.flatMap((c) => [c.source.x, c.target.x]));
+    const maxX = Math.max(...connections.flatMap((c) => [c.source.x, c.target.x]));
+
+    for (const c of connections) {
+      stems.push({
+        edgeId: c.edgeId,
+        sourceStem: [c.source, { x: c.source.x, y: trunkY }],
+        targetStem: [{ x: c.target.x, y: trunkY }, c.target],
+      });
+    }
+
+    return {
+      id: `bus_${sourceNodeId}_${targetNodeId}`,
+      sourceNodeId,
+      targetNodeId,
+      edgeIds,
+      trunk: [
+        { x: minX, y: trunkY },
+        { x: maxX, y: trunkY },
+      ],
+      stems,
+    };
+  } else {
+    const trunkX = options.trunkCoord ?? Math.round((avgSourceX + avgTargetX) / 2);
+    const minY = Math.min(...connections.flatMap((c) => [c.source.y, c.target.y]));
+    const maxY = Math.max(...connections.flatMap((c) => [c.source.y, c.target.y]));
+
+    for (const c of connections) {
+      stems.push({
+        edgeId: c.edgeId,
+        sourceStem: [c.source, { x: trunkX, y: c.source.y }],
+        targetStem: [{ x: trunkX, y: c.target.y }, c.target],
+      });
+    }
+
+    return {
+      id: `bus_${sourceNodeId}_${targetNodeId}`,
+      sourceNodeId,
+      targetNodeId,
+      edgeIds,
+      trunk: [
+        { x: trunkX, y: minY },
+        { x: trunkX, y: maxY },
+      ],
+      stems,
+    };
+  }
+}
+
+/**
+ * Computes an SVG path string for an orthogonal route with rounded corners (filleted arcs)
+ * replacing sharp 90-degree corners with smooth CAD bends.
+ */
+export function computeFilletedOrthogonalPath(points: PointLike[], radius = 5): string {
+  if (points.length < 2) {
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+    return "";
+  }
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+
+    const len1 = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const len2 = Math.hypot(next.x - curr.x, next.y - curr.y);
+    const r = Math.min(radius, len1 / 2, len2 / 2);
+
+    if (r <= 0.5) {
+      d += ` L ${curr.x} ${curr.y}`;
+      continue;
+    }
+
+    const dx1 = (curr.x - prev.x) / len1;
+    const dy1 = (curr.y - prev.y) / len1;
+    const dx2 = (next.x - curr.x) / len2;
+    const dy2 = (next.y - curr.y) / len2;
+
+    const startX = curr.x - dx1 * r;
+    const startY = curr.y - dy1 * r;
+    const endX = curr.x + dx2 * r;
+    const endY = curr.y + dy2 * r;
+
+    d += ` L ${Number(startX.toFixed(1))} ${Number(startY.toFixed(1))}`;
+    d += ` Q ${Number(curr.x.toFixed(1))} ${Number(curr.y.toFixed(1))}, ${Number(endX.toFixed(1))} ${Number(endY.toFixed(1))}`;
+  }
+
+  const last = points[points.length - 1];
+  d += ` L ${last.x} ${last.y}`;
   return d;
 }

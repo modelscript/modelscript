@@ -8,10 +8,14 @@ import type { LanguageClient } from "vscode-languageclient/browser";
  * Provides:
  *   - Live KPI health metrics & coverage analytics
  *   - Interactive 2D matrix grid with bi-directional click-to-link code synthesis
+ *   - 6 Standard matrix presets (Allocations, Satisfaction, Verification, N² Interfaces, Derivation, Risk Mitigation)
+ *   - Dense Mode toggle with compact glyphs for high-density scanning
+ *   - Collapsible hierarchical package group headers
+ *   - Multi-cell marquee / shift-selection with floating batch linking actions
  *   - Suspect link tracking & one-click re-verification
  *   - Multi-tier domain switching & axis transposition
  *   - Digital thread hierarchy chain view
- *   - CSV compliance export
+ *   - CSV & TSV compliance export
  */
 export class RequirementsEditorProvider implements vscode.CustomTextEditorProvider {
   static readonly viewType = "modelscript.requirementsEditor";
@@ -26,13 +30,14 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
     let currentRowDomain = "sysml_logical";
-    let currentColDomain = "requirement";
+    let currentColDomain = "physical_component";
+    let currentPresetId = "allocations";
 
     // Fetch and send data on first open
     const sendData = async () => {
       try {
         const uri = document.uri.toString();
-        const [requirements, matrix, rtmMatrix] = await Promise.all([
+        const [requirements, matrix, rtmMatrix, presets] = await Promise.all([
           this.client.sendRequest<unknown>("modelscript/getRequirements", { uri }),
           this.client.sendRequest<unknown>("modelscript/getTraceabilityMatrix", { uri }),
           this.client.sendRequest<unknown>("modelscript/getRtmMatrix", {
@@ -40,14 +45,17 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
             rowDomain: currentRowDomain,
             colDomain: currentColDomain,
           }),
+          this.client.sendRequest<unknown>("modelscript/getMatrixPresets", {}).catch(() => []),
         ]);
         webviewPanel.webview.postMessage({
           type: "setData",
           requirements,
           matrix,
           rtmMatrix,
+          presets,
           rowDomain: currentRowDomain,
           colDomain: currentColDomain,
+          presetId: currentPresetId,
         });
       } catch (e) {
         webviewPanel.webview.postMessage({
@@ -95,7 +103,16 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
           sendData();
           break;
 
+        case "applyPreset": {
+          currentPresetId = msg.presetId ?? currentPresetId;
+          currentRowDomain = msg.rowDomain ?? currentRowDomain;
+          currentColDomain = msg.colDomain ?? currentColDomain;
+          sendData();
+          break;
+        }
+
         case "changeDomains": {
+          currentPresetId = "custom";
           currentRowDomain = msg.rowDomain ?? currentRowDomain;
           currentColDomain = msg.colDomain ?? currentColDomain;
           sendData();
@@ -124,6 +141,28 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
             }
           } catch (e) {
             vscode.window.showErrorMessage(`Error creating trace link: ${e}`);
+          }
+          break;
+        }
+
+        case "batchUpdateTraceLinks": {
+          const { additions, deletions } = msg;
+          try {
+            const res = await this.client.sendRequest<{ success: boolean; appliedCount: number; errors?: string[] }>(
+              "modelscript/batchUpdateTraceLinks",
+              { additions, deletions },
+            );
+            if (res.success) {
+              vscode.window.showInformationMessage(
+                `Batch updated ${res.appliedCount} trace link(s)` +
+                  (res.errors && res.errors.length > 0 ? ` (${res.errors.length} failed)` : ""),
+              );
+              sendData();
+            } else {
+              vscode.window.showErrorMessage(`Batch update failed: ${res.errors?.join(", ") ?? "Unknown error"}`);
+            }
+          } catch (e) {
+            vscode.window.showErrorMessage(`Error batch updating trace links: ${e}`);
           }
           break;
         }
@@ -234,6 +273,9 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       --satisfy-bg: rgba(78, 201, 176, 0.18);
       --verify-bg: rgba(0, 122, 204, 0.22);
       --allocate-bg: rgba(186, 104, 200, 0.2);
+      --connect-bg: rgba(79, 193, 255, 0.18);
+      --derive-bg: rgba(220, 180, 50, 0.2);
+      --mitigate-bg: rgba(100, 200, 100, 0.2);
     }
 
     * { box-sizing: border-box; }
@@ -286,6 +328,9 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       background: transparent; border: 1px solid var(--border); color: var(--fg);
     }
     button.secondary:hover { background: var(--row-hover); }
+    button.secondary.active {
+      background: rgba(0, 122, 204, 0.25); border-color: var(--accent); color: #fff;
+    }
 
     /* Tabs */
     .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--header-bg); }
@@ -320,16 +365,39 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       padding: 6px 8px; position: relative;
     }
     .matrix-table th.corner {
-      position: sticky; top: 0; left: 0; z-index: 3; background: var(--header-bg);
+      position: sticky; top: 0; left: 0; z-index: 4; background: var(--header-bg);
+      text-align: left;
     }
     .matrix-table th.col-header {
-      position: sticky; top: 0; z-index: 2; background: var(--header-bg);
+      position: sticky; top: 0; z-index: 3; background: var(--header-bg);
       writing-mode: horizontal-tb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .matrix-table th.row-header {
-      position: sticky; left: 0; z-index: 1; background: var(--header-bg);
+      position: sticky; left: 0; z-index: 2; background: var(--header-bg);
       text-align: left; white-space: nowrap;
     }
+
+    /* Hierarchical Package Group Headers */
+    .group-header-row th {
+      position: sticky; left: 0; z-index: 2;
+      background: rgba(255,255,255,0.06); text-align: left;
+      padding: 6px 12px; font-size: 11px; font-weight: 700;
+      color: #9cdcfe; cursor: pointer; letter-spacing: 0.5px;
+      border-top: 2px solid var(--border);
+    }
+    .group-header-row:hover th { background: rgba(255,255,255,0.09); }
+    .chevron { display: inline-block; width: 14px; transition: transform 0.15s; }
+
+    /* Dense Mode */
+    .matrix-table.dense th, .matrix-table.dense td {
+      min-width: 38px; max-width: 50px; padding: 2px; height: 24px; font-size: 11px;
+    }
+    .matrix-table.dense .cell-btn {
+      height: 20px; font-size: 11px; padding: 0;
+    }
+    .matrix-table.dense .cell-label-full { display: none; }
+    .matrix-table.dense .cell-glyph { display: inline !important; font-weight: bold; }
+    .cell-glyph { display: none; }
 
     /* Matrix Cell Badges */
     .cell-btn {
@@ -341,7 +409,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     .cell-empty:hover {
       border-color: var(--accent); background: rgba(0,122,204,0.1);
     }
-    .cell-empty:hover::after { content: "+ Link"; color: var(--accent); font-size: 10px; }
+    .cell-empty:hover::after { content: "+"; color: var(--accent); font-size: 12px; }
 
     .cell-satisfy {
       background: var(--satisfy-bg); color: var(--badge-pass); border: 1px solid rgba(78, 201, 176, 0.4);
@@ -352,6 +420,15 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     .cell-allocate {
       background: var(--allocate-bg); color: #ce9178; border: 1px solid rgba(206, 145, 120, 0.4);
     }
+    .cell-connect {
+      background: var(--connect-bg); color: #4fc1ff; border: 1px solid rgba(79, 193, 255, 0.4);
+    }
+    .cell-derive {
+      background: var(--derive-bg); color: #dcdcaa; border: 1px solid rgba(220, 220, 170, 0.4);
+    }
+    .cell-mitigate {
+      background: var(--mitigate-bg); color: #b5cea8; border: 1px solid rgba(181, 206, 168, 0.4);
+    }
     .cell-suspect {
       background: rgba(255, 152, 0, 0.2); border: 1px solid var(--badge-suspect) !important;
       color: var(--badge-suspect); animation: pulse 2s infinite;
@@ -359,6 +436,13 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     .cell-failed {
       background: rgba(241, 76, 76, 0.2); border: 1px solid var(--badge-fail) !important;
       color: var(--badge-fail);
+    }
+
+    /* Selected cell for batch operations */
+    .cell-selected {
+      outline: 2px solid var(--accent) !important;
+      outline-offset: -2px;
+      background: rgba(0, 122, 204, 0.28) !important;
     }
 
     @keyframes pulse {
@@ -380,7 +464,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     .popover {
       position: fixed; z-index: 1000; background: var(--header-bg);
       border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      padding: 8px; min-width: 200px; display: none; flex-direction: column; gap: 4px;
+      padding: 8px; min-width: 220px; display: none; flex-direction: column; gap: 4px;
     }
     .popover-header {
       font-size: 11px; opacity: 0.7; padding: 4px 8px; border-bottom: 1px solid var(--border);
@@ -393,6 +477,23 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     .popover-item:hover { background: var(--row-hover); }
     .popover-item.danger { color: var(--badge-fail); }
     .popover-item.danger:hover { background: rgba(241,76,76,0.15); }
+
+    /* Floating Batch Action Bar */
+    .batch-bar {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: var(--header-bg); border: 1px solid var(--accent);
+      border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      padding: 8px 16px; display: flex; align-items: center; gap: 14px;
+      z-index: 999; animation: slideUp 0.2s ease-out;
+    }
+    @keyframes slideUp {
+      from { transform: translate(-50%, 20px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+    .batch-count { font-weight: 600; font-size: 12px; color: #4fc1ff; }
+    .batch-buttons { display: flex; gap: 6px; align-items: center; }
+    .batch-btn { padding: 4px 10px; font-size: 11px; }
+    .batch-danger { background: var(--badge-fail); }
 
     /* Traceability Chain Tree View */
     .chain-tree { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 200px); overflow: auto; }
@@ -440,24 +541,45 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
   <!-- Main Toolbar -->
   <div class="toolbar">
     <h2>📋 Traceability Surface</h2>
-    <input type="text" id="search" placeholder="Filter elements…" style="width: 180px;" />
+    <input type="text" id="search" placeholder="Filter elements…" style="width: 160px;" />
     
+    <label style="font-size: 11px; opacity: 0.8;">Preset:</label>
+    <select id="presetSelect" style="min-width: 170px; font-weight: 600;">
+      <option value="allocations">Allocations (Logical ➔ Physical)</option>
+      <option value="satisfaction">Requirements Satisfaction</option>
+      <option value="verification">Verification Matrix</option>
+      <option value="n2_interfaces">N² Interface Matrix</option>
+      <option value="derivation">Requirement Derivation</option>
+      <option value="risk_mitigation">Risk Mitigation</option>
+      <option value="custom">Custom (Manual Domains)</option>
+    </select>
+
     <label style="font-size: 11px; opacity: 0.8;">Rows:</label>
     <select id="rowDomainSelect">
       <option value="sysml_logical">Logical Parts (SysML)</option>
+      <option value="physical_component">Physical Hardware</option>
       <option value="modelica_physics">Physics Models (Modelica)</option>
+      <option value="requirement">Requirements</option>
       <option value="verification_case">Verification Cases</option>
+      <option value="sysml_port">Ports & Interfaces</option>
+      <option value="sysml_activity">Actions & Activities</option>
     </select>
 
     <label style="font-size: 11px; opacity: 0.8;">Cols:</label>
     <select id="colDomainSelect">
+      <option value="physical_component">Physical Hardware</option>
       <option value="requirement">Requirements</option>
       <option value="verification_case">Verification Cases</option>
-      <option value="sysml_logical">Logical Parts</option>
+      <option value="sysml_logical">Logical Parts (SysML)</option>
+      <option value="modelica_physics">Physics Models (Modelica)</option>
+      <option value="sysml_port">Ports & Interfaces</option>
+      <option value="sysml_activity">Actions & Activities</option>
     </select>
 
+    <button id="denseToggleBtn" class="secondary" title="Toggle Compact / Dense View">🗜 Dense View</button>
     <button id="transposeBtn" class="secondary" title="Swap Rows and Columns">⤾ Transpose</button>
     <button id="exportCsvBtn" class="secondary" title="Export matrix as CSV">⬇ Export CSV</button>
+    <button id="copyTsvBtn" class="secondary" title="Copy matrix to clipboard as TSV">📋 Copy TSV</button>
     <button id="refreshBtn" title="Refresh index">⟳ Refresh</button>
   </div>
 
@@ -487,6 +609,19 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     <div id="reqGridContainer"></div>
   </div>
 
+  <!-- Floating Batch Action Bar -->
+  <div id="batchBar" class="batch-bar" style="display: none;">
+    <span id="batchCount" class="batch-count">0 cells selected</span>
+    <div class="batch-buttons">
+      <button id="batchAllocateBtn" class="batch-btn" title="Allocate selected logical to physical">🔗 Allocate</button>
+      <button id="batchSatisfyBtn" class="batch-btn" title="Satisfy selected requirements">✓ Satisfy</button>
+      <button id="batchVerifyBtn" class="batch-btn" title="Verify selected requirements">⚡ Verify</button>
+      <button id="batchConnectBtn" class="batch-btn" title="Connect selected interfaces">⇄ Connect</button>
+      <button id="batchDeleteBtn" class="batch-btn batch-danger" title="Remove existing links">✕ Remove</button>
+      <button id="batchCancelBtn" class="batch-btn secondary" title="Cancel selection">Cancel</button>
+    </div>
+  </div>
+
   <!-- Action Popover Menu -->
   <div id="actionPopover" class="popover"></div>
 
@@ -495,16 +630,34 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
 
     let allRequirements = [];
     let rtmMatrix = null;
+    let availablePresets = [];
     let activeFilter = '';
     let quickFilter = 'all'; // 'all' | 'suspect' | 'orphan' | 'failed'
+    let isDenseMode = false;
+    let collapsedGroups = new Set();
+    let selectedCells = new Map(); // key -> { row, col, rowUri, colUri, key, link }
+    let isMouseDown = false;
+
+    const PRESET_MAP = {
+      allocations: { row: 'sysml_logical', col: 'physical_component' },
+      satisfaction: { row: 'sysml_logical', col: 'requirement' },
+      verification: { row: 'verification_case', col: 'requirement' },
+      n2_interfaces: { row: 'sysml_port', col: 'sysml_port' },
+      derivation: { row: 'requirement', col: 'requirement' },
+      risk_mitigation: { row: 'sysml_activity', col: 'requirement' },
+    };
 
     // DOM Elements
     const matrixWrapper = document.getElementById('matrixWrapper');
     const chainTree = document.getElementById('chainTree');
     const reqGridContainer = document.getElementById('reqGridContainer');
+    const presetSelect = document.getElementById('presetSelect');
     const rowDomainSelect = document.getElementById('rowDomainSelect');
     const colDomainSelect = document.getElementById('colDomainSelect');
     const actionPopover = document.getElementById('actionPopover');
+    const denseToggleBtn = document.getElementById('denseToggleBtn');
+    const batchBar = document.getElementById('batchBar');
+    const batchCount = document.getElementById('batchCount');
 
     // Tab Switching
     document.querySelectorAll('.tab').forEach(tab => {
@@ -531,8 +684,26 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       renderCurrentViews();
     }
 
+    // Preset Selection
+    presetSelect.addEventListener('change', () => {
+      const pid = presetSelect.value;
+      if (pid === 'custom') return;
+      const def = PRESET_MAP[pid];
+      if (def) {
+        rowDomainSelect.value = def.row;
+        colDomainSelect.value = def.col;
+        vscode.postMessage({
+          type: 'applyPreset',
+          presetId: pid,
+          rowDomain: def.row,
+          colDomain: def.col,
+        });
+      }
+    });
+
     // Domain selectors & Transpose
     rowDomainSelect.addEventListener('change', () => {
+      presetSelect.value = 'custom';
       vscode.postMessage({
         type: 'changeDomains',
         rowDomain: rowDomainSelect.value,
@@ -541,6 +712,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     });
 
     colDomainSelect.addEventListener('change', () => {
+      presetSelect.value = 'custom';
       vscode.postMessage({
         type: 'changeDomains',
         rowDomain: rowDomainSelect.value,
@@ -553,7 +725,17 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       const c = colDomainSelect.value;
       rowDomainSelect.value = c;
       colDomainSelect.value = r;
+      presetSelect.value = 'custom';
       vscode.postMessage({ type: 'changeDomains', rowDomain: c, colDomain: r });
+    });
+
+    // Dense Mode Toggle
+    denseToggleBtn.addEventListener('click', () => {
+      isDenseMode = !isDenseMode;
+      denseToggleBtn.classList.toggle('active', isDenseMode);
+      denseToggleBtn.textContent = isDenseMode ? '⤢ Expanded View' : '🗜 Dense View';
+      const tbl = document.getElementById('matrixTable');
+      if (tbl) tbl.classList.toggle('dense', isDenseMode);
     });
 
     document.getElementById('refreshBtn').addEventListener('click', () => {
@@ -568,10 +750,33 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       });
     });
 
+    // Copy TSV to Clipboard
+    document.getElementById('copyTsvBtn').addEventListener('click', () => {
+      if (!rtmMatrix || !rtmMatrix.rows || !rtmMatrix.cols) return;
+      const { rows, cols, links } = rtmMatrix;
+      let tsv = 'Row \\ Col\t' + cols.map(c => c.name).join('\t') + '\n';
+      for (const r of rows) {
+        tsv += r.name + '\t';
+        tsv += cols.map(c => {
+          const l = links[r.name + '|' + c.name];
+          return l ? l.linkKind : '';
+        }).join('\t') + '\n';
+      }
+      navigator.clipboard.writeText(tsv).then(() => {
+        const orig = document.getElementById('copyTsvBtn').textContent;
+        document.getElementById('copyTsvBtn').textContent = '✓ Copied!';
+        setTimeout(() => { document.getElementById('copyTsvBtn').textContent = orig; }, 1500);
+      });
+    });
+
     document.getElementById('search').addEventListener('input', (e) => {
       activeFilter = e.target.value.toLowerCase();
       renderCurrentViews();
     });
+
+    // Mouse tracking for drag-selection
+    window.addEventListener('mousedown', () => { isMouseDown = true; });
+    window.addEventListener('mouseup', () => { isMouseDown = false; });
 
     // Close popover on outside click
     window.addEventListener('click', (e) => {
@@ -579,6 +784,87 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         actionPopover.style.display = 'none';
       }
     });
+
+    // Batch Bar Actions
+    document.getElementById('batchCancelBtn').addEventListener('click', () => {
+      clearSelection();
+    });
+
+    document.getElementById('batchAllocateBtn').addEventListener('click', () => {
+      applyBatchKind('allocate');
+    });
+
+    document.getElementById('batchSatisfyBtn').addEventListener('click', () => {
+      applyBatchKind('satisfy');
+    });
+
+    document.getElementById('batchVerifyBtn').addEventListener('click', () => {
+      applyBatchKind('verify');
+    });
+
+    document.getElementById('batchConnectBtn').addEventListener('click', () => {
+      applyBatchKind('connect');
+    });
+
+    document.getElementById('batchDeleteBtn').addEventListener('click', () => {
+      const deletions = [];
+      for (const item of selectedCells.values()) {
+        if (item.link) {
+          deletions.push({
+            declarationUri: item.link.declarationUri || item.rowUri,
+            sourceName: item.row,
+            targetName: item.col,
+            linkKind: item.link.linkKind,
+            declarationRange: item.link.declarationStartByte !== undefined
+              ? [item.link.declarationStartByte, item.link.declarationEndByte]
+              : undefined,
+          });
+        }
+      }
+      if (deletions.length > 0) {
+        vscode.postMessage({
+          type: 'batchUpdateTraceLinks',
+          deletions,
+        });
+      }
+      clearSelection();
+    });
+
+    function applyBatchKind(kind) {
+      const additions = [];
+      for (const item of selectedCells.values()) {
+        if (!item.link || item.link.linkKind !== kind) {
+          additions.push({
+            sourceUri: item.rowUri,
+            sourceName: item.row,
+            targetName: item.col,
+            linkKind: kind,
+          });
+        }
+      }
+      if (additions.length > 0) {
+        vscode.postMessage({
+          type: 'batchUpdateTraceLinks',
+          additions,
+        });
+      }
+      clearSelection();
+    }
+
+    function clearSelection() {
+      selectedCells.clear();
+      document.querySelectorAll('.cell-selected').forEach(c => c.classList.remove('cell-selected'));
+      batchBar.style.display = 'none';
+    }
+
+    function updateBatchBar() {
+      if (selectedCells.size > 0) {
+        batchCount.textContent = selectedCells.size + ' cell(s) selected';
+        batchBar.style.display = 'flex';
+      } else {
+        batchBar.style.display = 'none';
+      }
+    }
 
     // Render all views
     function renderCurrentViews() {
@@ -618,12 +904,25 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         cols = cols.filter(c => orphans.has(c.name));
       }
 
+      if (quickFilter === 'suspect') {
+        const suspectKeys = new Set(Object.values(links).filter(l => l.isSuspect).map(l => l.sourceName));
+        rows = rows.filter(r => suspectKeys.has(r.name));
+      }
+
       if (rows.length === 0 || cols.length === 0) {
         matrixWrapper.innerHTML = '<div class="empty-state">No matching rows or columns found.</div>';
         return;
       }
 
-      let html = '<table class="matrix-table"><thead><tr>';
+      // Group rows by packagePath or parentName
+      const rowGroups = new Map();
+      for (const r of rows) {
+        const group = r.packagePath || r.parentName || 'Global';
+        if (!rowGroups.has(group)) rowGroups.set(group, []);
+        rowGroups.get(group).push(r);
+      }
+
+      let html = '<table id="matrixTable" class="matrix-table' + (isDenseMode ? ' dense' : '') + '"><thead><tr>';
       html += '<th class="corner">' + esc(rowDomainSelect.options[rowDomainSelect.selectedIndex].text) + ' \\ ' +
               esc(colDomainSelect.options[colDomainSelect.selectedIndex].text) + '</th>';
 
@@ -632,57 +931,131 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       }
       html += '</tr></thead><tbody>';
 
-      for (const row of rows) {
-        html += '<tr>';
-        html += '<th class="row-header" title="' + esc(row.name) + '"><span class="link-src" data-uri="' +
-                esc(row.uri) + '" data-start="' + row.startByte + '" data-end="' + row.endByte + '">' +
-                esc(row.name) + '</span></th>';
+      for (const [groupName, groupRows] of rowGroups.entries()) {
+        const isCollapsed = collapsedGroups.has(groupName);
 
-        for (const col of cols) {
-          const key = row.name + '|' + col.name;
-          const link = links[key];
-
-          let cellClass = 'cell-empty';
-          let label = '';
-
-          if (link) {
-            if (link.isSuspect) {
-              cellClass = 'cell-suspect';
-              label = '⚠️ Suspect';
-            } else if (link.status === 'failed') {
-              cellClass = 'cell-failed';
-              label = '❌ Failed';
-            } else if (link.status === 'passed') {
-              cellClass = 'cell-verify';
-              label = '✓ Passed';
-            } else if (link.linkKind === 'satisfy') {
-              cellClass = 'cell-satisfy';
-              label = '✓ Satisfy';
-            } else if (link.linkKind === 'verify') {
-              cellClass = 'cell-verify';
-              label = '⚡ Verify';
-            } else {
-              cellClass = 'cell-allocate';
-              label = '🔗 ' + link.linkKind;
-            }
-          }
-
-          html += '<td><button class="cell-btn ' + cellClass + '" data-row="' + esc(row.name) +
-                  '" data-col="' + esc(col.name) + '" data-rowuri="' + esc(row.uri) +
-                  '" data-coluri="' + esc(col.uri) + '" data-key="' + esc(key) + '">' +
-                  esc(label) + '</button></td>';
+        // Render hierarchical group row if multiple groups exist
+        if (rowGroups.size > 1 || groupName !== 'Global') {
+          html += '<tr class="group-header-row"><th colspan="' + (cols.length + 1) + '" class="group-header" data-group="' + esc(groupName) + '">';
+          html += '<span class="chevron">' + (isCollapsed ? '►' : '▼') + '</span> 📦 ' + esc(groupName) + ' (' + groupRows.length + ')';
+          html += '</th></tr>';
         }
-        html += '</tr>';
+
+        if (isCollapsed) continue;
+
+        for (const row of groupRows) {
+          html += '<tr>';
+          html += '<th class="row-header" title="' + esc(row.name) + '"><span class="link-src" data-uri="' +
+                  esc(row.uri) + '" data-start="' + row.startByte + '" data-end="' + row.endByte + '">' +
+                  esc(row.name) + '</span></th>';
+
+          for (const col of cols) {
+            const key = row.name + '|' + col.name;
+            const link = links[key];
+
+            let cellClass = 'cell-empty';
+            let label = '';
+            let glyph = '';
+
+            if (link) {
+              if (link.isSuspect) {
+                cellClass = 'cell-suspect';
+                label = '⚠️ Suspect';
+                glyph = '⚠️';
+              } else if (link.status === 'failed') {
+                cellClass = 'cell-failed';
+                label = '❌ Failed';
+                glyph = '❌';
+              } else if (link.status === 'passed') {
+                cellClass = 'cell-verify';
+                label = '✓ Passed';
+                glyph = '✓';
+              } else if (link.linkKind === 'satisfy') {
+                cellClass = 'cell-satisfy';
+                label = '✓ Satisfy';
+                glyph = '✓';
+              } else if (link.linkKind === 'verify') {
+                cellClass = 'cell-verify';
+                label = '⚡ Verify';
+                glyph = '⚡';
+              } else if (link.linkKind === 'allocate') {
+                cellClass = 'cell-allocate';
+                label = '🔗 Allocate';
+                glyph = '🔗';
+              } else if (link.linkKind === 'connect') {
+                cellClass = 'cell-connect';
+                label = '⇄ Connect';
+                glyph = '⇄';
+              } else if (link.linkKind === 'derive') {
+                cellClass = 'cell-derive';
+                label = '↳ Derive';
+                glyph = '↳';
+              } else if (link.linkKind === 'mitigate') {
+                cellClass = 'cell-mitigate';
+                label = '🛡 Mitigate';
+                glyph = '🛡';
+              } else {
+                cellClass = 'cell-allocate';
+                label = '🔗 ' + link.linkKind;
+                glyph = '🔗';
+              }
+            }
+
+            const isSelected = selectedCells.has(key);
+            if (isSelected) cellClass += ' cell-selected';
+
+            html += '<td><button class="cell-btn ' + cellClass + '" data-row="' + esc(row.name) +
+                    '" data-col="' + esc(col.name) + '" data-rowuri="' + esc(row.uri) +
+                    '" data-coluri="' + esc(col.uri) + '" data-key="' + esc(key) + '">' +
+                    '<span class="cell-label-full">' + esc(label) + '</span>' +
+                    '<span class="cell-glyph">' + esc(glyph) + '</span>' +
+                    '</button></td>';
+          }
+          html += '</tr>';
+        }
       }
 
       html += '</tbody></table>';
       matrixWrapper.innerHTML = html;
 
-      // Attach Click-to-Connect / Popover handlers
+      // Group Collapse / Expand Handlers
+      matrixWrapper.querySelectorAll('.group-header').forEach(gh => {
+        gh.addEventListener('click', () => {
+          const grp = gh.dataset.group;
+          if (collapsedGroups.has(grp)) collapsedGroups.delete(grp);
+          else collapsedGroups.add(grp);
+          renderMatrix();
+        });
+      });
+
+      // Cell interaction: Click, Shift-Click & Drag Selection
       matrixWrapper.querySelectorAll('.cell-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          showCellPopover(btn, e);
+          const key = btn.dataset.key;
+          const link = rtmMatrix?.links?.[key];
+
+          if (e.shiftKey) {
+            // Shift-Click: toggle selection
+            toggleCellSelection(btn, key, link);
+          } else if (selectedCells.size > 0) {
+            // If already selecting, regular click continues selection toggle
+            toggleCellSelection(btn, key, link);
+          } else {
+            // Single cell inspection / action popover
+            showCellPopover(btn, e);
+          }
+        });
+
+        // Drag-selection support
+        btn.addEventListener('mouseenter', (e) => {
+          if (isMouseDown && e.buttons === 1) {
+            const key = btn.dataset.key;
+            const link = rtmMatrix?.links?.[key];
+            if (!selectedCells.has(key)) {
+              toggleCellSelection(btn, key, link);
+            }
+          }
         });
       });
 
@@ -699,6 +1072,24 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       });
     }
 
+    function toggleCellSelection(btn, key, link) {
+      if (selectedCells.has(key)) {
+        selectedCells.delete(key);
+        btn.classList.remove('cell-selected');
+      } else {
+        selectedCells.set(key, {
+          row: btn.dataset.row,
+          col: btn.dataset.col,
+          rowUri: btn.dataset.rowuri,
+          colUri: btn.dataset.coluri,
+          key,
+          link,
+        });
+        btn.classList.add('cell-selected');
+      }
+      updateBatchBar();
+    }
+
     // ── Popover Menu for Cell Linking & Verification ────────────────────────
     function showCellPopover(btn, event) {
       const row = btn.dataset.row;
@@ -712,9 +1103,12 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
 
       if (!link) {
         // Empty cell: Synthesis actions
+        html += '<div class="popover-item" id="actAllocate">🔗 Allocate to physical</div>';
         html += '<div class="popover-item" id="actSatisfy">✓ Satisfy requirement</div>';
         html += '<div class="popover-item" id="actVerify">⚡ Verify requirement</div>';
-        html += '<div class="popover-item" id="actAllocate">🔗 Allocate to target</div>';
+        html += '<div class="popover-item" id="actConnect">⇄ Connect interface</div>';
+        html += '<div class="popover-item" id="actDerive">↳ Derive requirement</div>';
+        html += '<div class="popover-item" id="actMitigate">🛡 Mitigate risk</div>';
       } else {
         // Existing link: Inspection, Re-verification & Deletion
         html += '<div class="popover-item" id="actGoToSource">🔍 Go to declaration</div>';
@@ -727,51 +1121,32 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
 
       actionPopover.innerHTML = html;
       actionPopover.style.display = 'flex';
-      actionPopover.style.left = Math.min(event.clientX + 10, window.innerWidth - 220) + 'px';
-      actionPopover.style.top = Math.min(event.clientY + 10, window.innerHeight - 200) + 'px';
+      actionPopover.style.left = Math.min(event.clientX + 10, window.innerWidth - 240) + 'px';
+      actionPopover.style.top = Math.min(event.clientY + 10, window.innerHeight - 250) + 'px';
 
       // Attach popover actions
-      const satisfyBtn = document.getElementById('actSatisfy');
-      if (satisfyBtn) {
-        satisfyBtn.addEventListener('click', () => {
-          actionPopover.style.display = 'none';
-          vscode.postMessage({
-            type: 'createTraceLink',
-            sourceUri: rowUri,
-            sourceName: row,
-            targetName: col,
-            linkKind: 'satisfy',
+      const wireAction = (id, kind) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('click', () => {
+            actionPopover.style.display = 'none';
+            vscode.postMessage({
+              type: 'createTraceLink',
+              sourceUri: rowUri,
+              sourceName: row,
+              targetName: col,
+              linkKind: kind,
+            });
           });
-        });
-      }
+        }
+      };
 
-      const verifyBtn = document.getElementById('actVerify');
-      if (verifyBtn) {
-        verifyBtn.addEventListener('click', () => {
-          actionPopover.style.display = 'none';
-          vscode.postMessage({
-            type: 'createTraceLink',
-            sourceUri: rowUri,
-            sourceName: row,
-            targetName: col,
-            linkKind: 'verify',
-          });
-        });
-      }
-
-      const allocateBtn = document.getElementById('actAllocate');
-      if (allocateBtn) {
-        allocateBtn.addEventListener('click', () => {
-          actionPopover.style.display = 'none';
-          vscode.postMessage({
-            type: 'createTraceLink',
-            sourceUri: rowUri,
-            sourceName: row,
-            targetName: col,
-            linkKind: 'allocate',
-          });
-        });
-      }
+      wireAction('actAllocate', 'allocate');
+      wireAction('actSatisfy', 'satisfy');
+      wireAction('actVerify', 'verify');
+      wireAction('actConnect', 'connect');
+      wireAction('actDerive', 'derive');
+      wireAction('actMitigate', 'mitigate');
 
       const goToSourceBtn = document.getElementById('actGoToSource');
       if (goToSourceBtn) {
@@ -905,6 +1280,12 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         case 'setData':
           allRequirements = msg.requirements || [];
           rtmMatrix = msg.rtmMatrix || null;
+          if (msg.presets && Array.isArray(msg.presets) && msg.presets.length > 0) {
+            availablePresets = msg.presets;
+          }
+          if (msg.presetId && presetSelect.querySelector('option[value="' + msg.presetId + '"]')) {
+            presetSelect.value = msg.presetId;
+          }
           if (msg.rowDomain) rowDomainSelect.value = msg.rowDomain;
           if (msg.colDomain) colDomainSelect.value = msg.colDomain;
           renderCurrentViews();

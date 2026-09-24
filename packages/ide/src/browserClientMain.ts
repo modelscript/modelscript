@@ -9,6 +9,7 @@ import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
 import { ModelScriptDebugSession } from "./debugAdapter";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
+import { ElementTableProvider } from "./elementTableProvider";
 import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider, extractFromZip } from "./fmuDocumentProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
@@ -1921,6 +1922,14 @@ end ${studyName};
     const requirementsProvider = new RequirementsEditorProvider(context.extensionUri, client);
     context.subscriptions.push(
       vscode.window.registerCustomEditorProvider(RequirementsEditorProvider.viewType, requirementsProvider, {
+        supportsMultipleEditorsPerDocument: true,
+        webviewOptions: { retainContextWhenHidden: false },
+      }),
+    );
+
+    const elementTableProvider = new ElementTableProvider(context.extensionUri, client);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(ElementTableProvider.viewType, elementTableProvider, {
         supportsMultipleEditorsPerDocument: true,
         webviewOptions: { retainContextWhenHidden: false },
       }),

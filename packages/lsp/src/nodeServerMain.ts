@@ -42,7 +42,6 @@ import {
   TextDocuments,
   TextDocumentSyncKind,
 } from "vscode-languageserver/node.js";
-import { LspContext } from "./LspContext.js";
 import { registerActionRouter } from "./handlers/actionRouter.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
@@ -55,6 +54,7 @@ import { registerReplEndpoints } from "./handlers/replEndpoints.js";
 import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
+import { LspContext } from "./LspContext.js";
 import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerColorProvider } from "./providers/colorProvider.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
@@ -83,6 +83,7 @@ import {
   hasClassChildren,
   isTreeVisible,
 } from "./utils/hierarchyUtils.js";
+import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 
 /**
  * Starts a headless Language Server Protocol server over Node.js standard I/O or IPC.
@@ -96,6 +97,9 @@ export function startNodeServer(input?: any, output?: any) {
   } else {
     connection = createConnection(ProposedFeatures.all, process.stdin, process.stdout);
   }
+  const sharedFs = new BrowserFileSystem();
+  globalThis.sharedFs = sharedFs;
+
   const documents = new TextDocuments(TextDocument);
 
   const documentManager = new DocumentManager(documents, () => parserService.getSharedCstTreeWrapper());

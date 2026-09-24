@@ -135,7 +135,7 @@ export const ModelicaErrorCode = {
     code: 3003,
     rule: "not-plug-compatible",
     severity: "error",
-    message: (ref1: string, ref2: string) => `In connect(${ref1}, ${ref2}): connectors are not plug-compatible.`,
+    message: (ref1: string, ref2: string) => `The connectors in connect(${ref1}, ${ref2}) are not type compatible.`,
   },
   NOT_A_CONNECTOR: {
     code: 3004,

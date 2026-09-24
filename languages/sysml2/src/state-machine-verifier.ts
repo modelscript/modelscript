@@ -37,7 +37,7 @@ export interface GuardConstraint {
 /**
  * Recursively extracts all variable names referenced in an arithmetic expression DAG.
  */
-function extractVariables(node: ExprNode, out: Set<string>): void {
+export function extractVariables(node: ExprNode, out: Set<string>): void {
   switch (node.kind) {
     case "var":
       out.add(node.name);

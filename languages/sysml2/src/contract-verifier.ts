@@ -1,7 +1,12 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
-import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
-import { parseGuardConstraints } from "./state-machine-verifier.js";
+import {
+  DpllTSolver,
+  Interval,
+  type ExprNode,
+  type NonlinearConstraint,
+  type QueryDB,
+  type SymbolEntry,
+} from "@modelscript/runtime";
+import { extractVariables, parseGuardConstraints, type GuardConstraint } from "./state-machine-verifier.js";
 
 /**
  * Diagnostic information when an Assume-Guarantee interface contract fails.
@@ -113,6 +118,183 @@ export function verifyTemporalContract(
 }
 
 /**
+ * Negates a single guard constraint into an array of equivalent non-linear inequality constraints.
+ */
+function negateGuardConstraint(c: GuardConstraint): NonlinearConstraint[] {
+  const eps = 1e-4;
+  if (c.nonlinear) {
+    const orig = c.nonlinear;
+    if (orig.rel === "<=") {
+      return [{ expr: orig.expr, rel: ">=", rhs: orig.rhs + eps }];
+    } else if (orig.rel === ">=") {
+      return [{ expr: orig.expr, rel: "<=", rhs: orig.rhs - eps }];
+    } else {
+      return [
+        { expr: orig.expr, rel: "<=", rhs: orig.rhs - eps },
+        { expr: orig.expr, rel: ">=", rhs: orig.rhs + eps },
+      ];
+    }
+  }
+
+  const varExpr: ExprNode = { kind: "var", name: c.variable.includes(".") ? c.variable.split(".").pop()! : c.variable };
+  if (c.operator === "<=" || c.operator === "<") {
+    return [{ expr: varExpr, rel: ">=", rhs: c.value + eps }];
+  } else if (c.operator === ">=" || c.operator === ">") {
+    return [{ expr: varExpr, rel: "<=", rhs: c.value - eps }];
+  } else {
+    return [
+      { expr: varExpr, rel: "<=", rhs: c.value - eps },
+      { expr: varExpr, rel: ">=", rhs: c.value + eps },
+    ];
+  }
+}
+
+export interface EntailmentResult {
+  entailed: boolean;
+  reason?: string;
+  counterexample?: Record<string, [number, number]>;
+}
+
+/**
+ * Symbolically verifies whether a set of premises mathematically guarantees a conclusion (Premises => Conclusion).
+ * Checks whether (Premises /\ ~Conclusion) is UNSAT via DPLL(T) + HC4 contractor.
+ */
+export function checkSymbolicEntailment(premises: string[], conclusionStr: string): EntailmentResult {
+  const pConstraints = premises.flatMap((p) => parseGuardConstraints(p));
+  const cConstraints = parseGuardConstraints(conclusionStr);
+
+  if (cConstraints.length === 0) {
+    return { entailed: true };
+  }
+
+  // Fast-path: single-variable bounds
+  const isSimple = !pConstraints.some((c) => c.nonlinear) && !cConstraints.some((c) => c.nonlinear);
+
+  if (isSimple) {
+    const gBounds = new Map<string, { lower: number; upper: number }>();
+    for (const g of pConstraints) {
+      const varName = g.variable.includes(".") ? g.variable.split(".").pop()! : g.variable;
+      const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
+      if (g.operator === "<=" || g.operator === "<") {
+        b.upper = Math.min(b.upper, g.value);
+      } else if (g.operator === ">=" || g.operator === ">") {
+        b.lower = Math.max(b.lower, g.value);
+      } else if (g.operator === "==") {
+        b.lower = Math.max(b.lower, g.value);
+        b.upper = Math.min(b.upper, g.value);
+      }
+      gBounds.set(varName, b);
+    }
+
+    let allHold = true;
+    for (const a of cConstraints) {
+      const varName = a.variable.includes(".") ? a.variable.split(".").pop()! : a.variable;
+      const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
+      const gLo = b.lower;
+      const gHi = b.upper;
+
+      if (a.operator === ">=" || a.operator === ">") {
+        if (gLo < a.value - 1e-9) {
+          allHold = false;
+          return {
+            entailed: false,
+            reason: `Lower bound ${!Number.isFinite(gLo) ? "-∞" : gLo.toFixed(2)} does not satisfy '${a.variable} >= ${a.value}'`,
+            counterexample: {
+              [varName]: [!Number.isFinite(gLo) ? a.value - 1 : gLo, !Number.isFinite(gLo) ? a.value - 1 : gLo],
+            },
+          };
+        }
+      }
+      if (a.operator === "<=" || a.operator === "<") {
+        if (gHi > a.value + 1e-9) {
+          allHold = false;
+          return {
+            entailed: false,
+            reason: `Upper bound ${!Number.isFinite(gHi) ? "∞" : gHi.toFixed(2)} does not satisfy '${a.variable} <= ${a.value}'`,
+            counterexample: {
+              [varName]: [!Number.isFinite(gHi) ? a.value + 1 : gHi, !Number.isFinite(gHi) ? a.value + 1 : gHi],
+            },
+          };
+        }
+      }
+    }
+    if (allHold) return { entailed: true };
+  }
+
+  // Non-linear / Multi-variable path via DPLL(T) + HC4 contractor
+  const allVarNames = new Set<string>();
+  for (const c of [...pConstraints, ...cConstraints]) {
+    if (c.nonlinear) {
+      extractVariables(c.nonlinear.expr, allVarNames);
+    } else {
+      const varName = c.variable.includes(".") ? c.variable.split(".").pop()! : c.variable;
+      allVarNames.add(varName);
+    }
+  }
+
+  for (const c of cConstraints) {
+    const negations = negateGuardConstraint(c);
+
+    for (const neg of negations) {
+      const theoryLiterals = new Map<number, NonlinearConstraint>();
+      const clauses: number[][] = [];
+      let litId = 1;
+
+      // Add all premises
+      for (const p of pConstraints) {
+        let nl: NonlinearConstraint;
+        if (p.nonlinear) {
+          nl = p.nonlinear;
+        } else {
+          const varName = p.variable.includes(".") ? p.variable.split(".").pop()! : p.variable;
+          const rel =
+            p.operator === "<=" || p.operator === "<" ? "<=" : p.operator === ">=" || p.operator === ">" ? ">=" : "==";
+          nl = { expr: { kind: "var", name: varName }, rel, rhs: p.value };
+        }
+        theoryLiterals.set(litId, nl);
+        clauses.push([litId]);
+        litId++;
+      }
+
+      // Add negated conclusion
+      theoryLiterals.set(litId, neg);
+      clauses.push([litId]);
+      litId++;
+
+      const initialBox = new Map<string, Interval>();
+      for (const v of allVarNames) {
+        initialBox.set(v, new Interval(-1000, 1000));
+      }
+
+      const solver = new DpllTSolver({
+        clauses,
+        theoryLiterals,
+        initialBox,
+        delta: 1e-3,
+        maxSubdivisions: 1500,
+      });
+
+      const res = solver.solve(initialBox);
+      if (res.status !== "UNSAT") {
+        const cexMap: Record<string, [number, number]> = {};
+        if (res.solutionBox) {
+          for (const [k, inv] of res.solutionBox.entries()) {
+            cexMap[k] = [inv.lo, inv.hi];
+          }
+        }
+        return {
+          entailed: false,
+          reason: `Premises do not guarantee '${conclusionStr}' (satisfiable counterexample box discovered)`,
+          counterexample: cexMap,
+        };
+      }
+    }
+  }
+
+  return { entailed: true };
+}
+
+/**
  * Verifies contract entailment (G_supplier => A_consumer) for an interface connection.
  * Given a supplier guaranteeing a range and a consumer assuming a range,
  * checks if G_supplier /\ ~A_consumer is satisfiable.
@@ -126,19 +308,15 @@ export function verifyAssumeGuaranteePair(
 ): ContractVerificationResult {
   const violations: ContractViolation[] = [];
 
-  // Parse all guarantee constraints into bounds per variable
   const gConstraints = guarantees.flatMap((g) => parseGuardConstraints(g));
   const aConstraints = assumptions.flatMap((a) => parseGuardConstraints(a));
 
   if (gConstraints.length === 0 || aConstraints.length === 0) {
-    // If either side has no constraints, no contract violation can be proven
     return { isSatisfied: true, violations: [] };
   }
 
   // Exact real bounds per variable
   const gBounds = new Map<string, { lower: number; upper: number }>();
-
-  // Apply supplier guarantees to find bounds
   for (const g of gConstraints) {
     const varName = g.variable.includes(".") ? g.variable.split(".").pop()! : g.variable;
     const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
@@ -156,45 +334,41 @@ export function verifyAssumeGuaranteePair(
   // Check each consumer assumption
   for (let i = 0; i < aConstraints.length; i++) {
     const a = aConstraints[i]!;
-    const varName = a.variable.includes(".") ? a.variable.split(".").pop()! : a.variable;
-    const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
-    const gLo = b.lower;
-    const gHi = b.upper;
+    const aRaw = assumptions[i] || `${a.variable} ${a.operator} ${a.value}`;
+    const ent = checkSymbolicEntailment(guarantees, aRaw);
 
-    // If consumer assumes x >= min, supplier must guarantee gLo >= min
-    if (a.operator === ">=" || a.operator === ">") {
-      const requiredMin = a.value;
-      if (gLo < requiredMin - 1e-9) {
-        violations.push({
-          connectionName,
-          sourceEndpoint: supplierName,
-          targetEndpoint: consumerName,
-          guarantee:
-            guarantees.find((g) => g.includes(varName) || g.includes(a.variable)) || `${varName} ∈ [${gLo}, ${gHi}]`,
-          assumption: assumptions[i] || `${a.variable} ${a.operator} ${a.value}`,
-          variable: varName,
-          counterexample: !Number.isFinite(gLo) ? a.value - 1 : gLo,
-          reason: `Supplier '${supplierName}' can deliver ${varName} = ${!Number.isFinite(gLo) ? "-∞" : gLo}, violating consumer '${consumerName}' assumption '${a.variable} >= ${a.value}'`,
-        });
-      }
-    }
+    if (!ent.entailed) {
+      const varName = a.variable.includes(".") ? a.variable.split(".").pop()! : a.variable;
+      const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
+      const gLo = b.lower;
+      const gHi = b.upper;
 
-    // If consumer assumes x <= max, supplier must guarantee gHi <= max
-    if (a.operator === "<=" || a.operator === "<") {
-      const requiredMax = a.value;
-      if (gHi > requiredMax + 1e-9) {
-        violations.push({
-          connectionName,
-          sourceEndpoint: supplierName,
-          targetEndpoint: consumerName,
-          guarantee:
-            guarantees.find((g) => g.includes(varName) || g.includes(a.variable)) || `${varName} ∈ [${gLo}, ${gHi}]`,
-          assumption: assumptions[i] || `${a.variable} ${a.operator} ${a.value}`,
-          variable: varName,
-          counterexample: !Number.isFinite(gHi) ? a.value + 1 : gHi,
-          reason: `Supplier '${supplierName}' can deliver ${varName} = ${!Number.isFinite(gHi) ? "∞" : gHi}, violating consumer '${consumerName}' assumption '${a.variable} <= ${a.value}'`,
-        });
+      let cexVal = 0;
+      let reasonText =
+        ent.reason || `Supplier '${supplierName}' does not satisfy consumer '${consumerName}' assumption '${aRaw}'`;
+
+      if (a.operator === ">=" || a.operator === ">") {
+        cexVal = !Number.isFinite(gLo) ? a.value - 1 : gLo;
+        reasonText = `Supplier '${supplierName}' can deliver ${varName} = ${!Number.isFinite(gLo) ? "-∞" : gLo}, violating consumer '${consumerName}' assumption '${a.variable} >= ${a.value}'`;
+      } else if (a.operator === "<=" || a.operator === "<") {
+        cexVal = !Number.isFinite(gHi) ? a.value + 1 : gHi;
+        reasonText = `Supplier '${supplierName}' can deliver ${varName} = ${!Number.isFinite(gHi) ? "∞" : gHi}, violating consumer '${consumerName}' assumption '${a.variable} <= ${a.value}'`;
+      } else if (ent.counterexample) {
+        const firstBox = Object.values(ent.counterexample)[0];
+        if (firstBox) cexVal = firstBox[0];
       }
+
+      violations.push({
+        connectionName,
+        sourceEndpoint: supplierName,
+        targetEndpoint: consumerName,
+        guarantee:
+          guarantees.find((g) => g.includes(varName) || g.includes(a.variable)) || `${varName} ∈ [${gLo}, ${gHi}]`,
+        assumption: aRaw,
+        variable: varName,
+        counterexample: cexVal,
+        reason: reasonText,
+      });
     }
   }
 
@@ -282,6 +456,8 @@ export interface AssumeGuaranteeContract {
   name: string;
   assumptions: string[];
   guarantees: string[];
+  inputs?: string[];
+  outputs?: string[];
 }
 
 export interface RefinementResult {
@@ -383,4 +559,95 @@ export class ContractAlgebra {
       guarantees,
     };
   }
+
+  /**
+   * System-level compositional contract verification (OCRA / SAVVS paradigm).
+   *
+   * 1. Compatibility Check:
+   *    For each component i:
+   *      (A_sys /\ \bigwedge_{j != i} G_j) => A_i
+   *    Proves that the environment and peer components satisfy all component assumptions.
+   *
+   * 2. Refinement / Dominance Check:
+   *    (A_sys /\ \bigwedge_i G_i) => G_sys
+   *    Proves that component guarantees collectively deliver the top-level system guarantees.
+   */
+  public static verifySystemComposition(
+    systemContract: AssumeGuaranteeContract,
+    componentContracts: AssumeGuaranteeContract[],
+  ): CompositionalProofResult {
+    const compatibilityViolations: CompositionalProofResult["compatibilityViolations"] = [];
+    const refinementViolations: CompositionalProofResult["refinementViolations"] = [];
+
+    // 1. Compatibility Check
+    for (let i = 0; i < componentContracts.length; i++) {
+      const comp = componentContracts[i]!;
+      const siblingGuarantees = componentContracts.filter((_, idx) => idx !== i).flatMap((c) => c.guarantees);
+
+      const context = [...systemContract.assumptions, ...siblingGuarantees];
+
+      for (const a of comp.assumptions) {
+        const ent = checkSymbolicEntailment(context, a);
+        if (!ent.entailed) {
+          compatibilityViolations.push({
+            component: comp.name,
+            missingAssumption: a,
+            reason: ent.reason || `System assumptions and sibling guarantees do not guarantee '${a}' of '${comp.name}'`,
+            counterexample: ent.counterexample,
+          });
+        }
+      }
+    }
+
+    // 2. Refinement Check
+    const allGuarantees = componentContracts.flatMap((c) => c.guarantees);
+    const sysContext = [...systemContract.assumptions, ...allGuarantees];
+
+    for (const g of systemContract.guarantees) {
+      const ent = checkSymbolicEntailment(sysContext, g);
+      if (!ent.entailed) {
+        refinementViolations.push({
+          systemGuarantee: g,
+          reason: ent.reason || `Component guarantees fail to deliver top-level system guarantee '${g}'`,
+          counterexample: ent.counterexample,
+        });
+      }
+    }
+
+    const isCompatible = compatibilityViolations.length === 0;
+    const isRefined = refinementViolations.length === 0;
+
+    let summary = `Compositional verification for '${systemContract.name}': `;
+    summary += isCompatible
+      ? `Component contracts are mutually compatible. `
+      : `Found ${compatibilityViolations.length} compatibility issue(s). `;
+    summary += isRefined
+      ? `System contract is successfully refined.`
+      : `Found ${refinementViolations.length} refinement issue(s).`;
+
+    return {
+      isCompatible,
+      isRefined,
+      compatibilityViolations,
+      refinementViolations,
+      summary,
+    };
+  }
+}
+
+export interface CompositionalProofResult {
+  isCompatible: boolean;
+  isRefined: boolean;
+  compatibilityViolations: {
+    component: string;
+    missingAssumption: string;
+    reason: string;
+    counterexample?: Record<string, [number, number]>;
+  }[];
+  refinementViolations: {
+    systemGuarantee: string;
+    reason: string;
+    counterexample?: Record<string, [number, number]>;
+  }[];
+  summary: string;
 }

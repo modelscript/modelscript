@@ -293,16 +293,18 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
 
   // 4. Extract successions: first [source] then [target] (optional if [guard]);
   const succRegex =
-    /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+)?from\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+));/g;
+    /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+)?from\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?)\s*;/g;
   let sMatch: RegExpExecArray | null;
   while ((sMatch = succRegex.exec(searchSource)) !== null) {
-    const src = sMatch[1] || sMatch[3] || sMatch[5]!;
-    const tgt = sMatch[2] || sMatch[4] || sMatch[6]!;
-    const isObject = Boolean(sMatch[5]);
+    const src = sMatch[1] || sMatch[4] || sMatch[7]!;
+    const tgt = sMatch[2] || sMatch[5] || sMatch[8]!;
+    const guard = sMatch[3] || sMatch[6] || sMatch[9];
+    const isObject = Boolean(sMatch[7]);
     flows.push({
       source: src,
       target: tgt,
       kind: isObject ? "object" : "control",
+      guard: guard?.trim(),
       startByte: sMatch.index,
       endByte: sMatch.index + sMatch[0].length,
     });

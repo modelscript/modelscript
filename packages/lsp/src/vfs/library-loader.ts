@@ -114,9 +114,10 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
         ctx.logger.warn(`[registry] IndexedDB read failed for salsa-index of ${label}: ${err}`);
       }
 
+      const activeQueryEngine = ctx.sharedContext?.queryEngine ?? (globalThis as any).globalModelicaQueryEngine;
       if (dbBuffer) {
         ctx.logger.log(`[registry] Cache hit — loading salsa-index for ${label} from IndexedDB`);
-        const { memos } = await ingestSalsaIndex(dbBuffer, ctx.cacheStore);
+        const { memos } = await ingestSalsaIndex(dbBuffer, ctx.cacheStore, activeQueryEngine);
         ctx.logger.log(`[registry] Hydrated ${memos} memos from cached index for ${label}`);
       } else if (baseUrl) {
         const indexUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/salsa-index.db`;
@@ -124,7 +125,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
           const resp = await fetch(indexUrl);
           if (resp.ok) {
             const buffer = await resp.arrayBuffer();
-            const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore);
+            const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore, activeQueryEngine);
             ctx.logger.log(`[registry] Loaded pre-computed index for ${label} (hydrated ${memos} memos)`);
 
             // Cache for subsequent loads
@@ -296,92 +297,95 @@ export async function loadDependencyFromRegistry(
   ctx.logger.log(`[deps] Loading ${label} from registry via LSP bundle...`);
 
   try {
-    const db = await openMSLCache();
-    const cacheKey = `lsp-bundle:dep:v3:${label}`;
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let cached = await idbGet<any>(db, cacheKey);
+    let cached: any = null;
+    const db = await openMSLCache();
+    try {
+      const cacheKey = `lsp-bundle:dep:v3:${label}`;
 
-    if (!cached || !cached.indexJson || !cached.files) {
-      const baseUrl = ctx.registryUrl?.replace(/\/$/, "") || "http://127.0.0.1:3000";
-      const res = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/lsp-bundle`);
+      cached = await idbGet<any>(db, cacheKey);
 
-      if (!res.ok) {
-        db.close();
+      if (!cached || !cached.indexJson || !cached.files) {
+        const baseUrl = ctx.registryUrl?.replace(/\/$/, "") || "http://127.0.0.1:3000";
+        const res = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/lsp-bundle`);
 
-        // ── Fallback: fetch raw source files and register lazily ──
-        // The lsp-bundle may not exist if the publish-worker hasn't run yet.
-        // Fall back to the /files endpoint which serves extracted .mo sources.
-        ctx.logger.warn(`[deps] lsp-bundle not available for ${label} (HTTP ${res.status}), trying /files fallback...`);
-
-        const filesRes = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/files`);
-        if (!filesRes.ok) {
-          throw new Error(
-            `Neither lsp-bundle (HTTP ${res.status}) nor /files (HTTP ${filesRes.status}) available for ${label}`,
+        if (!res.ok) {
+          // ── Fallback: fetch raw source files and register lazily ──
+          // The lsp-bundle may not exist if the publish-worker hasn't run yet.
+          // Fall back to the /files endpoint which serves extracted .mo sources.
+          ctx.logger.warn(
+            `[deps] lsp-bundle not available for ${label} (HTTP ${res.status}), trying /files fallback...`,
           );
-        }
 
-        const filesData = (await filesRes.json()) as { files: Record<string, string> };
-
-        // The /files API returns paths relative to the library root (e.g., "Blocks/Continuous.mo")
-        // but loadRegistryPackage expects paths that include the root package name (e.g., "Modelica/Blocks/Continuous.mo")
-        // so the parentFQN computation can correctly determine the Modelica class hierarchy.
-        const prefixedFiles: Record<string, string> = {};
-        for (const [relPath, content] of Object.entries(filesData.files)) {
-          prefixedFiles[`${dep.name}/${relPath}`] = content;
-        }
-
-        const pkg: RegistryPackageInfo = {
-          name: dep.name,
-          version: dep.version,
-          files: prefixedFiles,
-        };
-
-        ctx.logger.log(`[deps] Fallback: loading ${label} via /files (${Object.keys(pkg.files).length} files)`);
-        await loadRegistryPackage(pkg, ctx);
-
-        // Also try to fetch pre-rendered icons for the class tree
-        try {
-          const iconsRes = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/icons`);
-          if (iconsRes.ok) {
-            const iconsData = (await iconsRes.json()) as { icons: Record<string, string> };
-            let iconCount = 0;
-            for (const [className, svg] of Object.entries(iconsData.icons)) {
-              iconCache.set(className, svg);
-              iconCount++;
-            }
-            ctx.logger.log(`[deps] Loaded ${iconCount} icons for ${label}`);
+          const filesRes = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/files`);
+          if (!filesRes.ok) {
+            throw new Error(
+              `Neither lsp-bundle (HTTP ${res.status}) nor /files (HTTP ${filesRes.status}) available for ${label}`,
+            );
           }
-        } catch {
-          ctx.logger.warn(`[deps] Failed to fetch icons for ${label} (non-fatal)`);
+
+          const filesData = (await filesRes.json()) as { files: Record<string, string> };
+
+          // The /files API returns paths relative to the library root (e.g., "Blocks/Continuous.mo")
+          // but loadRegistryPackage expects paths that include the root package name (e.g., "Modelica/Blocks/Continuous.mo")
+          // so the parentFQN computation can correctly determine the Modelica class hierarchy.
+          const prefixedFiles: Record<string, string> = {};
+          for (const [relPath, content] of Object.entries(filesData.files)) {
+            prefixedFiles[`${dep.name}/${relPath}`] = content;
+          }
+
+          const pkg: RegistryPackageInfo = {
+            name: dep.name,
+            version: dep.version,
+            files: prefixedFiles,
+          };
+
+          ctx.logger.log(`[deps] Fallback: loading ${label} via /files (${Object.keys(pkg.files).length} files)`);
+          await loadRegistryPackage(pkg, ctx);
+
+          // Also try to fetch pre-rendered icons for the class tree
+          try {
+            const iconsRes = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/icons`);
+            if (iconsRes.ok) {
+              const iconsData = (await iconsRes.json()) as { icons: Record<string, string> };
+              let iconCount = 0;
+              for (const [className, svg] of Object.entries(iconsData.icons)) {
+                iconCache.set(className, svg);
+                iconCount++;
+              }
+              ctx.logger.log(`[deps] Loaded ${iconCount} icons for ${label}`);
+            }
+          } catch {
+            ctx.logger.warn(`[deps] Failed to fetch icons for ${label} (non-fatal)`);
+          }
+          return;
         }
-        return;
-      }
 
-      const buffer = await res.arrayBuffer();
-      const zipped = unzipSync(new Uint8Array(buffer));
+        const buffer = await res.arrayBuffer();
+        const zipped = unzipSync(new Uint8Array(buffer));
 
-      let indexJson: Record<string, unknown> | null = null;
-      let iconsJson: Record<string, string> | null = null;
-      const files: Record<string, string> = {};
+        let indexJson: Record<string, unknown> | null = null;
+        let iconsJson: Record<string, string> | null = null;
+        const files: Record<string, string> = {};
 
-      for (const [relativePath, data] of Object.entries(zipped)) {
-        if (data.length === 0) continue; // directory
-        if (relativePath === "index.json") {
-          indexJson = JSON.parse(strFromU8(data));
-        } else if (relativePath === "icons.json") {
-          iconsJson = JSON.parse(strFromU8(data));
-        } else if (relativePath.startsWith("sources/")) {
-          const fileRelPath = relativePath.substring("sources/".length);
-          files[fileRelPath] = strFromU8(data);
+        for (const [relativePath, data] of Object.entries(zipped)) {
+          if (data.length === 0) continue; // directory
+          if (relativePath === "index.json") {
+            indexJson = JSON.parse(strFromU8(data));
+          } else if (relativePath === "icons.json") {
+            iconsJson = JSON.parse(strFromU8(data));
+          } else if (relativePath.startsWith("sources/")) {
+            const fileRelPath = relativePath.substring("sources/".length);
+            files[fileRelPath] = strFromU8(data);
+          }
         }
-      }
 
-      cached = { indexJson, iconsJson, files };
-      await idbPut(db, cacheKey, cached);
+        cached = { indexJson, iconsJson, files };
+        await idbPut(db, cacheKey, cached);
+      }
+    } finally {
+      db.close();
     }
-
-    db.close();
 
     // 1. Hydrate icons — from bundle first, then API fallback if empty
     let iconCount = 0;
@@ -480,19 +484,22 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
 
     try {
       const db = await openMSLCache();
-      const cached = await idbGet<Record<string, ArrayBuffer>>(db, MSL_VERSION_KEY);
-      if (cached) {
-        ctx.logger.log("[msl-cache] Cache hit — loading from IndexedDB");
-        ctx.connectionState.sendNotification("modelscript/status", {
-          state: "loading",
-          message: "Loading MSL from cache...",
-        });
-        fileEntries = {};
-        for (const [name, buf] of Object.entries(cached)) {
-          fileEntries[name] = new Uint8Array(buf);
+      try {
+        const cached = await idbGet<Record<string, ArrayBuffer>>(db, MSL_VERSION_KEY);
+        if (cached) {
+          ctx.logger.log("[msl-cache] Cache hit — loading from IndexedDB");
+          ctx.connectionState.sendNotification("modelscript/status", {
+            state: "loading",
+            message: "Loading MSL from cache...",
+          });
+          fileEntries = {};
+          for (const [name, buf] of Object.entries(cached)) {
+            fileEntries[name] = new Uint8Array(buf);
+          }
         }
+      } finally {
+        db.close();
       }
-      db.close();
     } catch (cacheErr) {
       ctx.logger.warn(`[msl-cache] IndexedDB read failed, falling back to network: ${cacheErr}`);
     }
@@ -513,13 +520,16 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
 
       try {
         const db = await openMSLCache();
-        const serializable: Record<string, ArrayBuffer> = {};
-        for (const [name, data] of Object.entries(fileEntries)) {
-          serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+        try {
+          const serializable: Record<string, ArrayBuffer> = {};
+          for (const [name, data] of Object.entries(fileEntries)) {
+            serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+          }
+          await idbPut(db, MSL_VERSION_KEY, serializable);
+          ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");
+        } finally {
+          db.close();
         }
-        await idbPut(db, MSL_VERSION_KEY, serializable);
-        db.close();
-        ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");
       } catch (cacheErr) {
         ctx.logger.warn(`[msl-cache] IndexedDB write failed: ${cacheErr}`);
       }
@@ -642,15 +652,18 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
     let fileEntries: Record<string, Uint8Array> | null = null;
     try {
       const db = await openMSLCache();
-      const cached = await idbGet<Record<string, ArrayBuffer>>(db, SYSML_VERSION_KEY);
-      if (cached) {
-        ctx.logger.log("[sysml-cache] Cache hit — loading sysml stdlib from IndexedDB");
-        fileEntries = {};
-        for (const [name, buf] of Object.entries(cached)) {
-          fileEntries[name] = new Uint8Array(buf);
+      try {
+        const cached = await idbGet<Record<string, ArrayBuffer>>(db, SYSML_VERSION_KEY);
+        if (cached) {
+          ctx.logger.log("[sysml-cache] Cache hit — loading sysml stdlib from IndexedDB");
+          fileEntries = {};
+          for (const [name, buf] of Object.entries(cached)) {
+            fileEntries[name] = new Uint8Array(buf);
+          }
         }
+      } finally {
+        db.close();
       }
-      db.close();
     } catch {
       /* ignore */
     }
@@ -671,14 +684,17 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
 
       try {
         const db = await openMSLCache();
-        const serializable: Record<string, ArrayBuffer> = {};
-        for (const [name, data] of Object.entries(fileEntries)) {
-          if (name.endsWith(".sysml")) {
-            serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+        try {
+          const serializable: Record<string, ArrayBuffer> = {};
+          for (const [name, data] of Object.entries(fileEntries)) {
+            if (name.endsWith(".sysml")) {
+              serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+            }
           }
+          await idbPut(db, SYSML_VERSION_KEY, serializable);
+        } finally {
+          db.close();
         }
-        await idbPut(db, SYSML_VERSION_KEY, serializable);
-        db.close();
       } catch {
         /* ignore */
       }

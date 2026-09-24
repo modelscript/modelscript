@@ -101,6 +101,65 @@ async function runTests() {
   assert.ok(merged.symbols.has(3));
   assert.deepStrictEqual(merged.childrenOf.get(null), [1, 2, 3], "Root children should be merged");
 
+  // Test collision resistance: hydrate a package with raw IDs [1, 2] (same as first bundle)
+  const mockEntryColliding1: SymbolEntry = {
+    id: 1,
+    name: "Diode",
+    kind: "Class",
+    ruleName: "class_definition",
+    parentId: null,
+    startByte: 0,
+    endByte: 110,
+    exports: [],
+    inherits: [],
+    metadata: { classKind: "model" },
+    fieldName: null,
+    resourceId: "sources/Modelica/Electrical/Analog/Basic/Diode.mo",
+  };
+  const mockEntryCollidingChild: SymbolEntry = {
+    id: 2,
+    name: "v",
+    kind: "Component",
+    ruleName: "component_declaration",
+    parentId: 1,
+    startByte: 10,
+    endByte: 20,
+    exports: [],
+    inherits: [],
+    metadata: {},
+    fieldName: null,
+    resourceId: "sources/Modelica/Electrical/Analog/Basic/Diode.mo",
+  };
+
+  index.hydrate("library-bundle:/CollisionPkg@1.0.0", {
+    symbols: new Map([
+      [1, mockEntryColliding1],
+      [2, mockEntryCollidingChild],
+    ]),
+    byName: new Map([
+      ["Diode", [1]],
+      ["v", [2]],
+    ]),
+    childrenOf: new Map([
+      [null, [1]],
+      [1, [2]],
+    ]),
+  });
+
+  const finalMerged = index.toUnified();
+  assert.strictEqual(finalMerged.symbols.size, 5, "Should have 5 symbols total with no overwrites");
+  // Original symbols still intact
+  assert.strictEqual(finalMerged.symbols.get(1)?.name, "Resistor");
+  assert.strictEqual(finalMerged.symbols.get(2)?.name, "Capacitor");
+  assert.strictEqual(finalMerged.symbols.get(3)?.name, "Inductor");
+  // New symbols remapped to 4 and 5
+  assert.strictEqual(finalMerged.symbols.get(4)?.name, "Diode");
+  assert.strictEqual(finalMerged.symbols.get(5)?.name, "v");
+  assert.strictEqual(finalMerged.symbols.get(5)?.parentId, 4, "Child's parentId should be remapped to 4");
+  assert.deepStrictEqual(finalMerged.childrenOf.get(4), [5], "Children of Diode (4) should be [5]");
+  assert.deepStrictEqual(finalMerged.byName.get("Diode"), [4]);
+  assert.deepStrictEqual(finalMerged.byName.get("v"), [5]);
+
   console.log("✓ LanguageWorkspaceIndex.hydrate tests passed successfully");
 }
 

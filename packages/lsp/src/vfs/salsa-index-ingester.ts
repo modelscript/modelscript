@@ -1,17 +1,28 @@
 import type { Memo, QueryCacheStore } from "@modelscript/runtime";
 import initSqlJs from "sql.js";
 
+let sqlPromise: Promise<any> | null = null;
+function getSqlInstance(): Promise<any> {
+  if (!sqlPromise) {
+    sqlPromise = initSqlJs({
+      locateFile: (file: string) => {
+        const base = (globalThis as any).serverDistBase;
+        if (base) {
+          return `${base}/${file}`;
+        }
+        return file;
+      },
+    });
+  }
+  return sqlPromise;
+}
+
 export async function ingestSalsaIndex(
   buffer: ArrayBuffer,
   cacheStore: QueryCacheStore,
+  queryEngine?: any,
 ): Promise<{ symbols: number; memos: number }> {
-  // sql.js needs to know where the wasm file is. For a webpack build,
-  // we usually rely on the default behavior or copy it manually.
-  // For now we assume the default works or the caller provides the correct locateFile.
-  const SQL = await initSqlJs({
-    // We'll leave locateFile out to try the default for now,
-    // which usually looks for 'sql-wasm.wasm' in the same dir.
-  });
+  const SQL = await getSqlInstance();
 
   const db = new SQL.Database(new Uint8Array(buffer));
 
@@ -37,11 +48,10 @@ export async function ingestSalsaIndex(
         }
       }
       await cacheStore.setMemos(memos);
+      if (queryEngine && typeof queryEngine.hydrateMemos === "function") {
+        queryEngine.hydrateMemos(memos);
+      }
     }
-
-    // Note: If we also wanted to extract `SymbolIndex` from the db, we'd do it here.
-    // However, the current federated design fetches the index over the wire or
-    // from the federated cache store. For now, we only hydrate memos.
 
     return { symbols: 0, memos: memos.size };
   } finally {

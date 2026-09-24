@@ -1,7 +1,7 @@
 import type { Dirent, FileSystem, Stats } from "../utils/filesystem.js";
 
 export interface MemFile {
-  content: string;
+  content?: string;
   binary: Uint8Array;
 }
 
@@ -10,6 +10,7 @@ export interface MemDir {
 }
 
 export class BrowserFileSystem implements FileSystem {
+  static readonly #decoder = new TextDecoder();
   readonly #files = new Map<string, MemFile>();
   readonly #dirs = new Map<string, MemDir>();
 
@@ -21,8 +22,7 @@ export class BrowserFileSystem implements FileSystem {
   /** Add a file from zip decompression */
   addFile(path: string, data: Uint8Array): void {
     const p = this.#norm(path);
-    const decoder = new TextDecoder();
-    this.#files.set(p, { content: decoder.decode(data), binary: data });
+    this.#files.set(p, { binary: data });
     // Ensure parent directories exist
     const parts = p.split("/");
     for (let i = 1; i < parts.length; i++) {
@@ -80,8 +80,11 @@ export class BrowserFileSystem implements FileSystem {
   read(path: string): string {
     const p = this.#norm(path);
     const file = this.#files.get(p);
-    if (file) return file.content;
-    return "";
+    if (!file) return "";
+    if (file.content === undefined) {
+      file.content = BrowserFileSystem.#decoder.decode(file.binary);
+    }
+    return file.content;
   }
   readBinary(path: string): Uint8Array {
     const p = this.#norm(path);
@@ -178,16 +181,21 @@ export function idbPut(db: IDBDatabase, key: string, value: unknown): Promise<vo
 export function getSalsaIndexCache(key: string): Promise<ArrayBuffer | undefined> {
   return openMSLCache().then((db) => {
     return new Promise<ArrayBuffer | undefined>((resolve, reject) => {
-      const tx = db.transaction(SALSA_STORE, "readonly");
-      const req = tx.objectStore(SALSA_STORE).get(key);
-      req.onsuccess = () => {
-        resolve(req.result as ArrayBuffer | undefined);
+      try {
+        const tx = db.transaction(SALSA_STORE, "readonly");
+        const req = tx.objectStore(SALSA_STORE).get(key);
+        req.onsuccess = () => {
+          resolve(req.result as ArrayBuffer | undefined);
+          db.close();
+        };
+        req.onerror = () => {
+          reject(req.error);
+          db.close();
+        };
+      } catch (err) {
         db.close();
-      };
-      req.onerror = () => {
-        reject(req.error);
-        db.close();
-      };
+        reject(err);
+      }
     });
   });
 }
@@ -195,16 +203,21 @@ export function getSalsaIndexCache(key: string): Promise<ArrayBuffer | undefined
 export function putSalsaIndexCache(key: string, buffer: ArrayBuffer): Promise<void> {
   return openMSLCache().then((db) => {
     return new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(SALSA_STORE, "readwrite");
-      tx.objectStore(SALSA_STORE).put(buffer, key);
-      tx.oncomplete = () => {
-        resolve();
+      try {
+        const tx = db.transaction(SALSA_STORE, "readwrite");
+        tx.objectStore(SALSA_STORE).put(buffer, key);
+        tx.oncomplete = () => {
+          resolve();
+          db.close();
+        };
+        tx.onerror = () => {
+          reject(tx.error);
+          db.close();
+        };
+      } catch (err) {
         db.close();
-      };
-      tx.onerror = () => {
-        reject(tx.error);
-        db.close();
-      };
+        reject(err);
+      }
     });
   });
 }

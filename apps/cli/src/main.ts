@@ -153,6 +153,38 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "export-formal <paths..>",
+      "Export SysML v2 models to standard formal verification formats (SMT-LIB2, nuXmv, OCRA)",
+      () => import("./commands/export-formal.js"),
+      "ExportFormal",
+    ),
+  )
+  .command(
+    lazy(
+      "verify-decisions <paths..>",
+      "Formally verify SysML v2 decision tables, decide nodes, and state guards for exhaustiveness and disjointness",
+      () => import("./commands/verify-decisions.js"),
+      "VerifyDecisions",
+    ),
+  )
+  .command(
+    lazy(
+      "decompose <paths..>",
+      "Perform symbolic state-space region decomposition over SysML v2 decision conditions",
+      () => import("./commands/decompose.js"),
+      "Decompose",
+    ),
+  )
+  .command(
+    lazy(
+      "generate-tests <paths..>",
+      "Synthesize formal boundary-condition and 100% MC/DC test suites from SysML v2 models",
+      () => import("./commands/generate-tests.js"),
+      "GenerateTests",
+    ),
+  )
+  .command(
+    lazy(
       "cosim",
       "Co-simulation management (sessions, participants, FMUs, replay)",
       () => import("./commands/cosim.js"),

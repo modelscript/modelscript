@@ -32,32 +32,75 @@ export class CstLinkSynthesizer {
   }
 
   /**
-   * Synthesizes a trace link (satisfy / verify / allocate) in a SysML v2 file.
+   * Synthesizes a trace link (satisfy / verify / allocate / connect / mitigate / refine) in a SysML v2 file.
    */
   static synthesizeSysMLTraceLink(
     documentText: string,
     sourceName: string,
     targetName: string,
-    linkKind: "satisfy" | "verify" | "allocate" = "satisfy",
+    linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine" = "satisfy",
   ): WorkspaceTextEdit[] | null {
+    if (linkKind === "connect") {
+      // Synthesize: connect sourceName to targetName;
+      const lastBraceIndex = documentText.lastIndexOf("}");
+      if (lastBraceIndex !== -1) {
+        const pos = this.offsetToPosition(documentText, lastBraceIndex);
+        return [
+          {
+            range: { start: pos, end: pos },
+            newText: `  connect ${sourceName} to ${targetName};\n`,
+          },
+        ];
+      } else {
+        const endPos = this.offsetToPosition(documentText, documentText.length);
+        return [
+          {
+            range: { start: endPos, end: endPos },
+            newText: `\nconnect ${sourceName} to ${targetName};\n`,
+          },
+        ];
+      }
+    }
+
     // 1. Locate the source element declaration in documentText
-    // Matches: part def Name { ... } or part Name : Type { ... } or part Name;
     const regex = new RegExp(
-      `\\b(part\\s+def|part|port\\s+def|port|action\\s+def|action|verification\\s+def|verification)\\s+${sourceName}\\b([^;{]*)(;|\\{)`,
+      `\\b(part\\s+def|part|port\\s+def|port|action\\s+def|action|verification\\s+def|verification|hazard\\s+def|hazard|item\\s+def|item)\\s+${sourceName}\\b([^;{]*)(;|\\{)`,
       "m",
     );
 
     const match = regex.exec(documentText);
-    if (!match) return null;
+    if (!match) {
+      if (linkKind === "allocate") {
+        const lastBraceIndex = documentText.lastIndexOf("}");
+        if (lastBraceIndex !== -1) {
+          const pos = this.offsetToPosition(documentText, lastBraceIndex);
+          return [
+            {
+              range: { start: pos, end: pos },
+              newText: `  allocate ${sourceName} to ${targetName};\n`,
+            },
+          ];
+        }
+      }
+      return null;
+    }
 
-    const keyword = linkKind === "satisfy" ? "satisfy" : linkKind === "verify" ? "verify" : "allocate";
-    const statement = `${keyword} ${targetName};`;
+    const keyword =
+      linkKind === "satisfy"
+        ? "satisfy"
+        : linkKind === "verify"
+          ? "verify"
+          : linkKind === "mitigate"
+            ? "mitigate"
+            : linkKind === "refine"
+              ? "refine"
+              : "allocate";
+    const statement = linkKind === "allocate" ? `allocate to ${targetName};` : `${keyword} ${targetName};`;
 
     const fullMatchIndex = match.index;
     const delimiter = match[3];
 
     if (delimiter === "{") {
-      // It has a block. Insert statement right after '{'
       const openBraceIndex = fullMatchIndex + match[0].length;
       const pos = this.offsetToPosition(documentText, openBraceIndex);
       return [
@@ -67,8 +110,6 @@ export class CstLinkSynthesizer {
         },
       ];
     } else if (delimiter === ";") {
-      // It was a semicolon statement like: `part engine : Engine;`
-      // Replace semicolon with block containing the satisfy statement
       const semicolonIndex = fullMatchIndex + match[0].length - 1;
       const startPos = this.offsetToPosition(documentText, semicolonIndex);
       const endPos = this.offsetToPosition(documentText, semicolonIndex + 1);
@@ -89,8 +130,9 @@ export class CstLinkSynthesizer {
   static removeSysMLTraceLink(
     documentText: string,
     targetName: string,
-    linkKind: "satisfy" | "verify" | "allocate" = "satisfy",
+    linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine" = "satisfy",
     declarationRange?: [number, number],
+    sourceName?: string,
   ): WorkspaceTextEdit[] | null {
     if (declarationRange && declarationRange[1] > declarationRange[0]) {
       const startPos = this.offsetToPosition(documentText, declarationRange[0]);
@@ -103,8 +145,43 @@ export class CstLinkSynthesizer {
       ];
     }
 
-    const keyword = linkKind === "satisfy" ? "satisfy" : linkKind === "verify" ? "verify" : "allocate";
-    const lineRegex = new RegExp(`^[ \\t]*${keyword}\\s+${targetName}\\s*;[ \\t]*\\r?\\n?`, "m");
+    if (linkKind === "connect" && sourceName) {
+      const connectRegex = new RegExp(
+        `^[ \\t]*connect\\s+(${sourceName}\\s+to\\s+${targetName}|${targetName}\\s+to\\s+${sourceName})\\s*;[ \\t]*\\r?\\n?`,
+        "m",
+      );
+      const match = connectRegex.exec(documentText);
+      if (match) {
+        const startPos = this.offsetToPosition(documentText, match.index);
+        const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
+        return [{ range: { start: startPos, end: endPos }, newText: "" }];
+      }
+    }
+
+    if (linkKind === "allocate" && sourceName) {
+      const allocRegex = new RegExp(
+        `^[ \\t]*allocate\\s+${sourceName}\\s+to\\s+${targetName}\\s*;[ \\t]*\\r?\\n?`,
+        "m",
+      );
+      const match = allocRegex.exec(documentText);
+      if (match) {
+        const startPos = this.offsetToPosition(documentText, match.index);
+        const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
+        return [{ range: { start: startPos, end: endPos }, newText: "" }];
+      }
+    }
+
+    const keyword =
+      linkKind === "satisfy"
+        ? "satisfy"
+        : linkKind === "verify"
+          ? "verify"
+          : linkKind === "mitigate"
+            ? "mitigate"
+            : linkKind === "refine"
+              ? "refine"
+              : "allocate";
+    const lineRegex = new RegExp(`^[ \\t]*${keyword}\\s+(to\\s+)?${targetName}\\s*;[ \\t]*\\r?\\n?`, "m");
     const match = lineRegex.exec(documentText);
     if (!match) return null;
 

@@ -63,8 +63,18 @@ export async function exportLspBundle(
         const relPath = relPrefix + entry.name;
         if (entry.isDirectory()) {
           walkDir(fullPath, relPath + "/");
-        } else if (entry.isFile() && entry.name.endsWith(".mo")) {
-          zipfile.addFile(fullPath, relPath);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          const isIncluded =
+            ext === ".mo" ||
+            ext === ".msim" ||
+            ext === ".csv" ||
+            ext === ".mat" ||
+            ext === ".txt" ||
+            entry.name === "package.order";
+          if (isIncluded) {
+            zipfile.addFile(fullPath, relPath);
+          }
         }
       }
     }

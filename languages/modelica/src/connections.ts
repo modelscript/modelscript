@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "@modelscript/runtime";
+import { ModelicaErrorCode } from "./errors.js";
 
 /**
  * Union-Find data structure with path compression and union-by-rank.
@@ -153,6 +154,7 @@ export class ModelicaPortBalancer {
       const toStr = dae.interner.resolve(toStrId);
       if (dae.getVarIdxByName(fromStr) === -1 || dae.getVarIdxByName(toStr) === -1) {
         neededPrefixes.add(fromStr);
+        neededPrefixes.add(toStr);
       }
     }
 
@@ -195,24 +197,61 @@ export class ModelicaPortBalancer {
         }
       } else {
         const fromDesc = prefixMap.get(fromStr);
-        if (fromDesc) {
-          const fromPrefixLen = fromStr.length;
-          for (const idxA of fromDesc) {
-            const vNameA = dae.getVarName(idxA);
-            const suffix = vNameA.substring(fromPrefixLen);
-            const targetName = toStr + suffix;
-            const idxB = dae.getVarIdxByName(targetName);
-            if (idxB !== -1 && !dae.isVarRemoved(idxB)) {
-              uf.union(idxA, idxB);
-              resolvedPairs.push([idxA, idxB, eqIdx]);
-              if (!varConnectEqIdx.has(idxA)) varConnectEqIdx.set(idxA, eqIdx);
-              if (!varConnectEqIdx.has(idxB)) varConnectEqIdx.set(idxB, eqIdx);
-              if (dae.exports?.flattener_unionSets) {
-                const wasmFlattener = (dae as any)._wasmFlattener;
-                if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
+        const toDesc = prefixMap.get(toStr);
+        const hasArrayDesc = (prefix: string) => {
+          const p = prefix + "[";
+          for (let v = 0; v < dae.varCount; v++) {
+            if (dae.getVarName(v).startsWith(p)) return true;
+          }
+          return false;
+        };
+
+        const isBus = isExpBusVar(fromStr) || isExpBusVar(toStr);
+        let isPlugCompatible = true;
+
+        if (fromDesc && fromDesc.length > 0) {
+          if (!toDesc || toDesc.length !== fromDesc.length || hasArrayDesc(toStr)) {
+            isPlugCompatible = false;
+          } else {
+            const fromPrefixLen = fromStr.length;
+            for (const idxA of fromDesc) {
+              const vNameA = dae.getVarName(idxA);
+              const suffix = vNameA.substring(fromPrefixLen);
+              const targetName = toStr + suffix;
+              const idxB = dae.getVarIdxByName(targetName);
+              if (
+                idxB !== -1 &&
+                !dae.isVarRemoved(idxB) &&
+                dae.isVarFlow(idxA) === dae.isVarFlow(idxB) &&
+                dae.getVarFlowPrefix(idxA) === dae.getVarFlowPrefix(idxB) &&
+                dae.getVarType(idxA) === dae.getVarType(idxB)
+              ) {
+                uf.union(idxA, idxB);
+                resolvedPairs.push([idxA, idxB, eqIdx]);
+                if (!varConnectEqIdx.has(idxA)) varConnectEqIdx.set(idxA, eqIdx);
+                if (!varConnectEqIdx.has(idxB)) varConnectEqIdx.set(idxB, eqIdx);
+                if (dae.exports?.flattener_unionSets) {
+                  const wasmFlattener = (dae as any)._wasmFlattener;
+                  if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
+                }
+              } else {
+                isPlugCompatible = false;
+                break;
               }
             }
           }
+        } else if (toDesc && toDesc.length > 0) {
+          isPlugCompatible = false;
+        }
+
+        if (!isPlugCompatible && !isBus) {
+          const srcRange = dae.getEqSourceRange?.(eqIdx);
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
+            message: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(fromStr, toStr),
+            range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+          });
         }
       }
     }

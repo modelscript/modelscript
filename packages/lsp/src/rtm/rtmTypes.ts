@@ -7,6 +7,9 @@ export type RtmDomain =
   | "hazard"
   | "requirement"
   | "sysml_logical"
+  | "sysml_port"
+  | "sysml_activity"
+  | "physical_component"
   | "modelica_physics"
   | "verification_case"
   | "test_run";
@@ -14,7 +17,79 @@ export type RtmDomain =
 /**
  * Semantic kind of traceability connection.
  */
-export type RtmLinkKind = "mitigate" | "satisfy" | "verify" | "allocate" | "refine" | "derive";
+export type RtmLinkKind = "mitigate" | "satisfy" | "verify" | "allocate" | "refine" | "derive" | "connect";
+
+/**
+ * Standard MBSE 2D matrix configuration presets.
+ */
+export type RtmPresetKind =
+  | "allocations"
+  | "requirements_satisfy"
+  | "verification_matrix"
+  | "interface_n2"
+  | "derivation_matrix"
+  | "risk_mitigation";
+
+export interface RtmPresetDefinition {
+  id: RtmPresetKind;
+  title: string;
+  rowDomain: RtmDomain;
+  colDomain: RtmDomain;
+  defaultLinkKind: RtmLinkKind;
+  description: string;
+}
+
+export const STANDARD_MATRIX_PRESETS: RtmPresetDefinition[] = [
+  {
+    id: "allocations",
+    title: "Allocation Matrix (Logical vs Physical)",
+    rowDomain: "sysml_logical",
+    colDomain: "physical_component",
+    defaultLinkKind: "allocate",
+    description:
+      "Allocates logical functions, actions, and architectural parts to physical hardware/software components.",
+  },
+  {
+    id: "requirements_satisfy",
+    title: "Requirements Satisfaction Matrix",
+    rowDomain: "sysml_logical",
+    colDomain: "requirement",
+    defaultLinkKind: "satisfy",
+    description: "Maps architectural blocks and behavioral elements to the requirements they satisfy.",
+  },
+  {
+    id: "verification_matrix",
+    title: "Verification & Analysis Matrix",
+    rowDomain: "verification_case",
+    colDomain: "requirement",
+    defaultLinkKind: "verify",
+    description: "Tracks verification cases, analysis cases, and test benches verifying system requirements.",
+  },
+  {
+    id: "interface_n2",
+    title: "Interface N² Connectivity Matrix",
+    rowDomain: "sysml_port",
+    colDomain: "sysml_port",
+    defaultLinkKind: "connect",
+    description: "Displays port-to-port connections and flow interfaces across subsystem boundaries.",
+  },
+  {
+    id: "derivation_matrix",
+    title: "Requirements Derivation & Refinement",
+    rowDomain: "requirement",
+    colDomain: "requirement",
+    defaultLinkKind: "refine",
+    description: "Visualizes parent-child requirement derivation and decomposition hierarchies.",
+  },
+  {
+    id: "risk_mitigation",
+    title: "Risk & Hazard Mitigation Matrix (ISO 14971)",
+    rowDomain: "hazard",
+    colDomain: "requirement",
+    defaultLinkKind: "mitigate",
+    description: "Correlates ISO 14971 hazards with the functional safety requirements mitigating them.",
+  },
+];
 
 /**
  * Live verification and health status of a trace link.

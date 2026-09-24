@@ -239,14 +239,12 @@ function parseComparisonFromText(text: string): { lhs: string; op: string; rhs: 
   }
 
   // Match comparison operators
-  const compMatch = inner.match(
-    /([a-zA-Z_][a-zA-Z0-9_.]*)\s*(<=|>=|==|<|>)\s*([a-zA-Z_][a-zA-Z0-9_.]*|[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/,
-  );
+  const compMatch = inner.match(/([^<>=!]+?)\s*(<=|>=|==|!=|<|>)\s*([^<>=!]+)/);
   if (compMatch) {
     return {
-      lhs: compMatch[1],
-      op: compMatch[2],
-      rhs: compMatch[3],
+      lhs: compMatch[1].trim(),
+      op: compMatch[2].trim(),
+      rhs: compMatch[3].trim(),
     };
   }
 

@@ -31,7 +31,17 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["component_declaration"],
     severity: "error",
     code: 3001,
-    message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
+    message: (target, expType, actType) => {
+      const typeNames = ["Real", "Integer", "Boolean", "String"];
+      const eIdx = expType && expType.asNumber ? expType.asNumber() : Number(expType);
+      const aIdx = actType && actType.asNumber ? actType.asNumber() : Number(actType);
+      const expName = eIdx >= 0 && eIdx < typeNames.length ? typeNames[eIdx] : "";
+      const actName = aIdx >= 0 && aIdx < typeNames.length ? typeNames[aIdx] : "";
+      if (expName && actName) {
+        return `Type mismatch in binding ${target.text}, expected subtype of ${expName}, got type ${actName}.`;
+      }
+      return `Type mismatch in binding or modification expression '${target.text}'.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let expectedType: u16 = TYPE_UNKNOWN;
       for (const anc of db.ast.getAncestors(node)) {
@@ -110,7 +120,35 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (!isAttrMod) {
-              db.diagnostic(str);
+              db.diagnostic(declNode != 0 ? declNode : node, expectedType, TYPE_STRING);
+              return;
+            }
+          }
+        }
+        if (expectedType == TYPE_INTEGER && $.unsigned_real != 0) {
+          for (const num of db.ast.getDescendants(modNode, $.unsigned_real)) {
+            let isDesc = false;
+            for (const anc of db.ast.getAncestors(num)) {
+              if (anc == node) break;
+              const t = db.ast.getType(anc);
+              if (
+                ($.description != 0 && t == $.description) ||
+                ($.description_string != 0 && t == $.description_string) ||
+                ($.comment != 0 && t == $.comment) ||
+                ($.string_comment != 0 && t == $.string_comment) ||
+                ($.annotation != 0 && t == $.annotation) ||
+                ($.annotation_clause != 0 && t == $.annotation_clause) ||
+                ($.function_call != 0 && t == $.function_call) ||
+                ($.function_call_args != 0 && t == $.function_call_args) ||
+                ($.function_arguments != 0 && t == $.function_arguments) ||
+                ($.named_argument != 0 && t == $.named_argument)
+              ) {
+                isDesc = true;
+                break;
+              }
+            }
+            if (!isDesc) {
+              db.diagnostic(declNode != 0 ? declNode : node, TYPE_INTEGER, TYPE_REAL);
               return;
             }
           }
@@ -139,7 +177,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (!isDesc) {
-              db.diagnostic(num);
+              db.diagnostic(declNode != 0 ? declNode : node, TYPE_STRING, TYPE_REAL);
               return;
             }
           }
@@ -167,7 +205,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (!isDesc) {
-              db.diagnostic(num);
+              db.diagnostic(declNode != 0 ? declNode : node, TYPE_STRING, TYPE_INTEGER);
               return;
             }
           }
@@ -563,14 +601,19 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["simple_equation"],
     severity: "error",
     code: 5001,
-    message: (target, lhsType, rhsType) => {
+    message: (target, lhsType, rhsType, isOldFrontend) => {
       const typeNames = ["Real", "Integer", "Boolean", "String"];
       const lIdx = lhsType && lhsType.asNumber ? lhsType.asNumber() : Number(lhsType);
       const rIdx = rhsType && rhsType.asNumber ? rhsType.asNumber() : Number(rhsType);
       const lName = lIdx >= 0 && lIdx < typeNames.length ? typeNames[lIdx] : "Unknown";
       const rName = rIdx >= 0 && rIdx < typeNames.length ? typeNames[rIdx] : "Unknown";
-      const eqText = target.text.replace(/\s+/g, " ").replace(" = ", "=").trim();
-      return `Type mismatch in equation ${eqText} of type ${lName}=${rName}.`;
+      const isOld = isOldFrontend && (isOldFrontend.asNumber ? isOldFrontend.asNumber() : Number(isOldFrontend)) === 1;
+      if (isOld) {
+        const eqText = target.text.replace(/\s+/g, " ").replace(" = ", "=").trim();
+        return `Type mismatch in equation ${eqText} of type ${lName}=${rName}.`;
+      }
+      const eqText = target.text.replace(/\s+/g, " ").trim();
+      return `Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`;
     },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let lhs = db.ast.getFirstChild(node);
@@ -592,7 +635,17 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const rhsType = inferExprType(db, rhs, $);
         if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN) {
           if (!isTypeCompatible(rhsType, lhsType) && !isTypeCompatible(lhsType, rhsType)) {
-            db.diagnostic(node, lhsType, rhsType);
+            let isOldFrontend: u32 = 0;
+            const docRoot = db.ast.getRootNode();
+            if (docRoot != 0 && $.string_literal != 0) {
+              for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+                if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+                  isOldFrontend = 1;
+                  break;
+                }
+              }
+            }
+            db.diagnostic(node, lhsType, rhsType, isOldFrontend);
           }
         }
       }

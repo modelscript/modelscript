@@ -236,6 +236,12 @@ export class WasmQueryEngine {
     return new Map(this.memos);
   }
 
+  public hydrateMemos(memos: Map<number, Memo>): void {
+    for (const [key, memo] of memos) {
+      this.memos.set(key, memo);
+    }
+  }
+
   public memoKey(queryName: string, symbolId: SymbolId, argsHash?: string): number {
     const qId = this.getQueryId(queryName);
     const aId = this.getArgsId(argsHash);
@@ -375,6 +381,23 @@ export class WasmQueryEngine {
   }
 
   public async preflight(symbolIds: SymbolId[], queryNames?: string[]): Promise<void> {
+    if (this.cacheStore && queryNames && queryNames.length > 0 && symbolIds.length > 0) {
+      const keys: number[] = [];
+      for (const id of symbolIds) {
+        for (const q of queryNames) {
+          keys.push(this.memoKey(q, id));
+        }
+      }
+      try {
+        const cached = await this.cacheStore.getMemos(keys);
+        if (cached && cached.size > 0) {
+          this.hydrateMemos(cached);
+        }
+      } catch {
+        /* ignore cache preflight errors */
+      }
+    }
+
     for (const id of symbolIds) {
       if (queryNames) {
         for (const q of queryNames) {

@@ -265,28 +265,44 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
 
     if (endpoints.length === 0 || keys.length === 0) return result;
 
-    const keysParam = keys.join(",");
+    // Chunk keys into batches of 50 to avoid HTTP 414 URI Too Long
+    const CHUNK_SIZE = 50;
+    const chunks: number[][] = [];
+    for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+      chunks.push(keys.slice(i, i + CHUNK_SIZE));
+    }
 
-    for (const endpoint of endpoints) {
-      try {
-        const url = new URL(endpoint);
-        url.searchParams.set("keys", keysParam);
+    for (const chunk of chunks) {
+      const keysParam = chunk.join(",");
 
-        const response = await fetch(url.toString(), {
-          headers: { Accept: "application/json" },
-        });
+      await Promise.all(
+        endpoints.map(async (endpoint) => {
+          const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+          const timer = controller ? setTimeout(() => controller.abort(), 5000) : null;
+          try {
+            const url = new URL(endpoint);
+            url.searchParams.set("keys", keysParam);
 
-        if (response.ok) {
-          const data = (await response.json()) as { memos: Record<string, Memo> };
-          if (data && data.memos) {
-            for (const [k, v] of Object.entries(data.memos)) {
-              result.set(Number(k), v);
+            const response = await fetch(url.toString(), {
+              headers: { Accept: "application/json" },
+              ...(controller && { signal: controller.signal }),
+            });
+
+            if (response.ok) {
+              const data = (await response.json()) as { memos: Record<string, Memo> };
+              if (data && data.memos) {
+                for (const [k, v] of Object.entries(data.memos)) {
+                  result.set(Number(k), v);
+                }
+              }
             }
+          } catch (err) {
+            console.warn(`[FederatedCache] Failed to fetch from ${endpoint}`, err);
+          } finally {
+            if (timer) clearTimeout(timer);
           }
-        }
-      } catch (err) {
-        console.warn(`[FederatedCache] Failed to fetch from ${endpoint}`, err);
-      }
+        }),
+      );
     }
 
     return result;

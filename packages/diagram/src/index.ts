@@ -20,11 +20,17 @@ type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
-import { computeJumpoverPath, computeSmoothBezierPath, portOrthogonalRouter } from "./port-router.js";
+import {
+  computeFilletedOrthogonalPath,
+  computeJumpoverPath,
+  computeSmoothBezierPath,
+  portOrthogonalRouter,
+} from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout } from "./swimlane-layout.js";
 import { animateCells } from "./telemetry.js";
+import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
 
 if (typeof Graph.registerRouter === "function") {
   Graph.registerRouter("port-orthogonal-astar", portOrthogonalRouter);
@@ -42,6 +48,10 @@ if (typeof Graph.registerConnector === "function") {
   Graph.registerConnector("bezier", (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
     const points = [sourcePoint, ...routePoints, targetPoint];
     return computeSmoothBezierPath(points);
+  });
+  Graph.registerConnector("fillet", (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
+    const points = [sourcePoint, ...routePoints, targetPoint];
+    return computeFilletedOrthogonalPath(points, args.radius ?? 5);
   });
 }
 
@@ -1000,6 +1010,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     applySequenceLayout(nodes, edges, isDark);
   } else if ((data as any).partitions && (data as any).partitions.length > 0) {
     applySwimlaneLayout({ nodes, edges }, (data as any).partitions);
+  } else if ((data as any).layout === "tsm-orthogonal" || (data as any).layout === "orthogonal") {
+    applyTsmOrthogonalLayout({ nodes, edges });
   } else {
     // ── Layout Strategy ──
     // The layout runs in 3 phases:
@@ -1928,8 +1940,10 @@ export * from "./collab-overlay.js";
 export * from "./color-inversion.js";
 export * from "./fault-tree.js";
 export * from "./glyphs.js";
+export * from "./incremental-layout.js";
 export * from "./interactive.js";
 export * from "./polyglot-diagram-builder.js";
+export * from "./port-ilp-solver.js";
 export * from "./port-router.js";
 export * from "./protocol.js";
 export type { ReactiveAnimationBinding, X6Markup } from "./protocol.js";
@@ -1937,3 +1951,4 @@ export * from "./svg-renderer.js";
 export * from "./swimlane-layout.js";
 export * from "./telemetry.js";
 export type { TopologyEdge, TopologyGraph, TopologyNode } from "./topology.js";
+export * from "./tsm-layout.js";

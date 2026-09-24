@@ -3340,6 +3340,8 @@ function vectorizeFunctionCall(
   let isScalarFn = Boolean(scalarBuiltin);
   let fnDae: DAEBuilder | undefined;
   if (!isScalarFn) {
+    const hasArrayArg = argExprIds.some((aid) => (getExprDims(aid, dae, db)?.length ?? 0) > 0);
+    if (!hasArrayArg) return null;
     fnDae = dae.getFunction(fnName);
     if (!fnDae && flattener && db) {
       const parts = fnName.split(".");
@@ -4762,14 +4764,138 @@ function lowerCSTExpression(
     ) {
       const parts = cleanFnName.split(".");
       const fnBase = parts[parts.length - 1];
-      const matchingFnSym = db.byName(fnBase).find((e: any) => {
-        if (e.kind !== "Class") return false;
-        if (parts.length > 1) {
-          const qual = getSymbolQualifiedName(db, e.id);
-          return qual === cleanFnName || qual.endsWith("." + cleanFnName);
+      let matchingFnSym: any = null;
+      let specializedQualifiedName: string | null = null;
+      let enclosingScopeId: SymbolId | undefined = undefined;
+
+      // 1. Check if parentMods redeclared this function (e.g. RedeclareFunction1.mo)
+      const currentParentMods = flattener?.currentParentMods;
+      const redeclArg = currentParentMods?.args?.find(
+        (a: any) =>
+          !a.isBreak &&
+          (a.name === cleanFnName || (parts.length === 1 && a.name === parts[0])) &&
+          (a.isRedeclaration || a.redeclaredTypeSpecifier),
+      );
+      if (redeclArg?.redeclaredTypeSpecifier) {
+        const redeclTarget =
+          (flattener?.currentClassId
+            ? db.query<(n: string) => SymbolEntry | null>(
+                "resolveName",
+                flattener.currentClassId,
+              )?.(redeclArg.redeclaredTypeSpecifier)
+            : null) ??
+          db
+            .byName(redeclArg.redeclaredTypeSpecifier)
+            .find((e: any) => (e.kind === "Class" || e.kind === "Function") && flattener.isFunctionSym?.(e));
+        if (redeclTarget) {
+          matchingFnSym = redeclTarget;
+          const ownerClassSym = flattener?.currentClassId ? db.symbol(flattener.currentClassId) : null;
+          const ownerName = ownerClassSym?.name ?? "";
+          if (ownerName) {
+            specializedQualifiedName = `${ownerName}.${redeclArg.name}`;
+            enclosingScopeId = flattener.currentClassId;
+          }
         }
-        return parts.length === 1;
-      });
+      }
+
+      // 2. Check if cleanFnName is a qualified call on a package/class (e.g. B.usePart, ClassExtends4.mo / ClassExtends6.mo)
+      if (!matchingFnSym && parts.length > 1) {
+        const prefixStr = parts.slice(0, -1).join(".");
+        const fnBaseName = parts[parts.length - 1]!;
+        const currentScope = flattener?.currentClassId ?? flattener?.currentRootClassId;
+        let prefixSym = currentScope
+          ? db.query<(n: string) => SymbolEntry | null>("resolveName", currentScope)?.(prefixStr)
+          : null;
+        if (!prefixSym) {
+          prefixSym = db.byName(parts[0]!).find((e: any) => e.kind === "Class" || e.kind === "Package") ?? null;
+          for (let pIdx = 1; pIdx < parts.length - 1 && prefixSym; pIdx++) {
+            prefixSym =
+              db.query<(n: string) => SymbolEntry | null>("resolveName", prefixSym.id)?.(parts[pIdx]!) ?? null;
+          }
+        }
+        if (prefixSym) {
+          const memberFn = db.query<(n: string) => SymbolEntry | null>("resolveName", prefixSym.id)?.(fnBaseName);
+          if (
+            memberFn &&
+            (memberFn.kind === "Class" || memberFn.kind === "Function") &&
+            flattener.isFunctionSym?.(memberFn)
+          ) {
+            matchingFnSym = memberFn;
+            const prefixQual = getSymbolQualifiedName(db, prefixSym.id);
+            specializedQualifiedName = `${prefixQual}.${fnBaseName}`;
+            enclosingScopeId = prefixSym.id;
+          }
+        }
+      }
+
+      // 3. Check if cleanFnName is an unqualified call in the current enclosing scope (e.g. part(a) inside B.usePart)
+      if (!matchingFnSym && parts.length === 1) {
+        // 3a. First check the enclosing scope for inherited functions (redeclare function extends).
+        // When flattening an inherited function (e.g., usePart from A in B's scope),
+        // the enclosing scope (B) may have redeclared sibling functions that should
+        // take priority over the ones inherited from the original parent (A).
+        const fnEncScope = (flattener as any)?.currentFunctionEnclosingScope as SymbolId | null;
+        if (fnEncScope) {
+          const encScopeFn = db.query<(n: string) => SymbolEntry | null>("resolveName", fnEncScope)?.(cleanFnName);
+          if (
+            encScopeFn &&
+            (encScopeFn.kind === "Class" || encScopeFn.kind === "Function") &&
+            flattener.isFunctionSym?.(encScopeFn)
+          ) {
+            matchingFnSym = encScopeFn;
+            const encScopeSym = db.symbol(fnEncScope);
+            if (encScopeSym && (encScopeSym.kind === "Class" || encScopeSym.kind === "Package")) {
+              const encScopeQual = getSymbolQualifiedName(db, fnEncScope);
+              specializedQualifiedName = `${encScopeQual}.${cleanFnName}`;
+              enclosingScopeId = fnEncScope;
+            }
+          }
+        }
+
+        // 3b. Fallback: check the current scope (function or class being flattened)
+        if (!matchingFnSym) {
+          const currentScope = flattener?.currentClassId ?? flattener?.currentFlatteningFunctionId;
+          if (currentScope) {
+            const inScopeFn = db.query<(n: string) => SymbolEntry | null>("resolveName", currentScope)?.(cleanFnName);
+            if (
+              inScopeFn &&
+              (inScopeFn.kind === "Class" || inScopeFn.kind === "Function") &&
+              flattener.isFunctionSym?.(inScopeFn)
+            ) {
+              matchingFnSym = inScopeFn;
+              // Use the resolved function's actual parent for the qualified name,
+              // not currentClassId which may be a function (not a package).
+              const resolvedParentId = inScopeFn.parentId;
+              const resolvedParent = resolvedParentId != null ? db.symbol(resolvedParentId) : null;
+              if (resolvedParent && (resolvedParent.kind === "Class" || resolvedParent.kind === "Package")) {
+                const parentQual = getSymbolQualifiedName(db, resolvedParentId!);
+                specializedQualifiedName = `${parentQual}.${cleanFnName}`;
+                enclosingScopeId = resolvedParentId!;
+              } else if (flattener?.currentClassId) {
+                const scopeSym = db.symbol(flattener.currentClassId);
+                if (scopeSym && (scopeSym.kind === "Class" || scopeSym.kind === "Package")) {
+                  const scopeQual = getSymbolQualifiedName(db, flattener.currentClassId);
+                  specializedQualifiedName = `${scopeQual}.${cleanFnName}`;
+                  enclosingScopeId = flattener.currentClassId;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 4. Fallback to existing search
+      if (!matchingFnSym) {
+        matchingFnSym = db.byName(fnBase).find((e: any) => {
+          if (e.kind !== "Class") return false;
+          if (parts.length > 1) {
+            const qual = getSymbolQualifiedName(db, e.id);
+            return qual === cleanFnName || qual.endsWith("." + cleanFnName);
+          }
+          return parts.length === 1;
+        });
+      }
+
       if (matchingFnSym && flattener.isExternalObject?.(matchingFnSym.id)) {
         const qualifiedName = getSymbolQualifiedName(db, matchingFnSym.id);
         const ctorName = `${qualifiedName}.constructor`;
@@ -4815,9 +4941,9 @@ function lowerCSTExpression(
           });
           return dae.addCallExpr(fnName, argExprIds);
         }
-        const qualifiedFnName = getSymbolQualifiedName(db, matchingFnSym.id);
+        const qualifiedFnName = specializedQualifiedName ?? getSymbolQualifiedName(db, matchingFnSym.id);
         flattener.calledFunctionSymIds?.add(matchingFnSym.id);
-        const fn = flattener.flattenFunction(matchingFnSym.id, qualifiedFnName, undefined, dae);
+        const fn = flattener.flattenFunction(matchingFnSym.id, qualifiedFnName, undefined, dae, enclosingScopeId);
         if (fn.diagnostics.some((d: any) => d.severity === "error")) {
           for (const d of fn.diagnostics) {
             if (!dae.diagnostics.some((existing: any) => existing.message === d.message)) {
@@ -4866,7 +4992,8 @@ function lowerCSTExpression(
           dae.addFunction(qualifiedFnName, fn);
           dae.addFunction(cleanFnName, fn);
           dae.addFunction(fnName, fn);
-          if (fnBase) dae.addFunction(fnBase, fn);
+          if (parts.length === 1 && fnBase) dae.addFunction(fnBase, fn);
+
           let rootDae: any = (flattener as any)?.currentRootDae ?? dae;
           while (rootDae.parentDae) rootDae = rootDae.parentDae;
           rootDae.addFunction(qualifiedFnName, fn);
@@ -4977,133 +5104,6 @@ function lowerCSTExpression(
             range: callRange,
           });
           return -1;
-        }
-      }
-    }
-
-    if (fnDae && !(fnDae as any).isOperatorRecord && !fnDae.description?.includes("record constructor")) {
-      let inputParamIdx = 0;
-      for (let i = 0; i < fnDae.varCount; i++) {
-        if (fnDae.getVarCausality(i) === Causality.Input) {
-          const reqVariability = fnDae.getVarVariability(i);
-          if (reqVariability === Variability.Constant) {
-            const actualArgId = argExprIds[inputParamIdx];
-            if (actualArgId !== undefined && exprContainsNonConstantRef(actualArgId, dae)) {
-              const paramName = fnDae.getVarName(i);
-              const argNode = argNodes[inputParamIdx];
-              const argText = argNode?.text?.trim() ?? dae.interner.resolve(dae.getExprData1(actualArgId)) ?? "";
-              const funcName = cleanFnName || fnDae.name;
-
-              let compClause: any = node;
-              while (
-                compClause &&
-                compClause.type !== "component_clause" &&
-                compClause.type !== "ComponentClause" &&
-                compClause.type !== "equation" &&
-                compClause.type !== "statement"
-              ) {
-                compClause = compClause.parent;
-              }
-              const diagNode = compClause ?? node;
-              const startB = diagNode?.startIndex ?? diagNode?.startByte;
-              const endB = diagNode?.endIndex ?? diagNode?.endByte;
-              dae.diagnostics.push({
-                severity: "error",
-                code: ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.code,
-                message: ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.message(paramName, argText, funcName, "constant"),
-                range: {
-                  startByte: startB,
-                  endByte: endB,
-                  startPosition: diagNode?.startPosition,
-                  endPosition: diagNode?.endPosition,
-                },
-              });
-              return -1;
-            }
-          }
-          inputParamIdx++;
-        }
-      }
-
-      const providedConstArgs: any[] = [];
-      let providedAllConstant = true;
-      for (const aid of argExprIds) {
-        if (exprContainsNonConstantRef(aid, dae)) {
-          providedAllConstant = false;
-          break;
-        }
-        const cVal = evalDaeExpr(aid, dae);
-        if (cVal === null) {
-          providedAllConstant = false;
-          break;
-        }
-        providedConstArgs.push(cVal);
-      }
-      if (providedAllConstant) {
-        try {
-          const fnInternId = typeof fnName === "string" ? dae.interner.intern(fnName) : fnName;
-          const outVal = evaluateArenaFunctionCall(
-            dae,
-            fnInternId,
-            providedConstArgs,
-            db,
-            flattener?.currentRootClassId ?? undefined,
-          );
-          if (outVal !== null && outVal !== undefined) {
-            (fnDae as any).wasCalled = true;
-            for (const f of dae.functions.values()) {
-              if (f.name === fnDae.name) {
-                (f as any).wasCalled = true;
-              }
-            }
-            let outputCount = 0;
-            let firstOutputType: VarType | null = null;
-            const outputTypes: VarType[] = [];
-            for (let i = 0; i < fnDae.varCount; i++) {
-              if (fnDae.getVarCausality(i) === Causality.Output) {
-                if (outputCount === 0) {
-                  firstOutputType = fnDae.getVarType(i);
-                }
-                outputTypes.push(fnDae.getVarType(i));
-                outputCount++;
-              }
-            }
-            if (tupleContext && Array.isArray(outVal) && outputCount > 1) {
-              const tupleElemExprIds: number[] = [];
-              for (let i = 0; i < outVal.length; i++) {
-                const elemId = addArenaValueAsExpr(dae, outVal[i], outputTypes[i] ?? undefined);
-                if (elemId >= 0) tupleElemExprIds.push(elemId);
-              }
-              if (tupleElemExprIds.length === outVal.length) {
-                return dae.addTupleExpr(tupleElemExprIds);
-              }
-            }
-            const firstVal = Array.isArray(outVal) && outputCount > 1 ? outVal[0] : outVal;
-            const inlinedId = addArenaValueAsExpr(dae, firstVal, firstOutputType ?? undefined);
-            if (inlinedId >= 0) return inlinedId;
-          }
-        } catch (err: any) {
-          if (err?.code === 4009 || err?.message?.includes("causes a cyclic dependency")) {
-            let compClause: any = node;
-            while (compClause && compClause.type !== "component_clause" && compClause.type !== "ComponentClause") {
-              compClause = compClause.parent;
-            }
-            const diagNode = compClause ?? node;
-            const startB = diagNode?.startIndex ?? diagNode?.startByte;
-            const endB = diagNode?.endIndex ?? diagNode?.endByte;
-            dae.diagnostics.push({
-              severity: "error",
-              code: 4009,
-              message: err.message,
-              range: {
-                startByte: startB,
-                endByte: endB,
-                startPosition: diagNode?.startPosition,
-                endPosition: diagNode?.endPosition,
-              },
-            });
-            return -1;
-          }
         }
       }
     }
@@ -5253,8 +5253,13 @@ function lowerCSTExpression(
               const callText = `${cleanFnName || fnName}(${inputName}=${argText})`;
               dae.diagnostics.push({
                 severity: "error",
-                code: 3006,
-                message: `Type mismatch for positional argument ${newArgExprIds.length + 1} in ${callText}. The argument has type:\n  ${varTypeName(finalType)}\nexpected type:\n  ${varTypeName(expectedType)}`,
+                code: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
+                message: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(
+                  callText,
+                  String(newArgExprIds.length + 1),
+                  varTypeName(finalType),
+                  varTypeName(expectedType),
+                ),
                 range: {
                   startByte: startB,
                   endByte: endB,
@@ -5269,6 +5274,51 @@ function lowerCSTExpression(
         }
       }
       argExprIds = newArgExprIds;
+    }
+
+    if (fnDae && !(fnDae as any).isOperatorRecord && !fnDae.description?.includes("record constructor")) {
+      let inputParamIdx = 0;
+      for (let i = 0; i < fnDae.varCount; i++) {
+        if (fnDae.getVarCausality(i) === Causality.Input) {
+          const reqVariability = fnDae.getVarVariability(i);
+          if (reqVariability === Variability.Constant) {
+            const actualArgId = argExprIds[inputParamIdx];
+            if (actualArgId !== undefined && exprContainsNonConstantRef(actualArgId, dae)) {
+              const paramName = fnDae.getVarName(i);
+              const argNode = argNodes[inputParamIdx];
+              const argText = argNode?.text?.trim() ?? dae.interner.resolve(dae.getExprData1(actualArgId)) ?? "";
+              const funcName = cleanFnName || fnDae.name;
+
+              let compClause: any = node;
+              while (
+                compClause &&
+                compClause.type !== "component_clause" &&
+                compClause.type !== "ComponentClause" &&
+                compClause.type !== "equation" &&
+                compClause.type !== "statement"
+              ) {
+                compClause = compClause.parent;
+              }
+              const diagNode = compClause ?? node;
+              const startB = diagNode?.startIndex ?? diagNode?.startByte;
+              const endB = diagNode?.endIndex ?? diagNode?.endByte;
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.code,
+                message: ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.message(paramName, argText, funcName, "constant"),
+                range: {
+                  startByte: startB,
+                  endByte: endB,
+                  startPosition: diagNode?.startPosition,
+                  endPosition: diagNode?.endPosition,
+                },
+              });
+              return -1;
+            }
+          }
+          inputParamIdx++;
+        }
+      }
     }
 
     if (
@@ -8107,10 +8157,12 @@ export class ModelicaFlattener {
   public activeLoopVars = new Set<string>();
   public usedOperatorFunctions = new Map<string, SymbolId>();
   public currentFlatteningFunctionId: SymbolId | null = null;
+  public currentFunctionEnclosingScope: SymbolId | null = null;
   private pendingArrayBindings = new Map<string, { lhsExprId: number; rhsExprId: number }[]>();
   currentImports = new Map<string, string>();
   public expandableBuses = new Map<string, SymbolId>();
   public evaluatedConstantArrays = new Map<string, any>();
+  public currentParentMods?: any;
 
   private extractClassAnnotations(dae: DAEBuilder, classId: SymbolId): void {
     const cst = this.db.cstNode(classId) as any;
@@ -10953,9 +11005,30 @@ export class ModelicaFlattener {
     }
   }
 
-  private flattenFunction(fnSymId: SymbolId, fnName: string, modifiers?: any[], parentDae?: DAEBuilder): DAEBuilder {
+  private flattenFunction(
+    fnSymId: SymbolId,
+    fnName: string,
+    modifiers?: any[],
+    parentDae?: DAEBuilder,
+    enclosingScopeId?: SymbolId,
+  ): DAEBuilder {
     const prevFnId = this.currentFlatteningFunctionId;
+    const prevClassId = this.currentClassId;
+    const prevEnclosingScope = this.currentFunctionEnclosingScope;
     this.currentFlatteningFunctionId = fnSymId;
+    if (enclosingScopeId !== undefined) {
+      this.currentClassId = enclosingScopeId;
+      // Only track the enclosing scope for inherited functions (where the function's
+      // parent class differs from the enclosing scope). This enables step 3b in call
+      // resolution to find redeclared sibling functions in the extending package.
+      const fnParentId = this.db.symbol(fnSymId)?.parentId;
+      if (fnParentId !== undefined && fnParentId !== enclosingScopeId) {
+        this.currentFunctionEnclosingScope = enclosingScopeId;
+      }
+    } else {
+      this.currentFunctionEnclosingScope = null;
+    }
+
     const cleanFnName = fnName.replace(/^\.+/, "");
     const fn = new DAEBuilder(parentDae ? parentDae.interner : undefined, cleanFnName, "");
     (fn as any).parentDae = parentDae;
@@ -11155,6 +11228,8 @@ export class ModelicaFlattener {
 
     this.currentImports = prevImports;
     this.currentFlatteningFunctionId = prevFnId;
+    this.currentClassId = prevClassId;
+    this.currentFunctionEnclosingScope = prevEnclosingScope;
     return fn;
   }
 
@@ -15852,6 +15927,51 @@ export class ModelicaFlattener {
             const isR0Outside = prefix !== "" && !r0Raw.includes(".");
             const isR1Outside = prefix !== "" && !r1Raw.includes(".");
             const connFlags = (isR0Outside ? 1 : 0) | (isR1Outside ? 2 : 0);
+
+            // Plug-compatibility check: compare connector types and dimensions
+            // before lowering/expanding. Only check simple (non-dotted) connector refs
+            // at the top level (no prefix), where we can look up component instances.
+            if (!r0Raw.includes(".") && !r1Raw.includes(".") && !r0Raw.includes("[") && !r1Raw.includes("[")) {
+              const scopeId = this.currentRootClassId;
+              console.log(`[CONNECT_CHECK] r0Raw="${r0Raw}" r1Raw="${r1Raw}" scopeId=${scopeId} prefix="${prefix}"`);
+              if (scopeId) {
+                const allChildren = this.db.childrenOf(scopeId);
+                console.log(
+                  `[CONNECT_CHECK] children: ${allChildren.map((c: any) => `${c.name}(${c.kind})`).join(", ")}`,
+                );
+                const c0Sym = allChildren.find((c) => c.kind === "Component" && c.name === r0Raw);
+                const c1Sym = allChildren.find((c) => c.kind === "Component" && c.name === r1Raw);
+                if (c0Sym && c1Sym) {
+                  const c0Inst = this.db.query<ComponentInstanceData>("componentInstance", c0Sym.id);
+                  const c1Inst = this.db.query<ComponentInstanceData>("componentInstance", c1Sym.id);
+                  if (c0Inst && c1Inst) {
+                    let connIncompat = false;
+                    // Different type specifiers → different connector types
+                    if (c0Inst.typeSpecifier !== c1Inst.typeSpecifier) {
+                      connIncompat = true;
+                    }
+                    // Same type but different array dimensions (scalar vs array)
+                    const d0 = c0Inst.arrayDimensions ?? [];
+                    const d1 = c1Inst.arrayDimensions ?? [];
+                    if (d0.length !== d1.length || d0.some((v, i) => v !== d1[i])) {
+                      connIncompat = true;
+                    }
+                    if (connIncompat) {
+                      const sb = node?.startIndex ?? node?.startByte;
+                      const eb = node?.endIndex ?? node?.endByte;
+                      dae.diagnostics.push({
+                        severity: "error",
+                        code: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
+                        message: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(r0Raw, r1Raw),
+                        range: sb !== undefined && eb !== undefined ? { startByte: sb, endByte: eb } : undefined,
+                      });
+                      return;
+                    }
+                  }
+                }
+              }
+            }
+
             const lhsExprId = this.lowerExpr(refs[0], dae, prefix, substitutions);
             const rhsExprId = this.lowerExpr(refs[1], dae, prefix, substitutions);
             const lhsName =
@@ -15864,11 +15984,21 @@ export class ModelicaFlattener {
               for (let k = 0; k < lhsExpanded.length; k++) {
                 const lId = dae.addName(dae.interner.intern(lhsExpanded[k]!));
                 const rId = dae.addName(dae.interner.intern(rhsExpanded[k]!));
-                dae.addEquation(EqKind.Connect, lId, rId, connFlags);
+                const eqId = dae.addEquation(EqKind.Connect, lId, rId, connFlags);
+                const sb = node?.startIndex ?? node?.startByte;
+                const eb = node?.endIndex ?? node?.endByte;
+                if (sb !== undefined && eb !== undefined) {
+                  dae.setEqSourceRange(eqId, sb, eb);
+                }
               }
               return;
             }
-            dae.addEquation(EqKind.Connect, lhsExprId, rhsExprId, connFlags);
+            const eqId = dae.addEquation(EqKind.Connect, lhsExprId, rhsExprId, connFlags);
+            const sb = node?.startIndex ?? node?.startByte;
+            const eb = node?.endIndex ?? node?.endByte;
+            if (sb !== undefined && eb !== undefined) {
+              dae.setEqSourceRange(eqId, sb, eb);
+            }
             return;
           }
         }
@@ -16099,6 +16229,7 @@ export class ModelicaFlattener {
                     if (stmtText.endsWith(";")) stmtText = stmtText.slice(0, -1).trim();
                     dae.diagnostics.push({
                       severity: "error",
+                      code: ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
                       message: `Type mismatch in assignment in ${stmtText} of ${targetSig} := ${fnSig}`,
                       range: {
                         startByte: startB,
@@ -16494,8 +16625,8 @@ export class ModelicaFlattener {
                   const valStr = printer.printExprToString(valId);
                   const tType = inferArenaExprVarType(dae, targetId);
                   const vType = inferArenaExprVarType(dae, valId);
-                  const tTypeName = tType === VarType.Integer ? "Integer" : "Real";
-                  const vTypeName = vType === VarType.Integer ? "Integer" : "Real";
+                  const tTypeName = varTypeName(tType ?? VarType.Real);
+                  const vTypeName = varTypeName(vType ?? VarType.Real);
                   const startB = sNode.startIndex ?? sNode.startByte;
                   const endB = sNode.endIndex ?? sNode.endByte;
                   dae.diagnostics.push({
@@ -16739,7 +16870,7 @@ export class ModelicaFlattener {
         if (matches.length > 0 && matches[0].kind === "Class") {
           const shortMod = this.db.query<any>("effectiveModification", classId);
           const shortArgs = shortMod?.args ?? [];
-          const combinedMods = { args: [...shortArgs, ...(parentMods?.args ?? [])] };
+          const combinedMods = { args: [...shortArgs, ...(parentMods?.args ?? [])], currentClassId: classId };
           this.extractClassEquations(matches[0].id, prefix, dae, curBreakContext, combinedMods);
         }
       }
@@ -16787,6 +16918,8 @@ export class ModelicaFlattener {
         }
       }
     }
+    this.currentParentMods = prevParentMods;
+    this.currentClassId = prevClassId;
   }
 
   private expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {

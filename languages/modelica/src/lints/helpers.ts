@@ -1159,8 +1159,7 @@ export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNod
   // 3. Inherited via long_class_specifier extends on classNode itself
   for (const spec of db.ast.getDescendants(classNode, $.long_class_specifier)) {
     if (isDescendantOfInnerClass(db, spec, classNode, $)) continue;
-    const firstChild = db.ast.getFirstChild(spec);
-    if (firstChild != 0 && db.ast.textEquals(firstChild, "extends")) {
+    if (db.ast.startsWith(spec, "extends")) {
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0) {
         for (const lspec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
@@ -1176,7 +1175,6 @@ export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNod
             if (baseClass == 0 || baseClass == classNode) continue;
             const res = findComponentTypeInClass(db, baseClass, identNode, $);
             if (res != 0) return res;
-            break;
           }
         }
         for (const sspec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
@@ -1192,7 +1190,6 @@ export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNod
             if (baseClass == 0 || baseClass == classNode) continue;
             const res = findComponentTypeInClass(db, baseClass, identNode, $);
             if (res != 0) return res;
-            break;
           }
         }
       }
@@ -1910,8 +1907,7 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
   // 5. Inherited members via long_class_specifier extends on classNode itself
   for (const spec of db.ast.getDescendants(classNode, $.long_class_specifier)) {
     if (isDescendantOfInnerClass(db, spec, classNode, $)) continue;
-    const firstChild = db.ast.getFirstChild(spec);
-    if (firstChild != 0 && db.ast.textEquals(firstChild, "extends")) {
+    if (db.ast.startsWith(spec, "extends")) {
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0) {
         for (const lspec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
@@ -1927,7 +1923,6 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
             if (baseClass == 0 || baseClass == classNode) continue;
             const res = getMemberKindInClass(db, baseClass, identNode, $);
             if (res != MEMBER_NONE) return res;
-            break;
           }
         }
         for (const sspec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
@@ -1943,7 +1938,6 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
             if (baseClass == 0 || baseClass == classNode) continue;
             const res = getMemberKindInClass(db, baseClass, identNode, $);
             if (res != MEMBER_NONE) return res;
-            break;
           }
         }
       }

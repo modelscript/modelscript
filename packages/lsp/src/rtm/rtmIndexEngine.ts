@@ -1,20 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { SymbolEntry, SymbolIndex } from "@modelscript/runtime";
-import type {
-  RtmAnalytics,
-  RtmDomain,
-  RtmElement,
-  RtmLink,
-  RtmLinkKind,
-  RtmMatrixPayload,
-  RtmVerificationEvidence,
+import {
+  STANDARD_MATRIX_PRESETS,
+  type RtmAnalytics,
+  type RtmDomain,
+  type RtmElement,
+  type RtmLink,
+  type RtmLinkKind,
+  type RtmMatrixPayload,
+  type RtmPresetDefinition,
+  type RtmVerificationEvidence,
 } from "./rtmTypes.js";
 
 /**
  * Builds and queries the multi-tier Digital Thread Traceability Matrix.
  */
 export class RtmIndexEngine {
+  /**
+   * Returns all standard MBSE matrix preset definitions.
+   */
+  static getMatrixPresets(): RtmPresetDefinition[] {
+    return STANDARD_MATRIX_PRESETS;
+  }
+
   /**
    * Classifies a SymbolEntry into an RTM domain.
    */
@@ -54,14 +63,33 @@ export class RtmIndexEngine {
       return "modelica_physics";
     }
 
+    if (rule === "PortDefinition" || rule === "PortUsage") {
+      return "sysml_port";
+    }
+
     if (
-      rule === "PartDefinition" ||
-      rule === "PartUsage" ||
-      rule === "PortDefinition" ||
-      rule === "PortUsage" ||
-      rule === "ItemDefinition" ||
-      rule === "ItemUsage"
+      rule === "ActionDefinition" ||
+      rule === "ActionUsage" ||
+      rule === "PerformActionUsage" ||
+      rule === "ActivityDefinition" ||
+      rule === "CalculationDefinition" ||
+      rule === "CalculationUsage"
     ) {
+      return "sysml_activity";
+    }
+
+    if (
+      entry.metadata?.isPhysical ||
+      entry.metadata?.category === "physical" ||
+      rule === "PhysicalComponentDefinition" ||
+      rule === "PhysicalComponentUsage" ||
+      entry.name?.toLowerCase().startsWith("hw_") ||
+      entry.name?.toLowerCase().startsWith("phy_")
+    ) {
+      return "physical_component";
+    }
+
+    if (rule === "PartDefinition" || rule === "PartUsage" || rule === "ItemDefinition" || rule === "ItemUsage") {
       return "sysml_logical";
     }
 
@@ -77,7 +105,16 @@ export class RtmIndexEngine {
 
     for (const entry of index.symbols.values()) {
       if (uriFilter && entry.resourceId && entry.resourceId !== uriFilter) continue;
-      const elementDomain = this.classifyDomain(entry);
+      let elementDomain = this.classifyDomain(entry);
+
+      // In allocation matrix, if physical_component is requested and no explicit physical components
+      // are tagged, consider all PartUsage elements as allocatable targets
+      if (domain === "physical_component" && !elementDomain) {
+        if (entry.ruleName === "PartUsage" || entry.ruleName === "PartDefinition") {
+          elementDomain = "physical_component";
+        }
+      }
+
       if (elementDomain !== domain) continue;
 
       const reqId =
@@ -95,6 +132,26 @@ export class RtmIndexEngine {
         (entry.metadata?.description as string) ??
         (entry.metadata?.text as string) ??
         "";
+
+      let parentName = "";
+      if (entry.parentId !== null) {
+        const parent = index.symbols.get(entry.parentId);
+        if (parent?.name) {
+          parentName = parent.name;
+        }
+      }
+
+      // Compute hierarchical package/container path for tree grouping
+      const pathParts: string[] = [];
+      let currParentId = entry.parentId;
+      while (currParentId !== null) {
+        const p = index.symbols.get(currParentId);
+        if (p?.name) {
+          pathParts.unshift(p.name);
+        }
+        currParentId = p ? p.parentId : null;
+      }
+      const packagePath = pathParts.join(".");
 
       let iso14971Data: any = undefined;
       if (domain === "hazard") {
@@ -140,6 +197,8 @@ export class RtmIndexEngine {
           text,
           category: (entry.metadata?.category as string) ?? undefined,
           iso14971: iso14971Data,
+          parentName: parentName || undefined,
+          packagePath: packagePath || undefined,
           ...entry.metadata,
         },
       });
@@ -165,30 +224,55 @@ export class RtmIndexEngine {
 
       if (rule === "SatisfyRequirementUsage") linkKind = "satisfy";
       else if (rule === "VerifyRequirementUsage") linkKind = "verify";
-      else if (rule === "AllocateDefinition" || rule === "AllocationUsage") linkKind = "allocate";
+      else if (rule === "AllocateDefinition" || rule === "AllocationUsage" || rule.includes("Allocate"))
+        linkKind = "allocate";
+      else if (rule === "ConnectionUsage" || rule === "BindingConnectorAsUsage" || rule.includes("Connect"))
+        linkKind = "connect";
       else if (rule === "MitigateRequirementUsage" || rule.includes("Mitigate")) linkKind = "mitigate";
       else if (rule.includes("Refine")) linkKind = "refine";
       else if (rule.includes("Derive")) linkKind = "derive";
 
-      // Also check Modelica/SysML metadata annotations for satisfies / verifies / mitigates
+      // Also check Modelica/SysML metadata annotations for satisfies / verifies / mitigates / connects / allocates
       const metaSatisfies = entry.metadata?.satisfies as string | undefined;
       const metaVerifies = entry.metadata?.verifies as string | undefined;
       const metaMitigates = (entry.metadata?.mitigates ?? entry.metadata?.mitigatedBy) as string | undefined;
+      const metaAllocates = (entry.metadata?.allocates ?? entry.metadata?.allocatedTo) as string | undefined;
+      const metaConnects = (entry.metadata?.connects ?? entry.metadata?.connectedTo) as string | undefined;
 
-      if (!linkKind && !metaSatisfies && !metaVerifies && !metaMitigates) continue;
+      if (!linkKind && !metaSatisfies && !metaVerifies && !metaMitigates && !metaAllocates && !metaConnects) continue;
 
       let targetName = entry.name;
       let sourceName = "<unknown>";
       let sourceId = -1;
       let sourceUri = entry.resourceId ?? "";
 
-      if (metaSatisfies || metaVerifies || metaMitigates) {
-        linkKind = metaSatisfies ? "satisfy" : metaVerifies ? "verify" : "mitigate";
-        targetName = metaSatisfies ?? metaVerifies ?? metaMitigates ?? "";
+      const children = (index.childrenOf.get(entry.id) ?? [])
+        .map((cid) => index.symbols.get(cid))
+        .filter(Boolean) as SymbolEntry[];
+      const childRefs = children.filter((c) => c.kind === "Reference" || c.ruleName?.includes("Reference") || c.name);
+
+      if ((linkKind === "connect" || linkKind === "allocate") && childRefs.length >= 2) {
+        sourceName = childRefs[0]!.name ?? "<unknown>";
+        sourceId = childRefs[0]!.id;
+        targetName = childRefs[1]!.name ?? "<unknown>";
+      } else if (entry.metadata?.source && entry.metadata?.target) {
+        sourceName = String(entry.metadata.source);
+        targetName = String(entry.metadata.target);
+      } else if (metaSatisfies || metaVerifies || metaMitigates || metaAllocates || metaConnects) {
+        linkKind = metaSatisfies
+          ? "satisfy"
+          : metaVerifies
+            ? "verify"
+            : metaMitigates
+              ? "mitigate"
+              : metaAllocates
+                ? "allocate"
+                : "connect";
+        targetName = metaSatisfies ?? metaVerifies ?? metaMitigates ?? metaAllocates ?? metaConnects ?? "";
         sourceName = entry.name;
         sourceId = entry.id;
       } else {
-        // Parent in SysML is the component or test case that owns the satisfy/verify/mitigate clause
+        // Parent in SysML is the component or test case that owns the clause
         if (entry.parentId !== null) {
           const parent = index.symbols.get(entry.parentId);
           if (parent) {
@@ -210,7 +294,11 @@ export class RtmIndexEngine {
           const t = index.symbols.get(tid);
           if (
             t &&
-            (t.ruleName?.includes("Requirement") || t.ruleName?.includes("Case") || t.ruleName?.includes("Hazard"))
+            (t.ruleName?.includes("Requirement") ||
+              t.ruleName?.includes("Case") ||
+              t.ruleName?.includes("Hazard") ||
+              t.ruleName?.includes("Part") ||
+              t.ruleName?.includes("Port"))
           ) {
             targetId = tid;
             targetUri = t.resourceId ?? "";

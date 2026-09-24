@@ -2,7 +2,11 @@
 // ts-check
 
 import { createWasmParser } from "@modelscript/dsl/bindings";
-import { FederatedQueryCacheStore, IndexedDBQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
+import {
+  FederatedQueryCacheStore,
+  IndexedDBQueryCacheStore,
+  MemoryQueryCacheStore,
+} from "@modelscript/runtime/wasm_cache_store.js";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
@@ -10,6 +14,7 @@ import { computeTreeEdit } from "../utils/astUtils.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
 import { LineIndex, TokenData } from "../utils/line-index.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/tree-sitter.js";
+import { BrowserFileSystem } from "../vfs/browser-file-system.js";
 import {
   loadDependencyFromRegistry,
   LoaderContext,
@@ -661,9 +666,11 @@ export class ParserService {
         message: "ModelScript (loading libraries...)",
       });
 
-      // Load the Modelica Standard Library from the bundled zip
-      // Initialize FederatedCacheStore with local IndexedDB and (currently empty) federated endpoints
-      const localStore = new IndexedDBQueryCacheStore("modelscript-lsp-cache");
+      // Initialize FederatedCacheStore with local IndexedDB (browser) or Memory store (Node)
+      const localStore =
+        typeof indexedDB !== "undefined"
+          ? new IndexedDBQueryCacheStore("modelscript-lsp-cache")
+          : new MemoryQueryCacheStore();
       const federatedEndpoints: string[] = []; // Endpoints added later in loadRegistryPackages
       const cacheStore = new FederatedQueryCacheStore(localStore, {
         getEndpoints: () => federatedEndpoints,
@@ -711,7 +718,7 @@ export class ParserService {
           warn: (msg) => this.connection.console.warn(msg),
           error: (msg, e) => this.connection.console.error(`${msg} ${e}`),
         },
-        sharedFs: (globalThis as any).sharedFs,
+        sharedFs: (globalThis as any).sharedFs ?? new BrowserFileSystem(),
         sharedContext: this.sharedContext,
         globalWorkspaceIndex: this.workspaceManager.globalWorkspaceIndex,
         sysml2WorkspaceIndex: this.workspaceManager.sysml2WorkspaceIndex,

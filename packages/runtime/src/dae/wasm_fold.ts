@@ -2861,6 +2861,44 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     }
 
     const recFields = lhsRec || rhsRec;
+
+    // Plug-compatibility check for connect equations:
+    // If both sides are connectors (records), they must have the same member names.
+    // If only one side is a record and the other isn't (e.g., scalar vs array), that's also incompatible.
+    if (kind === EqKind.Connect && recFields && recFields.length > 0) {
+      let isPlugCompatible = true;
+      if (lhsRec && rhsRec) {
+        // Both sides have record fields — check they match
+        if (lhsRec.length !== rhsRec.length) {
+          isPlugCompatible = false;
+        } else {
+          const lhsSorted = [...lhsRec].sort();
+          const rhsSorted = [...rhsRec].sort();
+          for (let fi = 0; fi < lhsSorted.length; fi++) {
+            if (lhsSorted[fi] !== rhsSorted[fi]) {
+              isPlugCompatible = false;
+              break;
+            }
+          }
+        }
+      } else if ((lhsRec && !rhsRec) || (!lhsRec && rhsRec)) {
+        // One side is a record, the other is not (e.g., scalar connector vs array connector)
+        isPlugCompatible = false;
+      }
+      if (!isPlugCompatible) {
+        const lhsName = dae.getExprKind(lhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(lhsId)) : "";
+        const rhsName = dae.getExprKind(rhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(rhsId)) : "";
+        const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
+        out.diagnostics.push({
+          severity: "error",
+          code: 3003, // NOT_PLUG_COMPATIBLE
+          message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
+          range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+        });
+        return;
+      }
+    }
+
     if (recFields && recFields.length > 0) {
       for (const field of recFields) {
         const newLhs = getFieldExpr(dae, out, lhsId, field, cloneExpr);

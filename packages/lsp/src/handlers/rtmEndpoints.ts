@@ -3,10 +3,15 @@
 import type { LspContext } from "../LspContext.js";
 import {
   CstLinkSynthesizer,
+  ElementTableEngine,
   RtmIndexEngine,
   SuspectTracker,
+  type ElementsTablePayload,
   type RtmDomain,
+  type RtmLinkKind,
   type RtmMatrixPayload,
+  type RtmPresetDefinition,
+  type TableCellCompletionItem,
 } from "../rtm/index.js";
 
 const suspectTracker = new SuspectTracker();
@@ -15,6 +20,11 @@ const suspectTracker = new SuspectTracker();
  * Registers all Interactive Traceability Matrix (RTM) JSON-RPC endpoints.
  */
 export function registerRtmEndpoints(context: LspContext): void {
+  // ── 0. Get Standard Matrix Presets ───────────────────────────────────────
+  context.connection.onRequest("modelscript/getMatrixPresets", (): RtmPresetDefinition[] => {
+    return RtmIndexEngine.getMatrixPresets();
+  });
+
   // ── 1. Get Multi-Tier RTM Matrix ─────────────────────────────────────────
   context.connection.onRequest(
     "modelscript/getRtmMatrix",
@@ -62,7 +72,7 @@ export function registerRtmEndpoints(context: LspContext): void {
       sourceUri: string;
       sourceName: string;
       targetName: string;
-      linkKind?: "satisfy" | "verify" | "allocate";
+      linkKind?: RtmLinkKind;
     }): Promise<{ success: boolean; error?: string }> => {
       try {
         const doc = context.documentManager.documents.get(params.sourceUri);
@@ -75,8 +85,8 @@ export function registerRtmEndpoints(context: LspContext): void {
         const kind = params.linkKind ?? "satisfy";
 
         const edits = isModelica
-          ? CstLinkSynthesizer.synthesizeModelicaTraceLink(text, params.sourceName, params.targetName, kind)
-          : CstLinkSynthesizer.synthesizeSysMLTraceLink(text, params.sourceName, params.targetName, kind);
+          ? CstLinkSynthesizer.synthesizeModelicaTraceLink(text, params.sourceName, params.targetName, kind as any)
+          : CstLinkSynthesizer.synthesizeSysMLTraceLink(text, params.sourceName, params.targetName, kind as any);
 
         if (!edits || edits.length === 0) {
           return {
@@ -105,7 +115,7 @@ export function registerRtmEndpoints(context: LspContext): void {
       declarationUri: string;
       sourceName: string;
       targetName: string;
-      linkKind?: "satisfy" | "verify" | "allocate";
+      linkKind?: RtmLinkKind;
       declarationRange?: [number, number];
     }): Promise<{ success: boolean; error?: string }> => {
       try {
@@ -120,7 +130,13 @@ export function registerRtmEndpoints(context: LspContext): void {
 
         const edits = isModelica
           ? CstLinkSynthesizer.removeModelicaTraceLink(text, params.targetName)
-          : CstLinkSynthesizer.removeSysMLTraceLink(text, params.targetName, kind, params.declarationRange);
+          : CstLinkSynthesizer.removeSysMLTraceLink(
+              text,
+              params.targetName,
+              kind as any,
+              params.declarationRange,
+              params.sourceName,
+            );
 
         if (!edits || edits.length === 0) {
           return {
@@ -138,6 +154,94 @@ export function registerRtmEndpoints(context: LspContext): void {
         return { success: res.applied };
       } catch (e: any) {
         return { success: false, error: e?.message ?? String(e) };
+      }
+    },
+  );
+
+  // ── 3.5. Batch Update Trace Links ───────────────────────────────────────
+  context.connection.onRequest(
+    "modelscript/batchUpdateTraceLinks",
+    async (params: {
+      creations?: {
+        sourceUri: string;
+        sourceName: string;
+        targetName: string;
+        linkKind?: RtmLinkKind;
+      }[];
+      deletions?: {
+        declarationUri: string;
+        sourceName: string;
+        targetName: string;
+        linkKind?: RtmLinkKind;
+      }[];
+    }): Promise<{ success: boolean; createdCount: number; deletedCount: number; error?: string }> => {
+      try {
+        let createdCount = 0;
+        let deletedCount = 0;
+        const editsByUri = new Map<string, any[]>();
+
+        if (params.deletions && params.deletions.length > 0) {
+          for (const del of params.deletions) {
+            const doc = context.documentManager.documents.get(del.declarationUri);
+            if (!doc) continue;
+            const text = doc.getText();
+            const edits = del.declarationUri.endsWith(".mo")
+              ? CstLinkSynthesizer.removeModelicaTraceLink(text, del.targetName)
+              : CstLinkSynthesizer.removeSysMLTraceLink(
+                  text,
+                  del.targetName,
+                  (del.linkKind ?? "satisfy") as any,
+                  undefined,
+                  del.sourceName,
+                );
+            if (edits && edits.length > 0) {
+              const list = editsByUri.get(del.declarationUri) ?? [];
+              list.push(...edits);
+              editsByUri.set(del.declarationUri, list);
+              deletedCount++;
+            }
+          }
+        }
+
+        if (params.creations && params.creations.length > 0) {
+          for (const cr of params.creations) {
+            const doc = context.documentManager.documents.get(cr.sourceUri);
+            if (!doc) continue;
+            const text = doc.getText();
+            const edits = cr.sourceUri.endsWith(".mo")
+              ? CstLinkSynthesizer.synthesizeModelicaTraceLink(
+                  text,
+                  cr.sourceName,
+                  cr.targetName,
+                  (cr.linkKind ?? "satisfy") as any,
+                )
+              : CstLinkSynthesizer.synthesizeSysMLTraceLink(
+                  text,
+                  cr.sourceName,
+                  cr.targetName,
+                  (cr.linkKind ?? "satisfy") as any,
+                );
+            if (edits && edits.length > 0) {
+              const list = editsByUri.get(cr.sourceUri) ?? [];
+              list.push(...edits);
+              editsByUri.set(cr.sourceUri, list);
+              createdCount++;
+            }
+          }
+        }
+
+        if (editsByUri.size > 0) {
+          const changes: Record<string, any[]> = {};
+          for (const [uri, edits] of editsByUri.entries()) {
+            changes[uri] = edits;
+          }
+          const res = await context.connection.workspace.applyEdit({ changes });
+          return { success: res.applied, createdCount, deletedCount };
+        }
+
+        return { success: true, createdCount: 0, deletedCount: 0 };
+      } catch (e: any) {
+        return { success: false, createdCount: 0, deletedCount: 0, error: e?.message ?? String(e) };
       }
     },
   );
@@ -204,6 +308,101 @@ export function registerRtmEndpoints(context: LspContext): void {
         csv: lines.join("\n"),
         filename: `traceability_matrix_${Date.now()}.csv`,
       };
+    },
+  );
+
+  // ── 7. Get General-Purpose Elements Table ────────────────────────────────
+  context.connection.onRequest(
+    "modelscript/getElementsTable",
+    async (params: { uri?: string; metaclass?: string; filter?: string }): Promise<ElementsTablePayload> => {
+      try {
+        const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const metaclass = params.metaclass ?? "part";
+        return ElementTableEngine.buildElementsTable(db, metaclass, params.uri);
+      } catch (e) {
+        console.error("[elementTable] Error building elements table:", e);
+        return {
+          metaclass: params.metaclass ?? "part",
+          columns: ElementTableEngine.getColumnDefinitions(params.metaclass ?? "part"),
+          rows: [],
+          totalCount: 0,
+        };
+      }
+    },
+  );
+
+  // ── 8. Update Element Attribute (Bi-directional Synthesis) ───────────────
+  context.connection.onRequest(
+    "modelscript/updateElementAttribute",
+    async (params: {
+      uri: string;
+      qualifiedName: string;
+      attributeName: string;
+      newValue: string;
+    }): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const doc = context.documentManager.documents.get(params.uri);
+        if (!doc) {
+          return { success: false, error: `Document not found: ${params.uri}` };
+        }
+
+        const text = doc.getText();
+        const edits = ElementTableEngine.updateElementAttribute(
+          text,
+          params.qualifiedName,
+          params.attributeName,
+          params.newValue,
+        );
+
+        if (!edits || edits.length === 0) {
+          return {
+            success: false,
+            error: `Could not locate element '${params.qualifiedName}' to update attribute '${params.attributeName}'`,
+          };
+        }
+
+        const res = await context.connection.workspace.applyEdit({
+          changes: {
+            [params.uri]: edits,
+          },
+        });
+
+        return { success: res.applied };
+      } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) };
+      }
+    },
+  );
+
+  // ── 9. In-Cell Table Autocompletion ──────────────────────────────────────
+  context.connection.onRequest(
+    "modelscript/tableCellComplete",
+    async (params: {
+      uri?: string;
+      metaclass?: string;
+      attributeName: string;
+      prefix?: string;
+    }): Promise<TableCellCompletionItem[]> => {
+      try {
+        const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        return ElementTableEngine.getTableCellCompletions(
+          db,
+          params.metaclass ?? "part",
+          params.attributeName,
+          params.prefix ?? "",
+        );
+      } catch (e) {
+        console.error("[tableCellComplete] Error generating completions:", e);
+        return [];
+      }
+    },
+  );
+
+  // ── 10. In-Cell Table Validation ─────────────────────────────────────────
+  context.connection.onRequest(
+    "modelscript/validateTableCell",
+    async (params: { attributeName: string; value: string }): Promise<{ valid: boolean; error?: string }> => {
+      return ElementTableEngine.validateTableCell(params.attributeName, params.value);
     },
   );
 }

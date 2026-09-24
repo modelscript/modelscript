@@ -846,19 +846,35 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       this.instance.registerFileParentFQN(fileId, parentFQN);
     }
 
-    // 1. Merge symbols
-    const symbolsSource =
-      indexData.symbols instanceof Map ? indexData.symbols.entries() : Object.entries(indexData.symbols || {});
+    // 1. Build ID remapping table to prevent collisions between bundles and existing symbols
+    const symbolsSource: [string | number, any][] =
+      indexData.symbols instanceof Map
+        ? Array.from(indexData.symbols.entries())
+        : Object.entries(indexData.symbols || {});
+
+    const idMap = new Map<number, number>();
+    for (const [rawId] of symbolsSource) {
+      const oldId = typeof rawId === "string" && !isNaN(Number(rawId)) ? Number(rawId) : Number(rawId);
+      const newId = this.nextSymbolId++;
+      idMap.set(oldId, newId);
+    }
+
+    // 2. Merge symbols
     for (const [rawId, rawEntry] of symbolsSource) {
-      const id = typeof rawId === "string" && !isNaN(Number(rawId)) ? Number(rawId) : rawId;
-      if (typeof id === "number" && id >= this.nextSymbolId) {
-        this.nextSymbolId = id + 1;
-      }
+      const oldId = typeof rawId === "string" && !isNaN(Number(rawId)) ? Number(rawId) : Number(rawId);
+      const newId = idMap.get(oldId) ?? oldId;
       const entry: SymbolEntry = { ...(rawEntry as SymbolEntry) };
+      entry.id = newId as SymbolId;
+
+      if (entry.parentId !== null && entry.parentId !== undefined) {
+        const oldParent = Number(entry.parentId);
+        entry.parentId = (idMap.get(oldParent) ?? oldParent) as SymbolId;
+      }
+
       if (mapResourceId && entry.resourceId) {
         entry.resourceId = mapResourceId(entry.resourceId);
       }
-      this.unifiedIndex.symbols.set(id as SymbolId, entry);
+      this.unifiedIndex.symbols.set(newId as SymbolId, entry);
 
       // Associate with file URI for tracking
       const effectiveUri = entry.resourceId || uri;
@@ -867,7 +883,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         list = [];
         this.fileSymbols.set(effectiveUri, list);
       }
-      list.push(id as SymbolId);
+      list.push(newId as SymbolId);
 
       // Register into WASM linear memory if instance supports it
       if (this.instance && typeof this.instance.registerSymbol === "function") {
@@ -876,7 +892,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           const sParentId = entry.parentId === null ? 0 : Number(entry.parentId);
           this.instance.registerSymbol(
             sFileId,
-            Number(id),
+            Number(newId),
             sParentId,
             0,
             0,
@@ -893,38 +909,41 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
     }
 
-    // 2. Merge byName
+    // 3. Merge byName
     const byNameSource =
       indexData.byName instanceof Map ? indexData.byName.entries() : Object.entries(indexData.byName || {});
     for (const [name, ids] of byNameSource) {
       const idList = Array.isArray(ids) ? (ids as SymbolId[]) : [];
+      const mappedIds = idList.map((id) => (idMap.get(Number(id)) ?? id) as SymbolId);
       const existing = this.unifiedIndex.byName.get(name);
       if (!existing) {
-        this.unifiedIndex.byName.set(name, [...idList]);
+        this.unifiedIndex.byName.set(name, [...mappedIds]);
       } else {
         const idSet = new Set(existing);
-        for (const id of idList) idSet.add(id);
+        for (const id of mappedIds) idSet.add(id);
         this.unifiedIndex.byName.set(name, Array.from(idSet));
       }
     }
 
-    // 3. Merge childrenOf
+    // 4. Merge childrenOf
     const childrenOfSource =
       indexData.childrenOf instanceof Map ? indexData.childrenOf.entries() : Object.entries(indexData.childrenOf || {});
     for (const [rawParentId, children] of childrenOfSource) {
-      const parentId =
+      const rawParent =
         rawParentId === "null" || rawParentId === null || rawParentId === undefined
           ? null
           : typeof rawParentId === "string" && !isNaN(Number(rawParentId))
             ? Number(rawParentId)
-            : (rawParentId as SymbolId);
+            : Number(rawParentId);
+      const parentId = rawParent === null ? null : ((idMap.get(rawParent) ?? rawParent) as SymbolId);
       const childList = Array.isArray(children) ? (children as SymbolId[]) : [];
+      const mappedChildren = childList.map((c) => (idMap.get(Number(c)) ?? c) as SymbolId);
       const existing = this.unifiedIndex.childrenOf.get(parentId);
       if (!existing) {
-        this.unifiedIndex.childrenOf.set(parentId, [...childList]);
+        this.unifiedIndex.childrenOf.set(parentId, [...mappedChildren]);
       } else {
         const childSet = new Set(existing);
-        for (const c of childList) childSet.add(c);
+        for (const c of mappedChildren) childSet.add(c);
         this.unifiedIndex.childrenOf.set(parentId, Array.from(childSet));
       }
     }

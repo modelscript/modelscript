@@ -11,7 +11,14 @@
  *   4. Post-condition bound derivation upon loop exit.
  */
 
-import { OctagonDBM } from "@modelscript/runtime";
+import {
+  InductiveProver,
+  Interval,
+  OctagonDBM,
+  type InductiveProofResult,
+  type InductiveSpec,
+  type NonlinearConstraint,
+} from "@modelscript/runtime";
 
 export interface LoopDiagnostic {
   severity: "error" | "warning" | "info";
@@ -26,6 +33,7 @@ export interface LoopInvariantResult {
   iterationsEstimated: number;
   diagnostics: LoopDiagnostic[];
   summary: string;
+  inductiveProof?: InductiveProofResult;
 }
 
 export interface WhileLoopInfo {
@@ -261,7 +269,25 @@ export class LoopInvariantAnalyzer {
       }
     }
 
-    // 4. Derive sound post-conditions
+    // 4. First-Order Inductive Invariant Prover with Automated Lemma Strengthening (Imandra)
+    let inductiveProof: InductiveProofResult | undefined;
+    if (loop.invariants && loop.invariants.length > 0) {
+      try {
+        inductiveProof = LoopInvariantAnalyzer.proveInductiveInvariant(loop, initialBounds);
+        if (inductiveProof.status === "DISPROVEN") {
+          invariantHolds = false;
+          diagnostics.push({
+            severity: "error",
+            rule: "loop-invariant-violation",
+            message: inductiveProof.summary,
+          });
+        }
+      } catch {
+        // Fall back to abstract interpretation / unrolled bounds
+      }
+    }
+
+    // 5. Derive sound post-conditions
     for (const v of varList) {
       if (v === cond.lhsVar && isTerminating) {
         // Exit condition reached: e.g. for (i < 10) with delta > 0, exit bound is limit
@@ -291,6 +317,174 @@ export class LoopInvariantAnalyzer {
       iterationsEstimated,
       diagnostics,
       summary,
+      inductiveProof,
     };
+  }
+
+  /**
+   * Builds an InductiveSpec for first-order induction over SysML v2 loop action bodies.
+   */
+  public static buildInductiveSpec(
+    loop: WhileLoopInfo,
+    initialBounds?: Map<string, { lower: number; upper: number }>,
+  ): InductiveSpec | null {
+    const cond = parseCondition(loop.condition);
+    const updates = parseBodyUpdates(loop.body);
+
+    const varNames = new Set<string>();
+    if (cond) {
+      varNames.add(cond.lhsVar);
+      if (cond.rhsVar) varNames.add(cond.rhsVar);
+    }
+    for (const u of updates) {
+      varNames.add(u.targetVar);
+      if (u.sourceVar) varNames.add(u.sourceVar);
+    }
+    if (initialBounds) {
+      for (const k of initialBounds.keys()) varNames.add(k);
+    }
+    if (loop.invariants) {
+      for (const inv of loop.invariants) {
+        const p = parseCondition(inv);
+        if (p) {
+          varNames.add(p.lhsVar);
+          if (p.rhsVar) varNames.add(p.rhsVar);
+        }
+      }
+    }
+
+    const varList = Array.from(varNames);
+    const init: NonlinearConstraint[] = [];
+    const transition: NonlinearConstraint[] = [];
+    const invariant: NonlinearConstraint[] = [];
+    const domainBounds = new Map<string, Interval>();
+
+    // Init constraints
+    for (const v of varList) {
+      const b = initialBounds?.get(v) ?? { lower: 0, upper: 0 };
+      if (b.lower === b.upper) {
+        init.push({ expr: { kind: "var", name: v }, rel: "==", rhs: b.lower });
+      } else {
+        init.push({ expr: { kind: "var", name: v }, rel: ">=", rhs: b.lower });
+        init.push({ expr: { kind: "var", name: v }, rel: "<=", rhs: b.upper });
+      }
+      domainBounds.set(v, new Interval(Math.min(-100, b.lower - 100), Math.max(100, b.upper + 100)));
+    }
+
+    // Transition constraints: loop condition guard
+    if (cond) {
+      if (cond.rhsVar) {
+        transition.push({
+          expr: { kind: "sub", left: { kind: "var", name: cond.lhsVar }, right: { kind: "var", name: cond.rhsVar } },
+          rel: cond.operator === "<" ? "<=" : cond.operator === ">" ? ">=" : cond.operator,
+          rhs: cond.operator === "<" ? cond.constant - 1 : cond.operator === ">" ? cond.constant + 1 : cond.constant,
+        });
+      } else {
+        transition.push({
+          expr: { kind: "var", name: cond.lhsVar },
+          rel: cond.operator === "<" ? "<=" : cond.operator === ">" ? ">=" : cond.operator,
+          rhs: cond.operator === "<" ? cond.constant - 1 : cond.operator === ">" ? cond.constant + 1 : cond.constant,
+        });
+      }
+    }
+
+    // Transition constraints: body variable updates
+    const updatedVars = new Set<string>();
+    for (const u of updates) {
+      updatedVars.add(u.targetVar);
+      if (u.isDirectAssignment) {
+        transition.push({
+          expr: { kind: "var", name: u.targetVar + "_prime" },
+          rel: "==",
+          rhs: u.delta,
+        });
+      } else if (u.sourceVar) {
+        transition.push({
+          expr: {
+            kind: "sub",
+            left: { kind: "var", name: u.targetVar + "_prime" },
+            right: { kind: "var", name: u.sourceVar },
+          },
+          rel: "==",
+          rhs: u.delta,
+        });
+      } else {
+        transition.push({
+          expr: {
+            kind: "sub",
+            left: { kind: "var", name: u.targetVar + "_prime" },
+            right: { kind: "var", name: u.targetVar },
+          },
+          rel: "==",
+          rhs: u.delta,
+        });
+      }
+    }
+
+    // Frame condition: unassigned variables preserve value across loop steps
+    for (const v of varList) {
+      if (!updatedVars.has(v)) {
+        transition.push({
+          expr: {
+            kind: "sub",
+            left: { kind: "var", name: v + "_prime" },
+            right: { kind: "var", name: v },
+          },
+          rel: "==",
+          rhs: 0,
+        });
+      }
+    }
+
+    // Invariant constraints
+    if (loop.invariants) {
+      for (const inv of loop.invariants) {
+        const p = parseCondition(inv);
+        if (p) {
+          if (p.rhsVar) {
+            invariant.push({
+              expr: { kind: "sub", left: { kind: "var", name: p.lhsVar }, right: { kind: "var", name: p.rhsVar } },
+              rel: p.operator === "<" ? "<=" : p.operator === ">" ? ">=" : p.operator,
+              rhs: p.constant,
+            });
+          } else {
+            invariant.push({
+              expr: { kind: "var", name: p.lhsVar },
+              rel: p.operator === "<" ? "<=" : p.operator === ">" ? ">=" : p.operator,
+              rhs: p.constant,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      variables: varList,
+      init,
+      transition,
+      invariant,
+      domainBounds,
+    };
+  }
+
+  /**
+   * Executes first-order mathematical induction with automated lemma strengthening (Imandra-equivalent).
+   */
+  public static proveInductiveInvariant(
+    loop: WhileLoopInfo,
+    initialBounds?: Map<string, { lower: number; upper: number }>,
+  ): InductiveProofResult {
+    const spec = LoopInvariantAnalyzer.buildInductiveSpec(loop, initialBounds);
+    if (!spec || spec.invariant.length === 0) {
+      return {
+        status: "UNKNOWN",
+        isInductive: false,
+        initiationHolds: false,
+        consecutionHolds: false,
+        summary: "No valid loop invariant constraints could be parsed for inductive proof.",
+      };
+    }
+
+    return InductiveProver.proveInvariant(spec);
   }
 }

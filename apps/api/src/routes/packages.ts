@@ -655,16 +655,19 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Database = require("better-sqlite3");
       const db = new Database(indexPath, { readonly: true });
-      const stmt = db.prepare("SELECT data FROM memos WHERE key = ?");
+      try {
+        if (keys.length > 0) {
+          const placeholders = keys.map(() => "?").join(",");
+          const stmt = db.prepare(`SELECT key, data FROM memos WHERE key IN (${placeholders})`);
+          const rows = stmt.all(...keys) as { key: string; data: string }[];
 
-      for (const key of keys) {
-        const row = stmt.get(key) as { data: string } | undefined;
-        if (row) {
-          result[key] = JSON.parse(row.data);
+          for (const row of rows) {
+            result[row.key] = JSON.parse(row.data);
+          }
         }
+      } finally {
+        db.close();
       }
-
-      db.close();
       res.json({ memos: result });
     } catch {
       res.status(500).json({ error: "Failed to read salsa index" });
