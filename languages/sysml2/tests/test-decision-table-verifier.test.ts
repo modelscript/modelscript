@@ -39,6 +39,11 @@ describe("SysML v2 Decision Table Exhaustiveness & Disjointness Prover (Imandra 
     const gap = result.unhandledScenarioBox["speed"];
     assert.ok(gap, "Should identify 'speed' as the unhandled variable");
     assert.ok(gap[0] >= 49.9 && gap[1] <= 60.1, `Gap bounds [${gap[0]}, ${gap[1]}] should fall in (50, 60)`);
+
+    assert.ok(result.suggestedFixCondition, "Should synthesize suggested fix condition");
+    assert(result.suggestedFixCondition.includes("speed"), "Fix condition should reference variable");
+    assert.ok(result.suggestedQuickFix, "Should synthesize suggested QuickFix code snippet");
+    assert(result.suggestedQuickFix.includes("else if"), "QuickFix snippet should provide an else-if branch");
   });
 
   it("detects non-deterministic overlapping guard collisions", () => {

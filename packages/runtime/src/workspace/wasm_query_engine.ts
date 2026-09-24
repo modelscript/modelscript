@@ -8,6 +8,7 @@
  * and `WasmWorkspaceIndex`.
  */
 
+import { TaxonomyIndex } from "@modelscript/dsl";
 import type {
   CSTTree,
   DependencyKey,
@@ -134,6 +135,8 @@ export class WasmQueryEngine {
 
   private cacheStore?: QueryCacheStore | undefined;
   private maxMemos: number;
+
+  public taxonomy: TaxonomyIndex = new TaxonomyIndex();
 
   private inputReverseDependencies = new Map<SymbolId, Set<number>>();
   private byNameReverseDependencies = new Map<string, Set<number>>();
@@ -935,6 +938,8 @@ export class WasmQueryEngine {
       flushVolatile(): void {
         engine.flushVolatile();
       },
+
+      taxonomy: engine.taxonomy,
     };
   }
 
@@ -1068,6 +1073,8 @@ export class WasmQueryEngine {
       flushVolatile(): void {
         engine.flushVolatile();
       },
+
+      taxonomy: engine.taxonomy,
     };
     this._queryDBCache = db;
     return db;

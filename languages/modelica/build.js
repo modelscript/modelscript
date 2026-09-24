@@ -40,6 +40,8 @@ function isParserUpToDate() {
 
   if (fs.existsSync(languagePath) && fs.statSync(languagePath).mtimeMs > wasmTime) return false;
   if (fs.existsSync(dslDistPath) && fs.statSync(dslDistPath).mtimeMs > wasmTime) return false;
+  const flattenerAsPath = path.join(__dirname, "assembly", "flattener.ts");
+  if (fs.existsSync(flattenerAsPath) && fs.statSync(flattenerAsPath).mtimeMs > wasmTime) return false;
   const lintsDir = path.join(__dirname, "src", "lints");
   if (fs.existsSync(lintsDir)) {
     for (const f of fs.readdirSync(lintsDir)) {

@@ -687,15 +687,9 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
 
     // --- Arithmetic ---
     case "AdditiveExpression":
-    case "MultiplicativeExpression":
-    case "ExponentiationExpression": {
-      const operands: CSTNode[] = [];
-      const operators: string[] = [];
-      for (const child of node.children) {
-        const fn = node.fieldNameForChild?.(node.children.indexOf(child));
-        if (fn === "operand") operands.push(child);
-        else if (fn === "operator") operators.push(child.text);
-      }
+    case "MultiplicativeExpression": {
+      const operands = node.childrenForFieldName("operand");
+      const operators = node.childrenForFieldName("operator").map((op) => op.text);
       if (operands.length < 2 || operators.length === 0) return undefined;
       let result = evaluateExpressionNode(db, operands[0], scopeId);
       if (typeof result !== "number") return undefined;
@@ -718,16 +712,22 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
           case "%":
             result = right !== 0 ? (result as number) % right : undefined;
             break;
-          case "**":
-          case "^":
-            result = Math.pow(result as number, right);
-            break;
           default:
             return undefined;
         }
         if (result === undefined) return undefined;
       }
       return result;
+    }
+
+    case "ExponentiationExpression": {
+      const baseNode = node.childForFieldName("base") ?? node.childrenForFieldName("operand")?.[0];
+      const expNode = node.childForFieldName("exponent") ?? node.childrenForFieldName("operand")?.[1];
+      if (!baseNode || !expNode) return undefined;
+      const left = evaluateExpressionNode(db, baseNode, scopeId);
+      const right = evaluateExpressionNode(db, expNode, scopeId);
+      if (typeof left !== "number" || typeof right !== "number") return undefined;
+      return Math.pow(left, right);
     }
 
     // --- Unary ---
@@ -752,13 +752,10 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
 
     // --- Relational ---
     case "RelationalExpression": {
-      let operands: CSTNode[] = [];
-      let operators: string[] = [];
-      for (const child of node.children) {
-        const fn = node.fieldNameForChild?.(node.children.indexOf(child));
-        if (fn === "operand") operands.push(child);
-        else if (fn === "operator") operators.push(child.text ?? child.children?.[0]?.text ?? "");
-      }
+      let operands = node.childrenForFieldName("operand");
+      let operators = node
+        .childrenForFieldName("operator")
+        .map((op) => (op.text ?? op.children?.[0]?.text ?? "").trim());
       if (operands.length < 2 && node.children.length === 3) {
         operands = [node.children[0], node.children[2]];
         operators = [(node.children[1].text ?? "").trim()];
@@ -784,13 +781,10 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
 
     // --- Equality ---
     case "EqualityExpression": {
-      const operands: CSTNode[] = [];
-      const operators: string[] = [];
-      for (const child of node.children) {
-        const fn = node.fieldNameForChild?.(node.children.indexOf(child));
-        if (fn === "operand") operands.push(child);
-        else if (fn === "operator") operators.push(child.text ?? child.children?.[0]?.text ?? "");
-      }
+      const operands = node.childrenForFieldName("operand");
+      const operators = node
+        .childrenForFieldName("operator")
+        .map((op) => (op.text ?? op.children?.[0]?.text ?? "").trim());
       if (operands.length < 2 || operators.length === 0) return undefined;
       const left = evaluateExpressionNode(db, operands[0], scopeId);
       const right = evaluateExpressionNode(db, operands[1], scopeId);
@@ -812,11 +806,7 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
 
     // --- Logical ---
     case "AndExpression": {
-      const operands: CSTNode[] = [];
-      for (const child of node.children) {
-        const fn = node.fieldNameForChild?.(node.children.indexOf(child));
-        if (fn === "operand") operands.push(child);
-      }
+      const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
       let result = evaluateExpressionNode(db, operands[0], scopeId);
       if (typeof result !== "boolean") return undefined;
@@ -829,11 +819,7 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     }
 
     case "OrExpression": {
-      const operands: CSTNode[] = [];
-      for (const child of node.children) {
-        const fn = node.fieldNameForChild?.(node.children.indexOf(child));
-        if (fn === "operand") operands.push(child);
-      }
+      const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
       let result = evaluateExpressionNode(db, operands[0], scopeId);
       if (typeof result !== "boolean") return undefined;
@@ -846,11 +832,7 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     }
 
     case "XorExpression": {
-      const operands: CSTNode[] = [];
-      for (const child of node.children) {
-        const fn = node.fieldNameForChild?.(node.children.indexOf(child));
-        if (fn === "operand") operands.push(child);
-      }
+      const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
       let result = evaluateExpressionNode(db, operands[0], scopeId);
       if (typeof result !== "boolean") return undefined;
@@ -863,11 +845,7 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     }
 
     case "ImpliesExpression": {
-      const operands: CSTNode[] = [];
-      for (const child of node.children) {
-        const fn = node.fieldNameForChild?.(node.children.indexOf(child));
-        if (fn === "operand") operands.push(child);
-      }
+      const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
       const left = evaluateExpressionNode(db, operands[0], scopeId);
       // For implies references, we need to unwrap the ImpliesExpressionReference
@@ -2837,6 +2815,10 @@ export const sysml2Language = language({
         template: (args: Record<string, string>) => `Trace requirements from ${args.requirementId}`,
       },
     ],
+  },
+
+  primitives: {
+    lineComment: "//",
   },
 
   extras: ($) => [/\s/, $.ML_NOTE, $.SL_NOTE],
@@ -5140,9 +5122,9 @@ export const sysml2Language = language({
       prec.right(
         PREC.EXPONENTIATION,
         seq(
-          field("operand", $._Expression),
+          field("base", $._Expression),
           field("operator", $.ExponentiationOperator),
-          field("operand", $._Expression),
+          field("exponent", $._Expression),
         ),
       ),
     ExponentiationOperator: () => choice("**", "^"),

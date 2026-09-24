@@ -428,7 +428,16 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         return subs.length > 0 ? subs : undefined;
       };
 
+      const replaceableNode = n.children?.find(
+        (c: any) => c.type === "ElementReplaceable" || c.type === "element_replaceable",
+      );
+      const targetNode = replaceableNode ?? n;
+
       const clause =
+        Cst.Element.componentClause(targetNode) ??
+        targetNode.children?.find(
+          (c: any) => c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
+        ) ??
         Cst.Element.componentClause(n) ??
         n.children?.find(
           (c: any) => c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
@@ -462,6 +471,29 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         const typeName = typeSpec ? typeSpec.text : "";
         const nested = parseModArgsFromCst(modNode, scopeId);
 
+        const constrClause =
+          targetNode.children?.find((c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause") ??
+          n.children?.find((c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause");
+        if (constrClause) {
+          const constrMod = constrClause.children?.find(
+            (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+          );
+          if (constrMod) {
+            const constrParsed = parseModArgsFromCst(constrMod, scopeId);
+            if (constrParsed && constrParsed.args && constrParsed.args.length > 0) {
+              const existingNames = new Set(nested.args.map((a: any) => a.name));
+              for (const cArg of constrParsed.args) {
+                if (!existingNames.has(cArg.name)) {
+                  nested.args.push(cArg);
+                }
+              }
+            }
+            if (!nested.bindingExpression && constrParsed.bindingExpression) {
+              nested.bindingExpression = constrParsed.bindingExpression;
+            }
+          }
+        }
+
         args.push({
           name,
           nameRange,
@@ -480,6 +512,14 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         });
       } else {
         const classDef =
+          Cst.Element.classDefinition(targetNode) ??
+          targetNode.children?.find(
+            (c: any) =>
+              c.type === "class_definition" ||
+              c.type === "ClassDefinition" ||
+              c.type === "short_class_definition" ||
+              c.type === "ShortClassDefinition",
+          ) ??
           Cst.Element.classDefinition(n) ??
           n.children?.find(
             (c: any) =>
@@ -518,6 +558,30 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               Cst.ShortClassSpecifier.classModification(shortClass) ??
               shortClass.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
             const nested = parseModArgsFromCst(modNode, scopeId);
+
+            const constrClause =
+              targetNode.children?.find(
+                (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+              ) ?? n.children?.find((c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause");
+            if (constrClause) {
+              const constrMod = constrClause.children?.find(
+                (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+              );
+              if (constrMod) {
+                const constrParsed = parseModArgsFromCst(constrMod, scopeId);
+                if (constrParsed && constrParsed.args && constrParsed.args.length > 0) {
+                  const existingNames = new Set(nested.args.map((a: any) => a.name));
+                  for (const cArg of constrParsed.args) {
+                    if (!existingNames.has(cArg.name)) {
+                      nested.args.push(cArg);
+                    }
+                  }
+                }
+                if (!nested.bindingExpression && constrParsed.bindingExpression) {
+                  nested.bindingExpression = constrParsed.bindingExpression;
+                }
+              }
+            }
 
             args.push({
               name,
@@ -1543,8 +1607,38 @@ export const classDefinitionQueries: Record<string, any> = {
     const modNode =
       Cst.ShortClassSpecifier.classModification(classSpec) ??
       classSpec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
-    if (!modNode) return null;
-    return parseModArgsFromCst(modNode, self.parentId) as import("./modifications.js").ModelicaModArgs;
+    let parsed: any = modNode ? (parseModArgsFromCst(modNode, self.parentId) as any) : null;
+
+    let constrClause: any = null;
+    let curr = cst;
+    while (curr && curr.type !== "Composition" && curr.type !== "composition") {
+      constrClause = curr.children?.find(
+        (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+      );
+      if (constrClause) break;
+      curr = curr.parent;
+    }
+    if (constrClause) {
+      const constrMod = constrClause.children?.find(
+        (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+      );
+      if (constrMod) {
+        const constrParsed = parseModArgsFromCst(constrMod, self.parentId);
+        if (constrParsed && constrParsed.args && constrParsed.args.length > 0) {
+          if (!parsed) {
+            parsed = constrParsed;
+          } else {
+            const existingNames = new Set(parsed.args?.map((a: any) => a.name) || []);
+            for (const cArg of constrParsed.args) {
+              if (!existingNames.has(cArg.name)) {
+                parsed.args.push(cArg);
+              }
+            }
+          }
+        }
+      }
+    }
+    return parsed as import("./modifications.js").ModelicaModArgs;
   },
   resolvedBaseClass: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
@@ -1572,6 +1666,99 @@ export const classDefinitionQueries: Record<string, any> = {
   components: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id).filter((c) => c.kind === "Component"),
   /** Only extends clauses. */
   extendsClasses: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id).filter((c) => c.kind === "Extends"),
+  /** Direct resolved base classes for inheritance analysis. */
+  directBaseClasses: (db: QueryDB, self: SymbolEntry): SymbolEntry[] => {
+    const extClauses = db.childrenOf(self.id).filter((c) => c.kind === "Extends");
+    const bases: SymbolEntry[] = [];
+    for (const ext of extClauses) {
+      const base = db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
+      if (base) bases.push(base);
+    }
+    return bases;
+  },
+  /**
+   * Checks whether self is a subtype of targetNameOrId via TaxonomyIndex or transitive extends.
+   */
+  isSubtype:
+    (db: QueryDB, self: SymbolEntry) =>
+    (targetNameOrId: string | SymbolId): boolean => {
+      let targetName: string;
+      if (typeof targetNameOrId === "number") {
+        const targetSym = db.symbol(targetNameOrId);
+        if (!targetSym) return false;
+        targetName = targetSym.name;
+      } else {
+        targetName = targetNameOrId;
+      }
+
+      if (self.name === targetName) return true;
+
+      // Check TaxonomyIndex if available
+      if (db.taxonomy && db.taxonomy.has?.(self.name) && db.taxonomy.has?.(targetName)) {
+        if (db.taxonomy.isSubtype(self.name, targetName)) return true;
+      }
+
+      // Direct and transitive extends traversal
+      const extClauses = db.childrenOf(self.id).filter((c) => c.kind === "Extends");
+      for (const ext of extClauses) {
+        const base = db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
+        if (base) {
+          if (db.taxonomy?.addClass) {
+            db.taxonomy.addClass(self.name, [base.name]);
+          }
+          if (base.name === targetName) return true;
+          if (db.query<(t: string | SymbolId) => boolean>("isSubtype", base.id)?.(targetName)) return true;
+        }
+      }
+      return false;
+    },
+  /**
+   * Structural subtyping check for records and classes (MLS §6.2.2).
+   */
+  isRecordSubtype:
+    (db: QueryDB, self: SymbolEntry) =>
+    (parentSymId: SymbolId): boolean => {
+      if (self.id === parentSymId) return true;
+      const parentSym = db.symbol(parentSymId);
+      if (!parentSym) return false;
+
+      const childElemIds = db.query<SymbolId[]>("instantiate", self.id) || [];
+      const parentElemIds = db.query<SymbolId[]>("instantiate", parentSymId) || [];
+
+      const childComps = childElemIds
+        .map((id) => db.symbol(id))
+        .filter((s): s is SymbolEntry => !!s && s.kind === "Component");
+      const parentComps = parentElemIds
+        .map((id) => db.symbol(id))
+        .filter((s): s is SymbolEntry => !!s && s.kind === "Component");
+
+      for (const pComp of parentComps) {
+        const cComp = childComps.find((c) => c.name === pComp.name);
+        if (!cComp) return false;
+
+        const pMeta = (pComp.metadata as any) ?? {};
+        const cMeta = (cComp.metadata as any) ?? {};
+
+        if (Boolean(pMeta.flowPrefix) !== Boolean(cMeta.flowPrefix)) return false;
+        if (Boolean(pMeta.streamPrefix) !== Boolean(cMeta.streamPrefix)) return false;
+
+        if (pMeta.typeSpecifier && cMeta.typeSpecifier && pMeta.typeSpecifier !== cMeta.typeSpecifier) {
+          if (pMeta.typeSpecifier === "Real" && cMeta.typeSpecifier === "Integer") {
+            continue;
+          }
+          const pSubSym = db.byName(pMeta.typeSpecifier)?.[0];
+          const cSubSym = db.byName(cMeta.typeSpecifier)?.[0];
+          if (pSubSym && cSubSym) {
+            if (!db.query<(id: SymbolId) => boolean>("isRecordSubtype", cSubSym.id)?.(pSubSym.id)) {
+              return false;
+            }
+          } else {
+            return false;
+          }
+        }
+      }
+      return true;
+    },
   /** Only import clauses. */
   imports: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id).filter((c) => c.kind === "Import"),
   /** Components with causality=input. */
@@ -3257,7 +3444,87 @@ export const componentDeclarationQueries: Record<string, any> = {
     const modNode =
       Cst.Declaration.modification(declNode) ??
       declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
-    const modification = modNode ? (parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs) : null;
+    let modification = modNode ? (parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs) : null;
+
+    let localConstrClause: any = null;
+    let currNode = cstNode;
+    while (currNode && currNode.type !== "Composition" && currNode.type !== "composition") {
+      localConstrClause = currNode.children?.find(
+        (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+      );
+      if (localConstrClause) break;
+      currNode = currNode.parent;
+    }
+    if (localConstrClause) {
+      const constrMod = localConstrClause.children?.find(
+        (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+      );
+      if (constrMod) {
+        const constrParsed = parseModArgsFromCst(constrMod, self.parentId);
+        if (constrParsed && constrParsed.args && constrParsed.args.length > 0) {
+          if (!modification) {
+            modification = { args: [...constrParsed.args] } as any;
+          } else {
+            const existingNames = new Set(modification.args?.map((a: any) => a.name) || []);
+            const mergedArgs = [...(modification.args || [])];
+            for (const cArg of constrParsed.args) {
+              if (!existingNames.has(cArg.name)) {
+                mergedArgs.push(cArg);
+              }
+            }
+            modification = { ...modification, args: mergedArgs };
+          }
+        }
+      }
+    }
+
+    if (isRedeclare && self.parentId) {
+      const extendsClauses = db.childrenOf(self.parentId).filter((c) => c.kind === "Extends");
+      for (const ext of extendsClauses) {
+        const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
+        if (baseClass) {
+          const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id) || [];
+          for (const baseElemId of baseElements) {
+            const baseElem = db.symbol(baseElemId);
+            if (baseElem && baseElem.kind === "Component" && baseElem.name === self.name) {
+              const baseCst = db.cstNode(baseElem.id) as any;
+              let curr = baseCst;
+              let constrClause: any = null;
+              while (curr && curr.type !== "Composition" && curr.type !== "composition") {
+                constrClause = curr.children?.find(
+                  (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+                );
+                if (constrClause) break;
+                curr = curr.parent;
+              }
+              if (constrClause) {
+                const constrMod = constrClause.children?.find(
+                  (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+                );
+                if (constrMod) {
+                  const constrParsed = parseModArgsFromCst(constrMod, baseClass.id);
+                  if (constrParsed && constrParsed.args && constrParsed.args.length > 0) {
+                    if (!modification) {
+                      modification = { args: [...constrParsed.args] } as any;
+                    } else {
+                      const existingNames = new Set(modification.args?.map((a: any) => a.name) || []);
+                      const mergedArgs = [...(modification.args || [])];
+                      for (const cArg of constrParsed.args) {
+                        if (!existingNames.has(cArg.name)) {
+                          mergedArgs.push(cArg);
+                        }
+                      }
+                      modification = { ...modification, args: mergedArgs };
+                    }
+                  }
+                }
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
 
     const arraySub =
       Cst.Declaration.arraySubscripts(declNode) ??

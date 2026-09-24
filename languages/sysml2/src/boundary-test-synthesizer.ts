@@ -12,6 +12,7 @@
  */
 
 import type { ExprNode, RegionDecompositionResult } from "@modelscript/runtime";
+import { SysML2DaeLowerer, type LoweredActionDae } from "./sysml2-dae-lowerer.js";
 
 export interface SynthesizedTestCase {
   id: string;
@@ -38,6 +39,28 @@ export interface SynthesizedTestSuite {
   name: string;
   testCases: SynthesizedTestCase[];
   coverageMetrics: CoverageMetrics;
+  summary: string;
+}
+
+export interface TestCaseExecutionResult {
+  testId: string;
+  category: "nominal" | "boundary" | "mcdc";
+  passed: boolean;
+  inputs: Record<string, number>;
+  expectedOutcome?: string | number | ExprNode;
+  actualOutcome?: number;
+  error?: string;
+  durationMs: number;
+}
+
+export interface TestExecutionReport {
+  suiteName: string;
+  totalTests: number;
+  passed: number;
+  failed: number;
+  coverageMetrics: CoverageMetrics;
+  results: TestCaseExecutionResult[];
+  totalDurationMs: number;
   summary: string;
 }
 
@@ -276,5 +299,84 @@ export class BoundaryTestSynthesizer {
     }
 
     return mos;
+  }
+
+  /**
+   * One-click execution of synthesized boundary & MC/DC test cases directly against
+   * a lowered SysML v2 Action / Calculation in linear WebAssembly memory.
+   */
+  public static runSynthesizedTestsAgainstAction(
+    suite: SynthesizedTestSuite,
+    loweredAction: LoweredActionDae,
+    outputVarName?: string,
+    tolerance = 1e-4,
+  ): TestExecutionReport {
+    const startTime = performance.now();
+    const results: TestCaseExecutionResult[] = [];
+    let passedCount = 0;
+    let failedCount = 0;
+
+    const targetOutput = outputVarName || loweredAction.outputs[0];
+
+    for (const tc of suite.testCases) {
+      const t0 = performance.now();
+      try {
+        const outEnv = SysML2DaeLowerer.execute(loweredAction, tc.inputs);
+        const actual = targetOutput !== undefined ? outEnv[targetOutput] : undefined;
+        const dur = performance.now() - t0;
+
+        let passed = true;
+        let errMsg: string | undefined = undefined;
+
+        if (tc.expectedOutcome !== undefined && typeof tc.expectedOutcome === "number") {
+          if (actual === undefined || Math.abs(actual - tc.expectedOutcome) > tolerance) {
+            passed = false;
+            errMsg = `Output mismatch for '${targetOutput}': expected ${tc.expectedOutcome}, got ${actual}`;
+          }
+        }
+
+        if (passed) {
+          passedCount++;
+        } else {
+          failedCount++;
+        }
+
+        results.push({
+          testId: tc.id,
+          category: tc.category,
+          passed,
+          inputs: tc.inputs,
+          expectedOutcome: tc.expectedOutcome,
+          actualOutcome: actual,
+          error: errMsg,
+          durationMs: dur,
+        });
+      } catch (err: any) {
+        failedCount++;
+        results.push({
+          testId: tc.id,
+          category: tc.category,
+          passed: false,
+          inputs: tc.inputs,
+          expectedOutcome: tc.expectedOutcome,
+          error: err.message || String(err),
+          durationMs: performance.now() - t0,
+        });
+      }
+    }
+
+    const totalDuration = performance.now() - startTime;
+    const summary = `Executed ${suite.testCases.length} synthesized test(s) against '${loweredAction.name}': ${passedCount} passed, ${failedCount} failed in ${totalDuration.toFixed(2)}ms.`;
+
+    return {
+      suiteName: suite.name,
+      totalTests: suite.testCases.length,
+      passed: passedCount,
+      failed: failedCount,
+      coverageMetrics: suite.coverageMetrics,
+      results,
+      totalDurationMs: totalDuration,
+      summary,
+    };
   }
 }

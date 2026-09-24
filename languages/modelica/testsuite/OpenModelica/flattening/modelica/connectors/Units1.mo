@@ -1,7 +1,6 @@
 // name:     Units1
 // keywords: connect,modification
 // status:   incorrect
-// xfail:    true
 //
 // Conversion between units is not supported within the Modelica
 // language. Consequently in the following example the generation

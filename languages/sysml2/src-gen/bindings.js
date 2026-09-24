@@ -340,7 +340,19 @@ export const LINT_CODES =
   typeof {} !== "undefined" ? {} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
-  typeof {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberElement":14,"isImportAll":15,"importedMembership":16,"isRecursive":17,"importedNamespace":18,"superclassifier":19,"isOrdered":20,"isNonunique":21,"lowerBound":22,"upperBound":23,"isEnd":24,"direction":25,"isDerived":26,"isAbstract":27,"isVariation":28,"isConstant":29,"isRef":30,"isRedefine":31,"isSubsetting":32,"isInitial":33,"isDefault":34,"conjugatedPortDefinition":35,"guard":36,"condition":37,"thenBody":38,"elseBody":39,"untilCondition":40,"variable":41,"range":42,"sentItem":43,"receiver":44,"assignedValue":45,"targetFeature":46,"isNegated":47,"constraintKind":48,"satisfyingFeature":49,"isParallel":50,"source":51,"trigger":52,"effect":53,"operator":54,"operand":55,"thenOperand":56,"elseOperand":57,"typeReference":58,"typeResult":59,"indexOperand":60,"filterOperand":61,"invocationType":62,"functionRef":63,"collect":64,"select":65,"featureChain":66,"base":67,"result":68,"chaining":69,"chainingFeature":70,"argument":71,"namedArgument":72,"parameterRedefinition":73,"value":74,"redefinedFeature":75,"name":76} !== "undefined" ? {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberElement":14,"isImportAll":15,"importedMembership":16,"isRecursive":17,"importedNamespace":18,"superclassifier":19,"isOrdered":20,"isNonunique":21,"lowerBound":22,"upperBound":23,"isEnd":24,"direction":25,"isDerived":26,"isAbstract":27,"isVariation":28,"isConstant":29,"isRef":30,"isRedefine":31,"isSubsetting":32,"isInitial":33,"isDefault":34,"conjugatedPortDefinition":35,"guard":36,"condition":37,"thenBody":38,"elseBody":39,"untilCondition":40,"variable":41,"range":42,"sentItem":43,"receiver":44,"assignedValue":45,"targetFeature":46,"isNegated":47,"constraintKind":48,"satisfyingFeature":49,"isParallel":50,"source":51,"trigger":52,"effect":53,"operator":54,"operand":55,"thenOperand":56,"elseOperand":57,"typeReference":58,"typeResult":59,"indexOperand":60,"filterOperand":61,"invocationType":62,"functionRef":63,"collect":64,"select":65,"featureChain":66,"base":67,"result":68,"chaining":69,"chainingFeature":70,"argument":71,"namedArgument":72,"parameterRedefinition":73,"value":74,"redefinedFeature":75,"name":76} : {};
+  typeof {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberElement":14,"isImportAll":15,"importedMembership":16,"isRecursive":17,"importedNamespace":18,"superclassifier":19,"isOrdered":20,"isNonunique":21,"lowerBound":22,"upperBound":23,"isEnd":24,"direction":25,"isDerived":26,"isAbstract":27,"isVariation":28,"isConstant":29,"isRef":30,"isRedefine":31,"isSubsetting":32,"isInitial":33,"isDefault":34,"conjugatedPortDefinition":35,"guard":36,"condition":37,"thenBody":38,"elseBody":39,"untilCondition":40,"variable":41,"range":42,"sentItem":43,"receiver":44,"assignedValue":45,"targetFeature":46,"isNegated":47,"constraintKind":48,"satisfyingFeature":49,"isParallel":50,"source":51,"trigger":52,"effect":53,"operator":54,"operand":55,"thenOperand":56,"elseOperand":57,"typeReference":58,"typeResult":59,"base":60,"exponent":61,"indexOperand":62,"filterOperand":63,"invocationType":64,"functionRef":65,"collect":66,"select":67,"featureChain":68,"result":69,"chaining":70,"chainingFeature":71,"argument":72,"namedArgument":73,"parameterRedefinition":74,"value":75,"redefinedFeature":76,"name":77} !== "undefined" ? {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberElement":14,"isImportAll":15,"importedMembership":16,"isRecursive":17,"importedNamespace":18,"superclassifier":19,"isOrdered":20,"isNonunique":21,"lowerBound":22,"upperBound":23,"isEnd":24,"direction":25,"isDerived":26,"isAbstract":27,"isVariation":28,"isConstant":29,"isRef":30,"isRedefine":31,"isSubsetting":32,"isInitial":33,"isDefault":34,"conjugatedPortDefinition":35,"guard":36,"condition":37,"thenBody":38,"elseBody":39,"untilCondition":40,"variable":41,"range":42,"sentItem":43,"receiver":44,"assignedValue":45,"targetFeature":46,"isNegated":47,"constraintKind":48,"satisfyingFeature":49,"isParallel":50,"source":51,"trigger":52,"effect":53,"operator":54,"operand":55,"thenOperand":56,"elseOperand":57,"typeReference":58,"typeResult":59,"base":60,"exponent":61,"indexOperand":62,"filterOperand":63,"invocationType":64,"functionRef":65,"collect":66,"select":67,"featureChain":68,"result":69,"chaining":70,"chainingFeature":71,"argument":72,"namedArgument":73,"parameterRedefinition":74,"value":75,"redefinedFeature":76,"name":77} : {};
+let ID_TO_FIELD_NAME = null;
+export function getFieldNameById(id) {
+  if (ID_TO_FIELD_NAME === null) {
+    ID_TO_FIELD_NAME = [];
+    for (const [name, fieldId] of Object.entries(FIELD_NAMES)) {
+      if (typeof fieldId === "number" && fieldId >= 0) {
+        ID_TO_FIELD_NAME[fieldId] = name;
+      }
+    }
+  }
+  return ID_TO_FIELD_NAME[id] ?? null;
+}
 export function createWasmImports(grammar, facade) {
   const hostQueries = grammar.hostQueries || {};
   const queryKeys = Object.keys(hostQueries);
@@ -3808,6 +3820,7 @@ export class LspFacade {
               parentTypeId,
               childIndex,
               currType,
+              0,
             );
           } catch {
             fieldId = -1;
@@ -3855,6 +3868,7 @@ export class LspFacade {
                 parentTypeId,
                 childIndex,
                 typeId,
+                0,
               );
             } catch {
               fieldId = -1;
@@ -4166,6 +4180,9 @@ export class SyntaxNode {
   _cachedPad;
   _cachedLen;
   _cachedTypeId;
+  _cachedChildren = null;
+  _cachedNamedChildren = null;
+  _fieldId = -1;
   constructor(
     tree,
     ptr,
@@ -4174,6 +4191,7 @@ export class SyntaxNode {
     _cachedPad,
     _cachedLen,
     _cachedTypeId,
+    fieldId = -1,
   ) {
     this.tree = tree;
     this.ptr = ptr;
@@ -4182,6 +4200,7 @@ export class SyntaxNode {
     this._cachedPad = _cachedPad;
     this._cachedLen = _cachedLen;
     this._cachedTypeId = _cachedTypeId;
+    this._fieldId = fieldId;
   }
   /** Unique integer ID for this node (pointer address). */
   get id() {
@@ -4261,11 +4280,18 @@ export class SyntaxNode {
    * Recursively flattens invisible nodes (e.g., anonymous sequences) into their parents.
    */
   get children() {
+    if (this._cachedChildren !== null) {
+      return this._cachedChildren;
+    }
     const mem32 = this.tree.mem32;
+    const exports = this.tree.facade?.exports;
     const kids = [];
     const stack = [];
     let currentChildPtr = mem32[(this.ptr + 12) / 4];
     let currentOffset = this._startOffset + this._cachedPad;
+    let parentTypeId = this._cachedTypeId;
+    let childIndex = 0;
+    let inheritedFieldId = -1;
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr / 4];
@@ -4279,17 +4305,46 @@ export class SyntaxNode {
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
         const pad =
-          isFat && this.tree.facade.exports.getFatPaddingPtr
-            ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
+          isFat && exports?.getFatPaddingPtr
+            ? mem32[exports.getFatPaddingPtr(rawPad) / 4]
             : rawPad;
         const len = envHashPadding & 0x007fffff;
         const isInvisible = (typeFlags & (1 << 14)) !== 0;
+        let directFieldId = -1;
+        if (exports?.getFieldIdForChild && parentTypeId > 0) {
+          try {
+            directFieldId = exports.getFieldIdForChild(
+              parentTypeId,
+              childIndex,
+              typeId,
+              0,
+            );
+          } catch {}
+        }
+        let fieldId = directFieldId > 0 ? directFieldId : inheritedFieldId;
+        if (
+          directFieldId <= 0 &&
+          fieldId > 0 &&
+          (name.startsWith('"') || name.startsWith("'"))
+        ) {
+          fieldId = -1;
+        }
         const nextChildPtr = mem32[(currentChildPtr + 16) / 4];
         const nextOffset = currentOffset + pad + len;
         if (name.startsWith("_") || isInvisible) {
-          stack.push({ nextChildPtr, nextOffset });
+          stack.push({
+            nextChildPtr,
+            nextOffset,
+            parentTypeId,
+            childIndex: childIndex + 1,
+            inheritedFieldId,
+          });
           currentChildPtr = mem32[(currentChildPtr + 12) / 4];
           currentOffset = currentOffset + pad;
+          parentTypeId = typeId;
+          childIndex = 0;
+          inheritedFieldId =
+            directFieldId > 0 ? directFieldId : inheritedFieldId;
           continue;
         } else {
           kids.push(
@@ -4301,8 +4356,10 @@ export class SyntaxNode {
               pad,
               len,
               typeId,
+              fieldId,
             ),
           );
+          childIndex++;
         }
         currentOffset = nextOffset;
         currentChildPtr = nextChildPtr;
@@ -4311,13 +4368,21 @@ export class SyntaxNode {
         const state = stack.pop();
         currentChildPtr = state.nextChildPtr;
         currentOffset = state.nextOffset;
+        parentTypeId = state.parentTypeId;
+        childIndex = state.childIndex;
+        inheritedFieldId = state.inheritedFieldId;
       }
     }
+    this._cachedChildren = kids;
     return kids;
   }
   /** Gets all named children (excluding anonymous tokens and punctuation). */
   get namedChildren() {
-    return this.children.filter((k) => k.isNamed());
+    if (this._cachedNamedChildren !== null) {
+      return this._cachedNamedChildren;
+    }
+    this._cachedNamedChildren = this.children.filter((k) => k.isNamed());
+    return this._cachedNamedChildren;
   }
   /** Gets the number of children the node has. */
   get childCount() {
@@ -4430,7 +4495,10 @@ export class SyntaxNode {
    * Looks up a child node by numeric field ID.
    */
   childForFieldId(fieldId) {
-    if (!this.tree.facade.exports.getChildByFieldId || !this.ptr) return null;
+    for (const kid of this.children) {
+      if (kid._fieldId === fieldId) return kid;
+    }
+    if (!this.tree.facade.exports?.getChildByFieldId || !this.ptr) return null;
     const childPtr = this.tree.facade.exports.getChildByFieldId(
       this.ptr,
       fieldId,
@@ -4473,6 +4541,43 @@ export class SyntaxNode {
    * Returns all child nodes matching the given numeric field ID (e.g. for repeated fields).
    */
   childrenForFieldId(fieldId) {
+    const kids = this.children;
+    const matches = [];
+    for (const kid of kids) {
+      if (kid._fieldId === fieldId) {
+        matches.push(kid);
+      }
+    }
+    if (matches.length > 0) return matches;
+    const exports = this.tree.facade?.exports;
+    if (exports?.getChildrenByFieldId && exports?.fieldCursorNext && this.ptr) {
+      try {
+        const cursor = exports.getChildrenByFieldId(this.ptr, fieldId);
+        if (cursor) {
+          const ptrs = [];
+          let p = exports.fieldCursorNext(cursor);
+          while (p !== 0) {
+            ptrs.push(p);
+            p = exports.fieldCursorNext(cursor);
+          }
+          if (exports.releaseFieldCursor) {
+            exports.releaseFieldCursor(cursor);
+          }
+          if (ptrs.length > 0) {
+            const result = [];
+            for (const ptr of ptrs) {
+              const found = kids.find(
+                (k) => k.ptr === ptr || k.containsPtr(ptr),
+              );
+              if (found && !result.includes(found)) {
+                result.push(found);
+              }
+            }
+            if (result.length > 0) return result;
+          }
+        }
+      } catch {}
+    }
     const single = this.childForFieldId(fieldId);
     if (!single) return [];
     return [single];
@@ -4504,20 +4609,10 @@ export class SyntaxNode {
    */
   fieldNameForChild(childIndex) {
     if (childIndex < 0 || childIndex >= this.children.length) return null;
-    const typeId = this._cachedTypeId;
-    if (!typeId || typeId <= 0) return null;
-    if (!this.tree.facade.exports.getFieldIdForChild) return null;
-    try {
-      const fieldId = this.tree.facade.exports.getFieldIdForChild(
-        typeId,
-        childIndex,
-      );
-      if (fieldId <= 0) return null;
-      for (const [name, id] of Object.entries(FIELD_NAMES)) {
-        if (id === fieldId) return name;
-      }
-    } catch {
-      return null;
+    const kid = this.children[childIndex];
+    if (!kid) return null;
+    if (kid._fieldId > 0) {
+      return getFieldNameById(kid._fieldId);
     }
     return null;
   }
@@ -4527,9 +4622,12 @@ export class SyntaxNode {
   fieldNameForNamedChild(namedChildIndex) {
     if (namedChildIndex < 0 || namedChildIndex >= this.namedChildren.length)
       return null;
-    const target = this.namedChildren[namedChildIndex];
-    const rawIndex = this.children.indexOf(target);
-    return rawIndex >= 0 ? this.fieldNameForChild(rawIndex) : null;
+    const kid = this.namedChildren[namedChildIndex];
+    if (!kid) return null;
+    if (kid._fieldId > 0) {
+      return getFieldNameById(kid._fieldId);
+    }
+    return null;
   }
   /** Extracts the source code text for a specific child field. */
   childText(name) {
@@ -5132,6 +5230,7 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
             }
             if (mod.FIELD_NAMES) {
               Object.assign(FIELD_NAMES, mod.FIELD_NAMES);
+              ID_TO_FIELD_NAME = null;
             }
             if (syntaxNames) break;
           }
@@ -5666,40 +5765,42 @@ export const FieldId = {
   typeReference: 58,
   TypeResult: 59,
   typeResult: 59,
-  IndexOperand: 60,
-  indexOperand: 60,
-  FilterOperand: 61,
-  filterOperand: 61,
-  InvocationType: 62,
-  invocationType: 62,
-  FunctionRef: 63,
-  functionRef: 63,
-  Collect: 64,
-  collect: 64,
-  Select: 65,
-  select: 65,
-  FeatureChain: 66,
-  featureChain: 66,
-  Base: 67,
-  base: 67,
-  Result: 68,
-  result: 68,
-  Chaining: 69,
-  chaining: 69,
-  ChainingFeature: 70,
-  chainingFeature: 70,
-  Argument: 71,
-  argument: 71,
-  NamedArgument: 72,
-  namedArgument: 72,
-  ParameterRedefinition: 73,
-  parameterRedefinition: 73,
-  Value: 74,
-  value: 74,
-  RedefinedFeature: 75,
-  redefinedFeature: 75,
-  Name: 76,
-  name: 76,
+  Base: 60,
+  base: 60,
+  Exponent: 61,
+  exponent: 61,
+  IndexOperand: 62,
+  indexOperand: 62,
+  FilterOperand: 63,
+  filterOperand: 63,
+  InvocationType: 64,
+  invocationType: 64,
+  FunctionRef: 65,
+  functionRef: 65,
+  Collect: 66,
+  collect: 66,
+  Select: 67,
+  select: 67,
+  FeatureChain: 68,
+  featureChain: 68,
+  Result: 69,
+  result: 69,
+  Chaining: 70,
+  chaining: 70,
+  ChainingFeature: 71,
+  chainingFeature: 71,
+  Argument: 72,
+  argument: 72,
+  NamedArgument: 73,
+  namedArgument: 73,
+  ParameterRedefinition: 74,
+  parameterRedefinition: 74,
+  Value: 75,
+  value: 75,
+  RedefinedFeature: 76,
+  redefinedFeature: 76,
+  Name: 77,
+  name: 77,
 };
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -14059,17 +14160,23 @@ export const Cst = {
     typeId: 421,
     type: "ExponentiationExpression",
     is(node) { return node != null && node.typeId === 421; },
-    operand(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
+    base(node) {
+      return node ? (node.childForFieldId(60) || node.childForFieldName("base")) : null;
     },
-    operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+    baseList(node) {
+      return node ? node.childrenForFieldName("base") : [];
     },
     operator(node) {
       return node ? (node.childForFieldId(54) || node.childForFieldName("operator")) : null;
     },
     operatorList(node) {
       return node ? node.childrenForFieldName("operator") : [];
+    },
+    exponent(node) {
+      return node ? (node.childForFieldId(61) || node.childForFieldName("exponent")) : null;
+    },
+    exponentList(node) {
+      return node ? node.childrenForFieldName("exponent") : [];
     },
   },
   ExponentiationOperator: {
@@ -14121,19 +14228,19 @@ export const Cst = {
     type: "PrimaryExpression",
     is(node) { return node != null && node.typeId === 427; },
     base(node) {
-      return node ? (node.childForFieldId(67) || node.childForFieldName("base")) : null;
+      return node ? (node.childForFieldId(60) || node.childForFieldName("base")) : null;
     },
     baseList(node) {
       return node ? node.childrenForFieldName("base") : [];
     },
     featureChain(node) {
-      return node ? (node.childForFieldId(66) || node.childForFieldName("featureChain")) : null;
+      return node ? (node.childForFieldId(68) || node.childForFieldName("featureChain")) : null;
     },
     featureChainList(node) {
       return node ? node.childrenForFieldName("featureChain") : [];
     },
     indexOperand(node) {
-      return node ? (node.childForFieldId(60) || node.childForFieldName("indexOperand")) : null;
+      return node ? (node.childForFieldId(62) || node.childForFieldName("indexOperand")) : null;
     },
     indexOperandList(node) {
       return node ? node.childrenForFieldName("indexOperand") : [];
@@ -14145,25 +14252,25 @@ export const Cst = {
       return node ? node.childrenForFieldName("operator") : [];
     },
     filterOperand(node) {
-      return node ? (node.childForFieldId(61) || node.childForFieldName("filterOperand")) : null;
+      return node ? (node.childForFieldId(63) || node.childForFieldName("filterOperand")) : null;
     },
     filterOperandList(node) {
       return node ? node.childrenForFieldName("filterOperand") : [];
     },
     invocationType(node) {
-      return node ? (node.childForFieldId(62) || node.childForFieldName("invocationType")) : null;
+      return node ? (node.childForFieldId(64) || node.childForFieldName("invocationType")) : null;
     },
     invocationTypeList(node) {
       return node ? node.childrenForFieldName("invocationType") : [];
     },
     collect(node) {
-      return node ? (node.childForFieldId(64) || node.childForFieldName("collect")) : null;
+      return node ? (node.childForFieldId(66) || node.childForFieldName("collect")) : null;
     },
     collectList(node) {
       return node ? node.childrenForFieldName("collect") : [];
     },
     select(node) {
-      return node ? (node.childForFieldId(65) || node.childForFieldName("select")) : null;
+      return node ? (node.childForFieldId(67) || node.childForFieldName("select")) : null;
     },
     selectList(node) {
       return node ? node.childrenForFieldName("select") : [];
@@ -14175,19 +14282,19 @@ export const Cst = {
       return node ? node.childrenForFieldName("body") : [];
     },
     functionRef(node) {
-      return node ? (node.childForFieldId(63) || node.childForFieldName("functionRef")) : null;
+      return node ? (node.childForFieldId(65) || node.childForFieldName("functionRef")) : null;
     },
     functionRefList(node) {
       return node ? node.childrenForFieldName("functionRef") : [];
     },
     argument(node) {
-      return node ? (node.childForFieldId(71) || node.childForFieldName("argument")) : null;
+      return node ? (node.childForFieldId(72) || node.childForFieldName("argument")) : null;
     },
     argumentList(node) {
       return node ? node.childrenForFieldName("argument") : [];
     },
     namedArgument(node) {
-      return node ? (node.childForFieldId(72) || node.childForFieldName("namedArgument")) : null;
+      return node ? (node.childForFieldId(73) || node.childForFieldName("namedArgument")) : null;
     },
     namedArgumentList(node) {
       return node ? node.childrenForFieldName("namedArgument") : [];
@@ -14248,7 +14355,7 @@ export const Cst = {
     type: "OwnedFeatureChain",
     is(node) { return node != null && node.typeId === 432; },
     chaining(node) {
-      return node ? (node.childForFieldId(69) || node.childForFieldName("chaining")) : null;
+      return node ? (node.childForFieldId(70) || node.childForFieldName("chaining")) : null;
     },
     chainingList(node) {
       return node ? node.childrenForFieldName("chaining") : [];
@@ -14353,13 +14460,13 @@ export const Cst = {
       return node ? node.childrenForFieldName("type") : [];
     },
     argument(node) {
-      return node ? (node.childForFieldId(71) || node.childForFieldName("argument")) : null;
+      return node ? (node.childForFieldId(72) || node.childForFieldName("argument")) : null;
     },
     argumentList(node) {
       return node ? node.childrenForFieldName("argument") : [];
     },
     namedArgument(node) {
-      return node ? (node.childForFieldId(72) || node.childForFieldName("namedArgument")) : null;
+      return node ? (node.childForFieldId(73) || node.childForFieldName("namedArgument")) : null;
     },
     namedArgumentList(node) {
       return node ? node.childrenForFieldName("namedArgument") : [];
@@ -14376,7 +14483,7 @@ export const Cst = {
       return node ? node.childrenForFieldName("type") : [];
     },
     result(node) {
-      return node ? (node.childForFieldId(68) || node.childForFieldName("result")) : null;
+      return node ? (node.childForFieldId(69) || node.childForFieldName("result")) : null;
     },
     resultList(node) {
       return node ? node.childrenForFieldName("result") : [];
@@ -14398,13 +14505,13 @@ export const Cst = {
     type: "ConstructorResult",
     is(node) { return node != null && node.typeId === 445; },
     argument(node) {
-      return node ? (node.childForFieldId(71) || node.childForFieldName("argument")) : null;
+      return node ? (node.childForFieldId(72) || node.childForFieldName("argument")) : null;
     },
     argumentList(node) {
       return node ? node.childrenForFieldName("argument") : [];
     },
     namedArgument(node) {
-      return node ? (node.childForFieldId(72) || node.childForFieldName("namedArgument")) : null;
+      return node ? (node.childForFieldId(73) || node.childForFieldName("namedArgument")) : null;
     },
     namedArgumentList(node) {
       return node ? node.childrenForFieldName("namedArgument") : [];
@@ -14432,7 +14539,7 @@ export const Cst = {
     type: "OwnedFeatureChaining",
     is(node) { return node != null && node.typeId === 448; },
     chainingFeature(node) {
-      return node ? (node.childForFieldId(70) || node.childForFieldName("chainingFeature")) : null;
+      return node ? (node.childForFieldId(71) || node.childForFieldName("chainingFeature")) : null;
     },
     chainingFeatureList(node) {
       return node ? node.childrenForFieldName("chainingFeature") : [];
@@ -14476,13 +14583,13 @@ export const Cst = {
     type: "NamedArgument",
     is(node) { return node != null && node.typeId === 455; },
     parameterRedefinition(node) {
-      return node ? (node.childForFieldId(73) || node.childForFieldName("parameterRedefinition")) : null;
+      return node ? (node.childForFieldId(74) || node.childForFieldName("parameterRedefinition")) : null;
     },
     parameterRedefinitionList(node) {
       return node ? node.childrenForFieldName("parameterRedefinition") : [];
     },
     value(node) {
-      return node ? (node.childForFieldId(74) || node.childForFieldName("value")) : null;
+      return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
     valueList(node) {
       return node ? node.childrenForFieldName("value") : [];
@@ -14493,7 +14600,7 @@ export const Cst = {
     type: "ParameterRedefinition",
     is(node) { return node != null && node.typeId === 456; },
     redefinedFeature(node) {
-      return node ? (node.childForFieldId(75) || node.childForFieldName("redefinedFeature")) : null;
+      return node ? (node.childForFieldId(76) || node.childForFieldName("redefinedFeature")) : null;
     },
     redefinedFeatureList(node) {
       return node ? node.childrenForFieldName("redefinedFeature") : [];
@@ -14520,7 +14627,7 @@ export const Cst = {
     type: "LiteralBoolean",
     is(node) { return node != null && node.typeId === 460; },
     value(node) {
-      return node ? (node.childForFieldId(74) || node.childForFieldName("value")) : null;
+      return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
     valueList(node) {
       return node ? node.childrenForFieldName("value") : [];
@@ -14536,7 +14643,7 @@ export const Cst = {
     type: "LiteralString",
     is(node) { return node != null && node.typeId === 462; },
     value(node) {
-      return node ? (node.childForFieldId(74) || node.childForFieldName("value")) : null;
+      return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
     valueList(node) {
       return node ? node.childrenForFieldName("value") : [];
@@ -14547,7 +14654,7 @@ export const Cst = {
     type: "LiteralInteger",
     is(node) { return node != null && node.typeId === 463; },
     value(node) {
-      return node ? (node.childForFieldId(74) || node.childForFieldName("value")) : null;
+      return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
     valueList(node) {
       return node ? node.childrenForFieldName("value") : [];
@@ -14558,7 +14665,7 @@ export const Cst = {
     type: "LiteralReal",
     is(node) { return node != null && node.typeId === 464; },
     value(node) {
-      return node ? (node.childForFieldId(74) || node.childForFieldName("value")) : null;
+      return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
     valueList(node) {
       return node ? node.childrenForFieldName("value") : [];
@@ -14589,7 +14696,7 @@ export const Cst = {
     type: "QualifiedName",
     is(node) { return node != null && node.typeId === 469; },
     name(node) {
-      return node ? (node.childForFieldId(76) || node.childForFieldName("name")) : null;
+      return node ? (node.childForFieldId(77) || node.childForFieldName("name")) : null;
     },
     nameList(node) {
       return node ? node.childrenForFieldName("name") : [];

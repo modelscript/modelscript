@@ -570,14 +570,7 @@ export function startNodeServer(input?: any, output?: any) {
 
         if (oldCached && oldCached.text !== text) {
           const edit = computeTreeEdit(oldCached.text, text);
-          tree = parser.parse(
-            text,
-            oldCached.tree,
-            edit.startIndex * 2,
-            edit.oldEndIndex * 2,
-            edit.newEndIndex * 2,
-            uri,
-          );
+          tree = parser.parse(text, oldCached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
         } else if (oldCached) {
           tree = oldCached.tree;
         } else {

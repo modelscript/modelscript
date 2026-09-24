@@ -835,12 +835,14 @@ export class FieldCursor {
 
       if (child == 0) continue;
 
-      while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0)) {
-        let first = getNodeFirstChild(child);
-        if (first != 0 && getNodeType(first) != NODE_TYPE_ERROR) {
-          child = first;
-        } else {
-          break;
+      if (!isSyntheticField) {
+        while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0)) {
+          let first = getNodeFirstChild(child);
+          if (first != 0 && getNodeType(first) != NODE_TYPE_ERROR) {
+            child = first;
+          } else {
+            break;
+          }
         }
       }
 
@@ -950,6 +952,11 @@ export function releaseFieldCursor(cursor: FieldCursor): void {
   }
 }
 
+export function fieldCursorNext(cursor: FieldCursor): u32 {
+  if (changetype<usize>(cursor) == 0) return 0;
+  return cursor.next();
+}
+
 export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   let cursor = getChildrenByFieldId(ptr, fieldId);
   let child = cursor.next();
@@ -957,7 +964,7 @@ export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   return child;
 }
 
-export function getFieldIdForChild(type: u16, childIndex: u16, childType: u16 = 0): i32 {
+export function getFieldIdForChild(type: u16, childIndex: u16, childType: u16, directOnly: i32): i32 {
   let tablePtr = changetype<usize>(type_fields);
   if (tablePtr < 4) return -1;
   let len = type_fields.length;
@@ -979,6 +986,11 @@ export function getFieldIdForChild(type: u16, childIndex: u16, childType: u16 = 
       if (idxPtr + 1 >= dataLen) break;
       let rawIdx = type_field_data[idxPtr];
       let expectedType = type_field_data[idxPtr + 1] as u16;
+      let isSynthetic = (rawIdx & 0x8000) != 0;
+      if (directOnly != 0 && isSynthetic) {
+        idxPtr += 2;
+        continue;
+      }
       if (rawIdx == (childIndex as i32) || (rawIdx & 0x7FFF) == (childIndex as i32)) {
         if (childType == 0 || expectedType == 0 || expectedType == childType) {
           return currentFieldId;
@@ -989,6 +1001,10 @@ export function getFieldIdForChild(type: u16, childIndex: u16, childType: u16 = 
     currentOffset += 2 + (indexCount * 2);
   }
   return -1;
+}
+
+export function getDirectFieldIdForChild(type: u16, childIndex: u16, childType: u16): i32 {
+  return getFieldIdForChild(type, childIndex, childType, 1);
 }
 
 @unmanaged

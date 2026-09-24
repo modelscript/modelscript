@@ -2706,11 +2706,17 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
   }
 }
 
-export function isAssignableType(source: VarType | null, target: VarType): boolean {
+export interface AssignableTypeOptions {
+  intEnumConversion?: boolean;
+}
+
+export function isAssignableType(source: VarType | null, target: VarType, options?: AssignableTypeOptions): boolean {
   if (source === null) return false;
   if (source === target) return true;
   if (source === VarType.Integer && target === VarType.Real) return true;
-  if (source === VarType.Integer && target === VarType.Enumeration) return true;
+  if (source === VarType.Integer && target === VarType.Enumeration) {
+    return options?.intEnumConversion === true;
+  }
   return false;
 }
 

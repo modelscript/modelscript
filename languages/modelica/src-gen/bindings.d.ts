@@ -173,6 +173,7 @@ export declare const LINT_SEVERITIES: Record<string, number>;
 export declare const LINT_CODES: Record<string, string | number>;
 export declare const EXTRAS_PATTERN: string;
 export declare const FIELD_NAMES: Record<string, number>;
+export declare function getFieldNameById(id: number): string | null;
 export interface AstChangeListener {
   onFullReset?(newRoot: number): void;
   onNodeRetained(ptr: number, flags?: number): void;
@@ -214,6 +215,9 @@ export declare function createWasmImports(grammar: any, facade: LspFacade): any;
  */
 export declare class LspFacade {
   syntaxNames: string[];
+  fieldNames: Record<string, number>;
+  private _idToFieldName;
+  getFieldNameById(id: number): string | null;
   extrasRegex: RegExp;
   private wasmMemory;
   exports: any;
@@ -927,6 +931,9 @@ export declare class SyntaxNode {
   readonly _cachedPad: number;
   readonly _cachedLen: number;
   readonly _cachedTypeId: number;
+  private _cachedChildren;
+  private _cachedNamedChildren;
+  _fieldId: number;
   constructor(
     tree: Tree,
     ptr: number,
@@ -935,6 +942,7 @@ export declare class SyntaxNode {
     _cachedPad: number,
     _cachedLen: number,
     _cachedTypeId: number,
+    fieldId?: number,
   );
   /** Unique integer ID for this node (pointer address). */
   get id(): number;
@@ -1191,6 +1199,7 @@ export declare function createWasmParser(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
   options?: {
     syntaxNames?: string[];
+    fieldNames?: Record<string, number>;
   },
 ): Promise<{
   facade: LspFacade;
@@ -1423,54 +1432,78 @@ export enum FieldId {
   component_clause = 16,
   ConstrainingClause = 17,
   constraining_clause = 17,
-  TypePrefix = 18,
-  type_prefix = 18,
-  ComponentList = 19,
-  component_list = 19,
-  ComponentDeclaration = 20,
-  component_declaration = 20,
-  Declaration = 21,
-  declaration = 21,
-  Modification = 22,
-  modification = 22,
-  ModificationExpression = 23,
-  modification_expression = 23,
-  Lhs = 24,
-  lhs = 24,
-  Rhs = 25,
-  rhs = 25,
-  Target = 26,
-  target = 26,
-  Value = 27,
-  value = 27,
-  Args = 28,
-  args = 28,
-  Condition = 29,
-  condition = 29,
-  Body = 30,
-  body = 30,
-  ElseCondition = 31,
-  elseCondition = 31,
-  ElseBody = 32,
-  elseBody = 32,
-  FinalBody = 33,
-  finalBody = 33,
-  Indices = 34,
-  indices = 34,
-  Variable = 35,
-  variable = 35,
-  Range = 36,
-  range = 36,
-  Left = 37,
-  left = 37,
-  Right = 38,
-  right = 38,
-  Operand = 39,
-  operand = 39,
-  Flexible = 40,
-  flexible = 40,
-  Expression = 41,
-  expression = 41,
+  Alias = 18,
+  alias = 18,
+  ImportList = 19,
+  import_list = 19,
+  TypePrefix = 20,
+  type_prefix = 20,
+  ComponentList = 21,
+  component_list = 21,
+  ComponentDeclaration = 22,
+  component_declaration = 22,
+  Declaration = 23,
+  declaration = 23,
+  Modification = 24,
+  modification = 24,
+  ModificationExpression = 25,
+  modification_expression = 25,
+  IsEach = 26,
+  is_each = 26,
+  Replaceable = 27,
+  replaceable = 27,
+  ComponentClause1 = 28,
+  component_clause1 = 28,
+  ElementReplaceable = 29,
+  element_replaceable = 29,
+  Lhs = 30,
+  lhs = 30,
+  Rhs = 31,
+  rhs = 31,
+  Target = 32,
+  target = 32,
+  Value = 33,
+  value = 33,
+  Args = 34,
+  args = 34,
+  Condition = 35,
+  condition = 35,
+  Body = 36,
+  body = 36,
+  ElseCondition = 37,
+  elseCondition = 37,
+  ElseBody = 38,
+  elseBody = 38,
+  FinalBody = 39,
+  finalBody = 39,
+  Indices = 40,
+  indices = 40,
+  Variable = 41,
+  variable = 41,
+  Range = 42,
+  range = 42,
+  Left = 43,
+  left = 43,
+  Right = 44,
+  right = 44,
+  Operand = 45,
+  operand = 45,
+  Callee = 46,
+  callee = 46,
+  Argument = 47,
+  argument = 47,
+  Expression = 48,
+  expression = 48,
+  Subscripts = 49,
+  subscripts = 49,
+  Member = 50,
+  member = 50,
+  Rows = 51,
+  rows = 51,
+  Arguments = 52,
+  arguments = 52,
+  Flexible = 53,
+  flexible = 53,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1981,6 +2014,14 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ImportClauseNode;
+    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    alias(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    aliasList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    importList(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    importListList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ImportList: {
     readonly typeId: number;
@@ -1998,6 +2039,8 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ConstrainingClauseNode;
+    typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ClassOrInheritanceModification: {
     readonly typeId: number;
@@ -2097,6 +2140,12 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ElementModificationOrReplaceableNode;
+    isEach(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    isEachList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    modification(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    modificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    replaceable(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    replaceableList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ElementModification: {
     readonly typeId: number;
@@ -2111,11 +2160,25 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ElementRedeclarationNode;
+    isEach(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    isEachList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    classDefinition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classDefinitionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    componentClause1(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    componentClause1List(node: SyntaxNode | null | undefined): SyntaxNode[];
+    elementReplaceable(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    elementReplaceableList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ElementReplaceable: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ElementReplaceableNode;
+    classDefinition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classDefinitionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    componentClause1(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    componentClause1List(node: SyntaxNode | null | undefined): SyntaxNode[];
+    constrainingClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    constrainingClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ComponentClause1: {
     readonly typeId: number;
@@ -2125,11 +2188,17 @@ export namespace Cst {
     typePrefixList(node: SyntaxNode | null | undefined): SyntaxNode[];
     typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    declaration(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    declarationList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ComponentDeclaration1: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ComponentDeclaration1Node;
+    declaration(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    declarationList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ShortClassDefinition: {
     readonly typeId: number;
@@ -2314,6 +2383,22 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is PrimaryNode;
+    callee(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    calleeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    argument(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argumentList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    rows(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rowsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    arguments(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argumentsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    expression(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    expressionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    subscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    subscriptsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    member(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    memberList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const LhsExpression: {
     readonly typeId: number;
@@ -2330,6 +2415,22 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is LhsPrimaryNode;
+    callee(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    calleeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    argument(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argumentList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    rows(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rowsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    arguments(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argumentsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    expression(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    expressionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    subscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    subscriptsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    member(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    memberList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const UnsignedNumber: {
     readonly typeId: number;
@@ -2392,6 +2493,10 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is NamedArgumentNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const FunctionArgument: {
     readonly typeId: number;

@@ -1,7 +1,6 @@
 // name: ConstrainingClass1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model ConstrainingClass1

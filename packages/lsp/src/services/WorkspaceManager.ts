@@ -414,8 +414,23 @@ export class WorkspaceManager {
           }
 
           if (!cstNode && entry.resourceId) {
-            const text = getSourceText(entry.resourceId);
+            let text = getSourceText(entry.resourceId);
             if (text) {
+              if (text.length > 30000 && entry.resourceId.endsWith(".mo")) {
+                const match = text.match(/package\s+([A-Za-z0-9_]+)/);
+                if (match) {
+                  const pkgName = match[1];
+                  const afterMatch = text.slice(match.index! + match[0].length);
+                  const nestedMatch = afterMatch.match(
+                    /\n\s*(model|block|connector|function|package|record|type)\s+[A-Za-z0-9_]+/,
+                  );
+                  if (nestedMatch && nestedMatch.index !== undefined) {
+                    const cutPos = match.index! + match[0].length + nestedMatch.index;
+                    const header = text.slice(0, cutPos);
+                    text = `${header}\nend ${pkgName};`;
+                  }
+                }
+              }
               const parser =
                 (globalThis as any).modelicaParser ??
                 (globalThis as any).parser ??
@@ -426,7 +441,11 @@ export class WorkspaceManager {
                   : (globalThis as any).sharedContext?.parse?.(".mo", text);
                 const root = tree?.rootNode;
                 if (root) {
-                  if (entry.startByte != null && entry.endByte != null) {
+                  if (
+                    entry.startByte != null &&
+                    entry.endByte != null &&
+                    text.length === getSourceText(entry.resourceId)?.length
+                  ) {
                     if (typeof root.descendantForByteRange === "function") {
                       cstNode = root.descendantForByteRange(entry.startByte, entry.endByte) || root;
                     } else if (typeof root.descendantForIndex === "function") {
@@ -444,28 +463,39 @@ export class WorkspaceManager {
             }
           }
 
-          if (!cstNode) {
-            classAnnCache.set(name, null);
-            return null;
-          }
-
           try {
-            let evaluatorClass =
-              (globalThis as any).AnnotationEvaluator ??
-              (globalLanguageRegistry.getPluginForUri(entry.resourceId || "") as any)?.annotationEvaluator;
-            if (!evaluatorClass && nodeRequire) {
-              try {
-                evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
-              } catch {
-                // ignore
+            if (cstNode) {
+              let evaluatorClass =
+                (globalThis as any).AnnotationEvaluator ??
+                (globalLanguageRegistry.getPluginForUri(entry.resourceId || "") as any)?.annotationEvaluator;
+              if (!evaluatorClass && nodeRequire) {
+                try {
+                  evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
+                } catch {
+                  // ignore
+                }
+              }
+              if (evaluatorClass) {
+                const evaluator = new evaluatorClass(classInstance);
+                const evaluated = evaluator.evaluate(cstNode, name);
+                if (evaluated) {
+                  classAnnCache.set(name, evaluated);
+                  return evaluated;
+                }
               }
             }
-            if (evaluatorClass) {
-              const evaluator = new evaluatorClass(classInstance);
-              const evaluated = evaluator.evaluate(cstNode, name);
-              classAnnCache.set(name, evaluated ?? null);
-              return evaluated ?? null;
+
+            // Fall back to inherited annotations from extends clauses
+            for (const ext of extendsClassInstances) {
+              const inherited = ext.classInstance?.annotation?.(name, _ctx);
+              if (inherited) {
+                classAnnCache.set(name, inherited);
+                return inherited;
+              }
             }
+
+            classAnnCache.set(name, null);
+            return null;
           } catch {
             classAnnCache.set(name, null);
             return null;
@@ -486,12 +516,20 @@ export class WorkspaceManager {
       }
 
       const idx = this.unifiedWorkspace.toUnifiedPartial();
-      let symbolIds = idx.byName.get(className) || [];
+      let rawSymbolIds = idx.byName.get(className) || [];
+      // Prefer actual Class/Def symbols over Extends or Import references
+      let symbolIds = rawSymbolIds.filter((id: number) => {
+        const e = idx.symbols.get(id);
+        return e && (e.kind === "Class" || e.kind === "Def");
+      });
 
       // Try multi-part resolution for fully qualified names ("A.B.C")
       if (symbolIds.length === 0 && className.includes(".")) {
         const parts = className.split(".");
-        let currentIds = idx.byName.get(parts[0]) || [];
+        let currentIds = (idx.byName.get(parts[0]) || []).filter((id: number) => {
+          const e = idx.symbols.get(id);
+          return e && (e.kind === "Class" || e.kind === "Def");
+        });
         for (let i = 1; i < parts.length && currentIds.length > 0; i++) {
           const part = parts[i];
           const nextIds: any[] = [];
@@ -500,7 +538,11 @@ export class WorkspaceManager {
             if (children) {
               for (const childId of children) {
                 const childEntry = idx.symbols.get(childId);
-                if (childEntry && childEntry.name === part) {
+                if (
+                  childEntry &&
+                  childEntry.name === part &&
+                  (childEntry.kind === "Class" || childEntry.kind === "Def")
+                ) {
                   nextIds.push(childId);
                 }
               }
@@ -513,9 +555,9 @@ export class WorkspaceManager {
 
       // If still not found, try matching by composite name
       if (symbolIds.length === 0) {
-        for (const [id, entry] of idx.symbols) {
-          if (entry.name === className.split(".").pop()) {
-            const fqn = getCompositeName(entry, idx);
+        for (const [id, e] of idx.symbols) {
+          if ((e.kind === "Class" || e.kind === "Def") && e.name === className.split(".").pop()) {
+            const fqn = getCompositeName(e, idx);
             if (fqn === className || fqn.endsWith(`.${className}`)) {
               symbolIds = [id];
               break;
@@ -533,7 +575,8 @@ export class WorkspaceManager {
         query: (_name: string, _id: number) => null,
       };
 
-      const entry = idx.symbols.get(symbolIds[0]);
+      const targetId = symbolIds[0] ?? rawSymbolIds[0];
+      const entry = idx.symbols.get(targetId);
       if (entry && entry.resourceId) {
         let engine =
           entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")

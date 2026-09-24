@@ -231,19 +231,24 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
   }
 
   // 3. der( expr )
-  if (
-    nodeType == $.primary ||
-    nodeType == $.expression ||
-    nodeType == $.simple_expression ||
-    nodeType == $.lhs_primary ||
-    nodeType == $.lhs_expression
+  const derArgNode = graph.ast.getChildByFieldId(node, "argument");
+  if (derArgNode != 0) {
+    for (const expr of graph.ast.getDescendants(derArgNode, $.expression)) {
+      const innerId = lowerExpression(graph, expr, prefixId, $);
+      return graph.dae.addExpression(12 /* Der */, 0, innerId);
+    }
+  } else if (
+    (nodeType == $.primary ||
+      nodeType == $.expression ||
+      nodeType == $.simple_expression ||
+      nodeType == $.lhs_primary ||
+      nodeType == $.lhs_expression) &&
+    graph.ast.startsWith(node, "der")
   ) {
-    if (graph.ast.startsWith(node, "der")) {
-      for (const exprList of graph.ast.getDescendants(node, $.expression_list)) {
-        for (const expr of graph.ast.getDescendants(exprList, $.expression)) {
-          const innerId = lowerExpression(graph, expr, prefixId, $);
-          return graph.dae.addExpression(12 /* Der */, 0, innerId);
-        }
+    for (const exprList of graph.ast.getDescendants(node, $.expression_list)) {
+      for (const expr of graph.ast.getDescendants(exprList, $.expression)) {
+        const innerId = lowerExpression(graph, expr, prefixId, $);
+        return graph.dae.addExpression(12 /* Der */, 0, innerId);
       }
     }
   }
@@ -255,12 +260,16 @@ function lowerExpression(graph: CodeGraph, node: u32, prefixId: u32, $: Record<s
     fnRefNode = graph.ast.getChildByFieldId(node, "name");
     fnCallArgsNode = graph.ast.getChildByFieldId(node, "args");
   } else if (nodeType == $.primary || nodeType == $.lhs_primary) {
-    const ch1 = graph.ast.getFirstChild(node);
-    if (ch1 != 0) {
-      const ch2 = graph.ast.getNextSibling(ch1);
-      if (ch2 != 0 && graph.ast.getType(ch2) == $.function_call_args) {
-        fnRefNode = ch1;
-        fnCallArgsNode = ch2;
+    fnRefNode = graph.ast.getChildByFieldId(node, "callee");
+    fnCallArgsNode = graph.ast.getChildByFieldId(node, "args");
+    if (fnRefNode == 0 || fnCallArgsNode == 0) {
+      const ch1 = graph.ast.getFirstChild(node);
+      if (ch1 != 0) {
+        const ch2 = graph.ast.getNextSibling(ch1);
+        if (ch2 != 0 && graph.ast.getType(ch2) == $.function_call_args) {
+          fnRefNode = ch1;
+          fnCallArgsNode = ch2;
+        }
       }
     }
   }

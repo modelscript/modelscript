@@ -1440,6 +1440,18 @@ export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u3
   }
   if (lhsNonFlows != rhsNonFlows) return false;
 
+  // 3. Each component in lhsClass must have a matching declaration by name in rhsClass
+  for (const comp of db.ast.getDescendants(lhsClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, lhsClass, $)) continue;
+    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+      const nameNode = db.ast.getChildByFieldId(decl, "name");
+      if (nameNode != 0) {
+        const rhsComp = findComponentClauseForIdent(db, rhsClass, nameNode, $);
+        if (rhsComp == 0) return false;
+      }
+    }
+  }
+
   return true;
 }
 

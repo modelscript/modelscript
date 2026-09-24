@@ -112,4 +112,32 @@ describe("Native Symbolic Region Decomposition Engine (Imandra Parity)", () => {
     assert.strictEqual(boost.terminalValue, "boost_mode");
     assert.ok(boost.interiorWitness["speed"]! >= 79.99);
   });
+
+  it("decomposes state spaces with oblique hyperplane difference constraints", () => {
+    // Condition: x - y <= 10
+    const obliqueCondition: NonlinearConstraint = {
+      expr: {
+        kind: "sub",
+        left: { kind: "var", name: "x" },
+        right: { kind: "var", name: "y" },
+      },
+      rel: "<=",
+      rhs: 10,
+    };
+
+    const res = RegionDecomposer.decompose([obliqueCondition], {
+      domainBounds: new Map([
+        ["x", [0, 50]],
+        ["y", [0, 50]],
+      ]),
+    });
+
+    assert.strictEqual(res.totalRegions, 2);
+    for (const r of res.regions) {
+      assert.ok(r.obliqueConstraints && r.obliqueConstraints.length > 0);
+      assert.ok(r.differenceBounds && r.differenceBounds["x_minus_y"] !== undefined);
+      const diffBound = r.differenceBounds["x_minus_y"]!;
+      assert(diffBound[0] <= diffBound[1]);
+    }
+  });
 });

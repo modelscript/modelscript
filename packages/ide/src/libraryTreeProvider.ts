@@ -18,6 +18,7 @@ interface TreeNodeInfo {
   icon?: string;
   hasChildren: boolean;
   iconSvg?: string;
+  iconUri?: vscode.Uri;
   language?: string;
 }
 
@@ -94,13 +95,15 @@ export class LibraryTreeItem extends vscode.TreeItem {
     this.description = info.classKind;
     this.contextValue = info.classKind;
 
-    // Use explicit icon from DSL symbol config if present, or SVG icon from LSP, otherwise fall back to codicons
+    // Use explicit icon from DSL symbol config if present, or SVG icon file / data URI from LSP, otherwise fall back to codicons
     if (info.icon) {
       try {
         this.iconPath = new vscode.ThemeIcon(info.icon);
       } catch {
         this.iconPath = classKindToIcon(info.classKind);
       }
+    } else if (info.iconUri) {
+      this.iconPath = info.iconUri;
     } else if (info.iconSvg) {
       const iconUri = svgToIconUri(info.iconSvg);
       this.iconPath = iconUri;
@@ -138,10 +141,18 @@ export class LibraryTreeProvider
   /** Cache of already-fetched SVG icons, keyed by compositeName. */
   public iconCache = new Map<string, string>();
 
+  /** Cache of saved icon file Uris, keyed by compositeName. */
+  public iconUriCache = new Map<string, vscode.Uri>();
+
   /** Set of compositeNames currently being fetched (to avoid duplicate requests). */
   private iconFetchPending = new Set<string>();
 
-  constructor(private readonly client: LanguageClient) {}
+  private refreshTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly client: LanguageClient,
+    private readonly context?: vscode.ExtensionContext,
+  ) {}
 
   refresh(uri?: string): void {
     if (uri) this.documentUri = uri;
@@ -209,6 +220,9 @@ export class LibraryTreeProvider
           const cached = this.iconCache.get(node.compositeName);
           if (cached) node.iconSvg = cached;
         }
+        if (this.iconUriCache.has(node.compositeName)) {
+          node.iconUri = this.iconUriCache.get(node.compositeName);
+        }
       }
 
       const items = nodes.map(
@@ -219,11 +233,12 @@ export class LibraryTreeProvider
           ),
       );
 
-      // Lazily fetch icons for components (models, blocks, connectors, etc.) that don't have them yet.
-      // Skip packages to keep hierarchy expansion instantaneous and prevent LSP queue saturation.
+      // Lazily fetch icons for nodes that don't have them yet.
+      // Exclude virtual library root containers (e.g. __LIB__:Modelica) which are structural groupings.
       const nodesNeedingIcons = nodes.filter(
         (n) =>
-          n.classKind !== "package" &&
+          !n.id.startsWith("__LIB__:") &&
+          n.compositeName &&
           !this.iconCache.has(n.compositeName) &&
           !this.iconFetchPending.has(n.compositeName),
       );
@@ -239,6 +254,31 @@ export class LibraryTreeProvider
     }
   }
 
+  private scheduleRefresh(): void {
+    if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
+    this.refreshTimeout = setTimeout(() => {
+      this.refreshTimeout = null;
+      this._onDidChangeTreeData.fire(undefined);
+    }, 120);
+  }
+
+  private async saveSvgIcon(className: string, svg: string): Promise<vscode.Uri | undefined> {
+    if (!svg) return undefined;
+    if (this.context?.globalStorageUri) {
+      try {
+        const iconsDir = vscode.Uri.joinPath(this.context.globalStorageUri, "icons");
+        await vscode.workspace.fs.createDirectory(iconsDir);
+        const safeName = className.replace(/[^a-zA-Z0-9_.-]/g, "_");
+        const fileUri = vscode.Uri.joinPath(iconsDir, `${safeName}.svg`);
+        await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(svg));
+        return fileUri;
+      } catch (e) {
+        console.warn(`[library-tree-provider] Failed to write icon for ${className} to globalStorage:`, e);
+      }
+    }
+    return svgToIconUri(svg);
+  }
+
   /**
    * Fetch SVG icons for a batch of nodes in the background.
    * When icons arrive, cache them and refresh the tree to display them.
@@ -248,32 +288,44 @@ export class LibraryTreeProvider
     for (const name of toFetch) this.iconFetchPending.add(name);
 
     let anyFetched = false;
+    const concurrency = 6;
 
-    for (const className of toFetch) {
-      try {
-        const svg = await this.client
-          .sendRequest<string | null>("modelscript/getClassIcon", {
-            className,
-            uri: this.documentUri,
-          })
-          .catch((err) => {
-            console.error(`[library-tree-provider] getClassIcon error for ${className}:`, err);
-            return null;
-          });
-        console.log(`[library-tree-provider] getClassIcon for ${className}: ${svg ? `${svg.length} bytes` : "null"}`);
+    for (let i = 0; i < toFetch.length; i += concurrency) {
+      const batch = toFetch.slice(i, i + concurrency);
+      await Promise.all(
+        batch.map(async (className) => {
+          try {
+            const svg = await this.client
+              .sendRequest<string | null>("modelscript/getClassIcon", {
+                className,
+                uri: this.documentUri,
+              })
+              .catch((err) => {
+                console.error(`[library-tree-provider] getClassIcon error for ${className}:`, err);
+                return null;
+              });
+            console.log(
+              `[library-tree-provider] getClassIcon for ${className}: ${svg ? `${svg.length} bytes` : "null"}`,
+            );
 
-        this.iconCache.set(className, svg || "");
-        if (svg) {
-          anyFetched = true;
-        }
-      } finally {
-        this.iconFetchPending.delete(className);
-      }
+            this.iconCache.set(className, svg || "");
+            if (svg) {
+              const uri = await this.saveSvgIcon(className, svg);
+              if (uri) {
+                this.iconUriCache.set(className, uri);
+              }
+              anyFetched = true;
+            }
+          } finally {
+            this.iconFetchPending.delete(className);
+          }
+        }),
+      );
     }
 
     // Refresh the tree to show the newly fetched icons
     if (anyFetched) {
-      this._onDidChangeTreeData.fire(undefined);
+      this.scheduleRefresh();
     }
   }
 }

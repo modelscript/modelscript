@@ -32,6 +32,10 @@ export interface SymbolicRegion {
   index: number;
   pathCondition: NonlinearConstraint[];
   boundingPolytope: Record<string, [number, number]>;
+  /** Octagon DBM difference bounds for coupled variable pairs: (u - v) in [lo, hi] */
+  differenceBounds?: Record<string, [number, number]>;
+  /** Oblique / diagonal hyperplane constraints active in this region */
+  obliqueConstraints?: NonlinearConstraint[];
   terminalValue?: ExprNode | number | string;
   interiorWitness: Record<string, number>;
   boundaryWitnesses: BoundaryFacetWitness[];
@@ -103,6 +107,66 @@ function areComplementary(c1: NonlinearConstraint, c2: NonlinearConstraint): boo
     return Math.abs(c1.rhs - c2.rhs) <= 1e-2;
   }
   return false;
+}
+
+/**
+ * Computes Octagon DBM difference bounds for coupled variable pairs in a symbolic region.
+ */
+function computeDifferenceBounds(
+  path: NonlinearConstraint[],
+  box: Map<string, Interval>,
+): { differenceBounds: Record<string, [number, number]>; obliqueConstraints: NonlinearConstraint[] } {
+  const obliqueConstraints: NonlinearConstraint[] = [];
+  const differenceBounds: Record<string, [number, number]> = {};
+
+  const varsInOblique = new Set<string>();
+  for (const c of path) {
+    const vSet = new Set<string>();
+    extractExprVariables(c.expr, vSet);
+    if (vSet.size >= 2) {
+      obliqueConstraints.push(c);
+      for (const v of vSet) varsInOblique.add(v);
+    }
+  }
+
+  const varList = Array.from(varsInOblique);
+  for (let i = 0; i < varList.length; i++) {
+    for (let j = i + 1; j < varList.length; j++) {
+      const u = varList[i]!;
+      const v = varList[j]!;
+      const uInv = box.get(u) ?? new Interval(-1000, 1000);
+      const vInv = box.get(v) ?? new Interval(-1000, 1000);
+
+      let diffLo = uInv.lo - vInv.hi;
+      let diffHi = uInv.hi - vInv.lo;
+
+      // Tighten with any direct difference constraints in path
+      for (const c of obliqueConstraints) {
+        if (c.expr.kind === "sub" && c.expr.left.kind === "var" && c.expr.right.kind === "var") {
+          if (c.expr.left.name === u && c.expr.right.name === v) {
+            if (c.rel === "<=") diffHi = Math.min(diffHi, c.rhs);
+            else if (c.rel === ">=") diffLo = Math.max(diffLo, c.rhs);
+            else if (c.rel === "==") {
+              diffLo = Math.max(diffLo, c.rhs);
+              diffHi = Math.min(diffHi, c.rhs);
+            }
+          } else if (c.expr.left.name === v && c.expr.right.name === u) {
+            // v - u <= rhs <=> u - v >= -rhs
+            if (c.rel === "<=") diffLo = Math.max(diffLo, -c.rhs);
+            else if (c.rel === ">=") diffHi = Math.min(diffHi, -c.rhs);
+            else if (c.rel === "==") {
+              diffLo = Math.max(diffLo, -c.rhs);
+              diffHi = Math.min(diffHi, -c.rhs);
+            }
+          }
+        }
+      }
+
+      differenceBounds[`${u}_minus_${v}`] = [diffLo, diffHi];
+    }
+  }
+
+  return { differenceBounds, obliqueConstraints };
 }
 
 export class RegionDecomposer {
@@ -229,11 +293,15 @@ export class RegionDecomposer {
         interiorWitness[k] = inv.mid;
       }
 
+      const { differenceBounds, obliqueConstraints } = computeDifferenceBounds(leaf.path, leaf.box);
+
       regions.push({
         id: `R_${i + 1}`,
         index: i,
         pathCondition: leaf.path,
         boundingPolytope,
+        differenceBounds: Object.keys(differenceBounds).length > 0 ? differenceBounds : undefined,
+        obliqueConstraints: obliqueConstraints.length > 0 ? obliqueConstraints : undefined,
         interiorWitness,
         boundaryWitnesses: [],
       });
@@ -361,11 +429,15 @@ export class RegionDecomposer {
         interiorWitness[k] = inv.mid;
       }
 
+      const { differenceBounds, obliqueConstraints } = computeDifferenceBounds(b.constraints, solutionBox);
+
       regions.push({
         id: b.id || `R_${idx + 1}`,
         index: regions.length,
         pathCondition: b.constraints,
         boundingPolytope,
+        differenceBounds: Object.keys(differenceBounds).length > 0 ? differenceBounds : undefined,
+        obliqueConstraints: obliqueConstraints.length > 0 ? obliqueConstraints : undefined,
         terminalValue: b.terminalValue,
         interiorWitness,
         boundaryWitnesses: [],

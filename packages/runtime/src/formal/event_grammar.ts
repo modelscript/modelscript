@@ -92,6 +92,7 @@ export interface EventExplorationResult {
 export interface EventExplorationOptions {
   scope?: number; // Max loop unrolling / instance scope (default: 3)
   maxTraces?: number; // Max non-isomorphic traces to explore (default: 100)
+  enableSymmetryBreaking?: boolean; // Lexicographic symmetry breaking for symmetric/concurrent actors (default: false)
 }
 
 export class EventGrammarSolver {
@@ -316,6 +317,71 @@ export class EventGrammarSolver {
       const vAct = actVarMap.get(vId)!;
       const pUV = getPrecVar(uId, vId);
       baseClauses.push([-uAct, -vAct, pUV]);
+    }
+
+    // Strict partial order transitivity: prec(u, v) && prec(v, w) => prec(u, w)
+    for (const u of allInstances) {
+      for (const v of allInstances) {
+        if (u.instId === v.instId) continue;
+        for (const w of allInstances) {
+          if (w.instId === u.instId || w.instId === v.instId) continue;
+          const uAct = actVarMap.get(u.instId)!;
+          const vAct = actVarMap.get(v.instId)!;
+          const wAct = actVarMap.get(w.instId)!;
+          const pUV = getPrecVar(u.instId, v.instId);
+          const pVW = getPrecVar(v.instId, w.instId);
+          const pUW = getPrecVar(u.instId, w.instId);
+          baseClauses.push([-uAct, -vAct, -wAct, -pUV, -pVW, pUW]);
+        }
+      }
+    }
+
+    // Lexicographic symmetry breaking for symmetric independent concurrent actors
+    if (options.enableSymmetryBreaking) {
+      const serializeActorStructure = (node: EventNode): string => {
+        const parts: string[] = [node.kind, node.name];
+        if (node.minRep !== undefined) parts.push(`min:${node.minRep}`);
+        if (node.maxRep !== undefined) parts.push(`max:${node.maxRep}`);
+        if (node.children) {
+          parts.push(`[${node.children.map(serializeActorStructure).join(",")}]`);
+        }
+        return parts.join("|");
+      };
+
+      const actorNames = Object.keys(model.actors);
+      for (let i = 0; i < actorNames.length; i++) {
+        for (let j = i + 1; j < actorNames.length; j++) {
+          const aName = actorNames[i]!;
+          const bName = actorNames[j]!;
+          const aNode = model.actors[aName]!;
+          const bNode = model.actors[bName]!;
+
+          if (serializeActorStructure(aNode) === serializeActorStructure(bNode)) {
+            const aRels = (model.relations || []).filter((r) => r.sourceActor === aName || r.targetActor === aName);
+            const bRels = (model.relations || []).filter((r) => r.sourceActor === bName || r.targetActor === bName);
+            const aCoords = (model.coordinations || []).filter(
+              (c) => c.sourceActor === aName || c.targetActor === aName,
+            );
+            const bCoords = (model.coordinations || []).filter(
+              (c) => c.sourceActor === bName || c.targetActor === bName,
+            );
+
+            if (aRels.length === 0 && bRels.length === 0 && aCoords.length === 0 && bCoords.length === 0) {
+              // Independent symmetric actors: impose lexicographic leader constraint
+              const aLeafInsts = allInstances.filter((inst) => inst.actor === aName && inst.kind === "atomic");
+              const bLeafInsts = allInstances.filter((inst) => inst.actor === bName && inst.kind === "atomic");
+              if (aLeafInsts.length > 0 && bLeafInsts.length > 0) {
+                const firstA = aLeafInsts[0]!;
+                const firstB = bLeafInsts[0]!;
+                const aAct = actVarMap.get(firstA.instId)!;
+                const bAct = actVarMap.get(firstB.instId)!;
+                const pAB = getPrecVar(firstA.instId, firstB.instId);
+                baseClauses.push([-aAct, -bAct, pAB]);
+              }
+            }
+          }
+        }
+      }
     }
 
     // Helper to find matching instances for an event name / actor

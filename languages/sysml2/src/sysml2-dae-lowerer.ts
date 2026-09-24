@@ -214,6 +214,24 @@ class SysmlExprParser {
       if (t.val === "false") return this.arena.addBoolLiteral(false);
     }
     if (t.type === "ident") {
+      if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === "(") {
+        this.next(); // consume '('
+        const args: number[] = [];
+        if (!(this.peek() && this.peek()!.type === "paren" && this.peek()!.val === ")")) {
+          while (true) {
+            args.push(this.parse());
+            if (this.peek() && this.peek()!.val === ",") {
+              this.next(); // consume ','
+              continue;
+            }
+            break;
+          }
+        }
+        if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === ")") {
+          this.next(); // consume ')'
+        }
+        return this.arena.addCallExpr(t.val, args);
+      }
       const nameId = this.arena.interner.intern(t.val);
       return this.arena.addName(nameId);
     }

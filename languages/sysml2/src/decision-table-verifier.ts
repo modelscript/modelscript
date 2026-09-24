@@ -27,6 +27,8 @@ export interface DecisionTableVerificationResult {
   isDeterministic: boolean;
   hasDeadBranches: boolean;
   unhandledScenarioBox?: Record<string, [number, number]>;
+  suggestedFixCondition?: string;
+  suggestedQuickFix?: string;
   overlappingBranches: {
     branchA: string;
     branchB: string;
@@ -316,15 +318,49 @@ export class DecisionTableVerifier {
       summary = `Decision table verification failed: ${issues.join("; ")}.`;
     }
 
+    let suggestedFixCondition: string | undefined = undefined;
+    let suggestedQuickFix: string | undefined = undefined;
+    if (!isExhaustive && unhandledScenarioBox) {
+      suggestedFixCondition = DecisionTableVerifier.synthesizeGapCondition(unhandledScenarioBox);
+      suggestedQuickFix = DecisionTableVerifier.synthesizeQuickFixSnippet(unhandledScenarioBox);
+    }
+
     return {
       isExhaustive,
       isDeterministic,
       hasDeadBranches,
       unhandledScenarioBox,
+      suggestedFixCondition,
+      suggestedQuickFix,
       overlappingBranches,
       deadBranches,
       summary,
     };
+  }
+
+  /**
+   * Synthesizes a Boolean guard condition expression representing the unhandled input gap.
+   */
+  public static synthesizeGapCondition(unhandledBox: Record<string, [number, number]>): string {
+    const conditions: string[] = [];
+    for (const [varName, [lo, hi]] of Object.entries(unhandledBox)) {
+      const loFormatted = Math.abs(lo - Math.round(lo)) < 0.05 ? Math.round(lo) : Number(lo.toFixed(2));
+      const hiFormatted = Math.abs(hi - Math.round(hi)) < 0.05 ? Math.round(hi) : Number(hi.toFixed(2));
+      if (Math.abs(loFormatted - hiFormatted) < 0.01) {
+        conditions.push(`${varName} == ${loFormatted}`);
+      } else {
+        conditions.push(`${varName} >= ${loFormatted} && ${varName} <= ${hiFormatted}`);
+      }
+    }
+    return conditions.length > 0 ? conditions.join(" && ") : "true";
+  }
+
+  /**
+   * Synthesizes an automated SysML v2 QuickFix code snippet to repair the decision table gap.
+   */
+  public static synthesizeQuickFixSnippet(unhandledBox: Record<string, [number, number]>): string {
+    const cond = DecisionTableVerifier.synthesizeGapCondition(unhandledBox);
+    return `else if (${cond}) {\n  // Auto-generated QuickFix for unhandled scenario\n}`;
   }
 
   /**

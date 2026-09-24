@@ -173,6 +173,7 @@ export declare const LINT_SEVERITIES: Record<string, number>;
 export declare const LINT_CODES: Record<string, string | number>;
 export declare const EXTRAS_PATTERN: string;
 export declare const FIELD_NAMES: Record<string, number>;
+export declare function getFieldNameById(id: number): string | null;
 export interface AstChangeListener {
   onFullReset?(newRoot: number): void;
   onNodeRetained(ptr: number, flags?: number): void;
@@ -927,6 +928,9 @@ export declare class SyntaxNode {
   readonly _cachedPad: number;
   readonly _cachedLen: number;
   readonly _cachedTypeId: number;
+  private _cachedChildren;
+  private _cachedNamedChildren;
+  _fieldId: number;
   constructor(
     tree: Tree,
     ptr: number,
@@ -935,6 +939,7 @@ export declare class SyntaxNode {
     _cachedPad: number,
     _cachedLen: number,
     _cachedTypeId: number,
+    fieldId?: number,
   );
   /** Unique integer ID for this node (pointer address). */
   get id(): number;
@@ -1680,40 +1685,42 @@ export enum FieldId {
   typeReference = 58,
   TypeResult = 59,
   typeResult = 59,
-  IndexOperand = 60,
-  indexOperand = 60,
-  FilterOperand = 61,
-  filterOperand = 61,
-  InvocationType = 62,
-  invocationType = 62,
-  FunctionRef = 63,
-  functionRef = 63,
-  Collect = 64,
-  collect = 64,
-  Select = 65,
-  select = 65,
-  FeatureChain = 66,
-  featureChain = 66,
-  Base = 67,
-  base = 67,
-  Result = 68,
-  result = 68,
-  Chaining = 69,
-  chaining = 69,
-  ChainingFeature = 70,
-  chainingFeature = 70,
-  Argument = 71,
-  argument = 71,
-  NamedArgument = 72,
-  namedArgument = 72,
-  ParameterRedefinition = 73,
-  parameterRedefinition = 73,
-  Value = 74,
-  value = 74,
-  RedefinedFeature = 75,
-  redefinedFeature = 75,
-  Name = 76,
-  name = 76,
+  Base = 60,
+  base = 60,
+  Exponent = 61,
+  exponent = 61,
+  IndexOperand = 62,
+  indexOperand = 62,
+  FilterOperand = 63,
+  filterOperand = 63,
+  InvocationType = 64,
+  invocationType = 64,
+  FunctionRef = 65,
+  functionRef = 65,
+  Collect = 66,
+  collect = 66,
+  Select = 67,
+  select = 67,
+  FeatureChain = 68,
+  featureChain = 68,
+  Result = 69,
+  result = 69,
+  Chaining = 70,
+  chaining = 70,
+  ChainingFeature = 71,
+  chainingFeature = 71,
+  Argument = 72,
+  argument = 72,
+  NamedArgument = 73,
+  namedArgument = 73,
+  ParameterRedefinition = 74,
+  parameterRedefinition = 74,
+  Value = 75,
+  value = 75,
+  RedefinedFeature = 76,
+  redefinedFeature = 76,
+  Name = 77,
+  name = 77,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -5822,10 +5829,12 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ExponentiationExpressionNode;
-    operand(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    operandList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    base(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    baseList(node: SyntaxNode | null | undefined): SyntaxNode[];
     operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
     operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    exponent(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    exponentList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ExponentiationOperator: {
     readonly typeId: number;

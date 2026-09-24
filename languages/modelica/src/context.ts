@@ -166,6 +166,23 @@ export class Context {
     return this.#queryEngine;
   }
 
+  get taxonomy(): any {
+    return (this.#queryEngine as any)?.taxonomy;
+  }
+
+  isSubtype(childName: string, parentName: string): boolean {
+    if (childName === parentName) return true;
+    const tax = (this.#queryEngine as any)?.taxonomy;
+    if (tax?.has?.(childName) && tax?.has?.(parentName)) {
+      if (tax.isSubtype(childName, parentName)) return true;
+    }
+    const db = this.#queryEngine?.toQueryDB();
+    if (!db) return false;
+    const childSym = db.byName(childName)?.[0];
+    if (!childSym) return false;
+    return db.query<(target: string | number) => boolean>("isSubtype", childSym.id)?.(parentName) ?? false;
+  }
+
   setQueryEngine(engine: QueryEngine): void {
     this.#queryEngine = engine;
   }
@@ -781,7 +798,8 @@ export class Context {
         return null;
       }
     }
-    const cacheKey = `${resourceUri ?? ""}:${name}`;
+    const backendKey = options?.backend ? `:${options.backend}` : "";
+    const cacheKey = `${resourceUri ?? ""}:${name}${backendKey}`;
     const cached = (this as any)._daeBodyCache?.get(cacheKey);
 
     const getFileRev = (resUri?: string) => {

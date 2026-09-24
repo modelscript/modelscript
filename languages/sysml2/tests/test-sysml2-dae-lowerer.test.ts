@@ -113,4 +113,25 @@ describe("SysML v2 Direct DAE Arena Lowering & Execution", () => {
     assert.strictEqual(lowered.name, "SquareAndAdd");
     assert(lowered.outputs.includes("result"));
   });
+
+  it("lowers and executes elementary transcendental and math function calls", async () => {
+    const actionSysml = `
+      action def MathOps {
+        in item val : Real;
+        out item root : Real;
+        out item sine : Real;
+
+        assign root := sqrt(val);
+        assign sine := sin(val);
+      }
+    `;
+
+    const lowered = await SysML2DaeLowerer.lowerAction(actionSysml);
+    assert.deepStrictEqual(lowered.inputs, ["val"]);
+    assert.deepStrictEqual(lowered.outputs, ["root", "sine"]);
+
+    const res = SysML2DaeLowerer.execute(lowered, { val: 4.0 });
+    assert.strictEqual(res["root"], 2.0);
+    assert(Math.abs(res["sine"]! - Math.sin(4.0)) < 1e-6);
+  });
 });

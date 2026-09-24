@@ -117,22 +117,26 @@ class SemanticDiffTreeProvider implements vscode.TreeDataProvider<SemanticDiffTr
 }
 
 export function registerScmTreeView(context: vscode.ExtensionContext, client: LanguageClient | undefined) {
-  const treeProvider = new SemanticDiffTreeProvider(client);
+  try {
+    const treeProvider = new SemanticDiffTreeProvider(client);
 
-  context.subscriptions.push(vscode.window.registerTreeDataProvider("modelscript.scmTreeView", treeProvider));
+    context.subscriptions.push(vscode.window.registerTreeDataProvider("modelscript.scmTreeView", treeProvider));
 
-  // Refresh when git state changes
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
-  if (gitExtension) {
-    const git = gitExtension.getAPI(1);
-    if (git && git.repositories.length > 0) {
-      const repo = git.repositories[0];
-      context.subscriptions.push(
-        repo.state.onDidChange(() => {
-          treeProvider.refresh();
-        }),
-      );
+    // Refresh when git state changes
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
+    if (gitExtension) {
+      const git = gitExtension.getAPI(1);
+      if (git && git.repositories.length > 0) {
+        const repo = git.repositories[0];
+        context.subscriptions.push(
+          repo.state.onDidChange(() => {
+            treeProvider.refresh();
+          }),
+        );
+      }
     }
+  } catch (err) {
+    console.warn("[client] Could not register SCM tree view:", err);
   }
 }

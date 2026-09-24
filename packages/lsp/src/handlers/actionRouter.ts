@@ -20,8 +20,13 @@ export function registerActionRouter(context: LspContext): void {
           : globalLanguageRegistry.getAllPlugins();
 
       const results: any[] = [];
+      const seenPluginDefs = new Set<any>();
       for (const plugin of plugins) {
         if (!plugin) continue;
+        if (plugin.languageDef) {
+          if (seenPluginDefs.has(plugin.languageDef)) continue;
+          seenPluginDefs.add(plugin.languageDef);
+        }
         const actions: LanguageAction[] = plugin.languageDef?.actions || [];
         for (const action of actions) {
           results.push({

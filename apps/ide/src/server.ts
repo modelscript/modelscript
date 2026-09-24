@@ -75,7 +75,10 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
     nameShort: "ModelScript",
     nameLong: "ModelScript IDE",
     webEndpointUrlTemplate: webEndpoint,
-    extensionAllowedProposedApi: ["modelscript.modelscript"],
+    extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
+    extensionEnabledApiProposals: {
+      "vscode.mermaid-markdown-features": ["chatParticipantPrivate", "chatOutputRenderer"],
+    },
     // Use Open VSX registry to avoid CORS errors with Microsoft's CDN
     extensionGallery: {
       serviceUrl: "https://open-vsx.org/vscode/gallery",
@@ -95,9 +98,6 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 
   const config: Record<string, unknown> = {
     additionalBuiltinExtensions: extList,
-    developmentOptions: {
-      extensions: extList,
-    },
     productConfiguration,
   };
 
@@ -126,7 +126,7 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
       case "WORKBENCH_WEB_BASE_URL":
         return baseUrl;
       case "WORKBENCH_BUILTIN_EXTENSIONS":
-        return escapeJSON(extList);
+        return escapeJSON([]);
       case "WORKBENCH_MAIN":
         return mainScript;
       default:
@@ -138,7 +138,10 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 (function() {
   var originalWarn = console.warn;
   console.warn = function() {
-    if (typeof arguments[0] === 'string' && arguments[0].includes('ENOPRO: No file system provider found for resource')) return;
+    if (typeof arguments[0] === 'string' && (
+      arguments[0].includes('ENOPRO: No file system provider found for resource') ||
+      arguments[0].includes('No search provider registered for scheme: memfs')
+    )) return;
     originalWarn.apply(console, arguments);
   };
   
@@ -153,11 +156,11 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
     { scheme: scheme, authority: host, path: '/static/extensions/github-fs' }
   ];
   config.additionalBuiltinExtensions = extensions;
-  config.developmentOptions = { extensions: extensions };
+  delete config.developmentOptions;
   
   var builtinEl = document.getElementById('vscode-workbench-builtin-extensions');
   if (builtinEl) {
-    builtinEl.setAttribute('data-settings', JSON.stringify(extensions));
+    builtinEl.setAttribute('data-settings', JSON.stringify([]));
   }
   
   var hash = location.hash.slice(1);

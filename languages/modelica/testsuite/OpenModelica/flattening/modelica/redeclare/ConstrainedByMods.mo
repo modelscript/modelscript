@@ -1,7 +1,6 @@
 // name:     ConstrainedByMods.mo
 // keywords: constrainedby modifier handling
 // status:   correct
-// xfail:    true
 //
 // check that modifiers from constrainedby clause are properly propagated on redeclare
 //

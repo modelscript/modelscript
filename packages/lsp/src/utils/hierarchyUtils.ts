@@ -106,7 +106,7 @@ export function getCompositeName(entry: any, index: any, visited = new Set<strin
 function getLibraryName(resourceId?: string): string | null {
   if (!resourceId) return null;
   if (
-    resourceId.startsWith("modelica:/") ||
+    resourceId.startsWith("modelica:") ||
     resourceId.includes("/lib/Modelica") ||
     resourceId.includes("/lib/Complex")
   ) {

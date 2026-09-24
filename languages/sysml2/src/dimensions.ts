@@ -259,15 +259,10 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
       return { dimension: DIMENSIONLESS };
 
     case "AdditiveExpression": {
-      const operands: any[] = [];
-      const operators: string[] = [];
-      for (const child of node.children || []) {
-        if (child.type === "AdditiveOperator" || child.type === "+" || child.type === "-") {
-          operators.push(child.text?.trim() || "+");
-        } else if (!["(", ")", " ", "", ";"].includes(child.type)) {
-          operands.push(child);
-        }
-      }
+      const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+      const operators: string[] = node.childrenForFieldName
+        ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || "+")
+        : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };
 
       let current = inferExpressionDimension(db, operands[0], scopeId);
@@ -294,15 +289,10 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     }
 
     case "MultiplicativeExpression": {
-      const operands: any[] = [];
-      const operators: string[] = [];
-      for (const child of node.children || []) {
-        if (child.type === "MultiplicativeOperator" || child.type === "*" || child.type === "/" || child.type === "%") {
-          operators.push(child.text?.trim() || "*");
-        } else if (!["(", ")", " ", "", ";"].includes(child.type)) {
-          operands.push(child);
-        }
-      }
+      const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+      const operators: string[] = node.childrenForFieldName
+        ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || "*")
+        : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };
 
       let current = inferExpressionDimension(db, operands[0], scopeId);
@@ -335,8 +325,12 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     }
 
     case "ExponentiationExpression": {
-      const baseNode = node.childForFieldName ? node.childForFieldName("base") : node.children?.[0];
-      const expNode = node.childForFieldName ? node.childForFieldName("exponent") : node.children?.[2];
+      const baseNode = node.childForFieldName
+        ? (node.childForFieldName("base") ?? node.childrenForFieldName?.("operand")?.[0])
+        : node.children?.[0];
+      const expNode = node.childForFieldName
+        ? (node.childForFieldName("exponent") ?? node.childrenForFieldName?.("operand")?.[1])
+        : node.children?.[2];
       if (!baseNode || !expNode) return { dimension: DIMENSIONLESS };
 
       const baseRes = inferExpressionDimension(db, baseNode, scopeId);
@@ -352,15 +346,10 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     }
 
     case "RelationalExpression": {
-      const operands: any[] = [];
-      const operators: string[] = [];
-      for (const child of node.children || []) {
-        if (child.type === "RelationalOperator" || ["<", ">", "<=", ">="].includes(child.type)) {
-          operators.push(child.text?.trim() || ">");
-        } else if (!["(", ")", " ", "", ";"].includes(child.type)) {
-          operands.push(child);
-        }
-      }
+      const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+      const operators: string[] = node.childrenForFieldName
+        ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || ">")
+        : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };
 
       const left = inferExpressionDimension(db, operands[0], scopeId);

@@ -66,4 +66,32 @@ describe("Native Constrained Zonotope (CZ) Bifurcation Suite", () => {
     assert.strictEqual(sliced.A.length, 1);
     assert.strictEqual(sliced.b.length, 1);
   });
+
+  it("should perform Girard order reduction to bound generator count", () => {
+    // 2D zonotope with 5 generators
+    const cz = new ConstrainedZonotope(
+      [0, 0],
+      [
+        [5, 0],
+        [0, 5],
+        [1, 1],
+        [0.5, -0.5],
+        [-0.2, 0.3],
+      ],
+    );
+
+    assert.strictEqual(cz.numGenerators, 5);
+    // Reduce to at most 3 generators (keeping top 1 + 2 box generators)
+    const reduced = cz.reduce(3);
+    assert.strictEqual(reduced.numGenerators, 3);
+    assert.strictEqual(reduced.dim, 2);
+
+    // Over-approximation check: original intervals must be contained in reduced intervals
+    const origIntervals = cz.toIntervals();
+    const redIntervals = reduced.toIntervals();
+    assert(redIntervals[0]!.lo <= origIntervals[0]!.lo + 1e-9);
+    assert(redIntervals[0]!.hi >= origIntervals[0]!.hi - 1e-9);
+    assert(redIntervals[1]!.lo <= origIntervals[1]!.lo + 1e-9);
+    assert(redIntervals[1]!.hi >= origIntervals[1]!.hi - 1e-9);
+  });
 });

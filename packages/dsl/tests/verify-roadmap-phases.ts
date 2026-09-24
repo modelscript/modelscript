@@ -124,6 +124,22 @@ async function runRoadmapSuite() {
       rInterval.high <= elecInterval.high,
     "Interval containment must strictly hold for compiled O(1) dispatch",
   );
+
+  assert(taxonomy.has("Resistor") === true, "TaxonomyIndex.has must return true for registered class");
+  assert(taxonomy.has("NonExistent") === false, "TaxonomyIndex.has must return false for unregistered class");
+
+  // Test DAG multiple inheritance
+  taxonomy.addClass("ElectroMechanical", ["ElectricalComponent", "MechanicalComponent"]);
+  assert(
+    taxonomy.isSubtype("ElectroMechanical", "ElectricalComponent") === true,
+    "ElectroMechanical must subtype ElectricalComponent",
+  );
+  assert(
+    taxonomy.isSubtype("ElectroMechanical", "MechanicalComponent") === true,
+    "ElectroMechanical must subtype MechanicalComponent",
+  );
+  assert(taxonomy.isSubtype("ElectroMechanical", "Component") === true, "ElectroMechanical must subtype Component");
+
   console.log("  ✓ Pre-order interval encoding verified for O(1) subtyping: [low, high] interval containment holds.\n");
 
   // ============================================================================

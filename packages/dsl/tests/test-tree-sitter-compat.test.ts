@@ -48,6 +48,7 @@ describe("100% Tree-sitter API Compatibility Suite", () => {
   let TreeCursorClass: any;
   let SyntaxNodeClass: any;
   let TreeSitterParserClass: any;
+  let FieldNames: any;
   let tmpDir: string;
 
   beforeAll(async () => {
@@ -79,10 +80,11 @@ describe("100% Tree-sitter API Compatibility Suite", () => {
 
     const wrapperSrc =
       result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") +
-      `\nreturn { LspFacade, Tree, TreeCursor, SyntaxNode, TreeSitterParser };`;
+      `\nreturn { LspFacade, Tree, TreeCursor, SyntaxNode, TreeSitterParser, FIELD_NAMES };`;
     const getExports = new Function(wrapperSrc);
     const exportsObj = getExports();
-    const { LspFacade, Tree, TreeCursor, SyntaxNode, TreeSitterParser } = exportsObj;
+    const { LspFacade, Tree, TreeCursor, SyntaxNode, TreeSitterParser, FIELD_NAMES } = exportsObj;
+    FieldNames = FIELD_NAMES;
     TreeClass = Tree;
     TreeCursorClass = TreeCursor;
     SyntaxNodeClass = SyntaxNode;
@@ -262,6 +264,29 @@ describe("100% Tree-sitter API Compatibility Suite", () => {
     // gotoParent back to ModelDef
     expect(cursor.gotoParent()).toBe(true);
     expect(cursor.nodeType).toBe("ModelDef");
+  });
+
+  it("should return all matching nodes for repeated fields via childrenForFieldName", () => {
+    const code = `model M\n  Real a, b, c = 1.0;\nend M;\n`;
+    const tree = parseToTree(code);
+    const root = tree.rootNode;
+    const modelDef = root.firstChild;
+    const decl = modelDef.namedChildren.find((c: any) => c.type === "Decl");
+    expect(decl).toBeDefined();
+
+    const names = decl.childrenForFieldName("name");
+    expect(names.length).toBe(3);
+    expect(names.map((n: any) => n.text)).toEqual(["a", "b", "c"]);
+
+    // Test children memoization & referential identity
+    expect(decl.children).toBe(decl.children);
+    expect(decl.children.indexOf(names[0])).toBeGreaterThanOrEqual(0);
+    expect(decl.children.indexOf(names[1])).toBeGreaterThanOrEqual(0);
+    expect(decl.children.indexOf(names[2])).toBeGreaterThanOrEqual(0);
+
+    // Test fieldNameForChild
+    const nameIdx = decl.children.indexOf(names[0]);
+    expect(decl.fieldNameForChild(nameIdx)).toBe("name");
   });
 
   it("should work through TreeSitterParser facade", () => {

@@ -4,6 +4,7 @@ import { RegionDecomposer, type NonlinearConstraint, type RegionBranchInput } fr
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BoundaryTestSynthesizer } from "../src/boundary-test-synthesizer.js";
+import { SysML2DaeLowerer } from "../src/sysml2-dae-lowerer.js";
 
 describe("Formal Boundary-Condition & 100% MC/DC Test Suite Synthesizer (Imandra Parity)", () => {
   it("synthesizes nominal and boundary test cases from decomposed regions", () => {
@@ -148,5 +149,45 @@ describe("Formal Boundary-Condition & 100% MC/DC Test Suite Synthesizer (Imandra
     assert.ok(mos.includes('loadFile("ThermostatModel.mo");'));
     assert.ok(mos.includes("simulate(ThermostatModel"));
     assert.ok(mos.includes('"temp"'));
+  });
+
+  it("executes synthesized test cases directly against lowered SysML v2 Action DAE", async () => {
+    const actionSrc = `
+      action def LimitSwitch {
+        in item pos : Real;
+        out item mode : Real;
+        if (pos <= 10.0) {
+          assign mode := 1.0;
+        } else {
+          assign mode := 2.0;
+        }
+      }
+    `;
+    const lowered = await SysML2DaeLowerer.lowerAction(actionSrc);
+
+    const condition: NonlinearConstraint = {
+      expr: { kind: "var", name: "pos" },
+      rel: "<=",
+      rhs: 10,
+    };
+    const decomp = RegionDecomposer.decompose([condition], {
+      domainBounds: new Map([["pos", [0, 20]]]),
+    });
+
+    const suite = BoundaryTestSynthesizer.synthesizeTestSuite(decomp, {
+      suiteName: "LimitSwitchFormalSuite",
+    });
+
+    const report = BoundaryTestSynthesizer.runSynthesizedTestsAgainstAction(suite, lowered, "mode");
+
+    assert.strictEqual(report.totalTests, suite.testCases.length);
+    assert.strictEqual(report.failed, 0);
+    assert.strictEqual(report.passed, suite.testCases.length);
+    assert.ok(report.totalDurationMs >= 0);
+
+    for (const r of report.results) {
+      assert.strictEqual(r.passed, true);
+      assert.ok(r.actualOutcome === 1.0 || r.actualOutcome === 2.0);
+    }
   });
 });

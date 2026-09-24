@@ -179,6 +179,17 @@ export class Polynomial {
     return new Polynomial([...this.terms, ...neg], this.vars);
   }
 
+  /** Multiply by another polynomial */
+  mul(other: Polynomial): Polynomial {
+    const newTerms: Term[] = [];
+    for (const t1 of this.terms) {
+      for (const t2 of other.terms) {
+        newTerms.push(t1.multiply(t2));
+      }
+    }
+    return new Polynomial(newTerms, this.vars);
+  }
+
   /** Multiply by a term */
   multiplyTerm(t: Term): Polynomial {
     return new Polynomial(

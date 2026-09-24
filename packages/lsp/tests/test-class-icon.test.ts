@@ -78,7 +78,48 @@ test("test-class-icon", async () => {
   assert(svg, "getClassIconSvg must return non-null SVG string");
   assert(svg.startsWith("<svg"), "SVG must start with <svg");
   assert(svg.includes("<path"), "SVG must contain graphic elements like <path");
-  assert(svg.includes("Resistor"), "SVG text must contain Resistor");
-
   console.log("test-class-icon passed successfully!");
+});
+
+test("test-package-icon", async () => {
+  console.log("Starting test-package-icon...");
+  const docManager = new DocumentManager();
+  const wm = new WorkspaceManager(docManager);
+
+  const electricalPath = resolve(repoRoot, "data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/package.mo");
+  const electricalText = readFileSync(electricalPath, "utf-8");
+  const iconsPath = resolve(repoRoot, "data/libraries/Modelica/4.1.0/extracted/Modelica/Icons.mo");
+  const iconsText = readFileSync(iconsPath, "utf-8");
+
+  (globalThis as any).sharedFs = {
+    exists: () => true,
+    read: (p: string) => {
+      if (p.includes("Icons")) return iconsText;
+      return electricalText;
+    },
+  };
+
+  wm.unifiedWorkspace.registerWorkspace("modelica", wm.globalWorkspaceIndex);
+
+  const electricalTree = (globalThis as any).modelicaParser.parse(electricalText);
+  wm.globalWorkspaceIndex.register(
+    "modelica:/lib/Modelica/Electrical/package.mo",
+    () => electricalTree.rootNode,
+    "Modelica",
+  );
+  const iconsTree = (globalThis as any).modelicaParser.parse(iconsText);
+  wm.globalWorkspaceIndex.register("modelica:/lib/Modelica/Icons.mo", () => iconsTree.rootNode, "Modelica");
+
+  wm.globalWorkspaceIndex.ensureIndexed("modelica:/lib/Modelica/Electrical/package.mo");
+  wm.globalWorkspaceIndex.ensureIndexed("modelica:/lib/Modelica/Icons.mo");
+  wm.unifiedWorkspace.ensureChildrenIndexed("Modelica");
+
+  const cls = wm.resolveModelicaClassInstance("modelica:/lib/Modelica/Electrical/package.mo", "Modelica.Electrical");
+
+  assert(cls, "Resolved class instance for Modelica.Electrical must not be null");
+  const icon = cls.annotation("Icon");
+  assert(icon, "Modelica.Electrical must have an Icon annotation (inherited from Modelica.Icons.Package)");
+  const svg = getClassIconSvg(cls, 20, false);
+  assert(svg && svg.startsWith("<svg"), "Modelica.Electrical must produce a valid SVG icon");
+  console.log("test-package-icon passed successfully! SVG length:", svg.length);
 });

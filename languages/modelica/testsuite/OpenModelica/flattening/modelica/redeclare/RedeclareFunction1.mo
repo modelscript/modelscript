@@ -1,7 +1,6 @@
 // name:     RedeclareFunction1
 // keywords: redeclare function bug1432
 // status:   correct
-// xfail:    true
 //
 // Checks that it's possible to redeclare a function in several steps.
 //

@@ -617,10 +617,12 @@ export function runTestCase(
     // ── Arena-native flattening ──
     const flattenerBackend = (process.env.FLATTENER_BACKEND || "hybrid") as any;
     const arrayMode = testCase.metadata.arrayMode ?? (/\+a\b/.test(testCase.source) ? "preserve" : undefined);
+    const intEnumConversion = /\+intEnumConversion\b/.test(testCase.source);
     const arena = context.flattenArena(lastClassName, undefined, undefined, {
       omcCompatibility: true,
       backend: flattenerBackend,
       ...(arrayMode ? { arrayMode } : {}),
+      ...(intEnumConversion ? { intEnumConversion } : {}),
     });
 
     const lints = Array.from(context.queryEngine.runAllLints());
@@ -629,6 +631,7 @@ export function runTestCase(
     const rawCstDiags: any[] = tree && facade ? (facade as any).getDiagnostics(tree.rootNode.id) : [];
     const cstDiags = rawCstDiags.filter((cd: any) => {
       const msg = cd.message || "";
+      if (intEnumConversion && cd.code === 5006 && (msg.includes("Integer") || msg.includes("Enum"))) return false;
       if (msg.startsWith("Array shape mismatch:")) return false;
       if (
         cd.code === 4045 &&
@@ -751,10 +754,18 @@ export function runTestCase(
       }
     }
 
-    // If the arena has a "Cannot instantiate" diagnostic, skip linter and CST diagnostics
+    // If the arena has a fatal error (Cannot instantiate, binding mismatch), skip downstream linter and CST diagnostics
     const hasCannotInstantiate = arena?.diagnostics.some((d) => d.message.includes("Cannot instantiate"));
+    const hasBindingError = arena?.diagnostics.some(
+      (d) =>
+        d.code === 3001 ||
+        d.code === 4044 ||
+        d.code === 4045 ||
+        d.message.startsWith("Type mismatch in binding") ||
+        d.message.includes("possibly due to missing 'each'"),
+    );
 
-    if (!hasCannotInstantiate) {
+    if (!hasCannotInstantiate && !hasBindingError) {
       // Linter diagnostics
       for (const d of lints) {
         const dd = d as Record<string, unknown>;

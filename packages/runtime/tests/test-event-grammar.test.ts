@@ -146,4 +146,56 @@ describe("Declarative Event Grammar & Scope-Complete Trace Synthesis (MP-Firebir
     assert(res.violations.length > 0);
     assert.strictEqual(res.violations[0]?.assertionId, "NO_CONCURRENT_ACCESS");
   });
+
+  it("should prune isomorphic interleavings when symmetry breaking is enabled", () => {
+    // 3 symmetric independent workers
+    const model: EventGrammarModel = {
+      name: "SymmetricThreadPool",
+      actors: {
+        Worker1: {
+          name: "W1",
+          actor: "Worker1",
+          kind: "sequence",
+          children: [{ name: "ExecuteJob", actor: "Worker1", kind: "atomic" }],
+        },
+        Worker2: {
+          name: "W2",
+          actor: "Worker2",
+          kind: "sequence",
+          children: [{ name: "ExecuteJob", actor: "Worker2", kind: "atomic" }],
+        },
+        Worker3: {
+          name: "W3",
+          actor: "Worker3",
+          kind: "sequence",
+          children: [{ name: "ExecuteJob", actor: "Worker3", kind: "atomic" }],
+        },
+      },
+    };
+
+    const resSymmetric = EventGrammarSolver.explore(model, {
+      scope: 1,
+      enableSymmetryBreaking: true,
+    });
+
+    assert(resSymmetric.totalTracesFound >= 1);
+    // With symmetry breaking, the orderings must respect W1 -> W2 -> W3
+    for (const trace of resSymmetric.traces) {
+      const w1 = trace.events.find((e) => e.actor === "Worker1");
+      const w2 = trace.events.find((e) => e.actor === "Worker2");
+      const w3 = trace.events.find((e) => e.actor === "Worker3");
+      if (w1 && w2) {
+        assert(
+          trace.order.some(([u, v]) => u === w1.instanceId && v === w2.instanceId),
+          "Worker1 must precede Worker2 under symmetry breaking",
+        );
+      }
+      if (w2 && w3) {
+        assert(
+          trace.order.some(([u, v]) => u === w2.instanceId && v === w3.instanceId),
+          "Worker2 must precede Worker3 under symmetry breaking",
+        );
+      }
+    }
+  });
 });

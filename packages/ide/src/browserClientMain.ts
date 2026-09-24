@@ -214,6 +214,35 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
 
+  const registeredCommandIds = new Set<string>();
+
+  function safeRegisterCommand(
+    commandId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    callback: (...args: any[]) => any,
+  ): vscode.Disposable {
+    if (registeredCommandIds.has(commandId)) {
+      return { dispose: () => {} };
+    }
+    try {
+      const disp = commands.registerCommand(commandId, callback);
+      registeredCommandIds.add(commandId);
+      return disp;
+    } catch (err) {
+      console.warn(`[client] Command '${commandId}' already registered or could not be registered:`, err);
+      return { dispose: () => {} };
+    }
+  }
+
+  const STATIC_ACTION_COMMANDS = new Set([
+    "modelscript.modelica.simulate",
+    "modelscript.modelica.flatten",
+    "modelscript.action.simulate",
+    "modelscript.action.flatten",
+    "modelscript.flatten",
+    "modelscript.runSimulation",
+  ]);
+
   async function getProjectDependencies() {
     const defaultDeps = [
       { name: "Modelica", version: "4.1.0" },
@@ -451,30 +480,37 @@ export async function activate(context: vscode.ExtensionContext) {
       if (Array.isArray(actions)) {
         for (const action of actions) {
           if (!action.id) continue;
-          const cmdId = `modelscript.action.${action.id}`;
-          const handler = async (args?: any) => {
-            const activeDoc = vscode.window.activeTextEditor?.document;
-            const inputs = typeof args === "object" && args ? { ...args } : {};
-            if (!inputs.documentText && activeDoc) {
-              inputs.documentText = activeDoc.getText();
+          try {
+            const cmdId = `modelscript.action.${action.id}`;
+            const handler = async (args?: any) => {
+              const activeDoc = vscode.window.activeTextEditor?.document;
+              const inputs = typeof args === "object" && args ? { ...args } : {};
+              if (!inputs.documentText && activeDoc) {
+                inputs.documentText = activeDoc.getText();
+              }
+              if (!inputs.name && activeDoc) {
+                const text = activeDoc.getText();
+                const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+                if (m) inputs.name = m[1];
+              }
+              return await client?.sendRequest("modelscript/executeAction", {
+                actionId: action.id,
+                uri: args?.uri ?? activeDoc?.uri.toString(),
+                languageId: action.languageId ?? activeDoc?.languageId,
+                inputs,
+              });
+            };
+            if (!STATIC_ACTION_COMMANDS.has(cmdId)) {
+              context.subscriptions.push(safeRegisterCommand(cmdId, handler));
             }
-            if (!inputs.name && activeDoc) {
-              const text = activeDoc.getText();
-              const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-              if (m) inputs.name = m[1];
+            if (action.languageId) {
+              const langCmdId = `modelscript.${action.languageId}.${action.id}`;
+              if (!STATIC_ACTION_COMMANDS.has(langCmdId)) {
+                context.subscriptions.push(safeRegisterCommand(langCmdId, handler));
+              }
             }
-            return await client?.sendRequest("modelscript/executeAction", {
-              actionId: action.id,
-              uri: args?.uri ?? activeDoc?.uri.toString(),
-              languageId: action.languageId ?? activeDoc?.languageId,
-              inputs,
-            });
-          };
-          context.subscriptions.push(vscode.commands.registerCommand(cmdId, handler));
-          if (action.languageId) {
-            context.subscriptions.push(
-              vscode.commands.registerCommand(`modelscript.${action.languageId}.${action.id}`, handler),
-            );
+          } catch (actionErr) {
+            console.warn(`[client] Failed to register dynamic action '${action.id}':`, actionErr);
           }
         }
       }
@@ -557,7 +593,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const diagramProvider = new DiagramEditorProvider(context, client);
 
   // Register library tree view (before status handler so we can refresh on ready)
-  const treeProvider = new LibraryTreeProvider(client);
+  const treeProvider = new LibraryTreeProvider(client, context);
   treeProvider.onDragStart = (data) => {
     diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
   };
@@ -1145,7 +1181,10 @@ END-ISO-10303-21;`;
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
     }),
-    commands.registerCommand("modelscript.modelica.simulate", async (args?: any) => {
+    safeRegisterCommand("modelscript.action.simulate", async (args?: any) => {
+      return vscode.commands.executeCommand("modelscript.modelica.simulate", args);
+    }),
+    safeRegisterCommand("modelscript.modelica.simulate", async (args?: any) => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
       let uri = editor?.document.uri.toString();
@@ -1240,7 +1279,10 @@ END-ISO-10303-21;`;
         vscode.window.showErrorMessage(`Simulation failed: ${e?.message ?? e}`);
       }
     }),
-    commands.registerCommand("modelscript.modelica.flatten", async (args?: any) => {
+    safeRegisterCommand("modelscript.action.flatten", async (args?: any) => {
+      return vscode.commands.executeCommand("modelscript.modelica.flatten", args);
+    }),
+    safeRegisterCommand("modelscript.modelica.flatten", async (args?: any) => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
       let uri = editor?.document.uri.toString();

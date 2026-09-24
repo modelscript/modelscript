@@ -16,9 +16,13 @@ export interface HybridReachabilityBridgeOptions {
   timeSpan?: string | [number, number];
   dt?: number;
   order?: number;
+  minOrder?: number;
+  maxOrder?: number;
   adaptive?: boolean;
   tol?: number;
   reachabilityEngine?: "taylor" | "zonotope";
+  useConstrainedZonotopes?: boolean;
+  maxConstrainedGenerators?: number;
   linearMatrixA?: number[][];
   linearMatrixB?: number[][];
 }
@@ -212,9 +216,13 @@ export async function verifyHybridSysml2Reachability(
     tSpan,
     dt,
     order,
+    minOrder: options.minOrder,
+    maxOrder: options.maxOrder,
     adaptive,
     tol,
     useQrPreconditioning,
+    useConstrainedZonotopes: options.useConstrainedZonotopes,
+    maxConstrainedGenerators: options.maxConstrainedGenerators,
     maxJumps,
     requirements: [
       {

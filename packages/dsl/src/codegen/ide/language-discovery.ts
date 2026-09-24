@@ -18,6 +18,7 @@ export interface DiscoveredLanguageManifestEntry {
   primaryExtension: string;
   wasm?: string | undefined;
   syntaxNames?: string[] | undefined;
+  fieldNames?: Record<string, number> | undefined;
   lineComment?: string | undefined;
   blockComment?: { open: string; close: string } | undefined;
 }
@@ -135,6 +136,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     ];
 
     let syntaxNames: string[] | undefined;
+    let fieldNames: Record<string, number> | undefined;
     const foundBindings = bindingsCandidates.find(fs.existsSync);
     if (foundBindings) {
       wasmAssets.push({
@@ -146,16 +148,31 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
         dest: `server/dist/tree-sitter-${normalized.id}.bindings.js`,
       });
       try {
-        const mod = await dynamicImport(foundBindings);
+        const fileUrl = path.isAbsolute(foundBindings) ? `file://${foundBindings}` : foundBindings;
+        const mod = await dynamicImport(fileUrl);
         if (mod && Array.isArray(mod.SYNTAX_NAMES) && mod.SYNTAX_NAMES.length > 0) {
           syntaxNames = mod.SYNTAX_NAMES;
         }
+        if (mod && mod.FIELD_NAMES && typeof mod.FIELD_NAMES === "object" && Object.keys(mod.FIELD_NAMES).length > 0) {
+          fieldNames = mod.FIELD_NAMES;
+        }
       } catch {
+        // Fallback to regex extraction
+      }
+      if (!syntaxNames || !fieldNames) {
         try {
           const content = fs.readFileSync(foundBindings, "utf-8");
-          const m = content.match(/SYNTAX_NAMES\s*=\s*(?:typeof\s*)?(\[[^\]]+\])/);
-          if (m) {
-            syntaxNames = JSON.parse(m[1]);
+          if (!syntaxNames) {
+            const m = content.match(/SYNTAX_NAMES\s*=\s*(?:typeof\s*)?(\[[^\]]+\])/);
+            if (m) {
+              syntaxNames = JSON.parse(m[1]);
+            }
+          }
+          if (!fieldNames) {
+            const mf = content.match(/FIELD_NAMES\s*=\s*(?:typeof\s*)?(\{[\s\S]*?\})\s*!==/);
+            if (mf) {
+              fieldNames = JSON.parse(mf[1]);
+            }
           }
         } catch {}
       }
@@ -169,6 +186,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       primaryExtension: normalized.primaryExtension,
       wasm: wasmFileName,
       syntaxNames,
+      fieldNames,
       lineComment: normalized.lineComment,
       blockComment: normalized.blockComment,
     });

@@ -682,7 +682,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 5006,
     message: (target, targetType, valType) => {
-      const typeNames = ["Real", "Integer", "Boolean", "String"];
+      const typeNames = ["Real", "Integer", "Boolean", "String", "Enumeration", "Clock"];
       const tIdx = targetType && targetType.asNumber ? targetType.asNumber() : Number(targetType);
       const vIdx = valType && valType.asNumber ? valType.asNumber() : Number(valType);
       const tName = tIdx >= 0 && tIdx < typeNames.length ? typeNames[tIdx] : "Unknown";

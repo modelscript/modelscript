@@ -708,10 +708,13 @@ export const modelicaLanguage = language({
       seq(
         "import",
         choice(
-          seq($.identifier, "=", $.name),
-          seq($.name, optional(choice(".*", seq(".", choice("*", seq("{", $.import_list, "}")))))),
+          seq(field("alias", $.identifier), "=", field("name", $.name)),
+          seq(
+            field("name", $.name),
+            optional(choice(".*", seq(".", choice("*", seq("{", field("import_list", $.import_list), "}"))))),
+          ),
         ),
-        $.description,
+        field("description", $.description),
       ),
 
     import_list: ($) => seq($.identifier, repeat(seq(",", $.identifier))),
@@ -725,7 +728,12 @@ export const modelicaLanguage = language({
         optional($.annotation_clause),
       ),
 
-    constraining_clause: ($) => seq("constrainedby", $.type_specifier, optional($.class_modification)),
+    constraining_clause: ($) =>
+      seq(
+        "constrainedby",
+        field("type_specifier", $.type_specifier),
+        optional(field("modification", $.class_modification)),
+      ),
 
     class_or_inheritance_modification: ($) => seq("(", optional($.argument_or_inheritance_modification_list), ")"),
 
@@ -801,7 +809,11 @@ export const modelicaLanguage = language({
     argument: ($) => choice($.element_modification_or_replaceable, $.element_redeclaration),
 
     element_modification_or_replaceable: ($) =>
-      seq(optional("each"), optional("final"), choice($.element_modification, $.element_replaceable)),
+      seq(
+        optional(field("is_each", "each")),
+        optional(field("is_final", "final")),
+        choice(field("modification", $.element_modification), field("replaceable", $.element_replaceable)),
+      ),
 
     element_modification: ($) =>
       seq(field("name", $.name), optional(field("modification", $.modification)), $.description_string),
@@ -809,21 +821,33 @@ export const modelicaLanguage = language({
     element_redeclaration: ($) =>
       seq(
         "redeclare",
-        optional("each"),
-        optional("final"),
-        choice($.class_definition, $.component_clause1, $.element_replaceable),
+        optional(field("is_each", "each")),
+        optional(field("is_final", "final")),
+        choice(
+          field("class_definition", $.class_definition),
+          field("component_clause1", $.component_clause1),
+          field("element_replaceable", $.element_replaceable),
+        ),
       ),
 
     element_replaceable: ($) =>
-      seq("replaceable", choice($.class_definition, $.component_clause1), optional($.constraining_clause)),
+      seq(
+        "replaceable",
+        choice(field("class_definition", $.class_definition), field("component_clause1", $.component_clause1)),
+        optional(field("constraining_clause", $.constraining_clause)),
+      ),
 
     component_clause1: ($) =>
       choice(
-        seq(field("type_prefix", $.type_prefix), field("type_specifier", $.type_specifier), $.component_declaration1),
-        seq(field("type_specifier", $.type_specifier), $.component_declaration1),
+        seq(
+          field("type_prefix", $.type_prefix),
+          field("type_specifier", $.type_specifier),
+          field("declaration", $.component_declaration1),
+        ),
+        seq(field("type_specifier", $.type_specifier), field("declaration", $.component_declaration1)),
       ),
 
-    component_declaration1: ($) => seq($.declaration, $.description),
+    component_declaration1: ($) => seq(field("declaration", $.declaration), field("description", $.description)),
 
     short_class_definition: ($) => seq($.class_prefixes, $.short_class_specifier),
 
@@ -1023,19 +1047,19 @@ export const modelicaLanguage = language({
         "true",
         "time",
         "end",
-        seq($.component_reference, $.function_call_args),
-        seq("der", "(", $.expression_list, ")"),
+        seq(field("callee", $.component_reference), field("args", $.function_call_args)),
+        seq("der", "(", field("argument", $.expression_list), ")"),
         seq("initial", "(", ")"),
-        seq("pure", "(", optional($.function_arguments), ")"),
+        seq("pure", "(", optional(field("args", $.function_arguments)), ")"),
         $.component_reference,
         seq(
           "(",
-          choice($.expression, $.output_expression_list),
+          choice(field("expression", $.expression), field("expression", $.output_expression_list)),
           ")",
-          optional(choice($.array_subscripts, seq(".", $.identifier))),
+          optional(choice(field("subscripts", $.array_subscripts), seq(".", field("member", $.identifier)))),
         ),
-        seq("[", $.expression_list, repeat(seq(";", $.expression_list)), "]"),
-        seq("{", $.array_arguments, "}"),
+        seq("[", field("rows", seq($.expression_list, repeat(seq(";", $.expression_list)))), "]"),
+        seq("{", field("arguments", $.array_arguments), "}"),
       ),
 
     lhs_expression: ($) =>
@@ -1092,18 +1116,18 @@ export const modelicaLanguage = language({
         "false",
         "true",
         "time",
-        seq($.component_reference, $.function_call_args),
-        seq("der", "(", $.expression_list, ")"),
-        seq("pure", "(", optional($.function_arguments), ")"),
+        seq(field("callee", $.component_reference), field("args", $.function_call_args)),
+        seq("der", "(", field("argument", $.expression_list), ")"),
+        seq("pure", "(", optional(field("args", $.function_arguments)), ")"),
         $.component_reference,
         seq(
           "(",
-          choice($.expression, $.output_expression_list),
+          choice(field("expression", $.expression), field("expression", $.output_expression_list)),
           ")",
-          optional(choice($.array_subscripts, seq(".", $.identifier))),
+          optional(choice(field("subscripts", $.array_subscripts), seq(".", field("member", $.identifier)))),
         ),
-        seq("[", $.expression_list, repeat(seq(";", $.expression_list)), "]"),
-        seq("{", $.array_arguments, "}"),
+        seq("[", field("rows", seq($.expression_list, repeat(seq(";", $.expression_list)))), "]"),
+        seq("{", field("arguments", $.array_arguments), "}"),
       ),
 
     unsigned_number: ($) => choice($.unsigned_integer, $.unsigned_real),
@@ -1157,7 +1181,8 @@ export const modelicaLanguage = language({
 
     named_arguments: ($) => seq($.named_argument, optional(seq(",", $.named_arguments))),
 
-    named_argument: ($) => seq(semanticToken("property", $.identifier), "=", $.function_argument),
+    named_argument: ($) =>
+      seq(semanticToken("property", field("name", $.identifier)), "=", field("value", $.function_argument)),
 
     function_argument: ($) => choice($.function_partial_application, $.expression),
 

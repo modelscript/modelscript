@@ -2,7 +2,12 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { verifyAssumeGuaranteePair } from "../src/contract-verifier.js";
+import {
+  ContractAlgebra,
+  exportContractToNuXmv,
+  verifyAssumeGuaranteePair,
+  verifyTemporalContractSymbolic,
+} from "../src/contract-verifier.js";
 
 describe("SysML v2 Assume-Guarantee (A/G) Contract Verifier", () => {
   it("should verify compatible interface contract where guarantees satisfy assumptions", () => {
@@ -76,5 +81,78 @@ describe("SysML v2 Assume-Guarantee (A/G) Contract Verifier", () => {
 
     assert.strictEqual(result.isSatisfied, true);
     assert.strictEqual(result.violations.length, 0);
+  });
+
+  it("should symbolically verify temporal contract A => G", () => {
+    const validContract = {
+      name: "SafeSpeedContract",
+      assumption: "speed >= 10 && speed <= 50",
+      guarantee: "speed >= 5 && speed <= 60",
+    };
+    const validRes = verifyTemporalContractSymbolic(validContract);
+    assert.strictEqual(validRes.isSatisfied, true);
+
+    const violatingContract = {
+      name: "ViolatingSpeedContract",
+      assumption: "speed >= 10 && speed <= 70",
+      guarantee: "speed <= 60",
+    };
+    const failRes = verifyTemporalContractSymbolic(violatingContract);
+    assert.strictEqual(failRes.isSatisfied, false);
+    assert(
+      failRes.reason?.includes("does not satisfy") || failRes.reason?.includes("does not symbolically imply"),
+      `Expected failure reason, got: ${failRes.reason}`,
+    );
+  });
+
+  it("should export temporal and interface contracts to standard nuXmv / OCRA SMV syntax", () => {
+    const agContract = {
+      name: "BatterySubsystem",
+      assumptions: ["temp >= 0", "temp <= 50"],
+      guarantees: ["voltage >= 380", "voltage <= 420"],
+      inputs: ["temp"],
+      outputs: ["voltage"],
+    };
+
+    const smv = exportContractToNuXmv(agContract);
+    assert(smv.includes("MODULE main"));
+    assert(smv.includes("VAR"));
+    assert(smv.includes("voltage : real;"));
+    assert(smv.includes("temp : real;"));
+    assert(smv.includes("INVAR temp >= 0 & temp <= 50;"));
+    assert(smv.includes("INVARSPEC voltage >= 380 & voltage <= 420;"));
+
+    const tempContract = {
+      name: "TemporalSafety",
+      assumption: "pressure >= 10",
+      guarantee: "flowRate <= 100",
+      timeHorizon: [0, 10] as [number, number],
+    };
+    const tempSmv = exportContractToNuXmv(tempContract);
+    assert(tempSmv.includes("LTLSPEC G ((pressure >= 10) -> (flowRate <= 100));"));
+  });
+
+  it("should verify system composition with ContractAlgebra", () => {
+    const sysContract = {
+      name: "PowertrainSystem",
+      assumptions: ["ambientTemp >= -20", "ambientTemp <= 50"],
+      guarantees: ["speed >= 0", "speed <= 120"],
+    };
+
+    const motorContract = {
+      name: "MotorContract",
+      assumptions: ["ambientTemp >= -20"],
+      guarantees: ["torque >= 0", "torque <= 300"],
+    };
+
+    const transmissionContract = {
+      name: "TransmissionContract",
+      assumptions: ["torque <= 300"],
+      guarantees: ["speed >= 0", "speed <= 120"],
+    };
+
+    const compRes = ContractAlgebra.verifySystemComposition(sysContract, [motorContract, transmissionContract]);
+    assert.strictEqual(compRes.isCompatible, true);
+    assert.strictEqual(compRes.isRefined, true);
   });
 });

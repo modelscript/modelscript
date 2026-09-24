@@ -368,12 +368,24 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   const useLocalMsl = (params.initializationOptions?.useLocalMsl as boolean) ?? false;
 
   const registerBuiltinLanguages = () => {
+    let modelicaParser: any = undefined;
+    let modelicaFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "modelica",
       name: "Modelica",
       extensions: [".mo", ".mos", ".msim"],
-      parser: parserService.parser,
-      facade: parserService.facade,
+      get parser() {
+        return modelicaParser ?? parserService.parser;
+      },
+      set parser(val: any) {
+        modelicaParser = val;
+      },
+      get facade() {
+        return modelicaFacade ?? parserService.facade;
+      },
+      set facade(val: any) {
+        modelicaFacade = val;
+      },
       workspaceIndex: workspaceManager.globalWorkspaceIndex,
       get queryEngine() {
         return workspaceManager.globalModelicaQueryEngine ?? undefined;
@@ -385,12 +397,25 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       handlers: modelicaLanguage.lsp?.handlers,
       actionHandlers: modelicaActionHandlers,
     });
+
+    let sysml2Parser: any = undefined;
+    let sysml2Facade: any = undefined;
     globalLanguageRegistry.register({
       id: "sysml2",
       name: "SysML v2",
       extensions: [".sysml", ".sysml2"],
-      parser: parserService.sysml2Parser,
-      facade: parserService.sysml2Facade,
+      get parser() {
+        return sysml2Parser ?? parserService.sysml2Parser;
+      },
+      set parser(val: any) {
+        sysml2Parser = val;
+      },
+      get facade() {
+        return sysml2Facade ?? parserService.sysml2Facade;
+      },
+      set facade(val: any) {
+        sysml2Facade = val;
+      },
       workspaceIndex: workspaceManager.sysml2WorkspaceIndex,
       get queryEngine() {
         return workspaceManager.globalSysML2QueryEngine ?? undefined;
@@ -400,12 +425,25 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       },
       languageDef: sysml2LangFallback,
     });
+
+    let sysmlParser: any = undefined;
+    let sysmlFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "sysml",
       name: "SysML v2",
       extensions: [".sysml", ".sysml2"],
-      parser: parserService.sysml2Parser,
-      facade: parserService.sysml2Facade,
+      get parser() {
+        return sysmlParser ?? parserService.sysml2Parser;
+      },
+      set parser(val: any) {
+        sysmlParser = val;
+      },
+      get facade() {
+        return sysmlFacade ?? parserService.sysml2Facade;
+      },
+      set facade(val: any) {
+        sysmlFacade = val;
+      },
       workspaceIndex: workspaceManager.sysml2WorkspaceIndex,
       get queryEngine() {
         return workspaceManager.globalSysML2QueryEngine ?? undefined;
@@ -415,11 +453,25 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       },
       languageDef: sysml2LangFallback,
     });
+
+    let stepParser: any = undefined;
+    let stepFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "step",
       name: "STEP",
       extensions: [".step", ".stp", ".p21"],
-      parser: parserService.stepParser,
+      get parser() {
+        return stepParser ?? parserService.stepParser;
+      },
+      set parser(val: any) {
+        stepParser = val;
+      },
+      get facade() {
+        return stepFacade ?? parserService.stepFacade;
+      },
+      set facade(val: any) {
+        stepFacade = val;
+      },
       workspaceIndex: workspaceManager.stepWorkspaceIndex,
       get queryEngine() {
         return workspaceManager.globalStepQueryEngine ?? undefined;
@@ -430,12 +482,25 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       languageDef: stepLanguage,
       handlers: stepLanguage.lsp?.handlers,
     });
+
+    let owl2Parser: any = undefined;
+    let owl2Facade: any = undefined;
     globalLanguageRegistry.register({
       id: "owl2",
       name: "OWL2",
       extensions: [".owl", ".ttl", ".ofn"],
-      parser: parserService.owl2Parser,
-      facade: parserService.owl2Facade,
+      get parser() {
+        return owl2Parser ?? parserService.owl2Parser;
+      },
+      set parser(val: any) {
+        owl2Parser = val;
+      },
+      get facade() {
+        return owl2Facade ?? parserService.owl2Facade;
+      },
+      set facade(val: any) {
+        owl2Facade = val;
+      },
       workspaceIndex: workspaceManager.owl2WorkspaceIndex,
       get queryEngine() {
         return workspaceManager.globalOWL2QueryEngine ?? undefined;
@@ -445,12 +510,25 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       },
       languageDef: owl2LangFallback,
     });
+
+    let csvParser: any = undefined;
+    let csvFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "csv",
       name: "CSV",
       extensions: [".csv"],
-      parser: parserService.csvParser,
-      facade: parserService.csvFacade,
+      get parser() {
+        return csvParser ?? parserService.csvParser;
+      },
+      set parser(val: any) {
+        csvParser = val;
+      },
+      get facade() {
+        return csvFacade ?? parserService.csvFacade;
+      },
+      set facade(val: any) {
+        csvFacade = val;
+      },
       languageDef: csvLangFallback,
     });
     connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
@@ -664,7 +742,7 @@ documents.onDidChangeContent((change) => {
 
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
-        tree = parser.parse(text, oldCached.tree, edit.startIndex * 2, edit.oldEndIndex * 2, edit.newEndIndex * 2, uri);
+        tree = parser.parse(text, oldCached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
       } else if (oldCached) {
         tree = oldCached.tree;
       } else {

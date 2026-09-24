@@ -1,7 +1,6 @@
 // name:     ConstrainType1
 // keywords: redeclare component constrainedby
 // status:   incorrect
-// xfail:    true
 //
 // Tests that the constraining class of a replaceable component is implicitly
 // the type of the component if no constraining class is defined.

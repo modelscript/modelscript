@@ -229,6 +229,9 @@ export interface QueryDB {
    * Clears memoized queries marked as volatile from memory.
    */
   flushVolatile(): void;
+
+  /** Taxonomy index for O(1) subtype interval containment queries. */
+  taxonomy?: any;
 }
 
 /**

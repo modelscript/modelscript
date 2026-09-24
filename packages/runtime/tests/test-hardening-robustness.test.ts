@@ -180,5 +180,41 @@ describe("Production Hardening & Verification Robustness Suite", () => {
       assert.deepEqual(trace.continuousSignals["pos_hi"], [1.0, 0.5]);
       assert.deepEqual(trace.continuousSignals["pos_mid"], [0.0, 0.0]);
     });
+
+    it("should export CanonicalTraceRecord to standard IEEE 1364 VCD format", () => {
+      const times = [0, 0.001, 0.002];
+      const signals = { voltage: [12.0, 12.5, 11.8] };
+      const trace = TraceRecordNormalizer.fromFalsificationTrajectory({
+        times,
+        signals,
+        minRobustness: -1.0,
+      });
+
+      const vcd = TraceRecordNormalizer.exportToVcd(trace);
+      assert(vcd.includes("$version"), "VCD header missing");
+      assert(vcd.includes("$var real 64"), "VCD variable missing");
+      assert(vcd.includes("voltage"), "Signal name missing in VCD");
+      assert(vcd.includes("#1000"), "Time step #1000 missing in VCD");
+    });
+
+    it("should export CanonicalTraceRecord to CSV and interpolate onto a target grid", () => {
+      const times = [0, 1.0, 2.0];
+      const signals = { temp: [20.0, 30.0, 40.0] };
+      const trace = TraceRecordNormalizer.fromFalsificationTrajectory({
+        times,
+        signals,
+        minRobustness: 5.0,
+      });
+
+      const csv = TraceRecordNormalizer.exportToCsv(trace);
+      assert(csv.startsWith("time,temp"), "CSV header missing");
+      assert(csv.includes("1,30"), "CSV row missing");
+
+      // Interpolate at t = 0.5, 1.5
+      const interpolated = TraceRecordNormalizer.interpolateTrace(trace, [0.5, 1.5]);
+      assert.deepEqual(interpolated.times, [0.5, 1.5]);
+      assert.equal(interpolated.continuousSignals["temp"]![0], 25.0);
+      assert.equal(interpolated.continuousSignals["temp"]![1], 35.0);
+    });
   });
 });

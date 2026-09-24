@@ -197,4 +197,51 @@ describe("Native In-Process delta-Complete SMT (DPLL(T)) Solver Suite", () => {
     const cosY = cosBox.get("y")!;
     assert(cosY.lo >= 0 && cosY.hi <= 1.05, `cos(y) >= 0.5 should contract to [0, pi/3], got [${cosY.lo}, ${cosY.hi}]`);
   });
+
+  it("should certify algebraic contradictions via Gröbner basis preprocessing as UNSAT", () => {
+    // System:
+    // x^2 + y^2 == 25 (circle of radius 5)
+    // x^2 + y^2 == 50 (circle of radius sqrt(50) ~ 7.07)
+    // Contradiction: 25 == 50, which Groebner basis immediately reduces to 1 = 0
+    const lit1 = 1;
+    const lit2 = 2;
+
+    const c1: NonlinearConstraint = {
+      expr: {
+        kind: "add",
+        left: { kind: "sqr", child: { kind: "var", name: "x" } },
+        right: { kind: "sqr", child: { kind: "var", name: "y" } },
+      },
+      rel: "==",
+      rhs: 25.0,
+    };
+
+    const c2: NonlinearConstraint = {
+      expr: {
+        kind: "add",
+        left: { kind: "sqr", child: { kind: "var", name: "x" } },
+        right: { kind: "sqr", child: { kind: "var", name: "y" } },
+      },
+      rel: "==",
+      rhs: 50.0,
+    };
+
+    const problem: SmtProblem = {
+      clauses: [[lit1], [lit2]], // Both must hold
+      theoryLiterals: new Map([
+        [lit1, c1],
+        [lit2, c2],
+      ]),
+      initialBox: new Map([
+        ["x", new Interval(-10, 10)],
+        ["y", new Interval(-10, 10)],
+      ]),
+      delta: 0.05,
+    };
+
+    const solver = new DpllTSolver(problem);
+    const result = solver.solve(problem.initialBox);
+
+    assert.strictEqual(result.status, "UNSAT", "Contradictory polynomial circle equations must be certified UNSAT");
+  });
 });

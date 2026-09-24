@@ -231,4 +231,61 @@ describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {
     const jump = result.jumps[0]!;
     assert(Math.abs(jump.preJumpNominal[0]! - 22.0) < 0.2);
   });
+
+  it("should execute with adaptive order selection and constrained zonotope jump reduction", () => {
+    // 2D Bouncing ball with height and velocity
+    const g = 9.81;
+    const modeFreeFall: HybridMode = {
+      id: "FreeFall",
+      name: "Ball falling under gravity",
+      dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
+        const h = y[0]!;
+        const v = y[1]!;
+        const dh = v;
+        const dv = TaylorModel.constant(-g, h.numVars, h.domain, h.order);
+        return [dh, dv];
+      },
+      invariants: [{ stateIndex: 0, min: -0.1 }],
+    };
+
+    const transitionBounce: HybridTransition = {
+      id: "Bounce",
+      sourceModeId: "FreeFall",
+      targetModeId: "FreeFall",
+      guard: (y: TaylorModel[]) => y[0]!, // crosses 0
+      guardPoint: (y: number[]) => y[0]!,
+      reset: (preState: Interval[]) => {
+        const hPost = new Interval(0.0, 0.01);
+        const vPre = preState[1]!;
+        const vPost = new Interval(-0.8 * vPre.hi, -0.8 * vPre.lo);
+        return [hPost, vPost];
+      },
+    };
+
+    const automaton: HybridAutomaton = {
+      modes: [modeFreeFall],
+      transitions: [transitionBounce],
+    };
+
+    const result = HybridFlowpipeSolver.solve({
+      automaton,
+      initialModeId: "FreeFall",
+      initialEnclosure: [new Interval(5.0, 5.0), new Interval(0.0, 0.0)],
+      nominalInitial: [5.0, 0.0],
+      tSpan: [0, 2.5],
+      dt: 0.1,
+      order: 2,
+      minOrder: 1,
+      maxOrder: 4,
+      adaptive: true,
+      tol: 1e-3,
+      useConstrainedZonotopes: true,
+      maxConstrainedGenerators: 4,
+    });
+
+    assert(result.totalSteps > 5, "Expected steps to be computed");
+    assert(result.jumps.length >= 1, "Expected at least 1 bounce jump");
+    const jump = result.jumps[0]!;
+    assert(Math.abs(jump.preJumpNominal[0]!) < 0.5, "Bounce height should be near 0");
+  });
 });

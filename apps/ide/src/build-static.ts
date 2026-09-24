@@ -131,7 +131,10 @@ function renderStaticWorkbench(): string {
       enableTelemetry: false,
       nameShort: "ModelScript",
       nameLong: "ModelScript IDE",
-      extensionAllowedProposedApi: ["modelscript.modelscript"],
+      extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
+      extensionEnabledApiProposals: {
+        "vscode.mermaid-markdown-features": ["chatParticipantPrivate", "chatOutputRenderer"],
+      },
       // Use Open VSX registry to avoid CORS errors with Microsoft's CDN
       extensionGallery: {
         serviceUrl: "https://open-vsx.org/vscode/gallery",

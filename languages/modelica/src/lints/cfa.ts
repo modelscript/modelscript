@@ -1066,6 +1066,7 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
   for (const alg of algSections) {
     const algStart = alg.startIndex ?? self.startByte;
     const stmts = extractStatementsFromCst(alg, algStart);
+    if (stmts.length === 0) continue;
     const finalRes = analyzeStatements(stmts, initialAssigned);
 
     // At the end of function execution: check all outputs

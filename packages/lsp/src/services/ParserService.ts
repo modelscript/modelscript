@@ -54,41 +54,72 @@ export class ParserService {
     }
   }
 
+  private inGetParser = false;
+  private inGetFacade = false;
+
   public getParser(langId: string): any | null {
     const norm = langId.toLowerCase();
-    const p = this.parserEntries.get(norm)?.parser ?? globalLanguageRegistry.getPluginById(norm)?.parser;
-    if (p) return p;
-    const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
-    if (alternate) {
-      return (
-        this.parserEntries.get(alternate)?.parser ?? globalLanguageRegistry.getPluginById(alternate)?.parser ?? null
-      );
+    const entry = this.parserEntries.get(norm);
+    if (entry?.parser) return entry.parser;
+    if (this.inGetParser) return null;
+    this.inGetParser = true;
+    try {
+      const p = globalLanguageRegistry.getPluginById(norm)?.parser;
+      if (p) return p;
+      const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+      if (alternate) {
+        return (
+          this.parserEntries.get(alternate)?.parser ?? globalLanguageRegistry.getPluginById(alternate)?.parser ?? null
+        );
+      }
+      return null;
+    } finally {
+      this.inGetParser = false;
     }
-    return null;
   }
 
   public getFacade(langId: string): any | null {
     const norm = langId.toLowerCase();
-    const f = this.parserEntries.get(norm)?.facade ?? globalLanguageRegistry.getPluginById(norm)?.facade;
-    if (f) return f;
-    const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
-    if (alternate) {
-      return (
-        this.parserEntries.get(alternate)?.facade ?? globalLanguageRegistry.getPluginById(alternate)?.facade ?? null
-      );
+    const entry = this.parserEntries.get(norm);
+    if (entry?.facade) return entry.facade;
+    if (this.inGetFacade) return null;
+    this.inGetFacade = true;
+    try {
+      const f = globalLanguageRegistry.getPluginById(norm)?.facade;
+      if (f) return f;
+      const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
+      if (alternate) {
+        return (
+          this.parserEntries.get(alternate)?.facade ?? globalLanguageRegistry.getPluginById(alternate)?.facade ?? null
+        );
+      }
+      return null;
+    } finally {
+      this.inGetFacade = false;
     }
-    return null;
   }
 
   public isParserReady(langId: string): boolean {
     const norm = langId.toLowerCase();
-    const r = this.parserEntries.get(norm)?.ready ?? Boolean(globalLanguageRegistry.getPluginById(norm)?.parser);
-    if (r) return true;
+    const entry = this.parserEntries.get(norm);
+    if (entry?.ready && entry.parser) return true;
     const alternate = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
     if (alternate) {
-      return (
-        this.parserEntries.get(alternate)?.ready ?? Boolean(globalLanguageRegistry.getPluginById(alternate)?.parser)
-      );
+      const altEntry = this.parserEntries.get(alternate);
+      if (altEntry?.ready && altEntry.parser) return true;
+    }
+    if (!this.inGetParser) {
+      this.inGetParser = true;
+      try {
+        const p = globalLanguageRegistry.getPluginById(norm)?.parser;
+        if (p) return true;
+        if (alternate) {
+          const ap = globalLanguageRegistry.getPluginById(alternate)?.parser;
+          if (ap) return true;
+        }
+      } finally {
+        this.inGetParser = false;
+      }
     }
     return false;
   }
@@ -505,6 +536,7 @@ export class ParserService {
         displayName?: string;
         fileExtensions?: string[];
         syntaxNames?: string[];
+        fieldNames?: Record<string, number>;
       }[] = [];
       try {
         const manifestUrl = `${serverDistBase}/languages-manifest.json`;
@@ -535,10 +567,11 @@ export class ParserService {
           const wasmUrl = `${serverDistBase}/${entry.wasm}`;
           const legacyWasmUrl = `${serverDistBase}/tree-sitter-${entry.id}.wasm`;
           const syntaxNames = entry.syntaxNames || (globalThis as any)[`${entry.id}SyntaxNames`];
+          const fieldNames = entry.fieldNames || (globalThis as any)[`${entry.id}FieldNames`];
 
           try {
-            const result = await createWasmParser(wasmUrl, { syntaxNames }).catch(() =>
-              createWasmParser(legacyWasmUrl, { syntaxNames }),
+            const result = await createWasmParser(wasmUrl, { syntaxNames, fieldNames }).catch(() =>
+              createWasmParser(legacyWasmUrl, { syntaxNames, fieldNames }),
             );
 
             if (result) {

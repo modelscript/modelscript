@@ -10,8 +10,79 @@
  */
 
 import { Interval } from "../analysis/wasm_interval.js";
+import { computeGroebnerBasis, Polynomial, reduceGroebnerBasis, Term } from "../solvers/wasm_groebner.js";
 import { CdclSatSolver, type LitId } from "./cdcl_sat.js";
-import { Hc4Contractor, type NonlinearConstraint } from "./hc4_contractor.js";
+import { type ExprNode, Hc4Contractor, type NonlinearConstraint } from "./hc4_contractor.js";
+
+/**
+ * Recursively extracts variable names referenced in an ExprNode DAG.
+ */
+function extractVariablesFromNode(node: ExprNode, out: Set<string>): void {
+  switch (node.kind) {
+    case "var":
+      out.add(node.name);
+      break;
+    case "const":
+      break;
+    case "neg":
+    case "sqr":
+    case "sqrt":
+    case "sin":
+    case "cos":
+      extractVariablesFromNode(node.child, out);
+      break;
+    case "add":
+    case "sub":
+    case "mul":
+    case "div":
+      extractVariablesFromNode(node.left, out);
+      extractVariablesFromNode(node.right, out);
+      break;
+  }
+}
+
+/**
+ * Recursively converts a polynomial ExprNode into a Polynomial algebraic instance.
+ * Returns null if the expression contains non-polynomial operators (e.g. division, trig, sqrt).
+ */
+function exprNodeToPolynomial(node: ExprNode, allVars: string[]): Polynomial | null {
+  switch (node.kind) {
+    case "const":
+      return new Polynomial([new Term(node.value, new Map())], allVars);
+    case "var":
+      return new Polynomial([new Term(1, new Map([[node.name, 1]]))], allVars);
+    case "neg": {
+      const child = exprNodeToPolynomial(node.child, allVars);
+      if (!child) return null;
+      return child.multiplyTerm(new Term(-1, new Map()));
+    }
+    case "add": {
+      const l = exprNodeToPolynomial(node.left, allVars);
+      const r = exprNodeToPolynomial(node.right, allVars);
+      if (!l || !r) return null;
+      return l.add(r);
+    }
+    case "sub": {
+      const l = exprNodeToPolynomial(node.left, allVars);
+      const r = exprNodeToPolynomial(node.right, allVars);
+      if (!l || !r) return null;
+      return l.sub(r);
+    }
+    case "mul": {
+      const l = exprNodeToPolynomial(node.left, allVars);
+      const r = exprNodeToPolynomial(node.right, allVars);
+      if (!l || !r) return null;
+      return l.mul(r);
+    }
+    case "sqr": {
+      const child = exprNodeToPolynomial(node.child, allVars);
+      if (!child) return null;
+      return child.mul(child);
+    }
+    default:
+      return null;
+  }
+}
 
 export interface SmtTheoryLiteral {
   id: LitId; // SAT variable ID
@@ -97,12 +168,99 @@ export class DpllTSolver {
   }
 
   /**
+   * Preprocesses polynomial equality constraints using Gröbner basis reduction.
+   * Immediately identifies algebraic contradictions (e.g. 1 = 0) and contracts univariate roots.
+   */
+  private preprocessPolynomialEqualities(box: Map<string, Interval>, constraints: NonlinearConstraint[]): boolean {
+    const eqConstraints = constraints.filter((c) => c.rel === "==");
+    if (eqConstraints.length === 0) return true;
+
+    // Collect all variables
+    const varsSet = new Set<string>();
+    for (const c of eqConstraints) {
+      extractVariablesFromNode(c.expr, varsSet);
+    }
+    const allVars = Array.from(varsSet);
+    if (allVars.length === 0) return true;
+
+    // Convert constraints into Polynomials
+    const polys: Polynomial[] = [];
+    for (const c of eqConstraints) {
+      const p = exprNodeToPolynomial(c.expr, allVars);
+      if (!p) return true; // Contains non-polynomial operator (e.g. division, trig, sqrt), skip preprocessing
+      const rhsConst = new Polynomial([new Term(c.rhs, new Map())], allVars);
+      polys.push(p.sub(rhsConst));
+    }
+
+    try {
+      // Compute reduced Groebner basis
+      const basis = computeGroebnerBasis(polys, allVars);
+      const reduced = reduceGroebnerBasis(basis, allVars);
+
+      for (const poly of reduced) {
+        if (poly.isZero()) continue;
+
+        // 1. Contradiction: constant polynomial c = 0 with c != 0
+        if (poly.terms.length === 1 && poly.terms[0]!.totalDegree() === 0) {
+          if (Math.abs(poly.terms[0]!.coefficient) > 1e-9) {
+            return false; // Algebraic contradiction certified by Groebner basis
+          }
+        }
+
+        // 2. Univariate polynomial root contraction
+        const polyVars = new Set<string>();
+        for (const t of poly.terms) {
+          for (const [v, d] of t.degrees.entries()) {
+            if (d > 0) polyVars.add(v);
+          }
+        }
+
+        if (polyVars.size === 1) {
+          const vName = Array.from(polyVars)[0]!;
+          const currentInv = box.get(vName);
+          if (!currentInv) continue;
+
+          // Check if linear: a*x + b = 0
+          const maxDeg = Math.max(...poly.terms.map((t) => t.getDegree(vName)));
+          if (maxDeg === 1) {
+            let a = 0;
+            let b = 0;
+            for (const t of poly.terms) {
+              if (t.getDegree(vName) === 1) a += t.coefficient;
+              else if (t.getDegree(vName) === 0) b += t.coefficient;
+            }
+            if (Math.abs(a) > 1e-12) {
+              const root = -b / a;
+              if (root < currentInv.lo - 1e-5 || root > currentInv.hi + 1e-5) {
+                return false; // Root falls outside current box
+              }
+              box.set(vName, new Interval(Math.max(currentInv.lo, root - 1e-5), Math.min(currentInv.hi, root + 1e-5)));
+            }
+          }
+        }
+      }
+    } catch {
+      // If Groebner basis computation exceeds resource limit, gracefully fall through to HC4
+      return true;
+    }
+
+    return true;
+  }
+
+  /**
    * Solves non-linear constraints in a box using delta-complete branch-and-prune.
    */
   private solveTheoryBox(
     box: Map<string, Interval>,
     constraints: NonlinearConstraint[],
   ): { isSat: boolean; resultBox?: Map<string, Interval> } {
+    // 1. Gröbner basis preprocessing for polynomial equality constraints
+    const groebnerValid = this.preprocessPolynomialEqualities(box, constraints);
+    if (!groebnerValid) {
+      return { isSat: false };
+    }
+
+    // 2. HC4 interval contraction
     const valid = this.contractBox(box, constraints);
     if (!valid) {
       return { isSat: false };

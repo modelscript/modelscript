@@ -12,6 +12,7 @@
  */
 
 import { computeRotationMatrix, encloseRotatedBox } from "../solvers/wasm_qr.js";
+import { ConstrainedZonotope } from "./wasm_constrained_zonotope.js";
 import type { FlowpipeReachabilityResult, FlowpipeRequirement, FlowpipeStepResult } from "./wasm_taylor_model.js";
 import { Interval, TaylorModel } from "./wasm_taylor_model.js";
 import { Zonotope } from "./wasm_zonotope.js";
@@ -86,11 +87,15 @@ export interface HybridFlowpipeProblemOptions {
   tSpan: [number, number];
   dt: number;
   order?: number;
+  minOrder?: number;
+  maxOrder?: number;
   adaptive?: boolean;
   tol?: number;
   minDt?: number;
   maxDt?: number;
   useQrPreconditioning?: boolean;
+  useConstrainedZonotopes?: boolean;
+  maxConstrainedGenerators?: number;
   requirements?: FlowpipeRequirement[];
   maxPicardIterations?: number;
   maxJumps?: number;
@@ -231,6 +236,11 @@ export class HybridFlowpipeSolver {
     let currentNominal = [...nominalInitial];
     let currentTime = t0;
     let currentDt = dt;
+    let currentOrder = order;
+    const minOrder = options.minOrder ?? Math.max(1, order - 1);
+    const maxOrder = options.maxOrder ?? Math.max(order, 6);
+    const useConstrainedZonotopes = options.useConstrainedZonotopes ?? false;
+    const maxConstrainedGenerators = options.maxConstrainedGenerators ?? 2 * nStates;
     let totalSteps = 0;
 
     let currentSegmentSteps: FlowpipeStepResult[] = [];
@@ -313,11 +323,11 @@ export class HybridFlowpipeSolver {
         stepDomain.push(new Interval(-halfWidth, halfWidth));
       }
 
-      const timeTM = TaylorModel.variable(0, stepDomain, order, currentTime);
+      const timeTM = TaylorModel.variable(0, stepDomain, currentOrder, currentTime);
       const stateTMs: TaylorModel[] = [];
       for (let j = 0; j < nStates; j++) {
         const center = currentEnclosure[j]!.mid;
-        stateTMs.push(TaylorModel.variable(j + 1, stepDomain, order, center));
+        stateTMs.push(TaylorModel.variable(j + 1, stepDomain, currentOrder, center));
       }
 
       // Picard fixed-point contractor
@@ -334,10 +344,16 @@ export class HybridFlowpipeSolver {
 
       // Adaptive remainder check
       const maxRemWidth = Math.max(...picardTMs.map((tm) => tm.remainder.width));
-      if (adaptive && maxRemWidth > tol && currentDt > minDt * 1.01) {
-        const shrink = Math.max(0.2, 0.8 * Math.pow(tol / Math.max(1e-15, maxRemWidth), 1 / (order + 1)));
-        currentDt = Math.max(minDt, currentDt * shrink);
-        continue;
+      if (adaptive && maxRemWidth > tol) {
+        if (currentDt <= minDt * 1.5 && currentOrder < maxOrder) {
+          currentOrder++;
+          continue;
+        }
+        if (currentDt > minDt * 1.01) {
+          const shrink = Math.max(0.2, 0.8 * Math.pow(tol / Math.max(1e-15, maxRemWidth), 1 / (currentOrder + 1)));
+          currentDt = Math.max(minDt, currentDt * shrink);
+          continue;
+        }
       }
 
       // 3. Check outgoing discrete transitions
@@ -419,7 +435,7 @@ export class HybridFlowpipeSolver {
         const crossDomain = [new Interval(localDt, localDt), ...stepDomain.slice(1)];
         const preJumpEnclosure: Interval[] = [];
         for (let j = 0; j < nStates; j++) {
-          const crossTM = new TaylorModel(picardTMs[j]!.numVars, order, crossDomain, picardTMs[j]!.remainder);
+          const crossTM = new TaylorModel(picardTMs[j]!.numVars, currentOrder, crossDomain, picardTMs[j]!.remainder);
           for (const [k, v] of picardTMs[j]!.terms.entries()) crossTM.terms.set(k, v);
           preJumpEnclosure.push(crossTM.evaluateRange());
         }
@@ -431,6 +447,16 @@ export class HybridFlowpipeSolver {
           const [z1, z2] = zCrossing.split();
           const clustered = Zonotope.enclose(z1, z2).reduce(maxBranches).toIntervals();
           preJumpEnclosure.splice(0, preJumpEnclosure.length, ...clustered);
+        } else if (useConstrainedZonotopes && nStates > 1) {
+          const baseZ = Zonotope.fromIntervals(preJumpEnclosure);
+          const cz = ConstrainedZonotope.fromZonotope(baseZ);
+          const reduced = cz.reduce(maxConstrainedGenerators).toIntervals();
+          for (let j = 0; j < nStates; j++) {
+            preJumpEnclosure[j] = new Interval(
+              Math.max(preJumpEnclosure[j]!.lo, reduced[j]!.lo),
+              Math.min(preJumpEnclosure[j]!.hi, reduced[j]!.hi),
+            );
+          }
         }
 
         // Record final step in current mode
@@ -553,15 +579,18 @@ export class HybridFlowpipeSolver {
       const endDomain = [new Interval(currentDt, currentDt), ...stepDomain.slice(1)];
       currentEnclosure = [];
       for (let j = 0; j < nStates; j++) {
-        const endTM = new TaylorModel(picardTMs[j]!.numVars, order, endDomain, picardTMs[j]!.remainder);
+        const endTM = new TaylorModel(picardTMs[j]!.numVars, currentOrder, endDomain, picardTMs[j]!.remainder);
         for (const [k, v] of picardTMs[j]!.terms.entries()) endTM.terms.set(k, v);
         currentEnclosure.push(endTM.evaluateRange());
       }
       currentNominal = nextNominal;
 
-      // Adapt step size
+      // Adapt step size & order
       if (adaptive) {
-        const growth = Math.min(2.0, 0.9 * Math.pow(tol / Math.max(1e-15, maxRemWidth), 1 / (order + 1)));
+        if (maxRemWidth < tol * 1e-4 && currentOrder > minOrder && currentDt >= maxDt * 0.7) {
+          currentOrder--;
+        }
+        const growth = Math.min(2.0, 0.9 * Math.pow(tol / Math.max(1e-15, maxRemWidth), 1 / (currentOrder + 1)));
         currentDt = Math.min(maxDt, Math.max(minDt, currentDt * growth));
       }
     }

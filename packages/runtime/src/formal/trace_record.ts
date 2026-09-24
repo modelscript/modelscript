@@ -133,4 +133,151 @@ export class TraceRecordNormalizer {
       metadata: { numVariables: variableNames.length, numSteps: times.length },
     };
   }
+
+  /**
+   * Serializes the canonical trace into standard IEEE 1364 Value Change Dump (.vcd) format.
+   * Enables inspection of formal counterexamples in PulseView, GTKWave, and hardware waveform viewers.
+   */
+  public static exportToVcd(trace: CanonicalTraceRecord): string {
+    const lines: string[] = [];
+    lines.push("$date");
+    lines.push(`  ${new Date().toISOString()}`);
+    lines.push("$end");
+    lines.push("$version");
+    lines.push("  ModelScript Formal Verification VCD Generator");
+    lines.push("$end");
+    lines.push("$timescale 1us $end");
+    lines.push("$scope module Top $end");
+
+    // Assign identifier symbols
+    const varMap: { name: string; id: string; type: "real" | "discrete" }[] = [];
+    let idCode = 33; // ASCII '!'
+
+    for (const name of Object.keys(trace.continuousSignals)) {
+      const id = String.fromCharCode(idCode++);
+      varMap.push({ name, id, type: "real" });
+      lines.push(`$var real 64 ${id} ${name} $end`);
+    }
+
+    if (trace.discreteSignals) {
+      for (const name of Object.keys(trace.discreteSignals)) {
+        const id = String.fromCharCode(idCode++);
+        varMap.push({ name, id, type: "discrete" });
+        lines.push(`$var string 1 ${id} ${name} $end`);
+      }
+    }
+
+    lines.push("$upscope $end");
+    lines.push("$enddefinitions $end");
+    lines.push("$dumpvars");
+
+    // Initial values
+    for (const v of varMap) {
+      if (v.type === "real") {
+        const val = trace.continuousSignals[v.name]?.[0] ?? 0;
+        lines.push(`r${val} ${v.id}`);
+      } else {
+        const val = trace.discreteSignals?.[v.name]?.[0] ?? "";
+        lines.push(`s${val} ${v.id}`);
+      }
+    }
+    lines.push("$end");
+
+    // Values over time
+    for (let tIdx = 0; tIdx < trace.times.length; tIdx++) {
+      const t = trace.times[tIdx]!;
+      const timeInUs = Math.round(t * 1e6);
+      lines.push(`#${timeInUs}`);
+
+      for (const v of varMap) {
+        if (v.type === "real") {
+          const val = trace.continuousSignals[v.name]?.[tIdx];
+          if (val !== undefined) {
+            lines.push(`r${val} ${v.id}`);
+          }
+        } else {
+          const val = trace.discreteSignals?.[v.name]?.[tIdx];
+          if (val !== undefined) {
+            lines.push(`s${val} ${v.id}`);
+          }
+        }
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Serializes the canonical trace into comma-separated values (CSV) format.
+   */
+  public static exportToCsv(trace: CanonicalTraceRecord): string {
+    const contKeys = Object.keys(trace.continuousSignals);
+    const discKeys = trace.discreteSignals ? Object.keys(trace.discreteSignals) : [];
+    const headers = ["time", ...contKeys, ...discKeys];
+
+    const rows: string[] = [headers.join(",")];
+
+    for (let i = 0; i < trace.times.length; i++) {
+      const rowVals: (string | number | boolean)[] = [trace.times[i]!];
+      for (const k of contKeys) {
+        rowVals.push(trace.continuousSignals[k]?.[i] ?? "");
+      }
+      for (const k of discKeys) {
+        rowVals.push(trace.discreteSignals?.[k]?.[i] ?? "");
+      }
+      rows.push(rowVals.join(","));
+    }
+
+    return rows.join("\n");
+  }
+
+  /**
+   * Linearly interpolates continuous signals and step-interpolates discrete signals onto a unified time vector.
+   */
+  public static interpolateTrace(trace: CanonicalTraceRecord, targetTimes: number[]): CanonicalTraceRecord {
+    const origTimes = trace.times;
+    if (origTimes.length === 0 || targetTimes.length === 0) {
+      return { ...trace, times: targetTimes };
+    }
+
+    const interpCont: Record<string, number[]> = {};
+    for (const [k, vals] of Object.entries(trace.continuousSignals)) {
+      interpCont[k] = targetTimes.map((t) => {
+        if (t <= origTimes[0]!) return vals[0]!;
+        if (t >= origTimes[origTimes.length - 1]!) return vals[vals.length - 1]!;
+
+        let idx = 0;
+        while (idx < origTimes.length - 1 && origTimes[idx + 1]! < t) {
+          idx++;
+        }
+        const t0 = origTimes[idx]!;
+        const t1 = origTimes[idx + 1]!;
+        const v0 = vals[idx]!;
+        const v1 = vals[idx + 1]!;
+        const frac = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+        return v0 + frac * (v1 - v0);
+      });
+    }
+
+    let interpDisc: Record<string, (string | number | boolean)[]> | undefined;
+    if (trace.discreteSignals) {
+      interpDisc = {};
+      for (const [k, vals] of Object.entries(trace.discreteSignals)) {
+        interpDisc[k] = targetTimes.map((t) => {
+          let idx = 0;
+          while (idx < origTimes.length - 1 && origTimes[idx + 1]! <= t) {
+            idx++;
+          }
+          return vals[idx] ?? false;
+        });
+      }
+    }
+
+    return {
+      ...trace,
+      times: targetTimes,
+      continuousSignals: interpCont,
+      discreteSignals: interpDisc,
+    };
+  }
 }

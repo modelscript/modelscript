@@ -968,7 +968,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   toTreeIndex(): SymbolIndex {
-    return this.toSymbolIndex();
+    return this.toUnifiedPartial();
   }
 
   async toUnifiedAsync(): Promise<SymbolIndex> {
@@ -1676,7 +1676,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   toTreeIndex(): SymbolIndex {
-    return this.toUnified();
+    return this.toUnifiedPartial();
   }
 
   async toSymbolIndexAsync(): Promise<SymbolIndex> {
