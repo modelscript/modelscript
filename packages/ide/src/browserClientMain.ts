@@ -35,6 +35,7 @@ import { OWL2DiagramPanel } from "./owl2DiagramPanel";
 import { OWL2PropertyHierarchyProvider } from "./owl2PropertyHierarchyProvider";
 
 import { CalibrationPanel } from "./calibrationPanel";
+import { CandidateTradeStudyPanel } from "./candidateTradeStudyPanel";
 import { ExperimentsTreeProvider } from "./experimentsTree";
 import { GCodeEditorProvider } from "./gcodeEditorProvider";
 import { OptimizationPanel } from "./optimizationPanel";
@@ -1390,6 +1391,9 @@ END-ISO-10303-21;`;
       if (!client) return;
       SurrogatePanel.createOrShow(context.extensionUri, client, uri);
     }),
+    commands.registerCommand("modelscript.openCandidateTradeStudy", (uri?: string, entityName?: string) => {
+      CandidateTradeStudyPanel.createOrShow(context.extensionUri, client, entityName);
+    }),
     commands.registerCommand("modelscript.refreshExperiments", () => {
       experimentsTreeProvider?.refresh();
     }),
@@ -2014,6 +2018,114 @@ END-ISO-10303-21;`;
         },
       );
     }),
+    commands.registerCommand(
+      "modelscript.scaffoldMultiDomain",
+      async (uriOrStr?: vscode.Uri | string, entityName?: string) => {
+        let targetUri: vscode.Uri | undefined;
+        if (typeof uriOrStr === "string") {
+          targetUri = vscode.Uri.parse(uriOrStr);
+        } else if (uriOrStr) {
+          targetUri = uriOrStr;
+        } else if (vscode.window.activeTextEditor) {
+          targetUri = vscode.window.activeTextEditor.document.uri;
+        }
+
+        if (!targetUri) {
+          vscode.window.showErrorMessage("Please open a SysML v2 model file first.");
+          return;
+        }
+
+        try {
+          const fileBytes = await vscode.workspace.fs.readFile(targetUri);
+          const sourceText = new TextDecoder().decode(fileBytes);
+
+          const modelName =
+            entityName ||
+            /part\s+def\s+([A-Za-z0-9_]+)/.exec(sourceText)?.[1] ||
+            targetUri.path
+              .split("/")
+              .pop()
+              ?.replace(/\.[^/.]+$/, "") ||
+            "SystemArchitecture";
+
+          // Extract dimension attributes or defaults
+          const extractNum = (regex: RegExp, fallback: number) => {
+            const match = regex.exec(sourceText);
+            return match ? parseFloat(match[1]) : fallback;
+          };
+
+          const lengthVal = extractNum(/(?:length|len|L)\s*[:=]\s*([0-9.]+)/i, 100);
+          const widthVal = extractNum(/(?:width|W)\s*[:=]\s*([0-9.]+)/i, 50);
+          const heightVal = extractNum(/(?:height|H)\s*[:=]\s*([0-9.]+)/i, 25);
+          const massVal = extractNum(/(?:mass|m)\s*[:=]\s*([0-9.]+)/i, 5.0);
+
+          const basePath = targetUri.path.replace(/\.[^/.]+$/, "");
+
+          // 1. Generate OpenSCAD Parametric Geometry Stub
+          const scadContent = `// ============================================================================
+// Generated OpenSCAD Parametric Geometry Stub from SysML v2: ${modelName}
+// ============================================================================
+length = ${lengthVal};
+width = ${widthVal};
+height = ${heightVal};
+
+module ${modelName}() {
+  cube([length, width, height], center = true);
+}
+
+${modelName}();
+`;
+          const scadUri = targetUri.with({ path: `${basePath}.scad` });
+          await vscode.workspace.fs.writeFile(scadUri, new TextEncoder().encode(scadContent));
+
+          // 2. Generate Modelica Simulation Model Stub
+          const moContent = `model ${modelName}
+  parameter Real length = ${lengthVal};
+  parameter Real width = ${widthVal};
+  parameter Real height = ${heightVal};
+  parameter Real mass = ${massVal};
+
+  Real v(start = 0.0);
+  Real a(start = 0.0);
+equation
+  der(v) = a;
+  mass * a = 0.0;
+end ${modelName};
+`;
+          const moUri = targetUri.with({ path: `${basePath}.mo` });
+          await vscode.workspace.fs.writeFile(moUri, new TextEncoder().encode(moContent));
+
+          // 3. Generate Static Structural FEA Study Stub
+          const feaContent = `model ${modelName}_FEA
+  extends ModelScript.Studies.StaticStructuralFEA(
+    meshResolution = 0.05
+  );
+  ${modelName} component;
+end ${modelName}_FEA;
+`;
+          const feaUri = targetUri.with({ path: `${basePath}.fea.mo` });
+          await vscode.workspace.fs.writeFile(feaUri, new TextEncoder().encode(feaContent));
+
+          vscode.window
+            .showInformationMessage(
+              `⚡ Multi-Domain Scaffolding Complete for ${modelName}: generated .scad, .mo, and .fea.mo.`,
+              "Open OpenSCAD",
+              "Open Modelica",
+            )
+            .then(async (selection) => {
+              if (selection === "Open OpenSCAD") {
+                const doc = await vscode.workspace.openTextDocument(scadUri);
+                await vscode.window.showTextDocument(doc);
+              } else if (selection === "Open Modelica") {
+                const doc = await vscode.workspace.openTextDocument(moUri);
+                await vscode.window.showTextDocument(doc);
+              }
+            });
+        } catch (err: any) {
+          vscode.window.showErrorMessage(`Failed to scaffold multi-domain stubs: ${err.message || err}`);
+        }
+      },
+    ),
     commands.registerCommand("modelscript.createFeaSetup", async (uri?: vscode.Uri) => {
       let targetUri = uri;
       if (!targetUri && vscode.window.activeTextEditor) {

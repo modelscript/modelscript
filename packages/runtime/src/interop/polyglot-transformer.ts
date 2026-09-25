@@ -6,6 +6,18 @@
  */
 
 import type { PolyglotConfig, TGGDpoRuleOptions, TGGRuleOptions } from "@modelscript/dsl/dsl/language.js";
+import {
+  AbstractDomainOracle,
+  ConstraintTheoryOracle,
+  DimensionalTheoryOracle,
+  FlowAlgebraOracle,
+  OntologyTheoryOracle,
+} from "../formal/oracles/index.js";
+import {
+  SemanticTheoryCoordinator,
+  type CoordinatorSatResult,
+  type TheoryLiteral,
+} from "../formal/theory_coordinator.js";
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
 import { DigitalThreadHypergraph } from "./thread_hypergraph.js";
 import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
@@ -82,15 +94,28 @@ export class PolyglotTransformer {
   private emitters = new Map<string, PolyglotEmitter>();
   /** Dynamic workspace type mapping registry. */
   public typeRegistry: WorkspaceTypeRegistry;
+  /** Formal Theory Coordinator orchestrating incremental satisfiability over TGG invariants */
+  public coordinator: SemanticTheoryCoordinator;
+  /** Tracked literal IDs per thread slot for incremental retraction */
+  private threadSlotToLiteralIds = new Map<number, number[]>();
 
   /**
    * Initializes a new PolyglotTransformer instance.
    *
    * @param config - Optional configuration declaring TGG rules, type mappings, and reasoner bindings.
    * @param typeRegistry - Optional custom WorkspaceTypeRegistry instance.
+   * @param coordinator - Optional custom SemanticTheoryCoordinator instance.
    */
-  constructor(config?: PolyglotConfig, typeRegistry?: WorkspaceTypeRegistry) {
+  constructor(config?: PolyglotConfig, typeRegistry?: WorkspaceTypeRegistry, coordinator?: SemanticTheoryCoordinator) {
     this.typeRegistry = typeRegistry || new WorkspaceTypeRegistry();
+    this.coordinator = coordinator || new SemanticTheoryCoordinator();
+    if (!coordinator) {
+      this.coordinator.registerOracle(new OntologyTheoryOracle());
+      this.coordinator.registerOracle(new ConstraintTheoryOracle());
+      this.coordinator.registerOracle(new AbstractDomainOracle());
+      this.coordinator.registerOracle(new DimensionalTheoryOracle());
+      this.coordinator.registerOracle(new FlowAlgebraOracle());
+    }
     if (config) {
       this.rules = config.rules || [];
       this.typeMaps = config.typeMaps || {};
@@ -393,6 +418,124 @@ export class PolyglotTransformer {
     if (candidate > physMax) candidate = physMax;
     item.resolved = candidate;
     item.isResolved = true;
+  }
+
+  /**
+   * Asserts a TGG correspondence constraint into the Theory Coordinator for a thread slot.
+   */
+  assertTggConstraint(threadSlot: number, constraint: any, ruleName?: string): number {
+    const srcCtx = { ruleName, threadSlot, constraint };
+    let lit: TheoryLiteral | null = null;
+
+    if (constraint.kind === "eq") {
+      lit = {
+        id: 0,
+        predicate: "eq",
+        args: [constraint.args?.[0] ?? constraint.varA, constraint.args?.[1] ?? constraint.varB],
+        domain: "constraint",
+        sourceContext: srcCtx,
+      };
+    } else if (constraint.kind === "interval") {
+      lit = {
+        id: 0,
+        predicate: "interval",
+        args: [
+          constraint.varName ?? constraint.args?.[0],
+          constraint.min ?? constraint.args?.[1],
+          constraint.max ?? constraint.args?.[2],
+        ],
+        domain: "abstract_domain",
+        sourceContext: srcCtx,
+      };
+    } else if (constraint.kind === "diff") {
+      lit = {
+        id: 0,
+        predicate: "diff",
+        args: [
+          constraint.varA ?? constraint.args?.[0],
+          constraint.varB ?? constraint.args?.[1],
+          constraint.bound ?? constraint.args?.[2],
+        ],
+        domain: "abstract_domain",
+        sourceContext: srcCtx,
+      };
+    } else if (constraint.kind === "unit" || constraint.kind === "dimension") {
+      lit = {
+        id: 0,
+        predicate: "unit",
+        args: [constraint.varName ?? constraint.args?.[0], constraint.dimensionVector ?? constraint.args?.[1]],
+        domain: "constraint",
+        sourceContext: srcCtx,
+      };
+    } else if (constraint.kind === "flow" || constraint.kind === "conjugate") {
+      lit = {
+        id: 0,
+        predicate: "flow_dir",
+        args: [constraint.portName ?? constraint.args?.[0], constraint.direction ?? constraint.args?.[1]],
+        domain: "constraint",
+        sourceContext: srcCtx,
+      };
+    } else if (constraint.kind === "subsumes" || constraint.kind === "isa") {
+      lit = {
+        id: 0,
+        predicate: "subsumes",
+        args: [constraint.subClass ?? constraint.args?.[0], constraint.superClass ?? constraint.args?.[1]],
+        domain: "ontology",
+        sourceContext: srcCtx,
+      };
+    } else {
+      lit = {
+        id: 0,
+        predicate: constraint.kind || "constraint",
+        args: constraint.args || [],
+        domain: "constraint",
+        sourceContext: srcCtx,
+      };
+    }
+
+    const litId = this.coordinator.assertLiteral(lit);
+    const existing = this.threadSlotToLiteralIds.get(threadSlot) || [];
+    existing.push(litId);
+    this.threadSlotToLiteralIds.set(threadSlot, existing);
+    return litId;
+  }
+
+  /**
+   * Retracts all previously asserted theory literals for the given thread slot.
+   */
+  retractThreadConstraints(threadSlot: number): void {
+    const ids = this.threadSlotToLiteralIds.get(threadSlot) || [];
+    for (const id of ids) {
+      this.coordinator.retractLiteral(id);
+    }
+    this.threadSlotToLiteralIds.delete(threadSlot);
+  }
+
+  /**
+   * Synchronizes TGG constraints with formal theory coordination for a specific thread slot.
+   * Retracts old literals (if any), asserts new constraints, and updates DigitalThreadHypergraph status.
+   */
+  syncThreadTheory(threadSlot: number, constraints: any[], ruleName?: string): CoordinatorSatResult {
+    this.retractThreadConstraints(threadSlot);
+    for (const c of constraints) {
+      this.assertTggConstraint(threadSlot, c, ruleName);
+    }
+
+    const satRes = this.coordinator.checkSat();
+    if (satRes.isSat) {
+      this.hypergraph.recordTheorySat(threadSlot, satRes.sharedEqualities);
+      this.hypergraph.clearTheoryConflict(threadSlot);
+    } else if (satRes.conflict) {
+      this.hypergraph.recordTheoryConflict(threadSlot, satRes.conflict);
+      this.recordConflict(
+        satRes.conflict.explanation,
+        satRes.conflict.culpritEntities[0] || "source",
+        satRes.conflict.culpritEntities[1] || "target",
+        ruleName,
+      );
+    }
+
+    return satRes;
   }
 
   /**

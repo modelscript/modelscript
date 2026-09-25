@@ -37,6 +37,7 @@ export * from "./dae/wasm_evaluator.js";
 export * from "./dae/wasm_fold.js";
 export * from "./dae/wasm_init.js";
 export * from "./dae/wasm_statement_executor.js";
+export * from "./formal/candidate_filter.js";
 export * from "./formal/cdcl_sat.js";
 export * from "./formal/dpll_t_solver.js";
 export * from "./formal/event_grammar.js";
@@ -46,6 +47,7 @@ export * from "./formal/inductive_prover.js";
 export * from "./formal/proof_manifest.js";
 export * from "./formal/region_decomposer.js";
 export * from "./formal/simplification_waterfall.js";
+export * from "./formal/theory_coordinator.js";
 export * from "./formal/trace_record.js";
 export * from "./gpu/wasm_gpu_buffers.js";
 export * from "./gpu/wasm_memory_planner.js";
@@ -125,3 +127,8 @@ export {
   NumericalInterval,
 } from "./formal/abstract_interpretation/interval_domain.js";
 export * from "./formal/abstract_interpretation/reduced_product.js";
+
+// Semantic Theory Coordinator & Theory Oracles
+export * from "./formal/candidate_filter.js";
+export * from "./formal/oracles/index.js";
+export * from "./formal/theory_coordinator.js";

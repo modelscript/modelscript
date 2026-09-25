@@ -108,7 +108,14 @@ export class ThreadExplorerProvider {
         });
       }
 
-      const diagnostics = ThreadDiagnosticsProvider.diagnoseThread(String(rec.threadId), domainElementsForDiag, 0.05);
+      const conflictClause =
+        typeof (hypergraph as any).getConflict === "function" ? (hypergraph as any).getConflict(rec.slot) : undefined;
+      const diagnostics = ThreadDiagnosticsProvider.diagnoseThread(
+        String(rec.threadId),
+        domainElementsForDiag,
+        0.05,
+        conflictClause,
+      );
 
       return {
         threadId: rec.threadId,

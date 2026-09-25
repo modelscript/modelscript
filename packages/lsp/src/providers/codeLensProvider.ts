@@ -111,6 +111,24 @@ export function registerCodeLensProvider(context: LspContext) {
                 arguments: [uri, name],
               },
             });
+
+            lenses.push({
+              range,
+              command: {
+                title: "⚡ Scaffold Multi-Domain (SCAD + MO + FEA)",
+                command: "modelscript.scaffoldMultiDomain",
+                arguments: [uri, name],
+              },
+            });
+
+            lenses.push({
+              range,
+              command: {
+                title: "⚡ Tier 1: Validated | 📈 Tier 2: Pareto Candidates | 🚀 Schedule Tier 3 Confirmation",
+                command: "modelscript.openCandidateTradeStudy",
+                arguments: [uri, name],
+              },
+            });
           }
 
           // State Def / Activity: Counterexample & Trace Replay

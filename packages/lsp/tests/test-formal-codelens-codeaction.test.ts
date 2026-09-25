@@ -70,6 +70,11 @@ package AutopilotSystem {
     assert.ok(contractLens, "Must have contract hierarchy lens");
     assert.strictEqual(contractLens.command.command, "modelscript.openContractExplorer");
 
+    // Check for Candidate Trade Study & Tier-3 Confirmation lens
+    const tradeStudyLens = lenses.find((l: any) => l.command.title.includes("Tier 1: Validated"));
+    assert.ok(tradeStudyLens, "Must have Candidate Trade Study CodeLens");
+    assert.strictEqual(tradeStudyLens.command.command, "modelscript.openCandidateTradeStudy");
+
     // Check for Trace Replay lens
     const replayLens = lenses.find((l: any) => l.command.title.includes("Replay Trace"));
     assert.ok(replayLens, "Must have trace replay lens");

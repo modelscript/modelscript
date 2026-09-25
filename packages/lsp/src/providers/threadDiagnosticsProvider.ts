@@ -34,8 +34,24 @@ export class ThreadDiagnosticsProvider {
     threadId: string,
     domainElements: AlignedDomainElement[],
     tolerance: number = 0.05, // 5% tolerance
+    conflict?: { explanation?: string; culpritEntities?: string[] },
   ): ThreadDiagnostic[] {
     const diagnostics: ThreadDiagnostic[] = [];
+
+    // 0. Check Formal Semantic Theory Coordinator conflict clause
+    if (conflict) {
+      const primaryElem =
+        domainElements.find((e) => e.domain === "sysml2" || e.domain === "sysml") || domainElements[0];
+      diagnostics.push({
+        domain: primaryElem?.domain || "sysml2",
+        elementName: conflict.culpritEntities?.[0] || primaryElem?.name || threadId,
+        severity: "error",
+        message: `[Digital Thread Theory Conflict] ${conflict.explanation || "Formal theory contradiction detected."}`,
+        line: primaryElem?.line ?? 1,
+        column: primaryElem?.column ?? 1,
+        source: "modelscript-digital-thread",
+      });
+    }
 
     const sysmlElem = domainElements.find((e) => e.domain === "sysml2" || e.domain === "sysml");
     const modelicaElem = domainElements.find((e) => e.domain === "modelica");

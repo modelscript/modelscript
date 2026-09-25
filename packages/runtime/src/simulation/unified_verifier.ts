@@ -22,7 +22,15 @@ import {
 } from "../analysis/wasm_hybrid_flowpipe.js";
 import { Interval } from "../analysis/wasm_interval.js";
 import { SosBarrierSynthesizer, type BarrierCertificateResult } from "../analysis/wasm_sos_barrier.js";
+import {
+  AbstractDomainOracle,
+  ConstraintTheoryOracle,
+  DimensionalTheoryOracle,
+  FlowAlgebraOracle,
+  OntologyTheoryOracle,
+} from "../formal/oracles/index.js";
 import { RegionDecomposer, type RegionDecompositionResult } from "../formal/region_decomposer.js";
+import { SemanticTheoryCoordinator } from "../formal/theory_coordinator.js";
 import { DigitalThreadHypergraph } from "../interop/thread_hypergraph.js";
 import { generateCtrfReport, generateJUnitReport, type CtrfReport } from "../util/ctrf_reporter.js";
 import { generateHtmlReport } from "../util/html_reporter.js";
@@ -82,6 +90,7 @@ export interface UnifiedVerificationOptions {
   b2bCompiler?: string | undefined;
   b2bDt?: number | undefined;
   algorithms?: boolean | undefined;
+  theoryCoordinator?: boolean | undefined;
   updateHypergraph?: boolean | undefined;
   exportFormats?: string[] | undefined; // "smt2" | "nuxmv" | "ocra" | "mos"
   exportDir?: string | undefined;
@@ -115,6 +124,8 @@ export interface VerificationInputContext {
   simulationResult?: SimulationResult;
   verifyCaseId?: number;
   paths?: string[];
+  coordinator?: SemanticTheoryCoordinator;
+  hypergraph?: DigitalThreadHypergraph;
 }
 
 export class UnifiedVerifier {
@@ -148,6 +159,13 @@ export class UnifiedVerifier {
         /\b(verification\s+case|satisfy)\b/i.test(text));
     const hasB2B = options.b2b ?? (runAll && ctx.arena != null);
     const hasAlgorithms = options.algorithms ?? (runAll || /\b(algorithm|function)\b/i.test(text));
+
+    const hasCoordinator = options.theoryCoordinator ?? (runAll || ctx.coordinator != null);
+
+    // ── Stage 0: Semantic Theory Coordination (Nelson-Oppen / DPLL(T)) ────────
+    if (hasCoordinator) {
+      stages["theory_coordination"] = await this.runTheoryCoordinationStage(ctx, options);
+    }
 
     // ── Stage 1: Decisions & Guards ──────────────────────────────────────────
     if (hasDecisions) {
@@ -237,7 +255,7 @@ export class UnifiedVerifier {
 
     // Digital Thread Hypergraph Sync
     if (options.updateHypergraph) {
-      this.syncDigitalThread(report);
+      this.syncDigitalThread(report, ctx.hypergraph);
     }
 
     return report;
@@ -246,6 +264,47 @@ export class UnifiedVerifier {
   // ---------------------------------------------------------------------------
   // Individual Stage Executors
   // ---------------------------------------------------------------------------
+
+  private static async runTheoryCoordinationStage(
+    ctx: VerificationInputContext,
+    options: UnifiedVerificationOptions,
+  ): Promise<VerificationStageResult> {
+    const t0 = Date.now();
+    const coordinator = ctx.coordinator || new SemanticTheoryCoordinator();
+    if (!ctx.coordinator) {
+      coordinator.registerOracle(new OntologyTheoryOracle());
+      coordinator.registerOracle(new ConstraintTheoryOracle());
+      coordinator.registerOracle(new AbstractDomainOracle());
+      coordinator.registerOracle(new DimensionalTheoryOracle());
+      coordinator.registerOracle(new FlowAlgebraOracle());
+    }
+
+    const satRes = coordinator.checkSat();
+    const violations: VerificationViolation[] = [];
+    if (!satRes.isSat && satRes.conflict) {
+      violations.push({
+        id: "MSC-THEORY-CONFLICT",
+        stage: "theory_coordination",
+        severity: "error",
+        message: satRes.conflict.explanation,
+        location: { uri: ctx.uri },
+        witness: satRes.conflict.culpritEntities,
+      });
+    }
+
+    return {
+      stage: "theory_coordination",
+      name: "Semantic Theory Coordinator (Nelson-Oppen / DPLL(T))",
+      passed: satRes.isSat,
+      certified: satRes.isSat,
+      durationMs: Date.now() - t0,
+      summary: satRes.isSat
+        ? `All theory oracles mutually satisfiable (${satRes.sharedEqualities.length} shared equalities in ${satRes.iterations} iterations).`
+        : `Formal contradiction detected: ${satRes.conflict?.explanation}`,
+      violations,
+      details: satRes,
+    };
+  }
 
   private static async runDecisionsStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
@@ -989,13 +1048,18 @@ export class UnifiedVerifier {
   // Digital Thread Hypergraph Synchronization
   // ---------------------------------------------------------------------------
 
-  private static syncDigitalThread(report: UnifiedVerificationReport): void {
-    const hypergraph = new DigitalThreadHypergraph();
-    for (const [stageKey, st] of Object.entries(report.stages)) {
-      (hypergraph as any).recordVerificationRun?.(report.target || "model", st.passed, {
-        stage: stageKey,
-        certified: st.certified,
-        violations: st.violations?.length || 0,
+  private static syncDigitalThread(report: UnifiedVerificationReport, hypergraph?: DigitalThreadHypergraph): void {
+    const targetHypergraph = hypergraph || new DigitalThreadHypergraph();
+    const threadSlot = targetHypergraph.createThread(1);
+    if (report.summary.overallPassed) {
+      targetHypergraph.recordTheorySat(threadSlot);
+    } else {
+      const firstViolation = Object.values(report.stages).flatMap((s) => s.violations || [])[0];
+      targetHypergraph.recordTheoryConflict(threadSlot, {
+        literals: [],
+        explanation: firstViolation?.message || "Unified formal verification conflict detected.",
+        culpritEntities: [report.target || "model"],
+        theoryName: firstViolation?.stage || "verification",
       });
     }
   }

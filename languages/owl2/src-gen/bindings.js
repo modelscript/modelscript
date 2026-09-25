@@ -1218,63 +1218,45 @@ export class LspFacade {
         msg = "Too many diagnostics; remaining diagnostics omitted";
         severity = 2; // Warning
       } else if (rawLintId === 0) {
+        const formatSyntaxTokenName = (rawId, fallbackName) => {
+          let name =
+            fallbackName ??
+            ((this.syntaxNames && this.syntaxNames[rawId]) ||
+              (rawId >= 32 && rawId <= 126
+                ? String.fromCharCode(rawId)
+                : rawId > 0
+                  ? `token_${rawId}`
+                  : ""));
+          if (name.startsWith("T_")) name = name.substring(2);
+          if (name.startsWith('"') && name.endsWith('"')) {
+            name = name.substring(1, name.length - 1);
+          }
+          if (name.startsWith("/") && name.endsWith("/")) {
+            if (name.includes('^"\\\\') || name.includes('"')) return "string";
+            if (name.includes("a-zA-Z")) return "identifier";
+            if (name.includes("\\d+\\.\\d")) return "number";
+            if (name.includes("\\d+")) return "integer";
+            return "token";
+          }
+          if (name.startsWith("token_")) return "token";
+          return name;
+        };
         let rawArg1 = arg1 & 0x7fff;
         if (arg0 === 1 && rawArg1 > 0) {
-          let symName =
-            (this.syntaxNames && this.syntaxNames[rawArg1]) ||
-            (rawArg1 >= 32 && rawArg1 <= 126
-              ? String.fromCharCode(rawArg1)
-              : `token_${rawArg1}`);
-          if (symName.startsWith("T_")) symName = symName.substring(2);
-          if (symName.startsWith('"') && symName.endsWith('"')) {
-            symName = symName.substring(1, symName.length - 1);
-          }
+          let symName = formatSyntaxTokenName(rawArg1);
           msg = `Syntax Error: Missing '${symName}'`;
         } else if (arg0 === 2) {
-          let symName =
-            (this.syntaxNames && this.syntaxNames[rawArg1]) ||
-            (rawArg1 >= 32 && rawArg1 <= 126
-              ? String.fromCharCode(rawArg1)
-              : rawArg1 > 0
-                ? `token_${rawArg1}`
-                : "");
-          if (symName.startsWith("T_")) symName = symName.substring(2);
-          if (symName.startsWith('"') && symName.endsWith('"')) {
-            symName = symName.substring(1, symName.length - 1);
-          }
-          if (
-            !symName ||
-            symName.startsWith("_") ||
-            symName.startsWith("(") ||
-            rawArg1 > 102
-          ) {
-            const extracted = extractTokenText(startByte, endByte);
-            if (extracted) symName = extracted;
+          const extracted = extractTokenText(startByte, endByte);
+          let symName = extracted;
+          if (!symName) {
+            symName = formatSyntaxTokenName(rawArg1);
+          } else if (symName.startsWith("/") && symName.endsWith("/")) {
+            symName = formatSyntaxTokenName(rawArg1, symName);
           }
           let rawArg2 = arg2 & 0x7fff;
           let rawArg3 = arg3 & 0x7fff;
-          let expName1 =
-            rawArg2 > 0
-              ? (this.syntaxNames && this.syntaxNames[rawArg2]) ||
-                (rawArg2 >= 32 && rawArg2 <= 126
-                  ? String.fromCharCode(rawArg2)
-                  : `token_${rawArg2}`)
-              : "";
-          if (expName1.startsWith("T_")) expName1 = expName1.substring(2);
-          if (expName1.startsWith('"') && expName1.endsWith('"')) {
-            expName1 = expName1.substring(1, expName1.length - 1);
-          }
-          let expName2 =
-            rawArg3 > 0
-              ? (this.syntaxNames && this.syntaxNames[rawArg3]) ||
-                (rawArg3 >= 32 && rawArg3 <= 126
-                  ? String.fromCharCode(rawArg3)
-                  : `token_${rawArg3}`)
-              : "";
-          if (expName2.startsWith("T_")) expName2 = expName2.substring(2);
-          if (expName2.startsWith('"') && expName2.endsWith('"')) {
-            expName2 = expName2.substring(1, expName2.length - 1);
-          }
+          let expName1 = rawArg2 > 0 ? formatSyntaxTokenName(rawArg2) : "";
+          let expName2 = rawArg3 > 0 ? formatSyntaxTokenName(rawArg3) : "";
           let expectedStr = "";
           if (expName1 && expName2 && expName1 !== expName2) {
             if (expName1 === symName) {
@@ -1297,19 +1279,11 @@ export class LspFacade {
             msg = "Syntax Error";
           }
         } else if (arg0 === 0) {
-          let symName = extractTokenText(startByte, endByte);
+          let extracted = extractTokenText(startByte, endByte);
           let rawArg2 = arg2 & 0x7fff;
-          let expName1 =
-            rawArg2 > 0
-              ? (this.syntaxNames && this.syntaxNames[rawArg2]) ||
-                (rawArg2 >= 32 && rawArg2 <= 126
-                  ? String.fromCharCode(rawArg2)
-                  : `token_${rawArg2}`)
-              : "";
-          if (expName1.startsWith("T_")) expName1 = expName1.substring(2);
-          if (expName1.startsWith('"') && expName1.endsWith('"')) {
-            expName1 = expName1.substring(1, expName1.length - 1);
-          }
+          let expName1 = rawArg2 > 0 ? formatSyntaxTokenName(rawArg2) : "";
+          let symName =
+            extracted || (rawArg1 > 0 ? formatSyntaxTokenName(rawArg1) : "");
           if (symName && expName1 && symName !== expName1) {
             msg = `Syntax Error: Unexpected '${symName}', expected '${expName1}'`;
           } else if (symName) {

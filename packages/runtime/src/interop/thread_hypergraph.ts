@@ -8,6 +8,8 @@
  * Operates in linear memory compatible Struct-of-Arrays (SoA) layout.
  */
 
+import type { ConflictClause, SharedEquality } from "../formal/theory_coordinator.js";
+
 export enum ThreadDomain {
   SysML2 = 0,
   Modelica = 1,
@@ -70,6 +72,8 @@ export class DigitalThreadHypergraph {
   private threadIdToSlot: Map<number, number> = new Map();
   // Map composite key `(domainIdx << 32) | nodeId` to array of slots
   private nodeToThreadSlots: Map<bigint, number[]> = new Map();
+  private slotConflicts: Map<number, ConflictClause> = new Map();
+  private slotEqualities: Map<number, SharedEquality[]> = new Map();
 
   constructor(initialCapacity: number = 512) {
     this.capacity = initialCapacity;
@@ -181,6 +185,64 @@ export class DigitalThreadHypergraph {
   isConflicted(slot: number): boolean {
     if (slot >= this.count) return false;
     return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_CONFLICT) !== 0;
+  }
+
+  /**
+   * Records that formal theory coordination passed (SAT) for the given thread slot.
+   * Clears conflict and stale flags, sets SYNCED, and records any shared equalities.
+   */
+  recordTheorySat(slot: number, equalities?: SharedEquality[]): void {
+    if (slot >= this.count) return;
+    this.clearConflict(slot);
+    this.clearStale(slot);
+    const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    this.data[offset] |= THREAD_STATUS_SYNCED;
+    this.slotConflicts.delete(slot);
+    if (equalities && equalities.length > 0) {
+      this.slotEqualities.set(slot, equalities);
+    }
+  }
+
+  /**
+   * Records that formal theory coordination detected a conflict (UNSAT) for the given thread slot.
+   * Marks CONFLICT, unsets SYNCED, and preserves the ConflictClause explanation.
+   */
+  recordTheoryConflict(slot: number, conflict: ConflictClause): void {
+    if (slot >= this.count) return;
+    const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    this.data[offset] &= ~THREAD_STATUS_SYNCED;
+    this.data[offset] |= THREAD_STATUS_CONFLICT;
+    this.slotConflicts.set(slot, conflict);
+  }
+
+  /**
+   * Clears any recorded theory conflict on the slot.
+   */
+  clearTheoryConflict(slot: number): void {
+    if (slot >= this.count) return;
+    this.clearConflict(slot);
+    this.slotConflicts.delete(slot);
+  }
+
+  /**
+   * Retrieves the ConflictClause associated with a conflicted thread slot.
+   */
+  getConflict(slot: number): ConflictClause | undefined {
+    return this.slotConflicts.get(slot);
+  }
+
+  /**
+   * Retrieves the SharedEqualities deduced for a thread slot.
+   */
+  getEqualities(slot: number): SharedEquality[] | undefined {
+    return this.slotEqualities.get(slot);
+  }
+
+  /**
+   * Retrieves all active theory conflicts across all thread slots.
+   */
+  getAllConflicts(): Map<number, ConflictClause> {
+    return new Map(this.slotConflicts);
   }
 
   markRemoved(slot: number): void {
