@@ -19,6 +19,13 @@ export class AbstractDomainOracle implements TheoryOracle {
   private dbm: OctagonDBM;
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
+  private sharedEqualities: SharedEquality[] = [];
+  private levelStack: {
+    dbm: OctagonDBM;
+    varToIdx: Map<string, number>;
+    idxToVar: string[];
+    assertedLitIds: number[];
+  }[] = [];
 
   constructor(maxVars = 64) {
     this.dbm = new OctagonDBM(maxVars);
@@ -30,7 +37,29 @@ export class AbstractDomainOracle implements TheoryOracle {
     this.idxToVar = [];
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
+    this.sharedEqualities = [];
+    this.levelStack = [];
     this.dbm.reset();
+  }
+
+  public pushLevel(): void {
+    this.levelStack.push({
+      dbm: this.dbm.clone(),
+      varToIdx: new Map(this.varToIdx),
+      idxToVar: [...this.idxToVar],
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.dbm = top.dbm;
+    this.varToIdx = top.varToIdx;
+    this.idxToVar = top.idxToVar;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
   }
 
   private getOrAllocVar(name: string): number {
@@ -93,6 +122,9 @@ export class AbstractDomainOracle implements TheoryOracle {
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     this.applyLiteralToDbm(lit);
     return true;
   }
@@ -100,11 +132,15 @@ export class AbstractDomainOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
-    // Replay remaining
+    // Replay remaining asserted literals and re-apply shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
+    const savedShared = [...this.sharedEqualities];
     this.reset();
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of savedShared) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -154,6 +190,7 @@ export class AbstractDomainOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
+    this.sharedEqualities.push(eq);
     if (eq.domain === "interval" || eq.domain === "real" || eq.domain === "discrete") {
       const idxA = this.getOrAllocVar(eq.varA);
       const idxB = this.getOrAllocVar(eq.varB);

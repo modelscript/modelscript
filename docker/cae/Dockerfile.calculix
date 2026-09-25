@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# CalculiX (ccx) Solver Container with SPOOLES Sparse Solver & Result Converters
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gfortran \
+    liblapack-dev \
+    libblas-dev \
+    libarpack2-dev \
+    libspooles-dev \
+    git \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Runtime Stage
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    calculix-ccx \
+    libgfortran5 \
+    liblapack3 \
+    libblas3 \
+    libarpack2 \
+    libspooles2.2 \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+ENTRYPOINT ["ccx"]
+CMD ["-i", "job"]

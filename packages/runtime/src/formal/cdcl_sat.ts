@@ -329,6 +329,9 @@ export class CdclSatSolver {
 
   public addClause(clause: LitId[]): boolean {
     if (this.isRootUnsat) return false;
+    if (this.currentLevel > 0) {
+      this.backtrack(0);
+    }
     // Simplify clause: remove duplicate literals, check for tautology (l and ~l)
     const set = new Set<LitId>();
     for (const lit of clause) {
@@ -533,10 +536,10 @@ export class CdclSatSolver {
     return { learnedClause: learned, backtrackLevel };
   }
 
-  private backtrack(level: number): void {
+  public backtrack(level: number): void {
     if (this.currentLevel <= level) return;
 
-    const targetTrailLim = level === 0 ? 0 : this.trailLim[level - 1]!;
+    const targetTrailLim = level === 0 ? (this.trailLim[0] ?? 0) : this.trailLim[level - 1]!;
     while (this.trail.length > targetTrailLim) {
       const lit = this.trail.pop()!;
       const v = litToVar(lit);
@@ -582,6 +585,10 @@ export class CdclSatSolver {
   public solve(assumptions: LitId[] = []): SatResult {
     if (this.isRootUnsat) {
       return { status: "UNSAT" };
+    }
+
+    if (this.currentLevel > 0) {
+      this.backtrack(0);
     }
 
     // Check level 0 consistency

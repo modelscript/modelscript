@@ -6,9 +6,11 @@
  * WebGPU acceleration, and numerical optimization engines for ModelScript.
  */
 
+export * from "./calibration/index.js";
 export * from "./cfd/index.js";
 export * from "./core/index.js";
 export * from "./fea/index.js";
+export * from "./meshing/index.js";
 export * from "./optimizer/index.js";
 export * from "./solvers/index.js";
 export * from "./surrogates/index.js";

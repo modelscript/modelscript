@@ -40,6 +40,14 @@
       "types": "./dist/cosim/*.d.ts",
       "default": "./dist/cosim/*.js"
     },
+    "./hpc": {
+      "types": "./dist/hpc/index.d.ts",
+      "default": "./dist/hpc/index.js"
+    },
+    "./hpc/*": {
+      "types": "./dist/hpc/*.d.ts",
+      "default": "./dist/hpc/*.js"
+    },
     "./fmu/*": {
       "types": "./dist/fmu/*.d.ts",
       "default": "./dist/fmu/*.js"

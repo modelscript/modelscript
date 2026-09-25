@@ -7,7 +7,7 @@
  * for federated multi-domain digital thread alignments (.ms-thread).
  */
 
-import { DigitalThreadHypergraph, ThreadDomain } from "./thread_hypergraph.js";
+import { DigitalThreadHypergraph, ThreadDomain, ThreadRelation } from "./thread_hypergraph.js";
 
 export const THREAD_CONTEXT = {
   "@vocab": "https://modelscript.io/thread#",
@@ -15,6 +15,8 @@ export const THREAD_CONTEXT = {
   prov: "http://www.w3.org/ns/prov#",
   threadId: "ms:threadId",
   revision: "ms:revision",
+  relation: "ms:relation",
+  branchId: "ms:branchId",
   status: "ms:status",
   alignments: "ms:alignments",
   domains: "ms:domains",
@@ -33,6 +35,25 @@ export const DOMAIN_NAME_TO_INDEX: Record<string, ThreadDomain> = {
   cfd: ThreadDomain.CFD,
   bom: ThreadDomain.BOM,
   fmu: ThreadDomain.FMU,
+  gdt: ThreadDomain.GDT,
+  "gd&t": ThreadDomain.GDT,
+  pmi: ThreadDomain.GDT,
+  telemetry: ThreadDomain.Telemetry,
+  mdf4: ThreadDomain.Telemetry,
+  mcap: ThreadDomain.Telemetry,
+  safety: ThreadDomain.Safety,
+  asil: ThreadDomain.Safety,
+  surrogate: ThreadDomain.Surrogate,
+  rom: ThreadDomain.Surrogate,
+  manufacturing: ThreadDomain.Manufacturing,
+  mfg: ThreadDomain.Manufacturing,
+  costcarbon: ThreadDomain.CostCarbon,
+  carbon: ThreadDomain.CostCarbon,
+  cost: ThreadDomain.CostCarbon,
+  verification: ThreadDomain.Verification,
+  test: ThreadDomain.Verification,
+  software: ThreadDomain.Software,
+  sbom: ThreadDomain.Software,
 };
 
 export const DOMAIN_INDEX_TO_NAME: Record<number, string> = {
@@ -44,6 +65,14 @@ export const DOMAIN_INDEX_TO_NAME: Record<number, string> = {
   [ThreadDomain.CFD]: "cfd",
   [ThreadDomain.BOM]: "bom",
   [ThreadDomain.FMU]: "fmu",
+  [ThreadDomain.GDT]: "gdt",
+  [ThreadDomain.Telemetry]: "telemetry",
+  [ThreadDomain.Safety]: "safety",
+  [ThreadDomain.Surrogate]: "surrogate",
+  [ThreadDomain.Manufacturing]: "manufacturing",
+  [ThreadDomain.CostCarbon]: "costcarbon",
+  [ThreadDomain.Verification]: "verification",
+  [ThreadDomain.Software]: "software",
 };
 
 export interface SerializedThreadFile {
@@ -55,6 +84,8 @@ export interface SerializedThreadFile {
   threads: {
     threadId: number | string;
     revision: number;
+    relation?: string | number;
+    branchId?: number;
     status: "synced" | "stale" | "conflict" | "removed";
     domains: Record<string, number | string>;
   }[];
@@ -79,6 +110,8 @@ export class ThreadSerializer {
       return {
         threadId: rec.threadId,
         revision: rec.revision,
+        relation: ThreadRelation[rec.relation] || rec.relation,
+        branchId: rec.branchId,
         status: statusStr,
         domains,
       };
@@ -107,7 +140,16 @@ export class ThreadSerializer {
     for (const t of parsed.threads) {
       const threadIdNum =
         typeof t.threadId === "number" ? t.threadId : parseInt(String(t.threadId).replace(/\D/g, "") || "1", 10);
-      const slot = hg.createThread(threadIdNum, t.revision || 0);
+
+      let rel = ThreadRelation.Aligned;
+      if (typeof t.relation === "string") {
+        const matching = (ThreadRelation as any)[t.relation];
+        if (matching !== undefined) rel = matching;
+      } else if (typeof t.relation === "number") {
+        rel = t.relation as ThreadRelation;
+      }
+
+      const slot = hg.createThread(threadIdNum, t.revision || 0, rel, t.branchId || 0);
 
       for (const [domName, rawNodeId] of Object.entries(t.domains || {})) {
         const domIdx = DOMAIN_NAME_TO_INDEX[domName.toLowerCase()];

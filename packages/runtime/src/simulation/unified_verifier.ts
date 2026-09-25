@@ -126,6 +126,7 @@ export interface VerificationInputContext {
   paths?: string[];
   coordinator?: SemanticTheoryCoordinator;
   hypergraph?: DigitalThreadHypergraph;
+  contractedStateSpace?: Map<string, [number, number]>;
 }
 
 export class UnifiedVerifier {
@@ -280,6 +281,29 @@ export class UnifiedVerifier {
     }
 
     const satRes = coordinator.checkSat();
+    if (satRes.isSat) {
+      ctx.contractedStateSpace = new Map();
+      const bounds = coordinator.getAllCanonicalBounds();
+      for (const [k, v] of bounds.entries()) {
+        ctx.contractedStateSpace.set(k, [...v]);
+      }
+      if (satRes.models) {
+        for (const model of Object.values(satRes.models)) {
+          if (typeof model === "object" && model !== null) {
+            for (const [k, v] of Object.entries(model)) {
+              if (!ctx.contractedStateSpace.has(k)) {
+                if (Array.isArray(v) && v.length === 2 && typeof v[0] === "number" && typeof v[1] === "number") {
+                  ctx.contractedStateSpace.set(k, [v[0], v[1]]);
+                } else if (typeof v === "number") {
+                  ctx.contractedStateSpace.set(k, [v, v]);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     const violations: VerificationViolation[] = [];
     if (!satRes.isSat && satRes.conflict) {
       violations.push({
@@ -534,12 +558,25 @@ export class UnifiedVerifier {
     const t0 = Date.now();
     try {
       if (ctx.hybridAutomaton) {
+        let initialEnclosure = [new Interval(-1, 1)];
+        if (ctx.contractedStateSpace && ctx.contractedStateSpace.size > 0) {
+          const enclosures: Interval[] = [];
+          for (const [, [lo, hi]] of ctx.contractedStateSpace.entries()) {
+            if (isFinite(lo) && isFinite(hi)) {
+              enclosures.push(new Interval(lo, hi));
+            }
+          }
+          if (enclosures.length > 0) {
+            initialEnclosure = enclosures;
+          }
+        }
+
         const result: HybridFlowpipeResult = HybridFlowpipeSolver.solve({
           automaton: ctx.hybridAutomaton,
           initialModeId: Array.isArray(ctx.hybridAutomaton.modes)
             ? ctx.hybridAutomaton.modes[0]?.id || "m0"
             : ctx.hybridAutomaton.modes.keys().next().value || "m0",
-          initialEnclosure: [new Interval(-1, 1)],
+          initialEnclosure,
           nominalInitial: [0],
           tSpan: [0, 10.0],
           dt: 0.1,

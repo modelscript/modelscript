@@ -95,6 +95,12 @@ export class DimensionalTheoryOracle implements TheoryOracle {
   private varDimensions = new Map<string, DimensionVector>();
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private aliases = new Map<string, string>();
+  private sharedEqualities: SharedEquality[] = [];
+  private levelStack: {
+    varDimensions: Map<string, DimensionVector>;
+    aliases: Map<string, string>;
+    assertedLitIds: number[];
+  }[] = [];
 
   constructor() {
     this.reset();
@@ -104,6 +110,26 @@ export class DimensionalTheoryOracle implements TheoryOracle {
     this.varDimensions.clear();
     this.assertedLiterals.clear();
     this.aliases.clear();
+    this.sharedEqualities = [];
+    this.levelStack = [];
+  }
+
+  public pushLevel(): void {
+    this.levelStack.push({
+      varDimensions: new Map(this.varDimensions),
+      aliases: new Map(this.aliases),
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.varDimensions = top.varDimensions;
+    this.aliases = top.aliases;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
   }
 
   private getCanonicalVar(v: string): string {
@@ -134,6 +160,9 @@ export class DimensionalTheoryOracle implements TheoryOracle {
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -202,33 +231,39 @@ export class DimensionalTheoryOracle implements TheoryOracle {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
     const remaining = Array.from(this.assertedLiterals.values());
+    const savedShared = [...this.sharedEqualities];
     this.reset();
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
+    for (const eq of savedShared) {
+      this.onSharedEquality(eq);
+    }
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
-    // Check that all aliased variables share the identical dimension
+    // Check that all aliased variables share the identical dimension (O(V) using root map)
+    const rootDims = new Map<string, { varName: string; dim: DimensionVector }>();
     for (const [varA, dimA] of this.varDimensions.entries()) {
       const rootA = this.getCanonicalVar(varA);
-      for (const [varB, dimB] of this.varDimensions.entries()) {
-        const rootB = this.getCanonicalVar(varB);
-        if (rootA === rootB && !areDimensionsEqual(dimA, dimB)) {
-          const culprits = Array.from(this.assertedLiterals.values()).filter(
-            (l) => l.args.includes(varA) || l.args.includes(varB),
-          );
+      const existing = rootDims.get(rootA);
+      if (!existing) {
+        rootDims.set(rootA, { varName: varA, dim: dimA });
+      } else if (!areDimensionsEqual(dimA, existing.dim)) {
+        const varB = existing.varName;
+        const culprits = Array.from(this.assertedLiterals.values()).filter(
+          (l) => l.args.includes(varA) || l.args.includes(varB),
+        );
 
-          return {
-            isSat: false,
-            conflict: {
-              literals: culprits,
-              explanation: `Dimensional Inconsistency (ISO 80000): Variable '${varA}' has dimension ${formatDimension(dimA)}, but is unified with '${varB}' of incompatible dimension ${formatDimension(dimB)}.`,
-              culpritEntities: [varA, varB],
-              theoryName: this.name,
-            },
-          };
-        }
+        return {
+          isSat: false,
+          conflict: {
+            literals: culprits,
+            explanation: `Dimensional Inconsistency (ISO 80000): Variable '${varA}' has dimension ${formatDimension(dimA)}, but is unified with '${varB}' of incompatible dimension ${formatDimension(existing.dim)}.`,
+            culpritEntities: [varA, varB],
+            theoryName: this.name,
+          },
+        };
       }
     }
 
@@ -240,6 +275,7 @@ export class DimensionalTheoryOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
+    this.sharedEqualities.push(eq);
     const rootA = this.getCanonicalVar(eq.varA);
     const rootB = this.getCanonicalVar(eq.varB);
     if (rootA !== rootB) {

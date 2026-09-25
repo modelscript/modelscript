@@ -62,6 +62,17 @@ export interface LiveCoSimConfig {
     baseDamping?: number; // N*s/m
     modelica?: ModelicaSystemConfig;
   };
+  /** Fluid-Structure Interaction dynamic stabilization. */
+  fsi?: {
+    /** Enable Aitken dynamic relaxation to prevent numerical added-mass instability (default: false). */
+    enableAitkenRelaxation?: boolean;
+    /** Initial relaxation factor omega_0 in (0, 1] (default: 0.5). */
+    initialOmega?: number;
+    /** Lower bound on relaxation factor (default: 0.05). */
+    minOmega?: number;
+    /** Upper bound on relaxation factor (default: 1.0). */
+    maxOmega?: number;
+  };
 }
 
 export interface LiveCoSimState {
@@ -100,6 +111,10 @@ export class LiveCoSimOrchestrator {
   private resolvedLoadTags: string[] = [];
   private portMappings: ModelicaPortMapping[] = [];
   private prevStructuralDisplacement = 0.0;
+  private currentStepIndex = 0;
+  private aitkenOmega = 0.5;
+  private prevResidual = 0.0;
+  private relaxedDisplacement = 0.0;
 
   private modelicaValues?: Float64Array;
   private modelicaActuatorId?: number;
@@ -324,9 +339,33 @@ export class LiveCoSimOrchestrator {
     }
 
     // 1. CFD Step: Dynamic Aeroelastic coupling
-    // Compute structural velocity from previous deformation
-    const structVel = (this.state.structuralComplianceM - this.prevStructuralDisplacement) / dt;
-    this.prevStructuralDisplacement = this.state.structuralComplianceM;
+    this.currentStepIndex++;
+    const rawDisplacement = this.state.structuralComplianceM;
+    let effectiveDisplacement = rawDisplacement;
+
+    // Apply Aitken dynamic relaxation if enabled
+    const fsiConfig = this.config.fsi;
+    if (fsiConfig?.enableAitkenRelaxation) {
+      const minOmega = fsiConfig.minOmega ?? 0.05;
+      const maxOmega = fsiConfig.maxOmega ?? 1.0;
+      const residual = rawDisplacement - this.relaxedDisplacement;
+
+      if (this.currentStepIndex > 1 && Math.abs(residual - this.prevResidual) > 1e-12) {
+        const deltaR = residual - this.prevResidual;
+        const newOmega = -this.aitkenOmega * (this.prevResidual / deltaR);
+        this.aitkenOmega = Math.min(maxOmega, Math.max(minOmega, Math.abs(newOmega)));
+      } else {
+        this.aitkenOmega = fsiConfig.initialOmega ?? 0.5;
+      }
+
+      this.relaxedDisplacement = this.relaxedDisplacement + this.aitkenOmega * residual;
+      this.prevResidual = residual;
+      effectiveDisplacement = this.relaxedDisplacement;
+    }
+
+    // Compute structural velocity from deformation
+    const structVel = (effectiveDisplacement - this.prevStructuralDisplacement) / dt;
+    this.prevStructuralDisplacement = effectiveDisplacement;
 
     // Impart structural surface velocity into LBM moving wall boundary
     this.cfdRunner.setMovingWallVelocity([0, structVel, 0]);

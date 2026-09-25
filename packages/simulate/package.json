@@ -18,6 +18,10 @@
       "types": "./dist/solvers/index.d.ts",
       "default": "./dist/solvers/index.js"
     },
+    "./meshing": {
+      "types": "./dist/meshing/index.d.ts",
+      "default": "./dist/meshing/index.js"
+    },
     "./optimizer": {
       "types": "./dist/optimizer/index.d.ts",
       "default": "./dist/optimizer/index.js"
@@ -52,7 +56,9 @@
     "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/test-solvers-all.ts tests/test-ad-jvp-vjp.ts"
   },
   "dependencies": {
+    "@modelscript/cfd": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/fea": "*",
     "@modelscript/runtime": "*"
   },
   "devDependencies": {

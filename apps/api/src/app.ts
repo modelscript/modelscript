@@ -13,6 +13,7 @@ import { JobQueue } from "./jobs.js";
 import { setAuthDatabase } from "./middleware/auth-middleware.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
+import { caeRouter } from "./routes/cae.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { federationRouter } from "./routes/federation.js";
 import { fmuRouter } from "./routes/fmu.js";
@@ -348,6 +349,7 @@ graph TD
   app.use("/api/v1/libraries", sparqlRouter(database));
   app.use("/api/v1", simulateRouter(libraryStorage, jobQueue));
   app.use("/api/v1", physicsRouter(jobQueue, database));
+  app.use("/api/v1", caeRouter(jobQueue, database));
   app.use("/api/v1/jobs", scriptsRouter(database));
 
   // Artifact viewer routes (query artifact metadata, viewer configs)

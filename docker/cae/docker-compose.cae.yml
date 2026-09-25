@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+services:
+  solver-calculix:
+    image: ghcr.io/modelscript/solver-calculix:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.calculix
+    volumes:
+      - /tmp/modelscript-cae:/workspace:rw
+    deploy:
+      resources:
+        limits:
+          cpus: "8"
+          memory: 16G
+
+  solver-su2:
+    image: ghcr.io/modelscript/solver-su2:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.su2
+    volumes:
+      - /tmp/modelscript-cae:/workspace:rw
+    deploy:
+      resources:
+        limits:
+          cpus: "16"
+          memory: 32G

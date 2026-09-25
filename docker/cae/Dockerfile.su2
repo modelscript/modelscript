@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SU2_CFD Solver Container with OpenMPI Parallelization
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    openmpi-bin \
+    libopenmpi-dev \
+    python3 \
+    python3-numpy \
+    su2 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV SU2_RUN=/usr/bin
+ENV PATH="${SU2_RUN}:${PATH}"
+
+WORKDIR /workspace
+
+ENTRYPOINT ["SU2_CFD"]
+CMD ["config.cfg"]

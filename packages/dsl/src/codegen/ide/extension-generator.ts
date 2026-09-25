@@ -191,6 +191,22 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     });
   }
 
+  // FEA / CalculiX Deck 3D Editor
+  customEditors.push({
+    viewType: "modelscript.inpEditor",
+    displayName: "FEA Deck & 3D Simulation Viewer",
+    selector: [{ filenamePattern: "*.inp" }, { filenamePattern: "*.inpt" }],
+    priority: "option",
+  });
+
+  // CFD / SU2 Config 3D Editor
+  customEditors.push({
+    viewType: "modelscript.cfgEditor",
+    displayName: "CFD Config & 3D Aerodynamics Viewer",
+    selector: [{ filenamePattern: "*.cfg" }, { filenamePattern: "*.cfgt" }],
+    priority: "option",
+  });
+
   // SysML Requirements Matrix Custom Editor
   if (languages.some((l) => l.id === "sysml2" || l.id === "sysml")) {
     customEditors.push({
@@ -215,11 +231,32 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       category: "ModelScript",
       icon: "$(go-to-file)",
     },
+    {
+      command: "modelscript.generateFeaMesh",
+      title: "ModelScript: Discretize CAD to FEA Mesh (.inp)",
+      category: "ModelScript CAE",
+    },
+    {
+      command: "modelscript.generateCfdMesh",
+      title: "ModelScript: Discretize CAD to CFD Mesh (.su2)",
+      category: "ModelScript CAE",
+    },
   ];
 
   const editorTitleMenus: any[] = [];
   const editorContextMenus: any[] = [];
-  const explorerContextMenus: any[] = [];
+  const explorerContextMenus: any[] = [
+    {
+      command: "modelscript.generateFeaMesh",
+      when: "resourceExtname == .step || resourceExtname == .stp",
+      group: "modelscript_cae@1",
+    },
+    {
+      command: "modelscript.generateCfdMesh",
+      when: "resourceExtname == .step || resourceExtname == .stp",
+      group: "modelscript_cae@2",
+    },
+  ];
   const commandPaletteMenus: any[] = [];
   const languageModelTools: any[] = [];
   const keybindings: any[] = [];
@@ -1142,6 +1179,8 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     "webview/surrogateWebview.tsx",
     "webview/physicsSetupWebview.tsx",
     "webview/gcodeWebview.tsx",
+    "webview/feaDeckWebview.tsx",
+    "webview/cfdConfigWebview.tsx",
     "webview/vrVisualizationWebview.tsx",
   ]
     .map((rel) => path.join(ideDir, rel))

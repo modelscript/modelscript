@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "@mlc-ai/web-llm": "^0.2.85",
+    "@modelscript/cfd": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/fea": "*",
     "@modelscript/lsp": "*",
     "@modelscript/owl2": "*",
+    "@modelscript/simulate": "*",
     "@modelscript/step": "*",
     "@vscode/debugadapter": "^1.68.0",
     "vscode-languageclient": "^9.0.1"

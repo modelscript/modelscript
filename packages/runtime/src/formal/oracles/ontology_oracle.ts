@@ -31,6 +31,15 @@ export class OntologyTheoryOracle implements TheoryOracle {
 
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
+  private sharedEqualities: SharedEquality[] = [];
+  private levelStack: {
+    subClasses: Map<string, Set<string>>;
+    disjointClasses: Map<string, Set<string>>;
+    individualTypes: Map<string, Set<string>>;
+    sameIndividualMap: Map<string, string>;
+    differentIndividuals: Map<string, Set<string>>;
+    assertedLitIds: number[];
+  }[] = [];
 
   constructor() {
     this.reset();
@@ -44,6 +53,41 @@ export class OntologyTheoryOracle implements TheoryOracle {
     this.differentIndividuals.clear();
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
+    this.sharedEqualities = [];
+    this.levelStack = [];
+  }
+
+  public pushLevel(): void {
+    const subClassesClone = new Map<string, Set<string>>();
+    for (const [k, v] of this.subClasses) subClassesClone.set(k, new Set(v));
+    const disjointClone = new Map<string, Set<string>>();
+    for (const [k, v] of this.disjointClasses) disjointClone.set(k, new Set(v));
+    const typesClone = new Map<string, Set<string>>();
+    for (const [k, v] of this.individualTypes) typesClone.set(k, new Set(v));
+    const diffClone = new Map<string, Set<string>>();
+    for (const [k, v] of this.differentIndividuals) diffClone.set(k, new Set(v));
+
+    this.levelStack.push({
+      subClasses: subClassesClone,
+      disjointClasses: disjointClone,
+      individualTypes: typesClone,
+      sameIndividualMap: new Map(this.sameIndividualMap),
+      differentIndividuals: diffClone,
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.subClasses = top.subClasses;
+    this.disjointClasses = top.disjointClasses;
+    this.individualTypes = top.individualTypes;
+    this.sameIndividualMap = top.sameIndividualMap;
+    this.differentIndividuals = top.differentIndividuals;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
   }
 
   private findRootIndividual(x: string): string {
@@ -91,6 +135,9 @@ export class OntologyTheoryOracle implements TheoryOracle {
    */
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -165,11 +212,15 @@ export class OntologyTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
-    // Replay remaining literals
+    // Replay remaining literals and re-apply shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
+    const savedShared = [...this.sharedEqualities];
     this.reset();
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of savedShared) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -285,6 +336,7 @@ export class OntologyTheoryOracle implements TheoryOracle {
    * Receives shared equalities from the coordinator and merges individuals.
    */
   public onSharedEquality(eq: SharedEquality): void {
+    this.sharedEqualities.push(eq);
     if (eq.domain === "concept" || eq.domain === "discrete") {
       this.unionIndividuals(eq.varA, eq.varB);
     }

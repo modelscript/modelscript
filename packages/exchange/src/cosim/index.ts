@@ -27,6 +27,7 @@ export * from "./session.js";
 
 // ── Participants ──
 export * from "./audio-worklet-clock.js";
+export * from "./ipc/shm-protocol.js";
 export * from "./participants/cfd-provider.js";
 export * from "./participants/fea-provider.js";
 export * from "./participants/fmu-js.js";
@@ -35,6 +36,7 @@ export * from "./participants/fmu-wasm-worker-proxy.js";
 export * from "./participants/fmu-wasm.js";
 export * from "./participants/js-simulator.js";
 export * from "./participants/lbm-provider.js";
+export * from "./participants/native-shm-provider.js";
 export * from "./participants/web-hardware.js";
 
 // ── Historian ──

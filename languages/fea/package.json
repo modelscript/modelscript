@@ -1,0 +1,41 @@
+{
+  "name": "@modelscript/fea",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./materializer": {
+      "types": "./dist/src/materializer.d.ts",
+      "default": "./dist/src/materializer.js"
+    },
+    "./dialects": {
+      "types": "./dist/src/dialects/index.d.ts",
+      "default": "./dist/src/dialects/index.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src --no-warn-ignored",
+    "test": "npx tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

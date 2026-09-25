@@ -1418,6 +1418,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     [".rdf", "owl2"],
     [".csv", "csv"],
     [".scad", "scad"],
+    [".inp", "fea"],
+    [".bdf", "fea"],
+    [".cfg", "cfd"],
   ]);
 
   static registerLanguageExtension(ext: string, lang: string): void {

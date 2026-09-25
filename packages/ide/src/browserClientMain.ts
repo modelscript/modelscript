@@ -34,10 +34,15 @@ import { OWL2ClassHierarchyProvider } from "./owl2ClassHierarchyProvider";
 import { OWL2DiagramPanel } from "./owl2DiagramPanel";
 import { OWL2PropertyHierarchyProvider } from "./owl2PropertyHierarchyProvider";
 
+import { materializeCfdConfig } from "@modelscript/cfd";
+import { materializeFeaDeck } from "@modelscript/fea";
+import { registerCadMeshingCommands } from "./cadMeshingCommands";
 import { CalibrationPanel } from "./calibrationPanel";
 import { CandidateTradeStudyPanel } from "./candidateTradeStudyPanel";
+import { CfgEditorProvider } from "./cfgEditorProvider";
 import { ExperimentsTreeProvider } from "./experimentsTree";
 import { GCodeEditorProvider } from "./gcodeEditorProvider";
+import { InpEditorProvider } from "./inpEditorProvider";
 import { OptimizationPanel } from "./optimizationPanel";
 import { SimulationViewPanel } from "./physicsSetupEditorProvider";
 import { SimulationPanel } from "./simulationPanel";
@@ -539,6 +544,25 @@ export async function activate(context: vscode.ExtensionContext) {
         webviewOptions: { retainContextWhenHidden: true },
       }),
     );
+
+    // Register FEA Deck 3D Editor (.inp / .inpt)
+    const inpEditor = new InpEditorProvider(context, client);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(InpEditorProvider.viewType, inpEditor, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
+    );
+
+    // Register CFD Config 3D Editor (.cfg / .cfgt)
+    const cfgEditor = new CfgEditorProvider(context, client);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(CfgEditorProvider.viewType, cfgEditor, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
+    );
+
+    // Register Automated CAD-to-Mesh Commands
+    registerCadMeshingCommands(context);
   } catch (e) {
     console.error("ModelScript language server failed to start:", e);
     lspOutputChannel.appendLine(`[client] Language server FAILED to start: ${e}`);
@@ -2095,28 +2119,70 @@ end ${modelName};
           const moUri = targetUri.with({ path: `${basePath}.mo` });
           await vscode.workspace.fs.writeFile(moUri, new TextEncoder().encode(moContent));
 
-          // 3. Generate Static Structural FEA Study Stub
-          const feaContent = `model ${modelName}_FEA
-  extends ModelScript.Studies.StaticStructuralFEA(
-    meshResolution = 0.05
-  );
-  ${modelName} component;
-end ${modelName}_FEA;
+          // 3. Generate CalculiX Parametric Structural FEA Deck (.inpt)
+          const inptContent = `** ============================================================================
+** Generated CalculiX Parametric FEA Deck from SysML v2: ${modelName}
+** ============================================================================
+*HEADING
+ModelScript 3D Structural FEA for {{ ${modelName}.name }}
+*NODE
+1, 0.0, 0.0, 0.0
+2, {{ ${modelName}.length }}, 0.0, 0.0
+3, 0.0, {{ ${modelName}.width }}, 0.0
+4, 0.0, 0.0, {{ ${modelName}.height }}
+*ELEMENT, TYPE=C3D4, ELSET=${modelName.toUpperCase()}_BODY
+1, 1, 2, 3, 4
+*MATERIAL, NAME=ALUMINUM_6061
+*ELASTIC
+ {{ ${modelName}.youngsModulus }}, {{ ${modelName}.poissonsRatio }}
+*DENSITY
+ 2700
+*STEP
+*STATIC
+*BOUNDARY
+ 1, 1, 3
+*CLOAD
+ 2, 2, {{ ${modelName}.thrustForce }}
+*NODE FILE
+ U
+*EL FILE
+ S
+*END STEP
 `;
-          const feaUri = targetUri.with({ path: `${basePath}.fea.mo` });
-          await vscode.workspace.fs.writeFile(feaUri, new TextEncoder().encode(feaContent));
+          const inpUri = targetUri.with({ path: `${basePath}.inp` });
+          await vscode.workspace.fs.writeFile(inpUri, new TextEncoder().encode(inptContent));
+
+          // 4. Generate SU2 Parametric Aerodynamic CFD Config (.cfg)
+          const cfgtContent = `% ============================================================================
+% Generated SU2 Parametric CFD Config from SysML v2: ${modelName}
+% ============================================================================
+MATH_PROBLEM= NAVIER_STOKES
+MACH_NUMBER= 0.15
+REYNOLDS_NUMBER= 250000
+FREESTREAM_DENSITY= 1.225
+FREESTREAM_VELOCITY= ( {{ ${modelName}.inletVelocity }}, 0.0, 0.0 )
+MARKER_INLET= ( inlet_patch, {{ ${modelName}.inletVelocity }}, 1.0, 0.0, 0.0 )
+MARKER_OUTLET= ( outlet_patch, 0.0 )
+MARKER_HEATFLUX= ( ${modelName.toLowerCase()}_wall, 0.0 )
+`;
+          const cfgUri = targetUri.with({ path: `${basePath}.cfg` });
+          await vscode.workspace.fs.writeFile(cfgUri, new TextEncoder().encode(cfgtContent));
 
           vscode.window
             .showInformationMessage(
-              `⚡ Multi-Domain Scaffolding Complete for ${modelName}: generated .scad, .mo, and .fea.mo.`,
-              "Open OpenSCAD",
-              "Open Modelica",
+              `⚡ Multi-Domain Scaffolding Complete for ${modelName}: generated .scad, .mo, .inp (FEA), and .cfg (CFD).`,
+              "Open FEA (.inp)",
+              "Open CFD (.cfg)",
+              "Open Modelica (.mo)",
             )
             .then(async (selection) => {
-              if (selection === "Open OpenSCAD") {
-                const doc = await vscode.workspace.openTextDocument(scadUri);
+              if (selection === "Open FEA (.inp)") {
+                const doc = await vscode.workspace.openTextDocument(inpUri);
                 await vscode.window.showTextDocument(doc);
-              } else if (selection === "Open Modelica") {
+              } else if (selection === "Open CFD (.cfg)") {
+                const doc = await vscode.workspace.openTextDocument(cfgUri);
+                await vscode.window.showTextDocument(doc);
+              } else if (selection === "Open Modelica (.mo)") {
                 const doc = await vscode.workspace.openTextDocument(moUri);
                 await vscode.window.showTextDocument(doc);
               }
@@ -2126,6 +2192,73 @@ end ${modelName}_FEA;
         }
       },
     ),
+    commands.registerCommand("modelscript.materializeCalculixDeck", async (uriOrStr?: vscode.Uri | string) => {
+      let targetUri: vscode.Uri | undefined;
+      if (typeof uriOrStr === "string") targetUri = vscode.Uri.parse(uriOrStr);
+      else if (uriOrStr) targetUri = uriOrStr;
+      else if (vscode.window.activeTextEditor) targetUri = vscode.window.activeTextEditor.document.uri;
+
+      if (
+        !targetUri ||
+        (!targetUri.path.endsWith(".inp") && !targetUri.path.endsWith(".bdf") && !targetUri.path.endsWith(".inpt"))
+      ) {
+        vscode.window.showErrorMessage("Please open or select an FEA deck (.inp / .bdf) to materialize.");
+        return;
+      }
+
+      try {
+        const fileBytes = await vscode.workspace.fs.readFile(targetUri);
+        const rawText = new TextDecoder().decode(fileBytes);
+        const materialized = materializeFeaDeck(rawText);
+        const outPath = targetUri.path.endsWith(".inpt")
+          ? targetUri.path.replace(/\.inpt$/, ".inp")
+          : targetUri.path.replace(/(\.[^.]+)$/, ".materialized$1");
+        const outUri = targetUri.with({ path: outPath });
+        await vscode.workspace.fs.writeFile(outUri, new TextEncoder().encode(materialized));
+        vscode.window
+          .showInformationMessage(`Materialized FEA deck to ${outUri.path}`, "Open deck")
+          .then(async (sel) => {
+            if (sel === "Open deck") {
+              const doc = await vscode.workspace.openTextDocument(outUri);
+              await vscode.window.showTextDocument(doc);
+            }
+          });
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Failed to materialize FEA deck: ${err.message || err}`);
+      }
+    }),
+    commands.registerCommand("modelscript.materializeSu2Config", async (uriOrStr?: vscode.Uri | string) => {
+      let targetUri: vscode.Uri | undefined;
+      if (typeof uriOrStr === "string") targetUri = vscode.Uri.parse(uriOrStr);
+      else if (uriOrStr) targetUri = uriOrStr;
+      else if (vscode.window.activeTextEditor) targetUri = vscode.window.activeTextEditor.document.uri;
+
+      if (!targetUri || (!targetUri.path.endsWith(".cfg") && !targetUri.path.endsWith(".cfgt"))) {
+        vscode.window.showErrorMessage("Please open or select a CFD config (.cfg) to materialize.");
+        return;
+      }
+
+      try {
+        const fileBytes = await vscode.workspace.fs.readFile(targetUri);
+        const rawText = new TextDecoder().decode(fileBytes);
+        const materialized = materializeCfdConfig(rawText);
+        const outPath = targetUri.path.endsWith(".cfgt")
+          ? targetUri.path.replace(/\.cfgt$/, ".cfg")
+          : targetUri.path.replace(/\.cfg$/, ".materialized.cfg");
+        const outUri = targetUri.with({ path: outPath });
+        await vscode.workspace.fs.writeFile(outUri, new TextEncoder().encode(materialized));
+        vscode.window
+          .showInformationMessage(`Materialized CFD config to ${outUri.path}`, "Open config")
+          .then(async (sel) => {
+            if (sel === "Open config") {
+              const doc = await vscode.workspace.openTextDocument(outUri);
+              await vscode.window.showTextDocument(doc);
+            }
+          });
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Failed to materialize CFD config: ${err.message || err}`);
+      }
+    }),
     commands.registerCommand("modelscript.createFeaSetup", async (uri?: vscode.Uri) => {
       let targetUri = uri;
       if (!targetUri && vscode.window.activeTextEditor) {

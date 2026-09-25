@@ -67,3 +67,24 @@ export interface FeaStepResult {
   /** Safety factor relative to yield strength (if specified). */
   safetyFactor?: number;
 }
+
+export interface MeshQualityMetrics {
+  /** Minimum scaled Jacobian determinant (should be > 0.2, negative means inverted element). */
+  minJacobian: number;
+  /** Maximum scaled Jacobian determinant (ideal is 1.0). */
+  maxJacobian: number;
+  /** Average scaled Jacobian determinant across all elements. */
+  avgJacobian: number;
+  /** Minimum aspect ratio across all elements. */
+  minAspectRatio: number;
+  /** Maximum aspect ratio across all elements (ideal < 3.0, acceptable < 10.0). */
+  maxAspectRatio: number;
+  /** Average aspect ratio. */
+  avgAspectRatio: number;
+  /** Total number of inverted or degenerate elements (Jacobian <= 0). */
+  numInvertedElements: number;
+  /** Per-element scaled Jacobian values. */
+  elementJacobians: Float32Array;
+  /** Per-element aspect ratios. */
+  elementAspectRatios: Float32Array;
+}

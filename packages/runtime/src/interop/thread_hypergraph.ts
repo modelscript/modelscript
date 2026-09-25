@@ -4,7 +4,8 @@
  * High-performance N-Ary Digital Thread Alignment Hypergraph for @modelscript/runtime.
  *
  * Federates multi-way alignments across N >= 2 domain projections (SysML v2, Modelica,
- * CAD, Requirements, FEA, CFD, BOM, FMU) without O(N^2) pairwise synchronizer explosion.
+ * CAD, Requirements, FEA, CFD, BOM, FMU, GD&T, Telemetry, Safety, Surrogate,
+ * Manufacturing, Cost/Carbon, Verification, Software) without O(N^2) pairwise synchronizer explosion.
  * Operates in linear memory compatible Struct-of-Arrays (SoA) layout.
  */
 
@@ -19,16 +20,37 @@ export enum ThreadDomain {
   CFD = 5,
   BOM = 6,
   FMU = 7,
+  GDT = 8, // STEP AP242 Semantic GD&T
+  Telemetry = 9, // ASAM MDF4 / MCAP / Parquet
+  Safety = 10, // Safety Goals, ASIL, Hazards & Fault Trees
+  Surrogate = 11, // POD-Galerkin / Neural ROMs
+  Manufacturing = 12, // Tooling, G-code, CMM scans
+  CostCarbon = 13, // Cost & Embodied Carbon LCA
+  Verification = 14, // Test verification matrices & compliance
+  Software = 15, // Firmware / sBOM
 }
 
-export const MAX_THREAD_DOMAINS = 8;
-export const THREAD_HEADER_WORDS = 4;
-export const THREAD_STRIDE = THREAD_HEADER_WORDS + MAX_THREAD_DOMAINS;
+export enum ThreadRelation {
+  Aligned = 0, // Default multi-way alignment
+  Satisfies = 1, // Component/model satisfies requirement
+  DerivesFrom = 2, // Design derives from parent architecture
+  Verifies = 3, // Simulation or test verifies requirement
+  Calibrates = 4, // Telemetry calibrates simulation parameter
+  Manufactures = 5, // Tooling / G-code manufactures CAD geometry
+  Measures = 6, // Virtual/physical sensor measures variable
+  AllocatesTo = 7, // Function allocates to hardware/software
+}
+
+export const MAX_THREAD_DOMAINS = 16;
+export const THREAD_HEADER_WORDS = 6;
+export const THREAD_STRIDE = THREAD_HEADER_WORDS + MAX_THREAD_DOMAINS; // 22 words
 
 export const THREAD_FIELD_ID = 0;
-export const THREAD_FIELD_MASK = 1;
-export const THREAD_FIELD_STATUS = 2;
-export const THREAD_FIELD_REVISION = 3;
+export const THREAD_FIELD_MASK = 1; // Bitmask of active domains (uint32, 16 bits used)
+export const THREAD_FIELD_STATUS = 2; // Status flags (SYNCED, STALE, CONFLICT, REMOVED)
+export const THREAD_FIELD_REVISION = 3; // Revision number
+export const THREAD_FIELD_RELATION = 4; // ThreadRelation (uint32)
+export const THREAD_FIELD_BRANCH = 5; // Branch / variant ID (uint32, 0 = main)
 
 export const THREAD_STATUS_SYNCED = 0x0001;
 export const THREAD_STATUS_STALE = 0x0002;
@@ -41,6 +63,8 @@ export interface ThreadRecord {
   domainMask: number;
   status: number;
   revision: number;
+  relation: ThreadRelation;
+  branchId: number;
   domainNodes: Record<number, number>;
   isSynced: boolean;
   isStale: boolean;
@@ -55,6 +79,8 @@ export interface BlastRadiusNode {
   slot: number;
   distance: number;
   status: "synced" | "stale" | "conflict" | "removed";
+  relation: ThreadRelation;
+  branchId: number;
 }
 
 export interface BlastRadiusResult {
@@ -89,7 +115,12 @@ export class DigitalThreadHypergraph {
     this.capacity = newCap;
   }
 
-  createThread(threadId: number, revision: number = 0): number {
+  createThread(
+    threadId: number,
+    revision: number = 0,
+    relation: ThreadRelation = ThreadRelation.Aligned,
+    branchId: number = 0,
+  ): number {
     const existing = this.threadIdToSlot.get(threadId);
     if (existing !== undefined) return existing;
 
@@ -101,6 +132,8 @@ export class DigitalThreadHypergraph {
     this.data[offset + THREAD_FIELD_MASK] = 0;
     this.data[offset + THREAD_FIELD_STATUS] = THREAD_STATUS_SYNCED;
     this.data[offset + THREAD_FIELD_REVISION] = revision;
+    this.data[offset + THREAD_FIELD_RELATION] = relation;
+    this.data[offset + THREAD_FIELD_BRANCH] = branchId;
 
     for (let d = 0; d < MAX_THREAD_DOMAINS; d++) {
       this.data[offset + THREAD_HEADER_WORDS + d] = 0;
@@ -112,6 +145,26 @@ export class DigitalThreadHypergraph {
 
   findSlotByThreadId(threadId: number): number | undefined {
     return this.threadIdToSlot.get(threadId);
+  }
+
+  setRelation(slot: number, relation: ThreadRelation): void {
+    if (slot >= this.count) return;
+    this.data[slot * THREAD_STRIDE + THREAD_FIELD_RELATION] = relation;
+  }
+
+  getRelation(slot: number): ThreadRelation {
+    if (slot >= this.count) return ThreadRelation.Aligned;
+    return this.data[slot * THREAD_STRIDE + THREAD_FIELD_RELATION] as ThreadRelation;
+  }
+
+  setBranch(slot: number, branchId: number): void {
+    if (slot >= this.count) return;
+    this.data[slot * THREAD_STRIDE + THREAD_FIELD_BRANCH] = branchId;
+  }
+
+  getBranch(slot: number): number {
+    if (slot >= this.count) return 0;
+    return this.data[slot * THREAD_STRIDE + THREAD_FIELD_BRANCH];
   }
 
   bindDomainNode(slot: number, domainIdx: ThreadDomain | number, nodeId: number): void {
@@ -136,19 +189,23 @@ export class DigitalThreadHypergraph {
     return this.data[slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx];
   }
 
-  findSlotsByDomainNode(domainIdx: ThreadDomain | number, nodeId: number): number[] {
+  findSlotsByDomainNode(domainIdx: ThreadDomain | number, nodeId: number, branchId?: number): number[] {
     const key = (BigInt(domainIdx) << 32n) | BigInt(nodeId >>> 0);
     const slots = this.nodeToThreadSlots.get(key) || [];
-    return slots.filter((s) => !this.isRemoved(s));
+    return slots.filter((s) => {
+      if (this.isRemoved(s)) return false;
+      if (branchId !== undefined && this.getBranch(s) !== branchId) return false;
+      return true;
+    });
   }
 
-  findSlotByDomainNode(domainIdx: ThreadDomain | number, nodeId: number): number | undefined {
-    const active = this.findSlotsByDomainNode(domainIdx, nodeId);
+  findSlotByDomainNode(domainIdx: ThreadDomain | number, nodeId: number, branchId?: number): number | undefined {
+    const active = this.findSlotsByDomainNode(domainIdx, nodeId, branchId);
     return active.length > 0 ? active[0] : undefined;
   }
 
-  findThreadByDomainNode(domainIdx: ThreadDomain | number, nodeId: number): number | undefined {
-    const slot = this.findSlotByDomainNode(domainIdx, nodeId);
+  findThreadByDomainNode(domainIdx: ThreadDomain | number, nodeId: number, branchId?: number): number | undefined {
+    const slot = this.findSlotByDomainNode(domainIdx, nodeId, branchId);
     if (slot === undefined) return undefined;
     return this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
   }
@@ -187,10 +244,6 @@ export class DigitalThreadHypergraph {
     return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_CONFLICT) !== 0;
   }
 
-  /**
-   * Records that formal theory coordination passed (SAT) for the given thread slot.
-   * Clears conflict and stale flags, sets SYNCED, and records any shared equalities.
-   */
   recordTheorySat(slot: number, equalities?: SharedEquality[]): void {
     if (slot >= this.count) return;
     this.clearConflict(slot);
@@ -203,10 +256,6 @@ export class DigitalThreadHypergraph {
     }
   }
 
-  /**
-   * Records that formal theory coordination detected a conflict (UNSAT) for the given thread slot.
-   * Marks CONFLICT, unsets SYNCED, and preserves the ConflictClause explanation.
-   */
   recordTheoryConflict(slot: number, conflict: ConflictClause): void {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
@@ -215,32 +264,20 @@ export class DigitalThreadHypergraph {
     this.slotConflicts.set(slot, conflict);
   }
 
-  /**
-   * Clears any recorded theory conflict on the slot.
-   */
   clearTheoryConflict(slot: number): void {
     if (slot >= this.count) return;
     this.clearConflict(slot);
     this.slotConflicts.delete(slot);
   }
 
-  /**
-   * Retrieves the ConflictClause associated with a conflicted thread slot.
-   */
   getConflict(slot: number): ConflictClause | undefined {
     return this.slotConflicts.get(slot);
   }
 
-  /**
-   * Retrieves the SharedEqualities deduced for a thread slot.
-   */
   getEqualities(slot: number): SharedEquality[] | undefined {
     return this.slotEqualities.get(slot);
   }
 
-  /**
-   * Retrieves all active theory conflicts across all thread slots.
-   */
   getAllConflicts(): Map<number, ConflictClause> {
     return new Map(this.slotConflicts);
   }
@@ -267,6 +304,8 @@ export class DigitalThreadHypergraph {
     const domainMask = this.data[offset + THREAD_FIELD_MASK];
     const status = this.data[offset + THREAD_FIELD_STATUS];
     const revision = this.data[offset + THREAD_FIELD_REVISION];
+    const relation = this.data[offset + THREAD_FIELD_RELATION] as ThreadRelation;
+    const branchId = this.data[offset + THREAD_FIELD_BRANCH];
 
     const domainNodes: Record<number, number> = {};
     for (let d = 0; d < MAX_THREAD_DOMAINS; d++) {
@@ -281,6 +320,8 @@ export class DigitalThreadHypergraph {
       domainMask,
       status,
       revision,
+      relation,
+      branchId,
       domainNodes,
       isSynced: (status & THREAD_STATUS_SYNCED) !== 0 && (status & THREAD_STATUS_STALE) === 0,
       isStale: (status & THREAD_STATUS_STALE) !== 0,
@@ -289,18 +330,74 @@ export class DigitalThreadHypergraph {
     };
   }
 
-  getAllRecords(): ThreadRecord[] {
+  getAllRecords(branchId?: number): ThreadRecord[] {
     const list: ThreadRecord[] = [];
     for (let i = 0; i < this.count; i++) {
       const rec = this.getRecord(i);
-      if (rec && !rec.isRemoved) list.push(rec);
+      if (rec && !rec.isRemoved) {
+        if (branchId !== undefined && rec.branchId !== branchId) continue;
+        list.push(rec);
+      }
     }
     return list;
   }
 
-  computeBlastRadius(startDomain: ThreadDomain | number, startNodeId: number): BlastRadiusResult {
+  forkBranch(parentBranchId: number, newBranchId: number, idOffset = 1_000_000): number {
+    let cloned = 0;
+    const currentCount = this.count;
+    for (let slot = 0; slot < currentCount; slot++) {
+      const rec = this.getRecord(slot);
+      if (!rec || rec.isRemoved || rec.branchId !== parentBranchId) continue;
+
+      const newThreadId = rec.threadId + idOffset * newBranchId;
+      const newSlot = this.createThread(newThreadId, rec.revision, rec.relation, newBranchId);
+      for (const [domStr, nId] of Object.entries(rec.domainNodes)) {
+        this.bindDomainNode(newSlot, Number(domStr), nId);
+      }
+      cloned++;
+    }
+    return cloned;
+  }
+
+  mergeBranch(
+    sourceBranchId: number,
+    targetBranchId: number,
+    idOffset = 1_000_000,
+  ): { mergedCount: number; conflictCount: number } {
+    let mergedCount = 0;
+    let conflictCount = 0;
+
+    for (let slot = 0; slot < this.count; slot++) {
+      const rec = this.getRecord(slot);
+      if (!rec || rec.isRemoved || rec.branchId !== sourceBranchId) continue;
+
+      const originalThreadId = rec.threadId - idOffset * sourceBranchId;
+      const targetSlot = this.findSlotByThreadId(originalThreadId);
+
+      if (targetSlot !== undefined) {
+        if (this.isConflicted(slot)) {
+          this.markConflict(targetSlot);
+          conflictCount++;
+        } else {
+          for (const [domStr, nId] of Object.entries(rec.domainNodes)) {
+            this.bindDomainNode(targetSlot, Number(domStr), nId);
+          }
+          this.setRelation(targetSlot, rec.relation);
+          this.data[targetSlot * THREAD_STRIDE + THREAD_FIELD_REVISION] = rec.revision;
+          mergedCount++;
+        }
+      }
+    }
+    return { mergedCount, conflictCount };
+  }
+
+  computeBlastRadius(
+    startDomain: ThreadDomain | number,
+    startNodeId: number,
+    options?: { branchId?: number; filterRelation?: ThreadRelation },
+  ): BlastRadiusResult {
     const root = { domain: startDomain as ThreadDomain, nodeId: startNodeId };
-    const initialSlots = this.findSlotsByDomainNode(startDomain, startNodeId);
+    const initialSlots = this.findSlotsByDomainNode(startDomain, startNodeId, options?.branchId);
 
     if (initialSlots.length === 0) {
       return {
@@ -317,7 +414,6 @@ export class DigitalThreadHypergraph {
     const impactedNodes: BlastRadiusNode[] = [];
     const impactedThreads = new Set<number>();
 
-    // BFS Queue: start from all slots containing the start node
     const queue: { slot: number; distance: number }[] = [];
     for (const s of initialSlots) {
       visitedSlots.add(s);
@@ -328,8 +424,11 @@ export class DigitalThreadHypergraph {
       const { slot, distance } = queue.shift()!;
       const rec = this.getRecord(slot);
       if (!rec || rec.isRemoved) continue;
-
-      impactedThreads.add(rec.threadId);
+      if (options?.branchId !== undefined && rec.branchId !== options.branchId) continue;
+      const matchesFilter = options?.filterRelation === undefined || rec.relation === options.filterRelation;
+      if (matchesFilter) {
+        impactedThreads.add(rec.threadId);
+      }
 
       let statusStr: "synced" | "stale" | "conflict" | "removed" = "synced";
       if (rec.isRemoved) statusStr = "removed";
@@ -342,17 +441,20 @@ export class DigitalThreadHypergraph {
 
         if (!visitedNodes.has(nodeKey)) {
           visitedNodes.add(nodeKey);
-          impactedNodes.push({
-            domain: dom,
-            nodeId: nId,
-            threadId: rec.threadId,
-            slot,
-            distance,
-            status: statusStr,
-          });
+          if (matchesFilter) {
+            impactedNodes.push({
+              domain: dom,
+              nodeId: nId,
+              threadId: rec.threadId,
+              slot,
+              distance,
+              status: statusStr,
+              relation: rec.relation,
+              branchId: rec.branchId,
+            });
+          }
 
-          // Traverse any other slots that also link this domain node
-          const otherSlots = this.findSlotsByDomainNode(dom, nId);
+          const otherSlots = this.findSlotsByDomainNode(dom, nId, options?.branchId);
           for (const otherSlot of otherSlots) {
             if (!visitedSlots.has(otherSlot)) {
               visitedSlots.add(otherSlot);
@@ -375,8 +477,12 @@ export class DigitalThreadHypergraph {
     };
   }
 
-  markBlastRadiusStale(startDomain: ThreadDomain | number, startNodeId: number): number {
-    const radius = this.computeBlastRadius(startDomain, startNodeId);
+  markBlastRadiusStale(
+    startDomain: ThreadDomain | number,
+    startNodeId: number,
+    options?: { branchId?: number },
+  ): number {
+    const radius = this.computeBlastRadius(startDomain, startNodeId, options);
     let marked = 0;
     for (const threadId of radius.impactedThreads) {
       const slot = this.findSlotByThreadId(threadId);
@@ -387,4 +493,115 @@ export class DigitalThreadHypergraph {
     }
     return marked;
   }
+}
+
+/**
+ * Helper to bind a 3D CFD boundary patch to a 1D Modelica fluid port across the digital thread.
+ */
+export function bindCfdToModelicaThread(
+  hypergraph: DigitalThreadHypergraph,
+  threadId: number,
+  cfdPatchNodeId: number,
+  modelicaPortNodeId: number,
+  revision = 0,
+  branchId = 0,
+): number {
+  const slot = hypergraph.createThread(threadId, revision, ThreadRelation.Aligned, branchId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.CFD, cfdPatchNodeId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.Modelica, modelicaPortNodeId);
+  return slot;
+}
+
+/**
+ * Helper to bind an interactive 3D CAD surface selection to a 3D CFD boundary patch
+ * and optional 1D Modelica fluid port across the digital thread.
+ */
+export function bindCadCfdModelicaThread(
+  hypergraph: DigitalThreadHypergraph,
+  threadId: number,
+  cadFaceNodeId: number,
+  cfdPatchNodeId: number,
+  modelicaPortNodeId?: number,
+  revision = 0,
+  branchId = 0,
+): number {
+  const slot = hypergraph.createThread(threadId, revision, ThreadRelation.Aligned, branchId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.CAD, cadFaceNodeId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.CFD, cfdPatchNodeId);
+  if (modelicaPortNodeId !== undefined) {
+    hypergraph.bindDomainNode(slot, ThreadDomain.Modelica, modelicaPortNodeId);
+  }
+  return slot;
+}
+
+/**
+ * Helper to bind STEP AP242 Semantic GD&T tolerance zone to CAD B-Rep surface.
+ */
+export function bindGdtToCadThread(
+  hypergraph: DigitalThreadHypergraph,
+  threadId: number,
+  gdtNodeId: number,
+  cadFaceNodeId: number,
+  revision = 0,
+  branchId = 0,
+): number {
+  const slot = hypergraph.createThread(threadId, revision, ThreadRelation.Manufactures, branchId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.GDT, gdtNodeId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.CAD, cadFaceNodeId);
+  return slot;
+}
+
+/**
+ * Helper to bind real physical telemetry stream to a Modelica simulation port/variable.
+ */
+export function bindTelemetryToSimulationThread(
+  hypergraph: DigitalThreadHypergraph,
+  threadId: number,
+  telemetryChannelId: number,
+  modelicaPortId: number,
+  revision = 0,
+  branchId = 0,
+): number {
+  const slot = hypergraph.createThread(threadId, revision, ThreadRelation.Calibrates, branchId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.Telemetry, telemetryChannelId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.Modelica, modelicaPortId);
+  return slot;
+}
+
+/**
+ * Helper to bind an ISO 26262 ASIL safety goal / fault cut set to a SysML requirement.
+ */
+export function bindSafetyToRequirementThread(
+  hypergraph: DigitalThreadHypergraph,
+  threadId: number,
+  safetyGoalNodeId: number,
+  reqNodeId: number,
+  revision = 0,
+  branchId = 0,
+): number {
+  const slot = hypergraph.createThread(threadId, revision, ThreadRelation.Verifies, branchId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.Safety, safetyGoalNodeId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.Requirements, reqNodeId);
+  return slot;
+}
+
+/**
+ * Helper to bind a SysML part definition to an eBOM item and manufacturing process.
+ */
+export function bindBomToManufacturingThread(
+  hypergraph: DigitalThreadHypergraph,
+  threadId: number,
+  sysmlPartNodeId: number,
+  bomItemNodeId: number,
+  mfgProcessNodeId?: number,
+  revision = 0,
+  branchId = 0,
+): number {
+  const slot = hypergraph.createThread(threadId, revision, ThreadRelation.AllocatesTo, branchId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.SysML2, sysmlPartNodeId);
+  hypergraph.bindDomainNode(slot, ThreadDomain.BOM, bomItemNodeId);
+  if (mfgProcessNodeId !== undefined) {
+    hypergraph.bindDomainNode(slot, ThreadDomain.Manufacturing, mfgProcessNodeId);
+  }
+  return slot;
 }

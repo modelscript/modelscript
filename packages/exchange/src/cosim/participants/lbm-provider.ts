@@ -13,21 +13,22 @@ import type { CoSimParticipant } from "../participant.js";
 
 /**
  * CFD LBM Mesh frame payload streamed over LSP / Co-Simulation.
+ * Supports zero-copy TypedArrays (Float32Array / Uint32Array) to eliminate GC heap thrashing.
  */
 export interface LbmMeshPayload {
   type: "cfd-mesh";
   participantId: string;
   time: number;
   geometry: {
-    positions: number[];
-    indices: number[];
-    normals?: number[];
+    positions: Float32Array | number[];
+    indices: Uint32Array | number[];
+    normals?: Float32Array | number[];
   };
   fields: {
-    "alpha.polymer": number[];
-    temperature: number[];
-    velocityMagnitude: number[];
-    pressure: number[];
+    "alpha.polymer": Float32Array | number[];
+    temperature: Float32Array | number[];
+    velocityMagnitude: Float32Array | number[];
+    pressure: Float32Array | number[];
   };
   metadata: {
     dragForce: [number, number, number];
@@ -353,16 +354,24 @@ export class LbmCoSimParticipant implements CoSimParticipant {
     }
 
     const forces = this.lastResult?.aerodynamicForceN ?? [0, 0, 0];
+    const posArr = new Float32Array(positions);
+    const idxArr = new Uint32Array(indices);
+    const normArr = new Float32Array(normals);
+    const vMagArr = new Float32Array(velocityMag);
+    const pressArr = new Float32Array(pressure);
+    const alphaArr = new Float32Array(alphaPolymer);
+    const tempArr = new Float32Array(temperature);
+
     return {
       type: "cfd-mesh",
       participantId: this.id,
       time: this.currentTime,
-      geometry: { positions, indices, normals },
+      geometry: { positions: posArr, indices: idxArr, normals: normArr },
       fields: {
-        "alpha.polymer": alphaPolymer,
-        temperature,
-        velocityMagnitude: velocityMag,
-        pressure,
+        "alpha.polymer": alphaArr,
+        temperature: tempArr,
+        velocityMagnitude: vMagArr,
+        pressure: pressArr,
       },
       metadata: {
         dragForce: forces,
@@ -370,5 +379,62 @@ export class LbmCoSimParticipant implements CoSimParticipant {
         pressureDrop: this.lastResult?.pressureDropPa ?? 0,
       },
     };
+  }
+
+  /**
+   * Generates a contiguous binary buffer suitable for zero-copy Transferable postMessage
+   * or WebSocket binary frames. Eliminates all JSON stringification and GC pauses.
+   */
+  public getBinaryMeshPayload(): ArrayBuffer {
+    const payload = this.getMeshPayload();
+    const pos = payload.geometry.positions as Float32Array;
+    const idx = payload.geometry.indices as Uint32Array;
+    const norm = (payload.geometry.normals ?? new Float32Array(0)) as Float32Array;
+    const vMag = payload.fields.velocityMagnitude as Float32Array;
+    const press = payload.fields.pressure as Float32Array;
+
+    // Header:
+    // [0..3]: Magic 0x4C424D31 ('LBM1')
+    // [4..11]: Float64 time
+    // [12..23]: Float32 dragForce [Fx, Fy, Fz]
+    // [24..27]: Float32 maxVelocity
+    // [28..31]: Float32 pressureDrop
+    // [32..35]: Uint32 vertexCount
+    // [36..39]: Uint32 indexCount
+    const headerBytes = 40;
+    const totalBytes =
+      headerBytes + pos.byteLength + idx.byteLength + norm.byteLength + vMag.byteLength + press.byteLength;
+
+    const buffer = new ArrayBuffer(totalBytes);
+    const view = new DataView(buffer);
+
+    view.setUint32(0, 0x4c424d31, true); // 'LBM1'
+    view.setFloat64(4, payload.time, true);
+    view.setFloat32(12, payload.metadata.dragForce[0], true);
+    view.setFloat32(16, payload.metadata.dragForce[1], true);
+    view.setFloat32(20, payload.metadata.dragForce[2], true);
+    view.setFloat32(24, payload.metadata.maxVelocity, true);
+    view.setFloat32(28, payload.metadata.pressureDrop, true);
+    view.setUint32(32, pos.length / 3, true);
+    view.setUint32(36, idx.length, true);
+
+    let offset = headerBytes;
+    new Uint8Array(buffer, offset, pos.byteLength).set(new Uint8Array(pos.buffer, pos.byteOffset, pos.byteLength));
+    offset += pos.byteLength;
+
+    new Uint8Array(buffer, offset, idx.byteLength).set(new Uint8Array(idx.buffer, idx.byteOffset, idx.byteLength));
+    offset += idx.byteLength;
+
+    new Uint8Array(buffer, offset, norm.byteLength).set(new Uint8Array(norm.buffer, norm.byteOffset, norm.byteLength));
+    offset += norm.byteLength;
+
+    new Uint8Array(buffer, offset, vMag.byteLength).set(new Uint8Array(vMag.buffer, vMag.byteOffset, vMag.byteLength));
+    offset += vMag.byteLength;
+
+    new Uint8Array(buffer, offset, press.byteLength).set(
+      new Uint8Array(press.buffer, press.byteOffset, press.byteLength),
+    );
+
+    return buffer;
   }
 }

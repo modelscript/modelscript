@@ -8,6 +8,7 @@
  */
 
 import { Interval, intersectInterval } from "../../analysis/wasm_interval.js";
+import { type ExprNode, Hc4Contractor, type NonlinearConstraint } from "../hc4_contractor.js";
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 
 export class ConstraintTheoryOracle implements TheoryOracle {
@@ -19,6 +20,13 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
   private aliases = new Map<string, string>(); // canonical alias mapping
+  private sharedEqualities: SharedEquality[] = [];
+  private levelStack: {
+    intervals: Map<string, Interval | null>;
+    aliases: Map<string, string>;
+    propagatedEqualities: Set<string>;
+    assertedLitIds: number[];
+  }[] = [];
 
   constructor() {
     this.reset();
@@ -29,6 +37,28 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
     this.aliases.clear();
+    this.sharedEqualities = [];
+    this.levelStack = [];
+  }
+
+  public pushLevel(): void {
+    this.levelStack.push({
+      intervals: new Map(this.intervals),
+      aliases: new Map(this.aliases),
+      propagatedEqualities: new Set(this.propagatedEqualities),
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.intervals = top.intervals;
+    this.aliases = top.aliases;
+    this.propagatedEqualities = top.propagatedEqualities;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
   }
 
   private getCanonicalVar(v: string): string {
@@ -57,11 +87,17 @@ export class ConstraintTheoryOracle implements TheoryOracle {
 
   public getInterval(varName: string): Interval | null {
     const canon = this.getCanonicalVar(varName);
-    return this.intervals.get(canon) ?? new Interval(-Infinity, Infinity);
+    if (this.intervals.has(canon)) {
+      return this.intervals.get(canon) ?? null;
+    }
+    return new Interval(-Infinity, Infinity);
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -104,6 +140,79 @@ export class ConstraintTheoryOracle implements TheoryOracle {
         }
         break;
       }
+      case "hyperplane": {
+        // args: [coefficients: Record<string, number>, op: ">=" | "<=" | "==", constant: number]
+        const [coeffs, op, rhsVal] = args as [Record<string, number>, ">=" | "<=" | "==", number];
+        const box = new Map<string, Interval>();
+        let sumExpr: ExprNode | null = null;
+        let isAlreadyInfeasible = false;
+
+        for (const [vName, coeff] of Object.entries(coeffs)) {
+          const canon = this.getCanonicalVar(vName);
+          const current = this.getInterval(canon);
+          if (current === null) {
+            isAlreadyInfeasible = true;
+            break;
+          }
+          box.set(canon, new Interval(current.lo, current.hi));
+          const termExpr: ExprNode = {
+            kind: "mul",
+            left: { kind: "const", value: coeff },
+            right: { kind: "var", name: canon },
+          };
+          sumExpr = sumExpr ? { kind: "add", left: sumExpr, right: termExpr } : termExpr;
+        }
+
+        if (isAlreadyInfeasible) {
+          break;
+        }
+
+        if (sumExpr) {
+          const constraint: NonlinearConstraint = {
+            expr: sumExpr,
+            rel: op,
+            rhs: rhsVal,
+          };
+          const valid = Hc4Contractor.revise(constraint, box);
+          if (!valid) {
+            for (const vName of Object.keys(coeffs)) {
+              this.intervals.set(this.getCanonicalVar(vName), null);
+            }
+          } else {
+            for (const [vName, contractedInt] of box.entries()) {
+              this.intervals.set(vName, contractedInt);
+            }
+          }
+        }
+        break;
+      }
+      case "nonlinear":
+      case "expr": {
+        const [constraint] = args as [NonlinearConstraint];
+        if (constraint && constraint.expr) {
+          const box = new Map<string, Interval>();
+          let hasNull = false;
+          for (const [v, int] of this.intervals.entries()) {
+            if (int === null) {
+              hasNull = true;
+              break;
+            }
+            box.set(v, new Interval(int.lo, int.hi));
+          }
+          if (hasNull) break;
+          const valid = Hc4Contractor.revise(constraint, box);
+          if (!valid) {
+            for (const [v] of box.entries()) {
+              this.intervals.set(v, null);
+            }
+          } else {
+            for (const [v, contractedInt] of box.entries()) {
+              this.intervals.set(v, contractedInt);
+            }
+          }
+        }
+        break;
+      }
     }
 
     return true;
@@ -112,11 +221,15 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
-    // Replay remaining
+    // Replay remaining asserted literals and re-apply shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
+    const savedShared = [...this.sharedEqualities];
     this.reset();
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of savedShared) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -211,6 +324,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
+    this.sharedEqualities.push(eq);
     this.unionVars(eq.varA, eq.varB);
     if (eq.bounds) {
       const canon = this.getCanonicalVar(eq.varA);

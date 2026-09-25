@@ -268,6 +268,8 @@ export function startNodeServer(input?: any, output?: any) {
     { id: "owl2", pkg: "@modelscript/owl2", name: "OWL2", ext: [".owl", ".owl2", ".ofn", ".ttl"] },
     { id: "csv", pkg: "@modelscript/csv", name: "CSV", ext: [".csv"] },
     { id: "scad", pkg: "@modelscript/scad", name: "OpenSCAD", ext: [".scad"] },
+    { id: "fea", pkg: "@modelscript/fea", name: "FEA", ext: [".inp", ".bdf"] },
+    { id: "cfd", pkg: "@modelscript/cfd", name: "CFD", ext: [".cfg"] },
   ];
 
   for (const item of builtInPkgs) {

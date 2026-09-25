@@ -259,6 +259,15 @@ export class CegarRefinementSynthesizer {
       }
     }
 
+    let constant = delta;
+    if (witness.parameters) {
+      for (const [param, c] of Object.entries(coefficients)) {
+        if (witness.parameters[param] !== undefined) {
+          constant += c * witness.parameters[param]!;
+        }
+      }
+    }
+
     const explanation = `CEGAR Refinement: Candidate '${witness.candidateId}' breached '${witness.failedProperty}' (${witness.actualValue.toFixed(2)} > ${witness.thresholdValue.toFixed(2)}). Generated supporting hyperplane invariant requiring ${Object.entries(
       suggestedBounds,
     )
@@ -271,7 +280,7 @@ export class CegarRefinementSynthesizer {
       failedProperty: witness.failedProperty,
       hyperplane: {
         coefficients,
-        constant: delta,
+        constant,
       },
       suggestedBounds,
       explanation,
@@ -279,12 +288,21 @@ export class CegarRefinementSynthesizer {
   }
 
   /**
-   * Asserts the synthesized refinement bounds back into the Semantic Theory Coordinator.
+   * Asserts the synthesized refinement bounds and hyperplane back into the Semantic Theory Coordinator.
    */
   public static applyRefinementToCoordinator(
     coordinator: SemanticTheoryCoordinator,
     refinement: RefinementInvariant,
   ): void {
+    if (refinement.hyperplane && Object.keys(refinement.hyperplane.coefficients).length > 0) {
+      coordinator.assertLiteral({
+        predicate: "hyperplane",
+        args: [refinement.hyperplane.coefficients, ">=", refinement.hyperplane.constant],
+        domain: "constraint",
+        sourceContext: { refinementId: refinement.id, failedProperty: refinement.failedProperty },
+      });
+    }
+
     for (const [param, bounds] of Object.entries(refinement.suggestedBounds)) {
       if (bounds.min !== undefined) {
         coordinator.assertLiteral({

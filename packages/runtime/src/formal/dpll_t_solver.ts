@@ -13,6 +13,7 @@ import { Interval } from "../analysis/wasm_interval.js";
 import { computeGroebnerBasis, Polynomial, reduceGroebnerBasis, Term } from "../solvers/wasm_groebner.js";
 import { CdclSatSolver, type LitId } from "./cdcl_sat.js";
 import { type ExprNode, Hc4Contractor, type NonlinearConstraint } from "./hc4_contractor.js";
+import { SemanticTheoryCoordinator, type TheoryLiteral } from "./theory_coordinator.js";
 
 /**
  * Recursively extracts variable names referenced in an ExprNode DAG.
@@ -91,10 +92,12 @@ export interface SmtTheoryLiteral {
 
 export interface SmtProblem {
   clauses: LitId[][];
-  theoryLiterals: Map<LitId, NonlinearConstraint>;
-  initialBox: Map<string, Interval>;
+  theoryLiterals?: Map<LitId, NonlinearConstraint>;
+  initialBox?: Map<string, Interval>;
   delta?: number;
   maxSubdivisions?: number;
+  coordinator?: SemanticTheoryCoordinator;
+  multiTheoryLiterals?: Map<LitId, TheoryLiteral>;
 }
 
 export type SmtStatus = "DELTA_SAT" | "UNSAT" | "UNKNOWN";
@@ -110,6 +113,8 @@ export interface SmtResult {
 export class DpllTSolver {
   private sat: CdclSatSolver;
   private theoryLits: Map<LitId, NonlinearConstraint>;
+  private multiTheoryLiterals: Map<LitId, TheoryLiteral>;
+  private coordinator?: SemanticTheoryCoordinator;
   private delta: number;
   private maxSubdivisions: number;
   private conflicts = 0;
@@ -117,7 +122,9 @@ export class DpllTSolver {
 
   constructor(problem: SmtProblem) {
     this.sat = new CdclSatSolver();
-    this.theoryLits = new Map(problem.theoryLiterals);
+    this.theoryLits = new Map(problem.theoryLiterals ?? []);
+    this.multiTheoryLiterals = new Map(problem.multiTheoryLiterals ?? []);
+    this.coordinator = problem.coordinator;
     this.delta = problem.delta ?? 1e-3;
     this.maxSubdivisions = problem.maxSubdivisions ?? 1000;
 
@@ -295,7 +302,9 @@ export class DpllTSolver {
   /**
    * Runs the full DPLL(T) solving loop.
    */
-  public solve(initialBox: Map<string, Interval>): SmtResult {
+  public solve(initialBox?: Map<string, Interval>): SmtResult {
+    const box = initialBox ? this.cloneBox(initialBox) : new Map<string, Interval>();
+
     while (true) {
       // 1. Solve Boolean skeleton
       const satRes = this.sat.solve();
@@ -308,34 +317,108 @@ export class DpllTSolver {
         };
       }
 
-      // 2. Extract active theory constraints
-      const activeLits: LitId[] = [];
-      const activeConstraints: NonlinearConstraint[] = [];
+      // 2. Check multi-theory constraints with SemanticTheoryCoordinator if present
+      if (this.coordinator && this.multiTheoryLiterals.size > 0) {
+        this.coordinator.pushLevel();
+        const activeLitIds: LitId[] = [];
+        const coordIdToSatLit = new Map<number, LitId>();
 
-      for (const [litId, constraint] of this.theoryLits.entries()) {
-        const isTrue = satRes.model?.get(Math.abs(litId));
-        if (isTrue !== undefined) {
-          if (isTrue) {
-            activeLits.push(litId);
-            activeConstraints.push(constraint);
-          } else {
-            // Negated constraint
-            activeLits.push(-litId);
-            const negatedRel = constraint.rel === "<=" ? ">=" : constraint.rel === ">=" ? "<=" : "==";
-            activeConstraints.push({
-              expr: constraint.expr,
-              rel: negatedRel,
-              rhs: constraint.rhs,
-            });
+        for (const [litId, tLit] of this.multiTheoryLiterals.entries()) {
+          const isTrue = satRes.model?.get(Math.abs(litId));
+          if (isTrue !== undefined) {
+            const { id: _ignore, ...tLitData } = tLit;
+            if (isTrue) {
+              activeLitIds.push(litId);
+              const cId = this.coordinator.assertLiteral({ ...tLitData, isNegated: false });
+              coordIdToSatLit.set(cId, litId);
+            } else {
+              activeLitIds.push(-litId);
+              // Invert relational bound predicate if applicable
+              if (tLit.predicate === "bound" && tLit.args.length >= 3) {
+                const op = tLit.args[1];
+                const invOp = op === "<=" ? ">" : op === ">=" ? "<" : op === "<" ? ">=" : op === ">" ? "<=" : "!=";
+                const cId = this.coordinator.assertLiteral({
+                  ...tLitData,
+                  args: [tLit.args[0], invOp, tLit.args[2]],
+                  isNegated: true,
+                });
+                coordIdToSatLit.set(cId, -litId);
+              }
+            }
           }
+        }
+
+        const coordRes = this.coordinator.checkSat();
+        this.coordinator.popLevel();
+
+        if (!coordRes.isSat) {
+          this.conflicts++;
+          let conflictClause: LitId[] = [];
+          if (coordRes.conflict && coordRes.conflict.literals && coordRes.conflict.literals.length > 0) {
+            for (const cLit of coordRes.conflict.literals) {
+              const satLit = coordIdToSatLit.get(cLit.id);
+              if (satLit !== undefined) {
+                conflictClause.push(-satLit);
+              }
+            }
+          }
+          if (conflictClause.length === 0) {
+            conflictClause = activeLitIds.map((l) => -l);
+          }
+
+          if (!this.sat.addClause(conflictClause)) {
+            return {
+              status: "UNSAT",
+              conflictsEncountered: this.conflicts,
+              subdivisions: this.subdivisions,
+              summary: `Problem certified UNSAT after multi-theory conflict lemma learning: ${coordRes.conflict?.explanation}`,
+            };
+          }
+          continue; // Re-solve Boolean skeleton with learned conflict lemma
         }
       }
 
-      // 3. Solve theory constraints on box
-      const boxCopy = this.cloneBox(initialBox);
-      const theoryRes = this.solveTheoryBox(boxCopy, activeConstraints);
+      // 3. Extract and solve non-linear theory constraints (if any)
+      if (this.theoryLits.size > 0 && box.size > 0) {
+        const activeLits: LitId[] = [];
+        const activeConstraints: NonlinearConstraint[] = [];
 
-      if (theoryRes.isSat) {
+        for (const [litId, constraint] of this.theoryLits.entries()) {
+          const isTrue = satRes.model?.get(Math.abs(litId));
+          if (isTrue !== undefined) {
+            if (isTrue) {
+              activeLits.push(litId);
+              activeConstraints.push(constraint);
+            } else {
+              // Negated constraint
+              activeLits.push(-litId);
+              const negatedRel = constraint.rel === "<=" ? ">=" : constraint.rel === ">=" ? "<=" : "==";
+              activeConstraints.push({
+                expr: constraint.expr,
+                rel: negatedRel,
+                rhs: constraint.rhs,
+              });
+            }
+          }
+        }
+
+        const boxCopy = this.cloneBox(box);
+        const theoryRes = this.solveTheoryBox(boxCopy, activeConstraints);
+
+        if (!theoryRes.isSat) {
+          this.conflicts++;
+          const conflictClause = activeLits.map((l) => -l);
+          if (!this.sat.addClause(conflictClause)) {
+            return {
+              status: "UNSAT",
+              conflictsEncountered: this.conflicts,
+              subdivisions: this.subdivisions,
+              summary: "Problem certified UNSAT after theory conflict lemma learning.",
+            };
+          }
+          continue;
+        }
+
         return {
           status: "DELTA_SAT",
           solutionBox: theoryRes.resultBox,
@@ -343,19 +426,16 @@ export class DpllTSolver {
           subdivisions: this.subdivisions,
           summary: `delta-SAT solution box certified with tolerance delta=${this.delta}.`,
         };
-      } else {
-        // Theory conflict! Learn conflict clause: at least one active literal must be false
-        this.conflicts++;
-        const conflictClause = activeLits.map((l) => -l);
-        if (!this.sat.addClause(conflictClause)) {
-          return {
-            status: "UNSAT",
-            conflictsEncountered: this.conflicts,
-            subdivisions: this.subdivisions,
-            summary: "Problem certified UNSAT after theory conflict lemma learning.",
-          };
-        }
       }
+
+      // If no box constraints, the coordinator model or Boolean SAT model is certified SAT
+      return {
+        status: "DELTA_SAT",
+        solutionBox: box.size > 0 ? box : undefined,
+        conflictsEncountered: this.conflicts,
+        subdivisions: this.subdivisions,
+        summary: "Multi-theory satisfiability certified by DPLL(T) solver.",
+      };
     }
   }
 }
