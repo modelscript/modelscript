@@ -22,8 +22,30 @@ async function main() {
   const sourceEnd = resultStartIdx >= 0 ? resultStartIdx : lines.length;
   const source = lines.slice(0, sourceEnd).join("\n").trim();
   console.log("sourceLen:", source.length);
+  console.log("source end:", JSON.stringify(source.slice(-30)));
+  console.log("class at:", source.indexOf("class"));
+  console.log("Type8 at:", source.indexOf("Type8", 100));
+  console.log("; at:", source.lastIndexOf(";"));
   const context = new Context(new NodeFileSystem());
-  context.load(source, testFile);
+  const tree = context.load(source, testFile);
+  console.log("Tree root:", tree.rootNode.type);
+  function dump(node: any, indent = 0) {
+    if (indent < 8) {
+      console.log(
+        " ".repeat(indent * 2) +
+          node.type +
+          " [" +
+          node.startIndex +
+          ".." +
+          node.endIndex +
+          "] " +
+          `(_startOffset=${node._startOffset}, pad=${node._cachedPad}, len=${node._cachedLen}): ` +
+          JSON.stringify(node.text.slice(0, 30)),
+      );
+      for (const ch of node.children) dump(ch, indent + 1);
+    }
+  }
+  dump(tree.rootNode);
 
   const lints = Array.from(context.queryEngine.runAllLints());
   console.log("Lints:", lints);

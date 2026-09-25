@@ -80,7 +80,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       .option("solver", {
         description: "ODE solver to use",
         type: "string",
-        choices: ["euler", "rk4", "dopri5", "bdf", "auto", "cvode"],
+        choices: ["euler", "rk4", "dopri5", "tsit5", "trbdf2", "rodas4p", "bdf", "auto", "cvode", "webgpu"],
         default: "dopri5",
       })
       .option("realtime", {
@@ -230,7 +230,17 @@ function simulateJs(
   }
 
   // Map CLI solver to simulateArena solver
-  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+  const solver = args.solver as
+    | "euler"
+    | "rk4"
+    | "dopri5"
+    | "tsit5"
+    | "trbdf2"
+    | "rodas4p"
+    | "bdf"
+    | "auto"
+    | "cvode"
+    | "webgpu";
   const result = simulateArena(arena, {
     startTime,
     stopTime,
@@ -271,7 +281,17 @@ async function simulateArenaEngine(
     }
   }
 
-  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+  const solver = args.solver as
+    | "euler"
+    | "rk4"
+    | "dopri5"
+    | "tsit5"
+    | "trbdf2"
+    | "rodas4p"
+    | "bdf"
+    | "auto"
+    | "cvode"
+    | "webgpu";
   const opts: any = {
     startTime,
     stopTime,

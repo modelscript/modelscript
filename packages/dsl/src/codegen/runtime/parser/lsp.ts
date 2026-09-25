@@ -444,14 +444,6 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
   if (astRoot == 0) return;
   globalAstRoot = astRoot;
 
-  if (rangeEnd == 0) {
-    ensureNodeOffsetMap();
-    if (t_nodeOffsetMapAstRoot != astRoot) {
-      t_nodeOffsetMap.clear();
-      t_nodeOffsetMapAstRoot = astRoot;
-      lsp_populateNodeOffsetMap(astRoot, 0);
-    }
-  }
 
   let prevLen = t_lspBinaryBuffer.length;
 
@@ -475,9 +467,6 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
     let inTainted = getInTaintedFromStack(offsetStackVal);
 
-    if (rangeEnd == 0) {
-      t_nodeOffsetMap.set(node as u64, start);
-    }
 
     if (stackTop > 500000) { break; }
 
@@ -665,8 +654,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
         }
       }
       if ((tokType == 0 || tokType > (MAX_TERMINAL_ID as u16)) && dStart < totalInputBytes) {
-        let ch = peekChar(dStart);
-        tokType = ch as u16;
+        tokType = 0;
       }
       if (dEnd > dStart && totalInputBytes > 0) {
         if (dStart > 0 && dStart < totalInputBytes) {

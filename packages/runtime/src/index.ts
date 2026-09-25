@@ -43,11 +43,13 @@ export * from "./formal/event_grammar.js";
 export * from "./formal/hc4_contractor.js";
 export * from "./formal/ic3_engine.js";
 export * from "./formal/inductive_prover.js";
+export * from "./formal/proof_manifest.js";
 export * from "./formal/region_decomposer.js";
 export * from "./formal/simplification_waterfall.js";
 export * from "./formal/trace_record.js";
 export * from "./gpu/wasm_gpu_buffers.js";
 export * from "./gpu/wasm_memory_planner.js";
+export * from "./gpu/webgpu_reasoner.js";
 export * from "./interop/brownfield_alignment.js";
 export * from "./interop/oslc_gateway.js";
 export * from "./interop/polyglot-transformer.js";
@@ -58,8 +60,12 @@ export * from "./interop/thread_serializer.js";
 export * from "./interop/vcycle_verifier.js";
 export * from "./ontology/parallel_reasoner.js";
 export * from "./ontology/wasm_ontology.js";
+export * from "./storage/paged_store.js";
+
 export * from "./pipeline.js";
 export * from "./runtime.js";
+export * from "./simulation/b2b_verifier.js";
+export * from "./simulation/unified_verifier.js";
 export * from "./simulation/wasm_cosim.js";
 export * from "./simulation/wasm_doe.js";
 export * from "./simulation/wasm_fmu_subsystem.js";
@@ -93,7 +99,9 @@ export * from "./statemachine/wasm_pdr_engine.js";
 export * from "./statemachine/wasm_rtc_statemachine.js";
 export * from "./util/ctrf_reporter.js";
 export * from "./util/diff.js";
+export * from "./util/html_reporter.js";
 export * from "./util/msl_ffi.js";
+export * from "./util/sarif_reporter.js";
 export * from "./util/type_registry.js";
 export * from "./workspace/wasm_cache_store.js";
 export * from "./workspace/wasm_container.js";
@@ -106,3 +114,14 @@ export {
   LanguageWorkspaceIndex as WorkspaceIndex,
 } from "./workspace/wasm_workspace.js";
 export type CSTNode = any;
+
+export * from "./formal/abstract_interpretation/array_segment_domain.js";
+export * from "./formal/abstract_interpretation/cfg.js";
+export * from "./formal/abstract_interpretation/domain.js";
+export * from "./formal/abstract_interpretation/fixpoint_solver.js";
+export {
+  IntervalDomain,
+  IntervalEnvironment,
+  NumericalInterval,
+} from "./formal/abstract_interpretation/interval_domain.js";
+export * from "./formal/abstract_interpretation/reduced_product.js";

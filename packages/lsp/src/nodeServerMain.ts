@@ -19,6 +19,7 @@ import {
 import modelicaLangFallback from "@modelscript/modelica/language";
 import owl2LangFallback from "@modelscript/owl2/language";
 import { DAEBuilder, initBltWasm } from "@modelscript/runtime";
+import scadLangFallback from "@modelscript/scad/language";
 import { stepLanguage, StepWorkspaceIndex } from "@modelscript/step";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
@@ -337,6 +338,8 @@ export function startNodeServer(input?: any, output?: any) {
               langDef = owl2LangFallback;
             } else if (item.id === "csv") {
               langDef = csvLangFallback;
+            } else if (item.id === "scad") {
+              langDef = scadLangFallback;
             }
 
             globalLanguageRegistry.register({

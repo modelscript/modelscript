@@ -84,3 +84,23 @@ export function languageAction<TInputs extends Record<string, any> = Record<stri
 ): LanguageAction<TInputs, TOutputs> {
   return action;
 }
+
+/**
+ * Standard preset action definition for opening the visual 2D diagram view (Method 2).
+ */
+export function diagramAction(options?: Partial<LanguageAction>): LanguageAction {
+  return {
+    id: "open_diagram",
+    title: options?.title || "Open Diagram",
+    description: options?.description || "Opens the graphical 2D diagram view.",
+    category: "query",
+    ui: {
+      editorTitle: {
+        icon: "$(open-preview)",
+        group: "navigation@0",
+      },
+      ...options?.ui,
+    },
+    ...options,
+  };
+}

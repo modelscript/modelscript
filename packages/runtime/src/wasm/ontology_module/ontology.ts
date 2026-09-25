@@ -1,6 +1,9 @@
 import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "../core/array";
 import { UnmanagedMap64, createMap64 } from "../core/hashmap";
 import { atomicChunkAlloc } from "../arena";
+import { RoaringBitmap, createRoaringBitmap } from "../core/roaring";
+import { FrontCodedDictionary, createFrontCodedDictionary } from "../core/trie";
+
 
 export const AXIOM_CLASS_DECL: u16 = 1;
 export const AXIOM_SUBCLASS_OF: u16 = 2;
@@ -105,9 +108,68 @@ export class AxiomAccessor {
 }
 
 @unmanaged
+export class EntityDictionary {
+  hashToId: UnmanagedMap64;       // maps u64 hash -> dense u32 EntityId
+  idToHashLo: ChunkedUint32Array; // dense u32 EntityId -> hash low 32 bits
+  idToHashHi: ChunkedUint32Array; // dense u32 EntityId -> hash high 32 bits
+  entityCount: u32;
+
+  init(initialCapacity: u32 = 1024): void {
+    this.hashToId = changetype<UnmanagedMap64>(createMap64());
+    this.idToHashLo = createChunkedUint32Array(initialCapacity);
+    this.idToHashHi = createChunkedUint32Array(initialCapacity);
+    this.entityCount = 0;
+  }
+
+  getOrCreate(hash64: u64): u32 {
+    if (hash64 == 0) return 0;
+    if (this.hashToId.has(hash64)) {
+      return this.hashToId.get(hash64) as u32;
+    }
+    let id = ++this.entityCount;
+    this.hashToId.set(hash64, id);
+    this.idToHashLo.set(id, (hash64 & 0xffffffff) as u32);
+    this.idToHashHi.set(id, ((hash64 >> 32) & 0xffffffff) as u32);
+    return id;
+  }
+
+  getOrCreateSplit(hashLo: u32, hashHi: u32): u32 {
+    let hash64 = ((hashHi as u64) << 32) | (hashLo as u64);
+    return this.getOrCreate(hash64);
+  }
+
+  getHash64(entityId: u32): u64 {
+    if (entityId == 0 || entityId > this.entityCount) return 0;
+    let lo = this.idToHashLo.get(entityId) as u64;
+    let hi = this.idToHashHi.get(entityId) as u64;
+    return (hi << 32) | lo;
+  }
+
+  getHashLo(entityId: u32): u32 {
+    if (entityId == 0 || entityId > this.entityCount) return 0;
+    return this.idToHashLo.get(entityId);
+  }
+
+  getHashHi(entityId: u32): u32 {
+    if (entityId == 0 || entityId > this.entityCount) return 0;
+    return this.idToHashHi.get(entityId);
+  }
+
+  clear(): void {
+    this.hashToId.clear();
+    this.idToHashLo.clear();
+    this.idToHashHi.clear();
+    this.entityCount = 0;
+  }
+}
+
+@unmanaged
 export class OntologyStore {
   axiomTable: ChunkedUint32Array;
   axiomCount: u32;
+
+  // 64-Bit Entity Identification & Symbol Dictionary
+  entities: EntityDictionary;
 
   // Inverted Indices for O(1) / O(K) SPARQL-DL Pattern Matching
   spoHead: UnmanagedMap64; // maps subjectHash -> head axiomId
@@ -132,9 +194,25 @@ export class OntologyStore {
   bfsQueue: ChunkedUint32Array;
   distinctClasses: ChunkedUint32Array;
 
+  // HDT-Style Compact Front-Coded String / IRI Dictionary
+  iriDict: FrontCodedDictionary;
+
+  // HDT-Style Inverted Roaring Bitmaps for Fast SIMD Relational Joins
+  spoBitmaps: UnmanagedMap64; // maps subjectHash -> RoaringBitmap ptr
+  posBitmaps: UnmanagedMap64; // maps predicateHash -> RoaringBitmap ptr
+  ospBitmaps: UnmanagedMap64; // maps objectHash -> RoaringBitmap ptr
+
+  tempJoinBitmap: RoaringBitmap;
+  tempJoinBitmap2: RoaringBitmap;
+  tempAxiomIdBuf: ChunkedUint32Array;
+
   init(initialCapacity: u32 = 1024): void {
     this.axiomTable = createChunkedUint32Array(initialCapacity * AXIOM_STRIDE);
     this.axiomCount = 1; // 1-indexed (0 reserved for null)
+
+    let entPtr = atomicChunkAlloc(32);
+    this.entities = changetype<EntityDictionary>(entPtr);
+    this.entities.init(initialCapacity);
 
     this.spoHead = changetype<UnmanagedMap64>(createMap64());
     this.posHead = changetype<UnmanagedMap64>(createMap64());
@@ -154,8 +232,52 @@ export class OntologyStore {
 
     this.bfsQueue = createChunkedUint32Array(256);
     this.distinctClasses = createChunkedUint32Array(256);
+
+    let dictPtr = atomicChunkAlloc(sizeof<FrontCodedDictionary>());
+    this.iriDict = changetype<FrontCodedDictionary>(dictPtr);
+    this.iriDict.init(initialCapacity);
+
+    this.spoBitmaps = changetype<UnmanagedMap64>(createMap64());
+    this.posBitmaps = changetype<UnmanagedMap64>(createMap64());
+    this.ospBitmaps = changetype<UnmanagedMap64>(createMap64());
+
+    this.tempJoinBitmap = createRoaringBitmap();
+    this.tempJoinBitmap2 = createRoaringBitmap();
+    this.tempAxiomIdBuf = createChunkedUint32Array(256);
   }
 
+  @inline
+  getOrCreateRoaring(map: UnmanagedMap64, key: u64): RoaringBitmap {
+    if (map.has(key)) {
+      return changetype<RoaringBitmap>(map.get(key) as usize);
+    }
+    let bm = createRoaringBitmap();
+    map.set(key, changetype<usize>(bm) as u32);
+    return bm;
+  }
+
+  @inline
+  getRoaring(map: UnmanagedMap64, key: u64): RoaringBitmap {
+    if (map.has(key)) {
+      return changetype<RoaringBitmap>(map.get(key) as usize);
+    }
+    return changetype<RoaringBitmap>(0);
+  }
+
+  addAxiom64(
+    axiomType: u32,
+    sourceLangId: u32,
+    sLo: u32, sHi: u32,
+    pLo: u32, pHi: u32,
+    oLo: u32, oHi: u32,
+    flags: u32 = 0,
+    extra: u32 = 0
+  ): u32 {
+    let sId = this.entities.getOrCreateSplit(sLo, sHi);
+    let pId = this.entities.getOrCreateSplit(pLo, pHi);
+    let oId = this.entities.getOrCreateSplit(oLo, oHi);
+    return this.addAxiom(axiomType, sourceLangId, sId, pId, oId, flags, extra);
+  }
 
   /**
    * Adds an OWL 2 axiom into the indexed knowledge store.
@@ -176,6 +298,7 @@ export class OntologyStore {
       let prevSpo = this.spoHead.get(subjectHash as u64) as u32;
       this.nextSpo.set(id, prevSpo);
       this.spoHead.set(subjectHash as u64, id);
+      this.getOrCreateRoaring(this.spoBitmaps, subjectHash as u64).add(id);
     } else {
       this.nextSpo.set(id, 0);
     }
@@ -185,6 +308,7 @@ export class OntologyStore {
       let prevPos = this.posHead.get(predicateHash as u64) as u32;
       this.nextPos.set(id, prevPos);
       this.posHead.set(predicateHash as u64, id);
+      this.getOrCreateRoaring(this.posBitmaps, predicateHash as u64).add(id);
     } else {
       this.nextPos.set(id, 0);
     }
@@ -194,6 +318,7 @@ export class OntologyStore {
       let prevOsp = this.ospHead.get(objectHash as u64) as u32;
       this.nextOsp.set(id, prevOsp);
       this.ospHead.set(objectHash as u64, id);
+      this.getOrCreateRoaring(this.ospBitmaps, objectHash as u64).add(id);
     } else {
       this.nextOsp.set(id, 0);
     }
@@ -223,6 +348,19 @@ export class OntologyStore {
     let p = target.predicate;
     let o = target.object;
 
+    if (s != 0) {
+      let bm = this.getRoaring(this.spoBitmaps, s as u64);
+      if (changetype<usize>(bm) != 0) bm.remove(axiomId);
+    }
+    if (p != 0) {
+      let bm = this.getRoaring(this.posBitmaps, p as u64);
+      if (changetype<usize>(bm) != 0) bm.remove(axiomId);
+    }
+    if (o != 0) {
+      let bm = this.getRoaring(this.ospBitmaps, o as u64);
+      if (changetype<usize>(bm) != 0) bm.remove(axiomId);
+    }
+
     // Phase 1 (Over-deletion): If axiom was asserted, find inferred axioms that depended on it
     let overDeleted = createChunkedUint32Array(16);
 
@@ -242,6 +380,19 @@ export class OntologyStore {
             this.derivationCount.set(i, 0);
             this.axiomActive.set(i, 0);
             overDeleted.push(i);
+
+            if (infS != 0) {
+              let bm = this.getRoaring(this.spoBitmaps, infS as u64);
+              if (changetype<usize>(bm) != 0) bm.remove(i);
+            }
+            if (ax.predicate != 0) {
+              let bm = this.getRoaring(this.posBitmaps, ax.predicate as u64);
+              if (changetype<usize>(bm) != 0) bm.remove(i);
+            }
+            if (infO != 0) {
+              let bm = this.getRoaring(this.ospBitmaps, infO as u64);
+              if (changetype<usize>(bm) != 0) bm.remove(i);
+            }
           }
         }
       }
@@ -438,53 +589,136 @@ export class OntologyStore {
   queryTriples(subjectPattern: u32, predicatePattern: u32, objectPattern: u32, outBuffer: ChunkedUint32Array): u32 {
     let matchCount: u32 = 0;
 
+    let sWild = subjectPattern == WILDCARD_PATTERN || subjectPattern == 0;
+    let pWild = predicatePattern == WILDCARD_PATTERN || predicatePattern == 0;
+    let oWild = objectPattern == WILDCARD_PATTERN || objectPattern == 0;
+
     // Optimal index selection based on bound variables:
-    if (subjectPattern != WILDCARD_PATTERN) {
+    if (!sWild) {
       // Use SPO Index
       let curr = this.spoHead.get(subjectPattern as u64) as u32;
       while (curr != 0) {
-        let ax = AxiomAccessor.at(this.axiomTable, curr);
-        let pMatch = predicatePattern == WILDCARD_PATTERN || predicatePattern == ax.predicate;
-        let oMatch = objectPattern == WILDCARD_PATTERN || objectPattern == ax.object;
+        if (this.axiomActive.get(curr) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, curr);
+          let pMatch = pWild || predicatePattern == ax.predicate;
+          let oMatch = oWild || objectPattern == ax.object;
 
-        if (pMatch && oMatch) {
-          ax.writeTo(outBuffer);
-          matchCount++;
+          if (pMatch && oMatch) {
+            ax.writeTo(outBuffer);
+            matchCount++;
+          }
         }
         curr = this.nextSpo.get(curr);
       }
-    } else if (predicatePattern != WILDCARD_PATTERN) {
+    } else if (!pWild) {
       // Use POS Index
       let curr = this.posHead.get(predicatePattern as u64) as u32;
       while (curr != 0) {
-        let ax = AxiomAccessor.at(this.axiomTable, curr);
-        let sMatch = subjectPattern == WILDCARD_PATTERN || subjectPattern == ax.subject;
-        let oMatch = objectPattern == WILDCARD_PATTERN || objectPattern == ax.object;
+        if (this.axiomActive.get(curr) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, curr);
+          let sMatch = sWild || subjectPattern == ax.subject;
+          let oMatch = oWild || objectPattern == ax.object;
 
-        if (sMatch && oMatch) {
-          ax.writeTo(outBuffer);
-          matchCount++;
+          if (sMatch && oMatch) {
+            ax.writeTo(outBuffer);
+            matchCount++;
+          }
         }
         curr = this.nextPos.get(curr);
       }
-    } else if (objectPattern != WILDCARD_PATTERN) {
+    } else if (!oWild) {
       // Use OSP Index
       let curr = this.ospHead.get(objectPattern as u64) as u32;
       while (curr != 0) {
-        let ax = AxiomAccessor.at(this.axiomTable, curr);
-        let sMatch = subjectPattern == WILDCARD_PATTERN || subjectPattern == ax.subject;
-        let pMatch = predicatePattern == WILDCARD_PATTERN || predicatePattern == ax.predicate;
+        if (this.axiomActive.get(curr) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, curr);
+          let sMatch = sWild || subjectPattern == ax.subject;
+          let pMatch = pWild || predicatePattern == ax.predicate;
 
-        if (sMatch && pMatch) {
-          ax.writeTo(outBuffer);
-          matchCount++;
+          if (sMatch && pMatch) {
+            ax.writeTo(outBuffer);
+            matchCount++;
+          }
         }
         curr = this.nextOsp.get(curr);
       }
     } else {
       // Full table scan when all patterns are wildcards
       for (let i: u32 = 1; i < this.axiomCount; i++) {
-        let ax = AxiomAccessor.at(this.axiomTable, i);
+        if (this.axiomActive.get(i) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, i);
+          ax.writeTo(outBuffer);
+          matchCount++;
+        }
+      }
+    }
+
+    return matchCount;
+  }
+
+  /**
+   * Fast SPARQL-DL pattern matching using Roaring Bitmap inverted indices.
+   * Leverages SIMD bitwise intersections for multi-bound patterns (e.g. S and P both bound,
+   * or P and O both bound).
+   */
+  queryTriplesBitmap(subjectPattern: u32, predicatePattern: u32, objectPattern: u32, outBuffer: ChunkedUint32Array): u32 {
+    let sWild = subjectPattern == WILDCARD_PATTERN || subjectPattern == 0;
+    let pWild = predicatePattern == WILDCARD_PATTERN || predicatePattern == 0;
+    let oWild = objectPattern == WILDCARD_PATTERN || objectPattern == 0;
+
+    let matchCount: u32 = 0;
+
+    if (sWild && pWild && oWild) {
+      for (let i: u32 = 1; i < this.axiomCount; i++) {
+        if (this.axiomActive.get(i) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, i);
+          ax.writeTo(outBuffer);
+          matchCount++;
+        }
+      }
+      return matchCount;
+    }
+
+    let sBm = !sWild ? this.getRoaring(this.spoBitmaps, subjectPattern as u64) : changetype<RoaringBitmap>(0);
+    let pBm = !pWild ? this.getRoaring(this.posBitmaps, predicatePattern as u64) : changetype<RoaringBitmap>(0);
+    let oBm = !oWild ? this.getRoaring(this.ospBitmaps, objectPattern as u64) : changetype<RoaringBitmap>(0);
+
+    if (!sWild && (changetype<usize>(sBm) == 0 || sBm.isEmpty())) return 0;
+    if (!pWild && (changetype<usize>(pBm) == 0 || pBm.isEmpty())) return 0;
+    if (!oWild && (changetype<usize>(oBm) == 0 || oBm.isEmpty())) return 0;
+
+    let resBm: RoaringBitmap = changetype<RoaringBitmap>(0);
+
+    if (!sWild && !pWild && !oWild) {
+      sBm.and(pBm, this.tempJoinBitmap);
+      this.tempJoinBitmap.and(oBm, this.tempJoinBitmap2);
+      resBm = this.tempJoinBitmap2;
+    } else if (!sWild && !pWild) {
+      sBm.and(pBm, this.tempJoinBitmap);
+      resBm = this.tempJoinBitmap;
+    } else if (!sWild && !oWild) {
+      sBm.and(oBm, this.tempJoinBitmap);
+      resBm = this.tempJoinBitmap;
+    } else if (!pWild && !oWild) {
+      pBm.and(oBm, this.tempJoinBitmap);
+      resBm = this.tempJoinBitmap;
+    } else if (!sWild) {
+      resBm = sBm;
+    } else if (!pWild) {
+      resBm = pBm;
+    } else {
+      resBm = oBm;
+    }
+
+    if (changetype<usize>(resBm) == 0 || resBm.isEmpty()) return 0;
+
+    this.tempAxiomIdBuf.clear();
+    resBm.toArray(this.tempAxiomIdBuf);
+
+    for (let i: u32 = 0; i < this.tempAxiomIdBuf.length; i++) {
+      let axId = this.tempAxiomIdBuf.get(i);
+      if (axId != 0 && axId < this.axiomCount && this.axiomActive.get(axId) != 0) {
+        let ax = AxiomAccessor.at(this.axiomTable, axId);
         ax.writeTo(outBuffer);
         matchCount++;
       }
@@ -2242,6 +2476,12 @@ export class OntologyStore {
   }
 
   clear(): void {
+    if (changetype<usize>(this.entities) != 0) {
+      this.entities.clear();
+    }
+    if (changetype<usize>(this.iriDict) != 0) {
+      this.iriDict.clear();
+    }
     this.axiomTable.clear();
     this.axiomCount = 1;
     this.spoHead.clear();
@@ -2250,6 +2490,12 @@ export class OntologyStore {
     this.nextSpo.clear();
     this.nextPos.clear();
     this.nextOsp.clear();
+    this.spoBitmaps.clear();
+    this.posBitmaps.clear();
+    this.ospBitmaps.clear();
+    this.tempJoinBitmap.clear();
+    this.tempJoinBitmap2.clear();
+    this.tempAxiomIdBuf.clear();
     this.axiomActive.clear();
     this.derivationCount.clear();
     this.individualParent.clear();
@@ -2678,6 +2924,106 @@ export function ontology_runTableauSubsumption(subClass: u32, supClass: u32): u3
   let holds = t_tableauEngine.solveSubsumption(t_ontologyStore, subClass, supClass);
   return holds ? 1 : 0;
 }
+
+export function ontology_addAxiom64(
+  axiomType: u32,
+  sourceLangId: u32,
+  sLo: u32, sHi: u32,
+  pLo: u32, pHi: u32,
+  oLo: u32, oHi: u32,
+  flags: u32,
+  extra: u32
+): u32 {
+  ensureOntologyStore();
+  return t_ontologyStore.addAxiom64(axiomType, sourceLangId, sLo, sHi, pLo, pHi, oLo, oHi, flags, extra);
+}
+
+export function ontology_getOrCreateEntity(hashLo: u32, hashHi: u32): u32 {
+  ensureOntologyStore();
+  return t_ontologyStore.entities.getOrCreateSplit(hashLo, hashHi);
+}
+
+export function ontology_getEntityHashLo(entityId: u32): u32 {
+  ensureOntologyStore();
+  return t_ontologyStore.entities.getHashLo(entityId);
+}
+
+export function ontology_getEntityHashHi(entityId: u32): u32 {
+  ensureOntologyStore();
+  return t_ontologyStore.entities.getHashHi(entityId);
+}
+
+export function ontology_getEntityCount(): u32 {
+  if (changetype<usize>(t_ontologyStore) == 0) return 0;
+  return t_ontologyStore.entities.entityCount;
+}
+
+export function ontology_getAxiomTablePtr(): usize {
+  ensureOntologyStore();
+  return t_ontologyStore.axiomTable.directory;
+}
+
+export function ontology_internString(strPtr: usize, strLen: u32, hashLo: u32, hashHi: u32): u32 {
+  ensureOntologyStore();
+  let hash64 = (hashLo as u64) | ((hashHi as u64) << 32);
+  return t_ontologyStore.iriDict.addString(strPtr, strLen, hash64);
+}
+
+export function ontology_extractString(id: u32, outPtr: usize): u32 {
+  ensureOntologyStore();
+  return t_ontologyStore.iriDict.extractString(id, outPtr);
+}
+
+export function ontology_getStringCompressionRatio(): f32 {
+  if (changetype<usize>(t_ontologyStore) == 0) return 1.0;
+  return t_ontologyStore.iriDict.getCompressionRatio();
+}
+
+export function ontology_getStringCount(): u32 {
+  if (changetype<usize>(t_ontologyStore) == 0) return 0;
+  return t_ontologyStore.iriDict.stringCount;
+}
+
+export function ontology_getRawStringBytes(): u32 {
+  if (changetype<usize>(t_ontologyStore) == 0) return 0;
+  return t_ontologyStore.iriDict.totalRawBytes;
+}
+
+export function ontology_getCompressedStringBytes(): u32 {
+  if (changetype<usize>(t_ontologyStore) == 0) return 0;
+  return t_ontologyStore.iriDict.totalCompressedBytes;
+}
+
+export function ontology_queryTriplesBitmap(subjectPattern: u32, predicatePattern: u32, objectPattern: u32): u32 {
+  ensureOntologyStore();
+  t_ontologyQueryBuffer.clear();
+  let count = t_ontologyStore.queryTriplesBitmap(subjectPattern, predicatePattern, objectPattern, t_ontologyQueryBuffer);
+
+  let totalWords = count * AXIOM_STRIDE;
+  if (totalWords > t_ontologyQueryFlatCapacity) {
+    t_ontologyQueryFlatCapacity = totalWords + 256;
+    t_ontologyQueryFlatPtr = atomicChunkAlloc(t_ontologyQueryFlatCapacity * sizeof<u32>());
+  }
+
+  t_ontologyQueryBuffer.copyToFlat(t_ontologyQueryFlatPtr);
+  return count;
+}
+
+export function ontology_getRoaringCardinality(indexType: u32, keyHash: u32): u32 {
+  ensureOntologyStore();
+  let map: UnmanagedMap64;
+  if (indexType == 1) {
+    map = t_ontologyStore.spoBitmaps;
+  } else if (indexType == 2) {
+    map = t_ontologyStore.posBitmaps;
+  } else {
+    map = t_ontologyStore.ospBitmaps;
+  }
+  let bm = t_ontologyStore.getRoaring(map, keyHash as u64);
+  if (changetype<usize>(bm) == 0) return 0;
+  return bm.cardinality();
+}
+
 
 
 

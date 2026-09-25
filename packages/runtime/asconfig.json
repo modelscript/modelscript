@@ -19,6 +19,8 @@
     }
   },
   "options": {
-    "bindings": "raw"
+    "bindings": "raw",
+    "initialMemory": 256,
+    "maximumMemory": 65536
   }
 }

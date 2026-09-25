@@ -164,6 +164,14 @@ export class RequirementFalsifier {
         }
 
         if (evalRes.robustness < 0) {
+          const traceRecord = TraceRecordNormalizer.fromFalsificationTrajectory({
+            times: traj.times,
+            signals: traj.signals,
+            parameters: bestParams || candidateParams[i]!,
+            minRobustness,
+            violatingTimeIndex: (evalRes as any).violationIndex ?? (evalRes as any).violationTime,
+          });
+
           return {
             isFalsified: true,
             minRobustness,
@@ -173,6 +181,7 @@ export class RequirementFalsifier {
             summary: `Requirement falsified via CEM with margin ${minRobustness.toFixed(4)} at t=${(
               falsificationTime ?? 0
             ).toFixed(4)}s after ${evalCount} simulation runs.`,
+            traceRecord,
           };
         }
       }
@@ -256,6 +265,14 @@ export class RequirementFalsifier {
 
       // Early exit if counterexample found
       if (evalRes.robustness < 0) {
+        const traceRecord = TraceRecordNormalizer.fromFalsificationTrajectory({
+          times: traj.times,
+          signals: traj.signals,
+          parameters: bestParams || pRec,
+          minRobustness,
+          violatingTimeIndex: (evalRes as any).violationIndex ?? (evalRes as any).violationTime,
+        });
+
         return {
           isFalsified: true,
           minRobustness,
@@ -265,6 +282,7 @@ export class RequirementFalsifier {
           summary: `Requirement falsified with margin ${minRobustness.toFixed(4)} at t=${(
             falsificationTime ?? 0
           ).toFixed(4)}s after ${evalCount} simulation runs.`,
+          traceRecord,
         };
       }
     }

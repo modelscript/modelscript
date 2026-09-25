@@ -3,6 +3,22 @@ import { choice, def, field, language, optional, ref, repeat, repeat1, seq } fro
 export const stepLanguage = language({
   name: "step",
 
+  writeback: (ctx) => {
+    const { entry, fullText, newValue } = ctx;
+    if (entry?.startByte != null && entry?.endByte != null && entry.endByte > entry.startByte) {
+      const declText = fullText.substring(entry.startByte, entry.endByte);
+      // E.g. #10 = PRODUCT('DroneBody', ...)
+      const strMatch = declText.match(/'([^'\\]*(?:\\.[^'\\]*)*)'/);
+      if (strMatch && strMatch.index !== undefined) {
+        const valStartByte = entry.startByte + strMatch.index + 1;
+        const valEndByte = valStartByte + strMatch[1].length;
+        const cleanVal = newValue.replace(/^'|'$/g, "");
+        return { startByte: valStartByte, endByte: valEndByte, newText: cleanVal };
+      }
+    }
+    return null;
+  },
+
   mcp: {
     serverName: "step-mcp",
     serverVersion: "1.0.0",

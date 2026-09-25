@@ -59,6 +59,12 @@ import {
 } from "./engine";
 import { globalAstRoot } from "./lsp";
 
+export let diag_count_reduce: u32 = 0;
+export let diag_count_clone: u32 = 0;
+export let diag_count_append: u32 = 0;
+export let diag_count_shift: u32 = 0;
+
+
 const configEnableBranchA2 = false;
 const ACCEPT_CACHE_CAPACITY: u32 = 16384;
 const ACCEPT_CACHE_MASK: u32 = 16383;
@@ -139,6 +145,7 @@ function stateCanAcceptFnBool(state: i32, token: i32): boolean {
  * @param scannerState The state of the lexer at transition time.
  */
 function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void {
+  debugLog(8888, pos, lrStackDepth, scannerState);
   let prevHead: ParseHead | null = null;
   let currentPos: u32 = 0;
   for (let i = 0; i < lrStackDepth; i++) {
@@ -416,16 +423,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         }
       }
       
-      let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, 0, false, prevState as u32);
-      if (prod_is_list[reduceProd] == 1) {
-        setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_IS_LIST);
-      }
-      if (prod_is_invisible[reduceProd] == 1) {
-        setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_INVISIBLE);
-      }
-      
+      let parentNode: u32 = 0;
+      let isListAppend = false;
       if (popCount > 0) {
-        let isListAppend = false;
         if (
           (popCount == 2 || popCount == 3) &&
           t_lrNodeStack[childStartIdx] != 0 &&
@@ -434,45 +434,53 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
           let leftSym = getNodeType(t_lrNodeStack[childStartIdx]);
           if (leftSym == lhsSym) isListAppend = true;
         }
-        
-        if (isListAppend) {
-          if (popCount == 2) {
-            parentNode = appendToList(
-              t_lrNodeStack[childStartIdx],
-              t_lrNodeStack[(childStartIdx + 1)],
-              lhsSym as u16,
-              currentScannerState,
-              true
-            );
-          } else {
-            let temp = appendToList(
-              t_lrNodeStack[childStartIdx],
-              t_lrNodeStack[(childStartIdx + 1)],
-              lhsSym as u16,
-              currentScannerState,
-              false
-            );
-            parentNode = appendToList(
-              temp,
-              t_lrNodeStack[(childStartIdx + 2)],
-              lhsSym as u16,
-              currentScannerState,
-              true
-            );
-          }
-          setNodeReductionInfo(parentNode, prevState as u32, token as u32);
+      }
+      
+      if (isListAppend) {
+        if (popCount == 2) {
+          parentNode = appendToList(
+            t_lrNodeStack[childStartIdx],
+            t_lrNodeStack[(childStartIdx + 1)],
+            lhsSym as u16,
+            currentScannerState,
+            true
+          );
         } else {
-          let lastChild = 0;
-          let logicalChildIndex = 0;
-          let aliasPtr = prod_aliases[reduceProd];
-          let aliasCount = 0;
-          if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
-          
-          for (let k = 0; k < popCount; k++) {
+          let temp = appendToList(
+            t_lrNodeStack[childStartIdx],
+            t_lrNodeStack[(childStartIdx + 1)],
+            lhsSym as u16,
+            currentScannerState,
+            false
+          );
+          parentNode = appendToList(
+            temp,
+            t_lrNodeStack[(childStartIdx + 2)],
+            lhsSym as u16,
+            currentScannerState,
+            true
+          );
+        }
+        setNodeReductionInfo(parentNode, prevState as u32, token as u32);
+      } else {
+        parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, 0, false, prevState as u32);
+        if (prod_is_list[reduceProd] == 1) {
+          setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_IS_LIST);
+        }
+        if (prod_is_invisible[reduceProd] == 1) {
+          setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_INVISIBLE);
+        }
+        let lastChild = 0;
+        let logicalChildIndex = 0;
+        let aliasPtr = prod_aliases[reduceProd];
+        let aliasCount = 0;
+        if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
+        
+        for (let k = 0; k < popCount; k++) {
             let child = t_lrNodeStack[(childStartIdx + k)];
             if (child == 0) continue;
             
-            let clone = isMutable(child) ? child : cloneNodeShallow(child);
+            let clone = cloneNodeShallow(child);
             
             if (k == 0) {
               setNodePadding(clone, 0);
@@ -502,9 +510,8 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             }
           }
         }
-      }
-      
-      let nextState = -1;
+
+        let nextState = -1;
       let gOffset = goto_offsets[prevState];
       if (gOffset >= 0 && gOffset < goto_data.length) {
         let gCount = goto_data[gOffset];
@@ -520,11 +527,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       }
       
       if (nextState == -1) {
-        if (startToken == -1) {
-          transitionToGlr(pos, pendingPadding, currentScannerState);
-        } else {
-          currentParserMode = MODE_GLR;
-        }
+        transitionToGlr(pos, pendingPadding, currentScannerState);
         return 0;
       }
       
@@ -1289,6 +1292,7 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
  */
 export function cloneNodeShallow(gc: u32): u32 {
   if (gc == 0) return 0;
+  diag_count_clone++;
   // Mark the original node as shared so its child list isn't mutated in-place,
   // ruining the clone. We use FLAG_IS_SHARED instead of FLAG_EXTRACTED to avoid
   // confusing `injectStrandedNodes` into thinking the original node is a clone.
@@ -1783,12 +1787,15 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
  * if the node was extracted/shared, or if it belongs to an older incremental generation.
  */
 function isMutable(ptr: u32): boolean {
+  if (ptr == 0) return false;
   // In GLR mode (multiple active heads), never mutate in-place:
   // shared list nodes can be referenced by multiple heads, and
   // mutating one corrupts the others' trees.
   // Note: The current head is popped from the queue during evaluation,
   // so if activeHeadsCount > 0, it means there is at least one OTHER head.
-  if (activeHeadsCount > 0) return false;
+  if (currentParserMode == MODE_GLR && (activeHeadsCount > 0 || nextHeadsCount > 0)) {
+    return false;
+  }
   if ((getNodeFlags(ptr) & (FLAG_EXTRACTED | FLAG_IS_SHARED)) != 0) return false;
   return isNodeGen2(ptr);
 }
@@ -1800,6 +1807,7 @@ function isMutable(ptr: u32): boolean {
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
   let combinedErrorFlag = (getNodeFlags(leftNode) | getNodeFlags(leafOrig)) & FLAG_HAS_ERROR;
   appendListCalls++;
+  diag_count_append++;
   _listRecurDepth++;
   if (_listRecurDepth > 50) {
     _listRecurDepth--;
@@ -2120,6 +2128,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
     leafLen = lexLen;
   }
 
+  diag_count_shift++;
   let leaf = allocNode(token as u16, paddingLength, leafLen, newBalance & 0xff, false, head.state as u32);
   if (isVirtual) {
     setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_IS_INSERTED | FLAG_HAS_ERROR);
@@ -2173,6 +2182,39 @@ function constructReducedParentNode(
       else totalByteLength += cPadding + cLen;
     }
   }
+  diag_count_reduce++;
+  if (actualCount > 0) {
+    let isListAppend = false;
+    let popCount = prod_lengths[reduceProd];
+    if (
+      (popCount == 2 || popCount == 3) &&
+      actualCount >= popCount &&
+      childNodes[childOffset] != 0 &&
+      prod_is_list[reduceProd] == 1
+    ) {
+      let leftSym = getNodeType(childNodes[childOffset]);
+      if (leftSym == lhsSym) isListAppend = true;
+    }
+
+    if (isListAppend) {
+      let parentNode = childNodes[childOffset];
+      for (let i = 1; i < actualCount; i++) {
+        parentNode = appendToList(
+          parentNode,
+          childNodes[childOffset + i],
+          lhsSym as u16,
+          currentScannerState,
+          i == actualCount - 1
+        );
+      }
+      setNodeStartState(parentNode, bottomState as u32);
+      if (isFragile) {
+        setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_FRAGILE);
+      }
+      return parentNode;
+    }
+  }
+
   let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, balanceHash & 0xff, false, bottomState as u32);
 
   if (prod_is_list[reduceProd] == 1) {
@@ -2189,72 +2231,43 @@ function constructReducedParentNode(
   }
 
   if (actualCount > 0) {
-    let isListAppend = false;
-    let popCount = prod_lengths[reduceProd];
-    if (
-      (popCount == 2 || popCount == 3) &&
-      actualCount >= popCount &&
-      childNodes[childOffset] != 0 &&
-      prod_is_list[reduceProd] == 1
-    ) {
-      let leftSym = getNodeType(childNodes[childOffset]);
-      if (leftSym == lhsSym) isListAppend = true;
-    }
+    let lastChild = 0;
+    let logicalChildIndex = 0;
 
-    if (isListAppend) {
-      parentNode = childNodes[childOffset];
-      for (let i = 1; i < actualCount; i++) {
-        parentNode = appendToList(
-          parentNode,
-          childNodes[childOffset + i],
-          lhsSym as u16,
-          currentScannerState,
-          i == actualCount - 1
-        );
+    let aliasPtr = prod_aliases[reduceProd];
+    let aliasCount = 0;
+    if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
+
+    for (let k = 0; k < actualCount; k++) {
+      let child = childNodes[childOffset + k];
+      if (child == 0) continue;
+
+      let clone = cloneNodeShallow(child);
+      if (k == 0) {
+        setNodePadding(clone, 0);
       }
-      setNodeStartState(parentNode, bottomState as u32);
-      if (isFragile) {
-        setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_FRAGILE);
-      }
-    } else {
-      let lastChild = 0;
-      let logicalChildIndex = 0;
 
-      let aliasPtr = prod_aliases[reduceProd];
-      let aliasCount = 0;
-      if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
-
-      for (let k = 0; k < actualCount; k++) {
-        let child = childNodes[childOffset + k];
-        if (child == 0) continue;
-
-        let clone = cloneNodeShallow(child);
-        if (k == 0) {
-          setNodePadding(clone, 0);
-        }
-
-        let isError = getNodeType(child) == NODE_TYPE_ERROR || (getNodeType(child) & 0x8000) != 0;
-        if (!isError && aliasPtr >= 0) {
-          for (let a = 0; a < aliasCount; a++) {
-            let aIndex = alias_data[aliasPtr + 1 + a * 2];
-            let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
-            if (aIndex == logicalChildIndex) {
-              let node = changetype<ASTNode>(clone);
-              node.type = aSym as u16;
-              break;
-            }
+      let isError = getNodeType(child) == NODE_TYPE_ERROR || (getNodeType(child) & 0x8000) != 0;
+      if (!isError && aliasPtr >= 0) {
+        for (let a = 0; a < aliasCount; a++) {
+          let aIndex = alias_data[aliasPtr + 1 + a * 2];
+          let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
+          if (aIndex == logicalChildIndex) {
+            let node = changetype<ASTNode>(clone);
+            node.type = aSym as u16;
+            break;
           }
-          logicalChildIndex++;
-        } else if (!isError) {
-          logicalChildIndex++;
         }
+        logicalChildIndex++;
+      } else if (!isError) {
+        logicalChildIndex++;
+      }
 
-        if (lastChild == 0) setFirstChild(parentNode, clone);
-        else setNextSibling(lastChild, clone);
-        lastChild = clone;
-        if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
-          setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
-        }
+      if (lastChild == 0) setFirstChild(parentNode, clone);
+      else setNextSibling(lastChild, clone);
+      lastChild = clone;
+      if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
+        setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
       }
     }
   }
@@ -4103,66 +4116,10 @@ export function advanceGLR(): void {
     // 4. Swap buffers and advance
     swapActiveAndNextHeads();
 
-    // 5. GLR-to-LR Transition: If a single deterministic head has recovered, resume fast-path LR parsing
-    if (activeHeadsCount == 1) {
-      let singleHead = changetype<ParseHead>(t_activeHeads[0]);
-      if (!singleHead.inErrorState && singleHead.successfulShifts >= 2 && singleHead.consecutiveInsertions == 0) {
-        let depth: u32 = 0;
-        let curr: ParseHead | null = singleHead;
-        let isLinear: bool = true;
-        let checkDepth: u32 = 0;
-        while (curr) {
-          depth++;
-          if (checkDepth < MAX_PRODUCTION_LENGTH) {
-            if (curr.firstEdge != 0) {
-              isLinear = false;
-            }
-            checkDepth++;
-          }
-          curr = curr.prev;
-        }
-
-        if (isLinear && depth > 0 && depth < 10000) {
-          curr = singleHead;
-          let d: i32 = (depth as i32) - 1;
-          while (curr && d >= 0) {
-            t_lrStateStack[d] = curr.state as u32;
-            t_lrNodeStack[d] = curr.astNode;
-            curr = curr.prev;
-            d--;
-          }
-          lrStackDepth = depth;
-          currentParserMode = MODE_LR;
-
-          if (g_oldTree != 0) {
-            initGlobalCursor(g_oldTree);
-          }
-
-          let resumePos = singleHead.pos;
-          let resumePad = singleHead.pendingPadding;
-          let resumeTok = invokeLexer(resumePos);
-          while (load<u8>(is_extra_token + resumeTok) == 1) {
-            if (lexLen == 0) {
-              resumePos += 1;
-              break;
-            }
-            resumePad += lexLen;
-            let nextP = resumePos + lexLen;
-            resumePos = nextP > resumePos ? nextP : resumePos + 1;
-            resumeTok = invokeLexer(resumePos);
-          }
-
-          let lrAccepted = parseLR(resumePos, resumeTok, resumePad);
-          if (currentParserMode == MODE_LR && lrAccepted != 0) {
-            acceptedNode = lrAccepted;
-            singleHead.pos = inputLength;
-            bestAcceptingHead = changetype<u32>(singleHead);
-            return;
-          }
-          currentParserMode = MODE_GLR;
-        }
-      }
-    }
+    // 5. Note on GLR-to-LR Transition:
+    // Speculative parseLR invocation from GLR causes unbounded AST node accumulation in Gen1 because
+    // failed parseLR attempts cannot roll back bump allocations without a transactional arena watermark.
+    // In pure GLR mode, single-head paths are already deterministic and linear, keeping memory strictly bounded.
   }
 }
 
@@ -4265,6 +4222,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     resetGeneration(0);
     resetQueryArena();
     clearDiagnostics();
+    diag_count_reduce = 0;
+    diag_count_clone = 0;
+    diag_count_append = 0;
+    diag_count_shift = 0;
     errorCount = 0;
     mergeTableInit();
     lexPos = 0;
@@ -4283,6 +4244,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     let accepted = parseLR();
     if (currentParserMode == MODE_LR) {
       globalAstRoot = accepted;
+      debugLog(9100, diag_count_reduce, diag_count_clone, diag_count_append);
+      debugLog(9101, diag_count_shift, 0, 0);
       debugLog(9002, editNewEnd, accepted, currentParserMode);
       return accepted;
     }
@@ -4315,6 +4278,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let finalTree = wrapWithTrailingErrors(acceptedNode, acceptedPos);
       fixNodeLengthRecursive(finalTree);
       globalAstRoot = finalTree;
+      debugLog(9100, diag_count_reduce, diag_count_clone, diag_count_append);
+      debugLog(9101, diag_count_shift, activeHeadsCount, nextHeadsCount);
       debugLog(9003, finalTree, bestAcceptedCost, errorCount);
       t_editRangesPtr = 0;
       t_editRangesCount = 0;

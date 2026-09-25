@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, def, field, language, optional, prec, repeat, seq } from "@modelscript/dsl";
+import { scadWriteback } from "./writeback.js";
 
 const PREC = {
   CONDITIONAL: 1,
@@ -18,6 +19,8 @@ const PREC = {
 
 export const scadLanguage = language({
   name: "scad",
+
+  writeback: scadWriteback,
 
   primitives: {
     nestedComment: { open: "/*", close: "*/" },

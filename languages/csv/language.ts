@@ -23,6 +23,14 @@ interface CsvMetadata {
 export const csvLanguage = language({
   name: "csv",
 
+  writeback: (ctx) => {
+    const { entry, newValue } = ctx;
+    if (entry?.startByte != null && entry?.endByte != null && entry.endByte >= entry.startByte) {
+      return { startByte: entry.startByte, endByte: entry.endByte, newText: newValue.trim() };
+    }
+    return null;
+  },
+
   rules: {
     // =====================================================================
     // Grammar Rules

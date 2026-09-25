@@ -231,6 +231,7 @@ workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.ste
 
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { UnifiedWorkspace } from "@modelscript/runtime";
+import scadLangFallback from "@modelscript/scad/language";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { registerActionRouter } from "./handlers/actionRouter.js";
@@ -530,6 +531,27 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
         csvFacade = val;
       },
       languageDef: csvLangFallback,
+    });
+
+    let scadParser: any = undefined;
+    let scadFacade: any = undefined;
+    globalLanguageRegistry.register({
+      id: "scad",
+      name: "OpenSCAD",
+      extensions: [".scad"],
+      get parser() {
+        return scadParser ?? (parserService as any).scadParser;
+      },
+      set parser(val: any) {
+        scadParser = val;
+      },
+      get facade() {
+        return scadFacade ?? (parserService as any).scadFacade;
+      },
+      set facade(val: any) {
+        scadFacade = val;
+      },
+      languageDef: scadLangFallback,
     });
     connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
   };

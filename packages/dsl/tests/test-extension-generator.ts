@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import assert from "node:assert";
 import {
   bundleExtension,
   generateLanguageConfiguration,
   generatePackageJson,
   normalizeLanguages,
-} from "@modelscript/dsl/codegen/extension-generator.js";
-import { choice, language, seq } from "@modelscript/dsl/dsl/index.js";
-import assert from "node:assert";
+} from "../src/codegen/ide/extension-generator.js";
+import { choice, language, seq } from "../src/dsl/index.js";
 
 async function main() {
   console.log("=== Testing Unified VS Code Extension Generator ===");
@@ -78,6 +78,18 @@ async function main() {
   assert.strictEqual(pkg.contributes.customEditors[0].viewType, "calc.diagramEditor");
   assert.strictEqual(pkg.contributes.customEditors[1].viewType, "minijson.diagramEditor");
   assert.ok(pkg.contributes.notebooks);
+  assert.ok(pkg.contributes.menus["editor/title"]);
+  const openDiagMenu = pkg.contributes.menus["editor/title"].find((m: any) => m.command === "modelscript.openDiagram");
+  assert.ok(openDiagMenu, "Expected modelscript.openDiagram in editor/title menus");
+  assert.strictEqual(
+    openDiagMenu.when,
+    "editorLangId == calc || resourceLangId == calc || editorLangId == minijson || resourceLangId == minijson",
+  );
+
+  const openSourceMenu = pkg.contributes.menus["editor/title"].find(
+    (m: any) => m.command === "modelscript.openDiagramSource",
+  );
+  assert.ok(openSourceMenu, "Expected modelscript.openDiagramSource in editor/title menus");
   console.log("  ✓ Manifest generation passed");
 
   // Test 3: Language Configuration
@@ -116,6 +128,42 @@ async function main() {
   );
   assert.strictEqual(parsedPkg.name, "test-suite");
   console.log("  ✓ In-memory bundling passed");
+
+  // Test 5: Method 2 - Custom Language Diagram Action Override
+  console.log("Test 5: Method 2 - Custom language diagram action override...");
+  const customDiagGrammar = language({
+    name: "customSysml",
+    rules: {
+      Model: () => "model",
+    },
+    actions: [
+      {
+        id: "open_diagram",
+        title: "Custom Diagram View",
+        category: "query",
+        ui: {
+          editorTitle: {
+            icon: "$(type-hierarchy)",
+            group: "navigation@1",
+          },
+        },
+      },
+    ],
+  });
+  const customNormalized = normalizeLanguages([customDiagGrammar, calcGrammar]);
+  const customPkg = generatePackageJson(customNormalized, {
+    features: { diagramEditor: true },
+  });
+  const customEditorTitle = customPkg.contributes.menus["editor/title"];
+  // customSysml defined custom action 'open_diagram', so modelscript.openDiagram should only match 'calc'
+  const customOpenDiag = customEditorTitle.find((m: any) => m.command === "modelscript.openDiagram");
+  assert.ok(customOpenDiag);
+  assert.strictEqual(customOpenDiag.when, "editorLangId == calc || resourceLangId == calc");
+  // And customSysml's custom action was registered as modelscript.customsysml.open_diagram
+  const customActionMenu = customEditorTitle.find((m: any) => m.command === "modelscript.customsysml.open_diagram");
+  assert.ok(customActionMenu);
+  assert.strictEqual(customActionMenu.group, "navigation@1");
+  console.log("  ✓ Custom language diagram action override passed");
 
   console.log("\nAll Unified Extension Generator tests passed successfully!");
 }

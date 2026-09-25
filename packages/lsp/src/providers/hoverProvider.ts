@@ -145,6 +145,33 @@ export function registerHoverProvider(
       }
     }
 
+    // Enhance hover with formal abstract interpretation invariants if this is Modelica
+    if (document.uri.endsWith(".mo") || plugin?.id === "modelica") {
+      const proofMap = validationService.modelicaProofResultsByUri?.get(document.uri);
+      if (proofMap) {
+        let tokenStart = offset;
+        while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
+        let tokenEnd = offset;
+        while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
+        const token = text.slice(tokenStart, tokenEnd).trim();
+
+        if (token) {
+          for (const [fnName, proof] of proofMap.entries()) {
+            const entryStates = proof.summary?.blockEntryStates as Map<number, any> | undefined;
+            if (entryStates) {
+              for (const state of entryStates.values()) {
+                const ival = state.intervals?.get?.(token);
+                if (ival && !ival.isTop?.() && !ival.isBottom?.()) {
+                  hoverContent += `\n\n---\n**Formal Invariant (Astrée/Polyspace Abstract Domain):**\n- \`${token} ∈ ${ival.toString()}\` (Verified Invariant in \`${fnName}\`)`;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     return {
       contents: {
         kind: "markdown" as const,

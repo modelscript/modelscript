@@ -26,7 +26,7 @@ function formatDebugValue(val: unknown): string {
   return String(val);
 }
 
-function resolveTargetClass(
+export function resolveTargetClass(
   context: LspContext,
   uri: string,
   className?: string,
@@ -106,7 +106,7 @@ function resolveTargetClass(
   return null;
 }
 
-function flattenTargetClass(
+export function flattenTargetClass(
   context: LspContext,
   uri: string,
   className?: string,

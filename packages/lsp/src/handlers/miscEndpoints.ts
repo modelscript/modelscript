@@ -3,7 +3,63 @@
 import { DigitalThreadHypergraph, ThreadDomain } from "@modelscript/runtime";
 import { LspContext } from "../LspContext.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
+import { getCompositeName } from "../utils/hierarchyUtils.js";
 import { loadDependencyFromRegistry } from "../vfs/library-loader.js";
+
+function isValueCarryingEntry(entry: any, slice?: string): boolean {
+  if (!entry.name) return false;
+  const rule = entry.ruleName || "";
+
+  if (
+    // SysML2
+    rule === "AttributeUsage" ||
+    rule === "ReferenceUsage" ||
+    rule === "DefaultReferenceUsage" ||
+    rule === "PartUsage" ||
+    rule === "PortUsage" ||
+    rule === "ItemUsage" ||
+    rule === "EnumerationUsage" ||
+    rule === "ConstraintUsage" ||
+    // Modelica
+    rule === "ComponentDeclaration" ||
+    rule === "component_declaration" ||
+    rule === "ShortClassDefinition" ||
+    // OpenSCAD
+    rule === "VariableDeclaration" ||
+    rule === "Assignment" ||
+    // OWL2
+    rule === "DataPropertyAssertion" ||
+    // STEP
+    rule === "step_product" ||
+    rule === "step_shape" ||
+    // CSV
+    rule === "Row" ||
+    rule === "Cell"
+  ) {
+    return true;
+  }
+
+  if (entry.fieldRanges?.value || entry.fieldRanges?.expression) {
+    return true;
+  }
+
+  const lowerRule = rule.toLowerCase();
+  if (
+    lowerRule.includes("attribute") ||
+    lowerRule.includes("param") ||
+    lowerRule.includes("variable") ||
+    lowerRule.includes("property") ||
+    lowerRule.includes("assignment")
+  ) {
+    return true;
+  }
+
+  if (slice && (slice.includes("=") || slice.includes(":="))) {
+    return true;
+  }
+
+  return false;
+}
 
 export function registerMiscEndpoints(context: LspContext) {
   // ── Viewport tracking for prioritized linting ────────────────────────
@@ -113,7 +169,59 @@ export function registerMiscEndpoints(context: LspContext) {
   });
 
   context.connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<string, string> } => {
-    return { values: {} };
+    try {
+      const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const values: Record<string, string> = {};
+
+      for (const entry of db.symbols.values()) {
+        if (!entry.name) continue;
+
+        const qualifiedName = getCompositeName(entry, db);
+
+        if (entry.resourceId) {
+          const doc = context.documents.get(entry.resourceId);
+          const fullText = doc?.getText() ?? context.documentManager.documentTrees.get(entry.resourceId)?.text;
+          if (fullText && entry.startByte != null && entry.endByte != null && entry.endByte > entry.startByte) {
+            const sourceText = fullText.substring(entry.startByte, entry.endByte);
+            if (!isValueCarryingEntry(entry, sourceText)) continue;
+
+            let valueText: string | undefined;
+
+            // OWL2 DataPropertyAssertion
+            if (entry.ruleName === "DataPropertyAssertion" || sourceText.startsWith("DataPropertyAssertion")) {
+              const strMatch = sourceText.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/);
+              if (strMatch) {
+                valueText = strMatch[1];
+              }
+            } else {
+              const eqIdx = sourceText.indexOf("=");
+              if (eqIdx !== -1) {
+                valueText = sourceText
+                  .substring(eqIdx + 1)
+                  .replace(/[;}\s]+$/, "")
+                  .trim();
+              }
+            }
+
+            if (valueText) {
+              values[qualifiedName] = valueText;
+              if (!values[entry.name]) {
+                values[entry.name] = valueText;
+              }
+            }
+          }
+        }
+      }
+      return { values };
+    } catch (e) {
+      console.error("[resolveMarkdownVars] Error:", e);
+      return { values: {} };
+    }
+  });
+
+  context.connection.onRequest("modelscript/computeWritebackEdit", async (params: any) => {
+    const { computeWritebackEdit } = await import("../services/WritebackService.js");
+    return await computeWritebackEdit(context, params);
   });
 
   context.connection.onRequest(

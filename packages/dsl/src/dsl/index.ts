@@ -16,3 +16,4 @@ export * from "./query-types.js";
 export * from "./scanner-types.js";
 export * from "./tgg-types.js";
 export * from "./types.js";
+export * from "./writeback-types.js";

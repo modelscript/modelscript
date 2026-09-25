@@ -55,7 +55,7 @@ export class OptimizationPanel {
         if (msg.type === "optimizeRequest") {
           try {
             if (!this.client) return;
-            const result = await this.client.sendRequest("modelscript/optimize", {
+            const result = await this.client.sendRequest("modelscript/optimizeModel", {
               uri: this.sourceUri,
               objective: msg.payload.objective,
               controls: msg.payload.controls,

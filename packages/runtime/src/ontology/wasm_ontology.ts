@@ -938,6 +938,24 @@ export interface WasmOntologyInstance {
     dataValLo: number,
     dataValHi: number,
   ): number;
+  ontology_addAxiom64?(
+    axiomType: number,
+    sourceLangId: number,
+    sLo: number,
+    sHi: number,
+    pLo: number,
+    pHi: number,
+    oLo: number,
+    oHi: number,
+    flags: number,
+    extra: number,
+  ): number;
+  ontology_getOrCreateEntity?(hashLo: number, hashHi: number): number;
+  ontology_getEntityHashLo?(entityId: number): number;
+  ontology_getEntityHashHi?(entityId: number): number;
+  ontology_getEntityCount?(): number;
+  ontology_getAxiomTablePtr?(): number;
+  ontology_getQueryBuffer?(): number;
   ontology_isSubClassOf?(subClassHash: number, superClassHash: number): number;
   ontology_explainSubsumption?(subClassHash: number, superClassHash: number): number;
   ontology_checkConsistency?(): number;
@@ -972,7 +990,64 @@ export interface WasmOntologyInstance {
   ontology_runTableauSubsumption?(subClass: number, supClass: number): number;
   projection_projectFileStubs?(fileId: number, sourceLangId: number): number;
   projection_projectAllStubs?(sourceLangId: number): number;
+  ontology_internString?(strPtr: number, strLen: number, hashLo: number, hashHi: number): number;
+  ontology_extractString?(id: number, outPtr: number): number;
+  ontology_getStringCompressionRatio?(): number;
+  ontology_getStringCount?(): number;
+  ontology_getRawStringBytes?(): number;
+  ontology_getCompressedStringBytes?(): number;
+  ontology_queryTriplesBitmap?(subjectPattern: number, predicatePattern: number, objectPattern: number): number;
+  ontology_getRoaringCardinality?(indexType: number, keyHash: number): number;
+  alloc?(size: number): number;
+  free?(ptr: number): void;
   memory?: WebAssembly.Memory;
+}
+
+/**
+ * 64-bit FNV-1a IRI hashing to eliminate birthday paradox collisions in large ontologies.
+ */
+export function hashIri64(s: string): { lo: number; hi: number; hash64: bigint } {
+  let h = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  for (let i = 0; i < s.length; i++) {
+    h = (h ^ BigInt(s.charCodeAt(i))) * prime;
+    h = h & 0xffffffffffffffffn;
+  }
+  const lo = Number(h & 0xffffffffn) >>> 0;
+  const hi = Number((h >> 32n) & 0xffffffffn) >>> 0;
+  return { lo, hi, hash64: h };
+}
+
+/**
+ * Zero-copy flyweight view over an in-WASM axiom record in linear memory.
+ */
+export class AxiomRecordView {
+  constructor(
+    private _buffer: Uint32Array,
+    private _wordOffset: number,
+  ) {}
+
+  get axiomType(): number {
+    return this._buffer[this._wordOffset] & 0xffff;
+  }
+  get sourceLangId(): number {
+    return (this._buffer[this._wordOffset] >> 16) & 0xffff;
+  }
+  get subjectId(): number {
+    return this._buffer[this._wordOffset + 1] ?? 0;
+  }
+  get predicateId(): number {
+    return this._buffer[this._wordOffset + 2] ?? 0;
+  }
+  get objectId(): number {
+    return this._buffer[this._wordOffset + 3] ?? 0;
+  }
+  get flags(): number {
+    return this._buffer[this._wordOffset + 4] ?? 0;
+  }
+  get extra(): number {
+    return this._buffer[this._wordOffset + 5] ?? 0;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -4073,6 +4148,101 @@ export class OntologyBuilder {
 // WASM-Backed Ontology Store
 // ---------------------------------------------------------------------------
 
+export function axiomToTypeAndIris(axiom: OWL2Axiom): {
+  type: number;
+  sIri: string;
+  pIri: string;
+  oIri: string;
+  flags?: number;
+  extra?: number;
+} | null {
+  switch (axiom.type) {
+    case "ClassDeclaration":
+      return { type: AXIOM_CLASS_DECL, sIri: axiom.iri, pIri: "", oIri: "" };
+    case "SubClassOf":
+      return { type: AXIOM_SUBCLASS_OF, sIri: axiom.subClassIri, pIri: "", oIri: axiom.superClassIri };
+    case "EquivalentClasses":
+      if (axiom.classIris.length >= 2) {
+        return { type: AXIOM_EQUIV_CLASS, sIri: axiom.classIris[0]!, pIri: "", oIri: axiom.classIris[1]! };
+      }
+      return null;
+    case "DisjointClasses":
+      if (axiom.classIris.length >= 2) {
+        return { type: AXIOM_DISJOINT_CLASSES, sIri: axiom.classIris[0]!, pIri: "", oIri: axiom.classIris[1]! };
+      }
+      return null;
+    case "ObjectPropertyDeclaration":
+      return { type: AXIOM_OBJ_PROP_DECL, sIri: axiom.iri, pIri: "", oIri: "" };
+    case "DataPropertyDeclaration":
+      return { type: AXIOM_DATA_PROP_DECL, sIri: axiom.iri, pIri: "", oIri: "" };
+    case "ObjectPropertyAssertion":
+      return { type: AXIOM_OBJ_PROP_ASSERT, sIri: axiom.subjectIri, pIri: axiom.propertyIri, oIri: axiom.objectIri };
+    case "DataPropertyAssertion":
+      return {
+        type: AXIOM_DATA_PROP_ASSERT,
+        sIri: axiom.subjectIri,
+        pIri: axiom.propertyIri,
+        oIri: String(axiom.value),
+      };
+    case "TransitiveObjectProperty":
+      return { type: AXIOM_TRANSITIVE_PROP, sIri: axiom.propertyIri, pIri: "", oIri: "" };
+    case "IndividualDeclaration":
+      return { type: AXIOM_INDIVIDUAL_DECL, sIri: axiom.iri, pIri: "", oIri: "" };
+    case "ClassAssertion":
+      return { type: AXIOM_CLASS_ASSERT, sIri: axiom.individualIri, pIri: "", oIri: axiom.classIri };
+    case "ObjectSomeValuesFrom":
+      return {
+        type: AXIOM_OBJECT_SOME_VALUES_FROM,
+        sIri: "owl:Thing",
+        pIri: axiom.propertyIri,
+        oIri: axiom.fillerClassIri,
+      };
+    case "FunctionalObjectProperty":
+      return { type: AXIOM_FUNCTIONAL_OBJ_PROP, sIri: axiom.propertyIri, pIri: "", oIri: "" };
+    case "FunctionalDataProperty":
+      return { type: AXIOM_FUNCTIONAL_DATA_PROP, sIri: axiom.propertyIri, pIri: "", oIri: "" };
+    case "SameIndividual":
+      if (axiom.individualIris.length >= 2) {
+        return {
+          type: AXIOM_SAME_INDIVIDUAL,
+          sIri: axiom.individualIris[0]!,
+          pIri: "",
+          oIri: axiom.individualIris[1]!,
+        };
+      }
+      return null;
+    case "UniversalRestriction":
+      return {
+        type: AXIOM_UNIVERSAL_RESTRICTION,
+        sIri: axiom.classIri || "owl:Thing",
+        pIri: axiom.propertyIri,
+        oIri: axiom.targetClassIri,
+      };
+    case "DisjunctiveClass":
+      return {
+        type: AXIOM_DISJUNCTIVE_CLASS,
+        sIri: axiom.superClassIri || "",
+        pIri: "",
+        oIri: axiom.classIris[0] || "",
+      };
+    case "SymmetricObjectProperty":
+      return { type: AXIOM_SYMMETRIC_PROP, sIri: axiom.propertyIri, pIri: "", oIri: "" };
+    case "InverseObjectProperty":
+      return { type: AXIOM_INVERSE_PROP, sIri: axiom.propertyIri, pIri: "", oIri: axiom.inversePropertyIri };
+    case "AsymmetricObjectProperty":
+      return { type: AXIOM_ASYMMETRIC_PROP, sIri: axiom.propertyIri, pIri: "", oIri: "" };
+    case "IrreflexiveObjectProperty":
+      return { type: AXIOM_IRREFLEXIVE_PROP, sIri: axiom.propertyIri, pIri: "", oIri: "" };
+    case "DisjointObjectProperties":
+      if (axiom.propertyIris.length >= 2) {
+        return { type: AXIOM_DISJOINT_PROPS, sIri: axiom.propertyIris[0]!, pIri: "", oIri: axiom.propertyIris[1]! };
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
 export class WasmOntologyStore implements IOWL2OntologyStore {
   private _revision = 0;
   private _axioms: OWL2Axiom[] = [];
@@ -4082,6 +4252,9 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   private _sourceLanguages: string[] = [];
   private _wasmInstance: WasmOntologyInstance | null = null;
   private _workspace: any = null;
+  private _pureWasmMode = false;
+  private _entityIriMap = new Map<number, string>();
+  private _iriEntityMap = new Map<string, number>();
 
   constructor(wasmInstance?: WasmOntologyInstance | null, workspace?: any) {
     this._wasmInstance = wasmInstance ?? null;
@@ -4102,6 +4275,163 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
 
   public get wasmInstance(): WasmOntologyInstance | null {
     return this._wasmInstance;
+  }
+
+  public setPureWasmMode(enabled: boolean): void {
+    this._pureWasmMode = enabled;
+  }
+
+  public get isPureWasmMode(): boolean {
+    return this._pureWasmMode;
+  }
+
+  public internIri(iri: string): number {
+    if (!iri) return 0;
+    const existing = this._iriEntityMap.get(iri);
+    if (existing !== undefined) return existing;
+
+    const { lo, hi } = hashIri64(iri);
+    let id: number;
+    if (this._wasmInstance?.ontology_getOrCreateEntity) {
+      id = this._wasmInstance.ontology_getOrCreateEntity(lo, hi);
+    } else {
+      id = this._iriEntityMap.size + 1;
+    }
+    this._iriEntityMap.set(iri, id);
+    this._entityIriMap.set(id, iri);
+    return id;
+  }
+
+  public getIri(entityId: number): string | undefined {
+    return this._entityIriMap.get(entityId);
+  }
+
+  public internStringWasm(str: string): number {
+    if (!this._wasmInstance?.ontology_internString || !this._wasmInstance.memory) return 0;
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(str);
+    const { lo, hi } = hashIri64(str);
+    let ptr = 0;
+    if (this._wasmInstance.alloc) {
+      ptr = this._wasmInstance.alloc(bytes.length);
+    } else {
+      ptr = this._wasmInstance.ontology_getQueryBuffer ? this._wasmInstance.ontology_getQueryBuffer() : 1024;
+    }
+    const mem8 = new Uint8Array(this._wasmInstance.memory.buffer);
+    mem8.set(bytes, ptr);
+    const id = this._wasmInstance.ontology_internString(ptr, bytes.length, lo, hi);
+    if (this._wasmInstance.alloc && this._wasmInstance.free) {
+      this._wasmInstance.free(ptr);
+    }
+    return id;
+  }
+
+  public extractStringWasm(id: number): string {
+    if (!this._wasmInstance?.ontology_extractString || !this._wasmInstance.memory) return "";
+    let ptr = 0;
+    const maxLen = 4096;
+    if (this._wasmInstance.alloc) {
+      ptr = this._wasmInstance.alloc(maxLen);
+    } else {
+      ptr = this._wasmInstance.ontology_getQueryBuffer ? this._wasmInstance.ontology_getQueryBuffer() : 1024;
+    }
+    const len = this._wasmInstance.ontology_extractString(id, ptr);
+    const mem8 = new Uint8Array(this._wasmInstance.memory.buffer, ptr, len);
+    const decoder = new TextDecoder();
+    const str = decoder.decode(mem8);
+    if (this._wasmInstance.alloc && this._wasmInstance.free) {
+      this._wasmInstance.free(ptr);
+    }
+    return str;
+  }
+
+  public getStringCompressionRatio(): number {
+    if (!this._wasmInstance?.ontology_getStringCompressionRatio) return 1.0;
+    return this._wasmInstance.ontology_getStringCompressionRatio();
+  }
+
+  public queryTriplesBitmap(pattern: {
+    subject?: string | number;
+    predicate?: string | number;
+    object?: string | number;
+  }): AxiomRecordView[] {
+    if (
+      !this._wasmInstance?.ontology_queryTriplesBitmap ||
+      !this._wasmInstance.memory ||
+      !this._wasmInstance.ontology_getQueryBuffer
+    ) {
+      return [];
+    }
+    const sId =
+      typeof pattern.subject === "string"
+        ? pattern.subject
+          ? this.internIri(pattern.subject)
+          : 0
+        : (pattern.subject ?? 0);
+    const pId =
+      typeof pattern.predicate === "string"
+        ? pattern.predicate
+          ? this.internIri(pattern.predicate)
+          : 0
+        : (pattern.predicate ?? 0);
+    const oId =
+      typeof pattern.object === "string"
+        ? pattern.object
+          ? this.internIri(pattern.object)
+          : 0
+        : (pattern.object ?? 0);
+
+    const count = this._wasmInstance.ontology_queryTriplesBitmap(sId, pId, oId);
+    const bufPtr = this._wasmInstance.ontology_getQueryBuffer();
+    const uint32 = new Uint32Array(this._wasmInstance.memory.buffer, bufPtr, count * 6);
+    const results: AxiomRecordView[] = [];
+    for (let i = 0; i < count; i++) {
+      results.push(new AxiomRecordView(uint32, i * 6));
+    }
+    return results;
+  }
+
+  public getRoaringCardinality(indexType: number, key: string | number): number {
+    if (!this._wasmInstance?.ontology_getRoaringCardinality) return 0;
+    const entityId = typeof key === "string" ? this.internIri(key) : key;
+    return this._wasmInstance.ontology_getRoaringCardinality(indexType, entityId);
+  }
+
+  public addAxiomDirect64(
+    axiomType: number,
+    sourceLangId: number,
+    subjectIri: string,
+    predicateIri: string = "",
+    objectIri: string = "",
+    flags: number = 0,
+    extra: number = 0,
+  ): number {
+    const s = hashIri64(subjectIri);
+    const p = predicateIri ? hashIri64(predicateIri) : { lo: 0, hi: 0, hash64: 0n };
+    const o = objectIri ? hashIri64(objectIri) : { lo: 0, hi: 0, hash64: 0n };
+
+    let axId = 0;
+    if (this._wasmInstance?.ontology_addAxiom64) {
+      axId = this._wasmInstance.ontology_addAxiom64(
+        axiomType,
+        sourceLangId,
+        s.lo,
+        s.hi,
+        p.lo,
+        p.hi,
+        o.lo,
+        o.hi,
+        flags,
+        extra,
+      );
+    }
+    if (!this._pureWasmMode) {
+      this.internIri(subjectIri);
+      if (predicateIri) this.internIri(predicateIri);
+      if (objectIri) this.internIri(objectIri);
+    }
+    this._revision++;
+    return axId;
   }
 
   get revision(): number {
@@ -4134,6 +4464,31 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   }
 
   addAxioms(sourceLang: string, axioms: OWL2Axiom[]): OWL2AxiomDelta {
+    // Forward to WASM instance directly if present
+    if (this._wasmInstance?.ontology_addAxiom64) {
+      const langId = sourceLang === "modelica" ? 1 : sourceLang === "sysml2" ? 2 : sourceLang === "step" ? 3 : 0;
+      for (const ax of axioms) {
+        const mapped = axiomToTypeAndIris(ax);
+        if (mapped) {
+          this.addAxiomDirect64(
+            mapped.type,
+            langId,
+            mapped.sIri,
+            mapped.pIri,
+            mapped.oIri,
+            mapped.flags ?? 0,
+            mapped.extra ?? 0,
+          );
+        }
+      }
+    }
+
+    if (this._pureWasmMode) {
+      this._lastDelta = { retractions: [], assertions: axioms };
+      this._revision++;
+      return this._lastDelta;
+    }
+
     const previousAxioms = this._axiomsBySource.get(sourceLang) ?? [];
     const updatedAxioms = [...previousAxioms, ...axioms];
     this._axiomsBySource.set(sourceLang, updatedAxioms);
@@ -4460,6 +4815,8 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     if (this._wasmInstance?.ontology_clear) {
       this._wasmInstance.ontology_clear();
     }
+    this._entityIriMap.clear();
+    this._iriEntityMap.clear();
     this._axioms = [];
     this._axiomsBySource.clear();
     this._projectedVersions.clear();

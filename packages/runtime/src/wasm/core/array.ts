@@ -277,6 +277,19 @@ export class ChunkedFloat64Array extends ChunkedArray<f64> {}
 @unmanaged
 export class ChunkedUint8Array extends ChunkedArray<u8> {}
 
+@unmanaged
+export class ChunkedUint16Array extends ChunkedArray<u16> {}
+
+/**
+ * Factory function to safely instantiate an unmanaged `ChunkedUint16Array`.
+ */
+export function createChunkedUint16Array(initialElements: u32 = 0): ChunkedUint16Array {
+  let ptr = atomicChunkAlloc(sizeof<usize>() * 4);
+  let arr = changetype<ChunkedUint16Array>(ptr);
+  arr.init(initialElements);
+  return arr;
+}
+
 /**
  * Factory function to safely instantiate an unmanaged `ChunkedUint32Array`.
  * Bypasses the `new` keyword to allocate directly from the `atomicChunkAlloc` linear arena.

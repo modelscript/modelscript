@@ -107,6 +107,14 @@ export class OctagonDBM {
     this.close();
   }
 
+  setInterval(varIdx: number, lower: number, upper: number): void {
+    this.assumeInterval(varIdx, lower, upper);
+  }
+
+  setDifference(var1: number, var2: number, maxDiff: number): void {
+    this.assumeDiff(var1, var2, maxDiff);
+  }
+
   /**
    * Checks if the variable's current bounds are within [lower, upper].
    */
@@ -150,5 +158,114 @@ export class OctagonDBM {
       if (this.matrix[i * dim + i]! < 0) return true;
     }
     return false;
+  }
+
+  clone(): OctagonDBM {
+    const copy = new OctagonDBM(this.numVars);
+    copy.matrix.set(this.matrix);
+    return copy;
+  }
+
+  isLeq(other: OctagonDBM): boolean {
+    if (this.hasNegativeCycle()) return true;
+    if (other.hasNegativeCycle()) return false;
+    const dim = Math.min(this.dim, other.dim);
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) {
+        if (this.matrix[i * this.dim + j]! > other.matrix[i * other.dim + j]!) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  join(other: OctagonDBM): OctagonDBM {
+    if (this.hasNegativeCycle()) return other.clone();
+    if (other.hasNegativeCycle()) return this.clone();
+
+    const n = Math.max(this.numVars, other.numVars);
+    const res = new OctagonDBM(n);
+    const dim = res.dim;
+
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) {
+        const valA = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF;
+        const valB = i < other.dim && j < other.dim ? other.matrix[i * other.dim + j]! : OCTAGON_INF;
+        res.matrix[i * dim + j] = Math.max(valA, valB);
+      }
+    }
+    return res;
+  }
+
+  meet(other: OctagonDBM): OctagonDBM {
+    if (this.hasNegativeCycle()) return this.clone();
+    if (other.hasNegativeCycle()) return other.clone();
+
+    const n = Math.max(this.numVars, other.numVars);
+    const res = new OctagonDBM(n);
+    const dim = res.dim;
+
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) {
+        const valA = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF;
+        const valB = i < other.dim && j < other.dim ? other.matrix[i * other.dim + j]! : OCTAGON_INF;
+        res.matrix[i * dim + j] = Math.min(valA, valB);
+      }
+    }
+    res.close();
+    return res;
+  }
+
+  widenWithThresholds(other: OctagonDBM, thresholds?: number[]): OctagonDBM {
+    if (this.hasNegativeCycle()) return other.clone();
+    if (other.hasNegativeCycle()) return this.clone();
+
+    const n = Math.max(this.numVars, other.numVars);
+    const res = new OctagonDBM(n);
+    const dim = res.dim;
+
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) {
+        const aVal = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF;
+        const bVal = i < other.dim && j < other.dim ? other.matrix[i * other.dim + j]! : OCTAGON_INF;
+
+        if (bVal <= aVal) {
+          res.matrix[i * dim + j] = aVal;
+        } else {
+          if (thresholds && thresholds.length > 0) {
+            let nextT = OCTAGON_INF;
+            for (let t = 0; t < thresholds.length; t++) {
+              const th2 = thresholds[t]! * 2;
+              if (th2 >= bVal) {
+                nextT = th2;
+                break;
+              }
+            }
+            res.matrix[i * dim + j] = nextT;
+          } else {
+            res.matrix[i * dim + j] = OCTAGON_INF;
+          }
+        }
+      }
+    }
+    return res;
+  }
+
+  narrow(other: OctagonDBM): OctagonDBM {
+    if (this.hasNegativeCycle() || other.hasNegativeCycle()) return this.clone();
+    const n = Math.max(this.numVars, other.numVars);
+    const res = new OctagonDBM(n);
+    const dim = res.dim;
+
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) {
+        const aVal = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF;
+        const bVal = i < other.dim && j < other.dim ? other.matrix[i * other.dim + j]! : OCTAGON_INF;
+        res.matrix[i * dim + j] = aVal === OCTAGON_INF ? bVal : aVal;
+      }
+    }
+    res.close();
+    return res;
   }
 }

@@ -26,6 +26,9 @@ export * from "../src/wasm/solvers/sparse_lu";
 export * from "../src/wasm/core/string_pool";
 export * from "../src/wasm/autodiff/tape";
 export * from "../src/wasm/structural/tearing";
+export * from "../src/wasm/ontology_module/ontology";
+export * from "../src/wasm/storage/paged_btree";
+
 
 // We will use Typed Arrays instead of Map/Set for much higher performance
 // since our variable and equation IDs are densely packed integers [0, N-1].

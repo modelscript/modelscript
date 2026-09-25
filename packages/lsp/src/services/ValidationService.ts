@@ -36,6 +36,7 @@ export class ValidationService {
 
   public verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
   public verificationResultsByUri = new Map<string, any[]>();
+  public modelicaProofResultsByUri = new Map<string, Map<string, any>>();
 
   get dependenciesReady(): boolean {
     return this.declaredDependencies.every((dep) => this.loadedDependencies.has(`${dep.name}@${dep.version}`));
@@ -88,7 +89,8 @@ export class ValidationService {
       try {
         const rootPtr = rootNode.id ?? rootNode.ptr ?? rootNode?.tree?.rootPtr ?? 0;
         if (rootPtr) {
-          const wasmDiags = facade.getDiagnostics(rootPtr);
+          const docLen = textDocument.getText().length;
+          const wasmDiags = facade.getDiagnostics(rootPtr, 0, docLen);
           if (Array.isArray(wasmDiags)) {
             for (const d of wasmDiags) {
               // Severity 1 = Error (Syntax Error).
@@ -487,7 +489,7 @@ export class ValidationService {
         }
       }
 
-      // ── Step 5: Declarative Lints ────────────────────────────────────────
+      // ── Step 5: Declarative & CST Lints ────────────────────────────────────
       const hasError = typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError;
       const hasSyntaxErrors = baseDiagnostics.length > 0 || hasError;
 
@@ -496,6 +498,164 @@ export class ValidationService {
         newSemanticDiagnostics.push(...cachedSemantic);
       }
 
+      // 5a. WASM Linear Memory CST Linter (evaluates equation & expression lints)
+      if (!hasSyntaxErrors) {
+        const facade =
+          plugin?.facade ??
+          tree?.facade ??
+          (tree.rootNode as any)?.tree?.facade ??
+          this.parserService.getFacade(langId) ??
+          this.parserService.facade;
+        const rootPtr = tree.rootNode?.id ?? tree.rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+
+        if (facade && rootPtr && typeof facade.getDiagnostics === "function") {
+          try {
+            const wasmDiags = facade.getDiagnostics(rootPtr);
+            if (Array.isArray(wasmDiags)) {
+              for (const d of wasmDiags) {
+                // Collect linter warnings / errors (severity 2 or code >= 1000)
+                if (d.severity === 2 || (typeof d.code === "number" && d.code >= 1000)) {
+                  let range = d.range;
+                  if (d.startCharOffset !== undefined && d.endCharOffset !== undefined && currentDoc) {
+                    range = {
+                      start: currentDoc.positionAt(d.startCharOffset),
+                      end: currentDoc.positionAt(d.endCharOffset),
+                    };
+                  } else if (typeof d.startByte === "number" && typeof d.endByte === "number" && bridge) {
+                    range = {
+                      start: (bridge as any).positions.offsetToPosition(d.startByte),
+                      end: (bridge as any).positions.offsetToPosition(d.endByte),
+                    };
+                  }
+
+                  if (range) {
+                    if (range.start.line === range.end.line && range.start.character === range.end.character) {
+                      range = {
+                        start: range.start,
+                        end: { line: range.start.line, character: range.start.character + 1 },
+                      };
+                    }
+
+                    // Extract token text if offsets are present
+                    let tokenText = "";
+                    if (
+                      d.startCharOffset !== undefined &&
+                      d.endCharOffset !== undefined &&
+                      d.endCharOffset > d.startCharOffset
+                    ) {
+                      tokenText = currentText.slice(d.startCharOffset, d.endCharOffset).trim();
+                    } else if (
+                      typeof d.startByte === "number" &&
+                      typeof d.endByte === "number" &&
+                      d.endByte > d.startByte
+                    ) {
+                      tokenText = currentText.slice(d.startByte, d.endByte).trim();
+                    }
+
+                    // Determine descriptive message
+                    let message = d.message;
+                    const code = d.code;
+                    const pluginLints = plugin?.languageDef?.lints;
+                    let matchedLint: any = null;
+
+                    if (pluginLints && code) {
+                      for (const lint of Object.values(pluginLints)) {
+                        if ((lint as any)?.code === code) {
+                          matchedLint = lint;
+                          break;
+                        }
+                      }
+                    }
+
+                    if (!message || message.startsWith("Linter Rule ") || message.startsWith("Syntax Error")) {
+                      if (matchedLint && typeof matchedLint.message === "function") {
+                        try {
+                          message = matchedLint.message({ text: tokenText }, { text: "" });
+                        } catch {
+                          // Fallback
+                        }
+                      }
+                      if (!message || message.startsWith("Linter Rule ")) {
+                        if (code === 2001 || code === 2002) {
+                          message = tokenText
+                            ? `Variable '${tokenText}' not found in scope.`
+                            : "Variable not found in scope.";
+                        } else if (code === 2003) {
+                          message = tokenText
+                            ? `Class or type '${tokenText}' not found in scope.`
+                            : "Class or type not found in scope.";
+                        } else if (code === 3001) {
+                          message = tokenText
+                            ? `Type mismatch in binding or modification expression '${tokenText}'.`
+                            : "Type mismatch in binding.";
+                        } else if (code === 3009) {
+                          message = tokenText
+                            ? `Array index '${tokenText}' has invalid type: expected Integer or Boolean.`
+                            : "Invalid array index type.";
+                        } else if (code === 4031) {
+                          message = tokenText
+                            ? `Subscript '${tokenText}' is out of bounds.`
+                            : "Array index out of bounds.";
+                        } else if (code === 5001) {
+                          message = tokenText
+                            ? `Type mismatch in equation '${tokenText}'.`
+                            : "Type mismatch in equation.";
+                        } else if (code === 5005) {
+                          message = tokenText
+                            ? `Division by literal zero in '${tokenText}'.`
+                            : "Division by literal zero.";
+                        } else if (code === 5006) {
+                          message = tokenText
+                            ? `Type mismatch in assignment in '${tokenText}'.`
+                            : "Type mismatch in assignment.";
+                        } else {
+                          message = `Linter rule ${code}`;
+                        }
+                      }
+                    }
+
+                    // Determine severity
+                    let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+                    if (
+                      matchedLint?.severity === "error" ||
+                      code === 2001 ||
+                      code === 2002 ||
+                      code === 2003 ||
+                      code === 3001 ||
+                      code === 3009 ||
+                      code === 4031 ||
+                      code === 5001 ||
+                      code === 5005 ||
+                      code === 5006 ||
+                      code === 5008 ||
+                      code === 5009 ||
+                      code === 5013
+                    ) {
+                      severity = DiagnosticSeverity.Error;
+                    } else if (matchedLint?.severity === "info") {
+                      severity = DiagnosticSeverity.Information;
+                    }
+
+                    newSemanticDiagnostics.push({
+                      severity,
+                      range,
+                      message,
+                      source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
+                      code: code ?? d.lintName,
+                    });
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            this.connection.console.warn(
+              `[runUnifiedSemanticPipeline] CST linter error for ${uri}: ${e?.message ?? e}`,
+            );
+          }
+        }
+      }
+
+      // 5b. Salsa QueryEngine symbol lints
       const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
       if (!skipHeavyLints && engine && typeof (engine as any).runAllLintsAsync === "function") {
         const viewportRange = this.documentViewports.get(uri) ?? undefined;
@@ -508,13 +668,24 @@ export class ValidationService {
           let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
           if (d.severity === "error") severity = DiagnosticSeverity.Error;
           if (d.severity === "info") severity = DiagnosticSeverity.Information;
-          newSemanticDiagnostics.push({
-            severity,
-            range: { start, end },
-            message: d.message,
-            source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
-            code: d.code ?? d.lintName,
-          });
+
+          const diagCode = d.code ?? d.lintName;
+          const isDuplicate = newSemanticDiagnostics.some(
+            (existing) =>
+              existing.range.start.line === start.line &&
+              existing.range.start.character === start.character &&
+              existing.code === diagCode,
+          );
+
+          if (!isDuplicate) {
+            newSemanticDiagnostics.push({
+              severity,
+              range: { start, end },
+              message: d.message,
+              source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
+              code: diagCode,
+            });
+          }
         }
       }
 
@@ -529,6 +700,8 @@ export class ValidationService {
             this.postValidateSysml2(effectiveUri, newSemanticDiagnostics);
           }
           this.checkAutoVerify(effectiveUri);
+        } else if (langId === "modelica" && !hasSyntaxErrors && textDocument) {
+          await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
         }
       }
 
@@ -875,6 +1048,112 @@ export class ValidationService {
       }
     } catch (e: any) {
       this.connection.console.error(`[sysml2-reasoner] Update failed: ${e.message}`);
+    }
+  }
+
+  public async postValidateModelicaAbstractInterpretation(
+    effectiveUri: string,
+    textDocument: TextDocument,
+    diagnostics: Diagnostic[],
+  ): Promise<void> {
+    try {
+      const text = textDocument.getText();
+      if (!/\balgorithm\b/.test(text)) return;
+
+      const { ModelicaAlgorithmAnalyzer, ModelicaCFGLowerer } = await import("@modelscript/modelica");
+
+      const proofMap = new Map<string, any>();
+      this.modelicaProofResultsByUri.set(effectiveUri, proofMap);
+
+      // Match class / function / block / model definitions with algorithms
+      const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
+      let match: RegExpExecArray | null;
+
+      while ((match = funcRegex.exec(text)) !== null) {
+        const kind = match[1]!;
+        const name = match[2]!;
+        const body = match[3]!;
+
+        const algMatch = /\b(?:initial\s+)?algorithm\b([\s\S]*)$/.exec(body);
+        if (!algMatch) continue;
+
+        const algText = algMatch[0];
+        const algOffset = match.index + match[0].indexOf(algText);
+
+        // Extract declared variables from the definition body
+        const variables: any[] = [];
+        const varDeclRegex =
+          /\b(input|output)?\s*(Real|Integer|Boolean|String)\s+(?:\[(.*?)\]\s+)?([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*([^;]+))?\s*;/g;
+        let vMatch: RegExpExecArray | null;
+        while ((vMatch = varDeclRegex.exec(body)) !== null) {
+          const io = vMatch[1];
+          const type = vMatch[2];
+          const dimStr = vMatch[3];
+          const vName = vMatch[4]!;
+          const initExpr = vMatch[5];
+
+          const isArray = Boolean(dimStr);
+          const arrayDimension = dimStr && /^\d+$/.test(dimStr.trim()) ? Number(dimStr.trim()) : undefined;
+
+          let initialBound: [number, number] | undefined = undefined;
+          if (initExpr && /^-?\d+(?:\.\d+)?$/.test(initExpr.trim())) {
+            const val = Number(initExpr.trim());
+            initialBound = [val, val];
+          }
+
+          variables.push({
+            name: vName,
+            type,
+            isInput: io === "input",
+            isOutput: io === "output",
+            isArray,
+            arrayDimension,
+            initialBound,
+          });
+        }
+
+        const statements = ModelicaCFGLowerer.parseStatements(algText, algOffset);
+        if (statements.length === 0) continue;
+
+        const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, {
+          functionName: name,
+        });
+
+        proofMap.set(name, result);
+
+        // Map proof results to 4-color LSP diagnostics
+        // 1. Definite Bugs (Red)
+        for (const bug of result.definiteBugs) {
+          const startPos = textDocument.positionAt(bug.startByte ?? algOffset);
+          const endPos = textDocument.positionAt(bug.endByte ?? (bug.startByte ? bug.startByte + 10 : algOffset + 10));
+
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start: startPos, end: endPos },
+            message: `[Formal Proof Defect] ${bug.description}`,
+            source: "modelscript-prover",
+            code: bug.category,
+          });
+        }
+
+        // 2. Potential Bugs / Warnings (Orange)
+        for (const warn of result.potentialBugs) {
+          const startPos = textDocument.positionAt(warn.startByte ?? algOffset);
+          const endPos = textDocument.positionAt(
+            warn.endByte ?? (warn.startByte ? warn.startByte + 10 : algOffset + 10),
+          );
+
+          diagnostics.push({
+            severity: DiagnosticSeverity.Warning,
+            range: { start: startPos, end: endPos },
+            message: `[Formal Proof Unproven] ${warn.description}. Consider adding an invariant assertion.`,
+            source: "modelscript-prover",
+            code: warn.category,
+          });
+        }
+      }
+    } catch (err: any) {
+      this.connection.console.error(`[modelica-prover] Error in abstract interpretation: ${err?.message}`);
     }
   }
 

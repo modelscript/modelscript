@@ -46,18 +46,14 @@ export interface DecisionTableOptions {
 /**
  * Converts a GuardConstraint into a runtime NonlinearConstraint.
  */
-function toNonlinearConstraint(g: GuardConstraint, eps = 1e-3): NonlinearConstraint {
+export function toNonlinearConstraint(g: GuardConstraint): NonlinearConstraint {
   if (g.nonlinear) {
     return g.nonlinear;
   }
   const varName = g.variable.includes(".") ? g.variable.split(".").pop()! : g.variable;
-  if (g.operator === "<") {
-    return { expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value - eps };
-  } else if (g.operator === ">") {
-    return { expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value + eps };
-  } else if (g.operator === "<=") {
+  if (g.operator === "<" || g.operator === "<=") {
     return { expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value };
-  } else if (g.operator === ">=") {
+  } else if (g.operator === ">" || g.operator === ">=") {
     return { expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value };
   } else {
     return { expr: { kind: "var", name: varName }, rel: "==", rhs: g.value };
@@ -67,17 +63,35 @@ function toNonlinearConstraint(g: GuardConstraint, eps = 1e-3): NonlinearConstra
 /**
  * Negates a single constraint into an array of equivalent non-linear inequalities.
  */
-function negateNlConstraint(c: NonlinearConstraint, eps = 1e-3): NonlinearConstraint[] {
+function negateNlConstraint(c: NonlinearConstraint): NonlinearConstraint[] {
   if (c.rel === "<=") {
-    return [{ expr: c.expr, rel: ">=", rhs: c.rhs + eps }];
+    return [{ expr: c.expr, rel: ">=", rhs: c.rhs }];
   } else if (c.rel === ">=") {
-    return [{ expr: c.expr, rel: "<=", rhs: c.rhs - eps }];
+    return [{ expr: c.expr, rel: "<=", rhs: c.rhs }];
   } else {
     return [
-      { expr: c.expr, rel: "<=", rhs: c.rhs - eps },
-      { expr: c.expr, rel: ">=", rhs: c.rhs + eps },
+      { expr: c.expr, rel: "<=", rhs: c.rhs },
+      { expr: c.expr, rel: ">=", rhs: c.rhs },
     ];
   }
+}
+
+function areGuardsDisjoint(guardsA: GuardConstraint[], guardsB: GuardConstraint[]): boolean {
+  for (const gA of guardsA) {
+    for (const gB of guardsB) {
+      if (gA.variable === gB.variable && Math.abs(gA.value - gB.value) < 1e-4) {
+        if (
+          (gA.operator === "<" && (gB.operator === ">=" || gB.operator === ">")) ||
+          (gB.operator === "<" && (gA.operator === ">=" || gA.operator === ">")) ||
+          (gA.operator === "<=" && gB.operator === ">") ||
+          (gB.operator === "<=" && gA.operator === ">")
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 export class DecisionTableVerifier {
@@ -110,6 +124,7 @@ export class DecisionTableVerifier {
       const nl = raw.map((g) => toNonlinearConstraint(g));
       return {
         ...b,
+        rawConstraints: raw,
         isElse,
         isAlwaysTrue,
         nlConstraints: nl,
@@ -188,6 +203,11 @@ export class DecisionTableVerifier {
             branchB: bB.id,
             witnessBox: {},
           });
+          continue;
+        }
+
+        // If guards are strictly disjoint (e.g. x < c vs x >= c), they do not overlap
+        if (areGuardsDisjoint(bA.rawConstraints, bB.rawConstraints)) {
           continue;
         }
 
@@ -291,14 +311,42 @@ export class DecisionTableVerifier {
 
         const res = solver.solve(initialBox);
         if (res.status === "DELTA_SAT") {
-          isExhaustive = false;
-          unhandledScenarioBox = {};
+          // Check that the uncovered witness is not on a shared boundary facet between complementary guards
+          let isComplementaryBoundary = false;
           if (res.solutionBox) {
-            for (const [k, inv] of res.solutionBox.entries()) {
-              unhandledScenarioBox[k] = [inv.lo, inv.hi];
+            for (const pb of parsedBranches) {
+              for (const g of pb.rawConstraints) {
+                const interval = res.solutionBox.get(g.variable);
+                if (
+                  interval &&
+                  g.value >= interval.lo - 1e-4 &&
+                  g.value <= interval.hi + 1e-4 &&
+                  interval.hi - interval.lo <= 1e-2
+                ) {
+                  for (const otherPb of parsedBranches) {
+                    if (otherPb === pb) continue;
+                    if (areGuardsDisjoint(pb.rawConstraints, otherPb.rawConstraints)) {
+                      isComplementaryBoundary = true;
+                      break;
+                    }
+                  }
+                }
+                if (isComplementaryBoundary) break;
+              }
+              if (isComplementaryBoundary) break;
             }
           }
-          break; // Found an uncovered gap
+
+          if (!isComplementaryBoundary) {
+            isExhaustive = false;
+            unhandledScenarioBox = {};
+            if (res.solutionBox) {
+              for (const [k, inv] of res.solutionBox.entries()) {
+                unhandledScenarioBox[k] = [inv.lo, inv.hi];
+              }
+            }
+            break; // Found an uncovered gap
+          }
         }
       }
     }

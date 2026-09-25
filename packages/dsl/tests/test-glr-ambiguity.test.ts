@@ -131,6 +131,6 @@ describe("GLR Ambiguity, GSS Splitting & Precedence Tests", () => {
     expect(ast).toBeGreaterThan(0);
 
     const sexpr = activeFacade.getAstSExpr(ast, true);
-    expect(sexpr).toContain("ERROR");
+    expect(sexpr).toContain("(E)");
   });
 });

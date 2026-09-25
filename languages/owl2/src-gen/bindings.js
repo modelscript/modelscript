@@ -341,6 +341,18 @@ export const LINT_CODES =
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
   typeof {"name":1,"iri":2,"import":3,"axiom":4,"entity":5,"property":6,"individual":7,"cardinality":8,"filler":9,"range":10,"subClass":11,"superClass":12,"classExpr":13,"subProperty":14,"superProperty":15,"inverseProperty":16,"domain":17,"subject":18,"object":19,"value":20} !== "undefined" ? {"name":1,"iri":2,"import":3,"axiom":4,"entity":5,"property":6,"individual":7,"cardinality":8,"filler":9,"range":10,"subClass":11,"superClass":12,"classExpr":13,"subProperty":14,"superProperty":15,"inverseProperty":16,"domain":17,"subject":18,"object":19,"value":20} : {};
+let ID_TO_FIELD_NAME = null;
+export function getFieldNameById(id) {
+  if (ID_TO_FIELD_NAME === null) {
+    ID_TO_FIELD_NAME = [];
+    for (const [name, fieldId] of Object.entries(FIELD_NAMES)) {
+      if (typeof fieldId === "number" && fieldId >= 0) {
+        ID_TO_FIELD_NAME[fieldId] = name;
+      }
+    }
+  }
+  return ID_TO_FIELD_NAME[id] ?? null;
+}
 export function createWasmImports(grammar, facade) {
   const hostQueries = grammar.hostQueries || {};
   const queryKeys = Object.keys(hostQueries);
@@ -364,6 +376,20 @@ export function createWasmImports(grammar, facade) {
  */
 export class LspFacade {
   syntaxNames = SYNTAX_NAMES;
+  fieldNames = FIELD_NAMES;
+  _idToFieldName = null;
+  getFieldNameById(id) {
+    if (this._idToFieldName === null) {
+      this._idToFieldName = [];
+      const source = this.fieldNames || FIELD_NAMES;
+      for (const [name, fieldId] of Object.entries(source)) {
+        if (typeof fieldId === "number" && fieldId >= 0) {
+          this._idToFieldName[fieldId] = name;
+        }
+      }
+    }
+    return this._idToFieldName[id] ?? null;
+  }
   extrasRegex = new RegExp(
     EXTRAS_PATTERN !== "\\s" ? EXTRAS_PATTERN : "\\s",
     "u",
@@ -3784,7 +3810,7 @@ export class LspFacade {
     let opsCount = 0;
     const MAX_DIFF_OPS = 50000;
     const fieldIdToName = [];
-    for (const [name, id] of Object.entries(FIELD_NAMES)) {
+    for (const [name, id] of Object.entries(this.fieldNames || FIELD_NAMES)) {
       fieldIdToName[id] = name;
     }
     const getChildren = (ptr) => {
@@ -3808,6 +3834,7 @@ export class LspFacade {
               parentTypeId,
               childIndex,
               currType,
+              0,
             );
           } catch {
             fieldId = -1;
@@ -3855,6 +3882,7 @@ export class LspFacade {
                 parentTypeId,
                 childIndex,
                 typeId,
+                0,
               );
             } catch {
               fieldId = -1;
@@ -4166,6 +4194,9 @@ export class SyntaxNode {
   _cachedPad;
   _cachedLen;
   _cachedTypeId;
+  _cachedChildren = null;
+  _cachedNamedChildren = null;
+  _fieldId = -1;
   constructor(
     tree,
     ptr,
@@ -4174,6 +4205,7 @@ export class SyntaxNode {
     _cachedPad,
     _cachedLen,
     _cachedTypeId,
+    fieldId = -1,
   ) {
     this.tree = tree;
     this.ptr = ptr;
@@ -4182,6 +4214,7 @@ export class SyntaxNode {
     this._cachedPad = _cachedPad;
     this._cachedLen = _cachedLen;
     this._cachedTypeId = _cachedTypeId;
+    this._fieldId = fieldId;
   }
   /** Unique integer ID for this node (pointer address). */
   get id() {
@@ -4261,11 +4294,18 @@ export class SyntaxNode {
    * Recursively flattens invisible nodes (e.g., anonymous sequences) into their parents.
    */
   get children() {
+    if (this._cachedChildren !== null) {
+      return this._cachedChildren;
+    }
     const mem32 = this.tree.mem32;
+    const exports = this.tree.facade?.exports;
     const kids = [];
     const stack = [];
     let currentChildPtr = mem32[(this.ptr + 12) / 4];
     let currentOffset = this._startOffset + this._cachedPad;
+    let parentTypeId = this._cachedTypeId;
+    let childIndex = 0;
+    let inheritedFieldId = -1;
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr / 4];
@@ -4279,17 +4319,46 @@ export class SyntaxNode {
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
         const pad =
-          isFat && this.tree.facade.exports.getFatPaddingPtr
-            ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
+          isFat && exports?.getFatPaddingPtr
+            ? mem32[exports.getFatPaddingPtr(rawPad) / 4]
             : rawPad;
         const len = envHashPadding & 0x007fffff;
         const isInvisible = (typeFlags & (1 << 14)) !== 0;
+        let directFieldId = -1;
+        if (exports?.getFieldIdForChild && parentTypeId > 0) {
+          try {
+            directFieldId = exports.getFieldIdForChild(
+              parentTypeId,
+              childIndex,
+              typeId,
+              0,
+            );
+          } catch {}
+        }
+        let fieldId = directFieldId > 0 ? directFieldId : inheritedFieldId;
+        if (
+          directFieldId <= 0 &&
+          fieldId > 0 &&
+          (name.startsWith('"') || name.startsWith("'"))
+        ) {
+          fieldId = -1;
+        }
         const nextChildPtr = mem32[(currentChildPtr + 16) / 4];
         const nextOffset = currentOffset + pad + len;
         if (name.startsWith("_") || isInvisible) {
-          stack.push({ nextChildPtr, nextOffset });
+          stack.push({
+            nextChildPtr,
+            nextOffset,
+            parentTypeId,
+            childIndex: childIndex + 1,
+            inheritedFieldId,
+          });
           currentChildPtr = mem32[(currentChildPtr + 12) / 4];
           currentOffset = currentOffset + pad;
+          parentTypeId = typeId;
+          childIndex = 0;
+          inheritedFieldId =
+            directFieldId > 0 ? directFieldId : inheritedFieldId;
           continue;
         } else {
           kids.push(
@@ -4301,8 +4370,10 @@ export class SyntaxNode {
               pad,
               len,
               typeId,
+              fieldId,
             ),
           );
+          childIndex++;
         }
         currentOffset = nextOffset;
         currentChildPtr = nextChildPtr;
@@ -4311,13 +4382,21 @@ export class SyntaxNode {
         const state = stack.pop();
         currentChildPtr = state.nextChildPtr;
         currentOffset = state.nextOffset;
+        parentTypeId = state.parentTypeId;
+        childIndex = state.childIndex;
+        inheritedFieldId = state.inheritedFieldId;
       }
     }
+    this._cachedChildren = kids;
     return kids;
   }
   /** Gets all named children (excluding anonymous tokens and punctuation). */
   get namedChildren() {
-    return this.children.filter((k) => k.isNamed());
+    if (this._cachedNamedChildren !== null) {
+      return this._cachedNamedChildren;
+    }
+    this._cachedNamedChildren = this.children.filter((k) => k.isNamed());
+    return this._cachedNamedChildren;
   }
   /** Gets the number of children the node has. */
   get childCount() {
@@ -4430,7 +4509,10 @@ export class SyntaxNode {
    * Looks up a child node by numeric field ID.
    */
   childForFieldId(fieldId) {
-    if (!this.tree.facade.exports.getChildByFieldId || !this.ptr) return null;
+    for (const kid of this.children) {
+      if (kid._fieldId === fieldId) return kid;
+    }
+    if (!this.tree.facade.exports?.getChildByFieldId || !this.ptr) return null;
     const childPtr = this.tree.facade.exports.getChildByFieldId(
       this.ptr,
       fieldId,
@@ -4446,10 +4528,10 @@ export class SyntaxNode {
    * Looks up a named field on this node and returns the corresponding child syntax node.
    */
   childForFieldName(name) {
+    const fieldNames = this.tree?.facade?.fieldNames ?? FIELD_NAMES;
     const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
-    const fieldId =
-      FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    const fieldId = fieldNames[name] ?? fieldNames[snake] ?? fieldNames[camel];
     if (fieldId !== undefined) {
       const node = this.childForFieldId(fieldId);
       if (node) return node;
@@ -4473,6 +4555,43 @@ export class SyntaxNode {
    * Returns all child nodes matching the given numeric field ID (e.g. for repeated fields).
    */
   childrenForFieldId(fieldId) {
+    const kids = this.children;
+    const matches = [];
+    for (const kid of kids) {
+      if (kid._fieldId === fieldId) {
+        matches.push(kid);
+      }
+    }
+    if (matches.length > 0) return matches;
+    const exports = this.tree.facade?.exports;
+    if (exports?.getChildrenByFieldId && exports?.fieldCursorNext && this.ptr) {
+      try {
+        const cursor = exports.getChildrenByFieldId(this.ptr, fieldId);
+        if (cursor) {
+          const ptrs = [];
+          let p = exports.fieldCursorNext(cursor);
+          while (p !== 0) {
+            ptrs.push(p);
+            p = exports.fieldCursorNext(cursor);
+          }
+          if (exports.releaseFieldCursor) {
+            exports.releaseFieldCursor(cursor);
+          }
+          if (ptrs.length > 0) {
+            const result = [];
+            for (const ptr of ptrs) {
+              const found = kids.find(
+                (k) => k.ptr === ptr || k.containsPtr(ptr),
+              );
+              if (found && !result.includes(found)) {
+                result.push(found);
+              }
+            }
+            if (result.length > 0) return result;
+          }
+        }
+      } catch {}
+    }
     const single = this.childForFieldId(fieldId);
     if (!single) return [];
     return [single];
@@ -4481,10 +4600,10 @@ export class SyntaxNode {
    * Returns all child nodes matching the given field name.
    */
   childrenForFieldName(name) {
+    const fieldNames = this.tree?.facade?.fieldNames ?? FIELD_NAMES;
     const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
-    const fieldId =
-      FIELD_NAMES[name] ?? FIELD_NAMES[snake] ?? FIELD_NAMES[camel];
+    const fieldId = fieldNames[name] ?? fieldNames[snake] ?? fieldNames[camel];
     if (fieldId !== undefined) {
       const byId = this.childrenForFieldId(fieldId);
       if (byId.length > 0) return byId;
@@ -4504,20 +4623,12 @@ export class SyntaxNode {
    */
   fieldNameForChild(childIndex) {
     if (childIndex < 0 || childIndex >= this.children.length) return null;
-    const typeId = this._cachedTypeId;
-    if (!typeId || typeId <= 0) return null;
-    if (!this.tree.facade.exports.getFieldIdForChild) return null;
-    try {
-      const fieldId = this.tree.facade.exports.getFieldIdForChild(
-        typeId,
-        childIndex,
-      );
-      if (fieldId <= 0) return null;
-      for (const [name, id] of Object.entries(FIELD_NAMES)) {
-        if (id === fieldId) return name;
-      }
-    } catch {
-      return null;
+    const kid = this.children[childIndex];
+    if (!kid) return null;
+    if (kid._fieldId > 0) {
+      return this.tree.facade?.getFieldNameById
+        ? this.tree.facade.getFieldNameById(kid._fieldId)
+        : getFieldNameById(kid._fieldId);
     }
     return null;
   }
@@ -4527,9 +4638,14 @@ export class SyntaxNode {
   fieldNameForNamedChild(namedChildIndex) {
     if (namedChildIndex < 0 || namedChildIndex >= this.namedChildren.length)
       return null;
-    const target = this.namedChildren[namedChildIndex];
-    const rawIndex = this.children.indexOf(target);
-    return rawIndex >= 0 ? this.fieldNameForChild(rawIndex) : null;
+    const kid = this.namedChildren[namedChildIndex];
+    if (!kid) return null;
+    if (kid._fieldId > 0) {
+      return this.tree.facade?.getFieldNameById
+        ? this.tree.facade.getFieldNameById(kid._fieldId)
+        : getFieldNameById(kid._fieldId);
+    }
+    return null;
   }
   /** Extracts the source code text for a specific child field. */
   childText(name) {
@@ -4721,8 +4837,9 @@ export class TreeCursor {
     return parentFrame.node.fieldNameForChild(parentFrame.childIndex);
   }
   get currentFieldId() {
+    const fieldNames = this.tree?.facade?.fieldNames ?? FIELD_NAMES;
     const name = this.currentFieldName;
-    return name && FIELD_NAMES[name] !== undefined ? FIELD_NAMES[name] : 0;
+    return name && fieldNames[name] !== undefined ? fieldNames[name] : 0;
   }
   get currentDepth() {
     return this.stack.length;
@@ -5086,6 +5203,7 @@ export class LspWorkspaceManager {
 export async function createWasmParser(wasmUrlOrBytes, options) {
   let bytes;
   let syntaxNames = options?.syntaxNames;
+  let fieldNames = options?.fieldNames;
   if (typeof wasmUrlOrBytes === "string") {
     if (
       typeof fetch !== "undefined" &&
@@ -5113,7 +5231,7 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
       const buf = fs.readFileSync(wasmUrlOrBytes);
       bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
-    if (!syntaxNames) {
+    if (!syntaxNames || !fieldNames) {
       const candidates = [
         wasmUrlOrBytes.replace(/\/dist\/parser\.wasm$/, "/src-gen/bindings.js"),
         wasmUrlOrBytes.replace(/\.wasm$/, ".bindings.js"),
@@ -5125,15 +5243,27 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
       );
       for (const bPath of bindingsPaths) {
         try {
-          const mod = await Function("m", "return import(m)")(bPath);
+          const fileUrl =
+            typeof bPath === "string" && bPath.startsWith("/")
+              ? `file://${bPath}`
+              : bPath;
+          const mod = await Function("m", "return import(m)")(fileUrl);
           if (mod) {
-            if (mod.SYNTAX_NAMES && mod.SYNTAX_NAMES.length > 0) {
+            if (
+              !syntaxNames &&
+              mod.SYNTAX_NAMES &&
+              mod.SYNTAX_NAMES.length > 0
+            ) {
               syntaxNames = mod.SYNTAX_NAMES;
             }
-            if (mod.FIELD_NAMES) {
-              Object.assign(FIELD_NAMES, mod.FIELD_NAMES);
+            if (
+              !fieldNames &&
+              mod.FIELD_NAMES &&
+              typeof mod.FIELD_NAMES === "object"
+            ) {
+              fieldNames = mod.FIELD_NAMES;
             }
-            if (syntaxNames) break;
+            if (syntaxNames && fieldNames) break;
           }
         } catch {
           // Companion bindings optional; ignore if not present
@@ -5158,7 +5288,11 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
       logInt: (val) => {},
     },
     engine: {
-      debugLog: (ptr, len) => {},
+      debugLog: (id, p1, p2, p3) => {
+        if (process.env.DEBUG_PARSER) {
+          console.log(`[debugLog] id: ${id}, p1: ${p1}, p2: ${p2}, p3: ${p3}`);
+        }
+      },
     },
     host: {
       runHostQuery: () => 0,
@@ -5171,6 +5305,11 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
   const facade = new LspFacade(exports);
   if (syntaxNames && syntaxNames.length > 0) {
     facade.syntaxNames = syntaxNames;
+  }
+  if (fieldNames) {
+    facade.fieldNames = fieldNames;
+    Object.assign(FIELD_NAMES, fieldNames);
+    ID_TO_FIELD_NAME = null;
   }
   if (facade.exports.configEnableMultiFile) {
     facade.exports.configEnableMultiFile.value = 1;

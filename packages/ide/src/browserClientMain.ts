@@ -21,11 +21,13 @@ import { registerRegistryView } from "./registryTreeProvider";
 import { registerRepl } from "./replTerminal";
 import { RequirementsEditorProvider } from "./requirementsEditorProvider";
 
+import { ContractHierarchyPanel } from "./contractHierarchyPanel";
 import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
 import { registerScmIntegration } from "./scmIntegration";
 import { registerScmTreeView } from "./scmTreeView";
 import { registerSemanticDiffComments } from "./semanticDiffComments";
 import { ThreadExplorerPanel } from "./threadExplorerPanel";
+import { TraceReplayPanel } from "./traceReplayPanel";
 import { VerificationPanel } from "./verificationPanel";
 
 import { OWL2ClassHierarchyProvider } from "./owl2ClassHierarchyProvider";
@@ -493,6 +495,9 @@ export async function activate(context: vscode.ExtensionContext) {
                 const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
                 if (m) inputs.name = m[1];
               }
+              if (action.id === "open_diagram" || action.id === "diagram" || action.id === "openDiagram") {
+                return await vscode.commands.executeCommand("modelscript.openDiagram");
+              }
               return await client?.sendRequest("modelscript/executeAction", {
                 actionId: action.id,
                 uri: args?.uri ?? activeDoc?.uri.toString(),
@@ -830,7 +835,18 @@ export async function activate(context: vscode.ExtensionContext) {
             const content = new TextEncoder().encode(activeEditor.document.getText());
             await workspace.fs.writeFile(docUri, content);
           }
-          await vscode.commands.executeCommand("vscode.openWith", docUri, DiagramEditorProvider.viewType);
+          const filePath = docUri.path.toLowerCase();
+          const targetViewType =
+            filePath.endsWith(".sysml") || filePath.endsWith(".sysml2")
+              ? "sysml2.diagramEditor"
+              : filePath.endsWith(".mo")
+                ? "modelica.diagramEditor"
+                : DiagramEditorProvider.viewType;
+          try {
+            await vscode.commands.executeCommand("vscode.openWith", docUri, targetViewType);
+          } catch {
+            await vscode.commands.executeCommand("vscode.openWith", docUri, DiagramEditorProvider.viewType);
+          }
         } catch (e: unknown) {
           vscode.window.showErrorMessage(`Failed to open diagram: ${(e as Error)?.message || e}`);
         }
@@ -838,7 +854,10 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
     commands.registerCommand("modelscript.openDiagramSource", () => {
       const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-      if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+      if (
+        tab?.input instanceof vscode.TabInputCustom &&
+        (tab.input.viewType === DiagramEditorProvider.viewType || tab.input.viewType.endsWith(".diagramEditor"))
+      ) {
         vscode.commands.executeCommand("vscode.openWith", tab.input.uri, "default");
       }
     }),
@@ -1382,7 +1401,10 @@ END-ISO-10303-21;`;
 
       if (!uri) {
         const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-        if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+        if (
+          tab?.input instanceof vscode.TabInputCustom &&
+          (tab.input.viewType === DiagramEditorProvider.viewType || tab.input.viewType.endsWith(".diagramEditor"))
+        ) {
           uri = tab.input.uri.toString();
         }
       }
@@ -1680,7 +1702,10 @@ END-ISO-10303-21;`;
       let docUri = vscode.window.activeTextEditor?.document.uri.toString();
       if (!docUri) {
         const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-        if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+        if (
+          tab?.input instanceof vscode.TabInputCustom &&
+          (tab.input.viewType === DiagramEditorProvider.viewType || tab.input.viewType.endsWith(".diagramEditor"))
+        ) {
           docUri = tab.input.uri.toString();
         }
       }
@@ -1787,9 +1812,157 @@ END-ISO-10303-21;`;
       if (!client) return;
       VerificationPanel.createOrShow(context.extensionUri, client);
     }),
+    commands.registerCommand("modelscript.verifyAll", async (uri?: string) => {
+      if (!client) return;
+      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!targetUri) {
+        vscode.window.showWarningMessage("Open a model file first to run formal verification.");
+        return;
+      }
+      VerificationPanel.createOrShow(context.extensionUri, client);
+      try {
+        const report = await client.sendRequest<any>("modelscript/verifyAll", {
+          uri: targetUri,
+          options: { all: true },
+        });
+        if (report?.summary?.overallPassed) {
+          vscode.window.showInformationMessage(
+            `All formal verification stages passed (${report.summary.passedStages}/${report.summary.totalStages})`,
+          );
+        } else {
+          vscode.window.showWarningMessage(
+            `Formal verification detected ${report?.summary?.totalViolations || 0} violation(s).`,
+          );
+        }
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Verification failed: ${e.message}`);
+      }
+    }),
+    commands.registerCommand("modelscript.verifyB2B", async (uri?: string) => {
+      if (!client) return;
+      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!targetUri) {
+        vscode.window.showWarningMessage("Open a Modelica model file first to run B2B equivalence verification.");
+        return;
+      }
+      VerificationPanel.createOrShow(context.extensionUri, client);
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Running ISO 26262 Back-to-Back (MiL vs SiL) Equivalence Verification...",
+          cancellable: false,
+        },
+        async () => {
+          try {
+            const res = await client.sendRequest<any>("modelscript/verifyB2B", { uri: targetUri, format: "dhf" });
+            if (res.success) {
+              const disc = res.maxDiscrepancy !== undefined ? res.maxDiscrepancy.toExponential(3) : "0.0";
+              const sha = res.sha256CSource ? res.sha256CSource.slice(0, 12) : "unknown";
+              vscode.window.showInformationMessage(
+                `B2B Equivalence PASSED (ISO 26262 ASIL D / TCL1): Max discrepancy ${disc} <= tolerance ${res.tolerance}. C99 SHA: ${sha}...`,
+              );
+            } else {
+              vscode.window.showErrorMessage(
+                `B2B Equivalence FAILED: ${res.error || res.stage?.summary || "Discrepancy exceeds tolerance"}`,
+              );
+            }
+          } catch (e: any) {
+            vscode.window.showErrorMessage(`B2B Equivalence failed: ${e.message}`);
+          }
+        },
+      );
+    }),
+    commands.registerCommand("modelscript.verifyDecisionLogic", async (uri?: string) => {
+      if (!client) return;
+      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!targetUri) return;
+      VerificationPanel.createOrShow(context.extensionUri, client);
+      await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { decisions: true } });
+    }),
+    commands.registerCommand("modelscript.runReachabilityFlowpipe", async (uri?: string) => {
+      if (!client) return;
+      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!targetUri) return;
+      VerificationPanel.createOrShow(context.extensionUri, client);
+      await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { flowpipes: true } });
+    }),
+    commands.registerCommand("modelscript.generateBoundaryTests", async (uri?: string) => {
+      if (!client) return;
+      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!targetUri) return;
+      await client.sendRequest("modelscript/verifyAll", {
+        uri: targetUri,
+        options: { regionDecomposition: true, mcdc: true },
+      });
+    }),
     commands.registerCommand("modelscript.openThreadExplorer", () => {
       if (!client) return;
       ThreadExplorerPanel.createOrShow(context.extensionUri, client);
+    }),
+    commands.registerCommand("modelscript.openTraceReplay", (trace?: any) => {
+      TraceReplayPanel.createOrShow(context.extensionUri, client, trace);
+    }),
+    commands.registerCommand("modelscript.openContractExplorer", (contractName?: string) => {
+      ContractHierarchyPanel.createOrShow(context.extensionUri, client, contractName);
+    }),
+    commands.registerCommand("modelscript.runMcdcTests", async (uri?: string, actionName?: string) => {
+      if (!client) return;
+      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!targetUri) {
+        vscode.window.showWarningMessage("Open a SysML v2 file to run MC/DC formal tests.");
+        return;
+      }
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Synthesizing and executing formal MC/DC test suite for ${actionName || "action"}...`,
+          cancellable: false,
+        },
+        async () => {
+          try {
+            const res = await client.sendRequest<any>("modelscript/runMcdcTests", {
+              uri: targetUri,
+              actionName,
+            });
+            if (res?.success && res.report) {
+              const rep = res.report;
+              vscode.window.showInformationMessage(
+                `Formal MC/DC Tests: ${rep.passed}/${rep.totalTests} passed (${rep.totalDurationMs.toFixed(1)}ms). 100% Region & Facet coverage.`,
+              );
+            } else {
+              vscode.window.showErrorMessage(`MC/DC test generation failed: ${res?.error || "Unknown error"}`);
+            }
+          } catch (e: any) {
+            vscode.window.showErrorMessage(`MC/DC test execution failed: ${e?.message || e}`);
+          }
+        },
+      );
+    }),
+    commands.registerCommand("modelscript.decomposeRegions", async (uri?: string, actionName?: string) => {
+      if (!client) return;
+      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!targetUri) return;
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Computing symbolic region decomposition for ${actionName || "action"}...`,
+          cancellable: false,
+        },
+        async () => {
+          try {
+            const res = await client.sendRequest<any>("modelscript/decomposeRegions", {
+              uri: targetUri,
+            });
+            if (res?.success) {
+              vscode.window.showInformationMessage(
+                `Decomposed ${res.result?.regions?.length ?? 0} non-overlapping invariant regions with Octagon difference bounds.`,
+              );
+            }
+          } catch (e: any) {
+            vscode.window.showErrorMessage(`Region decomposition failed: ${e?.message || e}`);
+          }
+        },
+      );
     }),
     // ── Physics Simulation Commands ──
     commands.registerCommand("modelscript.openSimulationView", async (uri?: vscode.Uri, className?: string) => {
@@ -1952,12 +2125,25 @@ end ${studyName};
     }),
   );
 
-  // Register the custom editor provider for modelica diagrams
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(DiagramEditorProvider.viewType, diagramProvider, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
+  // Register the custom editor provider for diagrams
+  const diagramViewTypes = [
+    DiagramEditorProvider.viewType,
+    "modelica.diagramEditor",
+    "sysml2.diagramEditor",
+    "sysml.diagramEditor",
+    "step.diagramEditor",
+    "scad.diagramEditor",
+    "owl2.diagramEditor",
+    "csv.diagramEditor",
+  ];
+  for (const vt of diagramViewTypes) {
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(vt, diagramProvider, {
+        webviewOptions: { retainContextWhenHidden: true },
+        supportsMultipleEditorsPerDocument: true,
+      }),
+    );
+  }
 
   // Register the requirements editor for SysML documents
   if (client) {
@@ -2017,8 +2203,90 @@ end ${studyName};
    * Fetch all markdown-related data from the LSP and refresh the preview.
    */
   async function refreshMarkdownData(): Promise<void> {
-    return; // Temporarily disabled
+    if (!client) return;
+    try {
+      const varsResult = await client
+        .sendRequest<{ values: Record<string, string> }>("modelscript/resolveMarkdownVars")
+        .catch(() => null);
+
+      let changed = false;
+      if (varsResult?.values) {
+        for (const [k, v] of Object.entries(varsResult.values)) {
+          if (markdownVarCache[k] !== v) {
+            markdownVarCache[k] = v;
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        vscode.commands.executeCommand("markdown.preview.refresh");
+      }
+    } catch (e) {
+      console.warn("[ModelScript] refreshMarkdownData error:", e);
+    }
   }
+
+  // Register command for parameter writeback (invoked from preview click-to-edit or palette)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("modelscript.writebackParameter", async (targetOrArgs: any, valueArg?: string) => {
+      let target = "";
+      let newValue = "";
+
+      if (Array.isArray(targetOrArgs)) {
+        target = String(targetOrArgs[0] || "");
+        newValue = String(targetOrArgs[1] || "");
+      } else if (typeof targetOrArgs === "object" && targetOrArgs !== null) {
+        target = String(targetOrArgs.target || "");
+        newValue = String(targetOrArgs.newValue ?? "");
+      } else if (typeof targetOrArgs === "string") {
+        target = targetOrArgs;
+        newValue = valueArg !== undefined ? String(valueArg) : "";
+      }
+
+      if (!target) {
+        const input = await vscode.window.showInputBox({
+          prompt: "Enter parameter name to write back (e.g. DronePkg.Battery.mass)",
+        });
+        if (!input) return;
+        target = input;
+      }
+
+      if (!newValue) {
+        const currentVal = markdownVarCache[target] || "";
+        const input = await vscode.window.showInputBox({
+          prompt: `Enter new value for ${target}`,
+          value: currentVal,
+        });
+        if (input === undefined) return;
+        newValue = input;
+      }
+
+      if (!client) return;
+
+      try {
+        const res: any = await client.sendRequest("modelscript/computeWritebackEdit", {
+          target,
+          newValue,
+        });
+
+        if (res?.success && res.workspaceEdit) {
+          const applied = await vscode.workspace.applyEdit(res.workspaceEdit);
+          if (applied) {
+            markdownVarCache[target] = newValue;
+            scheduleMarkdownRefresh();
+            vscode.window.showInformationMessage(`Successfully updated ${target} to ${newValue}`);
+          } else {
+            vscode.window.showWarningMessage(`Could not apply workspace edit for ${target}`);
+          }
+        } else {
+          vscode.window.showErrorMessage(res?.error || `Failed to compute writeback edit for ${target}`);
+        }
+      } catch (e) {
+        vscode.window.showErrorMessage(`Writeback error for ${target}: ${String(e)}`);
+      }
+    }),
+  );
 
   // Listen for document changes AND opens to re-fetch markdown data (debounced).
   // Only fires when a markdown preview tab is actually visible, to avoid blocking

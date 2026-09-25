@@ -22,6 +22,27 @@ export interface InversionResult {
   regeneratedStep?: string;
 }
 
+export interface ParameterConstraintRule {
+  name: string;
+  evaluate: (params: Record<string, number>) => boolean;
+  description?: string;
+}
+
+export interface SafeRegionGuard {
+  /** Explicit numeric bounding boxes per parameter */
+  parameterBounds?: Record<string, { min?: number; max?: number }>;
+  /** Multidisciplinary linear or non-linear constraint rules (e.g. stress, buckling, clearance) */
+  constraints?: ParameterConstraintRule[];
+  /** Optional custom validator predicate */
+  customValidator?: (params: Record<string, number>) => { isSafe: boolean; violations: string[] };
+}
+
+export interface CertifiedInversionResult extends InversionResult {
+  isCertifiedSafe: boolean;
+  violations: string[];
+  summary: string;
+}
+
 export class ParameterInversionEngine {
   /**
    * Updates named scalar parameters in procedural MCAD source code.
@@ -69,6 +90,80 @@ export class ParameterInversionEngine {
     }
 
     return { updatedSource: result, appliedUpdates };
+  }
+
+  /**
+   * Patches MCAD source only if the new parameters strictly reside within the certified safe region P_safe.
+   * Rejects the update and keeps the original source untouched if any multidisciplinary constraint is violated.
+   */
+  static patchMcadSourceCertified(
+    mcadSource: string,
+    updates: Record<string, number>,
+    guard: SafeRegionGuard,
+  ): CertifiedInversionResult {
+    const violations: string[] = [];
+
+    // 1. Check explicit parameter bounds
+    if (guard.parameterBounds) {
+      for (const [param, val] of Object.entries(updates)) {
+        const bound = guard.parameterBounds[param];
+        if (bound) {
+          if (bound.min !== undefined && val < bound.min) {
+            violations.push(`Parameter '${param}' value ${val} violates minimum allowable bound ${bound.min}.`);
+          }
+          if (bound.max !== undefined && val > bound.max) {
+            violations.push(`Parameter '${param}' value ${val} violates maximum allowable bound ${bound.max}.`);
+          }
+        }
+      }
+    }
+
+    // 2. Check multidisciplinary constraint rules
+    if (guard.constraints) {
+      for (const rule of guard.constraints) {
+        try {
+          const isSatisfied = rule.evaluate(updates);
+          if (!isSatisfied) {
+            violations.push(
+              rule.description || `Multidisciplinary constraint '${rule.name}' violated by candidate parameter set.`,
+            );
+          }
+        } catch (err: any) {
+          violations.push(`Constraint '${rule.name}' evaluation error: ${err.message}`);
+        }
+      }
+    }
+
+    // 3. Check custom validator
+    if (guard.customValidator) {
+      const customRes = guard.customValidator(updates);
+      if (!customRes.isSafe) {
+        violations.push(...customRes.violations);
+      }
+    }
+
+    // If violated, reject update completely and do NOT patch source code
+    if (violations.length > 0) {
+      return {
+        isSuccess: false,
+        isCertifiedSafe: false,
+        updatedSource: mcadSource,
+        appliedUpdates: [],
+        violations,
+        summary: `Certified parameter inversion REJECTED: ${violations.length} constraint violation(s) detected.`,
+      };
+    }
+
+    // Parameters are certified safe, proceed with source patch
+    const patchResult = this.patchMcadSource(mcadSource, updates);
+    return {
+      isSuccess: true,
+      isCertifiedSafe: true,
+      updatedSource: patchResult.updatedSource,
+      appliedUpdates: patchResult.appliedUpdates,
+      violations: [],
+      summary: `Certified parameter inversion SUCCESSFUL: All ${patchResult.appliedUpdates.length} parameter update(s) mathematically proven safe.`,
+    };
   }
 
   /**

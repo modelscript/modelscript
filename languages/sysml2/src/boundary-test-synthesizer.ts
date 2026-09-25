@@ -11,7 +11,16 @@
  *   4. Multi-format Test Exporters: CTRF JSON, JUnit XML, and Modelica .mos experiment scripts.
  */
 
-import type { ExprNode, RegionDecompositionResult } from "@modelscript/runtime";
+import {
+  RegionDecomposer,
+  type ExprNode,
+  type NonlinearConstraint,
+  type RegionBranchInput,
+  type RegionDecompositionResult,
+} from "@modelscript/runtime";
+import { extractActivityGraphFromText } from "./activity-cfa.js";
+import { toNonlinearConstraint } from "./decision-table-verifier.js";
+import { parseGuardConstraints } from "./state-machine-verifier.js";
 import { SysML2DaeLowerer, type LoweredActionDae } from "./sysml2-dae-lowerer.js";
 
 export interface SynthesizedTestCase {
@@ -73,6 +82,50 @@ export interface SynthesizerOptions {
 }
 
 export class BoundaryTestSynthesizer {
+  /**
+   * Synthesizes a formal test suite directly from SysML v2 source text.
+   * Extracts decision tables and branch conditions, decomposes them into symbolic regions,
+   * and generates certified nominal, boundary, and MC/DC test cases.
+   */
+  public static synthesizeFromSysml(sysmlSource: string, options: SynthesizerOptions = {}): SynthesizedTestSuite {
+    const graph = extractActivityGraphFromText(sysmlSource);
+    const decideNodes = graph.nodes.filter((n) => n.kind === "decide");
+
+    const branches: RegionBranchInput[] = [];
+    for (const d of decideNodes) {
+      const outgoing = graph.flows.filter((f) => f.source === d.name);
+      for (let i = 0; i < outgoing.length; i++) {
+        const f = outgoing[i]!;
+        const guard = f.guard || "true";
+        const parsed = parseGuardConstraints(guard);
+        const nl = parsed.map((g) => toNonlinearConstraint(g));
+        branches.push({
+          id: `${d.name}_${f.target || `branch_${i + 1}`}`,
+          constraints: nl,
+          terminalValue: f.target,
+        });
+      }
+    }
+
+    let decomposition: RegionDecompositionResult;
+    if (branches.length > 0) {
+      decomposition = RegionDecomposer.decomposeBranches(branches);
+    } else {
+      const conditions: NonlinearConstraint[] = [];
+      for (const f of graph.flows) {
+        if (f.guard) {
+          const parsed = parseGuardConstraints(f.guard);
+          for (const g of parsed) {
+            conditions.push(toNonlinearConstraint(g));
+          }
+        }
+      }
+      decomposition = RegionDecomposer.decompose(conditions, { maxDepth: 4 });
+    }
+
+    return this.synthesizeTestSuite(decomposition, options);
+  }
+
   /**
    * Synthesizes a formal test suite from decomposed symbolic regions.
    */

@@ -321,15 +321,23 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
 
             // Opening <span> — use span tag with class only (VS Code sanitizes inline styles)
             const open = new state.Token("modelscript_var_open", "span", 1);
+            const isResolved = resolved !== undefined;
             open.attrs = [
-              ["class", "modelscript-var"],
+              ["class", `modelscript-var${isResolved ? " modelscript-var-editable" : ""}`],
               ["data-name", varName],
+              ...(isResolved
+                ? [
+                    ["data-mutable", "true"],
+                    ["data-value", String(resolved)],
+                    ["title", `Click to edit ${varName} (writeback to source)`],
+                  ]
+                : []),
             ];
             result.push(open);
 
             // Value text
             const val = new state.Token("text", "", 0);
-            val.content = resolved !== undefined ? String(resolved) : `{{ ${varName} }}`;
+            val.content = isResolved ? String(resolved) : `{{ ${varName} }}`;
             result.push(val);
 
             // Closing </span>

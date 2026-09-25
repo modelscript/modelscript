@@ -78,7 +78,10 @@ export { ManifoldWorker, type ManifoldSurfaceMesh } from "./manifold-worker.js";
 export {
   ParameterInversionEngine,
   type InversionResult as CadInversionResult,
+  type CertifiedInversionResult,
+  type ParameterConstraintRule,
   type ParameterInversionUpdate,
+  type SafeRegionGuard,
 } from "./parameter-inversion.js";
 export { RomLoadPipeline, type FeaBoundaryCondition, type TransientPeakLoad } from "./rom_load_pipeline.js";
 
@@ -94,3 +97,24 @@ export {
   type SpatialClearanceReport,
   type SpatialClearanceViolation,
 } from "./clearance.js";
+
+// Reachability-Certified Dynamic Clearance
+export {
+  DynamicClearanceVerifier,
+  type DynamicClearanceOptions,
+  type DynamicClearanceReport,
+  type DynamicClearanceViolation,
+  type DynamicTransformBinding,
+  type IntervalBox,
+  type TrajectoryStepEnclosure,
+} from "./dynamic-clearance.js";
+
+// Dynamic GD&T and Operational Tolerance Stack-Up
+export {
+  ToleranceStackVerifier,
+  type DimensionTolerance,
+  type OperationalEnvironment,
+  type ToleranceContributor,
+  type ToleranceStackOptions,
+  type ToleranceStackResult,
+} from "./tolerance-stack.js";

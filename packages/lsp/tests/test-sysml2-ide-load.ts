@@ -24,9 +24,15 @@ async function run() {
   assert(existsSync(wasmPath), "sysml2.wasm must exist");
   assert(existsSync(bindingsPath), "sysml2.bindings.js must exist");
 
-  console.log("Loading WASM parser with embedded syntaxNames...");
+  assert(sysml2Entry.fieldNames, "sysml2 entry must have fieldNames");
+  assert(sysml2Entry.fieldNames.declaredName, "sysml2 fieldNames must map declaredName");
+
+  console.log("Loading WASM parser with embedded syntaxNames and fieldNames...");
   const wasmBytes = readFileSync(wasmPath);
-  const { parser, facade } = await createWasmParser(wasmBytes, { syntaxNames: sysml2Entry.syntaxNames });
+  const { parser, facade } = await createWasmParser(wasmBytes, {
+    syntaxNames: sysml2Entry.syntaxNames,
+    fieldNames: sysml2Entry.fieldNames,
+  });
   assert(parser, "WASM parser must instantiate");
 
   // Parse sample SysML v2 source
@@ -41,6 +47,12 @@ async function run() {
   const root = tree.rootNode;
   console.log(`Parsed root type: ${root.type}`);
   assert.notStrictEqual(root.type, "node_0", "Root node should have semantic syntax name, not generic node_0");
+
+  const pkgMember = root.children[0];
+  const pkg = pkgMember.children[0];
+  const nameNode = pkg.childForFieldName("declaredName");
+  assert(nameNode, "Package should have childForFieldName('declaredName')");
+  assert.strictEqual(nameNode.text, "VehiclePkg", "Package declaredName should be 'VehiclePkg'");
 
   // Register in LanguageRegistry under sysml2 and alias sysml
   globalLanguageRegistry.register({

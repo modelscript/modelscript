@@ -5,6 +5,29 @@ import { choice, field, language, optional, repeat, semanticToken, seq } from "@
 export const owl2Language = language({
   name: "owl2",
 
+  writeback: (ctx) => {
+    const { entry, fullText, newValue } = ctx;
+    if (entry?.startByte != null && entry?.endByte != null && entry.endByte > entry.startByte) {
+      const declText = fullText.substring(entry.startByte, entry.endByte);
+      // E.g. DataPropertyAssertion(:maxPayload :Drone "2.5"^^xsd:double)
+      const strMatch = declText.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/);
+      if (strMatch && strMatch.index !== undefined) {
+        const valStartByte = entry.startByte + strMatch.index + 1;
+        const valEndByte = valStartByte + strMatch[1].length;
+        const cleanVal = newValue.replace(/^"|"$/g, "");
+        return { startByte: valStartByte, endByte: valEndByte, newText: cleanVal };
+      }
+
+      const numMatch = declText.match(/\s+([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*\)/);
+      if (numMatch && numMatch.index !== undefined) {
+        const valStartByte = entry.startByte + numMatch.index + (numMatch[0].length - numMatch[1].length - 1);
+        const valEndByte = valStartByte + numMatch[1].length;
+        return { startByte: valStartByte, endByte: valEndByte, newText: newValue.trim() };
+      }
+    }
+    return null;
+  },
+
   mcp: {
     serverName: "owl2-mcp",
     serverVersion: "1.0.0",

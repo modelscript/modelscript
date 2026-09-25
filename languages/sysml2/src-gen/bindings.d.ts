@@ -215,6 +215,9 @@ export declare function createWasmImports(grammar: any, facade: LspFacade): any;
  */
 export declare class LspFacade {
   syntaxNames: string[];
+  fieldNames: Record<string, number>;
+  private _idToFieldName;
+  getFieldNameById(id: number): string | null;
   extrasRegex: RegExp;
   private wasmMemory;
   exports: any;
@@ -1196,6 +1199,7 @@ export declare function createWasmParser(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
   options?: {
     syntaxNames?: string[];
+    fieldNames?: Record<string, number>;
   },
 ): Promise<{
   facade: LspFacade;

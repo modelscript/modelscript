@@ -1,4 +1,4 @@
-import type { LanguageAction, LanguageOptions } from "@modelscript/dsl";
+import type { LanguageAction, LanguageOptions, WritebackConfig, WritebackHandler } from "@modelscript/dsl";
 import type { QueryEngine } from "@modelscript/runtime";
 import type { Disposable } from "vscode-languageserver";
 
@@ -56,6 +56,8 @@ export interface LanguagePlugin {
   diagramBackend?: any;
   /** Annotation evaluator class or constructor */
   annotationEvaluator?: any;
+  /** Bi-directional parameter writeback handler or configuration */
+  writeback?: WritebackConfig | WritebackHandler;
 }
 
 /**
@@ -80,6 +82,10 @@ export class LanguageRegistry {
     for (const ext of plugin.extensions) {
       const normalizedExt = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
       this.extMap.set(normalizedExt, plugin);
+    }
+
+    if (!plugin.writeback && plugin.languageDef?.writeback) {
+      plugin.writeback = plugin.languageDef.writeback;
     }
   }
 

@@ -13,6 +13,7 @@ import { SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL, type u32 } from "./primitives.j
 import type { ASTQueryFunction, CompilationPipeline, CompilerLint, ModelProperty } from "./query-types.js";
 import type { ExternalScannerFunction, RuntimeFileInput, ScannerPrimitives } from "./scanner-types.js";
 import type { PolyglotConfig } from "./tgg-types.js";
+import type { WritebackConfig, WritebackHandler } from "./writeback-types.js";
 
 /**
  * Declaration & Stub metadata configuration for Tier 1 Workspace Indexing.
@@ -385,6 +386,13 @@ export interface LanguageOptions<
     requirementRules?: string[];
     matrixRules?: string[];
   };
+
+  /**
+   * Declarative or functional Bi-Directional Writeback configuration.
+   * Defines how values edited in markdown previews, spreadsheets, property inspectors,
+   * or digital thread twins are patched back into source code for this language.
+   */
+  writeback?: WritebackConfig | WritebackHandler;
 }
 
 /**

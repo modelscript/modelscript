@@ -19,6 +19,7 @@ import {
 } from "./dimensions.js";
 import { LoopInvariantAnalyzer } from "./loop-invariant-analyzer.js";
 import { emitAxioms } from "./reasoner-bridge.js";
+import { sysml2Writeback } from "./writeback.js";
 
 import {
   choice,
@@ -2455,6 +2456,8 @@ export const sysml2Language = language({
     fileExtensions: [".sysml", ".sysml2"],
   },
 
+  writeback: sysml2Writeback,
+
   semantics: {
     reasoner: {
       smt: {
@@ -2713,6 +2716,38 @@ export const sysml2Language = language({
         name: { type: "string", description: "Fully qualified part/class name to simulate" },
         startTime: { type: "number", description: "Simulation start time", default: 0 },
         stopTime: { type: "number", description: "Simulation stop time", default: 10 },
+      },
+      execute: async (ctx: any, params: { name?: string; startTime?: number; stopTime?: number; step?: number }) => {
+        const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
+        const { SysML2DaeLowerer } = await import("./sysml2-dae-lowerer.js");
+        const { simulateArena } = await import("@modelscript/simulate");
+
+        let sourceText = "";
+        if (ctx.uri && ctx.workspaceManager?.getFileContent) {
+          sourceText = await ctx.workspaceManager.getFileContent(ctx.uri);
+        } else if (params?.name && queryDB) {
+          const entry = queryDB.allEntries().find((e: any) => e.name === params.name);
+          if (entry?.source) sourceText = entry.source;
+        }
+
+        const lowered = await SysML2DaeLowerer.lowerAction(
+          sourceText || (params?.name ? `action def ${params.name} {}` : "action def Sim {}"),
+        );
+        const startTime = params?.startTime ?? 0;
+        const stopTime = params?.stopTime ?? 10;
+        const step = params?.step ?? (stopTime > startTime ? (stopTime - startTime) / 100 : 0.1);
+        const simResult = simulateArena(lowered.arena, {
+          startTime,
+          stopTime,
+          step,
+        });
+
+        return {
+          name: lowered.name,
+          times: simResult.t,
+          states: simResult.states,
+          y: simResult.y,
+        };
       },
       ui: {
         editorContextMenu: {

@@ -137,6 +137,14 @@ export class TaylorModel {
     return res;
   }
 
+  addConstant(c: number): TaylorModel {
+    const res = this.clone();
+    const zeroKey = new Array(this.numVars).fill(0);
+    const curr = res.get(zeroKey);
+    res.set(zeroKey, curr + c);
+    return res;
+  }
+
   /**
    * Addition of two Taylor Models:
    * (P_1 + P_2) + (r_1 + r_2)

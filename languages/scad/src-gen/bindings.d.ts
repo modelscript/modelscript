@@ -173,6 +173,7 @@ export declare const LINT_SEVERITIES: Record<string, number>;
 export declare const LINT_CODES: Record<string, string | number>;
 export declare const EXTRAS_PATTERN: string;
 export declare const FIELD_NAMES: Record<string, number>;
+export declare function getFieldNameById(id: number): string | null;
 export interface AstChangeListener {
   onFullReset?(newRoot: number): void;
   onNodeRetained(ptr: number, flags?: number): void;
@@ -214,6 +215,9 @@ export declare function createWasmImports(grammar: any, facade: LspFacade): any;
  */
 export declare class LspFacade {
   syntaxNames: string[];
+  fieldNames: Record<string, number>;
+  private _idToFieldName;
+  getFieldNameById(id: number): string | null;
   extrasRegex: RegExp;
   private wasmMemory;
   exports: any;
@@ -927,6 +931,9 @@ export declare class SyntaxNode {
   readonly _cachedPad: number;
   readonly _cachedLen: number;
   readonly _cachedTypeId: number;
+  private _cachedChildren;
+  private _cachedNamedChildren;
+  _fieldId: number;
   constructor(
     tree: Tree,
     ptr: number,
@@ -935,6 +942,7 @@ export declare class SyntaxNode {
     _cachedPad: number,
     _cachedLen: number,
     _cachedTypeId: number,
+    fieldId?: number,
   );
   /** Unique integer ID for this node (pointer address). */
   get id(): number;
@@ -1191,6 +1199,7 @@ export declare function createWasmParser(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
   options?: {
     syntaxNames?: string[];
+    fieldNames?: Record<string, number>;
   },
 ): Promise<{
   facade: LspFacade;

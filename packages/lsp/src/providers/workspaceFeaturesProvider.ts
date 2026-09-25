@@ -334,6 +334,43 @@ export function registerWorkspaceFeaturesProvider(
           }
         }
       }
+
+      // Suggest QuickFix for unhandled scenario / missing guard in SysML v2 decision table
+      if (
+        diagnostic.code === "DECISION_TABLE_GAP" ||
+        diagnostic.code === 4004 ||
+        (diagnostic.message &&
+          (diagnostic.message.includes("Unhandled input domain") ||
+            diagnostic.message.includes("Missing guard scenario") ||
+            diagnostic.message.includes("non-exhaustive")))
+      ) {
+        const fixSnippetMatch = diagnostic.message.match(/QuickFix:\s*(else if[^\n]+)/);
+        const conditionMatch = diagnostic.message.match(/condition:\s*([^\n]+)/);
+        const condition = conditionMatch ? conditionMatch[1] : "/* unhandled condition */";
+        const newSnippet = fixSnippetMatch
+          ? `\n  ${fixSnippetMatch[1]} {\n    // Auto-generated QuickFix\n  }`
+          : `\n  else if (${condition}) {\n    // Auto-generated QuickFix for unhandled scenario\n  }`;
+
+        actions.push({
+          title: "Auto-repair: Insert missing guard scenario (QuickFix)",
+          kind: CodeActionKind.QuickFix,
+          isPreferred: true,
+          diagnostics: [diagnostic],
+          edit: {
+            changes: {
+              [params.textDocument.uri]: [
+                {
+                  range: {
+                    start: diagnostic.range.end,
+                    end: diagnostic.range.end,
+                  },
+                  newText: newSnippet,
+                },
+              ],
+            },
+          },
+        });
+      }
     }
 
     return actions;

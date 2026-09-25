@@ -193,4 +193,66 @@ describe("Design History File (DHF) Exporter", () => {
     assert.ok(md.includes("## 5. 21 CFR Part 11 Electronic Signatures & Approvals"));
     assert.ok(md.includes("Verification Team"));
   });
+
+  test("generateDhfMarkdown emits Section 6 when proofManifest is provided", () => {
+    const gitInfo = {
+      commitSha: "e9f7a8b2c1d0e3f4a5b6c7d8e9f0a1b2c3d4e5f6",
+      branch: "main",
+      author: "Test Engineer <test@example.com>",
+      date: "2026-03-30T10:00:00Z",
+      isSigned: true,
+      signatureInfo: "Valid GPG/SSH Signature",
+      isDirty: false,
+    };
+
+    const analytics: RtmAnalytics = {
+      totalRequirements: 1,
+      satisfiedCount: 1,
+      verifiedCount: 1,
+      satisfiedPercentage: 100,
+      verifiedPercentage: 100,
+      suspectLinkCount: 0,
+      unmitigatedHazardsCount: 0,
+      totalHazards: 0,
+    };
+
+    const proofManifest = {
+      manifestId: "manifest-001",
+      schemaVersion: "1.0.0" as const,
+      timestamp: "2026-09-25T01:00:00Z",
+      gitCommitSha: gitInfo.commitSha,
+      items: [
+        {
+          domain: "sysml" as const,
+          identifier: "file:///model.sysml",
+          sha256: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+          verificationStatus: "CERTIFIED_SAFE" as const,
+          engine: "contract_algebra",
+        },
+      ],
+      compositeRootHash: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      isCertifiedCompliant: true,
+      signatureToken: "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
+    };
+
+    const md = generateDhfMarkdown(
+      "DHF with Proof Manifest",
+      "Infusion Pump",
+      "Safety Team",
+      [],
+      [],
+      [],
+      [],
+      [],
+      analytics,
+      gitInfo,
+      proofManifest,
+    );
+
+    assert.ok(md.includes("## 6. Cryptographic Digital Thread Proof Manifest & Machine-Checkable Evidence"));
+    assert.ok(md.includes("manifest-001"));
+    assert.ok(md.includes("MATHEMATICALLY CERTIFIED SAFE"));
+    assert.ok(md.includes("file:///model.sysml"));
+    assert.ok(md.includes("contract_algebra"));
+  });
 });

@@ -145,10 +145,18 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
-      "verify <name> <paths..>",
-      "Run SysML2 verification against a simulation",
+      "verify [target] [paths..]",
+      "Unified formal verification and simulation validation for SysML v2 and Modelica",
       () => import("./commands/verify.js"),
       "Verify",
+    ),
+  )
+  .command(
+    lazy(
+      "falsify",
+      "Run adversarial multi-domain requirement falsification across SysML, Modelica, and CAD",
+      () => import("./commands/falsify.js"),
+      "Falsify",
     ),
   )
   .command(

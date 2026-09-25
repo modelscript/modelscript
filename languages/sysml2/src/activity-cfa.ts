@@ -291,6 +291,50 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
     });
   }
 
+  // 3b. Extract decide blocks: decide [name] { case [guard] => [target/assignment]; ... }
+  const decideBlockRegex = /\bdecide\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
+  let dbMatch: RegExpExecArray | null;
+  while ((dbMatch = decideBlockRegex.exec(searchSource)) !== null) {
+    const decideName = dbMatch[1]!;
+    const openBrace = dbMatch.index + dbMatch[0].length - 1;
+    const block = extractBalancedBlock(searchSource, openBrace);
+    nodes.push({
+      name: decideName,
+      kind: "decide",
+      inputs: [],
+      outputs: [],
+      assignments: [],
+      startByte: dbMatch.index,
+      endByte: block.endPos,
+    });
+
+    const caseRegex = /\bcase\s+(.*?)\s*(?:=>|\bthen\b|:)\s*([^;]+);/g;
+    let cm: RegExpExecArray | null;
+    let caseIdx = 1;
+    while ((cm = caseRegex.exec(block.body)) !== null) {
+      const guardStr = cm[1]!.trim();
+      const targetStr = cm[2]!.trim();
+      const targetName = `${decideName}_case_${caseIdx++}`;
+      nodes.push({
+        name: targetName,
+        kind: "action",
+        inputs: [],
+        outputs: [],
+        assignments: [],
+        startByte: dbMatch.index + cm.index,
+        endByte: dbMatch.index + cm.index + cm[0].length,
+      });
+      flows.push({
+        source: decideName,
+        target: targetName,
+        kind: "control",
+        guard: guardStr,
+        startByte: dbMatch.index + cm.index,
+        endByte: dbMatch.index + cm.index + cm[0].length,
+      });
+    }
+  }
+
   // 4. Extract successions: first [source] then [target] (optional if [guard]);
   const succRegex =
     /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+)?from\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?)\s*;/g;

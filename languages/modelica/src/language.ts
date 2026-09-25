@@ -19,8 +19,9 @@ import {
 import { getDottedVariableType, getVariableTypeInClass } from "./lints/helpers.js";
 import { allModelicaLints } from "./lints/index.js";
 import { modelicaFlatteningPasses } from "./pipelines/flatten.js";
+import { modelicaWriteback } from "./writeback.js";
 
-export { allModelicaLints, modelicaFlatteningPasses };
+export { allModelicaLints, modelicaFlatteningPasses, modelicaWriteback };
 
 const PRECEDENCE = {
   if_exp: 1,
@@ -38,6 +39,8 @@ const PRECEDENCE = {
 
 export const modelicaLanguage = language({
   name: "Modelica",
+
+  writeback: modelicaWriteback,
 
   actions: [
     {

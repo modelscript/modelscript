@@ -206,11 +206,13 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     {
       command: "modelscript.openDiagram",
       title: "ModelScript: Open Diagram",
+      category: "ModelScript",
       icon: "$(open-preview)",
     },
     {
       command: "modelscript.openDiagramSource",
       title: "ModelScript: Open Source",
+      category: "ModelScript",
       icon: "$(go-to-file)",
     },
   ];
@@ -221,6 +223,48 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const commandPaletteMenus: any[] = [];
   const languageModelTools: any[] = [];
   const keybindings: any[] = [];
+
+  // Automatically contribute diagram open/source buttons to editor/title (Method 1)
+  if (options?.features?.diagramEditor !== false) {
+    const diagramLangIds = new Set<string>();
+    for (const lang of languages) {
+      // Check if language explicitly defined its own custom diagram action (Method 2)
+      const hasCustomDiagramAction = (lang.options.actions || []).some(
+        (a: any) => (a.id === "open_diagram" || a.id === "diagram" || a.id === "openDiagram") && a.ui?.editorTitle,
+      );
+      if (!hasCustomDiagramAction) {
+        diagramLangIds.add(lang.id);
+        if (lang.id === "sysml2") {
+          diagramLangIds.add("sysml");
+        }
+      }
+    }
+
+    if (diagramLangIds.size > 0) {
+      const editorWhen = Array.from(diagramLangIds)
+        .map((id) => `editorLangId == ${id} || resourceLangId == ${id}`)
+        .join(" || ");
+
+      editorTitleMenus.push({
+        command: "modelscript.openDiagram",
+        when: editorWhen,
+        group: "navigation@0",
+      });
+    }
+
+    const diagramViewTypes = [
+      "modelscript.diagram",
+      ...languages.map((l) => `${l.id}.diagramEditor`),
+      ...(languages.some((l) => l.id === "sysml2") ? ["sysml.diagramEditor"] : []),
+    ];
+    const customEditorWhen = diagramViewTypes.map((vt) => `activeCustomEditorId == ${vt}`).join(" || ");
+
+    editorTitleMenus.push({
+      command: "modelscript.openDiagramSource",
+      when: customEditorWhen,
+      group: "navigation@0",
+    });
+  }
 
   const registeredToolNames = new Set<string>();
 
@@ -442,11 +486,19 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     }
   }
 
+  commands.push({
+    command: "modelscript.writebackParameter",
+    title: "Writeback Parameter Value to Source",
+    category: "ModelScript",
+  });
+
   const contributes: Record<string, any> = {
     languages: contributesLanguages,
     grammars: contributesGrammars,
     customEditors,
     commands,
+    "markdown.markdownItPlugins": true,
+    "markdown.previewScripts": ["./dist/markdownPreview.js"],
     menus: {
       "editor/title": editorTitleMenus,
       "editor/context": editorContextMenus,
@@ -811,9 +863,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.openDiagramSource", async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (editor) {
-        await vscode.commands.executeCommand("vscode.openWith", editor.document.uri, "default");
+      const tab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+      if (tab?.input && typeof tab.input === "object" && "uri" in (tab.input as any)) {
+        await vscode.commands.executeCommand("vscode.openWith", (tab.input as any).uri, "default");
+      } else {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+          await vscode.commands.executeCommand("vscode.openWith", editor.document.uri, "default");
+        }
       }
     })
   );
