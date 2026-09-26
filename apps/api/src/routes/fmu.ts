@@ -29,7 +29,12 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
       "upload.fmu";
     const id = filename.replace(/\.fmu$/i, "").replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
 
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    if (
+      typeof req.body === "string" ||
+      Array.isArray(req.body) ||
+      !Buffer.isBuffer(req.body) ||
+      req.body.length === 0
+    ) {
       return res.status(400).json({ error: "Empty request body. Send the FMU file as raw binary." });
     }
 

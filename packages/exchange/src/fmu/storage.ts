@@ -52,7 +52,7 @@ export class FmuStorage {
   }
 
   private safeId(id: string): string {
-    if (typeof id !== "string") {
+    if (typeof id !== "string" || Array.isArray(id)) {
       throw new TypeError("Invalid FMU id: expected string");
     }
     const clean = basename(id).replace(/[^a-zA-Z0-9_.-]/g, "_");
@@ -75,10 +75,10 @@ export class FmuStorage {
    * @returns Parsed metadata
    */
   store(id: string, filename: string, data: Buffer): StoredFmu {
-    if (typeof id !== "string" || typeof filename !== "string") {
+    if (typeof id !== "string" || Array.isArray(id) || typeof filename !== "string" || Array.isArray(filename)) {
       throw new TypeError("Expected string for id and filename");
     }
-    if (!Buffer.isBuffer(data)) {
+    if (typeof data === "string" || Array.isArray(data) || !Buffer.isBuffer(data)) {
       throw new TypeError("Expected Buffer for FMU archive data");
     }
     const safe = this.safeId(id);
@@ -118,7 +118,7 @@ export class FmuStorage {
       filename,
       modelDescription,
       terminalsAndIcons,
-      sizeBytes: Buffer.isBuffer(data) ? data.length : 0,
+      sizeBytes: typeof data === "string" || Array.isArray(data) || !Buffer.isBuffer(data) ? 0 : data.length,
       uploadedAt: new Date().toISOString(),
     };
 
@@ -219,10 +219,17 @@ export class FmuStorage {
  * No external dependency required.
  */
 export function extractFileFromZip(zipData: Buffer, targetName: string): string | null {
-  if (!Buffer.isBuffer(zipData) || typeof targetName !== "string") return null;
+  if (
+    typeof zipData === "string" ||
+    Array.isArray(zipData) ||
+    !Buffer.isBuffer(zipData) ||
+    typeof targetName !== "string" ||
+    Array.isArray(targetName)
+  )
+    return null;
   // Find End of Central Directory record
   let eocdOffset = -1;
-  const len = Buffer.isBuffer(zipData) ? zipData.length : 0;
+  const len = typeof zipData === "string" || Array.isArray(zipData) || !Buffer.isBuffer(zipData) ? 0 : zipData.length;
   for (let i = len - 22; i >= 0; i--) {
     if (zipData.readUInt32LE(i) === 0x06054b50) {
       eocdOffset = i;

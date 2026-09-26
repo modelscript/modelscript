@@ -40,7 +40,7 @@ for (const file of files) {
     },
   };
 
-  const flags = [file, "--enable", "threads", "--noEmit"];
+  const flags = [file, "--enable", "threads", "--noEmit", "--disableWarning", "235"];
   const { error } = await asc.main(flags, {
     stderr: stderrStream,
     readFile(filename) {

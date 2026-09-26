@@ -37,6 +37,9 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     (req, res) => {
       try {
         let buffer: Buffer | null = null;
+        if (typeof req.body === "string" || Array.isArray(req.body)) {
+          return res.status(400).json({ error: "Invalid body format" });
+        }
         if (Buffer.isBuffer(req.body)) {
           buffer = req.body;
         } else if (req.body && typeof req.body === "object") {

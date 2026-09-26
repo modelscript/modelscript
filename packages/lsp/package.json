@@ -97,7 +97,7 @@
     "build": "tsc && tsx scripts/build-browser.ts",
     "clean": "rimraf dist",
     "lint": "eslint src --no-warn-ignored",
-    "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
+    "test": "npx tsx --test --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/cad": "*",

@@ -8,7 +8,7 @@ import { renderVisualDiffToHtml } from "@modelscript/diagram/html-diff-bundle";
 import { buildVisualDiffGraph } from "@modelscript/diagram/visual-diff";
 import { renderVisualDiffToSvg } from "@modelscript/diagram/visual-diff-renderer";
 import { buildSysML2DiagramData, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
-import { execSync } from "node:child_process";
+import { exec, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -31,9 +31,9 @@ interface PrDiffArgs {
 /**
  * Executes a Git command safely and returns stdout trimmed, or empty string on error.
  */
-function runGit(cmd: string, cwd: string = process.cwd()): string {
+function runGit(args: string[], cwd: string = process.cwd()): string {
   try {
-    return execSync(cmd, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }).trim();
+    return execFileSync("git", args, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }).trim();
   } catch {
     return "";
   }
@@ -96,7 +96,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
   },
   handler: async (args) => {
     const cwd = process.cwd();
-    const repoRoot = runGit("git rev-parse --show-toplevel", cwd) || cwd;
+    const repoRoot = runGit(["rev-parse", "--show-toplevel"], cwd) || cwd;
 
     const baseRef = args.base || "HEAD~1";
     const headRef = args.head;
@@ -110,8 +110,8 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
       targetFiles = [path.resolve(cwd, args.file)];
     } else {
       // Auto-detect changed model files between base and head
-      const gitDiffCmd = headRef ? `git diff --name-only ${baseRef} ${headRef}` : `git diff --name-only ${baseRef}`;
-      const diffOutput = runGit(gitDiffCmd, repoRoot);
+      const gitDiffArgs = headRef ? ["diff", "--name-only", baseRef, headRef] : ["diff", "--name-only", baseRef];
+      const diffOutput = runGit(gitDiffArgs, repoRoot);
 
       if (diffOutput) {
         targetFiles = diffOutput
@@ -132,11 +132,11 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
     const fileName = path.basename(targetFile);
 
     // 2. Fetch Base and Head file contents
-    const baseContent = runGit(`git show ${baseRef}:${gitRelPath}`, repoRoot);
+    const baseContent = runGit(["show", `${baseRef}:${gitRelPath}`], repoRoot);
     let headContent = "";
 
     if (headRef) {
-      headContent = runGit(`git show ${headRef}:${gitRelPath}`, repoRoot);
+      headContent = runGit(["show", `${headRef}:${gitRelPath}`], repoRoot);
     } else if (fs.existsSync(targetFile)) {
       headContent = fs.readFileSync(targetFile, "utf-8");
     }
@@ -209,7 +209,9 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
 
       if (args.open) {
         const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-        runGit(`${opener} "${outFile}"`, cwd);
+        exec(`${opener} "${outFile}"`).on("error", () => {
+          console.warn(`Could not automatically open browser for: ${outFile}`);
+        });
       }
     } else if (format === "visual-svg") {
       const svg = renderVisualDiffToSvg(diffData, {

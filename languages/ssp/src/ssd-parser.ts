@@ -257,35 +257,40 @@ function parseDefaultExperiment(xml: string): SspDefaultExperiment | undefined {
 
 function extractTagBlock(xml: string, tag: string): { attrs: string; body: string } | null {
   const openTag = `<${tag}`;
-  const startIdx = xml.indexOf(openTag);
-  if (startIdx === -1) return null;
-  const charAfter = xml[startIdx + openTag.length];
-  if (
-    charAfter !== undefined &&
-    charAfter !== " " &&
-    charAfter !== "\t" &&
-    charAfter !== "\r" &&
-    charAfter !== "\n" &&
-    charAfter !== ">" &&
-    charAfter !== "/"
-  ) {
-    return null;
+  let pos = 0;
+  while (pos < xml.length) {
+    const startIdx = xml.indexOf(openTag, pos);
+    if (startIdx === -1) return null;
+    const charAfter = xml[startIdx + openTag.length];
+    if (
+      charAfter !== undefined &&
+      charAfter !== " " &&
+      charAfter !== "\t" &&
+      charAfter !== "\r" &&
+      charAfter !== "\n" &&
+      charAfter !== ">" &&
+      charAfter !== "/"
+    ) {
+      pos = startIdx + openTag.length;
+      continue;
+    }
+    const tagEnd = xml.indexOf(">", startIdx + openTag.length);
+    if (tagEnd === -1) return null;
+    const isSelfClosing = xml[tagEnd - 1] === "/";
+    const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
+    const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
+    if (isSelfClosing) {
+      return { attrs, body: "" };
+    }
+    const closeTag = `</${tag}>`;
+    const endIdx = xml.indexOf(closeTag, tagEnd + 1);
+    if (endIdx === -1) {
+      return { attrs, body: "" };
+    }
+    const body = xml.slice(tagEnd + 1, endIdx);
+    return { attrs, body };
   }
-  const tagEnd = xml.indexOf(">", startIdx + openTag.length);
-  if (tagEnd === -1) return null;
-  const isSelfClosing = xml[tagEnd - 1] === "/";
-  const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
-  const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
-  if (isSelfClosing) {
-    return { attrs, body: "" };
-  }
-  const closeTag = `</${tag}>`;
-  const endIdx = xml.indexOf(closeTag, tagEnd + 1);
-  if (endIdx === -1) {
-    return { attrs, body: "" };
-  }
-  const body = xml.slice(tagEnd + 1, endIdx);
-  return { attrs, body };
+  return null;
 }
 
 function extractTagElements(xml: string, tag: string): { attrs: string; body: string }[] {

@@ -106,7 +106,7 @@ const ascPath = [
 
 console.log("[sysml2] Compiling WebAssembly parser with asc...");
 const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-execFileSync(ascBin, [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "-O", "--runtime", "stub"], {
+execFileSync(ascBin, [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "-O", "--runtime", "stub", "--disableWarning", "235"], {
   stdio: "inherit",
   cwd: __dirname,
 });

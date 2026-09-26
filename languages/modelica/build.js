@@ -115,7 +115,7 @@ const ascPath = [
 
 console.log("[modelica] Compiling WebAssembly parser with asc...");
 const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-execFileSync(ascBin, [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "--optimize", "--runtime", "stub", "--initialMemory", "512", "--maximumMemory", "32768"], {
+execFileSync(ascBin, [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "--optimize", "--runtime", "stub", "--initialMemory", "512", "--maximumMemory", "32768", "--disableWarning", "235"], {
   stdio: "inherit",
   cwd: __dirname,
 });

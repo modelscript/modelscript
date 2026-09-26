@@ -166,7 +166,17 @@ export async function compileAsToWasm(
     const asc = await import("assemblyscript/asc");
     const outputFiles: Record<string, Uint8Array | string> = {};
 
-    const flags = ["model.ts", "--outFile", `${modelIdentifier}.wasm`, "--optimize", "--noAssert", "--runtime", "stub"];
+    const flags = [
+      "model.ts",
+      "--outFile",
+      `${modelIdentifier}.wasm`,
+      "--optimize",
+      "--noAssert",
+      "--runtime",
+      "stub",
+      "--disableWarning",
+      "235",
+    ];
 
     if (options?.shrink) {
       flags.push("--shrinkLevel", "2");

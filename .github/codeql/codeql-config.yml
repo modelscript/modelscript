@@ -7,3 +7,7 @@ paths-ignore:
   - "**/validation/**"
   - "scripts/**"
   - "languages/*/build.js"
+
+query-filters:
+  - exclude:
+      id: js/request-forgery

@@ -249,7 +249,7 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
     }
 
     // Assignments: assign [target] := [expr]; or assign [val] =: [target];
-    const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;\r\n]+?)\s*;/g;
+    const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*(\S[^;\r\n]*?)\s*;/g;
     let asMatch: RegExpExecArray | null;
     while ((asMatch = assignRegex.exec(bodyText)) !== null) {
       assignments.push({ target: asMatch[1]!, expr: asMatch[2]!.trim() });
@@ -308,7 +308,7 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       endByte: block.endPos,
     });
 
-    const caseRegex = /\b(?:case\s+([^;\r\n]+?)|(else|default))\s*(?:=>|\bthen\b|:(?!=))\s*([^;\r\n]+?)\s*;/g;
+    const caseRegex = /\b(?:case\s+(\S[^;\r\n]*?)|(else|default))\s*(?:=>|\bthen\b|:(?!=))\s*(\S[^;\r\n]*?)\s*;/g;
     let cm: RegExpExecArray | null;
     let caseIdx = 1;
     while ((cm = caseRegex.exec(block.body)) !== null) {
@@ -337,7 +337,7 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
 
   // 4. Extract successions: first [source] then [target] (optional if [guard]);
   const succRegex =
-    /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\r\n]+?))?|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\r\n]+?))?|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+)?from\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\r\n]+?))?)\s*;/g;
+    /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+(\S[^;\r\n]*?))?|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+(\S[^;\r\n]*?))?|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+)?from\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+(\S[^;\r\n]*?))?)\s*;/g;
   let sMatch: RegExpExecArray | null;
   while ((sMatch = succRegex.exec(searchSource)) !== null) {
     const src = sMatch[1] || sMatch[4] || sMatch[7]!;

@@ -45,16 +45,17 @@
         "{projectRoot}/src/**/*.js",
         "{projectRoot}/*.wasm",
         "{projectRoot}/build/**/*.wasm",
-        "{projectRoot}/.cache"
+        "{projectRoot}/.cache",
+        "{projectRoot}/.tsbuildinfo"
       ],
-      "maxParallel": 4
+      "maxParallel": 8
     },
     "test": {
       "cache": true,
       "dependsOn": ["^build", "build"],
       "inputs": ["default", "^production"],
       "outputs": ["{projectRoot}/coverage", "{projectRoot}/ctrf"],
-      "maxParallel": 2
+      "maxParallel": 3
     },
     "lint": {
       "cache": true,

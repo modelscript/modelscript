@@ -64,7 +64,7 @@
     "clean": "rimraf dist",
     "fetch:fmusim": "tsx validation/fmi/scripts/fetch-fmusim.ts",
     "lint": "eslint src --no-warn-ignored",
-    "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout validation/test-fmi-ls-bus.ts",
+    "test": "npx tsx --test --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout validation/test-fmi-ls-bus.ts",
     "test:fmusim": "tsx validation/fmi/scripts/fmusim-verify.ts",
     "test:omc": "tsx validation/fmi/scripts/omc-verify.ts",
     "validate": "tsx validation/fmi/scripts/validate.ts"

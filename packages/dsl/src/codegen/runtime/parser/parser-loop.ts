@@ -82,7 +82,7 @@ import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
  * @param token The token ID to look up (terminal or non-terminal).
  * @returns The number of possible actions (1 for LR, >1 for GLR conflicts).
  */
-function lookupActions(state: i32, token: i32): i32 {
+export function lookupActions(state: i32, token: i32): i32 {
   let actionOffset = action_offsets[state];
   if (actionOffset < 0 || actionOffset + 1 >= action_data.length) {
     return 0;
@@ -270,6 +270,10 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
           if (nextState != -1) {
             let totalPadding = expectedPadding;
             let endPos = pos + totalPadding + getNodeByteLength(reusedNode);
+            let savedSrcLexPos = srcLexPos;
+            let savedLexLen = lexLen;
+            t_lrStateStack[lrStackDepth] = nextState;
+            lrStackDepth++;
             let nextTok = invokeLexer(endPos);
             let nextPendingPad: u32 = 0;
             while (load<u8>(is_extra_token + nextTok) == 1) {
@@ -282,7 +286,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               endPos = nextEndPos > endPos ? nextEndPos : endPos + 1;
               nextTok = invokeLexer(endPos);
             }
-            let canAccept = stateCanAcceptFnBool(nextState, nextTok);
+            let canAccept = lookupActions(nextState, nextTok) > 0 || stateCanAcceptFnBool(nextState, nextTok);
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
               let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
@@ -294,14 +298,16 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               let clone = cloneNodeShallow(reusedNode);
               setNodePadding(clone, totalPadding);
               setNodeFlags(clone, getNodeFlags(clone) | FLAG_EXTRACTED);
-              t_lrStateStack[lrStackDepth] = nextState;
-              t_lrNodeStack[lrStackDepth] = clone;
-              lrStackDepth++;
+              t_lrNodeStack[lrStackDepth - 1] = clone;
               pos = endPos;
               token = nextTok;
               pendingPadding = nextPendingPad;
               consecutiveReductions = 0;
               continue;
+            } else {
+              lrStackDepth--;
+              srcLexPos = savedSrcLexPos;
+              lexLen = savedLexLen;
             }
           }
         }
@@ -637,7 +643,7 @@ export function peekNextTokenInState(pos: u32, state: i32): i32 {
   let savedSrcLexPos = srcLexPos;
   let savedScannerState = currentScannerState;
 
-  let tok = invokeLexer(pos);
+  let tok = lex(pos);
   lastPeekedTokenLen = lexLen;
   lastPeekedTokenEnd = srcLexPos + lexLen;
 
@@ -4543,10 +4549,8 @@ export function findReusableNode(
 
     if (canReuse) {
       let isTouchingEdit = false;
-      if (end >= g_editStart && (g_editOldEnd > 0 || g_editNewEnd > 0 || t_editRangesCount > 0)) {
-        if (end > g_editStart) {
-          isTouchingEdit = true;
-        } else if (end == g_editStart && g_editStart >= 2) {
+      if (t_editRangesCount <= 1) {
+        if (end == g_editStart && g_editStart >= 2 && (g_editOldEnd > 0 || g_editNewEnd > 0)) {
           let prevChar = peekChar(g_editStart - 2);
           let isWordChar = (prevChar >= 48 && prevChar <= 57) || // 0-9
                            (prevChar >= 65 && prevChar <= 90) || // A-Z
@@ -4556,6 +4560,25 @@ export function findReusableNode(
           if (isWordChar || nodeType <= (MAX_TERMINAL_ID as u16)) {
             isTouchingEdit = true;
           }
+        }
+      } else {
+        let prevDelta: i32 = 0;
+        for (let i: u32 = 0; i < t_editRangesCount; i++) {
+          let edit = TextEditRange.at(t_editRangesPtr, i);
+          let oldStart = (edit.start as i32 - prevDelta) as u32;
+          if (end == oldStart && oldStart >= 2) {
+            let prevChar = peekChar(oldStart - 2);
+            let isWordChar = (prevChar >= 48 && prevChar <= 57) ||
+                             (prevChar >= 65 && prevChar <= 90) ||
+                             (prevChar >= 97 && prevChar <= 122) ||
+                             prevChar == 95 ||
+                             prevChar == 46;
+            if (isWordChar || nodeType <= (MAX_TERMINAL_ID as u16)) {
+              isTouchingEdit = true;
+            }
+            break;
+          }
+          prevDelta += (edit.newEnd - edit.oldEnd) as i32;
         }
       }
       if (!isTouchingEdit && !isOldRangeEdited(start, end)) {

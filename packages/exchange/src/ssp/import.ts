@@ -46,7 +46,7 @@ export interface SspImportResult {
  * @returns Import result with the configured session
  */
 export function importSsp(data: Buffer, storage: FmuStorage, options?: SspImportOptions): SspImportResult {
-  if (!Buffer.isBuffer(data)) {
+  if (typeof data === "string" || Array.isArray(data) || !Buffer.isBuffer(data)) {
     throw new TypeError("Expected Buffer for SSP archive data");
   }
   const warnings: string[] = [];
@@ -185,6 +185,14 @@ export function applySspParameters(session: CoSimSession, system: SspSystem): vo
  * Same algorithm as fmu/storage.ts extractFileFromZip.
  */
 function extractFileFromSspZip(zipData: Buffer, targetName: string): string | null {
+  if (
+    typeof zipData === "string" ||
+    Array.isArray(zipData) ||
+    !Buffer.isBuffer(zipData) ||
+    typeof targetName !== "string" ||
+    Array.isArray(targetName)
+  )
+    return null;
   const result = extractBinaryFromSspZip(zipData, targetName);
   return result ? result.toString("utf-8") : null;
 }
@@ -193,10 +201,17 @@ function extractFileFromSspZip(zipData: Buffer, targetName: string): string | nu
  * Extract a binary file from a ZIP archive by name.
  */
 function extractBinaryFromSspZip(zipData: Buffer, targetName: string): Buffer | null {
-  if (!Buffer.isBuffer(zipData) || typeof targetName !== "string") return null;
+  if (
+    typeof zipData === "string" ||
+    Array.isArray(zipData) ||
+    !Buffer.isBuffer(zipData) ||
+    typeof targetName !== "string" ||
+    Array.isArray(targetName)
+  )
+    return null;
   // Find End of Central Directory record
   let eocdOffset = -1;
-  const len = Buffer.isBuffer(zipData) ? zipData.length : 0;
+  const len = typeof zipData === "string" || Array.isArray(zipData) || !Buffer.isBuffer(zipData) ? 0 : zipData.length;
   for (let i = len - 22; i >= 0; i--) {
     if (zipData.readUInt32LE(i) === 0x06054b50) {
       eocdOffset = i;

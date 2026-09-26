@@ -32,8 +32,9 @@ import {
   token_string_bytes,
   prod_is_list,
   getExpectedTokensForState,
+  debugLog,
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength, lookupActions } from "./parser-loop";
 import {
   getNodePadding,
   setNodePadding,
@@ -455,6 +456,8 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
 
 export let lastKeywordMatchSpan: u32 = 0;
 
+export let lastKeywordMatchChars: u32 = 0;
+
 /**
  * Calculates a penalty for substituting the text at `pos` with grammar keyword terminal `sym`.
  * Compares characters branchlessly with lowercase ASCII normalization.
@@ -462,6 +465,7 @@ export let lastKeywordMatchSpan: u32 = 0;
  */
 function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
   lastKeywordMatchSpan = len;
+  lastKeywordMatchChars = 0;
   if (changetype<usize>(token_string_offsets) == 0 || sym < 0 || sym >= token_string_offsets.length) return 50;
   let offset = token_string_offsets[sym];
   if (offset < 0 || offset >= token_string_bytes.length) return 50;
@@ -470,50 +474,72 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
   if (kwLen == 0) return 50;
 
   let matchChars: u32 = 0;
-  let minLen = len < kwLen ? len : kwLen;
-  for (let i: u32 = 0; i < minLen; i++) {
-    let inputCh = peekChar(pos + i);
-    let kwCh = token_string_bytes[offset + 1 + i];
-    if (inputCh >= 65 && inputCh <= 90) inputCh += 32;
-    if (kwCh >= 65 && kwCh <= 90) kwCh += 32;
-    if (inputCh == kwCh) {
-      matchChars++;
-    } else {
-      break;
+  let inputCharCount: u32 = 0;
+  let currP = pos;
+  while (currP < pos + len && currP < inputLength) {
+    let inputCh = peekChar(currP);
+    let chLen = peekCharLen(currP);
+    if (matchChars < kwLen) {
+      let kwCh = token_string_bytes[offset + 1 + matchChars];
+      let inNorm = (inputCh >= 65 && inputCh <= 90) ? inputCh + 32 : inputCh;
+      let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
+      if (inNorm == kwNorm && matchChars == inputCharCount) {
+        matchChars++;
+      }
     }
+    inputCharCount++;
+    currP += chLen;
   }
 
   // Also check if combined with next token ("mo" + "del" = "model")
   let combinedMatch = false;
-  if (matchChars == len && len < kwLen) {
-    let nextP = pos + len;
-    while (nextP < inputLength && (peekChar(nextP) == 32 || peekChar(nextP) == 9 || peekChar(nextP) == 10 || peekChar(nextP) == 13)) {
-      nextP++;
+  if (matchChars == inputCharCount && matchChars < kwLen) {
+    let nextP = currP;
+    while (nextP < inputLength) {
+      let ch = peekChar(nextP);
+      let chLen = peekCharLen(nextP);
+      if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+        nextP += chLen;
+      } else {
+        break;
+      }
     }
-    let remainingKw = kwLen - len;
+    let remainingKw = kwLen - matchChars;
     let nextMatch: u32 = 0;
-    for (let j: u32 = 0; j < remainingKw; j++) {
-      let ch = peekChar(nextP + j);
-      let kwCh = token_string_bytes[offset + 1 + len + j];
-      if (ch >= 65 && ch <= 90) ch += 32;
-      if (kwCh >= 65 && kwCh <= 90) kwCh += 32;
-      if (ch == kwCh) {
+    let scanP = nextP;
+    while (nextMatch < remainingKw && scanP < inputLength) {
+      let ch = peekChar(scanP);
+      let chLen = peekCharLen(scanP);
+      let kwCh = token_string_bytes[offset + 1 + matchChars + nextMatch];
+      let inNorm = (ch >= 65 && ch <= 90) ? ch + 32 : ch;
+      let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
+      if (inNorm == kwNorm) {
         nextMatch++;
+        scanP += chLen;
       } else {
         break;
       }
     }
     if (nextMatch == remainingKw) {
-      combinedMatch = true;
-      lastKeywordMatchSpan = (nextP + remainingKw) - pos;
+      let afterCh = scanP < inputLength ? peekChar(scanP) : 0;
+      let isAfterWord = (afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57);
+      if (!isAfterWord) {
+        combinedMatch = true;
+        lastKeywordMatchSpan = scanP - pos;
+      }
     }
   }
 
   if (combinedMatch) {
+    lastKeywordMatchChars = kwLen;
     return 0; // Perfect combined split-word typo match!
   }
 
+  lastKeywordMatchChars = matchChars;
   let delta = kwLen > matchChars ? (kwLen - matchChars) : kwLen;
+  if (inputCharCount > kwLen) {
+    delta += (inputCharCount - kwLen);
+  }
   let penalty: i32 = (delta as i32) * 15 + (matchChars == 0 ? 10 : 0);
   return penalty;
 }
@@ -668,16 +694,84 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
         let simPenalty = computeKeywordSimilarityPenalty(curSrcLexPos, curTLen, sym);
         if (simPenalty < bestSubstPenalty) {
           let span = lastKeywordMatchSpan;
+          let matchCount = lastKeywordMatchChars;
           let resolvedHead = findShiftTargetThroughEpsilons(head, state, sym);
           if (resolvedHead != null) {
             let nextPosAfterTok = curSrcLexPos + span;
             let nextTok = peekNextTokenInState(nextPosAfterTok, resolvedHead.state);
             let canAcceptAfterSubst = stateCanAccept(resolvedHead, resolvedHead.state, nextTok, 0, 0);
             if (canAcceptAfterSubst > 0) {
-              bestSubstPenalty = simPenalty;
-              bestSubstSym = sym;
-              bestSubstResolvedHead = resolvedHead;
-              bestSubstSpan = span;
+              let confirmed = true;
+              if (matchCount == 0) {
+                // If the input word shares zero characters with the keyword (e.g. "some" vs "let"),
+                // require lookahead confirmation on the second token.
+                confirmed = false;
+                if (canAcceptAfterSubst >= 1) {
+                  let shiftedState = canAcceptAfterSubst - 1;
+                  let nextPos2 = lastPeekedTokenEnd;
+                  if (nextPos2 < inputLength) {
+                    let nextTok2 = peekNextTokenInState(nextPos2, shiftedState);
+                    if (stateCanAccept(null, shiftedState, nextTok2, 0, 0) > 0 || lookupActions(shiftedState, nextTok2) > 0) {
+                      confirmed = true;
+                    }
+                  } else {
+                    confirmed = true;
+                  }
+                }
+              }
+
+              // Guard: If the very next word at nextPosAfterTok is ALREADY the target keyword `sym`,
+              // this is a stray token before the actual keyword, NOT a keyword substitution!
+              if (confirmed && changetype<usize>(token_string_offsets) != 0 && sym >= 0 && sym < token_string_offsets.length) {
+                let kwOffset = token_string_offsets[sym];
+                if (kwOffset >= 0 && kwOffset < token_string_bytes.length) {
+                  let targetKwLen = token_string_bytes[kwOffset] as u32;
+                  if (targetKwLen > 0) {
+                    let checkP = nextPosAfterTok;
+                    while (checkP < inputLength) {
+                      let ch = peekChar(checkP);
+                      let chLen = peekCharLen(checkP);
+                      if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+                        checkP += chLen;
+                      } else {
+                        break;
+                      }
+                    }
+                    let scanP = checkP;
+                    let allMatch = true;
+                    for (let ki: u32 = 0; ki < targetKwLen; ki++) {
+                      if (scanP >= inputLength) {
+                        allMatch = false;
+                        break;
+                      }
+                      let ch = peekChar(scanP);
+                      let chLen = peekCharLen(scanP);
+                      let kwCh = token_string_bytes[kwOffset + 1 + ki];
+                      let inNorm = (ch >= 65 && ch <= 90) ? ch + 32 : ch;
+                      let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
+                      if (inNorm != kwNorm) {
+                        allMatch = false;
+                        break;
+                      }
+                      scanP += chLen;
+                    }
+                    if (allMatch) {
+                      let afterCh = scanP < inputLength ? peekChar(scanP) : 0;
+                      let isWord = (afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57);
+                      if (!isWord) {
+                        confirmed = false;
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (confirmed) {
+                bestSubstPenalty = simPenalty;
+                bestSubstSym = sym;
+                bestSubstResolvedHead = resolvedHead;
+                bestSubstSpan = span;
+              }
             }
           }
         }

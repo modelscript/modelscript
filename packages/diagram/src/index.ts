@@ -33,26 +33,62 @@ import { animateCells } from "./telemetry.js";
 import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
 
 if (typeof Graph.registerRouter === "function") {
-  Graph.registerRouter("port-orthogonal-astar", portOrthogonalRouter);
+  try {
+    Graph.registerRouter("port-orthogonal-astar", portOrthogonalRouter, true);
+  } catch {
+    // Already registered or duplicate in HMR
+  }
 }
 
 if (typeof Graph.registerConnector === "function") {
-  Graph.registerConnector("jumpover", (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
-    const points = [sourcePoint, ...routePoints, targetPoint];
-    return computeJumpoverPath(points, [], { radius: args.radius ?? 5 });
-  });
-  Graph.registerConnector("smooth", (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
-    const points = [sourcePoint, ...routePoints, targetPoint];
-    return computeSmoothBezierPath(points);
-  });
-  Graph.registerConnector("bezier", (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
-    const points = [sourcePoint, ...routePoints, targetPoint];
-    return computeSmoothBezierPath(points);
-  });
-  Graph.registerConnector("fillet", (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
-    const points = [sourcePoint, ...routePoints, targetPoint];
-    return computeFilletedOrthogonalPath(points, args.radius ?? 5);
-  });
+  try {
+    Graph.registerConnector(
+      "jumpover",
+      (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
+        const points = [sourcePoint, ...routePoints, targetPoint];
+        return computeJumpoverPath(points, [], { radius: args.radius ?? 5 });
+      },
+      true,
+    );
+  } catch {
+    // Already registered or duplicate in HMR
+  }
+  try {
+    Graph.registerConnector(
+      "smooth",
+      (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
+        const points = [sourcePoint, ...routePoints, targetPoint];
+        return computeSmoothBezierPath(points);
+      },
+      true,
+    );
+  } catch {
+    // Already registered or duplicate in HMR
+  }
+  try {
+    Graph.registerConnector(
+      "bezier",
+      (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
+        const points = [sourcePoint, ...routePoints, targetPoint];
+        return computeSmoothBezierPath(points);
+      },
+      true,
+    );
+  } catch {
+    // Already registered or duplicate in HMR
+  }
+  try {
+    Graph.registerConnector(
+      "fillet",
+      (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
+        const points = [sourcePoint, ...routePoints, targetPoint];
+        return computeFilletedOrthogonalPath(points, args.radius ?? 5);
+      },
+      true,
+    );
+  } catch {
+    // Already registered or duplicate in HMR
+  }
 }
 
 export interface DiagramRendererOptions {

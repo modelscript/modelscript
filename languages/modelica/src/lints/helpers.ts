@@ -483,20 +483,20 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         if (db.ast.textEquals(cr, "sample")) {
           const args = getCallArguments(db, sib, $);
           if (args.length === 1) {
-            const uType = inferExprType(db, args[0]!, $);
+            const uType = inferExprType(db, args[0], $);
             if (uType !== TYPE_UNKNOWN) return uType;
           } else if (args.length === 2) {
-            const secType = inferExprType(db, args[1]!, $);
+            const secType = inferExprType(db, args[1], $);
             let isClockArg = false;
             if (secType === TYPE_CLOCK) {
               isClockArg = true;
             } else if (secType === TYPE_REAL || secType === TYPE_INTEGER) {
               isClockArg = false;
-            } else if (db.ast.startsWith(args[1]!, "Clock") || db.ast.startsWith(args[1]!, "clock")) {
+            } else if (db.ast.startsWith(args[1], "Clock") || db.ast.startsWith(args[1], "clock")) {
               isClockArg = true;
             }
             if (isClockArg) {
-              const uType = inferExprType(db, args[0]!, $);
+              const uType = inferExprType(db, args[0], $);
               if (uType !== TYPE_UNKNOWN) return uType;
             } else {
               return TYPE_BOOLEAN;
@@ -515,7 +515,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         ) {
           const args = getCallArguments(db, sib, $);
           if (args.length > 0) {
-            const uType = inferExprType(db, args[0]!, $);
+            const uType = inferExprType(db, args[0], $);
             if (uType !== TYPE_UNKNOWN) return uType;
           }
         }

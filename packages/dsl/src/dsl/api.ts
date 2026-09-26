@@ -51,6 +51,8 @@ export interface BuildResult {
     fieldNames?: string[];
     semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] };
   };
+  syntaxNames?: string[];
+  fieldNames?: string[];
   table?: any;
   /** Any unresolved grammar conflicts (shift/reduce or reduce/reduce). */
   conflicts?: GrammarConflictDiagnostic[];
@@ -105,6 +107,8 @@ export function buildParser(languageDef: LanguageOptions, options?: BuildOptions
     parserInfo,
     assemblyScriptFiles,
     javascriptWrapper,
+    syntaxNames: javascriptWrapper.syntaxNames,
+    fieldNames: javascriptWrapper.fieldNames,
     table: result.table,
     conflicts: result.table.diagnostics || [],
     mcpManifest,

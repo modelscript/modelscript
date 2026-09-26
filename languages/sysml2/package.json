@@ -73,7 +73,7 @@
     "build:parser": "node build.js --force",
     "clean": "rimraf dist *.wasm",
     "lint": "eslint src transformers --no-warn-ignored",
-    "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts tests/test-imports-and-stdlib.ts tests/test-reasoner-multiplicity-disjoint.ts"
+    "test": "npx tsx --test --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts tests/test-imports-and-stdlib.ts tests/test-reasoner-multiplicity-disjoint.ts"
   },
   "dependencies": {
     "@modelscript/diagram": "*",

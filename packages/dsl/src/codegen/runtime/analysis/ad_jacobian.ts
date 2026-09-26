@@ -31,8 +31,12 @@ export class SparsityPatternResult {
 }
 
 // Aliases for backwards compatibility with tests
-export const computeJacobianCCS = buildJacobianSparsity;
-export const computeHessianCCS = buildHessianSparsity;
+export function computeJacobianCCS(equationRootsPtr: u32, numEqns: u32, varMappingsPtr: u32, numVars: u32): u32 {
+    return buildJacobianSparsity(equationRootsPtr, numEqns, varMappingsPtr, numVars);
+}
+export function computeHessianCCS(equationRootsPtr: u32, numEqns: u32, varMappingsPtr: u32, numVars: u32): u32 {
+    return buildHessianSparsity(equationRootsPtr, numEqns, varMappingsPtr, numVars);
+}
 
 // ========================================================================
 // Dependency Bitset — tracks which variables appear in each equation

@@ -918,7 +918,7 @@ export class UnifiedVerifier {
 
         const variables: any[] = [];
         const varDeclRegex =
-          /\b(?:(input|output)\s+)?(Real|Integer|Boolean|String)\s*(?:\[([^\]]*)\])?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[([^\]]*)\])?(?:\s*=\s*([^;\r\n]+?))?\s*;/g;
+          /\b(?:(input|output)\s+)?(Real|Integer|Boolean|String)\s*(?:\[([^\]]*)\])?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[([^\]]*)\])?(?:\s*=\s*(\S[^;\r\n]*?))?\s*;/g;
         let vMatch: RegExpExecArray | null;
         while ((vMatch = varDeclRegex.exec(body)) !== null) {
           const io = vMatch[1];

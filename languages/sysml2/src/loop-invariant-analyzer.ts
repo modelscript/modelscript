@@ -82,7 +82,7 @@ function parseBodyUpdates(bodyText: string): StateUpdate[] {
     .filter(Boolean);
 
   for (const line of lines) {
-    const assignMatch = /^(?:\bassign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*(.+)$/.exec(line);
+    const assignMatch = /^(?:assign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*(\S.*)$/.exec(line);
     if (!assignMatch) continue;
 
     const target = assignMatch[1]!;

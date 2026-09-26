@@ -137,7 +137,7 @@
     "test:latex": "npx tsx tests/ctrf-to-latex.ts",
     "test:msl": "npx tsx tests/msl-comparison-runner.ts",
     "test:omc": "npx tsx tests/testsuite-runner.ts",
-    "test:unit": "npx tsx --import ./tests/test-setup.ts --test tests/*.test.ts"
+    "test:unit": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=2 tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/cad": "*",
