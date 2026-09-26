@@ -9,6 +9,7 @@ import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import { CaeResultProcessor } from "../services/cae-result-processor.js";
 import { CaeSolverRunner, type CaeJobSpec } from "../services/cae-solver-runner.js";
+import { CaeSweepOrchestrator, type CaeSweepSpec } from "../services/cae-sweep-orchestrator.js";
 import { CaeTelemetryStreamer, type CaeSolverType } from "../services/cae-telemetry-streamer.js";
 
 const CAE_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
@@ -40,6 +41,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   const router = express.Router();
   const runner = new CaeSolverRunner();
   const activeStreamers = new Map<string, CaeTelemetryStreamer>();
+  const sweepOrchestrator = new CaeSweepOrchestrator(runner, CAE_CACHE_DIR);
 
   ensureCaeDir();
 
@@ -51,14 +53,20 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
     const hash = sha256(req.file.buffer);
     const safe = sanitizeHash(hash);
+    const safeFileName =
+      path.basename(req.file.originalname || "payload.dat").replace(/[^a-zA-Z0-9._-]/g, "_") || "payload.dat";
     const targetDir = path.join(CAE_CACHE_DIR, safe);
-    const targetFile = path.join(targetDir, req.file.originalname || "payload.dat");
+    const resolvedDir = path.resolve(targetDir);
+    const targetFile = path.resolve(resolvedDir, safeFileName);
+    if (!targetFile.startsWith(resolvedDir + path.sep)) {
+      return res.status(400).json({ error: "Invalid filename." });
+    }
 
     if (fs.existsSync(targetFile)) {
       return res.json({ hash, cached: true, message: "File already cached." });
     }
 
-    fs.mkdirSync(targetDir, { recursive: true });
+    fs.mkdirSync(resolvedDir, { recursive: true });
     fs.writeFileSync(targetFile, req.file.buffer);
 
     res.json({ hash, cached: false, filename: req.file.originalname, message: "File cached successfully." });
@@ -254,6 +262,124 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     }
 
     return res.status(404).json({ error: "Mesh payload not yet ready." });
+  });
+
+  // --- Automated Parametric DoE Sweep Orchestrator Routes ---
+
+  // 9. Submit a new Parametric DoE Sweep
+  router.post("/cae/sweeps", express.json({ limit: "50mb" }), (req, res) => {
+    const { title, solver = "calculix", templateDeck, deckFormat, geometry, sampling, options } = req.body;
+
+    if (!templateDeck) {
+      return res.status(400).json({ error: "Missing required 'templateDeck' string." });
+    }
+    if (!sampling || !sampling.parameters || !Array.isArray(sampling.parameters) || sampling.parameters.length === 0) {
+      return res.status(400).json({ error: "Missing required 'sampling.parameters' array." });
+    }
+
+    const sweepSpec: CaeSweepSpec = {
+      title,
+      solver: solver === "su2" ? "su2" : solver === "openfoam" ? "openfoam" : "calculix",
+      templateDeck,
+      deckFormat: deckFormat || (solver === "su2" ? "cfg" : "inp"),
+      geometry,
+      sampling: {
+        strategy: sampling.strategy || "lhs",
+        sampleCount: sampling.sampleCount || 10,
+        concurrency: sampling.concurrency || 4,
+        parameters: sampling.parameters,
+      },
+      options: options || {},
+    };
+
+    const state = sweepOrchestrator.submitSweep(sweepSpec);
+    res.json({
+      sweepId: state.sweepId,
+      title: state.title,
+      status: state.status,
+      totalRuns: state.totalRuns,
+      strategy: state.strategy,
+      concurrency: sweepSpec.sampling.concurrency,
+    });
+  });
+
+  // 10. List All Sweeps
+  router.get("/cae/sweeps", (_req, res) => {
+    const allSweeps = sweepOrchestrator.getAllSweeps().map((s) => ({
+      sweepId: s.sweepId,
+      title: s.title,
+      solver: s.solver,
+      strategy: s.strategy,
+      status: s.status,
+      totalRuns: s.totalRuns,
+      completedRuns: s.completedRuns,
+      failedRuns: s.failedRuns,
+      progressPercent: s.progressPercent,
+      createdAt: s.createdAt,
+      completedAt: s.completedAt,
+    }));
+    res.json(allSweeps);
+  });
+
+  // 11. Get Sweep Details & Run Table
+  router.get("/cae/sweeps/:id", (req, res) => {
+    const sweep = sweepOrchestrator.getSweep(req.params.id);
+    if (!sweep) {
+      return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
+    }
+    res.json(sweep);
+  });
+
+  // 12. Cancel Sweep
+  router.delete("/cae/sweeps/:id", (req, res) => {
+    const cancelled = sweepOrchestrator.cancelSweep(req.params.id);
+    if (!cancelled) {
+      return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
+    }
+    res.json({ cancelled: true, sweepId: req.params.id });
+  });
+
+  // 13. Real-Time Telemetry Stream for Multi-Job Sweep (SSE)
+  router.get("/cae/sweeps/:id/events", (req, res) => {
+    const sweep = sweepOrchestrator.getSweep(req.params.id);
+    if (!sweep) {
+      return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
+    }
+    sweepOrchestrator.attachSseStream(req.params.id, res);
+  });
+
+  // 14. Compile and Extract SnapshotMatrixDataset from Completed Sweep
+  router.get("/cae/sweeps/:id/dataset", (req, res) => {
+    try {
+      const targetField = (req.query["targetField"] as string) || "vonMisesStress";
+      const dataset = sweepOrchestrator.extractDataset(req.params.id, targetField);
+      res.json({
+        M: dataset.numSnapshots,
+        N: dataset.numFeatures,
+        numSnapshots: dataset.numSnapshots,
+        numFeatures: dataset.numFeatures,
+        p: dataset.parameterNames.length,
+        q: dataset.scalarOutputNames.length,
+        parameterNames: dataset.parameterNames,
+        scalarNames: dataset.scalarOutputNames,
+        snapshotMatrix: Array.from(dataset.snapshots),
+        parameters: Array.from(dataset.parameters),
+        scalarOutputs: Array.from(dataset.scalarOutputs),
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || "Failed to extract dataset from sweep." });
+    }
+  });
+
+  // 15. 1-Click Surrogate Training from Sweep
+  router.post("/cae/sweeps/:id/train-surrogate", express.json(), async (req, res) => {
+    try {
+      const options = req.body || {};
+      const trainResult = await sweepOrchestrator.trainSurrogate(req.params.id, options);
+      res.json(trainResult);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || "Failed to train surrogate from sweep." });
+    }
   });
 
   return router;

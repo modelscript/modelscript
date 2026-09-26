@@ -194,7 +194,7 @@ function normalizeConditionToOcra(cond: string): string {
     .replace(/&&/g, " and ")
     .replace(/\|\|/g, " or ")
     .replace(/==/g, "=")
-    .replace(/!=/g, "!=")
+    .replace(/!==/g, "!=")
     .replace(/\s+/g, " ")
     .trim();
 }

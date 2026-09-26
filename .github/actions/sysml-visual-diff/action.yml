@@ -1,0 +1,76 @@
+name: "ModelScript SysML v2 Visual PR Diff"
+description: "Generates an AST-aware visual diagram diff and PR review comment for SysML v2 and Modelica models"
+inputs:
+  base-ref:
+    description: "Base Git reference (e.g. origin/main or ${{ github.base_ref }})"
+    required: true
+    default: "origin/main"
+  head-ref:
+    description: "Head Git reference (e.g. HEAD or ${{ github.head_ref }})"
+    required: false
+    default: "HEAD"
+  post-comment:
+    description: "Whether to post or update the PR review comment"
+    required: false
+    default: "true"
+  github-token:
+    description: "GitHub token for commenting on PRs"
+    required: false
+    default: "${{ github.token }}"
+outputs:
+  html-artifact-path:
+    description: "Path to the generated standalone interactive HTML diff report"
+    value: "${{ steps.run-diff.outputs.html-path }}"
+  has-breaking-changes:
+    description: "Whether breaking architectural changes were detected"
+    value: "${{ steps.run-diff.outputs.has-breaking }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run ModelScript Visual PR Diff
+      id: run-diff
+      shell: bash
+      run: |
+        mkdir -p ./diff-artifacts
+        echo "Running ModelScript Visual PR Diff..."
+        node apps/cli/dist/main.js pr-diff --base "${{ inputs.base-ref }}" --head "${{ inputs.head-ref }}" --format visual-html -o ./diff-artifacts/visual-diff.html
+        node apps/cli/dist/main.js pr-diff --base "${{ inputs.base-ref }}" --head "${{ inputs.head-ref }}" --format pr-comment -o ./diff-artifacts/pr-comment.md
+        echo "html-path=./diff-artifacts/visual-diff.html" >> $GITHUB_OUTPUT
+        if grep -q "BREAKING" ./diff-artifacts/pr-comment.md; then
+          echo "has-breaking=true" >> $GITHUB_OUTPUT
+        else
+          echo "has-breaking=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Post PR Review Comment
+      if: inputs.post-comment == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const commentPath = './diff-artifacts/pr-comment.md';
+          if (!fs.existsSync(commentPath)) return;
+          const body = fs.readFileSync(commentPath, 'utf8');
+          const { data: comments } = await github.rest.issues.listComments({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          const botComment = comments.find(c => c.body.includes('ModelScript SysML v2 Visual PR Review'));
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              comment_id: botComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+          } else {
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+          }

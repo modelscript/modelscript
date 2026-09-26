@@ -9,7 +9,7 @@
  * zero-allocation C99 Software-in-the-Loop (SiL).
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -96,7 +96,7 @@ export class B2BEquivalenceVerifier {
     let compilerVersion = "";
     try {
       compilerVersion =
-        execSync(`${compiler} --version`, { encoding: "utf-8", timeout: 5000 }).split("\n")[0] || compiler;
+        execFileSync(compiler, ["--version"], { encoding: "utf-8", timeout: 5000 }).split("\n")[0] || compiler;
     } catch (err: any) {
       return {
         passed: false,
@@ -247,8 +247,8 @@ export class B2BEquivalenceVerifier {
 
     // 6. Compile SiL Binary
     try {
-      const cmd = `${compiler} ${cflags.join(" ")} -I"${scratchDir}" "${sourcePath}" "${harnessPath}" -lm -o "${binPath}"`;
-      execSync(cmd, { stdio: "pipe", timeout: 20000 });
+      const compileArgs = [...cflags, `-I${scratchDir}`, sourcePath, harnessPath, "-lm", "-o", binPath];
+      execFileSync(compiler, compileArgs, { stdio: "pipe", timeout: 20000 });
     } catch (err: any) {
       const compileErr = err.stderr ? err.stderr.toString() : err.message;
       if (!options.preserveArtifacts) {
@@ -272,7 +272,7 @@ export class B2BEquivalenceVerifier {
     // 7. Execute SiL Binary & Collect Output
     let stdout = "";
     try {
-      stdout = execSync(`"${binPath}"`, { encoding: "utf-8", timeout: 30000 });
+      stdout = execFileSync(binPath, [], { encoding: "utf-8", timeout: 30000 });
     } catch (err: any) {
       const execErr = err.stderr ? err.stderr.toString() : err.message;
       if (!options.preserveArtifacts) {

@@ -2,9 +2,12 @@
 
 export * from "./ad-transforms.js";
 export * from "./adjoint-integrator.js";
+export * from "./continuum-participant.js";
 export * from "./falsification-runner.js";
+export * from "./fsi-relaxation.js";
 export * from "./gpu-buffers.js";
 export * from "./live-cosim-orchestrator.js";
+export * from "./multiphysics-port-coupler.js";
 export * from "./problem-types.js";
 export * from "./simulate-arena.js";
 export * from "./simulation.js";

@@ -877,16 +877,16 @@ export function evaluateMacroExpression(
   componentInstance?: ModelicaComponentInstance,
 ): string {
   const trimmed = expr.trim();
-  if (/^if\s+/i.test(trimmed)) {
-    const thenMatch = trimmed.match(/\s+then\s+/i);
+  if (/^if\b/i.test(trimmed)) {
+    const thenMatch = trimmed.match(/\bthen\b/i);
     if (thenMatch && thenMatch.index !== undefined) {
       const thenIdx = thenMatch.index;
-      const afterThen = trimmed.slice(thenIdx + thenMatch[0].length);
-      const elseMatch = afterThen.match(/\s+else\s+/i);
+      const afterThen = trimmed.slice(thenIdx + 4);
+      const elseMatch = afterThen.match(/\belse\b/i);
       if (elseMatch && elseMatch.index !== undefined) {
         const condStr = trimmed.slice(2, thenIdx).trim();
         const thenVal = afterThen.slice(0, elseMatch.index).trim();
-        const elseVal = afterThen.slice(elseMatch.index + elseMatch[0].length).trim();
+        const elseVal = afterThen.slice(elseMatch.index + 4).trim();
 
         const isTrue = evalMacroCondition(condStr, classInstance, componentInstance);
         const chosen = isTrue ? thenVal : elseVal;

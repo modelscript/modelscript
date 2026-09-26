@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,7 +73,7 @@ if (isParserUpToDate()) {
   const buildScriptContent = `import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { buildParser } from "@modelscript/dsl";
 import { modelicaLanguage } from "./src/language.js";
 
@@ -114,7 +114,8 @@ const ascPath = [
 ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
 
 console.log("[modelica] Compiling WebAssembly parser with asc...");
-execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads --optimize --runtime stub --initialMemory 512 --maximumMemory 32768\`, {
+const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+execFileSync(ascBin, [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "--optimize", "--runtime", "stub", "--initialMemory", "512", "--maximumMemory", "32768"], {
   stdio: "inherit",
   cwd: __dirname,
 });
@@ -123,7 +124,7 @@ console.log("[modelica] WebAssembly parser built successfully -> " + outWasm);
 
   fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
   try {
-    execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+    execFileSync("npx", ["tsx", buildScriptPath], { stdio: "inherit", cwd: __dirname });
     if (fs.existsSync(outWasm)) {
       fs.mkdirSync(cacheDir, { recursive: true });
       fs.copyFileSync(outWasm, cacheWasm);

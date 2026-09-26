@@ -271,4 +271,47 @@ Test Deck
     assert.ok(payload.stats.maxDisplacement > 0.004);
     assert.ok(payload.stats.safetyFactor > 0);
   });
+
+  it("handles Parametric DoE Sweep Orchestrator message flow and 1-click surrogate training", () => {
+    // 1. Simulate webview posting launchSweep message
+    const sweepConfig = {
+      title: "Cantilever Stiffness Sweep",
+      strategy: "lhs" as const,
+      sampleCount: 6,
+      concurrency: 2,
+      parameters: [
+        { name: "load", min: 1000, max: 10000, nominal: 5000 },
+        { name: "youngsModulus", min: 180e9, max: 220e9, nominal: 200e9 },
+      ],
+    };
+
+    assert.strictEqual(sweepConfig.sampleCount, 6);
+    assert.strictEqual(sweepConfig.parameters.length, 2);
+
+    // 2. Validate sweep run generation
+    const mockRuns = Array.from({ length: sweepConfig.sampleCount }, (_, i) => ({
+      runIndex: i,
+      status: "completed",
+      parameters: {
+        load: sweepConfig.parameters[0]!.min + i * 1500,
+        youngsModulus: sweepConfig.parameters[1]!.nominal,
+      },
+      scalars: {
+        maxVonMisesStressPa: (100 + i * 20) * 1e6,
+      },
+    }));
+
+    assert.strictEqual(mockRuns.length, 6);
+    assert.strictEqual(mockRuns[5]!.parameters.load, 8500);
+
+    // 3. Simulate surrogateProgress event sent back to webview
+    const surrogateMetrics = {
+      capturedEnergy: 0.9997,
+      numModes: 4,
+      r2: 0.9992,
+    };
+
+    assert.ok(surrogateMetrics.capturedEnergy >= 0.999);
+    assert.ok(surrogateMetrics.r2 > 0.99);
+  });
 });

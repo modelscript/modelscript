@@ -9,7 +9,14 @@
  */
 
 import { StaticTapeBuilder } from "../autodiff/wasm_tape.js";
-import { DomainBox, Interval, SbbOptions, SbbResult, evaluateTapeInterval, solveSBB } from "./wasm_interval.js";
+import {
+  type DomainBox,
+  Interval,
+  type SbbOptions,
+  type SbbResult,
+  evaluateTapeInterval,
+  solveSBB,
+} from "./wasm_interval.js";
 
 export interface ParametricRequirement {
   name?: string;

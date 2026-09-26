@@ -1,7 +1,7 @@
 // @ts-expect-error missing types for occt-import-js
 import occtimportjs from "occt-import-js";
 import type { LibraryDatabase } from "../database.js";
-import { isSafePublicUrl } from "./ssrf.js";
+import { assertSafePublicUrl } from "./ssrf.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function computeMeshProperties(meshes: any[]) {
@@ -62,14 +62,8 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
   }
 
   console.log(`[CAD] Fetching and converting STEP: ${url}`);
-  let fetchUrl = url;
-  if (url.startsWith("/")) {
-    const port = process.env["PORT"] || "3000";
-    fetchUrl = `http://localhost:${port}${url}`;
-  } else if (!isSafePublicUrl(url)) {
-    throw new Error("Invalid or restricted URL for STEP file fetch");
-  }
-  const response = await fetch(fetchUrl);
+  const validated = assertSafePublicUrl(url);
+  const response = await fetch(validated.href);
   if (!response.ok) {
     throw new Error(`Failed to fetch STEP file: ${response.status} ${response.statusText}`);
   }

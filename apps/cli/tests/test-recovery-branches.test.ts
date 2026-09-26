@@ -91,8 +91,23 @@ describe("GLR Parser Error Recovery Branches", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
-    childProcess.execSync(ascCmd, { stdio: "inherit" });
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+    childProcess.execFileSync(
+      ascBin,
+      [
+        ...ascPrefixArgs,
+        parserTs,
+        "-o",
+        outWasm,
+        "--exportRuntime",
+        "--enable",
+        "threads",
+        "--optimize",
+        "--runtime",
+        "stub",
+      ],
+      { stdio: "inherit" },
+    );
 
     const wasm = fs.readFileSync(outWasm);
     wasmModule = await WebAssembly.compile(wasm);

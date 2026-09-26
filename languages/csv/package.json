@@ -22,7 +22,8 @@
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
     "clean": "rimraf dist build src-gen as-gen *.wasm",
-    "lint": "eslint language.ts src --no-warn-ignored"
+    "lint": "eslint language.ts src --no-warn-ignored",
+    "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/dsl": "*"

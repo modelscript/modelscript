@@ -64,6 +64,18 @@
       "types": "./dist/diagram.browser.js",
       "default": "./dist/diagram.browser.js"
     },
+    "./visual-diff": {
+      "types": "./dist/visual-diff-graph.d.ts",
+      "default": "./dist/visual-diff-graph.js"
+    },
+    "./visual-diff-renderer": {
+      "types": "./dist/visual-diff-renderer.d.ts",
+      "default": "./dist/visual-diff-renderer.js"
+    },
+    "./html-diff-bundle": {
+      "types": "./dist/html-diff-bundle.d.ts",
+      "default": "./dist/html-diff-bundle.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"

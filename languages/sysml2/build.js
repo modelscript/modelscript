@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,7 +69,7 @@ if (isParserUpToDate()) {
   const buildScriptContent = `import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { buildParser } from "@modelscript/dsl";
 import { sysml2Language } from "./src/language.js";
 
@@ -105,7 +105,8 @@ const ascPath = [
 ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
 
 console.log("[sysml2] Compiling WebAssembly parser with asc...");
-execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads -O --runtime stub\`, {
+const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+execFileSync(ascBin, [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "-O", "--runtime", "stub"], {
   stdio: "inherit",
   cwd: __dirname,
 });
@@ -114,7 +115,7 @@ console.log("[sysml2] WebAssembly parser built successfully -> " + outWasm);
 
   fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
   try {
-    execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+    execFileSync("npx", ["tsx", buildScriptPath], { stdio: "inherit", cwd: __dirname });
     if (fs.existsSync(outWasm)) {
       fs.mkdirSync(cacheDir, { recursive: true });
       fs.copyFileSync(outWasm, cacheWasm);
@@ -128,5 +129,5 @@ if (isSnapshotUpToDate()) {
   console.log("[sysml2] KerML snapshot is up to date, skipping snapshot generation.");
 } else {
   console.log("[sysml2] Generating KerML stdlib pre-compiled snapshot...");
-  execSync(`npx tsx scripts/generate-kerml-snapshot.ts`, { stdio: "inherit", cwd: __dirname });
+  execFileSync("npx", ["tsx", "scripts/generate-kerml-snapshot.ts"], { stdio: "inherit", cwd: __dirname });
 }

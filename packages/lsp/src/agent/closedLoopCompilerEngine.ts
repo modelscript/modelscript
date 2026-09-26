@@ -415,13 +415,13 @@ export async function verifyGate2Dimensions(
     };
   } else if (norm === "modelica") {
     // Modelica unit checking: parse unit annotations or declaration types
-    const unitMatches = code.matchAll(/([a-zA-Z0-9_]+)\s*=\s*([^;]+);/g);
+    const unitMatches = code.matchAll(/\b([a-zA-Z0-9_]+)\s*=\s*([^;\r\n]+?)\s*;/g);
     for (const match of unitMatches) {
       const expr = match[2];
       // Check for obvious incompatible addition of different unit markers if present
       if (/\b(kg|m|s|N|Pa|W|J)\b/.test(expr)) {
         // e.g., 5[m] + 10[s]
-        const m = expr.match(/\[([a-zA-Z]+)\].*\+.*\[([a-zA-Z]+)\]/);
+        const m = expr.match(/\[([a-zA-Z]+)\][^+]*\+[^+]*?\[([a-zA-Z]+)\]/);
         if (m && m[1] !== m[2]) {
           diagnostics.push({
             gate: 2,
@@ -476,10 +476,12 @@ export async function verifyGate3Requirements(
 
     // Also parse explicit inline constraints from code if queryDB didn't extract any
     if (constraints.length === 0) {
-      const constraintMatches = code.matchAll(/(?:assert\s+)?constraint\s*(?:\{|\s+([a-zA-Z0-9_]+)\s*\{)([^}]+)\}/g);
+      const constraintMatches = code.matchAll(/(?:\bassert\s+)?\bconstraint(?:\s+([a-zA-Z0-9_]+))?\s*\{([^}]+)\}/g);
       for (const m of constraintMatches) {
         const body = m[2].trim();
-        const compMatch = body.match(/([a-zA-Z0-9_.]+)\s*(<=|>=|==|<|>)\s*([0-9.]+)/);
+        const compMatch = body.match(
+          /\b([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s*(<=|>=|==|<|>)\s*([0-9]+(?:\.[0-9]+)?)/,
+        );
         if (compMatch) {
           constraints.push({
             lhs: compMatch[1],
@@ -495,7 +497,7 @@ export async function verifyGate3Requirements(
 
     // Inline requirement bounds: doc /* ... */ or attribute bounds
     const reqMatches = code.matchAll(
-      /requirement\s+(?:def\s+)?([a-zA-Z0-9_]+)\s*\{[\s\S]*?attribute\s+([a-zA-Z0-9_]+)[^;]*?=\s*([0-9.]+);[\s\S]*?\}/g,
+      /\brequirement\s+(?:def\s+)?([a-zA-Z0-9_]+)\s*\{[^{}]*?\battribute\s+([a-zA-Z0-9_]+)[^;={}]*?=\s*([0-9]+(?:\.[0-9]+)?);[^{}]*?\}/g,
     );
     for (const rm of reqMatches) {
       const reqName = rm[1];
@@ -563,7 +565,7 @@ export async function verifyGate3Requirements(
     };
   } else if (norm === "modelica") {
     // Modelica parameter and assertion consistency
-    const assertMatches = code.matchAll(/assert\s*\(([^,]+),\s*"([^"]+)"\);/g);
+    const assertMatches = code.matchAll(/\bassert\s*\(([^,()]+?)\s*,\s*"([^"]+)"\)\s*;/g);
     for (const am of assertMatches) {
       const expr = am[1].trim();
       const msg = am[2];
@@ -609,7 +611,7 @@ export async function verifyGate4DAEBalance(
     // For Modelica, count equations and variables
     // Simple structural scanner if flattening isn't pre-warmed
     const varMatches = code.matchAll(
-      /\b(?:Real|Integer|Boolean)\s+(?!parameter|constant)([a-zA-Z0-9_]+)(?:\s*=\s*[^;]+)?;/g,
+      /\b(?:Real|Integer|Boolean)\s+(?!parameter\b|constant\b)([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*[^;\r\n]+?)?\s*;/g,
     );
     const declaredVars = new Set<string>();
     for (const vm of varMatches) {
@@ -674,7 +676,9 @@ export async function verifyGate4DAEBalance(
   } else if (norm === "sysml2" || norm === "sysml") {
     // Check parametric equations in SysML v2
     // Count unknown attributes (not parameter or initialized) vs equality constraints
-    const attrMatches = code.matchAll(/attribute\s+([a-zA-Z0-9_]+)\s*:\s*([a-zA-Z0-9_:]+)(?:\s*=\s*[^;]+)?;/g);
+    const attrMatches = code.matchAll(
+      /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*([a-zA-Z0-9_:]+)(?:\s*=\s*[^;\r\n]+?)?\s*;/g,
+    );
     const uninitializedAttrs: string[] = [];
     for (const am of attrMatches) {
       const full = am[0];
@@ -683,7 +687,7 @@ export async function verifyGate4DAEBalance(
       }
     }
 
-    const eqMatches = code.matchAll(/(?:assert\s+)?constraint\s*\{([^}]+=[^}]+)\}/g);
+    const eqMatches = code.matchAll(/(?:\bassert\s+)?\bconstraint\s*\{([^}=]+=[^}]+)\}/g);
     const equations: string[] = [];
     for (const em of eqMatches) {
       equations.push(em[1].trim());

@@ -73,8 +73,8 @@ export function materializeCfdConfig(templateText: string, options: MaterializeO
 
   const formatter = formatNumber || defaultFormat;
 
-  return templateText.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, expr) => {
-    const evaluated = evaluateCfdExpression(expr, evaluator);
+  return templateText.replace(/\{\{([^{}]+)\}\}/g, (_match, expr) => {
+    const evaluated = evaluateCfdExpression(expr.trim(), evaluator);
     if (typeof evaluated === "number") {
       return formatter(evaluated);
     }

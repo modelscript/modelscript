@@ -118,7 +118,7 @@ export class FmuStorage {
       filename,
       modelDescription,
       terminalsAndIcons,
-      sizeBytes: data.length,
+      sizeBytes: Buffer.isBuffer(data) ? data.length : 0,
       uploadedAt: new Date().toISOString(),
     };
 
@@ -222,7 +222,8 @@ export function extractFileFromZip(zipData: Buffer, targetName: string): string 
   if (!Buffer.isBuffer(zipData) || typeof targetName !== "string") return null;
   // Find End of Central Directory record
   let eocdOffset = -1;
-  for (let i = zipData.length - 22; i >= 0; i--) {
+  const len = Buffer.isBuffer(zipData) ? zipData.length : 0;
+  for (let i = len - 22; i >= 0; i--) {
     if (zipData.readUInt32LE(i) === 0x06054b50) {
       eocdOffset = i;
       break;

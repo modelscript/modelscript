@@ -60,9 +60,9 @@ jobs:
       - name: Build
         run: npm run build
       - name: Test
-        run: npm run test
+        run: npm run test:all
       - name: Lint
-        run: npm run lint
+        run: npm run lint:all
 
       # --- Version, Changelog, Tag ---
       - name: Version & Changelog
@@ -74,12 +74,13 @@ jobs:
         run: npx nx release publish --yes
         env:
           NPM_CONFIG_PROVENANCE: true
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # --- Publish VS Code Extension ---
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Sync VS Code Extension Version
-        run: node -e 'const pkg = JSON.parse(require("fs").readFileSync("dist/extension/package.json")); pkg.version = require("./packages/runtime/package.json").version; require("fs").writeFileSync("dist/extension/package.json", JSON.stringify(pkg, null, 2));'
+        run: node scripts/sync-extension-version.cjs
       - name: Package VS Code Extension
         run: npx @vscode/vsce package --no-dependencies
         working-directory: dist/extension
@@ -96,6 +97,10 @@ jobs:
         working-directory: dist/extension
 
       # --- Deploy Apps (Morsel, IDE) ---
+      - name: Build Morsel
+        run: npm run build --workspace=@modelscript/morsel
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
       - name: SPA fallback for Morsel
         run: cp apps/morsel/build/client/index.html apps/morsel/build/client/404.html
       - name: Deploy Morsel

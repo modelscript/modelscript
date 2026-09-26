@@ -16,7 +16,9 @@ import {
 import { ProbeTooltip, type ProbeData } from "./cad-viewer/probe-tooltip";
 import { RequirementVerdictCard, type RequirementVerdictPayload } from "./cad-viewer/requirement-verdict-card";
 import { StreamlineRenderer } from "./cad-viewer/streamline-renderer";
+import { SurrogateLiveExplorer, type PodSurrogateDataPayload } from "./cad-viewer/surrogate-live-explorer";
 import { SurrogateTrainDialog } from "./cad-viewer/surrogate-train-dialog";
+import { SweepConfigDrawer, type ActiveSweepState } from "./cad-viewer/sweep-config-drawer";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
@@ -135,7 +137,11 @@ function App() {
   const [surrogateMetrics, setSurrogateMetrics] = useState<
     { capturedEnergy: number; numModes: number; r2: number } | undefined
   >(undefined);
+  const [activeSurrogateData, setActiveSurrogateData] = useState<PodSurrogateDataPayload | null>(null);
+  const [surrogateModelName, setSurrogateModelName] = useState<string>("AerodynamicModel_Surrogate");
   const [requirementVerdict, setRequirementVerdict] = useState<RequirementVerdictPayload | undefined>(undefined);
+  const [sweepDrawerOpen, setSweepDrawerOpen] = useState(false);
+  const [activeSweepState, setActiveSweepState] = useState<ActiveSweepState | null>(null);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -173,6 +179,12 @@ function App() {
           if (message.data?.metrics) {
             setSurrogateMetrics(message.data.metrics);
           }
+          if (message.data?.surrogateData) {
+            setActiveSurrogateData(message.data.surrogateData);
+          }
+          if (message.data?.modelName) {
+            setSurrogateModelName(message.data.modelName);
+          }
           if (message.data?.done) {
             setIsTrainingSurrogate(false);
           }
@@ -182,12 +194,57 @@ function App() {
           setRequirementVerdict(message.data);
           break;
         }
+        case "sweepProgress": {
+          setActiveSweepState(message.data);
+          break;
+        }
       }
     };
     window.addEventListener("message", handleMessage);
     vscode?.postMessage({ type: "ready" });
     return () => window.removeEventListener("message", handleMessage);
   }, []);
+
+  const handleSurrogateReconstruct = (
+    field: Float32Array,
+    scalars: Record<string, number>,
+    params: Record<string, number>,
+  ) => {
+    setCfdResults((prev) => {
+      const positions = prev?.geometry.positions ?? [-1, -0.5, 0, 1, -0.5, 0, 1, 0.5, 0, -1, 0.5, 0];
+      const indices = prev?.geometry.indices ?? [0, 1, 2, 0, 2, 3];
+      const normals = prev?.geometry.normals;
+      const numNodes = positions.length / 3;
+
+      const fieldValues = Array.from(field);
+      const vel = params.velocity ?? scalars.velocity ?? 50;
+      const lift = scalars.lift ?? scalars.liftForce ?? 20;
+      const drag = scalars.drag ?? scalars.dragForce ?? 5;
+
+      return {
+        type: "cfd-mesh",
+        time: 0,
+        geometry: {
+          positions,
+          indices,
+          normals,
+        },
+        fields: {
+          velocityMagnitude: prev?.fields?.velocityMagnitude ?? new Array(numNodes).fill(vel),
+          pressure:
+            fieldValues.length === numNodes
+              ? fieldValues
+              : (prev?.fields?.pressure ?? new Array(numNodes).fill(101325)),
+        },
+        metadata: {
+          maxVelocity: vel * 1.2,
+          pressureDrop: scalars.pressureDrop ?? 1500,
+          dragForce: [drag, 0, 0] as [number, number, number],
+          liftForce: [0, lift, 0] as [number, number, number],
+        },
+      };
+    });
+  };
 
   const handleRunLocalCfd = () => {
     vscode?.postMessage({ type: "runLocalCfd" });
@@ -313,7 +370,7 @@ function App() {
           <button
             onClick={() => setSurrogateDialogOpen(true)}
             style={{
-              width: "100%",
+              flex: 1,
               padding: "7px 10px",
               background: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)",
               border: "none",
@@ -327,7 +384,26 @@ function App() {
               gap: "6px",
             }}
           >
-            <span>⚡</span> Train Aerodynamic ROM
+            <span>⚡</span> Train ROM
+          </button>
+          <button
+            onClick={() => setSweepDrawerOpen(true)}
+            style={{
+              flex: 1,
+              padding: "7px 10px",
+              background: "linear-gradient(135deg, #0284c7 0%, #6366f1 100%)",
+              border: "none",
+              borderRadius: "6px",
+              color: "#ffffff",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+            }}
+          >
+            <span>📊</span> DoE Sweep
           </button>
         </div>
         <div style={{ marginBottom: "12px" }}>
@@ -474,6 +550,32 @@ function App() {
         }}
         isTraining={isTrainingSurrogate}
         trainingMetrics={surrogateMetrics}
+      />
+
+      {/* Real-Time Interactive 3D Digital Twin ROM Explorer (60 FPS) */}
+      {activeSurrogateData && (
+        <SurrogateLiveExplorer
+          surrogateData={activeSurrogateData}
+          modelName={surrogateModelName}
+          onReconstruct={handleSurrogateReconstruct}
+          onOpenModelica={(mName) => vscode?.postMessage({ type: "openModelica", data: { modelName: mName } })}
+          onExportFmu={(mName) => vscode?.postMessage({ type: "exportFmu", data: { modelName: mName } })}
+          onClose={() => setActiveSurrogateData(null)}
+        />
+      )}
+
+      {/* Floating Parametric DoE Sweep Orchestrator Drawer */}
+      <SweepConfigDrawer
+        isOpen={sweepDrawerOpen}
+        onClose={() => setSweepDrawerOpen(false)}
+        solver="su2"
+        onLaunchSweep={(cfg) => {
+          vscode?.postMessage({ type: "launchSweep", data: cfg });
+        }}
+        onTrainSurrogate={(sweepId) => {
+          vscode?.postMessage({ type: "trainSurrogateFromSweep", data: { sweepId } });
+        }}
+        activeSweepState={activeSweepState}
       />
     </div>
   );

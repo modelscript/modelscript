@@ -395,7 +395,7 @@ export class SysML2DaeLowerer {
       }
 
       // 4. Assignments: assign x := expr; or x := expr; or x = expr;
-      const assignMatch = /^(?:assign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*([^;]+);/.exec(remaining);
+      const assignMatch = /^(?:\bassign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*([^;\r\n]+?)\s*;/.exec(remaining);
       if (assignMatch) {
         stmts.push({
           kind: "assign",

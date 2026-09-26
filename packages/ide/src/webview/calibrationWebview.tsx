@@ -239,14 +239,34 @@ function showResults(): void {
   const body = document.getElementById("cal-results-body");
   if (section) section.style.display = "block";
   if (body) {
+    body.textContent = "";
+    const resDiv = document.createElement("div");
+    resDiv.textContent = "Residual: ";
+    const resStrong = document.createElement("strong");
+    resStrong.textContent = finalResult.residual.toExponential(4);
+    resDiv.appendChild(resStrong);
+    body.appendChild(resDiv);
+
+    const iterDiv = document.createElement("div");
+    iterDiv.textContent = "Iterations: ";
+    const iterStrong = document.createElement("strong");
+    iterStrong.textContent = String(finalResult.iterations);
+    iterDiv.appendChild(iterStrong);
+    body.appendChild(iterDiv);
+
+    const titleDiv = document.createElement("div");
+    titleDiv.style.marginTop = "4px";
+    titleDiv.style.fontWeight = "600";
+    titleDiv.textContent = "Optimal Parameters:";
+    body.appendChild(titleDiv);
+
     const params = finalResult.parameters;
-    let html = `<div>Residual: <strong>${finalResult.residual.toExponential(4)}</strong></div>`;
-    html += `<div>Iterations: <strong>${finalResult.iterations}</strong></div>`;
-    html += `<div style="margin-top:4px;font-weight:600;">Optimal Parameters:</div>`;
     for (const [name, value] of Object.entries(params)) {
-      html += `<div style="padding-left:8px;">${escapeCalHtml(name)} = ${value.toPrecision(6)}</div>`;
+      const pDiv = document.createElement("div");
+      pDiv.style.paddingLeft = "8px";
+      pDiv.textContent = `${name} = ${value.toPrecision(6)}`;
+      body.appendChild(pDiv);
     }
-    body.innerHTML = html;
   }
 }
 

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { assertSafePublicUrl } from "./ssrf.js";
 
 export async function sendSignedRequest(
   targetInboxUrl: string,
@@ -6,7 +7,7 @@ export async function sendSignedRequest(
   keyId: string,
   privateKeyPem: string,
 ) {
-  const url = new URL(targetInboxUrl);
+  const url = assertSafePublicUrl(targetInboxUrl);
   const bodyString = JSON.stringify(body);
   const digest = `SHA-256=${crypto.createHash("sha256").update(bodyString).digest("base64")}`;
   const date = new Date().toUTCString();
@@ -33,7 +34,7 @@ export async function sendSignedRequest(
   const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="${signature}"`;
   headers["Signature"] = signatureHeader;
 
-  const response = await fetch(targetInboxUrl, {
+  const response = await fetch(url.href, {
     method: "POST",
     headers,
     body: bodyString,

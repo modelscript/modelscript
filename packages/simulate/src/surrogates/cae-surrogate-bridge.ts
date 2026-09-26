@@ -11,7 +11,12 @@
  */
 
 import { type IDaeBuilder } from "@modelscript/runtime";
-import { CfdPodSurrogate, type PodSurrogatePrediction, type PodTrainConfig } from "./cfd-pod-surrogate.js";
+import {
+  CfdPodSurrogate,
+  type PodSurrogateData,
+  type PodSurrogatePrediction,
+  type PodTrainConfig,
+} from "./cfd-pod-surrogate.js";
 import type { SnapshotMatrixDataset } from "./cfd-snapshot-collector.js";
 
 export interface CaeSurrogateBridgeConfig extends PodTrainConfig {
@@ -62,9 +67,25 @@ export interface TrainedCaeSurrogate {
     scalarVarIds: Record<string, number>;
     latentVarIds: number[];
   };
+
+  /**
+   * Serializes the trained surrogate model to JSON-friendly data for real-time webview exploration.
+   */
+  toData(): PodSurrogateData;
 }
 
 export class CaeSurrogateBridge {
+  /**
+   * Alias for train() - Trains and validates a high-fidelity CAE surrogate from a SnapshotMatrixDataset.
+   */
+  public static trainSurrogateFromSnapshots(
+    dataset: SnapshotMatrixDataset,
+    config?: CaeSurrogateBridgeConfig,
+    onProgress?: (progress: number, phase: string) => void,
+  ): TrainedCaeSurrogate {
+    return CaeSurrogateBridge.train(dataset, config, onProgress);
+  }
+
   /**
    * Trains and validates a high-fidelity CAE surrogate from a SnapshotMatrixDataset.
    */
@@ -96,6 +117,7 @@ export class CaeSurrogateBridge {
         config: config ?? {},
         evaluate: (params) => pod.predict(params),
         lowerToDae: (builder, inputMap, opts) => pod.lowerToDae(builder, inputMap, opts),
+        toData: () => pod.toData(),
       };
     }
 
@@ -120,6 +142,7 @@ export class CaeSurrogateBridge {
       config: config ?? {},
       evaluate: (params) => pod.predict(params),
       lowerToDae: (builder, inputMap, opts) => pod.lowerToDae(builder, inputMap, opts),
+      toData: () => pod.toData(),
     };
   }
 

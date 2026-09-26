@@ -51,9 +51,26 @@ describe("Hybrid Full OWL 2 DL + SHACL Reasoning Suite", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --enable simd --debug --runtime stub`;
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
     try {
-      childProcess.execSync(ascCmd, { stdio: "pipe" });
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "--enable",
+          "simd",
+          "--debug",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: "pipe" },
+      );
     } catch (e: any) {
       console.error("ASC STDOUT:", e.stdout?.toString());
       console.error("ASC STDERR:", e.stderr?.toString());

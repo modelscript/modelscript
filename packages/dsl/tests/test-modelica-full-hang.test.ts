@@ -43,9 +43,24 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
     try {
-      childProcess.execSync(ascCmd, { stdio: "pipe" });
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "-O0",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: "pipe" },
+      );
     } catch (e: any) {
       console.error("ASC ERROR:\n", e.stdout?.toString(), e.stderr?.toString());
       throw e;

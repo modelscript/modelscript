@@ -68,7 +68,7 @@ export class Su2Dialect implements CfdDialect {
         }
       } else if (key.startsWith("MARKER_")) {
         const type = key.replace(/^MARKER_/, "");
-        const tupleMatch = val.match(/\(\s*([^)]+)\s*\)/);
+        const tupleMatch = val.match(/\(([^)]+)\)/);
         if (tupleMatch) {
           const parts = tupleMatch[1].split(",").map((s) => s.trim());
           const markerName = parts[0];

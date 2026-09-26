@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -37,7 +37,7 @@ end Motor;`,
 );
 
 console.log("Testing msc diff with terminal output...");
-const outTerminal = execSync(`node apps/cli/dist/main.js diff ${fileOld} ${fileNew}`, { encoding: "utf8" });
+const outTerminal = execFileSync("node", ["apps/cli/dist/main.js", "diff", fileOld, fileNew], { encoding: "utf8" });
 console.log(outTerminal);
 
 assert.ok(outTerminal.includes("+ [INSERT]"));
@@ -45,7 +45,7 @@ assert.ok(outTerminal.includes("- [DELETE]"));
 assert.ok(outTerminal.includes("BREAKING"));
 
 console.log("Testing msc diff with JSON output...");
-const outJsonStr = execSync(`node apps/cli/dist/main.js diff ${fileOld} ${fileNew} --format json`, {
+const outJsonStr = execFileSync("node", ["apps/cli/dist/main.js", "diff", fileOld, fileNew, "--format", "json"], {
   encoding: "utf8",
 });
 const outJson = JSON.parse(outJsonStr);
@@ -58,7 +58,7 @@ assert.strictEqual(outJson.changes.length >= 2, true);
 console.log("Testing msc diff --breaking-only exit code...");
 let exitCode = 0;
 try {
-  execSync(`node apps/cli/dist/main.js diff ${fileOld} ${fileNew} --breaking-only`, { stdio: "pipe" });
+  execFileSync("node", ["apps/cli/dist/main.js", "diff", fileOld, fileNew, "--breaking-only"], { stdio: "pipe" });
 } catch (e: any) {
   exitCode = e.status;
 }

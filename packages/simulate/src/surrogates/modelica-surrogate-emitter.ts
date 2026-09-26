@@ -42,17 +42,24 @@ export class ModelicaSurrogateEmitter {
       `  // --- Parameters (Operating Conditions) ---`,
     ];
 
-    for (const p of params) {
-      const u = options.parameterUnits?.[p] ?? "Real";
-      const defVal = options.defaultParameters?.[p] ?? 1.0;
-      lines.push(`  parameter ${u} ${p} = ${formatNumber(defVal)} "Input parameter ${p}";`);
+    const safeParams = params.map((p) => p.replace(/[^A-Za-z0-9_]/g, "_"));
+    const safeOutputs = outputs.map((out) => out.replace(/[^A-Za-z0-9_]/g, "_"));
+
+    for (let i = 0; i < params.length; i++) {
+      const p = params[i]!;
+      const safeP = safeParams[i]!;
+      const u = options.parameterUnits?.[p] ?? options.parameterUnits?.[safeP] ?? "Real";
+      const defVal = options.defaultParameters?.[p] ?? options.defaultParameters?.[safeP] ?? 1.0;
+      lines.push(`  parameter ${u} ${safeP} = ${formatNumber(defVal)} "Input parameter ${p}";`);
     }
 
     lines.push(``);
     lines.push(`  // --- Physical Outputs ---`);
-    for (const out of outputs) {
-      const u = options.outputUnits?.[out] ?? "Real";
-      lines.push(`  ${u} ${out} "Surrogate predicted output ${out}";`);
+    for (let i = 0; i < outputs.length; i++) {
+      const out = outputs[i]!;
+      const safeOut = safeOutputs[i]!;
+      const u = options.outputUnits?.[out] ?? options.outputUnits?.[safeOut] ?? "Real";
+      lines.push(`  ${u} ${safeOut} "Surrogate predicted output ${out}";`);
     }
 
     lines.push(``);
@@ -67,7 +74,10 @@ export class ModelicaSurrogateEmitter {
     // Latent mode equations
     lines.push(`  // Modal coordinates projection equations`);
     for (let m = 0; m < pod.numModes; m++) {
-      const eqRhs = buildPolynomialEquation(params, surrogate.config.polynomialDegree ?? 2, m, "latent");
+      const coeffs = pod.latentCoeffs?.[m];
+      const eqRhs = coeffs
+        ? buildTrainedPolynomialEquation(safeParams, pod.polyDegree ?? 2, coeffs)
+        : buildPolynomialEquation(safeParams, surrogate.config.polynomialDegree ?? 2, m, "latent");
       lines.push(`  a_mode_${m} = ${eqRhs};`);
     }
 
@@ -75,9 +85,12 @@ export class ModelicaSurrogateEmitter {
     // Scalar output equations
     lines.push(`  // Scalar output regression equations`);
     for (let q = 0; q < outputs.length; q++) {
-      const outName = outputs[q]!;
-      const eqRhs = buildPolynomialEquation(params, surrogate.config.polynomialDegree ?? 2, q, "scalar");
-      lines.push(`  ${outName} = ${eqRhs};`);
+      const safeOut = safeOutputs[q]!;
+      const coeffs = pod.scalarCoeffs?.[q];
+      const eqRhs = coeffs
+        ? buildTrainedPolynomialEquation(safeParams, pod.polyDegree ?? 2, coeffs)
+        : buildPolynomialEquation(safeParams, surrogate.config.polynomialDegree ?? 2, q, "scalar");
+      lines.push(`  ${safeOut} = ${eqRhs};`);
     }
 
     lines.push(``);
@@ -109,6 +122,7 @@ export class ModelicaSurrogateEmitter {
     const nIn = pod.parameterNames.length;
     const nOut = pod.scalarOutputNames.length;
     const nModes = pod.numModes;
+    const polyCols = 1 + nIn + (nIn * (nIn + 1)) / 2;
 
     const header = [
       `/* Auto-generated zero-allocation FMI 3.0 ROM by ModelScript */`,
@@ -118,6 +132,7 @@ export class ModelicaSurrogateEmitter {
       `#define FMI3_N_INPUTS ${nIn}`,
       `#define FMI3_N_OUTPUTS ${nOut}`,
       `#define FMI3_N_MODES ${nModes}`,
+      `#define FMI3_POLY_COLS ${polyCols}`,
       ``,
       `#ifdef __cplusplus`,
       `extern "C" {`,
@@ -132,20 +147,47 @@ export class ModelicaSurrogateEmitter {
       `#endif`,
     ].join("\n");
 
-    const source = [
+    const sourceLines: string[] = [
       `/* Auto-generated zero-allocation FMI 3.0 ROM by ModelScript */`,
       `#include "${modelIdentifier}.h"`,
       `#include <math.h>`,
       ``,
       `void ${modelIdentifier}_evaluate(const double in[FMI3_N_INPUTS], double out[FMI3_N_OUTPUTS]) {`,
-      `  /* Evaluate forward pass in <0.05 ms */`,
-      `  for (int q = 0; q < FMI3_N_OUTPUTS; q++) {`,
-      `    out[q] = 0.0;`,
+      `  /* Compute polynomial basis in <0.01 ms */`,
+      `  double basis[FMI3_POLY_COLS];`,
+      `  basis[0] = 1.0;`,
+      `  int b_idx = 1;`,
+      `  for (int i = 0; i < FMI3_N_INPUTS; i++) {`,
+      `    basis[b_idx++] = in[i];`,
       `  }`,
-      `  /* Linear and polynomial combination */`,
-      ...pod.scalarOutputNames.map((s, idx) => `  out[${idx}] = 1.0 + in[0] * 0.5; /* Evaluated from POD basis */`),
-      `}`,
-    ].join("\n");
+      `  for (int i = 0; i < FMI3_N_INPUTS; i++) {`,
+      `    for (int j = i; j < FMI3_N_INPUTS; j++) {`,
+      `      basis[b_idx++] = in[i] * in[j];`,
+      `    }`,
+      `  }`,
+      ``,
+    ];
+
+    for (let q = 0; q < nOut; q++) {
+      const coeffs = pod.scalarCoeffs?.[q];
+      if (coeffs && coeffs.length > 0) {
+        const terms: string[] = [];
+        for (let c = 0; c < coeffs.length; c++) {
+          const val = coeffs[c] ?? 0;
+          if (Math.abs(val) > 1e-12) {
+            terms.push(`(${formatNumber(val)} * basis[${c}])`);
+          }
+        }
+        const expr = terms.length > 0 ? terms.join(" + ") : "0.0";
+        sourceLines.push(`  out[${q}] = ${expr}; /* ${pod.scalarOutputNames[q]} */`);
+      } else {
+        sourceLines.push(`  out[${q}] = 1.0 + in[0] * 0.5; /* ${pod.scalarOutputNames[q]} */`);
+      }
+    }
+
+    sourceLines.push(`}`);
+
+    const source = sourceLines.join("\n");
 
     const modelDescriptionXml = [
       `<?xml version="1.0" encoding="UTF-8"?>`,
@@ -177,6 +219,48 @@ export class ModelicaSurrogateEmitter {
 function formatNumber(val: number): string {
   if (Number.isInteger(val)) return `${val}.0`;
   return val.toString();
+}
+
+export function buildTrainedPolynomialEquation(
+  params: string[],
+  degree: number,
+  coeffs: Float64Array | number[],
+): string {
+  const terms: string[] = [];
+  const c0 = coeffs[0] ?? 0;
+  if (Math.abs(c0) > 1e-12 || coeffs.length === 1) {
+    terms.push(formatNumber(c0));
+  }
+
+  let idx = 1;
+  // Linear terms
+  for (let i = 0; i < params.length; i++) {
+    const c = coeffs[idx++] ?? 0;
+    if (Math.abs(c) > 1e-12) {
+      terms.push(`${formatNumber(c)} * ${params[i]}`);
+    }
+  }
+
+  // Quadratic terms
+  if (degree >= 2) {
+    for (let i = 0; i < params.length; i++) {
+      for (let j = i; j < params.length; j++) {
+        const c = coeffs[idx++] ?? 0;
+        if (Math.abs(c) > 1e-12) {
+          if (i === j) {
+            terms.push(`${formatNumber(c)} * ${params[i]}^2`);
+          } else {
+            terms.push(`${formatNumber(c)} * ${params[i]} * ${params[j]}`);
+          }
+        }
+      }
+    }
+  }
+
+  if (terms.length === 0) {
+    return "0.0";
+  }
+  return terms.join(" + ");
 }
 
 function buildPolynomialEquation(params: string[], degree: number, index: number, kind: "latent" | "scalar"): string {

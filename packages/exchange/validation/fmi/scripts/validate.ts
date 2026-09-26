@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import * as fsSync from "fs";
 import fs from "fs/promises";
 import os from "os";
@@ -6,7 +6,7 @@ import path from "path";
 import util from "util";
 import { compareCSV, getVarsMap } from "./compare-csv.js";
 
-const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
 import { fileURLToPath } from "url";
 
@@ -31,7 +31,10 @@ const MODELS = [
 
 async function runCmd(cmd: string, cwd: string = FMI_PKG_ROOT, maxBuffer: number = 1024 * 1024 * 10) {
   try {
-    const { stdout } = await execAsync(cmd, { cwd, maxBuffer });
+    const parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || cmd.split(" ");
+    const exe = parts[0].replace(/^"|"$/g, "");
+    const args = parts.slice(1).map((p) => p.replace(/^"|"$/g, ""));
+    const { stdout } = await execFileAsync(exe, args, { cwd, maxBuffer });
     return stdout;
   } catch (err: any) {
     throw new Error(`Command failed: ${cmd}\nError: ${err.message || err.stderr || err.stdout}`);

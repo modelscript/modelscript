@@ -887,7 +887,7 @@ export class UnifiedVerifier {
       }
 
       const violations: VerificationViolation[] = [];
-      const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
+      const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b([\s\S]*?)\bend\s+\2\s*;/g;
       let match: RegExpExecArray | null;
 
       let totalProven = 0;
@@ -918,7 +918,7 @@ export class UnifiedVerifier {
 
         const variables: any[] = [];
         const varDeclRegex =
-          /\b(input|output)?\s*(Real|Integer|Boolean|String)\s*(?:\[(.*?)\]\s*)?([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\[(.*?)\])?(?:\s*=\s*([^;]+))?\s*;/g;
+          /\b(?:(input|output)\s+)?(Real|Integer|Boolean|String)\s*(?:\[([^\]]*)\])?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[([^\]]*)\])?(?:\s*=\s*([^;\r\n]+?))?\s*;/g;
         let vMatch: RegExpExecArray | null;
         while ((vMatch = varDeclRegex.exec(body)) !== null) {
           const io = vMatch[1];

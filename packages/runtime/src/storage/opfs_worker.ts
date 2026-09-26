@@ -23,7 +23,7 @@ let g_storageEngine: PagedStorageEngine | null = null;
 let g_syncHandle: any = null;
 
 export async function initOPFSWorker(
-  wasmBytes: ArrayBuffer,
+  wasmModule: WebAssembly.Module,
   fileName: string = "modelscript_ontology.bin",
 ): Promise<void> {
   let syncHandle: any = null;
@@ -45,7 +45,6 @@ export async function initOPFSWorker(
     },
   };
 
-  const wasmModule = await WebAssembly.compile(wasmBytes);
   const instantiated = await WebAssembly.instantiate(wasmModule, { env });
   const exports = { ...instantiated.exports } as unknown as PagedWasmExports;
   exports.memory = instantiated.exports.memory as WebAssembly.Memory;
@@ -61,7 +60,10 @@ if (typeof self !== "undefined" && typeof (self as any).onmessage !== "undefined
     try {
       switch (type) {
         case "INIT": {
-          await initOPFSWorker(payload.wasmBytes, payload.fileName);
+          if (!payload.wasmModule || !(payload.wasmModule instanceof WebAssembly.Module)) {
+            throw new Error("Expected pre-compiled WebAssembly.Module in payload.wasmModule");
+          }
+          await initOPFSWorker(payload.wasmModule, payload.fileName);
           (self as any).postMessage({ id, success: true });
           break;
         }

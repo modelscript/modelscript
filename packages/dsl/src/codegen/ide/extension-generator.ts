@@ -1143,6 +1143,46 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       path.resolve(currentDir, "../ide"),
     ].find((p) => fs.existsSync(p)) ?? path.resolve(repoRoot, "packages/ide/src");
 
+  const builtins = [
+    "assert",
+    "buffer",
+    "child_process",
+    "crypto",
+    "diagnostics_channel",
+    "events",
+    "fs",
+    "fs/promises",
+    "http",
+    "https",
+    "module",
+    "net",
+    "os",
+    "path",
+    "process",
+    "readline",
+    "stream",
+    "string_decoder",
+    "tls",
+    "url",
+    "util",
+    "worker_threads",
+    "zlib",
+    "tty",
+    "esbuild",
+    "assemblyscript",
+    "assemblyscript/asc",
+    "assemblyscript/dist/asc.js",
+    "binaryen",
+  ];
+  const filter = new RegExp(`^(node:)?(?:${builtins.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`);
+  const ignorePlugin = {
+    name: "node-builtins-ignore",
+    setup(build: any) {
+      build.onResolve({ filter }, (args: any) => ({ path: args.path, namespace: "ignore" }));
+      build.onLoad({ filter: /.*/, namespace: "ignore" }, () => ({ contents: "", loader: "js" }));
+    },
+  };
+
   // Build browser client
   const clientMainPath = path.join(ideDir, "browserClientMain.ts");
   if (fs.existsSync(clientMainPath)) {
@@ -1152,11 +1192,13 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       bundle: true,
       format: "cjs",
       platform: "browser",
+      target: "es2022",
       external: ["vscode"],
       define: {
         "process.env": JSON.stringify({}),
         "process.browser": "true",
       },
+      plugins: [ignorePlugin],
       sourcemap: "inline",
     });
   }
@@ -1245,48 +1287,6 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   const lspDir = path.join(repoRoot, "packages/lsp");
   const browserServerMain = path.join(lspDir, "src/browserServerMain.ts");
   if (fs.existsSync(browserServerMain)) {
-    const builtins = [
-      "assert",
-      "buffer",
-      "child_process",
-      "crypto",
-      "diagnostics_channel",
-      "events",
-      "fs",
-      "fs/promises",
-      "http",
-      "https",
-      "module",
-      "net",
-      "os",
-      "path",
-      "process",
-      "readline",
-      "stream",
-      "string_decoder",
-      "tls",
-      "url",
-      "util",
-      "worker_threads",
-      "zlib",
-      "tty",
-      "esbuild",
-      "assemblyscript",
-      "assemblyscript/asc",
-      "assemblyscript/dist/asc.js",
-      "binaryen",
-    ];
-    const filter = new RegExp(
-      `^(node:)?(?:${builtins.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`,
-    );
-    const ignorePlugin = {
-      name: "node-builtins-ignore",
-      setup(build: any) {
-        build.onResolve({ filter }, (args: any) => ({ path: args.path, namespace: "ignore" }));
-        build.onLoad({ filter: /.*/, namespace: "ignore" }, () => ({ contents: "", loader: "js" }));
-      },
-    };
-
     await esbuild.build({
       entryPoints: [browserServerMain],
       outfile: path.join(outDir, "server/dist/browserServerMain.js"),

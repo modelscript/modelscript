@@ -194,7 +194,7 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
       const numVars = failedGate.metadata?.numVariables ?? 0;
       if (numEqs > numVars) {
         // Remove redundant equation
-        const eqMatches = [...repaired.matchAll(/assert\s+constraint\s*\{[^}]+\};?/g)];
+        const eqMatches = [...repaired.matchAll(/\bassert\s+constraint\s*\{[^{}]+\};?/g)];
         if (eqMatches.length > 0) {
           repaired = repaired.replace(eqMatches[eqMatches.length - 1][0], "");
         }

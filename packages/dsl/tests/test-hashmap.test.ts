@@ -105,9 +105,24 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
     fs.writeFileSync(harnessTs, code);
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
-    const ascCmd = `${ascPath} ${harnessTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
     try {
-      childProcess.execSync(ascCmd, { stdio: "pipe" });
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          harnessTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "-O0",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: "pipe" },
+      );
     } catch (e: any) {
       console.error("ASC ERROR STDERR:", e.stderr?.toString());
       console.error("ASC ERROR STDOUT:", e.stdout?.toString());

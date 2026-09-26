@@ -3,7 +3,7 @@
  * Automates the validation of ModelScript-generated FMUs by simulating them
  * inside the official Modelica Association \`fmusim\` C-simulator.
  */
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -13,7 +13,7 @@ import util from "util";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
 const VALIDATION_DIR = path.resolve(__dirname, "../exported_fmus");
 const REF_DIR = path.resolve(__dirname, "../reference_fmus");
@@ -91,7 +91,7 @@ async function main() {
         `../${model}.fmu`,
       ];
 
-      const { stdout, stderr } = await execAsync(args.join(" "), {
+      const { stdout, stderr } = await execFileAsync(FMUSIM_CMD, args.slice(1), {
         cwd: buildDir,
       });
 

@@ -1,1 +1,12 @@
+# Ignore build outputs and caches from Nx project graph scanning
+dist
+build
+**/dist/**
+**/build/**
+**/.cache/**
+**/as-gen/**
+**/src-gen/**
+**/scratch*/**
+**/scratch_*/**
 packages/language/tests
+packages/dsl/src/codegen/runtime/**

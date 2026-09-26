@@ -67,8 +67,12 @@ describe("First-Class DSL Custom Classes & Functions Transpilation", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --runtime stub`;
-    childProcess.execSync(ascCmd, { stdio: "inherit" });
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+    childProcess.execFileSync(
+      ascBin,
+      [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "--runtime", "stub"],
+      { stdio: "inherit" },
+    );
 
     expect(fs.existsSync(outWasm)).toBe(true);
 

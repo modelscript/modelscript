@@ -6,7 +6,7 @@ import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
-import { isSafePublicUrl } from "../util/ssrf.js";
+import { assertSafePublicUrl } from "../util/ssrf.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
 
 // OptionalAuth middleware to allow endpoints to work for both logged in and out users
@@ -208,8 +208,16 @@ export function socialRouter(database: LibraryDatabase): Router {
               if (!artifact_view_id) {
                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                 const urlMatch = urlRegex.exec(content);
-                if (urlMatch && urlMatch[1] && isSafePublicUrl(urlMatch[1])) {
-                  const url = urlMatch[1];
+                let safePreviewUrl: URL | null = null;
+                if (urlMatch && urlMatch[1]) {
+                  try {
+                    safePreviewUrl = assertSafePublicUrl(urlMatch[1]);
+                  } catch {
+                    safePreviewUrl = null;
+                  }
+                }
+                if (safePreviewUrl) {
+                  const url = safePreviewUrl.href;
                   // Fire and forget
                   (async () => {
                     try {
@@ -657,9 +665,17 @@ export function socialRouter(database: LibraryDatabase): Router {
         const description = parsed.description || "";
         const siteUrl = parsed.link || targetUrl;
         let avatarUrl = parsed.image?.url;
-        if (!avatarUrl && siteUrl && isSafePublicUrl(siteUrl)) {
+        let safeSiteUrl: URL | null = null;
+        if (!avatarUrl && siteUrl) {
           try {
-            const htmlRes = await fetch(siteUrl, {
+            safeSiteUrl = assertSafePublicUrl(siteUrl);
+          } catch {
+            safeSiteUrl = null;
+          }
+        }
+        if (safeSiteUrl) {
+          try {
+            const htmlRes = await fetch(safeSiteUrl.href, {
               headers: {
                 "User-Agent": "Mozilla/5.0 (compatible; ModelScript/1.0)",
               },

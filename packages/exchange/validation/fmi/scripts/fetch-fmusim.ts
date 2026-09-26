@@ -3,7 +3,7 @@
  * Downloads the official Modelica Association FMI reference suite,
  * which includes the `fmusim` C-based simulators for all platforms.
  */
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -12,7 +12,7 @@ import util from "util";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
 const VERSION = "0.0.39";
 const URL = `https://github.com/modelica/Reference-FMUs/releases/download/v${VERSION}/Reference-FMUs-${VERSION}.zip`;
@@ -33,14 +33,14 @@ async function main() {
   await fs.mkdir(OUT_DIR, { recursive: true });
 
   console.log(`Downloading from ${URL}...`);
-  await execAsync(`curl -sL ${URL} -o ${ZIP_PATH}`);
+  await execFileAsync("curl", ["-sL", URL, "-o", ZIP_PATH]);
 
   console.log(`Extracting to ${OUT_DIR}...`);
-  await execAsync(`unzip -qo ${ZIP_PATH} -d ${OUT_DIR}`);
+  await execFileAsync("unzip", ["-qo", ZIP_PATH, "-d", OUT_DIR]);
 
   // Ensure fmusim is executable
   const linuxFmusim = path.join(OUT_DIR, "fmusim-x86_64-linux", "fmusim");
-  await execAsync(`chmod +x ${linuxFmusim}`);
+  await execFileAsync("chmod", ["+x", linuxFmusim]);
 
   console.log(`Successfully downloaded fmusim to ${linuxFmusim}`);
 }

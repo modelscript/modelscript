@@ -42,9 +42,22 @@ describe("WASM Incremental BLT & Tearing Cache", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const wasmOut = path.join(tmpDir, "parser.wasm");
 
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
     try {
-      childProcess.execSync(
-        `${ascPath} ${parserTs} -o ${wasmOut} --exportRuntime --enable threads -O0 --runtime stub`,
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          wasmOut,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "-O0",
+          "--runtime",
+          "stub",
+        ],
         { stdio: "pipe" },
       );
     } catch (e: any) {

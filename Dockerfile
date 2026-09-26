@@ -11,21 +11,45 @@
 ARG PREBUILT=false
 
 # ---- Shared Alpine base with native build tools ----
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 RUN apk add --no-cache python3 make g++ zip unzip
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 WORKDIR /app
 COPY package.json package-lock.json ./
+
+# Apps manifests
+COPY apps/api/package.json apps/api/
+COPY apps/cli/package.json apps/cli/
+COPY apps/docs/package.json apps/docs/
+COPY apps/ide/package.json apps/ide/
+COPY apps/ide/github-fs/package.json apps/ide/github-fs/
+COPY apps/morsel/package.json apps/morsel/
+COPY apps/site/package.json apps/site/
+COPY apps/web/package.json apps/web/
+
+# Packages manifests
+COPY packages/cad/package.json packages/cad/
+COPY packages/diagram/package.json packages/diagram/
+COPY packages/dsl/package.json packages/dsl/
+COPY packages/examples/drone-chassis/package.json packages/examples/drone-chassis/
+COPY packages/exchange/package.json packages/exchange/
+COPY packages/ide/package.json packages/ide/
+COPY packages/lsp/package.json packages/lsp/
+COPY packages/mcp/package.json packages/mcp/
+COPY packages/runtime/package.json packages/runtime/
+COPY packages/simulate/package.json packages/simulate/
+
+# Languages manifests
+COPY languages/cfd/package.json languages/cfd/
+COPY languages/csv/package.json languages/csv/
+COPY languages/fea/package.json languages/fea/
 COPY languages/modelica/package.json languages/modelica/
 COPY languages/modelica/src languages/modelica/src
-COPY packages/dsl/package.json packages/dsl/
-COPY packages/runtime/package.json packages/runtime/
-COPY packages/lsp/package.json packages/lsp/
-COPY apps/api/package.json apps/api/
-COPY apps/morsel/package.json apps/morsel/
-COPY apps/web/package.json apps/web/
-COPY apps/cli/package.json apps/cli/
-COPY apps/ide/package.json apps/ide/
+COPY languages/owl2/package.json languages/owl2/
+COPY languages/scad/package.json languages/scad/
+COPY languages/ssp/package.json languages/ssp/
+COPY languages/step/package.json languages/step/
+COPY languages/sysml2/package.json languages/sysml2/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 
 # ==============================================================================
@@ -38,30 +62,21 @@ COPY apps/api apps/api
 RUN npx nx build @modelscript/api
 
 
-COPY packages/runtime/dist packages/runtime/dist
-COPY packages/dsl/dist packages/dsl/dist
-COPY apps/api/dist apps/api/dist
+FROM deps AS build-api-true
+COPY packages packages
+COPY languages languages
+COPY apps/api apps/api
 
 FROM build-api-${PREBUILT} AS build-api
 
-FROM node:22-alpine AS api
+FROM node:24-alpine AS api
 WORKDIR /app
-COPY package.json package-lock.json ./
-COPY packages/runtime/package.json packages/runtime/
-COPY packages/dsl/package.json packages/dsl/
-COPY packages/lsp/package.json packages/lsp/
-COPY languages/modelica/package.json languages/modelica/
-COPY apps/api/package.json apps/api/
-COPY apps/morsel/package.json apps/morsel/
-COPY apps/web/package.json apps/web/
-COPY apps/cli/package.json apps/cli/
-COPY apps/ide/package.json apps/ide/
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
+COPY --from=deps /app/package.json /app/package-lock.json ./
+COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/languages/modelica/src languages/modelica/src
-COPY --from=deps /app/node_modules/@modelscript/modelica node_modules/@modelscript/modelica
-COPY --from=build-api /app/packages/runtime/dist packages/runtime/dist
-COPY --from=build-api /app/packages/dsl/dist packages/dsl/dist
-COPY --from=build-api /app/apps/api/dist apps/api/dist
+COPY --from=build-api /app/packages packages
+COPY --from=build-api /app/languages languages
+COPY --from=build-api /app/apps/api apps/api
 EXPOSE 3000
 ENV NODE_ENV=production
 CMD ["node", "apps/api/dist/main.js"]
@@ -84,7 +99,7 @@ COPY apps/morsel/package.json apps/morsel/buil[d] /app/apps/morsel/build/
 
 FROM build-morsel-${PREBUILT} AS build-morsel
 
-FROM node:22-alpine AS morsel
+FROM node:24-alpine AS morsel
 WORKDIR /app
 COPY --from=build-morsel /app/apps/morsel/build apps/morsel/build
 COPY --from=build-morsel /app/apps/morsel/package.json apps/morsel/
@@ -119,7 +134,7 @@ EXPOSE 80
 # ==============================================================================
 
 # Download WebLLM model weights (cached layer)
-FROM node:22-alpine AS download-model
+FROM node:24-alpine AS download-model
 RUN apk add --no-cache curl bash
 WORKDIR /app/apps/ide
 COPY apps/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm models/
@@ -143,7 +158,7 @@ COPY apps/morsel/public apps/morsel/public
 
 FROM build-ide-${PREBUILT} AS build-ide
 
-FROM node:22-alpine AS ide
+FROM node:24-alpine AS ide
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/ide/package.json apps/ide/
@@ -178,26 +193,20 @@ RUN npx nx build @modelscript/cli
 
 
 FROM deps AS build-cli-true
-COPY packages/runtime/dist packages/runtime/dist
-COPY packages/dsl/dist packages/dsl/dist
-COPY apps/cli/dist apps/cli/dist
+COPY packages packages
+COPY languages languages
+COPY apps/cli apps/cli
 
 FROM build-cli-${PREBUILT} AS build-cli
 
-FROM node:22-alpine AS cli
+FROM node:24-alpine AS cli
 WORKDIR /app
-COPY package.json package-lock.json ./
-COPY packages/runtime/package.json packages/runtime/
-COPY packages/dsl/package.json packages/dsl/
-COPY packages/lsp/package.json packages/lsp/
-COPY languages/modelica/package.json languages/modelica/
-COPY apps/cli/package.json apps/cli/
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
+COPY --from=deps /app/package.json /app/package-lock.json ./
+COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/languages/modelica/src languages/modelica/src
-COPY --from=deps /app/node_modules/@modelscript/modelica node_modules/@modelscript/modelica
-COPY --from=build-cli /app/packages/runtime/dist packages/runtime/dist
-COPY --from=build-cli /app/packages/dsl/dist packages/dsl/dist
-COPY --from=build-cli /app/apps/cli/dist apps/cli/dist
+COPY --from=build-cli /app/packages packages
+COPY --from=build-cli /app/languages languages
+COPY --from=build-cli /app/apps/cli apps/cli
 ENV NODE_ENV=production
 # The container will run as an executable CLI
-ENTRYPOINT ["node", "apps/cli/dist/index.js"]
+ENTRYPOINT ["node", "apps/cli/dist/main.js"]

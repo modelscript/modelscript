@@ -45,8 +45,21 @@ async function main() {
   const wasmOut = path.join(tmpDir, "linalg.wasm");
 
   console.log("Compiling AssemblyScript to WASM via asc...");
-  childProcess.execSync(
-    `node ${ascPath} ${path.join(tmpDir, "parser.ts")} --target release --outFile ${wasmOut} --runtime stub --enable threads --exportRuntime`,
+  childProcess.execFileSync(
+    "node",
+    [
+      ascPath,
+      path.join(tmpDir, "parser.ts"),
+      "--target",
+      "release",
+      "--outFile",
+      wasmOut,
+      "--runtime",
+      "stub",
+      "--enable",
+      "threads",
+      "--exportRuntime",
+    ],
     { stdio: "inherit" },
   );
 

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderVisualDiffToHtml } from "@modelscript/diagram/html-diff-bundle";
+import { buildVisualDiffGraph } from "@modelscript/diagram/visual-diff";
+import { renderVisualDiffToSvg } from "@modelscript/diagram/visual-diff-renderer";
 import { computeSemanticDiff, type SemanticEdit } from "@modelscript/dsl";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { QueryEngine } from "@modelscript/runtime";
-import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
+import { buildSysML2DiagramData, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -25,6 +28,7 @@ interface DiffArgs {
   "breaking-only": boolean;
   format: string;
   language?: string;
+  output?: string;
 }
 
 export const Diff: CommandModule<{}, DiffArgs> = {
@@ -59,8 +63,13 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       })
       .option("format", {
         description: "Output format",
-        choices: ["terminal", "json", "summary"],
+        choices: ["terminal", "json", "summary", "visual-html", "visual-svg", "pr-comment"],
         default: "terminal",
+      })
+      .option("output", {
+        alias: "o",
+        description: "Output file path for visual formats",
+        type: "string",
       }) as any;
   },
   handler: async (args) => {
@@ -221,6 +230,47 @@ export const Diff: CommandModule<{}, DiffArgs> = {
     const deletedCount = flatList.filter((e) => e.action === "delete").length;
     const updatedCount = flatList.filter((e) => e.action === "update").length;
     const breakingCount = flatList.filter((e) => e.isBreaking).length;
+
+    if (format === "visual-html" || format === "visual-svg" || format === "pr-comment") {
+      let baseDiagram: any = null;
+      let headDiagram: any = null;
+
+      if (isSysml && oldIndex && newIndex) {
+        baseDiagram = buildSysML2DiagramData(oldIndex, file1Path);
+        headDiagram = buildSysML2DiagramData(newIndex, file2Path);
+      }
+
+      const diffData = buildVisualDiffGraph(baseDiagram, headDiagram);
+      const title = `Visual Diff: ${path.basename(file1Path)} vs ${path.basename(file2Path)}`;
+
+      if (format === "visual-html") {
+        const html = renderVisualDiffToHtml(diffData, {
+          title,
+          baseRef: path.basename(file1Path),
+          headRef: path.basename(file2Path),
+        });
+        const outPath = args.output || path.resolve(process.cwd(), "visual-diff.html");
+        fs.writeFileSync(outPath, html, "utf-8");
+        console.log(`\x1b[32m✔ Visual Diff HTML generated:\x1b[0m ${outPath}`);
+      } else if (format === "visual-svg") {
+        const svg = renderVisualDiffToSvg(diffData, { title });
+        const outPath = args.output || path.resolve(process.cwd(), "visual-diff.svg");
+        fs.writeFileSync(outPath, svg, "utf-8");
+        console.log(`\x1b[32m✔ Visual Diff SVG generated:\x1b[0m ${outPath}`);
+      } else if (format === "pr-comment") {
+        let comment = `### 🔍 ModelScript Visual Diff: \`${path.basename(file1Path)}\` ➔ \`${path.basename(file2Path)}\`\n\n`;
+        comment += `| Added | Deleted | Modified | Breaking Changes |\n`;
+        comment += `| :---: | :---: | :---: | :---: |\n`;
+        comment += `| \`+${diffData.stats.addedNodes}\` | \`−${diffData.stats.deletedNodes}\` | \`~${diffData.stats.modifiedNodes}\` | \`${diffData.stats.breakingChanges}\` |\n\n`;
+        if (args.output) {
+          fs.writeFileSync(path.resolve(process.cwd(), args.output), comment, "utf-8");
+          console.log(`\x1b[32m✔ PR Comment written to:\x1b[0m ${args.output}`);
+        } else {
+          console.log(comment);
+        }
+      }
+      return;
+    }
 
     if (format === "json") {
       console.log(

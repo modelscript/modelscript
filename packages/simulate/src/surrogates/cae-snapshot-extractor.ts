@@ -108,19 +108,24 @@ export class CaeSnapshotExtractor {
     numPoints: number;
     pointData: Record<string, Float32Array>;
   } {
-    const pointDataMatch = vtuXml.match(/<PointData[\s\S]*?<\/PointData>/);
-    if (!pointDataMatch) {
+    const startIdx = vtuXml.indexOf("<PointData");
+    const endTag = "</PointData>";
+    const endIdx = startIdx !== -1 ? vtuXml.indexOf(endTag, startIdx) : -1;
+    if (startIdx === -1 || endIdx === -1) {
       throw new Error("No PointData block found in VTU XML content");
     }
 
-    const pointDataStr = pointDataMatch[0];
-    const dataArrayRegex = /<DataArray\s+[^>]*Name="([^"]+)"[^>]*>([\s\S]*?)<\/DataArray>/g;
+    const pointDataStr = vtuXml.slice(startIdx, endIdx + endTag.length);
+    const dataArrayRegex = /<DataArray\b([^>]*)>([^<]*)<\/DataArray>/g;
     const pointData: Record<string, Float32Array> = {};
     let numPoints = 0;
 
     let match: RegExpExecArray | null;
     while ((match = dataArrayRegex.exec(pointDataStr)) !== null) {
-      const name = match[1]!;
+      const attrs = match[1]!;
+      const nameMatch = attrs.match(/Name="([^"]+)"/);
+      if (!nameMatch) continue;
+      const name = nameMatch[1]!;
       const textValues = match[2]!.trim().split(/\s+/);
       const floats = new Float32Array(textValues.length);
       for (let k = 0; k < textValues.length; k++) {

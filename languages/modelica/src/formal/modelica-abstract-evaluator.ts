@@ -242,12 +242,33 @@ export class ModelicaAbstractEvaluator {
     }
 
     // 5. Binary operations: + - * / ^
-    const binOpRegex = /^(.*)\s*([+\-*/^])\s*(.*)$/;
-    const binMatch = binOpRegex.exec(trimmed);
-    if (binMatch) {
-      const leftStr = binMatch[1]!;
-      const op = binMatch[2]!;
-      const rightStr = binMatch[3]!;
+    let opIdx = -1;
+    let depth = 0;
+    for (let i = trimmed.length - 1; i >= 0; i--) {
+      const ch = trimmed[i];
+      if (ch === ")") depth++;
+      else if (ch === "(") depth--;
+      else if (depth === 0 && (ch === "+" || ch === "-") && i > 0) {
+        opIdx = i;
+        break;
+      }
+    }
+    if (opIdx === -1) {
+      depth = 0;
+      for (let i = trimmed.length - 1; i >= 0; i--) {
+        const ch = trimmed[i];
+        if (ch === ")") depth++;
+        else if (ch === "(") depth--;
+        else if (depth === 0 && (ch === "*" || ch === "/" || ch === "^")) {
+          opIdx = i;
+          break;
+        }
+      }
+    }
+    if (opIdx !== -1) {
+      const leftStr = trimmed.slice(0, opIdx).trim();
+      const op = trimmed[opIdx]!;
+      const rightStr = trimmed.slice(opIdx + 1).trim();
 
       const leftIval = this.evalExpr(leftStr, state, collectRTE, ctx);
       const rightIval = this.evalExpr(rightStr, state, collectRTE, ctx);

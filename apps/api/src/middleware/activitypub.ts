@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
+import { assertSafePublicUrl } from "../util/ssrf.js";
 
 export async function verifyActivityPubSignature(req: Request, res: Response, next: NextFunction) {
   try {
@@ -28,8 +29,16 @@ export async function verifyActivityPubSignature(req: Request, res: Response, ne
       return;
     }
 
+    let actorUrl: URL;
+    try {
+      actorUrl = assertSafePublicUrl(parts.keyId);
+    } catch {
+      res.status(400).json({ error: "Invalid or forbidden keyId URL" });
+      return;
+    }
+
     // Fetch the public key from the keyId URL
-    const actorResponse = await fetch(parts.keyId, {
+    const actorResponse = await fetch(actorUrl.href, {
       headers: { Accept: "application/activity+json" },
     });
 

@@ -54,8 +54,25 @@ describe("Phase 1: Next-Gen Storage Engine, SIMD Stubs & Merkle Hashes", () => {
     const outWasm = path.join(tmpDir, "parser.wasm");
 
     // Compile with SIMD and Threads enabled
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --enable simd --debug --runtime stub`;
-    childProcess.execSync(ascCmd, { stdio: "inherit" });
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+    childProcess.execFileSync(
+      ascBin,
+      [
+        ...ascPrefixArgs,
+        parserTs,
+        "-o",
+        outWasm,
+        "--exportRuntime",
+        "--enable",
+        "threads",
+        "--enable",
+        "simd",
+        "--debug",
+        "--runtime",
+        "stub",
+      ],
+      { stdio: "inherit" },
+    );
 
     const wasm = fs.readFileSync(outWasm);
     wasmModule = await WebAssembly.compile(wasm);

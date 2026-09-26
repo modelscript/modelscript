@@ -234,6 +234,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "pr-diff [file]",
+      "Compute visual and semantic pull request diff across Git revisions (SysML v2, Modelica)",
+      () => import("./commands/pr-diff.js"),
+      "PrDiff",
+    ),
+  )
+  .command(
+    lazy(
       "render <name> <paths...>",
       "Render Modelica class diagram or icon to SVG",
       () => import("./commands/render.js"),

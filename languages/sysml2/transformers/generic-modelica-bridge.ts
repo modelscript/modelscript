@@ -183,7 +183,7 @@ export class GenericModelicaBridge {
     const constraints: string[] = [];
 
     // Extract attributes
-    const attrRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\s*=\s*([^;]*?))?\s*;/g;
+    const attrRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\s*=\s*([^;]+))?;/g;
     let aMatch: RegExpExecArray | null;
     while ((aMatch = attrRegex.exec(targetSource)) !== null) {
       attributes.push({
@@ -195,7 +195,7 @@ export class GenericModelicaBridge {
     }
 
     // Extract ports (supporting port p : Type, port ~p : Type, port p : ~Type)
-    const portRegex = /\bport\s+(~?\s*[A-Za-z_][A-Za-z0-9_]*)\s*:\s*(~?\s*[A-Za-z0-9_.]+)\s*;/g;
+    const portRegex = /\bport\s+((?:~\s*)?[A-Za-z_][A-Za-z0-9_]*)\s*:\s*((?:~\s*)?[A-Za-z0-9_.]+)\s*;/g;
     let pMatch: RegExpExecArray | null;
     while ((pMatch = portRegex.exec(targetSource)) !== null) {
       const rawName = pMatch[1].trim();
@@ -319,7 +319,7 @@ export class GenericModelicaBridge {
 
     // Extract parameters and variables
     const declRegex =
-      /\b(?:(parameter)\s+)?(Real|Integer|Boolean|String)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;]*?))?\s*;/g;
+      /\b(?:(parameter)\s+)?(Real|Integer|Boolean|String)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;]+))?;/g;
     let dMatch: RegExpExecArray | null;
     while ((dMatch = declRegex.exec(modelicaSource)) !== null) {
       attributes.push({

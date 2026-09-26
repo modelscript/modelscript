@@ -44,8 +44,21 @@ async function main() {
   const wasmOut = path.join(tmpDir, "groebner.wasm");
 
   console.log("Compiling AssemblyScript to WASM via asc...");
-  childProcess.execSync(
-    `node ${ascPath} ${path.join(tmpDir, "parser.ts")} --target release --outFile ${wasmOut} --runtime stub --enable threads --exportRuntime`,
+  childProcess.execFileSync(
+    "node",
+    [
+      ascPath,
+      path.join(tmpDir, "parser.ts"),
+      "--target",
+      "release",
+      "--outFile",
+      wasmOut,
+      "--runtime",
+      "stub",
+      "--enable",
+      "threads",
+      "--exportRuntime",
+    ],
     { stdio: "pipe" },
   );
 

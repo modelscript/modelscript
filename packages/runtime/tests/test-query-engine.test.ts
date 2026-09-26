@@ -52,8 +52,25 @@ describe("Phase 2: Reactive Salsa 3.0, Incremental Editing & Polyglot Vectors", 
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --enable simd --debug --runtime stub`;
-    childProcess.execSync(ascCmd, { stdio: "inherit" });
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+    childProcess.execFileSync(
+      ascBin,
+      [
+        ...ascPrefixArgs,
+        parserTs,
+        "-o",
+        outWasm,
+        "--exportRuntime",
+        "--enable",
+        "threads",
+        "--enable",
+        "simd",
+        "--debug",
+        "--runtime",
+        "stub",
+      ],
+      { stdio: "inherit" },
+    );
 
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);

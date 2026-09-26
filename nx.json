@@ -11,6 +11,8 @@
       "!{projectRoot}/**/ctrf/**",
       "!{projectRoot}/**/coverage/**",
       "!{projectRoot}/**/*.tsbuildinfo",
+      "!{projectRoot}/dist/**",
+      "!{projectRoot}/build/**",
       "!{projectRoot}/as-gen/**",
       "!{projectRoot}/src/src-gen/**",
       "!{projectRoot}/src-gen/**"
@@ -22,7 +24,11 @@
       "!{projectRoot}/jest.config.[jt]s",
       "!{projectRoot}/src/test-setup.[jt]s"
     ],
-    "sharedGlobals": []
+    "sharedGlobals": [
+      "{workspaceRoot}/package-lock.json",
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/eslint.config.ts"
+    ]
   },
   "targetDefaults": {
     "build": {
@@ -57,7 +63,27 @@
     }
   },
   "release": {
-    "projects": ["packages/dsl", "packages/runtime", "languages/modelica", "apps/cli"],
+    "projects": [
+      "packages/dsl",
+      "packages/runtime",
+      "packages/simulate",
+      "packages/diagram",
+      "packages/exchange",
+      "packages/lsp",
+      "packages/cad",
+      "packages/mcp",
+      "languages/modelica",
+      "languages/sysml2",
+      "languages/step",
+      "languages/scad",
+      "languages/owl2",
+      "languages/ssp",
+      "languages/csv",
+      "languages/cfd",
+      "languages/fea",
+      "apps/api",
+      "apps/cli"
+    ],
     "version": {
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",

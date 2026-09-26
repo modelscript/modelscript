@@ -58,8 +58,23 @@ describe("Completed Subtree Retention in GLR Error Recovery", () => {
     const outWasm = path.join(tmpDir, "parser.wasm");
 
     try {
-      const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads -O0 --runtime stub`;
-      childProcess.execSync(ascCmd, { stdio: "pipe" });
+      const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "-O0",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: "pipe" },
+      );
     } catch (err: any) {
       if (err.stdout) console.error("ASC STDOUT:", err.stdout.toString());
       if (err.stderr) console.error("ASC STDERR:", err.stderr.toString());

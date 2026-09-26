@@ -54,7 +54,7 @@ export function extractActivityInvariants(
   const mutexPairs: [string, string][] = [...(options.mutuallyExclusivePairs || [])];
 
   // Regex for forbidden action annotation: action [name] ... #hazard or #error
-  const hazardRegex = /\baction\s+([A-Za-z_][A-Za-z0-9_]*)[^;{}]*(?:#hazard|#error|@hazard|@error)/g;
+  const hazardRegex = /\baction\s+([A-Za-z_][A-Za-z0-9_]*)\b[^;{}]*?(?:#hazard|#error|@hazard|@error)/g;
   let hMatch: RegExpExecArray | null;
   while ((hMatch = hazardRegex.exec(sysmlSource)) !== null) {
     forbidden.add(hMatch[1]!);

@@ -19,6 +19,20 @@ export interface PodSurrogatePrediction {
   field: Float32Array;
 }
 
+export interface PodSurrogateData {
+  numFeatures: number;
+  numModes: number;
+  polyDegree: number;
+  parameterNames: string[];
+  scalarOutputNames: string[];
+  capturedEnergy: number;
+  eigenvalues: number[];
+  meanField: number[];
+  basisModes: number[];
+  latentCoeffs: number[][];
+  scalarCoeffs: number[][];
+}
+
 /**
  * High-Performance Proper Orthogonal Decomposition (POD-Galerkin) CFD Surrogate.
  *
@@ -39,9 +53,9 @@ export class CfdPodSurrogate {
   public readonly scalarOutputNames: string[];
 
   // Regression coefficients: mapping polynomial basis of parameters to latent coordinates
-  private latentCoeffs: Float64Array[]; // k vectors of polynomial coefficients
-  private scalarCoeffs: Float64Array[]; // Q vectors of polynomial coefficients
-  private polyDegree: number;
+  public readonly latentCoeffs: Float64Array[]; // k vectors of polynomial coefficients
+  public readonly scalarCoeffs: Float64Array[]; // Q vectors of polynomial coefficients
+  public readonly polyDegree: number;
 
   constructor(
     numFeatures: number,
@@ -290,6 +304,25 @@ export class CfdPodSurrogate {
       field[i] = val;
     }
     return field;
+  }
+
+  /**
+   * Serializes the trained surrogate model to JSON-friendly data for real-time webview exploration.
+   */
+  public toData(): PodSurrogateData {
+    return {
+      numFeatures: this.numFeatures,
+      numModes: this.numModes,
+      polyDegree: this.polyDegree,
+      parameterNames: [...this.parameterNames],
+      scalarOutputNames: [...this.scalarOutputNames],
+      capturedEnergy: this.capturedEnergy,
+      eigenvalues: [...this.eigenvalues],
+      meanField: Array.from(this.meanField),
+      basisModes: Array.from(this.basisModes),
+      latentCoeffs: this.latentCoeffs.map((c) => Array.from(c)),
+      scalarCoeffs: this.scalarCoeffs.map((c) => Array.from(c)),
+    };
   }
 
   /**

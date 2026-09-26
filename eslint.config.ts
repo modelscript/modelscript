@@ -58,7 +58,6 @@ export default defineConfig([
             "packages/examples/drone-chassis/cad/drone.mcad.ts",
             "packages/examples/drone-chassis/evaluate-manufacturing.ts",
             "packages/dsl/src/codegen/runtime/engine.ts",
-            "packages/dsl/src/codegen/runtime/arena.ts",
             "packages/dsl/src/codegen/runtime/array.ts",
             "packages/dsl/src/codegen/runtime/cursor.ts",
             "packages/dsl/src/codegen/runtime/fmi2_wasm.ts",
@@ -71,6 +70,8 @@ export default defineConfig([
             "languages/sysml2/tests/*.ts",
             "languages/cfd/tests/*.ts",
             "languages/fea/tests/*.ts",
+            "languages/csv/tests/*.ts",
+            "packages/mcp/tests/*.ts",
             "packages/ide/tests/*.ts",
             "apps/api/tests/*.ts",
           ],
@@ -129,7 +130,12 @@ export default defineConfig([
     },
   },
   {
-    files: ["packages/*/src/**/*.ts", "languages/**/src/**/*.ts", "languages/**/transformers/**/*.ts"],
+    files: [
+      "packages/*/src/**/*.{ts,tsx}",
+      "languages/**/src/**/*.{ts,tsx}",
+      "languages/**/transformers/**/*.ts",
+      "apps/*/src/**/*.{ts,tsx}",
+    ],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",

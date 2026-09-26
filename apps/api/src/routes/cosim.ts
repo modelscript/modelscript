@@ -40,14 +40,21 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
         if (Buffer.isBuffer(req.body)) {
           buffer = req.body;
         } else if (req.body && typeof req.body === "object") {
-          const bodyObj = req.body as { data?: string; sspBase64?: string; archive?: string };
-          const base64 = bodyObj.data ?? bodyObj.sspBase64 ?? bodyObj.archive;
+          const bodyObj = req.body as { data?: unknown; sspBase64?: unknown; archive?: unknown };
+          const base64 =
+            typeof bodyObj.data === "string"
+              ? bodyObj.data
+              : typeof bodyObj.sspBase64 === "string"
+                ? bodyObj.sspBase64
+                : typeof bodyObj.archive === "string"
+                  ? bodyObj.archive
+                  : undefined;
           if (base64) {
             buffer = Buffer.from(base64, "base64");
           }
         }
 
-        if (!buffer || buffer.length === 0) {
+        if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
           return res
             .status(400)
             .json({ error: "Missing SSP archive payload (send binary ZIP or JSON with base64 data)" });

@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +37,7 @@ async function run() {
     `loadFile("${moFile}");\nsimulate(Cascade_${N}, stopTime=2.0, numberOfIntervals=100, outputFormat="csv");\n`,
   );
   try {
-    execSync(`omc ${mosFile}`, { cwd: tmpDir, stdio: "pipe" });
+    execFileSync("omc", [mosFile], { cwd: tmpDir, stdio: "pipe" });
   } catch (e: any) {
     console.error("OMC execution error:", e.message);
   }

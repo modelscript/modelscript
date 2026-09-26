@@ -23,15 +23,18 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
 
   // POST /api/v1/fmus — Upload an FMU archive
   router.post("/", express.raw({ type: "application/octet-stream", limit: "100mb" }), (req, res) => {
-    const filename = (req.headers["x-filename"] as string) ?? "upload.fmu";
+    const rawFilename = req.headers["x-filename"];
+    const filename =
+      (typeof rawFilename === "string" ? rawFilename : Array.isArray(rawFilename) ? rawFilename[0] : undefined) ??
+      "upload.fmu";
     const id = filename.replace(/\.fmu$/i, "").replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
 
-    if (!req.body || (req.body as Buffer).length === 0) {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       return res.status(400).json({ error: "Empty request body. Send the FMU file as raw binary." });
     }
 
     try {
-      const stored = fmuStorage.store(id, filename, req.body as Buffer);
+      const stored = fmuStorage.store(id, filename, req.body);
       res.status(201).json({
         id: stored.id,
         filename: stored.filename,

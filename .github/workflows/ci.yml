@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -28,9 +32,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: ${{ runner.os }}-nx-lint-${{ github.sha }}
+          key: ${{ runner.os }}-nx-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-nx-lint-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
@@ -43,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [core, languages, tools-sim]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -58,60 +61,46 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: ${{ runner.os }}-nx-test-${{ matrix.shard }}-${{ github.sha }}
+          key: ${{ runner.os }}-nx-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-nx-test-${{ matrix.shard }}-
-            ${{ runner.os }}-nx-test-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
       - name: Cache MSL
-        if: matrix.shard == 'languages' || matrix.shard == 'core'
         id: cache-msl
         uses: actions/cache@v4
         with:
           path: scripts/ModelicaStandardLibrary_v4.1.0.zip
           key: ${{ runner.os }}-msl-v4.1.0
       - name: Download MSL
-        if: matrix.shard == 'languages' || matrix.shard == 'core'
+        if: steps.cache-msl.outputs.cache-hit != 'true'
         run: node scripts/download-msl.cjs
       - name: Cache FMI Simulator
-        if: matrix.shard == 'tools-sim' || matrix.shard == 'languages'
         id: cache-fmusim
         uses: actions/cache@v4
         with:
           path: packages/exchange/validation/fmi/reference_fmus
           key: ${{ runner.os }}-fmusim-v0.0.39
       - name: Fetch FMI Simulator
-        if: (matrix.shard == 'tools-sim' || matrix.shard == 'languages') && steps.cache-fmusim.outputs.cache-hit != 'true'
+        if: steps.cache-fmusim.outputs.cache-hit != 'true'
         run: npm run fetch:fmusim --workspace=@modelscript/exchange
       - name: Cache WASM Parsers
         uses: actions/cache@v4
         with:
           path: |
             languages/*/.cache
-            packages/runtime/build/wasm
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**') }}
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
       - name: Run Sharded Tests
         run: |
-          case "${{ matrix.shard }}" in
-            core)
-              npx nx affected -t test --projects=@modelscript/dsl,@modelscript/runtime --parallel=2
-              ;;
-            languages)
-              npx nx affected -t test --projects=@modelscript/modelica,@modelscript/sysml2,@modelscript/scad,@modelscript/owl2,@modelscript/step,@modelscript/ssp,@modelscript/csv --parallel=2
-              ;;
-            tools-sim)
-              npx nx affected -t test --projects=@modelscript/simulate,@modelscript/exchange,@modelscript/lsp,@modelscript/diagram,@modelscript/cli,@modelscript/api,@modelscript/cad --parallel=2
-              ;;
-          esac
-      - name: Validate FMI
-        if: matrix.shard == 'tools-sim'
-        run: |
-          npm run validate --workspace=@modelscript/exchange
-          npm run test:fmusim --workspace=@modelscript/exchange
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx nx affected -t test --shard=${{ matrix.shard }}/3 --parallel=2
+          else
+            npx nx run-many -t test --shard=${{ matrix.shard }}/3 --parallel=2
+          fi
       - name: Upload CTRF Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -138,6 +127,7 @@ jobs:
           pattern: ctrf-*
           merge-multiple: true
       - name: Publish Test Report & PR Insights
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: ctrf-io/github-test-reporter@v1
         with:
           report-path: "ctrf-artifacts/**/*.json"
@@ -147,12 +137,54 @@ jobs:
           slowest-report: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: always()
 
-  build_and_deploy:
-    needs: [lint, test]
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-
+      - name: Calculate Affected Bounds
+        uses: nrwl/nx-set-shas@v4
+      - name: Run Build
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx nx affected -t build --exclude=@modelscript/morsel --parallel=3
+          else
+            npx nx run-many -t build --exclude=@modelscript/morsel --parallel=3
+          fi
+      - name: Build VS Code Extension
+        run: npm run build:extension
+      - name: Package VS Code Extension
+        run: npx --yes @vscode/vsce package --no-dependencies
+        working-directory: dist/extension
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelscript-vsix
+          path: dist/extension/*.vsix
+
+  deploy_site:
+    needs: [build, test, lint]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -169,38 +201,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: ${{ runner.os }}-nx-build-${{ github.sha }}
+          key: ${{ runner.os }}-nx-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
-      - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
-      - name: Run Build
-        run: npx nx run-many -t build --exclude=@modelscript/morsel --parallel=3
-      - name: Build VS Code Extension
-        run: npm run build:extension
-      - name: Package VS Code Extension
-        run: npx --yes @vscode/vsce package --no-dependencies
-        working-directory: dist/extension
-      - name: Upload VSIX Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: modelscript-vsix
-          path: dist/extension/*.vsix
+      - name: Build Site
+        run: npx nx build @modelscript/site
       - name: SPA fallback for GitHub Pages
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           cp apps/site/build/client/index.html apps/site/build/client/404.html
       - name: Deploy Site
         uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           personal_token: ${{ secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
           external_repository: modelscript/modelscript.github.io
           publish_dir: ./apps/site/build/client
 
   docker_build:
-    needs: build_and_deploy
+    needs: [build, test, lint]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -222,10 +239,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: ${{ runner.os }}-nx-docker-${{ github.sha }}
+          key: ${{ runner.os }}-nx-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-nx-docker-
-            ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
       - name: Fast Rebuild from Cache
         run: npx nx run-many -t build --exclude=@modelscript/morsel --parallel=3

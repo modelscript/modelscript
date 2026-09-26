@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 
@@ -8,10 +8,10 @@ const OUT_DIR = path.resolve("packages/exchange/validation/fmi/reference_fmus");
 async function main() {
   await fs.mkdir(OUT_DIR, { recursive: true });
   console.log(`Downloading Reference FMUs to ${OUT_DIR}...`);
-  execSync(`curl -sL ${URL} -o /tmp/ref_fmus.zip`);
+  execFileSync("curl", ["-sL", URL, "-o", "/tmp/ref_fmus.zip"]);
 
   console.log(`Unzipping...`);
-  execSync(`unzip -qo /tmp/ref_fmus.zip -d ${OUT_DIR}`);
+  execFileSync("unzip", ["-qo", "/tmp/ref_fmus.zip", "-d", OUT_DIR]);
   console.log(`Done!`);
 }
 main().catch(console.error);

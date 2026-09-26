@@ -249,12 +249,12 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
     }
 
     // Assignments: assign [target] := [expr]; or assign [val] =: [target];
-    const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;]+);/g;
+    const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;\r\n]+?)\s*;/g;
     let asMatch: RegExpExecArray | null;
     while ((asMatch = assignRegex.exec(bodyText)) !== null) {
       assignments.push({ target: asMatch[1]!, expr: asMatch[2]!.trim() });
     }
-    const assignRevRegex = /\bassign\s+([^=;]+?)\s*:=?\s*([A-Za-z_][A-Za-z0-9_]*);/g;
+    const assignRevRegex = /\bassign\s+([A-Za-z0-9_.]+)\s*:=?\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     while ((asMatch = assignRevRegex.exec(bodyText)) !== null) {
       if (!assignments.some((a) => a.target === asMatch![2])) {
         assignments.push({ target: asMatch[2]!, expr: asMatch[1]!.trim() });
@@ -308,12 +308,12 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       endByte: block.endPos,
     });
 
-    const caseRegex = /\bcase\s+(.*?)\s*(?:=>|\bthen\b|:)\s*([^;]+);/g;
+    const caseRegex = /\b(?:case\s+([^;\r\n]+?)|(else|default))\s*(?:=>|\bthen\b|:(?!=))\s*([^;\r\n]+?)\s*;/g;
     let cm: RegExpExecArray | null;
     let caseIdx = 1;
     while ((cm = caseRegex.exec(block.body)) !== null) {
-      const guardStr = cm[1]!.trim();
-      const targetStr = cm[2]!.trim();
+      const guardStr = (cm[1] ?? cm[2])!.trim();
+      const targetStr = cm[3]!.trim();
       const targetName = `${decideName}_case_${caseIdx++}`;
       nodes.push({
         name: targetName,
@@ -337,7 +337,7 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
 
   // 4. Extract successions: first [source] then [target] (optional if [guard]);
   const succRegex =
-    /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+)?from\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;]+))?)\s*;/g;
+    /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\r\n]+?))?|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\r\n]+?))?|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+)?from\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\r\n]+?))?)\s*;/g;
   let sMatch: RegExpExecArray | null;
   while ((sMatch = succRegex.exec(searchSource)) !== null) {
     const src = sMatch[1] || sMatch[4] || sMatch[7]!;

@@ -161,10 +161,15 @@ const config: Config = {
   // The glob patterns Jest uses to detect test files
   testMatch: ["<rootDir>/tests/**/*.test.[jt]s?(x)"],
 
-  // An array of regexp pattern strings that are matched against all test paths, matched tests are skipped
-  // testPathIgnorePatterns: [
-  //   "/node_modules/"
-  // ],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "test-dhf-export",
+    "test-digital-thread-complete",
+    "test-multidomain-falsify-cli",
+    "test-pr-diff",
+    "test-tgg-multi-domain",
+    "test-unified-verify",
+  ],
 
   // The regexp pattern or array of patterns that Jest uses to detect test files
   // testRegex: [],

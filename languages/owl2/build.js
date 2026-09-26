@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,7 +55,7 @@ if (isParserUpToDate()) {
   const buildScriptContent = `import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { buildParser } from "@modelscript/dsl";
 import { owl2Language } from "./src/language.js";
 
@@ -91,7 +91,8 @@ const ascPath = [
 ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
 
 console.log("[owl2] Compiling WebAssembly parser with asc...");
-execSync(\`\${ascPath} \${parserTs} -o \${outWasm} --exportRuntime --enable threads --optimize --runtime stub\`, {
+const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+execFileSync(ascBin, [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "--optimize", "--runtime", "stub"], {
   stdio: "inherit",
   cwd: __dirname,
 });
@@ -103,7 +104,7 @@ fs.rmSync(asGenDir, { recursive: true, force: true });
 
   fs.writeFileSync(buildScriptPath, buildScriptContent, "utf-8");
   try {
-    execSync(`npx tsx ${buildScriptPath}`, { stdio: "inherit", cwd: __dirname });
+    execFileSync("npx", ["tsx", buildScriptPath], { stdio: "inherit", cwd: __dirname });
     if (fs.existsSync(outWasm)) {
       fs.mkdirSync(cacheDir, { recursive: true });
       fs.copyFileSync(outWasm, cacheWasm);

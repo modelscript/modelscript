@@ -185,19 +185,19 @@ function showProperties(nodeData: any) {
             <div style="padding: 4px 0;">
               <div class="f6 color-fg-muted" style="line-height: 1.2; font-size: 11px; color: var(--vscode-descriptionForeground, #888);">Type</div>
               <div style="word-break: break-all; line-height: 1.2; padding: 4px 0;">
-                ${props?.className || ""}
+                ${escapeHtml(props?.className || "")}
               </div>
             </div>
             <div>
               <div class="f6 color-fg-muted" style="line-height: 1.2; font-size: 11px; color: var(--vscode-descriptionForeground, #888); margin-bottom: 4px;">Name</div>
-              <input type="text" class="prop-input" id="prop-input-name" value="${nodeData.id}" style="width: 100%; border-radius: 4px;" />
+              <input type="text" class="prop-input" id="prop-input-name" value="${escapeHtml(nodeData.id)}" style="width: 100%; border-radius: 4px;" />
             </div>
           </div>
         </div>
   `;
 
   if (props) {
-    const escapedDesc = (props.description || "").replace(/"/g, "&quot;");
+    const escapedDesc = escapeHtml(props.description || "");
     if (props.description) {
       html += `
         <div style="display: flex; flex-direction: column; margin-top: 16px;">

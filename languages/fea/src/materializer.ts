@@ -77,8 +77,8 @@ export function materializeFeaDeck(templateText: string, options: MaterializeOpt
 
   const formatter = formatNumber || defaultFormat;
 
-  return templateText.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, expr) => {
-    const evaluated = evaluateFeaExpression(expr, evaluator);
+  return templateText.replace(/\{\{([^{}]+)\}\}/g, (_match, expr) => {
+    const evaluated = evaluateFeaExpression(expr.trim(), evaluator);
     if (typeof evaluated === "number") {
       return formatter(evaluated);
     }

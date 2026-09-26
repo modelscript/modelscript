@@ -32,8 +32,9 @@
   "scripts": {
     "build": "tsc && mkdir -p dist/vendor && cp -r src/vendor/* dist/vendor/ && chmod +x dist/main.js",
     "clean": "rimraf dist",
-    "lint": "eslint src tests",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test": "npm run test:jest && npm run test:node",
+    "test:jest": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:node": "npx tsx --test tests/test-dhf-export.test.ts tests/test-digital-thread-complete.test.ts tests/test-multidomain-falsify-cli.test.ts tests/test-pr-diff.test.ts tests/test-tgg-multi-domain.test.ts tests/test-unified-verify.test.ts",
     "watch": "tsc --watch"
   },
   "dependencies": {
@@ -56,8 +57,8 @@
     "assemblyscript": "^0.28.19",
     "jiti": "^2.6.1",
     "lz-string": "^1.5.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "svgdom": "^0.1.22",
     "wabt": "^1.0.39",
     "xml-formatter": "^3.6.7",

@@ -85,5 +85,84 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
         },
       );
     }),
+    vscode.commands.registerCommand("modelscript.scm.openVisualDiff", async (resourceUri?: vscode.Uri) => {
+      let uri = resourceUri;
+      if (!uri) {
+        uri = vscode.window.activeTextEditor?.document.uri;
+      }
+      if (!uri || !isSupportedModelFile(uri.fsPath)) {
+        vscode.window.showErrorMessage(
+          "Please open or select a supported ModelScript file (.sysml, .mo) to diff visually.",
+        );
+        return;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
+      if (!gitExtension) {
+        vscode.window.showErrorMessage("Git extension is not available.");
+        return;
+      }
+
+      const git = gitExtension.getAPI(1);
+      if (!git || git.repositories.length === 0) {
+        vscode.window.showErrorMessage("No Git repository found in the current workspace.");
+        return;
+      }
+
+      const repository = git.repositories[0];
+
+      try {
+        const oldText = await repository.show("HEAD", uri.fsPath);
+        const newTextBytes = await vscode.workspace.fs.readFile(uri);
+        const newText = new TextDecoder().decode(newTextBytes);
+
+        if (!oldText || !newText) {
+          vscode.window.showInformationMessage("No revisions found to diff.");
+          return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+          "modelscript.visualDiff",
+          `Visual Diff: ${uri.path.split("/").pop()}`,
+          vscode.ViewColumn.Beside,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+          },
+        );
+
+        if (!client) {
+          panel.webview.html = "<h3>Language client not running.</h3>";
+          return;
+        }
+
+        vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Computing Visual Model Diff...",
+          },
+          async () => {
+            try {
+              const res = await client.sendRequest<{ html: string }>("modelscript/diagram.getVisualDiff", {
+                uri: uri.toString(),
+                oldText,
+                newText,
+              });
+
+              if (res && res.html) {
+                panel.webview.html = res.html;
+              } else {
+                panel.webview.html = "<h3>Could not generate visual diff for this model revision.</h3>";
+              }
+            } catch (err) {
+              panel.webview.html = `<h3>Error computing visual diff: ${err}</h3>`;
+            }
+          },
+        );
+      } catch (err) {
+        vscode.window.showErrorMessage(`Failed to open visual diff: ${err}`);
+      }
+    }),
   );
 }

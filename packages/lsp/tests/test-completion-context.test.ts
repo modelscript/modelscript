@@ -67,9 +67,24 @@ describe("SOTA CST Completion Context", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
     try {
-      childProcess.execSync(ascCmd, { stdio: ["pipe", "pipe", "pipe"] });
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "--optimize",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: ["pipe", "pipe", "pipe"] },
+      );
     } catch (e: any) {
       if (e.stdout) console.log("ASC stdout:\n" + e.stdout.toString());
       if (e.stderr) console.log("ASC stderr:\n" + e.stderr.toString());

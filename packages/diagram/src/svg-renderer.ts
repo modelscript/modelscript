@@ -6,8 +6,9 @@ import type { DiagramData, DiagramEdge, DiagramNode, SvgExportOptions } from "./
 /**
  * Escapes XML special characters.
  */
-function escapeXml(str: string): string {
-  return str
+function escapeXml(str: any): string {
+  if (str === null || str === undefined) return "";
+  return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

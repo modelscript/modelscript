@@ -233,7 +233,7 @@ export class CaeTelemetryStreamer extends EventEmitter {
     }
 
     // Courant Number mean: 0.12 max: 0.85
-    const courantMatch = line.match(/Courant Number mean:\s*([0-9.+-eE]+)\s*max:\s*([0-9.+-eE]+)/i);
+    const courantMatch = line.match(/Courant Number mean:\s*([-+0-9.eE]+)\s*max:\s*([-+0-9.eE]+)/i);
     if (courantMatch && courantMatch[1] && courantMatch[2]) {
       this.emitEvent({
         type: "iteration",
