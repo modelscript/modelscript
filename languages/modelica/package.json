@@ -146,8 +146,8 @@
     "@modelscript/dsl": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
-    "@svgdotjs/svg.js": "^3.2.4",
-    "vscode-languageserver": "^9.0.1"
+    "@svgdotjs/svg.js": "^3.2.8",
+    "vscode-languageserver": "^10.1.1"
   },
   "nx": {
     "targets": {
