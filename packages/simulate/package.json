@@ -62,7 +62,7 @@
     "@modelscript/runtime": "*"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^26.6.2",
     "@webgpu/types": "^0.1.74",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
