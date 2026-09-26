@@ -35,7 +35,7 @@
     "test": "npx tsx --test --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
     "@modelscript/lsp": "*",
@@ -43,11 +43,11 @@
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
     "@modelscript/sysml2": "*",
-    "zod": "^3.24.2"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
     "rimraf": "^6.1.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   }
 }
