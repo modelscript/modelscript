@@ -42,9 +42,9 @@
     "@types/express": "^5.0.3",
     "@vscode/test-web": "^0.0.81",
     "esbuild": "^0.28.1",
-    "eslint": "^9.13.0",
-    "tsx": "^4.21.0",
+    "eslint": "^10.11.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.39.0"
+    "typescript-eslint": "^8.70.1"
   }
 }
