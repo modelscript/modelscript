@@ -72,18 +72,18 @@
   "dependencies": {
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
-    "aedes": "^1.0.2",
+    "aedes": "^1.2.0",
     "aedes-server-factory": "^0.2.1",
     "fflate": "^0.8.3",
-    "mqtt": "^5.10.0",
-    "pako": "^2.1.0",
-    "ws": "^8.18.0"
+    "mqtt": "^5.16.0",
+    "pako": "^3.0.2",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "@types/pako": "^2.0.4",
+    "@types/pako": "^3.0.0",
     "@types/ws": "^8.18.0",
     "rimraf": "^6.1.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   }
 }

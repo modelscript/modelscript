@@ -164,17 +164,17 @@
     "test": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=1 --test-timeout=120000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
-    "helmlab": "^0.11.9",
-    "media-typer": "^1.1.0",
-    "pako": "^2.1.0",
+    "helmlab": "^1.0.0",
+    "media-typer": "^2.0.0",
+    "pako": "^3.0.2",
     "parse-data-url": "^6.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "devDependencies": {
     "@types/media-typer": "^1.1.3",
     "@types/node": "^25.3.2",
-    "@types/pako": "^2.0.4",
-    "assemblyscript": "^0.27.36",
+    "@types/pako": "^3.0.0",
+    "assemblyscript": "^0.28.20",
     "esbuild": "^0.28.1",
     "prettier": "^3.6.2",
     "rimraf": "^6.1.0"

@@ -90,16 +90,16 @@
     "test": "npx tsx --test --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/**/*.test.ts"
   },
   "dependencies": {
-    "@antv/layout": "^0.3.25",
+    "@antv/layout": "^2.0.0",
     "@antv/x6": "^3.1.7",
     "@antv/x6-plugin-selection": "^2.2.2",
-    "helmlab": "^0.11.9",
-    "vscode-languageserver-protocol": "^3.17.5"
+    "helmlab": "^1.0.0",
+    "vscode-languageserver-protocol": "^3.18.3"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
     "esbuild": "^0.28.1",
     "rimraf": "^6.1.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   }
 }
