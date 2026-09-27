@@ -212,10 +212,12 @@ export class OntologyTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     // Replay remaining literals and re-apply shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
     const savedShared = [...this.sharedEqualities];
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }

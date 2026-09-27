@@ -29,6 +29,7 @@ const polyglotTestDsl = language({
 describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () => {
   let tmpDir: string;
   let wasmExports: any;
+  let wasmMemory: WebAssembly.Memory;
 
   beforeAll(async () => {
     const result = buildParser(polyglotTestDsl as any);
@@ -56,6 +57,7 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
     const wasmModule = await WebAssembly.compile(wasm);
 
     const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
+    wasmMemory = memory;
     const imports = {
       env: { memory: memory, abort: () => {} },
       JavaScript: { debugLog: () => {}, logNode: () => {} },
@@ -82,6 +84,8 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
     expect(wasmExports.corr_findByTarget).toBeDefined();
     expect(wasmExports.corr_markStale).toBeDefined();
     expect(wasmExports.corr_reset).toBeDefined();
+    expect(wasmExports.corr_setComplement).toBeDefined();
+    expect(wasmExports.corr_getComplement).toBeDefined();
   });
 
   it("should perform correspondence index link and lookup operations via WASM exports", () => {
@@ -99,13 +103,45 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
     expect(wasmExports.corr_findBySource(corrPtr, 999)).toBe(0);
     expect(wasmExports.corr_findByTarget(corrPtr, 999)).toBe(0);
 
+    // Complement pointer preservation
+    expect(wasmExports.corr_getComplement(corrPtr, slot1)).toBe(0);
+    wasmExports.corr_setComplement(corrPtr, slot1, 0xcafe);
+    expect(wasmExports.corr_getComplement(corrPtr, slot1)).toBe(0xcafe);
+
     wasmExports.corr_markStale(corrPtr, 101);
     wasmExports.corr_reset(corrPtr);
     expect(wasmExports.corr_findBySource(corrPtr, 101)).toBe(0);
   });
 
-  it("should have polyglot arena WASM exports", () => {
+  it("should have polyglot arena WASM exports with linear string interning", () => {
     expect(wasmExports.createPolyglotArena).toBeDefined();
+    expect(wasmExports.polyglot_getStringPool).toBeDefined();
+    expect(wasmExports.polyglot_internString).toBeDefined();
+    expect(wasmExports.polyglot_getStringOffset).toBeDefined();
+    expect(wasmExports.polyglot_getStringLength).toBeDefined();
+
+    const arenaPtr = wasmExports.createPolyglotArena();
+    expect(arenaPtr).toBeGreaterThan(0);
+
+    const poolPtr = wasmExports.polyglot_getStringPool(arenaPtr);
+    expect(poolPtr).toBeGreaterThan(0);
+
+    // Write a test string into memory buffer and intern it
+    const testStr = "modelica_component_resistance";
+    const strBytes = new TextEncoder().encode(testStr);
+    const memOffset = 1024 * 64; // arbitrary safe scratch offset in first page
+    const memArray = new Uint8Array(wasmMemory.buffer);
+    memArray.set(strBytes, memOffset);
+
+    const strId1 = wasmExports.polyglot_internString(arenaPtr, memOffset, strBytes.length);
+    expect(strId1).toBeGreaterThan(0);
+
+    // Interning same string returns identical stringId
+    const strId2 = wasmExports.polyglot_internString(arenaPtr, memOffset, strBytes.length);
+    expect(strId2).toBe(strId1);
+
+    expect(wasmExports.polyglot_getStringLength(arenaPtr, strId1)).toBe(strBytes.length);
+    expect(wasmExports.polyglot_getStringOffset(arenaPtr, strId1)).toBeGreaterThan(0);
   });
 
   it("should have TGG dispatch functions exported in WASM", () => {

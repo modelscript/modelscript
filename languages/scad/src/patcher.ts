@@ -93,6 +93,49 @@ export class ScadPatcher {
     return null;
   }
 
+  /**
+   * Patches a single component of a vector argument in a transform or method call.
+   */
+  public static patchVectorComponent(
+    source: string,
+    rootNode: any,
+    targetMethod: string,
+    argIndex: number,
+    compIndex: number,
+    newValue: number,
+  ): PatchResult | null {
+    const callNode = this.findMethodOrOpCall(rootNode, targetMethod);
+    if (!callNode) return null;
+
+    const argListNode = this.findDescendantByType(callNode, "ArgumentList");
+    if (!argListNode) return null;
+
+    let currentArgIdx = 0;
+    for (let i = 0; i < argListNode.childCount; i++) {
+      const arg = argListNode.child(i);
+      if (!arg || arg.type !== "Argument") continue;
+
+      if (currentArgIdx === argIndex) {
+        const vecNode = this.findDescendantByType(arg, "VectorLiteral");
+        if (!vecNode) return null;
+
+        const exprs: any[] = [];
+        for (let j = 0; j < vecNode.childCount; j++) {
+          const c = vecNode.child(j);
+          if (c && (c.type === "Expression" || c.type.endsWith("Expression") || c.type === "NUMBER")) {
+            exprs.push(c);
+          }
+        }
+        if (compIndex >= 0 && compIndex < exprs.length) {
+          return this.patchNode(source, exprs[compIndex], String(newValue));
+        }
+      }
+      currentArgIdx++;
+    }
+
+    return null;
+  }
+
   private static findVariableDeclaration(containerNode: any, varName: string): any {
     for (let i = 0; i < containerNode.childCount; i++) {
       const c = containerNode.child(i);
@@ -132,6 +175,16 @@ export class ScadPatcher {
     for (let i = 0; i < node.childCount; i++) {
       const c = node.child(i);
       if (c && c.type === type) return c;
+    }
+    return null;
+  }
+
+  private static findDescendantByType(node: any, type: string): any {
+    if (!node) return null;
+    if (node.type === type) return node;
+    for (let i = 0; i < node.childCount; i++) {
+      const res = this.findDescendantByType(node.child(i), type);
+      if (res) return res;
     }
     return null;
   }

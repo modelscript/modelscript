@@ -4,7 +4,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
 
   // ─── Reusable sub-assemblies ──────────────────────────────────────────
 
-  shape MotorMount "Cylindrical motor mount with propeller guard ring"
+  record MotorMount "Cylindrical motor mount with propeller guard ring"
     parameter Real radius = 1.5 "Motor housing radius [mm]";
     parameter Real height = 2 "Motor housing height [mm]";
 
@@ -15,7 +15,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
       annotation(Placement(origin = {0, height, 0}));
   end MotorMount;
 
-  shape DroneArm "Single arm extending from the body to a motor"
+  record DroneArm "Single arm extending from the body to a motor"
     parameter Real length = 12 "Arm length [mm]";
     parameter Real thickness = 1 "Arm thickness [mm]";
     parameter Real width = 1.5 "Arm width [mm]";
@@ -29,7 +29,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
       annotation(Placement(origin = {length/2, thickness/2 + 0.5, 0}));
   end DroneArm;
 
-  shape LandingGear "Two-skid landing gear with vertical struts"
+  record LandingGear "Two-skid landing gear with vertical struts"
     parameter Real span = 8 "Distance between skids [mm]";
     parameter Real skidLength = 10 "Skid bar length [mm]";
     parameter Real strutHeight = 4 "Strut height from body to skid [mm]";
@@ -57,7 +57,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
       annotation(Placement(origin = {span/2, -strutHeight/2, -skidLength/3}));
   end LandingGear;
 
-  shape CameraAssembly "Front-mounted camera with gimbal bracket"
+  record CameraAssembly "Front-mounted camera with gimbal bracket"
     parameter Real gimbalWidth = 2 "Gimbal bracket width [mm]";
     parameter Real lensSize = 1.5 "Camera lens diameter [mm]";
 
@@ -73,7 +73,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
 
   // ─── Main chassis assembly ────────────────────────────────────────────
 
-  shape DroneChassis "Complete quadcopter drone chassis"
+  record DroneChassis "Complete quadcopter drone chassis"
     parameter Real bodySize = 10 "Central body width/depth [mm]";
     parameter Real bodyHeight = 3 "Central body height [mm]";
     parameter Real armLength = 12 "Arm length [mm]";
@@ -125,7 +125,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
 
   // ─── Parametric variants ──────────────────────────────────────────────
 
-  shape CargoDrone "Heavy-lift drone with larger body and longer arms"
+  record CargoDrone "Heavy-lift drone with larger body and longer arms"
     extends DroneChassis(
       bodySize = 15,
       bodyHeight = 4,
@@ -133,7 +133,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
     );
   end CargoDrone;
 
-  shape RacingDrone "Lightweight racing drone with compact form"
+  record RacingDrone "Lightweight racing drone with compact form"
     extends DroneChassis(
       bodySize = 8,
       bodyHeight = 2,
@@ -143,7 +143,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
   end RacingDrone;
 
   // Demonstration of redeclare — swap motor mounts for tapered cones
-  shape TaperedMotorMount
+  record TaperedMotorMount
     extends MotorMount(
       redeclare Cone housing(
         radiusBottom = radius * 1.2,
@@ -153,7 +153,7 @@ package DroneCAD "Procedural CAD model of a quadcopter drone chassis"
     );
   end TaperedMotorMount;
 
-  shape StealthDrone "Drone with tapered motor housings for aerodynamics"
+  record StealthDrone "Drone with tapered motor housings for aerodynamics"
     extends DroneChassis(
       bodySize = 9,
       armLength = 11,

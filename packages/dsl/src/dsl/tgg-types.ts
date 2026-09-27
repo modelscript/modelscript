@@ -24,7 +24,8 @@ export type TGGConstraintKind =
   | "reconcile"
   | "reconcilePhysics"
   | "complement"
-  | "invertible";
+  | "invertible"
+  | "exprMap";
 
 export interface TGGConstraint {
   kind: TGGConstraintKind;
@@ -174,6 +175,17 @@ export function tggComplement(fields: string[]): TGGConstraint {
  */
 export function tggInvertible(forwardExpr: string, backwardExpr?: string): TGGConstraint {
   return { kind: "invertible", args: [forwardExpr, backwardExpr] };
+}
+
+/**
+ * Cross-language mathematical expression mapping.
+ */
+export function tggExprMap(
+  sourceExprVar: any,
+  targetExprVar: any,
+  dialect: "modelica-sysml2" | "sysml2-modelica" = "modelica-sysml2",
+): TGGConstraint {
+  return { kind: "exprMap", args: [sourceExprVar, targetExprVar, dialect] };
 }
 
 export interface TGGThreadRuleOptions<DomainNames extends string = string> {

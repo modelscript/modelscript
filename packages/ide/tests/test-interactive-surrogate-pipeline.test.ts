@@ -125,6 +125,19 @@ TIP, 3, -5000.0
     assert.ok(moCode.includes("Modelica.Units.SI.Pressure maxStress"), "Must declare physical output with SI units");
     assert.ok(moCode.includes("protected Real a_mode_0"), "Must declare latent mode coordinates");
     assert.ok(moCode.includes("equation"), "Must have equation section");
+    assert.ok(surrogate.parameterBounds, "Must have parameterBounds extracted from training dataset");
+    assert.ok(surrogate.parameterBounds["loadScale"], "Must have loadScale bounds");
+    assert.ok(moCode.includes("assert(loadScale >="), "Must emit extrapolation assertion for loadScale");
+    assert.ok(moCode.includes("level = AssertionLevel.warning"), "Must use warning level for assertion");
+
+    // Test with explicit extrapolation flag enabled
+    const moCodeWithFlag = ModelicaSurrogateEmitter.emitModelica(surrogate, {
+      modelName,
+      emitExtrapolationFlag: true,
+    });
+    assert.ok(moCodeWithFlag.includes("output Boolean isExtrapolating"), "Must declare isExtrapolating flag");
+    assert.ok(moCodeWithFlag.includes("isExtrapolating = (loadScale <"), "Must emit isExtrapolating boolean equation");
+
     assert.ok(moCode.includes("annotation("), "Must include metadata annotation");
     assert.ok(moCode.includes(`end ${modelName};`), "Must close model");
 

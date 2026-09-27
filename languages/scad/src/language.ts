@@ -10,6 +10,7 @@ import {
   repeat,
   seq,
   tggComplement,
+  tggDefaultVal,
   tggEq,
   tggRule,
 } from "@modelscript/dsl";
@@ -70,6 +71,33 @@ export const scadLanguage = language({
         where: (v) => [tggEq(v("dims"), v("dims")), tggComplement(["transforms", "color"])],
       }),
       tggRule({
+        name: "ScadCylinderToStepProduct",
+        sourceLang: "scad",
+        targetLang: "step",
+        priority: 10,
+        source: ($, v) => $.CylinderPrimitive({ args: v("dims") }),
+        target: ($, v) => $.ProductDefinition({ name: v("dims"), description: "CylinderSolid" }),
+        where: (v) => [tggEq(v("dims"), v("dims")), tggComplement(["transforms", "color"])],
+      }),
+      tggRule({
+        name: "ScadSphereToStepProduct",
+        sourceLang: "scad",
+        targetLang: "step",
+        priority: 5,
+        source: ($, v) => $.SpherePrimitive({ args: v("dims") }),
+        target: ($, v) => $.ProductDefinition({ name: v("dims"), description: "SphereSolid" }),
+        where: (v) => [tggEq(v("dims"), v("dims")), tggComplement(["transforms", "color"])],
+      }),
+      tggRule({
+        name: "ScadBooleanOpToStepComposite",
+        sourceLang: "scad",
+        targetLang: "step",
+        priority: 15,
+        source: ($, v) => $.BooleanOp({ op: v("opName"), body: v("children") }),
+        target: ($, v) => $.ProductDefinition({ name: v("opName"), description: "CSGComposite" }),
+        where: (v) => [tggEq(v("opName"), v("opName")), tggComplement(["children"])],
+      }),
+      tggRule({
         name: "ScadTagPortToModelicaFrame",
         sourceLang: "scad",
         targetLang: "modelica",
@@ -77,6 +105,45 @@ export const scadLanguage = language({
         target: ($, v) =>
           $.ComponentClause({ name: v("portName"), typeSpecifier: "Modelica.Mechanics.MultiBody.Interfaces.Frame_a" }),
         where: (v) => [tggEq(v("portName"), v("portName")), tggComplement(["transformStack"])],
+      }),
+      tggRule({
+        name: "ScadCubeToMultiBodyShape",
+        sourceLang: "scad",
+        targetLang: "modelica",
+        priority: 5,
+        source: ($, v) => $.CubePrimitive({ args: v("dims") }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("shapeName"),
+            typeSpecifier: "Modelica.Mechanics.MultiBody.Visualizers.Advanced.Shape",
+          }),
+        where: (v) => [tggDefaultVal(v("shapeName"), "boxVisualizer"), tggComplement(["transforms", "color"])],
+      }),
+      tggRule({
+        name: "ScadCylinderToMultiBodyShape",
+        sourceLang: "scad",
+        targetLang: "modelica",
+        priority: 10,
+        source: ($, v) => $.CylinderPrimitive({ args: v("dims") }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("shapeName"),
+            typeSpecifier: "Modelica.Mechanics.MultiBody.Visualizers.Advanced.Shape",
+          }),
+        where: (v) => [tggDefaultVal(v("shapeName"), "cylinderVisualizer"), tggComplement(["transforms", "color"])],
+      }),
+      tggRule({
+        name: "ScadSphereToMultiBodyShape",
+        sourceLang: "scad",
+        targetLang: "modelica",
+        priority: 5,
+        source: ($, v) => $.SpherePrimitive({ args: v("dims") }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("shapeName"),
+            typeSpecifier: "Modelica.Mechanics.MultiBody.Visualizers.Advanced.Shape",
+          }),
+        where: (v) => [tggDefaultVal(v("shapeName"), "sphereVisualizer"), tggComplement(["transforms", "color"])],
       }),
     ],
   },

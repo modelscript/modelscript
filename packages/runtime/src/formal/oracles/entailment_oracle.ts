@@ -34,6 +34,12 @@ export class EntailmentTheoryOracle implements TheoryOracle {
   private queries: EntailmentVerification[] = [];
   private certifiedManifests: DigitalThreadProofManifest[] = [];
   private assertedLiterals = new Map<number, TheoryLiteral>();
+  private levelStack: {
+    requirements: Map<string, RequirementContract>;
+    queries: EntailmentVerification[];
+    certifiedManifests: DigitalThreadProofManifest[];
+    assertedLitIds: number[];
+  }[] = [];
 
   constructor() {
     this.reset();
@@ -44,6 +50,27 @@ export class EntailmentTheoryOracle implements TheoryOracle {
     this.queries = [];
     this.certifiedManifests = [];
     this.assertedLiterals.clear();
+    this.levelStack = [];
+  }
+
+  public pushLevel(): void {
+    this.levelStack.push({
+      requirements: new Map(this.requirements),
+      queries: [...this.queries],
+      certifiedManifests: [...this.certifiedManifests],
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.requirements = top.requirements;
+    this.queries = top.queries;
+    this.certifiedManifests = top.certifiedManifests;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
   }
 
   public getCertifiedManifests(): DigitalThreadProofManifest[] {
@@ -52,6 +79,9 @@ export class EntailmentTheoryOracle implements TheoryOracle {
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -73,8 +103,10 @@ export class EntailmentTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }

@@ -4,11 +4,13 @@ import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import { generateRomWasmSource } from "@modelscript/exchange/fmu";
 import {
   B2BEquivalenceVerifier,
+  CandidateFilter,
   DAEBuilder,
   EqKind,
   formatConstraint,
   performBltTransformationArena,
   RegionDecomposer,
+  SemanticTheoryCoordinator,
   SosBarrierSynthesizer,
   TraceRecordNormalizer,
   UnifiedVerifier,
@@ -486,7 +488,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
           }
         }
 
-        // 4. Run Unified Verification
+        // 4. Run Unified Verification via Theory Coordinator & Verifier
+        const coordinator =
+          (context.workspaceManager as any)?.getCoordinator?.() ||
+          (context.workspaceManager as any)?.coordinator ||
+          new SemanticTheoryCoordinator();
+
         const report = await UnifiedVerifier.verify(
           {
             uri: params.uri,
@@ -494,10 +501,25 @@ export function registerAnalysisEndpoints(context: LspContext) {
             queryDB,
             arena: arena ?? undefined,
             simulationResult: simResult,
+            coordinator,
             paths: [params.uri],
           },
           options,
         );
+
+        // 5. Query active trade study Pareto fronts if requested
+        if (options.tradeStudy || (options as any).pareto) {
+          const rawCandidates =
+            (context.workspaceManager as any)?.getCandidates?.(params.uri) || (params as any).candidates || [];
+          if (rawCandidates.length > 0) {
+            const paretoFronts = CandidateFilter.extractParetoFronts(rawCandidates);
+            (report as any).tradeStudy = {
+              candidatesCount: rawCandidates.length,
+              paretoFrontsCount: paretoFronts.length,
+              topParetoFront: paretoFronts[0] || [],
+            };
+          }
+        }
 
         // 5. Generate formatted output if requested
         if (params.format) {

@@ -72,8 +72,11 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     fsiSpecs: Map<string, FsiEquilibriumSpec>;
     solidSpecs: Map<string, SolidGeometrySpec>;
     externalBounds: Map<string, [number, number]>;
+    externalBoundJustifications: Map<string, Set<number>>;
     assertedLitIds: number[];
   }[] = [];
+
+  private externalBoundJustifications = new Map<string, Set<number>>();
 
   constructor() {
     this.reset();
@@ -85,17 +88,23 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     this.fsiSpecs.clear();
     this.solidSpecs.clear();
     this.externalBounds.clear();
+    this.externalBoundJustifications.clear();
     this.assertedLiterals.clear();
     this.levelStack = [];
   }
 
   public pushLevel(): void {
+    const extJustSnap = new Map<string, Set<number>>();
+    for (const [k, v] of this.externalBoundJustifications) {
+      extJustSnap.set(k, new Set(v));
+    }
     this.levelStack.push({
       stressSpecs: new Map(this.stressSpecs),
       deflectionSpecs: new Map(this.deflectionSpecs),
       fsiSpecs: new Map(this.fsiSpecs),
       solidSpecs: new Map(this.solidSpecs),
       externalBounds: new Map(this.externalBounds),
+      externalBoundJustifications: extJustSnap,
       assertedLitIds: [],
     });
   }
@@ -108,6 +117,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     this.fsiSpecs = top.fsiSpecs;
     this.solidSpecs = top.solidSpecs;
     this.externalBounds = top.externalBounds;
+    this.externalBoundJustifications = top.externalBoundJustifications;
     for (const litId of top.assertedLitIds) {
       this.assertedLiterals.delete(litId);
     }
@@ -324,10 +334,12 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       // Check against external upper bounds propagated from other theories
       const extBound = this.externalBounds.get(`${partName}.max_von_mises`);
       if (extBound && spec.maxVonMisesPa > extBound[1] + 1e-6) {
+        const culprits = this.findLiteralsReferencing(partName);
+        this.appendBoundJustifications(culprits, `${partName}.max_von_mises`);
         return {
           isSat: false,
           conflict: {
-            literals: this.findLiteralsReferencing(partName),
+            literals: culprits,
             explanation: `Stress Bound Constraint Violation: Part '${partName}' von Mises stress (${(spec.maxVonMisesPa / 1e6).toFixed(2)} MPa) violates external theory bound constraint upper limit (${(extBound[1] / 1e6).toFixed(2)} MPa).`,
             culpritEntities: [partName],
             theoryName: this.name,
@@ -355,10 +367,12 @@ export class SpatialPhysicsOracle implements TheoryOracle {
 
       const extBound = this.externalBounds.get(`${partName}.max_displacement`);
       if (extBound && spec.maxDisplacementMeters > extBound[1] + 1e-7) {
+        const culprits = this.findLiteralsReferencing(partName);
+        this.appendBoundJustifications(culprits, `${partName}.max_displacement`);
         return {
           isSat: false,
           conflict: {
-            literals: this.findLiteralsReferencing(partName),
+            literals: culprits,
             explanation: `Deflection Bound Constraint Violation: Part '${partName}' displacement (${(spec.maxDisplacementMeters * 1e3).toFixed(3)} mm) violates external theory bound upper limit (${(extBound[1] * 1e3).toFixed(3)} mm).`,
             culpritEntities: [partName],
             theoryName: this.name,
@@ -526,6 +540,19 @@ export class SpatialPhysicsOracle implements TheoryOracle {
         this.externalBounds.set(eq.varA, [...eq.bounds]);
         this.externalBounds.set(eq.varB, [...eq.bounds]);
       }
+      const justs = eq.justifications ?? eq.justification ?? [];
+      if (justs.length > 0) {
+        if (!this.externalBoundJustifications.has(eq.varA)) {
+          this.externalBoundJustifications.set(eq.varA, new Set());
+        }
+        for (const j of justs) this.externalBoundJustifications.get(eq.varA)!.add(j);
+        if (eq.varA !== eq.varB) {
+          if (!this.externalBoundJustifications.has(eq.varB)) {
+            this.externalBoundJustifications.set(eq.varB, new Set());
+          }
+          for (const j of justs) this.externalBoundJustifications.get(eq.varB)!.add(j);
+        }
+      }
     }
   }
 
@@ -577,6 +604,29 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       fsi: fsiStatus,
       solids: solidStatus,
     };
+  }
+
+  private appendBoundJustifications(culprits: TheoryLiteral[], varName: string): void {
+    const justs = this.externalBoundJustifications.get(varName);
+    if (!justs) return;
+    const existingIds = new Set(culprits.map((c) => c.id));
+    for (const jId of justs) {
+      if (!existingIds.has(jId)) {
+        const lit = this.assertedLiterals.get(jId);
+        if (lit) {
+          culprits.push(lit);
+          existingIds.add(jId);
+        } else {
+          culprits.push({
+            id: jId,
+            predicate: "crossTheoryAntecedent",
+            args: [varName],
+            isNegated: false,
+          });
+          existingIds.add(jId);
+        }
+      }
+    }
   }
 
   private findLiteralsReferencing(entity: string): TheoryLiteral[] {

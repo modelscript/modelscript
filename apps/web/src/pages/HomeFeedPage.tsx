@@ -65,7 +65,7 @@ const TabText = styled.div<{ $active?: boolean }>`
     left: 0;
     right: 0;
     height: 4px;
-    background-color: #1f1f1f;
+    background-color: var(--color-accent-emphasis, #1d9bf0);
     border-radius: 9999px;
     display: ${(props) => (props.$active ? "block" : "none")};
   }
@@ -166,6 +166,17 @@ const HomeFeedPage: React.FC = () => {
     }
     fetchTimeline();
   }, [token, activeTab, followingSort]);
+
+  useEffect(() => {
+    const handlePostCreated = (e: any) => {
+      const newPost = e.detail;
+      if (newPost) {
+        setPosts((prev) => [newPost, ...prev]);
+      }
+    };
+    window.addEventListener("modelscript:post-created", handlePostCreated);
+    return () => window.removeEventListener("modelscript:post-created", handlePostCreated);
+  }, []);
 
   return (
     <Box style={{ paddingBottom: "200px" }}>

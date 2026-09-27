@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon, TrashIcon, XIcon } from "@primer/octicons-react";
 import { Heading, IconButton } from "@primer/react";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 import Box from "./Box";
@@ -109,14 +109,30 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
   const isDirty = content.trim() !== "" || artifactId !== null;
 
-  const handleCloseClick = () => {
+  const handleCloseClick = useCallback(() => {
     if (isDirty) {
       setPendingAction("close");
       setView("confirm_save");
     } else {
       onClose();
     }
-  };
+  }, [isDirty, onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (view === "drafts") {
+          setView("compose");
+        } else if (view === "confirm_save") {
+          setView("compose");
+        } else {
+          handleCloseClick();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [view, handleCloseClick]);
 
   const handleDraftsClick = () => {
     if (isDirty) {

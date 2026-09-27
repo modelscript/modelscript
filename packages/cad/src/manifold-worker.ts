@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { IDENTITY, mat4Multiply } from "./transforms.js";
-import type { BoundaryPatchTag, Mat4, Solid, Vec3 } from "./types.js";
+import type { BoundaryPatchTag, Mat4, Solid, SolidSourceMetadata, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
 
 /**
@@ -18,6 +18,8 @@ export interface ManifoldSurfaceMesh {
   faceTagIndices: Uint32Array;
   /** List of distinct semantic boundary patch tags referenced by faceTagIndices. */
   tags: BoundaryPatchTag[];
+  /** Optional source code metadata linking this mesh to AST parameters or transforms. */
+  sourceMetadata?: SolidSourceMetadata;
 }
 
 /**
@@ -47,6 +49,7 @@ class SurfaceMeshBuilder {
   private faceTags: number[] = [];
   private tagMap: Map<string, number> = new Map(); // key -> 1-based index
   private tags: BoundaryPatchTag[] = [];
+  private sourceMetadata?: SolidSourceMetadata;
 
   private getTagIndex(tag?: BoundaryPatchTag): number {
     if (!tag) return 0;
@@ -61,6 +64,9 @@ class SurfaceMeshBuilder {
   }
 
   public processSolid(solid: Solid, parentMat: Mat4, activeTag?: BoundaryPatchTag): void {
+    if (solid.sourceMetadata && !this.sourceMetadata) {
+      this.sourceMetadata = solid.sourceMetadata;
+    }
     switch (solid.kind) {
       case SolidKind.Transform: {
         const combined = mat4Multiply(parentMat, solid.matrix);
@@ -603,6 +609,7 @@ class SurfaceMeshBuilder {
       normals: new Float32Array(this.normals),
       faceTagIndices: new Uint32Array(this.faceTags),
       tags: this.tags,
+      sourceMetadata: this.sourceMetadata,
     };
   }
 }

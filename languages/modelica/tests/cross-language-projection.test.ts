@@ -17,6 +17,9 @@ console.log("Testing Cross-Language TGG Polyglot Rules across 8 engineering doma
   assert.ok(compiled.ruleNames.includes("ModelicaComponentToSysmlPart"));
   assert.ok(compiled.ruleNames.includes("ModelicaConnectToSysmlConnection"));
   assert.ok(compiled.ruleNames.includes("ModelicaEquationToSysmlConstraint"));
+  assert.ok(compiled.ruleNames.includes("ModelicaSimpleEquationToSysmlConstraint"));
+  assert.ok(compiled.ruleNames.includes("ModelicaDerEquationToSysmlRateConstraint"));
+  assert.ok(compiled.ruleNames.includes("ModelicaAssertToSysmlRequirement"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_ModelicaModelToSysmlBlock"));
   assert.ok(compiled.sourceCode.includes("export function tgg_backward_ModelicaModelToSysmlBlock"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
@@ -33,6 +36,9 @@ console.log("Testing Cross-Language TGG Polyglot Rules across 8 engineering doma
   assert.ok(compiled.ruleNames.includes("PortDefToModelicaConnector"));
   assert.ok(compiled.ruleNames.includes("AttributeUsageToModelicaParameter"));
   assert.ok(compiled.ruleNames.includes("PartUsageToModelicaComponent"));
+  assert.ok(compiled.ruleNames.includes("RequirementUsageToModelicaAssert"));
+  assert.ok(compiled.ruleNames.includes("SysmlConstraintUsageToModelicaSimpleEquation"));
+  assert.ok(compiled.ruleNames.includes("SysmlCalcDefToModelicaFunction"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_PartDefToModelicaModel"));
   assert.ok(compiled.sourceCode.includes("export function tgg_backward_PartDefToModelicaModel"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
@@ -58,18 +64,20 @@ console.log("Testing Cross-Language TGG Polyglot Rules across 8 engineering doma
   console.log("  ✔ SSP TGG rules compilation passed (8 rules: Modelica + SysML v2)");
 }
 
-// 4. Verify STEP -> SysML2 TGG compilation
+// 4. Verify STEP -> SysML2 & Modelica TGG compilation
 {
   assert.ok(stepConfig.polyglot, "STEP should define polyglot configuration");
   const compiled = compileTGGRules(stepConfig.polyglot);
-  assert.strictEqual(compiled.ruleCount, 3, "STEP should have 3 TGG transformation rules");
+  assert.strictEqual(compiled.ruleCount, 5, "STEP should have 5 TGG transformation rules");
   assert.ok(compiled.ruleNames.includes("StepProductToSysML2Part"));
   assert.ok(compiled.ruleNames.includes("StepPropertyToSysML2Attribute"));
   assert.ok(compiled.ruleNames.includes("StepPlacementToSysML2Port"));
+  assert.ok(compiled.ruleNames.includes("StepRevoluteJointToModelicaRevolute"));
+  assert.ok(compiled.ruleNames.includes("StepPrismaticJointToModelicaPrismatic"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_StepProductToSysML2Part"));
   assert.ok(compiled.sourceCode.includes("export function tgg_backward_StepProductToSysML2Part"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
-  console.log("  ✔ STEP TGG rules compilation passed (3 rules: SysML v2)");
+  console.log("  ✔ STEP TGG rules compilation passed (5 rules: SysML v2 + Modelica MultiBody)");
 }
 
 // 5. Verify OWL 2 -> SysML2 & Modelica TGG compilation
@@ -93,16 +101,22 @@ console.log("Testing Cross-Language TGG Polyglot Rules across 8 engineering doma
   const { scadLanguage } = await import("../../scad/src/language.js");
   assert.ok(scadLanguage.polyglot, "OpenSCAD should define polyglot configuration");
   const compiled = compileTGGRules(scadLanguage.polyglot);
-  assert.strictEqual(compiled.ruleCount, 5, "OpenSCAD should have 5 TGG transformation rules");
+  assert.strictEqual(compiled.ruleCount, 11, "OpenSCAD should have 11 TGG transformation rules");
   assert.ok(compiled.ruleNames.includes("ScadModuleToSysmlPart"));
   assert.ok(compiled.ruleNames.includes("ScadTagPortToSysmlPort"));
   assert.ok(compiled.ruleNames.includes("ScadVariableToSysmlAttribute"));
   assert.ok(compiled.ruleNames.includes("ScadSolidToStepProduct"));
+  assert.ok(compiled.ruleNames.includes("ScadCylinderToStepProduct"));
+  assert.ok(compiled.ruleNames.includes("ScadSphereToStepProduct"));
+  assert.ok(compiled.ruleNames.includes("ScadBooleanOpToStepComposite"));
   assert.ok(compiled.ruleNames.includes("ScadTagPortToModelicaFrame"));
+  assert.ok(compiled.ruleNames.includes("ScadCubeToMultiBodyShape"));
+  assert.ok(compiled.ruleNames.includes("ScadCylinderToMultiBodyShape"));
+  assert.ok(compiled.ruleNames.includes("ScadSphereToMultiBodyShape"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_ScadModuleToSysmlPart"));
   assert.ok(compiled.sourceCode.includes("export function tgg_backward_ScadModuleToSysmlPart"));
   assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
-  console.log("  ✔ OpenSCAD TGG rules compilation passed (5 rules: SysML v2 + STEP + Modelica)");
+  console.log("  ✔ OpenSCAD TGG rules compilation passed (11 rules: SysML v2 + STEP + Modelica)");
 }
 
 // 7. Verify CFD -> Modelica & SysML2 TGG compilation

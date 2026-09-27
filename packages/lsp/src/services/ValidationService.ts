@@ -62,6 +62,16 @@ export class ValidationService {
     public parserService: ParserService,
   ) {
     this.reasonerService = new ReasonerService(connection, workspaceManager);
+    if (
+      this.workspaceManager?.hypergraph &&
+      typeof (this.workspaceManager.hypergraph as any).addListener === "function"
+    ) {
+      (this.workspaceManager.hypergraph as any).addListener((event: any) => {
+        try {
+          this.connection.sendNotification("modelscript/threadStatusChanged", event);
+        } catch {}
+      });
+    }
   }
 
   public sendProjectTreeChanged(): void {
@@ -754,7 +764,13 @@ export class ValidationService {
           ? (this.workspaceManager.hypergraph as any).getConflict(slot)
           : undefined;
 
-      const threadDiags = ThreadDiagnosticsProvider.diagnoseThread(record?.id ?? slot, alignedElements, 0.05, conflict);
+      const threadDiags = ThreadDiagnosticsProvider.diagnoseThread(
+        record?.id ?? slot,
+        alignedElements,
+        0.05,
+        conflict,
+        domain,
+      );
 
       for (const td of threadDiags) {
         if (td.domain.toLowerCase() !== domain.toLowerCase()) continue;

@@ -90,6 +90,8 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
         isMapped = true;
       } else if (c.kind === "typeMap" && isArgMatching(c.args[0])) {
         isMapped = true;
+      } else if (c.kind === "exprMap" && (isArgMatching(c.args[0]) || isArgMatching(c.args[1]))) {
+        isMapped = true;
       } else if (c.kind === "invertible") {
         const inv = invertExpression(c.args[0]);
         if (inv.isInvertible && (isArgMatching(inv.sourceVar) || inv.sourceVar === attr)) {

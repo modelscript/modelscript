@@ -2,6 +2,8 @@
 
 import { compileDslToWasm } from "@modelscript/dsl";
 import { createWasmParser } from "@modelscript/dsl/bindings";
+import { PolyglotNode, PolyglotTransformer } from "@modelscript/runtime";
+import { GenericModelicaBridge } from "@modelscript/sysml2";
 import {
   CompletionRequest,
   DefinitionRequest,
@@ -330,4 +332,147 @@ export function registerPolyglotEndpoints(
       hasMonarch: !!p.monarch,
     }));
   });
+
+  // ── 5. Project Model Cross-Domain ────────────────────────────────────────
+  connection.onRequest(
+    "modelscript/projectModel",
+    async (params: ProjectModelRequest): Promise<ProjectModelResponse> => {
+      try {
+        connection.console.info(`[polyglot-lsp] Projecting model '${params.uri}' to domain '${params.targetLang}'...`);
+        const doc = documents.get(params.uri);
+        let text: string;
+        if (doc) {
+          text = doc.getText();
+        } else {
+          const vfs = workspaceManager?.vfs;
+          if (vfs && vfs.read) {
+            text = await vfs.read(params.uri);
+          } else {
+            return {
+              success: false,
+              targetLang: params.targetLang,
+              correspondenceCount: 0,
+              error: `Document not open or found: ${params.uri}`,
+            };
+          }
+        }
+
+        const ext = params.uri.slice(params.uri.lastIndexOf(".")).toLowerCase();
+        let node: PolyglotNode;
+
+        const uriParts = params.uri.split("/");
+        const fileName = uriParts[uriParts.length - 1] || "Model";
+        const baseName = fileName.replace(/\.[^.]+$/, "");
+
+        if (ext === ".mo") {
+          const sysmlDef = GenericModelicaBridge.parseModelicaToSysML2(text);
+          node = {
+            name: sysmlDef.name || baseName,
+            kind: sysmlDef.kind || "model",
+            isAbstract: sysmlDef.isAbstract,
+            superclasses: sysmlDef.superclasses,
+            attributes: sysmlDef.attributes.map((a) => ({
+              name: a.name,
+              type: a.type,
+              value: a.defaultValue !== undefined ? String(a.defaultValue) : undefined,
+            })),
+            ports: sysmlDef.ports.map((p) => ({ name: p.name, type: p.type })),
+            components: sysmlDef.parts?.map((p) => ({ name: p.name, typeSpecifier: p.type })),
+            connections: sysmlDef.connections.map((c) => ({ source: c.source, target: c.target })),
+            constraints: sysmlDef.constraints,
+          };
+        } else if (ext === ".sysml" || ext === ".sysml2") {
+          const sysmlDef = GenericModelicaBridge.parseSysML2(text);
+          node = {
+            name: sysmlDef.name || baseName,
+            kind: sysmlDef.kind || "part def",
+            isAbstract: sysmlDef.isAbstract,
+            superclasses: sysmlDef.superclasses,
+            attributes: sysmlDef.attributes.map((a) => ({
+              name: a.name,
+              type: a.type,
+              value: a.defaultValue !== undefined ? String(a.defaultValue) : undefined,
+            })),
+            ports: sysmlDef.ports.map((p) => ({ name: p.name, type: p.type })),
+            components: sysmlDef.parts?.map((p) => ({ name: p.name, typeSpecifier: p.type })),
+            connections: sysmlDef.connections.map((c) => ({ source: c.source, target: c.target })),
+            constraints: sysmlDef.constraints,
+          };
+        } else if (ext === ".scad") {
+          const modMatch = text.match(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/);
+          const name = modMatch ? modMatch[1] : baseName;
+          const attributes: { name: string; type: string; value?: string }[] = [];
+          const varRegex = /\b([a-zA-Z_]\w*)\s*=\s*([^;]+);/g;
+          let m: RegExpExecArray | null;
+          while ((m = varRegex.exec(text)) !== null) {
+            if (!m[1].startsWith("//") && m[1] !== "module") {
+              attributes.push({ name: m[1], type: "Real", value: m[2].trim() });
+            }
+          }
+          const components: { name: string; typeSpecifier: string }[] = [];
+          if (/cube\s*\(/.test(text)) components.push({ name: "cubeSolid", typeSpecifier: "CubePrimitive" });
+          if (/cylinder\s*\(/.test(text))
+            components.push({ name: "cylinderSolid", typeSpecifier: "CylinderPrimitive" });
+          if (/sphere\s*\(/.test(text)) components.push({ name: "sphereSolid", typeSpecifier: "SpherePrimitive" });
+          node = { name, kind: "module", attributes, components };
+        } else if (ext === ".csv") {
+          const lines = text.trim().split("\n");
+          const header = lines[0] ? lines[0].split(",").map((c) => c.trim()) : [];
+          const attributes = header.map((h) => ({ name: h, type: "Real" }));
+          node = { name: baseName, kind: "table", attributes };
+        } else if (ext === ".owl" || ext === ".owl2") {
+          const classMatches = text.matchAll(
+            /\b(?:Declaration\(Class\(:([A-Za-z_][A-Za-z0-9_]*)\)\)|Class:\s*([A-Za-z_][A-Za-z0-9_]*))/g,
+          );
+          const classes = Array.from(classMatches).map((cm) => cm[1] || cm[2]);
+          node = { name: classes[0] || baseName, kind: "ontology_class", superclasses: classes.slice(1) };
+        } else {
+          node = { name: baseName };
+        }
+
+        const transformer = new PolyglotTransformer();
+
+        if (params.options?.includeInferredFeatures) {
+          transformer.addReasonerFact("hasFeature", node.name, "inferredStiffness:Real");
+        }
+
+        const targetSource = transformer.transform(node, params.targetLang);
+        const correspondenceCount =
+          (node.attributes?.length || 0) + (node.ports?.length || 0) + (node.components?.length || 0);
+
+        return {
+          success: true,
+          targetSource,
+          targetLang: params.targetLang,
+          correspondenceCount,
+        };
+      } catch (err: any) {
+        connection.console.error(`[polyglot-lsp] Project model failed: ${err?.message || err}`);
+        return {
+          success: false,
+          targetLang: params.targetLang,
+          correspondenceCount: 0,
+          error: err?.message || String(err),
+        };
+      }
+    },
+  );
+}
+
+export interface ProjectModelRequest {
+  uri: string;
+  targetLang: "sysml2" | "modelica" | "owl2" | "step" | "csv" | "scad" | "json-schema";
+  options?: {
+    strict?: boolean;
+    includeInferredFeatures?: boolean;
+  };
+}
+
+export interface ProjectModelResponse {
+  success: boolean;
+  targetSource?: string;
+  targetLang: string;
+  correspondenceCount: number;
+  diagnostics?: string[];
+  error?: string;
 }

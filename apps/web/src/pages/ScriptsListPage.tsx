@@ -5,6 +5,7 @@ import {
   FlameIcon,
   GraphIcon,
   LinkIcon,
+  PlayIcon,
   PulseIcon,
   RocketIcon,
   ShieldCheckIcon,

@@ -91,6 +91,16 @@ export interface BlastRadiusResult {
   conflictCount: number;
 }
 
+export interface HypergraphStatusEvent {
+  type: "sat" | "conflict" | "stale" | "removed";
+  slot: number;
+  threadId: number;
+  conflict?: ConflictClause;
+  equalities?: SharedEquality[];
+}
+
+export type HypergraphStatusListener = (event: HypergraphStatusEvent) => void;
+
 export class DigitalThreadHypergraph {
   private data: Uint32Array;
   private count: number = 0;
@@ -100,6 +110,33 @@ export class DigitalThreadHypergraph {
   private nodeToThreadSlots: Map<bigint, number[]> = new Map();
   private slotConflicts: Map<number, ConflictClause> = new Map();
   private slotEqualities: Map<number, SharedEquality[]> = new Map();
+  private listeners: Set<HypergraphStatusListener> = new Set();
+
+  /**
+   * Registers a listener callback invoked when thread slots transition status (sat, conflict, stale, removed).
+   * Returns an unregister function.
+   */
+  addListener(listener: HypergraphStatusListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Removes a previously registered status listener.
+   */
+  removeListener(listener: HypergraphStatusListener): void {
+    this.listeners.delete(listener);
+  }
+
+  private notifyListeners(event: HypergraphStatusEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        console.error("Error in hypergraph status listener:", err);
+      }
+    }
+  }
 
   constructor(initialCapacity: number = 512) {
     this.capacity = initialCapacity;
@@ -214,6 +251,8 @@ export class DigitalThreadHypergraph {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
     this.data[offset] |= THREAD_STATUS_STALE;
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    this.notifyListeners({ type: "stale", slot, threadId });
   }
 
   clearStale(slot: number): void {
@@ -239,6 +278,11 @@ export class DigitalThreadHypergraph {
     this.data[offset] &= ~THREAD_STATUS_CONFLICT;
   }
 
+  isSynced(slot: number): boolean {
+    if (slot >= this.count) return false;
+    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_SYNCED) !== 0;
+  }
+
   isConflicted(slot: number): boolean {
     if (slot >= this.count) return false;
     return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_CONFLICT) !== 0;
@@ -254,6 +298,8 @@ export class DigitalThreadHypergraph {
     if (equalities && equalities.length > 0) {
       this.slotEqualities.set(slot, equalities);
     }
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    this.notifyListeners({ type: "sat", slot, threadId, equalities });
   }
 
   recordTheoryConflict(slot: number, conflict: ConflictClause): void {
@@ -262,6 +308,8 @@ export class DigitalThreadHypergraph {
     this.data[offset] &= ~THREAD_STATUS_SYNCED;
     this.data[offset] |= THREAD_STATUS_CONFLICT;
     this.slotConflicts.set(slot, conflict);
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    this.notifyListeners({ type: "conflict", slot, threadId, conflict });
   }
 
   clearTheoryConflict(slot: number): void {
@@ -286,11 +334,27 @@ export class DigitalThreadHypergraph {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
     this.data[offset] |= THREAD_STATUS_REMOVED;
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    this.notifyListeners({ type: "removed", slot, threadId });
   }
 
   isRemoved(slot: number): boolean {
     if (slot >= this.count) return false;
     return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_REMOVED) !== 0;
+  }
+
+  /**
+   * Retrieves the raw underlying Uint32Array storage buffer.
+   */
+  getRawData(): Uint32Array {
+    return this.data;
+  }
+
+  /**
+   * Returns a typed array slice representing the binary Struct-of-Arrays payload.
+   */
+  toBinary(): Uint32Array {
+    return this.data.subarray(0, this.count * THREAD_STRIDE);
   }
 
   get size(): number {

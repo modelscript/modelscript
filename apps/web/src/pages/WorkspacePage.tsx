@@ -212,6 +212,7 @@ function CodeTab({ projectId, repo, provider }: { projectId: string; repo: Gitla
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCloudSim, setShowCloudSim] = useState(false);
+  const [copiedClone, setCopiedClone] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -551,10 +552,11 @@ git push -u origin main`}
                       navigator.clipboard?.writeText(
                         `https://modelscript.com/${repo.path_with_namespace || repo.name}.git`,
                       );
-                      alert("Clone URL copied to clipboard!");
+                      setCopiedClone(true);
+                      setTimeout(() => setCopiedClone(false), 2000);
                     }}
                   >
-                    Copy Git Clone URL (HTTPS)
+                    {copiedClone ? "✓ Copied to clipboard!" : "Copy Git Clone URL (HTTPS)"}
                   </ActionList.Item>
                 </ActionList>
               </ActionMenu.Overlay>

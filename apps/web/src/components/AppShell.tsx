@@ -8,6 +8,7 @@ import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
 import ComposeModal from "./ComposeModal";
+import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
@@ -146,7 +147,7 @@ const BannerContent = styled.div`
 const AppShell: React.FC = () => {
   const [isComposeOpen, setIsComposeOpen] = React.useState(false);
   const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(true);
-  const { user, loading, login, logout, unreadCount } = useAuth();
+  const { user, isLoading: loading, login, logout, unreadCount } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
@@ -327,7 +328,9 @@ const AppShell: React.FC = () => {
               <Sidebar onPostClick={() => setIsComposeOpen(true)} />
             </SidebarWrapper>
             <MainColumn $isWideLayout={isWideLayout} $isFullScreenLayout={isFullScreenLayout}>
-              <Outlet context={{ openCompose: () => setIsComposeOpen(true) }} />
+              <ErrorBoundary>
+                <Outlet context={{ openCompose: () => setIsComposeOpen(true) }} />
+              </ErrorBoundary>
             </MainColumn>
             {!isWideLayout && !isFullScreenLayout && (
               <RightPanelWrapper>
@@ -442,7 +445,12 @@ const AppShell: React.FC = () => {
         </BottomBarContainer>
 
         {isComposeOpen && (
-          <ComposeModal onClose={() => setIsComposeOpen(false)} onPostCreated={() => window.location.reload()} />
+          <ComposeModal
+            onClose={() => setIsComposeOpen(false)}
+            onPostCreated={(post) => {
+              window.dispatchEvent(new CustomEvent("modelscript:post-created", { detail: post }));
+            }}
+          />
         )}
       </div>
     </ComposeContext.Provider>

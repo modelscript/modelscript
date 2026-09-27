@@ -110,6 +110,12 @@ export class SafetyTheoryOracle implements TheoryOracle {
   private ftaNodes = new Map<string, FtaNode>();
   private hazards = new Map<string, SystemHazard>();
   private activeLiterals: TheoryLiteral[] = [];
+  private levelStack: {
+    failureModes: Map<string, ComponentFailureMode>;
+    ftaNodes: Map<string, FtaNode>;
+    hazards: Map<string, SystemHazard>;
+    activeLiterals: TheoryLiteral[];
+  }[] = [];
   private missionTimeHours = 10000; // 10,000 hours typical automotive/aerospace life
 
   constructor(missionTimeHours = 10000) {
@@ -137,8 +143,30 @@ export class SafetyTheoryOracle implements TheoryOracle {
     this.activeLiterals = this.activeLiterals.filter((l) => l.id !== litId);
   }
 
+  public pushLevel(): void {
+    this.levelStack.push({
+      failureModes: new Map(this.failureModes),
+      ftaNodes: new Map(this.ftaNodes),
+      hazards: new Map(this.hazards),
+      activeLiterals: [...this.activeLiterals],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.failureModes = top.failureModes;
+    this.ftaNodes = top.ftaNodes;
+    this.hazards = top.hazards;
+    this.activeLiterals = top.activeLiterals;
+  }
+
   public reset(): void {
     this.activeLiterals = [];
+    this.failureModes.clear();
+    this.ftaNodes.clear();
+    this.hazards.clear();
+    this.levelStack = [];
   }
 
   public onSharedEquality(_eq: SharedEquality): void {
@@ -151,7 +179,7 @@ export class SafetyTheoryOracle implements TheoryOracle {
       const report = this.evaluateHazard(hazard);
       equalities.push({
         varA: `${hId}.actualPmhf`,
-        varB: `${report.actualPmhfFit.toFixed(2)}_FIT`,
+        varB: `${hId}.actualPmhf`,
         domain: "real",
         bounds: [report.actualPmhfFit, report.actualPmhfFit],
         sourceOracle: this.name,

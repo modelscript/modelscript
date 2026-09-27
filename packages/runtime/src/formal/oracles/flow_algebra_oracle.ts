@@ -60,6 +60,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
   private portTypes = new Map<string, PortTypeDefinition>();
   private portInstances = new Map<string, PortInstance>();
   private connections: [string, string][] = [];
+  private aliases = new Map<string, string>();
   private assertedLiterals = new Map<number, TheoryLiteral>();
 
   // 1D-3D Spatial Patch Multi-Scale Bindings
@@ -67,6 +68,18 @@ export class FlowAlgebraOracle implements TheoryOracle {
   private patch1DConnections = new Map<string, string>(); // 1D portName -> cfdPatchName
   private spatialFluxes = new Map<string, SpatialFluxMeasurement>();
   private portValues1D = new Map<string, OneDPortValues>();
+
+  private levelStack: {
+    portTypes: Map<string, PortTypeDefinition>;
+    portInstances: Map<string, PortInstance>;
+    connections: [string, string][];
+    spatialPatches: Map<string, SpatialCfdPatchSpec>;
+    patch1DConnections: Map<string, string>;
+    spatialFluxes: Map<string, SpatialFluxMeasurement>;
+    portValues1D: Map<string, OneDPortValues>;
+    aliases: Map<string, string>;
+    assertedLitIds: number[];
+  }[] = [];
 
   private nextLiteralId = 10000;
 
@@ -78,15 +91,59 @@ export class FlowAlgebraOracle implements TheoryOracle {
     this.portTypes.clear();
     this.portInstances.clear();
     this.connections = [];
+    this.aliases.clear();
     this.assertedLiterals.clear();
     this.spatialPatches.clear();
     this.patch1DConnections.clear();
     this.spatialFluxes.clear();
     this.portValues1D.clear();
+    this.levelStack = [];
+  }
+
+  public pushLevel(): void {
+    this.levelStack.push({
+      portTypes: new Map(this.portTypes),
+      portInstances: new Map(this.portInstances),
+      connections: this.connections.map(([a, b]) => [a, b]),
+      spatialPatches: new Map(this.spatialPatches),
+      patch1DConnections: new Map(this.patch1DConnections),
+      spatialFluxes: new Map(this.spatialFluxes),
+      portValues1D: new Map(this.portValues1D),
+      aliases: new Map(this.aliases),
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.portTypes = top.portTypes;
+    this.portInstances = top.portInstances;
+    this.connections = top.connections;
+    this.spatialPatches = top.spatialPatches;
+    this.patch1DConnections = top.patch1DConnections;
+    this.spatialFluxes = top.spatialFluxes;
+    this.portValues1D = top.portValues1D;
+    this.aliases = top.aliases;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
+  }
+
+  private getCanonicalPort(port: string): string {
+    const parent = this.aliases.get(port);
+    if (!parent || parent === port) {
+      this.aliases.set(port, port);
+      return port;
+    }
+    const root = this.getCanonicalPort(parent);
+    this.aliases.set(port, root);
+    return root;
   }
 
   public getEffectiveItems(portName: string): FlowItemSpec[] | null {
-    const inst = this.portInstances.get(portName);
+    const canon = this.getCanonicalPort(portName);
+    const inst = this.portInstances.get(canon) ?? this.portInstances.get(portName);
     if (!inst) return null;
     const typeDef = this.portTypes.get(inst.typeName);
     if (!typeDef) return null;
@@ -145,6 +202,9 @@ export class FlowAlgebraOracle implements TheoryOracle {
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -200,8 +260,10 @@ export class FlowAlgebraOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
@@ -305,36 +367,64 @@ export class FlowAlgebraOracle implements TheoryOracle {
   public propagateEqualities(): SharedEquality[] {
     const equalities: SharedEquality[] = [];
 
-    // Potential variables on connected 1D ports must be equal
+    // Potential and flow variables on connected 1D ports
     for (const [portA, portB] of this.connections) {
       const itemsA = this.getEffectiveItems(portA);
       const itemsB = this.getEffectiveItems(portB);
       if (!itemsA || !itemsB) continue;
 
+      const justs = this.getLiteralsForConnection(portA, portB);
+
       for (const itemA of itemsA) {
-        if (!itemA.isFlow) {
-          const itemB = itemsB.find((b) => b.name === itemA.name);
-          if (itemB && !itemB.isFlow) {
-            equalities.push({
-              varA: `${portA}.${itemA.name}`,
-              varB: `${portB}.${itemB.name}`,
-              domain: "real",
-              explanation: `Potential variable equality across connection connect(${portA}, ${portB})`,
-              sourceOracle: this.name,
-            });
-          }
+        const itemB = itemsB.find((b) => b.name === itemA.name);
+        if (!itemB) continue;
+
+        if (!itemA.isFlow && !itemB.isFlow) {
+          equalities.push({
+            varA: `${portA}.${itemA.name}`,
+            varB: `${portB}.${itemB.name}`,
+            domain: "real",
+            explanation: `Potential variable equality across connection connect(${portA}, ${portB})`,
+            sourceOracle: this.name,
+            justifications: justs,
+            justification: justs,
+          });
+        } else if (itemA.isFlow && itemB.isFlow) {
+          // Flow conservation across connection: m_dot_A + m_dot_B = 0 => m_dot_A = -m_dot_B
+          equalities.push({
+            varA: `${portA}.${itemA.name}`,
+            varB: `-${portB}.${itemB.name}`,
+            domain: "real",
+            explanation: `Kirchhoff flow conservation: ${portA}.${itemA.name} + ${portB}.${itemB.name} = 0 across connect(${portA}, ${portB})`,
+            sourceOracle: this.name,
+            justifications: justs,
+            justification: justs,
+          });
         }
       }
     }
 
-    // 1D-3D Potential equality: port.p == patch.mean_pressure
+    // 1D-3D Potential & Flux balance
     for (const [oneDPort, cfdPatch] of this.patch1DConnections.entries()) {
+      const justs = this.getLiteralsForConnection(oneDPort, cfdPatch);
       equalities.push({
         varA: `${oneDPort}.p`,
         varB: `${cfdPatch}.mean_pressure`,
         domain: "real",
         explanation: `Multi-scale potential equality across 1D port '${oneDPort}' and 3D CFD patch '${cfdPatch}'`,
         sourceOracle: this.name,
+        justifications: justs,
+        justification: justs,
+      });
+
+      equalities.push({
+        varA: `${oneDPort}.m_flow`,
+        varB: `-${cfdPatch}.integrated_mass_flow`,
+        domain: "real",
+        explanation: `Multi-scale boundary mass flux balance across 1D port '${oneDPort}' and 3D CFD patch '${cfdPatch}'`,
+        sourceOracle: this.name,
+        justifications: justs,
+        justification: justs,
       });
     }
 
@@ -342,6 +432,18 @@ export class FlowAlgebraOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    // Unifies port instances if aliased
+    if (eq.varA && eq.varB && eq.varA !== eq.varB) {
+      const rootA = this.getCanonicalPort(eq.varA);
+      const rootB = this.getCanonicalPort(eq.varB);
+      if (rootA !== rootB) {
+        this.aliases.set(rootA, rootB);
+      }
+    }
+  }
+
+  private getLiteralsForConnection(portA: string, portB: string): number[] {
+    return Array.from(this.assertedLiterals.values())
+      .filter((l) => l.args.includes(portA) || l.args.includes(portB))
+      .map((l) => l.id);
   }
 }

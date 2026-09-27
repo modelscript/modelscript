@@ -681,7 +681,7 @@ const PackageDetailPage: React.FC = () => {
   const publishedAt = packument?.time?.[version ?? ""] ?? packument?.time?.modified ?? "";
 
   // Install command
-  const installCmd = `npm i ${name}`;
+  const installCmd = `msc install ${name}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(installCmd);

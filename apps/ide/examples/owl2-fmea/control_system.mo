@@ -44,7 +44,7 @@ equation
 end Plant;
 
 model ControlSystem
-  "Full control loop — faults propagate sensor → controller → actuator → plant"
+  "Full control loop - faults propagate sensor -> controller -> actuator -> plant"
   Sensor sensor1;
   Controller controller1;
   Actuator actuator1;

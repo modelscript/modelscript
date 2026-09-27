@@ -23,10 +23,12 @@ import { RequirementsEditorProvider } from "./requirementsEditorProvider";
 
 import { ContractHierarchyPanel } from "./contractHierarchyPanel";
 import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
+import { registerMultiDomainScaffolding } from "./multiDomainScaffolding.js";
+import { registerPolyglotActions } from "./polyglotActions.js";
 import { registerScmIntegration } from "./scmIntegration";
 import { registerScmTreeView } from "./scmTreeView";
 import { registerSemanticDiffComments } from "./semanticDiffComments";
-import { ThreadExplorerPanel } from "./threadExplorerPanel";
+import { ThreadExplorerPanel } from "./threadExplorerPanel.js";
 import { TraceReplayPanel } from "./traceReplayPanel";
 import { VerificationPanel } from "./verificationPanel";
 
@@ -40,6 +42,8 @@ import { registerCadMeshingCommands } from "./cadMeshingCommands";
 import { CalibrationPanel } from "./calibrationPanel";
 import { CandidateTradeStudyPanel } from "./candidateTradeStudyPanel";
 import { CfgEditorProvider } from "./cfgEditorProvider";
+import { CloudJobPanel } from "./cloudJobPanel";
+import { CloudStatusBar } from "./cloudStatusBar";
 import { ExperimentsTreeProvider } from "./experimentsTree";
 import { GCodeEditorProvider } from "./gcodeEditorProvider";
 import { InpEditorProvider } from "./inpEditorProvider";
@@ -718,6 +722,9 @@ export async function activate(context: vscode.ExtensionContext) {
   statusItem.tooltip = "ModelScript language server is initializing";
   statusItem.show();
   context.subscriptions.push(statusItem);
+
+  const cloudStatusBar = new CloudStatusBar();
+  context.subscriptions.push(cloudStatusBar);
 
   // Listen for status notifications from the LSP server
   let isScmRegistered = false;
@@ -1418,6 +1425,25 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.openCandidateTradeStudy", (uri?: string, entityName?: string) => {
       CandidateTradeStudyPanel.createOrShow(context.extensionUri, client, entityName);
     }),
+    commands.registerCommand("modelscript.openCloudPanel", (uri?: string) => {
+      CloudJobPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+    commands.registerCommand("modelscript.runOnCloud", (uri?: string) => {
+      CloudJobPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+    commands.registerCommand("modelscript.openCloudMenu", async () => {
+      const items = [
+        { label: "$(rocket) Run Active Model on Cloud...", id: "dispatch" },
+        { label: "$(server-process) View Cloud Compute Profiles", id: "profiles" },
+        { label: "$(credit-card) Check Credit Wallet Balance", id: "balance" },
+        { label: "$(history) View Cloud Jobs", id: "jobs" },
+      ];
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: "Select a ModelScript Cloud action",
+      });
+      if (!selected) return;
+      CloudJobPanel.createOrShow(context.extensionUri, client);
+    }),
     commands.registerCommand("modelscript.refreshExperiments", () => {
       experimentsTreeProvider?.refresh();
     }),
@@ -1927,6 +1953,8 @@ END-ISO-10303-21;`;
       if (!client) return;
       ThreadExplorerPanel.createOrShow(context.extensionUri, client);
     }),
+    registerPolyglotActions(context, client),
+    registerMultiDomainScaffolding(context),
     commands.registerCommand("modelscript.openTraceReplay", (trace?: any) => {
       TraceReplayPanel.createOrShow(context.extensionUri, client, trace);
     }),

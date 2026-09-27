@@ -16,19 +16,19 @@ package DroneManufacturing {
   }
 
   part def Chassis {
-    doc /* Main chassis — requires carbon fiber composite */
+    doc /* Main chassis - requires carbon fiber composite */
     attribute material : String = "CarbonFiber";
     attribute weight : Real = 0.45;
   }
 
   part def RotorArm {
-    doc /* Rotor arm — requires titanium alloy for strength-to-weight */
+    doc /* Rotor arm - requires titanium alloy for strength-to-weight */
     attribute material : String = "TitaniumAlloy";
     attribute length : Real = 0.25;
   }
 
   part def BrushlessMotor {
-    doc /* BLDC motor — standard component */
+    doc /* BLDC motor - standard component */
     attribute power : Real = 250.0;
     attribute kv : Real = 920.0;
   }

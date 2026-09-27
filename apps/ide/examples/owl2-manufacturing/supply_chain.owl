@@ -6,7 +6,6 @@ Ontology(<http://modelscript.org/examples/manufacturing>
 
   Import(<http://modelscript.org/sysml2#>)
 
-  # Material taxonomy
   Declaration(Class(mat:Material))
   Declaration(Class(mat:MetalAlloy))
   Declaration(Class(mat:Composite))
@@ -16,7 +15,6 @@ Ontology(<http://modelscript.org/examples/manufacturing>
   SubClassOf(mat:Composite mat:Material)
   SubClassOf(mat:Polymer mat:Material)
 
-  # Specific materials
   Declaration(Class(mat:TitaniumAlloy))
   Declaration(Class(mat:AluminumAlloy))
   Declaration(Class(mat:CarbonFiber))
@@ -27,13 +25,10 @@ Ontology(<http://modelscript.org/examples/manufacturing>
   SubClassOf(mat:CarbonFiber mat:Composite)
   SubClassOf(mat:FiberglassComposite mat:Composite)
 
-  # Manufacturable material — a material that has at least one
-  # approved supplier and compatible process
   Declaration(Class(mat:ManufacturableMaterial))
   SubClassOf(mat:ManufacturableMaterial
     ObjectSomeValuesFrom(mfg:suppliedBy mfg:ApprovedSupplier))
 
-  # Manufacturing processes
   Declaration(Class(mfg:ManufacturingProcess))
   Declaration(Class(mfg:CNCMachining))
   Declaration(Class(mfg:AutoclaveCuring))
@@ -43,7 +38,6 @@ Ontology(<http://modelscript.org/examples/manufacturing>
   SubClassOf(mfg:AutoclaveCuring mfg:ManufacturingProcess)
   SubClassOf(mfg:InjectionMolding mfg:ManufacturingProcess)
 
-  # Suppliers
   Declaration(Class(mfg:ApprovedSupplier))
   Declaration(NamedIndividual(mfg:supplierA))
   Declaration(NamedIndividual(mfg:supplierB))
@@ -53,20 +47,13 @@ Ontology(<http://modelscript.org/examples/manufacturing>
   ClassAssertion(mfg:ApprovedSupplier mfg:supplierB)
   ClassAssertion(mfg:ApprovedSupplier mfg:supplierC)
 
-  # Supply chain mappings
   Declaration(ObjectProperty(mfg:suppliedBy))
   Declaration(ObjectProperty(mfg:compatibleProcess))
 
-  # TitaniumAlloy: supplied by A, processed via CNC
   SubClassOf(mat:TitaniumAlloy mat:ManufacturableMaterial)
-
-  # CarbonFiber: supplied by B, processed via autoclave curing
   SubClassOf(mat:CarbonFiber mat:ManufacturableMaterial)
-
-  # AluminumAlloy: supplied by A and C, processed via CNC
   SubClassOf(mat:AluminumAlloy mat:ManufacturableMaterial)
 
-  # Cross-language bridge: SysML parts mapped to material requirements
   Declaration(ObjectProperty(mat:requiresMaterial))
   Declaration(NamedIndividual(sysml:Chassis))
   Declaration(NamedIndividual(sysml:RotorArm))

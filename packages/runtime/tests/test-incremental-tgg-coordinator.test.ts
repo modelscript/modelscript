@@ -132,4 +132,163 @@ describe("Incremental TGG & Semantic Theory Coordinator Synchronization", () => 
     expect(hypergraph.getConflict(slot)).toBeUndefined();
     expect(hypergraph.getRecord(slot)!.isSynced).toBe(true);
   });
+
+  it("should evaluate TGG rules with where clauses and proxy variables via syncThreadRule()", () => {
+    const transformer = new PolyglotTransformer();
+    const hypergraph = transformer.getHypergraph();
+
+    transformer.registerThread("thread_104", {
+      sysml2: { name: "ActuatorSysML" },
+      modelica: { name: "ActuatorModelica" },
+    });
+
+    const slot = hypergraph.findSlotByThreadId(104)!;
+    expect(slot).toBeDefined();
+
+    const actuatorRule = {
+      name: "ActuatorCorrespondenceRule",
+      source: () => ({ nodeType: "PartDef", bindings: {} }),
+      target: () => ({ nodeType: "Model", bindings: {} }),
+      where: (v: (name: string) => string) => [
+        { kind: "eq", args: [v("stroke_sysml"), v("stroke_modelica")] },
+        {
+          kind: "reconcilePhysics",
+          args: [v("force_sysml"), v("force_modelica"), { min: 0, max: 1000, tolerance: 0.01 }],
+        },
+      ],
+    };
+
+    const satRes = transformer.syncThreadRule(slot, actuatorRule as any, {
+      stroke_sysml: "Actuator_stroke_sys",
+      stroke_modelica: "Actuator_stroke_mo",
+      force_sysml: "Actuator_force_sys",
+      force_modelica: "Actuator_force_mo",
+    });
+
+    expect(satRes.isSat).toBe(true);
+    expect(hypergraph.isConflicted(slot)).toBe(false);
+    expect(hypergraph.getRecord(slot)!.isSynced).toBe(true);
+
+    const litIds = transformer.getLiteralIdsForThreadSlot(slot);
+    expect(litIds.length).toBeGreaterThan(0);
+    for (const litId of litIds) {
+      expect(transformer.getThreadSlotForLiteralId(litId)).toBe(slot);
+    }
+  });
+
+  it("should incrementally reconcile domain nodes in O(ΔN) via reconcileNode() without affecting clean nodes", () => {
+    const transformer = new PolyglotTransformer();
+    const hypergraph = transformer.getHypergraph();
+
+    transformer.registerThread("thread_105", {
+      sysml2: { id: 201, name: "SubsystemA" },
+      modelica: { id: 202, name: "SubsystemA_Sim" },
+    });
+
+    transformer.registerThread("thread_106", {
+      sysml2: { id: 203, name: "SubsystemB" },
+      modelica: { id: 204, name: "SubsystemB_Sim" },
+    });
+
+    const slot1 = hypergraph.findSlotByThreadId(105)!;
+    const slot2 = hypergraph.findSlotByThreadId(106)!;
+
+    // Both start synced with valid constraints
+    transformer.syncThreadTheory(slot1, [{ kind: "interval", varName: "tempA", min: 20, max: 80 }]);
+    transformer.syncThreadTheory(slot2, [{ kind: "interval", varName: "tempB", min: 10, max: 50 }]);
+
+    expect(hypergraph.getRecord(slot1)!.isSynced).toBe(true);
+    expect(hypergraph.getRecord(slot2)!.isSynced).toBe(true);
+
+    // Edit SubsystemA to have contradictory bounds [80, 20]
+    const editRes = transformer.reconcileNode("sysml2", 201, [
+      { kind: "interval", varName: "tempA", min: 80, max: 20 },
+    ]);
+    expect(editRes?.isSat).toBe(false);
+    expect(hypergraph.isConflicted(slot1)).toBe(true);
+
+    // SubsystemB must be completely unaffected in O(ΔN)
+    expect(hypergraph.isConflicted(slot2)).toBe(false);
+    expect(hypergraph.getRecord(slot2)!.isSynced).toBe(true);
+
+    // Fix SubsystemA
+    const fixRes = transformer.reconcileNode("sysml2", 201, [{ kind: "interval", varName: "tempA", min: 20, max: 80 }]);
+    expect(fixRes?.isSat).toBe(true);
+    expect(hypergraph.isConflicted(slot1)).toBe(false);
+    expect(hypergraph.getRecord(slot1)!.isSynced).toBe(true);
+  });
+
+  it("should track blast radius invalidation and notify hypergraph status listeners", () => {
+    const transformer = new PolyglotTransformer();
+    const hypergraph = transformer.getHypergraph();
+
+    const events: any[] = [];
+    const unsubscribe = hypergraph.addListener((evt) => events.push(evt));
+
+    // Register connected digital threads across SysML, Modelica, and CFD
+    transformer.registerThread("thread_107", {
+      sysml2: { id: 301, name: "PumpComponent" },
+      modelica: { id: 302, name: "PumpHydraulic" },
+    });
+
+    transformer.registerThread("thread_108", {
+      modelica: { id: 302, name: "PumpHydraulic" },
+      cfd: { id: 303, name: "PumpVolutePatch" },
+    });
+
+    const slot107 = hypergraph.findSlotByThreadId(107)!;
+    const slot108 = hypergraph.findSlotByThreadId(108)!;
+
+    // Both assert valid intervals
+    transformer.syncThreadTheory(slot107, [{ kind: "interval", varName: "flowRate", min: 1, max: 10 }]);
+    transformer.syncThreadTheory(slot108, [{ kind: "interval", varName: "pressureDrop", min: 100, max: 500 }]);
+
+    // Invalidate blast radius starting from SysML node 301
+    const radius = transformer.invalidateBlastRadius("sysml2", 301);
+    expect(radius).toBeDefined();
+    expect(radius!.impactedThreads).toContain(107);
+    expect(radius!.impactedThreads).toContain(108);
+
+    // Both slots should now be marked stale in linear memory
+    expect(hypergraph.isStale(slot107)).toBe(true);
+    expect(hypergraph.isStale(slot108)).toBe(true);
+
+    // Listener should have captured the stale transitions
+    const staleEvents = events.filter((e) => e.type === "stale");
+    expect(staleEvents.length).toBeGreaterThan(0);
+
+    // Reconcile slot 107
+    transformer.syncThreadTheory(slot107, [{ kind: "interval", varName: "flowRate", min: 2, max: 8 }]);
+    expect(hypergraph.isStale(slot107)).toBe(false);
+    expect(hypergraph.getRecord(slot107)!.isSynced).toBe(true);
+
+    unsubscribe();
+  });
+
+  it("should cleanly retract all literals from coordinator and reverse maps via retractThreadConstraints()", () => {
+    const transformer = new PolyglotTransformer();
+    const hypergraph = transformer.getHypergraph();
+
+    transformer.registerThread("thread_109", {
+      sysml2: { name: "Sensor" },
+      modelica: { name: "SensorSim" },
+    });
+
+    const slot = hypergraph.findSlotByThreadId(109)!;
+
+    const lit1 = transformer.assertTggConstraint(slot, { kind: "interval", varName: "s1", min: 0, max: 10 });
+    const lit2 = transformer.assertTggConstraint(slot, { kind: "diff", varA: "t1", varB: "t0", bound: 5 });
+
+    const activeIds = transformer.getLiteralIdsForThreadSlot(slot);
+    expect(activeIds).toEqual([lit1, lit2]);
+    expect(transformer.getThreadSlotForLiteralId(lit1)).toBe(slot);
+    expect(transformer.getThreadSlotForLiteralId(lit2)).toBe(slot);
+
+    // Retract
+    transformer.retractThreadConstraints(slot);
+
+    expect(transformer.getLiteralIdsForThreadSlot(slot)).toEqual([]);
+    expect(transformer.getThreadSlotForLiteralId(lit1)).toBeUndefined();
+    expect(transformer.getThreadSlotForLiteralId(lit2)).toBeUndefined();
+  });
 });

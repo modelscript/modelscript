@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/set-state-in-effect */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { KebabHorizontalIcon, MarkGithubIcon, SearchIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
@@ -346,19 +346,20 @@ const RightPanel: React.FC = () => {
   useEffect(() => {
     async function fetchSuggestions() {
       try {
-        const res = await fetch(`${API_BASE_URL}/users/suggestions?limit=3`, {
+        const res = await fetch(`${API_BASE_URL}/users/suggestions?limit=4`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.ok) {
           const data = await res.json();
-          setSuggestions(data.suggestions);
+          const filtered = (data.suggestions || []).filter((s: any) => !user || s.username !== user.username);
+          setSuggestions(filtered);
         }
       } catch (err) {
         console.error(err);
       }
     }
     fetchSuggestions();
-  }, [token]);
+  }, [token, user]);
 
   useEffect(() => {
     async function fetchTrending() {
@@ -816,61 +817,63 @@ const RightPanel: React.FC = () => {
             Who to follow
           </Heading>
           <Box display="flex" flexDirection="column" gap={3}>
-            {suggestions.map((u) => (
-              <Box key={u.id} display="flex" alignItems="center" justifyContent="space-between">
-                <ProfileHoverCard username={u.username}>
-                  <ProfileNameLink to={`/${u.username}`} style={{ flex: 1, minWidth: 0 }}>
-                    <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
-                  </ProfileNameLink>
-                </ProfileHoverCard>
-                <Box
-                  flex={1}
-                  minWidth={0}
-                  style={{ margin: "0 12px" }}
-                  display="flex"
-                  flexDirection="column"
-                  alignItems="flex-start"
-                >
-                  <div style={{ maxWidth: "100%", display: "flex", minWidth: 0 }}>
-                    <ProfileHoverCard username={u.username}>
-                      <ProfileNameLink to={`/${u.username}`} style={{ maxWidth: "100%" }}>
-                        <Text
-                          style={{
-                            fontWeight: "bold",
-                            fontSize: "15px",
-                            color: "var(--color-fg-default)",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            display: "block",
-                          }}
-                          title={u.display_name || u.username}
-                        >
-                          {u.display_name || u.username}
-                        </Text>
-                      </ProfileNameLink>
-                    </ProfileHoverCard>
-                  </div>
-                  <Text
-                    className="handle-text"
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      marginTop: "-2px",
-                      display: "block",
-                      maxWidth: "100%",
-                    }}
-                    title={`@${u.username}`}
+            {suggestions
+              .filter((u) => !user || u.username !== user.username)
+              .map((u) => (
+                <Box key={u.id} display="flex" alignItems="center" justifyContent="space-between">
+                  <ProfileHoverCard username={u.username}>
+                    <ProfileNameLink to={`/${u.username}`} style={{ flex: 1, minWidth: 0 }}>
+                      <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
+                    </ProfileNameLink>
+                  </ProfileHoverCard>
+                  <Box
+                    flex={1}
+                    minWidth={0}
+                    style={{ margin: "0 12px" }}
+                    display="flex"
+                    flexDirection="column"
+                    alignItems="flex-start"
                   >
-                    @{u.username}
-                  </Text>
+                    <div style={{ maxWidth: "100%", display: "flex", minWidth: 0 }}>
+                      <ProfileHoverCard username={u.username}>
+                        <ProfileNameLink to={`/${u.username}`} style={{ maxWidth: "100%" }}>
+                          <Text
+                            style={{
+                              fontWeight: "bold",
+                              fontSize: "15px",
+                              color: "var(--color-fg-default)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              display: "block",
+                            }}
+                            title={u.display_name || u.username}
+                          >
+                            {u.display_name || u.username}
+                          </Text>
+                        </ProfileNameLink>
+                      </ProfileHoverCard>
+                    </div>
+                    <Text
+                      className="handle-text"
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        marginTop: "-2px",
+                        display: "block",
+                        maxWidth: "100%",
+                      }}
+                      title={`@${u.username}`}
+                    >
+                      @{u.username}
+                    </Text>
+                  </Box>
+                  <div style={{ flexShrink: 0 }}>
+                    <FollowButton username={u.username} initialIsFollowing={false} size="small" />
+                  </div>
                 </Box>
-                <div style={{ flexShrink: 0 }}>
-                  <FollowButton username={u.username} initialIsFollowing={false} size="small" />
-                </div>
-              </Box>
-            ))}
+              ))}
             {suggestions.length === 0 && (
               <Text color="var(--color-fg-muted)" sx={{ fontSize: "14px" }}>
                 No suggestions at this time.

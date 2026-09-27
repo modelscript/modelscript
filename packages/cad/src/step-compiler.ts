@@ -67,6 +67,37 @@ function axis2Placement3d(ctx: StepContext, origin: Vec3, axis: Vec3, refDir: Ve
   return emit(ctx, eid, `AXIS2_PLACEMENT_3D('',${o},${a},${r})`);
 }
 
+function circle(ctx: StepContext, center: Vec3, radius: number, axis: Vec3, refDir: Vec3): string {
+  const place = axis2Placement3d(ctx, center, axis, refDir);
+  const cid = allocId(ctx);
+  return emit(ctx, cid, `CIRCLE('',${place},${fmt(radius)})`);
+}
+
+function cylindricalSurface(ctx: StepContext, origin: Vec3, radius: number, axis: Vec3, refDir: Vec3): string {
+  const place = axis2Placement3d(ctx, origin, axis, refDir);
+  const sid = allocId(ctx);
+  return emit(ctx, sid, `CYLINDRICAL_SURFACE('',${place},${fmt(radius)})`);
+}
+
+function sphericalSurface(ctx: StepContext, center: Vec3, radius: number, axis: Vec3, refDir: Vec3): string {
+  const place = axis2Placement3d(ctx, center, axis, refDir);
+  const sid = allocId(ctx);
+  return emit(ctx, sid, `SPHERICAL_SURFACE('',${place},${fmt(radius)})`);
+}
+
+function toroidalSurface(
+  ctx: StepContext,
+  center: Vec3,
+  major: number,
+  minor: number,
+  axis: Vec3,
+  refDir: Vec3,
+): string {
+  const place = axis2Placement3d(ctx, center, axis, refDir);
+  const sid = allocId(ctx);
+  return emit(ctx, sid, `TOROIDAL_SURFACE('',${place},${fmt(major)},${fmt(minor)})`);
+}
+
 // ── Box BREP ─────────────────────────────────────────────────────────────
 
 function transformPoint(m: Mat4, p: Vec3): Vec3 {
@@ -216,6 +247,259 @@ function buildBoxBrep(
   return emit(ctx, brepId, `MANIFOLD_SOLID_BREP('${name}',${shell})`);
 }
 
+// ── Cylinder Analytical BREP ─────────────────────────────────────────────
+
+function buildCylinderBrep(ctx: StepContext, name: string, radius: number, height: number, worldMatrix?: Mat4): string {
+  const hh = height / 2;
+
+  // Local key vertices: 2 on bottom rim, 2 on top rim
+  const localV: Vec3[] = [
+    [-radius, 0, -hh], // 0: bottom -x
+    [radius, 0, -hh], // 1: bottom +x
+    [-radius, 0, hh], // 2: top -x
+    [radius, 0, hh], // 3: top +x
+  ];
+
+  const corners = worldMatrix ? localV.map((c) => transformPoint(worldMatrix, c)) : localV;
+
+  const vp: string[] = corners.map((c, i) => {
+    const cp = cartesianPoint(ctx, c);
+    const vid = allocId(ctx);
+    return emit(ctx, vid, `VERTEX_POINT('cv${i}',${cp})`);
+  });
+
+  const effBottomCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, -hh]) : [0, 0, -hh];
+  const effTopCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, hh]) : [0, 0, hh];
+  const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
+  const effXAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
+  const effOppZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, -1]) : [0, 0, -1];
+
+  // Circles for bottom and top
+  const botCircle = circle(ctx, effBottomCenter, radius, effZAxis, effXAxis);
+  const topCircle = circle(ctx, effTopCenter, radius, effZAxis, effXAxis);
+
+  // Bottom circular arc edges
+  const ec_b0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${botCircle},.T.)`);
+  const ec_b1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[0]},${botCircle},.T.)`);
+
+  // Top circular arc edges
+  const ec_t0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[3]},${topCircle},.T.)`);
+  const ec_t1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[3]},${vp[2]},${topCircle},.T.)`);
+
+  // Seam line edges: from bottom to top
+  function lineEdge(v0: number, v1: number): string {
+    const p0 = corners[v0] as Vec3,
+      p1 = corners[v1] as Vec3;
+    const dx = p1[0] - p0[0],
+      dy = p1[1] - p0[1],
+      dz = p1[2] - p0[2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+    const d: Vec3 = [dx / len, dy / len, dz / len];
+    const dir = direction(ctx, d);
+    const vec = emit(ctx, allocId(ctx), `VECTOR('',${dir},${fmt(len)})`);
+    const lineOrigin = cartesianPoint(ctx, p0);
+    const line = emit(ctx, allocId(ctx), `LINE('',${lineOrigin},${vec})`);
+    return emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[v0]},${vp[v1]},${line},.T.)`);
+  }
+
+  const ec_s0 = lineEdge(0, 2); // seam at -x
+  const ec_s1 = lineEdge(1, 3); // seam at +x
+
+  function orientedEdge(ec: string, forward: boolean): string {
+    return emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
+  }
+
+  // 1. Bottom Face (Planar circle, normal [0, 0, -1])
+  const botPlane = emit(
+    ctx,
+    allocId(ctx),
+    `PLANE('',${axis2Placement3d(ctx, effBottomCenter, effOppZAxis, effXAxis)})`,
+  );
+  const botLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[orientedEdge(ec_b1, false), orientedEdge(ec_b0, false)].join(",")}))`,
+  );
+  const botBound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${botLoop},.T.)`);
+  const botFace = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${botBound}),${botPlane},.T.)`);
+
+  // 2. Top Face (Planar circle, normal [0, 0, 1])
+  const topPlane = emit(ctx, allocId(ctx), `PLANE('',${axis2Placement3d(ctx, effTopCenter, effZAxis, effXAxis)})`);
+  const topLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[orientedEdge(ec_t0, true), orientedEdge(ec_t1, true)].join(",")}))`,
+  );
+  const topBound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${topLoop},.T.)`);
+  const topFace = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${topBound}),${topPlane},.T.)`);
+
+  // 3. Lateral Cylindrical Surface
+  const cylSurf = cylindricalSurface(ctx, effBottomCenter, radius, effZAxis, effXAxis);
+
+  // Lateral Face 1 (semi-cylinder 1, y >= 0)
+  const latLoop1 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[
+      orientedEdge(ec_b0, true),
+      orientedEdge(ec_s1, true),
+      orientedEdge(ec_t0, false),
+      orientedEdge(ec_s0, false),
+    ].join(",")}))`,
+  );
+  const latBound1 = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${latLoop1},.T.)`);
+  const latFace1 = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${latBound1}),${cylSurf},.T.)`);
+
+  // Lateral Face 2 (semi-cylinder 2, y <= 0)
+  const latLoop2 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[
+      orientedEdge(ec_b1, true),
+      orientedEdge(ec_s0, true),
+      orientedEdge(ec_t1, false),
+      orientedEdge(ec_s1, false),
+    ].join(",")}))`,
+  );
+  const latBound2 = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${latLoop2},.T.)`);
+  const latFace2 = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${latBound2}),${cylSurf},.T.)`);
+
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${[botFace, topFace, latFace1, latFace2].join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${name}',${shell})`);
+}
+
+// ── Sphere Analytical BREP ───────────────────────────────────────────────
+
+function buildSphereBrep(ctx: StepContext, name: string, radius: number, worldMatrix?: Mat4): string {
+  const localV: Vec3[] = [
+    [0, 0, -radius], // south pole
+    [0, 0, radius], // north pole
+  ];
+
+  const corners = worldMatrix ? localV.map((c) => transformPoint(worldMatrix, c)) : localV;
+  const vp: string[] = corners.map((c, i) => {
+    const cp = cartesianPoint(ctx, c);
+    return emit(ctx, allocId(ctx), `VERTEX_POINT('sv${i}',${cp})`);
+  });
+
+  const effCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, 0]) : [0, 0, 0];
+  const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
+  const effXAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
+  const effYAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 1, 0]) : [0, 1, 0];
+
+  // Meridian circle in XZ plane
+  const meridianCircle = circle(ctx, effCenter, radius, effYAxis, effXAxis);
+
+  // Two semicircle meridian edges from south to north pole and back
+  const ec_m0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${meridianCircle},.T.)`);
+  const ec_m1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[0]},${meridianCircle},.T.)`);
+
+  function orientedEdge(ec: string, forward: boolean): string {
+    return emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
+  }
+
+  const sphSurf = sphericalSurface(ctx, effCenter, radius, effZAxis, effXAxis);
+
+  // Hemisphere 1 (y >= 0)
+  const loop1 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[orientedEdge(ec_m0, true), orientedEdge(ec_m1, true)].join(",")}))`,
+  );
+  const bound1 = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${loop1},.T.)`);
+  const face1 = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bound1}),${sphSurf},.T.)`);
+
+  // Hemisphere 2 (y <= 0)
+  const loop2 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[orientedEdge(ec_m1, false), orientedEdge(ec_m0, false)].join(",")}))`,
+  );
+  const bound2 = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${loop2},.T.)`);
+  const face2 = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bound2}),${sphSurf},.T.)`);
+
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${[face1, face2].join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${name}',${shell})`);
+}
+
+// ── Torus Analytical BREP ────────────────────────────────────────────────
+
+function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: number, worldMatrix?: Mat4): string {
+  const effCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, 0]) : [0, 0, 0];
+  const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
+  const effXAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
+  const effYAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 1, 0]) : [0, 1, 0];
+
+  const p_pos: Vec3 = worldMatrix ? transformPoint(worldMatrix, [major, 0, 0]) : [major, 0, 0];
+  const p_neg: Vec3 = worldMatrix ? transformPoint(worldMatrix, [-major, 0, 0]) : [-major, 0, 0];
+
+  const localV: Vec3[] = [
+    [major, 0, minor],
+    [major, 0, -minor],
+    [-major, 0, minor],
+    [-major, 0, -minor],
+  ];
+
+  const corners = worldMatrix ? localV.map((c) => transformPoint(worldMatrix, c)) : localV;
+  const vp: string[] = corners.map((c, i) => {
+    const cp = cartesianPoint(ctx, c);
+    return emit(ctx, allocId(ctx), `VERTEX_POINT('tv${i}',${cp})`);
+  });
+
+  const circlePos = circle(ctx, p_pos, minor, effYAxis, effZAxis);
+  const ec_pos0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${circlePos},.T.)`);
+  const ec_pos1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[0]},${circlePos},.T.)`);
+
+  const circleNeg = circle(ctx, p_neg, minor, effYAxis, effZAxis);
+  const ec_neg0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[3]},${circleNeg},.T.)`);
+  const ec_neg1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[3]},${vp[2]},${circleNeg},.T.)`);
+
+  const p_topCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, minor]) : [0, 0, minor];
+  const p_botCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, -minor]) : [0, 0, -minor];
+  const topCircle = circle(ctx, p_topCenter, major, effZAxis, effXAxis);
+  const botCircle = circle(ctx, p_botCenter, major, effZAxis, effXAxis);
+
+  const ec_top0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[2]},${topCircle},.T.)`);
+  const ec_top1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[0]},${topCircle},.T.)`);
+  const ec_bot0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[3]},${botCircle},.T.)`);
+  const ec_bot1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[3]},${vp[1]},${botCircle},.T.)`);
+
+  function orientedEdge(ec: string, forward: boolean): string {
+    return emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
+  }
+
+  const torSurf = toroidalSurface(ctx, effCenter, major, minor, effZAxis, effXAxis);
+
+  const loop1 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[
+      orientedEdge(ec_top0, true),
+      orientedEdge(ec_neg0, true),
+      orientedEdge(ec_bot0, false),
+      orientedEdge(ec_pos0, false),
+    ].join(",")}))`,
+  );
+  const bound1 = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${loop1},.T.)`);
+  const face1 = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bound1}),${torSurf},.T.)`);
+
+  const loop2 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[
+      orientedEdge(ec_top1, true),
+      orientedEdge(ec_pos1, true),
+      orientedEdge(ec_bot1, false),
+      orientedEdge(ec_neg1, false),
+    ].join(",")}))`,
+  );
+  const bound2 = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${loop2},.T.)`);
+  const face2 = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bound2}),${torSurf},.T.)`);
+
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${[face1, face2].join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${name}',${shell})`);
+}
+
 // ── Solid tree → BREP refs ───────────────────────────────────────────────
 
 const IDENTITY: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -256,31 +540,17 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     }
 
     case SolidKind.Cylinder: {
-      // Approximate cylinder as a bounding box in Phase 1
-      const brepRef = buildBoxBrep(
-        ctx,
-        solid.name,
-        0,
-        0,
-        0,
-        solid.radius,
-        solid.height / 2,
-        solid.radius,
-        parentMatrix,
-      );
+      const brepRef = buildCylinderBrep(ctx, solid.name, solid.radius, solid.height, parentMatrix);
       return [brepRef];
     }
 
     case SolidKind.Sphere: {
-      // Approximate sphere as a bounding box in Phase 1
-      const brepRef = buildBoxBrep(ctx, solid.name, 0, 0, 0, solid.radius, solid.radius, solid.radius, parentMatrix);
+      const brepRef = buildSphereBrep(ctx, solid.name, solid.radius, parentMatrix);
       return [brepRef];
     }
 
     case SolidKind.Torus: {
-      // Approximate torus as a flat bounding box in Phase 1
-      const outer = solid.major + solid.minor;
-      const brepRef = buildBoxBrep(ctx, solid.name, 0, 0, 0, outer, solid.minor, outer, parentMatrix);
+      const brepRef = buildTorusBrep(ctx, solid.name, solid.major, solid.minor, parentMatrix);
       return [brepRef];
     }
 

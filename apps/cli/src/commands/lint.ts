@@ -119,6 +119,8 @@ export const Lint: CommandModule<any, any> = {
     }
 
     if (hasSysML) {
+      const { createSysML2WorkspaceIndex } = await import("@modelscript/sysml2");
+      sIdx = createSysML2WorkspaceIndex();
       const { createWasmParser } = await import("@modelscript/dsl");
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = path.dirname(__filename);

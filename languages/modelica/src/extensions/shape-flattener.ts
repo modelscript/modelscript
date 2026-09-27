@@ -99,7 +99,7 @@ export class ShapeFlattener {
     const material = this.evaluateMaterial(entry);
 
     // 6. Generate geometry primitives
-    if (classPrefixes === "shape") {
+    if (classPrefixes === "shape" || classPrefixes === "record") {
       let solid: Solid | null = null;
 
       if (classEntry.name === "Box") {

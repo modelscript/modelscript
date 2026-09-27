@@ -1,8 +1,14 @@
 import {
+  AbstractDomainOracle,
+  ConstraintTheoryOracle,
   DigitalThreadHypergraph,
+  DimensionalTheoryOracle,
   DOMAIN_INDEX_TO_NAME,
   DOMAIN_NAME_TO_INDEX,
+  FlowAlgebraOracle,
+  OntologyTheoryOracle,
   QueryEngine,
+  SemanticTheoryCoordinator,
   ThreadDomain,
   UnifiedWorkspace,
 } from "@modelscript/runtime";
@@ -47,6 +53,13 @@ export class WorkspaceManager {
   // Canonical Digital Thread Hypergraph
   public hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
   public threadMetadataMap = new Map<string, ThreadElementMetadata>();
+
+  // Canonical Semantic Theory Coordinator for cross-domain formal consistency
+  public coordinator: SemanticTheoryCoordinator = new SemanticTheoryCoordinator();
+
+  public getCoordinator(): SemanticTheoryCoordinator {
+    return this.coordinator;
+  }
 
   public initDefaultThreads(): void {
     if (this.hypergraph.getThreadCount() > 0) return;
@@ -409,6 +422,11 @@ export class WorkspaceManager {
 
   constructor(documentManager?: DocumentManager) {
     this.documentManager = documentManager;
+    this.coordinator.registerOracle(new OntologyTheoryOracle());
+    this.coordinator.registerOracle(new ConstraintTheoryOracle());
+    this.coordinator.registerOracle(new AbstractDomainOracle());
+    this.coordinator.registerOracle(new DimensionalTheoryOracle());
+    this.coordinator.registerOracle(new FlowAlgebraOracle());
     this.initDefaultThreads();
 
     // Seed default workspace indices from registered language plugins

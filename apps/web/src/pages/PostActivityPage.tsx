@@ -43,7 +43,7 @@ const Tab = styled.button<{ $active?: boolean }>`
     bottom: 0;
     height: 4px;
     width: 56px;
-    background-color: #1f1f1f;
+    background-color: var(--color-accent-emphasis, #1d9bf0);
     border-radius: 9999px;
     display: ${(props) => (props.$active ? "block" : "none")};
   }

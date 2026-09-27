@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { FmuSubsystemRegistry, OnnxFmuSubsystem } from "@modelscript/runtime";
+import assert from "node:assert";
+import { emitModelicaROM } from "../src/surrogates/modelica-surrogate-emitter.js";
+import { importONNXToArenaNeuralBlock, importONNXToROM } from "../src/surrogates/onnx-importer.js";
 import {
   evaluateROM,
   exportROMToC,
@@ -92,6 +95,35 @@ async function main() {
     `  ✔ ONNX graph exported with ${onnxGraph.graph.nodes.length} nodes and ${onnxGraph.graph.initializers.length} initializers`,
   );
 
+  // 2b. Test Bidirectional ONNX Graph Import to TrainedROM
+  console.log("\n2b. Testing Bidirectional ONNX Graph Import to TrainedROM...");
+  const importedRom = importONNXToROM(onnxGraph, {
+    inputNames: rom.inputNames,
+    outputNames: rom.outputNames,
+  });
+  const impPred = evaluateROM(importedRom, [1.0, 0.5]);
+  const diffRom = Math.abs(impPred[0]! - pred[0]!);
+  if (diffRom > 1e-7) {
+    throw new Error(`Imported ROM output mismatch: ${impPred[0]} vs ${pred[0]} (diff: ${diffRom})`);
+  }
+  console.log(`  ✔ ONNX imported back to TrainedROM with exact numerical parity: ${impPred[0]?.toFixed(4)}`);
+
+  // 2c. Test ONNX Import directly to in-arena ArenaNeuralBlock
+  console.log("\n2c. Testing ONNX Graph Import to ArenaNeuralBlock...");
+  const importedBlock = importONNXToArenaNeuralBlock(onnxGraph, "imported_decay");
+  assert.deepStrictEqual(importedBlock.layers, [2, 16, 16, 1]);
+  const normInput = new Float64Array([
+    (1.0 - rom.inputScaling[0]!.mean) / rom.inputScaling[0]!.std,
+    (0.5 - rom.inputScaling[1]!.mean) / rom.inputScaling[1]!.std,
+  ]);
+  const blockPredNorm = importedBlock.forwardVectorized(normInput);
+  const blockPred = blockPredNorm[0]! * rom.outputScaling[0]!.std + rom.outputScaling[0]!.mean;
+  const diffBlock = Math.abs(blockPred - pred[0]!);
+  if (diffBlock > 1e-7) {
+    throw new Error(`Imported ArenaNeuralBlock output mismatch: ${blockPred} vs ${pred[0]} (diff: ${diffBlock})`);
+  }
+  console.log(`  ✔ ONNX imported to ArenaNeuralBlock with exact parity: ${blockPred.toFixed(4)}`);
+
   // 4. Test PyTorch Script Export
   console.log("\n3. Testing PyTorch Script Generation...");
   const pyCode = exportROMToPyTorch(rom, "DecayNet");
@@ -154,6 +186,32 @@ async function main() {
     throw new Error("Zero-allocation violation: malloc or free found in generated C ROM code");
   }
   console.log("  ✔ Standalone C code generated with zero dynamic memory allocation");
+
+  // 8. Test Portable Modelica Block Generation with Extrapolation Guardrails
+  console.log("\n7. Testing Self-Contained Modelica Block Generation (emitModelicaROM)...");
+  const moCode = emitModelicaROM(rom, {
+    modelName: "DecaySurrogateBlock",
+    parameterBounds: {
+      k: { min: 0.5, max: 2.0 },
+      time: { min: 0.0, max: 1.0 },
+    },
+    enableExtrapolationWarnings: true,
+    emitExtrapolationFlag: true,
+  });
+
+  assert.ok(moCode.includes("block DecaySurrogateBlock"));
+  assert.ok(moCode.includes("input Real k"));
+  assert.ok(moCode.includes("input Real time"));
+  assert.ok(moCode.includes("output Real x"));
+  assert.ok(moCode.includes("output Boolean isExtrapolating"));
+  assert.ok(moCode.includes("assert(k >= 0.5 and k <= 2.0, \"Extrapolation warning: Input 'k'"));
+  assert.ok(moCode.includes("assert(time >= 0.0 and time <= 1.0, \"Extrapolation warning: Input 'time'"));
+  assert.ok(moCode.includes("isExtrapolating ="));
+  assert.ok(moCode.includes("parameter Real W_0"));
+  assert.ok(moCode.includes("parameter Real b_0"));
+  assert.ok(moCode.includes("algorithm"));
+  assert.ok(moCode.includes("Modelica.Math.tanh"));
+  console.log("  ✔ Self-contained Modelica block generated with active guardrails and neural equations");
 
   console.log("\nAll Surrogate ROM & ONNX Interop tests PASSED!");
 }

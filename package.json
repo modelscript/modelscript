@@ -63,7 +63,7 @@
     "test:single": "npx tsx languages/modelica/tests/testsuite-runner.ts"
   },
   "lint-staged": {
-    "*.{ts,tsx}": "eslint --no-warn-ignored",
+    "*.{ts,tsx}": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js --no-warn-ignored",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
   "overrides": {
@@ -102,6 +102,9 @@
     "ip-address": "^10.3.1",
     "js-yaml": "^4.3.2",
     "mermaid": "^11.16.1",
+    "minimatch": {
+      "brace-expansion": "^1.1.21"
+    },
     "morgan": "^1.12.0",
     "multer": "^2.3.0",
     "nanoid": "^3.3.18",

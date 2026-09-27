@@ -86,6 +86,30 @@ export const stepLanguage = language({
         target: ($, v) => $.PortUsage({ declaredName: v("frameName") }),
         where: (v) => [tggEq(v("frameName"), v("frameName")), tggComplement(["location", "axis", "refDirection"])],
       }),
+      tggRule({
+        name: "StepRevoluteJointToModelicaRevolute",
+        sourceLang: "step",
+        targetLang: "modelica",
+        source: ($, v) => $.KinematicPair({ name: v("jointName"), pairType: "revolute" }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("jointName"),
+            typeSpecifier: "Modelica.Mechanics.MultiBody.Joints.Revolute",
+          }),
+        where: (v) => [tggEq(v("jointName"), v("jointName")), tggComplement(["axis", "limits", "origin"])],
+      }),
+      tggRule({
+        name: "StepPrismaticJointToModelicaPrismatic",
+        sourceLang: "step",
+        targetLang: "modelica",
+        source: ($, v) => $.KinematicPair({ name: v("jointName"), pairType: "prismatic" }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("jointName"),
+            typeSpecifier: "Modelica.Mechanics.MultiBody.Joints.Prismatic",
+          }),
+        where: (v) => [tggEq(v("jointName"), v("jointName")), tggComplement(["axis", "limits", "origin"])],
+      }),
     ],
   },
 

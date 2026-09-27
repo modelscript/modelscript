@@ -490,6 +490,45 @@ app.get("/", (_req, res) => {
       <span class="tpl-name">Modelica Procedural CAD</span>
       <span class="tpl-desc">Construct 3D CAD geometries procedurally using the Modelica shape language extension.</span>
     </a>
+    <a href="/vscode/workbench/#memfs:cosim" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></div>
+      <span class="tpl-name">Co-Simulation Master</span>
+      <span class="tpl-desc">Browser-local multi-FMU coupled co-simulation with controller and plant models.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:uns-mqtt" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+      <span class="tpl-name">UNS / MQTT Digital Twin</span>
+      <span class="tpl-desc">Stream real-time simulation telemetry to an external web HMI via Unified Namespace.</span>
+    </a>
+  </div>
+
+  <div class="divider">Semantic Web &amp; OWL2 Ontologies</div>
+  <div class="templates">
+    <a href="/vscode/workbench/#memfs:owl2-contradiction" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <span class="tpl-name">Contradiction Detection</span>
+      <span class="tpl-desc">Catch cross-domain inconsistencies between Modelica models and OWL2 disjoint axioms.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-fmea" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+      <span class="tpl-name">FMEA Fault Propagation</span>
+      <span class="tpl-desc">Trace failure propagation paths through connection topology using transitive OWL2 properties.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-manufacturing" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></div>
+      <span class="tpl-name">Supply Chain Validation</span>
+      <span class="tpl-desc">Verify system manufacturability against supplier and material process ontologies.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-subsumption" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+      <span class="tpl-name">Component Subsumption</span>
+      <span class="tpl-desc">Automated component selection satisfying SysML requirements via subsumption reasoning.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-units" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></div>
+      <span class="tpl-name">Semantic Unit Verification</span>
+      <span class="tpl-desc">Verify SI unit compatibility across ports to catch dimensional errors before simulation.</span>
+    </a>
   </div>
 
   <div class="divider">Basic Templates</div>

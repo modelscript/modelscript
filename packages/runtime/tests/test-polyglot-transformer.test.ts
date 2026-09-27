@@ -1,6 +1,6 @@
-import { PolyglotNode, PolyglotTransformer } from "@modelscript/runtime";
 import expect from "expect";
 import { describe, it } from "node:test";
+import { PolyglotNode, PolyglotTransformer } from "../src/index.js";
 import { emitModelica, sysml2ToModelica, type SysML2PartDef } from "./fixtures/modelica-transformer.js";
 import { emitSysML2, modelicaToSysML2, type ModelicaModel } from "./fixtures/sysml2-transformer.js";
 
@@ -117,6 +117,44 @@ describe("Polyglot Transformer Core & Language Adapters", () => {
       expect(() => transformer.transform(node, "nonexistent-lang")).toThrow(
         "No polyglot emitter registered for target language 'nonexistent-lang'",
       );
+    });
+
+    it("provides built-in default emitters for modelica, sysml2, owl2, csv, and json-schema", () => {
+      const transformer = new PolyglotTransformer();
+      expect(transformer.hasEmitter("modelica")).toBe(true);
+      expect(transformer.hasEmitter("sysml2")).toBe(true);
+      expect(transformer.hasEmitter("owl2")).toBe(true);
+      expect(transformer.hasEmitter("csv")).toBe(true);
+      expect(transformer.hasEmitter("json-schema")).toBe(true);
+
+      const node: PolyglotNode = {
+        name: "Motor",
+        isAbstract: true,
+        attributes: [{ name: "power", type: "Real", value: "1500.0" }],
+        ports: [{ name: "flange", type: "Flange_a" }],
+      };
+
+      const moCode = transformer.transform(node, "modelica");
+      expect(moCode).toContain("partial model Motor");
+      expect(moCode).toContain("parameter Real power = 1500.0;");
+      expect(moCode).toContain("Flange_a flange;");
+
+      const sysmlCode = transformer.transform(node, "sysml2");
+      expect(sysmlCode).toContain("abstract part def Motor");
+      expect(sysmlCode).toContain("attribute power: Real = 1500.0;");
+      expect(sysmlCode).toContain("port flange: Flange_a;");
+
+      const owlCode = transformer.transform(node, "owl2");
+      expect(owlCode).toContain("Declaration(Class(:Motor))");
+
+      const csvCode = transformer.transform(node, "csv");
+      expect(csvCode).toContain("power,Real,1500.0,attribute");
+      expect(csvCode).toContain("flange,Flange_a,,port");
+
+      const jsonCode = transformer.transform(node, "json-schema");
+      const parsed = JSON.parse(jsonCode);
+      expect(parsed.title).toBe("Motor");
+      expect(parsed.properties.power.type).toBe("number");
     });
   });
 });

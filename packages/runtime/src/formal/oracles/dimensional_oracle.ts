@@ -95,10 +95,14 @@ export class DimensionalTheoryOracle implements TheoryOracle {
   private varDimensions = new Map<string, DimensionVector>();
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private aliases = new Map<string, string>();
+  private aliasJustifications = new Map<string, Set<number>>();
+  private pendingOps: { kind: "mult" | "div"; res: string; a: string; b: string; litId: number }[] = [];
   private sharedEqualities: SharedEquality[] = [];
   private levelStack: {
     varDimensions: Map<string, DimensionVector>;
     aliases: Map<string, string>;
+    aliasJustifications: Map<string, Set<number>>;
+    pendingOps: { kind: "mult" | "div"; res: string; a: string; b: string; litId: number }[];
     assertedLitIds: number[];
   }[] = [];
 
@@ -110,14 +114,22 @@ export class DimensionalTheoryOracle implements TheoryOracle {
     this.varDimensions.clear();
     this.assertedLiterals.clear();
     this.aliases.clear();
+    this.aliasJustifications.clear();
+    this.pendingOps = [];
     this.sharedEqualities = [];
     this.levelStack = [];
   }
 
   public pushLevel(): void {
+    const aliasJustSnap = new Map<string, Set<number>>();
+    for (const [k, v] of this.aliasJustifications) {
+      aliasJustSnap.set(k, new Set(v));
+    }
     this.levelStack.push({
       varDimensions: new Map(this.varDimensions),
       aliases: new Map(this.aliases),
+      aliasJustifications: aliasJustSnap,
+      pendingOps: [...this.pendingOps],
       assertedLitIds: [],
     });
   }
@@ -127,6 +139,8 @@ export class DimensionalTheoryOracle implements TheoryOracle {
     if (!top) return;
     this.varDimensions = top.varDimensions;
     this.aliases = top.aliases;
+    this.aliasJustifications = top.aliasJustifications;
+    this.pendingOps = top.pendingOps;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
@@ -158,6 +172,54 @@ export class DimensionalTheoryOracle implements TheoryOracle {
     return this.varDimensions.get(root);
   }
 
+  private drainPendingOps(): void {
+    let progress = true;
+    let passes = 0;
+    const maxPasses = Math.max(10, this.pendingOps.length * 2);
+    while (progress && passes++ < maxPasses) {
+      progress = false;
+      const remaining: typeof this.pendingOps = [];
+      for (const op of this.pendingOps) {
+        const dimA = this.getDimension(op.a);
+        const dimB = this.getDimension(op.b);
+        if (op.kind === "mult") {
+          if (dimA && dimB) {
+            const resDim: DimensionVector = [
+              dimA[0] + dimB[0],
+              dimA[1] + dimB[1],
+              dimA[2] + dimB[2],
+              dimA[3] + dimB[3],
+              dimA[4] + dimB[4],
+              dimA[5] + dimB[5],
+              dimA[6] + dimB[6],
+            ];
+            this.varDimensions.set(this.getCanonicalVar(op.res), resDim);
+            progress = true;
+          } else {
+            remaining.push(op);
+          }
+        } else if (op.kind === "div") {
+          if (dimA && dimB) {
+            const resDim: DimensionVector = [
+              dimA[0] - dimB[0],
+              dimA[1] - dimB[1],
+              dimA[2] - dimB[2],
+              dimA[3] - dimB[3],
+              dimA[4] - dimB[4],
+              dimA[5] - dimB[5],
+              dimA[6] - dimB[6],
+            ];
+            this.varDimensions.set(this.getCanonicalVar(op.res), resDim);
+            progress = true;
+          } else {
+            remaining.push(op);
+          }
+        }
+      }
+      this.pendingOps = remaining;
+    }
+  }
+
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
     if (this.levelStack.length > 0) {
@@ -172,6 +234,7 @@ export class DimensionalTheoryOracle implements TheoryOracle {
         if (dim) {
           const canon = this.getCanonicalVar(varName);
           this.varDimensions.set(canon, dim);
+          this.drainPendingOps();
         }
         break;
       }
@@ -191,7 +254,10 @@ export class DimensionalTheoryOracle implements TheoryOracle {
             dimA[6] + dimB[6],
           ];
           this.varDimensions.set(this.getCanonicalVar(varRes), resDim);
+        } else {
+          this.pendingOps.push({ kind: "mult", res: varRes, a: varA, b: varB, litId: lit.id });
         }
+        this.drainPendingOps();
         break;
       }
       case "dimensionDiv": {
@@ -210,7 +276,10 @@ export class DimensionalTheoryOracle implements TheoryOracle {
             dimA[6] - dimB[6],
           ];
           this.varDimensions.set(this.getCanonicalVar(varRes), resDim);
+        } else {
+          this.pendingOps.push({ kind: "div", res: varRes, a: varA, b: varB, litId: lit.id });
         }
+        this.drainPendingOps();
         break;
       }
       case "equal": {
@@ -219,7 +288,22 @@ export class DimensionalTheoryOracle implements TheoryOracle {
         const rootB = this.getCanonicalVar(varB);
         if (rootA !== rootB) {
           this.aliases.set(rootA, rootB);
+          const finalRoot = this.getCanonicalVar(rootB);
+          if (!this.aliasJustifications.has(finalRoot)) {
+            this.aliasJustifications.set(finalRoot, new Set());
+          }
+          const targetSet = this.aliasJustifications.get(finalRoot)!;
+          targetSet.add(lit.id);
+          const jA = this.aliasJustifications.get(rootA);
+          if (jA && jA !== targetSet) {
+            for (const j of jA) targetSet.add(j);
+          }
+          const jB = this.aliasJustifications.get(rootB);
+          if (jB && jB !== targetSet) {
+            for (const j of jB) targetSet.add(j);
+          }
         }
+        this.drainPendingOps();
         break;
       }
     }
@@ -254,6 +338,40 @@ export class DimensionalTheoryOracle implements TheoryOracle {
         const culprits = Array.from(this.assertedLiterals.values()).filter(
           (l) => l.args.includes(varA) || l.args.includes(varB),
         );
+        const culpritIds = new Set(culprits.map((c) => c.id));
+
+        // Collect all literal IDs contributing to the unification of varA and varB
+        const rootJusts = new Set<number>();
+        const jRoot = this.aliasJustifications.get(rootA);
+        if (jRoot) {
+          for (const id of jRoot) rootJusts.add(id);
+        }
+        for (const [v, r] of this.aliases) {
+          if (this.getCanonicalVar(r) === rootA) {
+            const jV = this.aliasJustifications.get(v);
+            if (jV) {
+              for (const id of jV) rootJusts.add(id);
+            }
+          }
+        }
+
+        for (const jId of rootJusts) {
+          if (!culpritIds.has(jId)) {
+            const lit = this.assertedLiterals.get(jId);
+            if (lit) {
+              culprits.push(lit);
+              culpritIds.add(jId);
+            } else {
+              culprits.push({
+                id: jId,
+                predicate: "crossTheoryAntecedent",
+                args: [varA, varB],
+                isNegated: false,
+              });
+              culpritIds.add(jId);
+            }
+          }
+        }
 
         return {
           isSat: false,
@@ -278,8 +396,26 @@ export class DimensionalTheoryOracle implements TheoryOracle {
     this.sharedEqualities.push(eq);
     const rootA = this.getCanonicalVar(eq.varA);
     const rootB = this.getCanonicalVar(eq.varB);
+    const justs = eq.justifications ?? eq.justification ?? [];
     if (rootA !== rootB) {
       this.aliases.set(rootA, rootB);
     }
+    const finalRoot = this.getCanonicalVar(rootB);
+    if (!this.aliasJustifications.has(finalRoot)) {
+      this.aliasJustifications.set(finalRoot, new Set());
+    }
+    const targetSet = this.aliasJustifications.get(finalRoot)!;
+    for (const j of justs) {
+      targetSet.add(j);
+    }
+    const jA = this.aliasJustifications.get(rootA);
+    if (jA && jA !== targetSet) {
+      for (const j of jA) targetSet.add(j);
+    }
+    const jB = this.aliasJustifications.get(rootB);
+    if (jB && jB !== targetSet) {
+      for (const j of jB) targetSet.add(j);
+    }
+    this.drainPendingOps();
   }
 }

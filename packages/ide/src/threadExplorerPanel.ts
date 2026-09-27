@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as vscode from "vscode";
-import type { LanguageClient } from "vscode-languageclient/browser";
+import type { LanguageClient } from "vscode-languageclient/browser.js";
 
 export class ThreadExplorerPanel {
   public static currentPanel: ThreadExplorerPanel | undefined;
@@ -36,6 +36,13 @@ export class ThreadExplorerPanel {
     this._client = client;
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+
+    // Listen to real-time digital thread status updates from the language server
+    const notifDisposable = this._client.onNotification("modelscript/threadStatusChanged", (event) => {
+      this._panel.webview.postMessage({ type: "threadStatusChanged", event });
+      this.refresh();
+    });
+    this._disposables.push(notifDisposable);
 
     this._panel.webview.onDidReceiveMessage(
       async (msg) => {

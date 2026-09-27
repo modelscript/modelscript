@@ -52,6 +52,7 @@ export function box(opts: BoxOptions): BoxSolid {
     width: opts.width,
     height: opts.height,
     depth: opts.depth,
+    sourceMetadata: opts.sourceMetadata,
   });
 }
 
@@ -70,6 +71,7 @@ export function cylinder(opts: CylinderOptions): CylinderSolid {
     radius: opts.radius,
     height: opts.height,
     segments: opts.segments ?? 24,
+    sourceMetadata: opts.sourceMetadata,
   });
 }
 
@@ -88,6 +90,7 @@ export function sphere(opts: SphereOptions): SphereSolid {
     radius: opts.radius,
     widthSegments: opts.widthSegments ?? 16,
     heightSegments: opts.heightSegments ?? 12,
+    sourceMetadata: opts.sourceMetadata,
   });
 }
 
@@ -107,6 +110,7 @@ export function torus(opts: TorusOptions): TorusSolid {
     minor: opts.minor,
     majorSegments: opts.majorSegments ?? 24,
     minorSegments: opts.minorSegments ?? 8,
+    sourceMetadata: opts.sourceMetadata,
   });
 }
 

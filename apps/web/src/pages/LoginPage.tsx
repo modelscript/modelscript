@@ -182,7 +182,7 @@ const FooterText = styled.p`
   max-width: 300px;
 
   a {
-    color: #1f1f1f;
+    color: #1d9bf0;
     text-decoration: none;
     font-weight: bold;
 
@@ -197,6 +197,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState(import.meta.env.DEV ? "password" : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotNotice, setForgotNotice] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -247,6 +248,23 @@ export default function LoginPage() {
 
         <Form onSubmit={handleSubmit}>
           {error && <ErrorBanner>{error}</ErrorBanner>}
+          {forgotNotice && (
+            <div
+              style={{
+                background: "rgba(56, 139, 253, 0.12)",
+                border: "1px solid rgba(56, 139, 253, 0.35)",
+                color: "var(--color-accent-blue, #58a6ff)",
+                padding: "10px 14px",
+                borderRadius: "6px",
+                fontSize: "13px",
+                textAlign: "left",
+                lineHeight: "1.4",
+              }}
+            >
+              For self-hosted instances, default dev credentials are <strong>dev@modelscript.org / password</strong>.
+              For managed accounts, please contact your workspace administrator to reset your password.
+            </div>
+          )}
           <Input
             type="email"
             value={email}
@@ -267,8 +285,12 @@ export default function LoginPage() {
           </Button>
           <Button
             type="button"
-            onClick={() => navigate("/forgot-password")}
-            style={{ backgroundColor: "transparent", color: "#1f1f1f", border: "1px solid #cfd9de" }}
+            onClick={() => setForgotNotice(true)}
+            style={{
+              backgroundColor: "transparent",
+              color: "var(--color-fg-default, #c9d1d9)",
+              border: "1px solid var(--color-border-default, rgba(255,255,255,0.15))",
+            }}
           >
             Forgot password?
           </Button>

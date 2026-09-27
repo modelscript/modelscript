@@ -1,5 +1,6 @@
 import { BinOp, Causality, EqKind, type IDaeBuilder, Variability, VarType } from "@modelscript/runtime";
 import type { SnapshotMatrixDataset } from "./cfd-snapshot-collector.js";
+import { computeMultivariateBounds, type MultivariateBounds } from "./multivariate-bounds.js";
 
 export interface PodTrainConfig {
   /** Target cumulative kinetic energy fraction to capture (default: 0.99 = 99%). */
@@ -25,6 +26,8 @@ export interface PodSurrogateData {
   polyDegree: number;
   parameterNames: string[];
   scalarOutputNames: string[];
+  parameterBounds?: Record<string, { min: number; max: number }>;
+  multivariateBounds?: MultivariateBounds;
   capturedEnergy: number;
   eigenvalues: number[];
   meanField: number[];
@@ -51,6 +54,8 @@ export class CfdPodSurrogate {
 
   public readonly parameterNames: string[];
   public readonly scalarOutputNames: string[];
+  public readonly parameterBounds?: Record<string, { min: number; max: number }>;
+  public readonly multivariateBounds?: MultivariateBounds;
 
   // Regression coefficients: mapping polynomial basis of parameters to latent coordinates
   public readonly latentCoeffs: Float64Array[]; // k vectors of polynomial coefficients
@@ -69,6 +74,8 @@ export class CfdPodSurrogate {
     latentCoeffs: Float64Array[],
     scalarCoeffs: Float64Array[],
     polyDegree: number,
+    parameterBounds?: Record<string, { min: number; max: number }>,
+    multivariateBounds?: MultivariateBounds,
   ) {
     this.numFeatures = numFeatures;
     this.numModes = numModes;
@@ -81,6 +88,8 @@ export class CfdPodSurrogate {
     this.latentCoeffs = latentCoeffs;
     this.scalarCoeffs = scalarCoeffs;
     this.polyDegree = polyDegree;
+    this.parameterBounds = parameterBounds;
+    this.multivariateBounds = multivariateBounds;
   }
 
   /**
@@ -230,6 +239,37 @@ export class CfdPodSurrogate {
       scalarCoeffs.push(coeffs);
     }
 
+    // Compute parameter bounds for extrapolation guardrails
+    const parameterBounds: Record<string, { min: number; max: number }> = {};
+    for (let p = 0; p < P; p++) {
+      let min = Infinity;
+      let max = -Infinity;
+      for (let j = 0; j < M; j++) {
+        const val = dataset.parameters[j * P + p]!;
+        if (val < min) min = val;
+        if (val > max) max = val;
+      }
+      parameterBounds[dataset.parameterNames[p]!] = { min, max };
+    }
+
+    // Compute multivariate bounds
+    let multivariateBounds: MultivariateBounds | undefined;
+    try {
+      const paramRows: number[][] = [];
+      for (let j = 0; j < M; j++) {
+        const row: number[] = [];
+        for (let p = 0; p < P; p++) {
+          row.push(dataset.parameters[j * P + p]!);
+        }
+        paramRows.push(row);
+      }
+      if (paramRows.length > 0 && P > 0) {
+        multivariateBounds = computeMultivariateBounds(paramRows);
+      }
+    } catch {
+      // Fall back gracefully
+    }
+
     return new CfdPodSurrogate(
       N,
       k,
@@ -242,6 +282,8 @@ export class CfdPodSurrogate {
       latentCoeffs,
       scalarCoeffs,
       polyDegree,
+      parameterBounds,
+      multivariateBounds,
     );
   }
 
@@ -316,6 +358,8 @@ export class CfdPodSurrogate {
       polyDegree: this.polyDegree,
       parameterNames: [...this.parameterNames],
       scalarOutputNames: [...this.scalarOutputNames],
+      parameterBounds: this.parameterBounds ? { ...this.parameterBounds } : undefined,
+      multivariateBounds: this.multivariateBounds ? { ...this.multivariateBounds } : undefined,
       capturedEnergy: this.capturedEnergy,
       eigenvalues: [...this.eigenvalues],
       meanField: Array.from(this.meanField),

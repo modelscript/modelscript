@@ -356,11 +356,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                   borderRadius: "9999px",
                   fontSize: "17px",
                   padding: "14px 24px",
-                  backgroundColor: "#1f1f1f",
+                  backgroundColor: "var(--color-accent-emphasis, #1d9bf0)",
                   color: "white",
                   border: "none",
                   fontWeight: "bold",
                   cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(29, 155, 240, 0.25)",
+                  transition: "opacity 0.2s ease, transform 0.1s ease",
                 }}
                 onClick={onPostClick}
                 className="post-btn"

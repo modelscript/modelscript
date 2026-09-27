@@ -6,7 +6,7 @@
  * multiplication when chained.
  */
 
-import type { Mat4, Solid, TransformSolid, Vec3 } from "./types.js";
+import type { Mat4, Solid, SolidSourceMetadata, TransformSolid, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
 
 // ── Matrix helpers ───────────────────────────────────────────────────────
@@ -97,7 +97,12 @@ export function mirrorMatrix(planeNormal: Vec3): Mat4 {
 
 // ── Transform constructors ───────────────────────────────────────────────
 
-function wrapTransform(child: Solid, matrix: Mat4, namePrefix: string): TransformSolid {
+function wrapTransform(
+  child: Solid,
+  matrix: Mat4,
+  namePrefix: string,
+  sourceMetadata?: SolidSourceMetadata,
+): TransformSolid {
   // If the child is already a transform, compose the matrices
   if (child.kind === SolidKind.Transform) {
     return Object.freeze({
@@ -105,6 +110,7 @@ function wrapTransform(child: Solid, matrix: Mat4, namePrefix: string): Transfor
       name: child.name,
       child: child.child,
       matrix: mat4Multiply(matrix, child.matrix),
+      sourceMetadata: sourceMetadata ?? child.sourceMetadata,
     });
   }
   return Object.freeze({
@@ -112,6 +118,7 @@ function wrapTransform(child: Solid, matrix: Mat4, namePrefix: string): Transfor
     name: `${namePrefix}_${child.name}`,
     child,
     matrix,
+    sourceMetadata: sourceMetadata ?? child.sourceMetadata,
   });
 }
 
@@ -123,8 +130,8 @@ function wrapTransform(child: Solid, matrix: Mat4, namePrefix: string): Transfor
  * const motorFR = translate(motor, [10, 1, 10]);
  * ```
  */
-export function translate(solid: Solid, offset: Vec3): TransformSolid {
-  return wrapTransform(solid, translationMatrix(offset), "Translate");
+export function translate(solid: Solid, offset: Vec3, sourceMetadata?: SolidSourceMetadata): TransformSolid {
+  return wrapTransform(solid, translationMatrix(offset), "Translate", sourceMetadata);
 }
 
 /**
@@ -135,8 +142,13 @@ export function translate(solid: Solid, offset: Vec3): TransformSolid {
  * const tilted = rotate(arm, [0, 1, 0], 45);
  * ```
  */
-export function rotate(solid: Solid, axis: Vec3, angleDeg: number): TransformSolid {
-  return wrapTransform(solid, rotationMatrix(axis, (angleDeg * Math.PI) / 180), "Rotate");
+export function rotate(
+  solid: Solid,
+  axis: Vec3,
+  angleDeg: number,
+  sourceMetadata?: SolidSourceMetadata,
+): TransformSolid {
+  return wrapTransform(solid, rotationMatrix(axis, (angleDeg * Math.PI) / 180), "Rotate", sourceMetadata);
 }
 
 /**
@@ -148,8 +160,8 @@ export function rotate(solid: Solid, axis: Vec3, angleDeg: number): TransformSol
  * const flat = scale(part, [1, 0.5, 1]); // squash Y
  * ```
  */
-export function scale(solid: Solid, factor: Vec3 | number): TransformSolid {
-  return wrapTransform(solid, scaleMatrix(factor), "Scale");
+export function scale(solid: Solid, factor: Vec3 | number, sourceMetadata?: SolidSourceMetadata): TransformSolid {
+  return wrapTransform(solid, scaleMatrix(factor), "Scale", sourceMetadata);
 }
 
 /**
@@ -160,11 +172,15 @@ export function scale(solid: Solid, factor: Vec3 | number): TransformSolid {
  * const motorFL = mirror(motorFR, "yz");
  * ```
  */
-export function mirror(solid: Solid, plane: "xy" | "xz" | "yz" | Vec3): TransformSolid {
+export function mirror(
+  solid: Solid,
+  plane: "xy" | "xz" | "yz" | Vec3,
+  sourceMetadata?: SolidSourceMetadata,
+): TransformSolid {
   let normal: Vec3;
   if (plane === "yz") normal = [1, 0, 0];
   else if (plane === "xz") normal = [0, 1, 0];
   else if (plane === "xy") normal = [0, 0, 1];
   else normal = plane;
-  return wrapTransform(solid, mirrorMatrix(normal), "Mirror");
+  return wrapTransform(solid, mirrorMatrix(normal), "Mirror", sourceMetadata);
 }

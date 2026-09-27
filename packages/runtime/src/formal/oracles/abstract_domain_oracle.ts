@@ -24,8 +24,11 @@ export class AbstractDomainOracle implements TheoryOracle {
     dbm: OctagonDBM;
     varToIdx: Map<string, number>;
     idxToVar: string[];
+    dirtyIndices: Set<number>;
     assertedLitIds: number[];
   }[] = [];
+
+  private dirtyIndices = new Set<number>();
 
   constructor(maxVars = 64) {
     this.dbm = new OctagonDBM(maxVars);
@@ -35,6 +38,7 @@ export class AbstractDomainOracle implements TheoryOracle {
   public reset(): void {
     this.varToIdx.clear();
     this.idxToVar = [];
+    this.dirtyIndices.clear();
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
     this.sharedEqualities = [];
@@ -47,6 +51,7 @@ export class AbstractDomainOracle implements TheoryOracle {
       dbm: this.dbm.clone(),
       varToIdx: new Map(this.varToIdx),
       idxToVar: [...this.idxToVar],
+      dirtyIndices: new Set(this.dirtyIndices),
       assertedLitIds: [],
     });
   }
@@ -57,6 +62,7 @@ export class AbstractDomainOracle implements TheoryOracle {
     this.dbm = top.dbm;
     this.varToIdx = top.varToIdx;
     this.idxToVar = top.idxToVar;
+    this.dirtyIndices = top.dirtyIndices;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
@@ -90,6 +96,8 @@ export class AbstractDomainOracle implements TheoryOracle {
         const idxA = this.getOrAllocVar(varA);
         const idxB = this.getOrAllocVar(varB);
         this.dbm.assumeDiff(idxA, idxB, maxDiff);
+        this.dirtyIndices.add(idxA);
+        this.dirtyIndices.add(idxB);
         break;
       }
       case "time_succession": {
@@ -101,12 +109,15 @@ export class AbstractDomainOracle implements TheoryOracle {
         this.dbm.assumeDiff(idxB, idxA, maxDelay);
         // t_A - t_B <= -minDelay (equivalent to t_B - t_A >= minDelay)
         this.dbm.assumeDiff(idxA, idxB, -minDelay);
+        this.dirtyIndices.add(idxA);
+        this.dirtyIndices.add(idxB);
         break;
       }
       case "interval": {
         const [varName, lo, hi] = args as [string, number, number];
         const idx = this.getOrAllocVar(varName);
         this.dbm.assumeInterval(idx, lo, hi);
+        this.dirtyIndices.add(idx);
         break;
       }
       case "equal": {
@@ -115,6 +126,8 @@ export class AbstractDomainOracle implements TheoryOracle {
         const idxB = this.getOrAllocVar(varB);
         this.dbm.assumeDiff(idxA, idxB, 0);
         this.dbm.assumeDiff(idxB, idxA, 0);
+        this.dirtyIndices.add(idxA);
+        this.dirtyIndices.add(idxB);
         break;
       }
     }
@@ -132,10 +145,12 @@ export class AbstractDomainOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     // Replay remaining asserted literals and re-apply shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
     const savedShared = [...this.sharedEqualities];
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
@@ -161,31 +176,46 @@ export class AbstractDomainOracle implements TheoryOracle {
   }
 
   public propagateEqualities(): SharedEquality[] {
+    if (this.dirtyIndices.size === 0) return [];
+
     const equalities: SharedEquality[] = [];
     const n = this.idxToVar.length;
 
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        // If x_i - x_j <= 0 and x_j - x_i <= 0, then x_i == x_j
-        if (this.dbm.checkDiff(i, j, 0) && this.dbm.checkDiff(j, i, 0)) {
-          const varA = this.idxToVar[i]!;
-          const varB = this.idxToVar[j]!;
+    for (const i of this.dirtyIndices) {
+      if (i >= n) continue;
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const low = Math.min(i, j);
+        const high = Math.max(i, j);
+        // If x_low - x_high <= 0 and x_high - x_low <= 0, then x_low == x_high
+        if (this.dbm.checkDiff(low, high, 0) && this.dbm.checkDiff(high, low, 0)) {
+          const varA = this.idxToVar[low]!;
+          const varB = this.idxToVar[high]!;
           const key = varA < varB ? `${varA}==${varB}` : `${varB}==${varA}`;
 
           if (!this.propagatedEqualities.has(key)) {
             this.propagatedEqualities.add(key);
+            const justs: number[] = [];
+            for (const lit of this.assertedLiterals.values()) {
+              if (lit.args.includes(varA) || lit.args.includes(varB)) {
+                justs.push(lit.id);
+              }
+            }
             equalities.push({
               varA,
               varB,
               domain: "interval",
               explanation: `Deduced from difference bounds: (${varA} - ${varB} <= 0) and (${varB} - ${varA} <= 0)`,
               sourceOracle: this.name,
+              justifications: justs,
+              justification: justs,
             });
           }
         }
       }
     }
 
+    this.dirtyIndices.clear();
     return equalities;
   }
 
@@ -196,6 +226,8 @@ export class AbstractDomainOracle implements TheoryOracle {
       const idxB = this.getOrAllocVar(eq.varB);
       this.dbm.assumeDiff(idxA, idxB, 0);
       this.dbm.assumeDiff(idxB, idxA, 0);
+      this.dirtyIndices.add(idxA);
+      this.dirtyIndices.add(idxB);
       if (eq.bounds) {
         this.dbm.assumeInterval(idxA, eq.bounds[0], eq.bounds[1]);
         this.dbm.assumeInterval(idxB, eq.bounds[0], eq.bounds[1]);

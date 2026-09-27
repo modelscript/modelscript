@@ -76,6 +76,14 @@ await yargs(rawArgs)
       "Daemon",
     ),
   )
+  .command(
+    lazy(
+      "cloud <action> [target]",
+      "Manage cloud HPC jobs, compute profiles, credit wallet, and live telemetry",
+      () => import("./commands/cloud.js"),
+      "Cloud",
+    ),
+  )
   // Modeling & Simulation
   .command(
     lazy(
@@ -137,8 +145,8 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
-      "surrogate <name> <paths..>",
-      "Train an AI surrogate model (ROM) and generate WebAssembly C source",
+      "surrogate <name> [paths..]",
+      "Train or import an AI surrogate model (ROM) and generate C, ONNX, or Modelica code",
       () => import("./commands/surrogate.js"),
       "Surrogate",
     ),
@@ -257,6 +265,14 @@ await yargs(rawArgs)
     ),
   )
   // Digital Thread, Enterprise Coexistence & Brownfield Alignment
+  .command(
+    lazy(
+      "polyglot <action>",
+      "Multi-domain TGG projection, formal verification, and digital thread tracking",
+      () => import("./commands/polyglot.js"),
+      "Polyglot",
+    ),
+  )
   .command(
     lazy(
       "align <source> <target>",

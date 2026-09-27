@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { API_BASE_URL } from "../../config";
 import Box from "../Box";
 import AasPackageViewer from "./AasPackageViewer";
+import ArtifactPlaceholder from "./ArtifactPlaceholder";
 import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
 import CfdAnimationViewer from "./CfdAnimationViewer";
@@ -261,15 +262,10 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
                   ? "pdf"
                   : "generic";
             return (
-              <img
-                src={`/placeholders/${placeholderType}_${resolvedColorMode === "dark" ? "dark" : "light"}.png`}
-                alt="thumbnail placeholder"
-                style={{
-                  width: "100%",
-                  display: "block",
-                  objectFit: "cover",
-                  filter: "brightness(0.7) blur(2px)",
-                }}
+              <ArtifactPlaceholder
+                type={placeholderType}
+                title={artifact.name || artifact.view_type}
+                aspectRatio="16 / 9"
               />
             );
           })()}

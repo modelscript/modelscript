@@ -16,6 +16,7 @@ import {
   Grid,
   Html,
   OrbitControls,
+  TransformControls,
   useGLTF,
 } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -45,6 +46,19 @@ export interface CadPortAnnotation {
   offsetScale?: [number, number, number];
 }
 
+export interface GizmoCommitPayload {
+  componentName: string;
+  delta: [number, number, number];
+  newPosition: [number, number, number];
+  sourceMetadata?: {
+    parameterName?: string;
+    transformMethod?: string;
+    argIndex?: number;
+    startByte?: number;
+    endByte?: number;
+  };
+}
+
 export interface CadComponent {
   /** Qualified Modelica variable name, e.g. "body1" */
   name: string;
@@ -54,6 +68,14 @@ export interface CadComponent {
   ports?: { name: string; port: CadPortAnnotation }[];
   /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
   dynamicBindings?: { property: string; index: number; variable: string }[];
+  /** Source code metadata linking to AST parameters */
+  sourceMetadata?: {
+    parameterName?: string;
+    transformMethod?: string;
+    argIndex?: number;
+    startByte?: number;
+    endByte?: number;
+  };
 }
 
 interface CadViewerProps {
@@ -65,6 +87,8 @@ interface CadViewerProps {
   selectedName?: string | null;
   /** Callback when user selects a 3D object */
   onSelect?: (name: string | null) => void;
+  /** Callback when user drags and releases a 3D direct-manipulation transform/dimension gizmo */
+  onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
   /** Dark mode toggle */
   dark?: boolean;
   /** Animation controller for simulation-driven animation */
@@ -131,12 +155,14 @@ function CadModel({
   selected,
   onSelect,
   animationController,
+  onCommitGizmoDelta,
 }: {
   component: CadComponent;
   assetBaseUrl: string;
   selected: boolean;
   onSelect?: (name: string | null) => void;
   animationController?: AnimationController | null;
+  onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const { scene } = useGLTF(url);
@@ -146,6 +172,44 @@ function CadModel({
   const [inspectorValues, setInspectorValues] = useState<
     { variable: string; property: string; index: number; value: number | null }[]
   >([]);
+
+  // Gizmo dragging & delta state
+  const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
+  const [gizmoDelta, setGizmoDelta] = useState<[number, number, number]>([0, 0, 0]);
+  const initialGizmoPosRef = useRef<[number, number, number]>(component.cad.position ?? [0, 0, 0]);
+
+  useEffect(() => {
+    initialGizmoPosRef.current = component.cad.position ?? [0, 0, 0];
+    setGizmoDelta([0, 0, 0]);
+  }, [component.cad.position]);
+
+  const handleGizmoChange = useCallback(() => {
+    if (!groupRef.current) return;
+    const cur = groupRef.current.position;
+    const init = initialGizmoPosRef.current;
+    setGizmoDelta([cur.x - init[0], cur.y - init[1], cur.z - init[2]]);
+    setIsDraggingGizmo(true);
+  }, []);
+
+  const handleGizmoMouseUp = useCallback(() => {
+    if (!groupRef.current) return;
+    setIsDraggingGizmo(false);
+    const cur = groupRef.current.position;
+    const init = initialGizmoPosRef.current;
+    const dx = cur.x - init[0];
+    const dy = cur.y - init[1];
+    const dz = cur.z - init[2];
+    if (Math.hypot(dx, dy, dz) > 1e-4) {
+      onCommitGizmoDelta?.({
+        componentName: component.name,
+        delta: [dx, dy, dz],
+        newPosition: [cur.x, cur.y, cur.z],
+        sourceMetadata: component.sourceMetadata,
+      });
+      initialGizmoPosRef.current = [cur.x, cur.y, cur.z];
+      setGizmoDelta([0, 0, 0]);
+    }
+  }, [component.name, component.sourceMetadata, onCommitGizmoDelta]);
 
   // Ghost trail state (bypass React for performance)
   const maxTrailPoints = 300;
@@ -290,6 +354,28 @@ function CadModel({
           </Html>
         )}
 
+        {isDraggingGizmo && (
+          <Html position={[0, 1.2, 0]} center style={{ pointerEvents: "none", zIndex: 20 }}>
+            <div
+              style={{
+                background: "rgba(15, 23, 42, 0.9)",
+                backdropFilter: "blur(6px)",
+                color: "#38bdf8",
+                padding: "4px 8px",
+                borderRadius: "6px",
+                border: "1px solid rgba(56, 189, 248, 0.4)",
+                fontSize: "11px",
+                fontFamily: "monospace",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+              }}
+            >
+              Δ: [{gizmoDelta[0].toFixed(2)}, {gizmoDelta[1].toFixed(2)}, {gizmoDelta[2].toFixed(2)}]
+            </div>
+          </Html>
+        )}
+
         {component.ports?.map((p) => (
           <PortIndicator
             key={p.name}
@@ -299,6 +385,16 @@ function CadModel({
           />
         ))}
       </group>
+
+      {/* 3D Direct Manipulation Transform Gizmo attached to selected component */}
+      {selected && (!animationController || animationController.mode === "stopped") && (
+        <TransformControls
+          object={groupRef}
+          mode="translate"
+          onObjectChange={handleGizmoChange}
+          onMouseUp={handleGizmoMouseUp}
+        />
+      )}
 
       {/* Ghost trail (world space) */}
       {selected && <primitive object={trailLine} />}
@@ -312,6 +408,7 @@ function SceneContents({
   assetBaseUrl,
   selectedName,
   onSelect,
+  onCommitGizmoDelta,
   dark,
   animationController,
   cfdPayload,
@@ -321,6 +418,7 @@ function SceneContents({
   assetBaseUrl: string;
   selectedName?: string | null;
   onSelect?: (name: string | null) => void;
+  onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
   dark?: boolean;
   animationController?: AnimationController | null;
   cfdPayload?: CfdMeshPayload | null;
@@ -381,6 +479,7 @@ function SceneContents({
             selected={selectedName === comp.name}
             onSelect={onSelect}
             animationController={animationController}
+            onCommitGizmoDelta={onCommitGizmoDelta}
           />
         ))}
       </group>
@@ -439,6 +538,7 @@ export default function CadViewer({
   assetBaseUrl = "/api/v1/libraries",
   selectedName,
   onSelect,
+  onCommitGizmoDelta,
   dark = false,
   animationController = null,
   cfdPayload = null,
@@ -493,6 +593,7 @@ export default function CadViewer({
           assetBaseUrl={assetBaseUrl}
           selectedName={selectedName}
           onSelect={onSelect}
+          onCommitGizmoDelta={onCommitGizmoDelta}
           dark={dark}
           animationController={animationController}
           cfdPayload={cfdPayload}

@@ -466,8 +466,8 @@ const RenderContent = ({ text }: { text: string | null }) => {
   useEffect(() => {
     if (!text || !containerRef.current) return;
 
-    let processedText = text.replace(/(^|\s)#(\w+)/g, "$1[#$2](/explore?q=$2)");
-    processedText = processedText.replace(/(^|\s)@(\w+)/g, "$1[@$2](/@$2)");
+    let processedText = text.replace(/(^|\s)#([a-zA-Z0-9_-]+)/g, "$1[#$2](/explore?q=$2)");
+    processedText = processedText.replace(/(^|\s)@([a-zA-Z0-9_.-]+)/g, "$1[@$2](/@$2)");
 
     const rawHtml = marked.parse(processedText, { breaks: true, gfm: true }) as string;
     const sanitizedHtml = DOMPurify.sanitize(rawHtml);
@@ -522,7 +522,6 @@ const RenderContent = ({ text }: { text: string | null }) => {
       }
     });
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPortals(newPortals);
     return () => setPortals([]);
   }, [text, navigate]);
@@ -605,7 +604,16 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     e.stopPropagation();
     e.preventDefault();
     setShowShareMenu(false);
-    alert("Downloading content...");
+    const content = displayPost.content || "";
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `post-${displayPost.id}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handlePostAsAttachment = (e: React.MouseEvent) => {

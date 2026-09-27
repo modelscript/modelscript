@@ -26,7 +26,7 @@ equation
 end TemperatureController;
 
 model BadSystem
-  "Connects pressure output to temperature input — unit mismatch!"
+  "Connects pressure output to temperature input - unit mismatch!"
   PressureSensor pressureSensor;
   TemperatureController tempController;
 equation

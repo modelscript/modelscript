@@ -8,6 +8,7 @@
 
 import { ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
+import { ArenaStringPool, stringPool_create } from "../core/string_pool";
 
 export const EXTENDS_STRIDE = 3;
 export const EXTENDS_CHILD = 0;
@@ -27,12 +28,16 @@ export class PolyglotArena {
   extendsData: ChunkedUint32Array;
   extendsCount: u32;
 
+  // High-performance string pool in linear memory for interning identifiers & text properties
+  stringPoolPtr: usize;
+
   init(maxLanguages: u32 = 16, initialExtends: u32 = 512): void {
     this.languageRoots = createChunkedUint32Array(maxLanguages);
     this.langVersions = createChunkedUint32Array(maxLanguages);
     this.languageCount = 0;
     this.extendsData = createChunkedUint32Array(initialExtends * EXTENDS_STRIDE);
     this.extendsCount = 0;
+    this.stringPoolPtr = stringPool_create();
   }
 
   @inline
@@ -112,11 +117,43 @@ export class PolyglotArena {
   }
 
   @inline
+  getStringPool(): ArenaStringPool {
+    return changetype<ArenaStringPool>(this.stringPoolPtr);
+  }
+
+  @inline
+  internString(strPtr: usize, len: u32): u32 {
+    if (this.stringPoolPtr == 0) return 0;
+    return this.getStringPool().intern(strPtr, len);
+  }
+
+  @inline
+  internStringUtf16(strPtr: usize, byteLen: u32): u32 {
+    if (this.stringPoolPtr == 0) return 0;
+    return this.getStringPool().internUtf16(strPtr, byteLen);
+  }
+
+  @inline
+  getStringOffset(id: u32): u32 {
+    if (this.stringPoolPtr == 0) return 0;
+    return this.getStringPool().getOffset(id);
+  }
+
+  @inline
+  getStringLength(id: u32): u32 {
+    if (this.stringPoolPtr == 0) return 0;
+    return this.getStringPool().getLength(id);
+  }
+
+  @inline
   reset(): void {
     this.languageCount = 0;
     this.extendsCount = 0;
     for (let i: u32 = 0; i < 16; i++) {
       this.langVersions.set(i, 0);
+    }
+    if (this.stringPoolPtr != 0) {
+      this.getStringPool().init();
     }
   }
 }
@@ -144,4 +181,24 @@ export function polyglot_incrementLangVersion(arenaPtr: usize, langId: u16): u32
 export function polyglot_hasLangChanged(arenaPtr: usize, langId: u16, snapshotVersion: u32): boolean {
   if (arenaPtr == 0) return true;
   return changetype<PolyglotArena>(arenaPtr).hasLangChanged(langId, snapshotVersion);
+}
+
+export function polyglot_getStringPool(arenaPtr: usize): usize {
+  if (arenaPtr == 0) return 0;
+  return changetype<PolyglotArena>(arenaPtr).stringPoolPtr;
+}
+
+export function polyglot_internString(arenaPtr: usize, strPtr: usize, len: u32): u32 {
+  if (arenaPtr == 0) return 0;
+  return changetype<PolyglotArena>(arenaPtr).internString(strPtr, len);
+}
+
+export function polyglot_getStringOffset(arenaPtr: usize, id: u32): u32 {
+  if (arenaPtr == 0) return 0;
+  return changetype<PolyglotArena>(arenaPtr).getStringOffset(id);
+}
+
+export function polyglot_getStringLength(arenaPtr: usize, id: u32): u32 {
+  if (arenaPtr == 0) return 0;
+  return changetype<PolyglotArena>(arenaPtr).getStringLength(id);
 }

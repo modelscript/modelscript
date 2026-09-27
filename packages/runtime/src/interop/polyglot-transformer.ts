@@ -19,7 +19,7 @@ import {
   type TheoryLiteral,
 } from "../formal/theory_coordinator.js";
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
-import { DigitalThreadHypergraph } from "./thread_hypergraph.js";
+import { DigitalThreadHypergraph, type BlastRadiusResult } from "./thread_hypergraph.js";
 import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
 
 /**
@@ -27,6 +27,8 @@ import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
  * Unifies AST and symbol representations across multiple source and target modeling languages.
  */
 export interface PolyglotNode {
+  /** Optional unique identifier of the node within its domain. */
+  id?: number;
   /** The primary unqualified identifier or name of the model element. */
   name: string;
   /** Optional syntactic or semantic kind (e.g., `"model"`, `"block"`, `"class"`, `"part def"`). */
@@ -94,10 +96,12 @@ export class PolyglotTransformer {
   private emitters = new Map<string, PolyglotEmitter>();
   /** Dynamic workspace type mapping registry. */
   public typeRegistry: WorkspaceTypeRegistry;
-  /** Formal Theory Coordinator orchestrating incremental satisfiability over TGG invariants */
+  /** Semantic theory coordinator for cross-domain constraint reasoning. */
   public coordinator: SemanticTheoryCoordinator;
   /** Tracked literal IDs per thread slot for incremental retraction */
   private threadSlotToLiteralIds = new Map<number, number[]>();
+  /** Reverse mapping of literal ID to thread slot */
+  private literalIdToThreadSlot = new Map<number, number>();
 
   /**
    * Initializes a new PolyglotTransformer instance.
@@ -127,6 +131,237 @@ export class PolyglotTransformer {
         }
       }
     }
+    this.registerDefaultEmitters();
+  }
+
+  /**
+   * Registers default code generation emitters for core supported engineering domains.
+   */
+  private registerDefaultEmitters(): void {
+    // 1. Modelica default emitter
+    this.registerEmitter("modelica", (node, transformer) => {
+      const lines: string[] = [];
+      const kind = node.isPartial || node.isAbstract ? "partial model" : node.kind || "model";
+      lines.push(`${kind} ${node.name}`);
+
+      const allExtends = [...(node.superclasses || []), ...(node.extends || [])];
+      for (const sup of allExtends) {
+        lines.push(`  extends ${sup};`);
+      }
+
+      if (node.attributes && node.attributes.length > 0) {
+        for (const attr of node.attributes) {
+          const valStr = attr.value !== undefined ? ` = ${attr.value}` : "";
+          lines.push(`  parameter ${attr.type} ${attr.name}${valStr};`);
+        }
+      }
+
+      if (node.ports && node.ports.length > 0) {
+        for (const port of node.ports) {
+          lines.push(`  ${port.type} ${port.name};`);
+        }
+      }
+
+      if (node.components && node.components.length > 0) {
+        for (const comp of node.components) {
+          const varPrefix = comp.variability ? `${comp.variability} ` : "";
+          const valStr = comp.defaultValue !== undefined ? ` = ${comp.defaultValue}` : "";
+          lines.push(`  ${varPrefix}${comp.typeSpecifier} ${comp.name}${valStr};`);
+        }
+      }
+
+      const inferred = transformer.getInferredFeatures(node.name);
+      for (const feat of inferred) {
+        const hasAttr = (node.attributes || []).some((a) => a.name === feat.name);
+        const hasPort = (node.ports || []).some((p) => p.name === feat.name);
+        const hasComp = (node.components || []).some((c) => c.name === feat.name);
+        if (!hasAttr && !hasPort && !hasComp) {
+          lines.push(`  parameter ${feat.type} ${feat.name}; // inferred`);
+        }
+      }
+
+      if (node.connections && node.connections.length > 0) {
+        lines.push("\nequation");
+        for (const conn of node.connections) {
+          lines.push(`  connect(${conn.source}, ${conn.target});`);
+        }
+      }
+
+      lines.push(`end ${node.name};`);
+      return lines.join("\n");
+    });
+
+    // 2. SysML v2 default emitter
+    this.registerEmitter("sysml2", (node, transformer) => {
+      const lines: string[] = [];
+      const prefix = node.isAbstract || node.isPartial ? "abstract " : "";
+      const allExtends = [...(node.superclasses || []), ...(node.extends || [])];
+      const extendsStr = allExtends.length > 0 ? ` extends ${allExtends.join(", ")}` : "";
+      lines.push(`${prefix}part def ${node.name}${extendsStr} {`);
+
+      if (node.attributes && node.attributes.length > 0) {
+        for (const attr of node.attributes) {
+          const valStr = attr.value !== undefined ? ` = ${attr.value}` : "";
+          lines.push(`  attribute ${attr.name}: ${attr.type}${valStr};`);
+        }
+      }
+
+      if (node.ports && node.ports.length > 0) {
+        for (const port of node.ports) {
+          lines.push(`  port ${port.name}: ${port.type};`);
+        }
+      }
+
+      if (node.components && node.components.length > 0) {
+        for (const comp of node.components) {
+          if (comp.variability === "parameter") {
+            const valStr = comp.defaultValue !== undefined ? ` = ${comp.defaultValue}` : "";
+            lines.push(`  attribute ${comp.name}: ${comp.typeSpecifier}${valStr};`);
+          } else {
+            lines.push(`  part ${comp.name}: ${comp.typeSpecifier};`);
+          }
+        }
+      }
+
+      const inferred = transformer.getInferredFeatures(node.name);
+      for (const feat of inferred) {
+        const hasAttr = (node.attributes || []).some((a) => a.name === feat.name);
+        const hasPort = (node.ports || []).some((p) => p.name === feat.name);
+        const hasComp = (node.components || []).some((c) => c.name === feat.name);
+        if (!hasAttr && !hasPort && !hasComp) {
+          lines.push(`  attribute ${feat.name}: ${feat.type}; // inferred from base`);
+        }
+      }
+
+      if (node.connections && node.connections.length > 0) {
+        let connIdx = 1;
+        for (const conn of node.connections) {
+          lines.push(`  connection c${connIdx++} connect ${conn.source} to ${conn.target};`);
+        }
+      }
+
+      lines.push(`}`);
+      return lines.join("\n");
+    });
+
+    // 3. OWL2 Functional Syntax default emitter
+    this.registerEmitter("owl2", (node) => {
+      const lines: string[] = [];
+      lines.push(`Declaration(Class(:${node.name}))`);
+      const allExtends = [...(node.superclasses || []), ...(node.extends || [])];
+      for (const sup of allExtends) {
+        lines.push(`SubClassOf(:${node.name} :${sup})`);
+      }
+      if (node.attributes) {
+        for (const attr of node.attributes) {
+          lines.push(
+            `DataPropertyAssertion(:has_${attr.name} :${node.name} "${attr.value ?? ""}"^^xsd:${attr.type.toLowerCase()})`,
+          );
+        }
+      }
+      return lines.join("\n");
+    });
+
+    // 4. CSV tabular default emitter
+    this.registerEmitter("csv", (node) => {
+      const rows: string[] = ["Name,Type,Value,Category"];
+      if (node.attributes) {
+        for (const a of node.attributes) {
+          rows.push(`${a.name},${a.type},${a.value ?? ""},attribute`);
+        }
+      }
+      if (node.ports) {
+        for (const p of node.ports) {
+          rows.push(`${p.name},${p.type},,port`);
+        }
+      }
+      if (node.components) {
+        for (const c of node.components) {
+          rows.push(`${c.name},${c.typeSpecifier},${c.defaultValue ?? ""},${c.variability ?? "component"}`);
+        }
+      }
+      return rows.join("\n");
+    });
+
+    // 5. JSON-Schema default emitter
+    this.registerEmitter("json-schema", (node) => {
+      const properties: Record<string, any> = {};
+      if (node.attributes) {
+        for (const a of node.attributes) {
+          properties[a.name] = {
+            type: a.type === "Real" || a.type === "Integer" ? "number" : a.type === "Boolean" ? "boolean" : "string",
+          };
+          if (a.value !== undefined) properties[a.name].default = a.value;
+        }
+      }
+      if (node.components) {
+        for (const c of node.components) {
+          properties[c.name] = { type: "object", description: c.typeSpecifier };
+        }
+      }
+      return JSON.stringify(
+        {
+          $schema: "http://json-schema.org/draft-07/schema#",
+          title: node.name,
+          type: "object",
+          properties,
+        },
+        null,
+        2,
+      );
+    });
+
+    // 6. OpenSCAD default emitter
+    this.registerEmitter("scad", (node) => {
+      const lines: string[] = [];
+      lines.push(`// Generated OpenSCAD module for ${node.name}`);
+      if (node.attributes && node.attributes.length > 0) {
+        for (const a of node.attributes) {
+          const val = a.value !== undefined ? a.value : "10";
+          lines.push(`${a.name} = ${val};`);
+        }
+      }
+      lines.push(`module ${node.name}() {`);
+      if (node.components && node.components.length > 0) {
+        for (const c of node.components) {
+          lines.push(`  // Component: ${c.name} (${c.typeSpecifier})`);
+          lines.push(`  ${c.typeSpecifier}();`);
+        }
+      } else {
+        lines.push(`  cube([10, 10, 10], center = true);`);
+      }
+      lines.push(`}`);
+      lines.push(`\n${node.name}();`);
+      return lines.join("\n");
+    });
+
+    // 7. STEP (ISO 10303-21) default emitter
+    this.registerEmitter("step", (node) => {
+      const lines: string[] = [];
+      lines.push("ISO-10303-21;");
+      lines.push("HEADER;");
+      lines.push("FILE_DESCRIPTION(('ModelScript Polyglot STEP Export'), '2;1');");
+      lines.push(`FILE_NAME('${node.name}.step', '2026-09-27', ('ModelScript'), ('Engineering'), '', '', '');`);
+      lines.push("FILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));");
+      lines.push("ENDSEC;");
+      lines.push("DATA;");
+      lines.push(`#10 = PRODUCT('${node.name}', '${node.name}', '', (#20));`);
+      lines.push("#20 = PRODUCT_CONTEXT('', #30, 'mechanical');");
+      lines.push("#30 = APPLICATION_CONTEXT('configuration controlled 3d designs');");
+      lines.push("#40 = PRODUCT_DEFINITION_FORMATION('1.0', '', #10);");
+      lines.push(`#50 = PRODUCT_DEFINITION('${node.name}_def', '', #40, #60);`);
+      lines.push("#60 = PRODUCT_DEFINITION_CONTEXT('part definition', #30, 'design');");
+      if (node.components && node.components.length > 0) {
+        let compId = 70;
+        for (const c of node.components) {
+          lines.push(`#${compId} = PRODUCT('${c.name}', '${c.name}', '${c.typeSpecifier}', (#20));`);
+          compId += 10;
+        }
+      }
+      lines.push("ENDSEC;");
+      lines.push("END-ISO-10303-21;");
+      return lines.join("\n");
+    });
   }
 
   /**
@@ -421,20 +656,73 @@ export class PolyglotTransformer {
   }
 
   /**
+   * Retrieves the thread slot containing a given literal ID.
+   */
+  getSlotForLiteralId(litId: number): number | undefined {
+    return this.literalIdToThreadSlot.get(litId);
+  }
+
+  /**
+   * Alias for getSlotForLiteralId: retrieves the thread slot containing a given literal ID.
+   */
+  getThreadSlotForLiteralId(litId: number): number | undefined {
+    return this.getSlotForLiteralId(litId);
+  }
+
+  /**
+   * Retrieves all literal IDs tracked for a given thread slot.
+   */
+  getLiteralIdsForThreadSlot(threadSlot: number): number[] {
+    return this.threadSlotToLiteralIds.get(threadSlot) || [];
+  }
+
+  /**
    * Asserts a TGG correspondence constraint into the Theory Coordinator for a thread slot.
    */
   assertTggConstraint(threadSlot: number, constraint: any, ruleName?: string): number {
-    const srcCtx = { ruleName, threadSlot, constraint };
+    const srcCtx = { ruleName, threadSlot, corrNodeId: constraint.corrNodeId, constraint };
     let lit: TheoryLiteral | null = null;
 
-    if (constraint.kind === "eq") {
+    if (constraint.kind === "eq" || constraint.kind === "equal") {
       lit = {
         id: 0,
-        predicate: "eq",
+        predicate: "equal",
         args: [constraint.args?.[0] ?? constraint.varA, constraint.args?.[1] ?? constraint.varB],
         domain: "constraint",
         sourceContext: srcCtx,
       };
+    } else if (constraint.kind === "reconcile" || constraint.kind === "reconcilePhysics") {
+      const vA = constraint.args?.[0] ?? constraint.sourceVar;
+      const vB = constraint.args?.[1] ?? constraint.targetVar;
+      const bounds = constraint.bounds ?? constraint.args?.[2];
+      const strategy =
+        constraint.kind === "reconcilePhysics"
+          ? "physics-simplex"
+          : typeof bounds === "string"
+            ? bounds
+            : (constraint.strategy ?? "smt-simplex");
+      lit = {
+        id: 0,
+        predicate: "equal",
+        args: [vA, vB],
+        domain: "constraint",
+        sourceContext: { ...srcCtx, strategy },
+      };
+      if (constraint.kind === "reconcilePhysics" && bounds && typeof bounds === "object") {
+        if (typeof bounds.min === "number" && typeof bounds.max === "number") {
+          const boundLitId = this.coordinator.assertLiteral({
+            id: 0,
+            predicate: "interval",
+            args: [vA, bounds.min, bounds.max],
+            domain: "constraint",
+            sourceContext: srcCtx,
+          });
+          const existing = this.threadSlotToLiteralIds.get(threadSlot) || [];
+          existing.push(boundLitId);
+          this.threadSlotToLiteralIds.set(threadSlot, existing);
+          this.literalIdToThreadSlot.set(boundLitId, threadSlot);
+        }
+      }
     } else if (constraint.kind === "interval") {
       lit = {
         id: 0,
@@ -444,7 +732,7 @@ export class PolyglotTransformer {
           constraint.min ?? constraint.args?.[1],
           constraint.max ?? constraint.args?.[2],
         ],
-        domain: "abstract_domain",
+        domain: "constraint",
         sourceContext: srcCtx,
       };
     } else if (constraint.kind === "diff") {
@@ -462,23 +750,36 @@ export class PolyglotTransformer {
     } else if (constraint.kind === "unit" || constraint.kind === "dimension") {
       lit = {
         id: 0,
-        predicate: "unit",
-        args: [constraint.varName ?? constraint.args?.[0], constraint.dimensionVector ?? constraint.args?.[1]],
+        predicate: "dimension",
+        args: [
+          constraint.varName ?? constraint.args?.[0],
+          constraint.dimensionVector ?? constraint.args?.[1] ?? constraint.unit,
+        ],
         domain: "constraint",
         sourceContext: srcCtx,
       };
-    } else if (constraint.kind === "flow" || constraint.kind === "conjugate") {
+    } else if (constraint.kind === "flow" || constraint.kind === "conjugate" || constraint.kind === "connect") {
+      if (constraint.direction || constraint.kind === "conjugate") {
+        lit = {
+          id: 0,
+          predicate: "flow_dir",
+          args: [constraint.portName ?? constraint.args?.[0], constraint.direction ?? constraint.args?.[1]],
+          domain: "constraint",
+          sourceContext: srcCtx,
+        };
+      } else {
+        lit = {
+          id: 0,
+          predicate: "connect",
+          args: [constraint.portA ?? constraint.args?.[0], constraint.portB ?? constraint.args?.[1]],
+          domain: "constraint",
+          sourceContext: srcCtx,
+        };
+      }
+    } else if (constraint.kind === "subsumes" || constraint.kind === "isa" || constraint.kind === "subClassOf") {
       lit = {
         id: 0,
-        predicate: "flow_dir",
-        args: [constraint.portName ?? constraint.args?.[0], constraint.direction ?? constraint.args?.[1]],
-        domain: "constraint",
-        sourceContext: srcCtx,
-      };
-    } else if (constraint.kind === "subsumes" || constraint.kind === "isa") {
-      lit = {
-        id: 0,
-        predicate: "subsumes",
+        predicate: constraint.kind === "isa" ? "isa" : "subClassOf",
         args: [constraint.subClass ?? constraint.args?.[0], constraint.superClass ?? constraint.args?.[1]],
         domain: "ontology",
         sourceContext: srcCtx,
@@ -497,6 +798,7 @@ export class PolyglotTransformer {
     const existing = this.threadSlotToLiteralIds.get(threadSlot) || [];
     existing.push(litId);
     this.threadSlotToLiteralIds.set(threadSlot, existing);
+    this.literalIdToThreadSlot.set(litId, threadSlot);
     return litId;
   }
 
@@ -507,6 +809,7 @@ export class PolyglotTransformer {
     const ids = this.threadSlotToLiteralIds.get(threadSlot) || [];
     for (const id of ids) {
       this.coordinator.retractLiteral(id);
+      this.literalIdToThreadSlot.delete(id);
     }
     this.threadSlotToLiteralIds.delete(threadSlot);
   }
@@ -536,6 +839,95 @@ export class PolyglotTransformer {
     }
 
     return satRes;
+  }
+
+  /**
+   * Synchronizes TGG rule constraints into the formal theory coordinator for a specific thread slot.
+   * Extracts constraints from rule.where, evaluates variable proxies, asserts literals,
+   * and updates DigitalThreadHypergraph status in place.
+   */
+  syncThreadRule(
+    threadSlot: number,
+    rule: TGGRuleOptions,
+    varBindings: Record<string, any> = {},
+  ): CoordinatorSatResult {
+    const vResolver = (name: string) => {
+      if (varBindings && name in varBindings) {
+        return varBindings[name];
+      }
+      return `__var_${name}`;
+    };
+
+    const rawConstraints = typeof rule.where === "function" ? rule.where(vResolver) : rule.where || [];
+    return this.syncThreadTheory(threadSlot, rawConstraints, rule.name);
+  }
+
+  /**
+   * Reconciles a dirty domain node in O(ΔN) by locating its thread slot,
+   * retracting previous constraints, and re-evaluating satisfiability in the Theory Coordinator.
+   */
+  reconcileNode(
+    domainName: string,
+    nodeId: number,
+    updatedConstraints: any[],
+    ruleName?: string,
+  ): CoordinatorSatResult | null {
+    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()];
+    if (domIdx === undefined) return null;
+    const slots = this.hypergraph.findSlotsByDomainNode(domIdx, nodeId);
+    if (slots.length === 0) return null;
+
+    let lastResult: CoordinatorSatResult | null = null;
+    for (const slot of slots) {
+      lastResult = this.syncThreadTheory(slot, updatedConstraints, ruleName);
+    }
+    return lastResult;
+  }
+
+  /**
+   * Invalidates all slots downstream of a changed domain node via computeBlastRadius,
+   * marking them stale in linear memory.
+   */
+  invalidateBlastRadius(domainName: string, nodeId: number): BlastRadiusResult | null {
+    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()];
+    if (domIdx === undefined) return null;
+    this.hypergraph.markBlastRadiusStale(domIdx, nodeId);
+    return this.hypergraph.computeBlastRadius(domIdx, nodeId);
+  }
+
+  /**
+   * Reconciles all slots impacted by a change to a domain node in O(ΔN).
+   * 1. Marks downstream slots stale via blast radius computation.
+   * 2. Re-evaluates theory constraints for the primary slots and any impacted stale slots.
+   */
+  reconcileBlastRadius(
+    domainName: string,
+    nodeId: number,
+    updatedConstraints: any[],
+    ruleName?: string,
+  ): {
+    blastRadius: BlastRadiusResult;
+    reconciledSlots: number[];
+    satResults: Map<number, CoordinatorSatResult>;
+  } | null {
+    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()];
+    if (domIdx === undefined) return null;
+
+    const blastRadius = this.hypergraph.computeBlastRadius(domIdx, nodeId);
+    this.hypergraph.markBlastRadiusStale(domIdx, nodeId);
+
+    const satResults = new Map<number, CoordinatorSatResult>();
+    const reconciledSlots: number[] = [];
+
+    // Directly reconcile the target slots
+    const directSlots = this.hypergraph.findSlotsByDomainNode(domIdx, nodeId);
+    for (const slot of directSlots) {
+      const res = this.syncThreadTheory(slot, updatedConstraints, ruleName);
+      satResults.set(slot, res);
+      reconciledSlots.push(slot);
+    }
+
+    return { blastRadius, reconciledSlots, satResults };
   }
 
   /**

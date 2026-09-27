@@ -49,6 +49,21 @@ export enum SolidKind {
   Extrusion = "extrusion",
 }
 
+// ── Solid source metadata ───────────────────────────────────────────────
+
+export interface SolidSourceMetadata {
+  /** Optional parameter name associated with this solid's dimensions or position (e.g., 'arm_length'). */
+  readonly parameterName?: string;
+  /** Fluent transform method name (e.g., 'translate', 'rotate', 'scale'). */
+  readonly transformMethod?: string;
+  /** Index of the argument in the method call. */
+  readonly argIndex?: number;
+  /** CST start byte in source code. */
+  readonly startByte?: number;
+  /** CST end byte in source code. */
+  readonly endByte?: number;
+}
+
 // ── Primitive option bags ────────────────────────────────────────────────
 
 export interface BoxOptions {
@@ -60,6 +75,7 @@ export interface BoxOptions {
   depth: number;
   /** Optional display name (propagated into STEP). */
   name?: string | undefined;
+  sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface CylinderOptions {
@@ -71,6 +87,7 @@ export interface CylinderOptions {
   segments?: number | undefined;
   /** Optional display name. */
   name?: string | undefined;
+  sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface SphereOptions {
@@ -82,6 +99,7 @@ export interface SphereOptions {
   heightSegments?: number | undefined;
   /** Optional display name. */
   name?: string | undefined;
+  sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface TorusOptions {
@@ -95,6 +113,7 @@ export interface TorusOptions {
   minorSegments?: number | undefined;
   /** Optional display name. */
   name?: string | undefined;
+  sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface ExtrusionOptions {
@@ -108,6 +127,7 @@ export interface ExtrusionOptions {
   scale?: number | undefined;
   /** Optional display name. */
   name?: string | undefined;
+  sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 // ── Solid node types ─────────────────────────────────────────────────────
@@ -118,6 +138,7 @@ export interface BoxSolid {
   readonly width: number;
   readonly height: number;
   readonly depth: number;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface ExtrusionSolid {
@@ -127,6 +148,7 @@ export interface ExtrusionSolid {
   readonly height: number;
   readonly twist?: number | undefined;
   readonly scale?: number | undefined;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface CylinderSolid {
@@ -135,6 +157,7 @@ export interface CylinderSolid {
   readonly radius: number;
   readonly height: number;
   readonly segments: number;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface SphereSolid {
@@ -143,6 +166,7 @@ export interface SphereSolid {
   readonly radius: number;
   readonly widthSegments: number;
   readonly heightSegments: number;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface TorusSolid {
@@ -152,6 +176,7 @@ export interface TorusSolid {
   readonly minor: number;
   readonly majorSegments: number;
   readonly minorSegments: number;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface TransformSolid {
@@ -159,6 +184,7 @@ export interface TransformSolid {
   readonly name: string;
   readonly child: Solid;
   readonly matrix: Mat4;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface BooleanSolid {
@@ -166,6 +192,7 @@ export interface BooleanSolid {
   readonly name: string;
   readonly left: Solid;
   readonly right: Solid;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export type BoundaryPatchType =
@@ -188,6 +215,7 @@ export interface TaggedPatchSolid {
   readonly name: string;
   readonly child: Solid;
   readonly tag: BoundaryPatchTag;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface FilletSolid {
@@ -196,6 +224,7 @@ export interface FilletSolid {
   readonly child: Solid;
   readonly radius: number;
   readonly edges?: readonly string[];
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 export interface ChamferSolid {
@@ -204,6 +233,7 @@ export interface ChamferSolid {
   readonly child: Solid;
   readonly distance: number;
   readonly edges?: readonly string[];
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 /** A node in the constructive solid geometry tree. */

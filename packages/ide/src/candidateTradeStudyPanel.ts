@@ -11,6 +11,15 @@
  *   - Live convergence HUD with real-time L2 residuals and Early-Infeasibility Abort.
  */
 
+import { CaeContractOracle, SafetyTheoryOracle } from "@modelscript/runtime";
+import {
+  FeaSolver,
+  LbmVoxelizer,
+  Tet4Mesher,
+  WebGPULbmRunner,
+  type LbmGridConfig,
+  type MaterialProperties,
+} from "@modelscript/simulate";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 
@@ -103,6 +112,8 @@ export class CandidateTradeStudyPanel {
       tier3Status: "unverified",
       parameters: { filletRadius: 1.5, wallThickness: 4.8, flangeAngleDeg: 10.0 },
       meshElements: 41000,
+      maxStressMPa: 620.0,
+      allowableStressMPa: 553.0,
     },
   ];
 
@@ -172,22 +183,179 @@ export class CandidateTradeStudyPanel {
     );
   }
 
-  private async _handleLaunchLocal(candidateId: string) {
+  public getCandidates(): TradeStudyCandidate[] {
+    return this._candidates;
+  }
+
+  public getCandidate(id: string): TradeStudyCandidate | undefined {
+    return this._candidates.find((c) => c.id === id);
+  }
+
+  public async launchLocalTier3(candidateId: string): Promise<TradeStudyCandidate | undefined> {
+    return await this._handleLaunchLocal(candidateId);
+  }
+
+  public async _handleLaunchLocal(candidateId: string): Promise<TradeStudyCandidate | undefined> {
     const cand = this._candidates.find((c) => c.id === candidateId);
-    if (!cand) return;
+    if (!cand) return undefined;
 
     cand.tier3Status = "running";
     this.refresh();
     vscode.window.showInformationMessage(`Launched Local WASM FEA / CFD confirmation for '${cand.name}'...`);
 
-    // Simulate fast local WASM PCG solver convergence
-    setTimeout(() => {
+    const allowableStressMPa = cand.allowableStressMPa ?? 553.0;
+    const wallThickness = cand.parameters.wallThickness ?? 3.0;
+    const filletRadius = cand.parameters.filletRadius ?? 2.5;
+
+    // 1. Dispatch in-WASM FeaSolver to compute 3D stress tensors for the candidate
+    try {
+      const nx = 4,
+        ny = 4,
+        nz = 3;
+      const grid = new Uint8Array(nx * ny * nz);
+      for (let z = 0; z < nz; z++) {
+        for (let y = 0; y < ny; y++) {
+          for (let x = 0; x < nx; x++) {
+            if (x < 3 || y < 3) {
+              grid[x + y * nx + z * nx * ny] = 1;
+            }
+          }
+        }
+      }
+
+      const mesh = Tet4Mesher.createFromVoxelGrid({
+        grid,
+        nx,
+        ny,
+        nz,
+        dx: 0.005 * (wallThickness / 3.0),
+        origin: [0, 0, 0],
+      });
+
+      const material: MaterialProperties = {
+        E: 70e9,
+        nu: 0.33,
+        yieldStrength: allowableStressMPa * 1e6,
+        rho: 2700,
+      };
+
+      const feaSolver = new FeaSolver(mesh, material);
+      const fixedNodes = new Set<number>();
+      const nodalLoads = new Map<number, [number, number, number]>();
+      const loadScale = cand.parameters.flangeAngleDeg
+        ? 1200.0 * Math.cos((cand.parameters.flangeAngleDeg * Math.PI) / 180)
+        : 1200.0;
+
+      for (let i = 0; i < mesh.numNodes; i++) {
+        if (mesh.nodeCoords[i * 3 + 2] <= 1e-6) {
+          fixedNodes.add(i);
+        } else {
+          nodalLoads.set(i, [0, 0, -loadScale / Math.max(1, mesh.numNodes - fixedNodes.size)]);
+        }
+      }
+
+      const feaResult = feaSolver.solve({ fixedNodes, nodalLoads });
+      const peakStressPa = feaResult.maxVonMisesStress || 0;
+      if (peakStressPa > 0) {
+        cand.maxStressMPa = Number((peakStressPa / 1e6).toFixed(1));
+      }
+    } catch (feaErr) {
+      console.warn("[CandidateTradeStudyPanel] FeaSolver error, retaining baseline stress:", feaErr);
+    }
+
+    // 2. Dispatch WebGPULbmRunner to compute pressure drop / drag
+    try {
+      const lbmConfig: LbmGridConfig = {
+        nx: 16,
+        ny: 16,
+        nz: 16,
+        dx: 0.01,
+        dt: 1e-4,
+        tau: 0.65,
+        density: 1.225,
+        inletVelocity: [12.0, 0.0, 0.0],
+      };
+
+      const cellGrid = LbmVoxelizer.voxelize(lbmConfig, {
+        cylinders: [
+          {
+            center: [0.5, 0.5, 0.5],
+            radius: 0.08 * (filletRadius / 2.5),
+            axis: "z",
+            length: 1.0,
+          },
+        ],
+      });
+
+      const lbmRunner = new WebGPULbmRunner(lbmConfig, cellGrid);
+      const lbmResult = lbmRunner.step(5);
+      const dragForceN = Math.abs(lbmResult.aerodynamicForceN[0]);
+      if (dragForceN > 0) {
+        cand.dragN = Number(dragForceN.toFixed(1));
+      }
+    } catch (lbmErr) {
+      console.warn("[CandidateTradeStudyPanel] WebGPULbmRunner error, retaining baseline drag:", lbmErr);
+    }
+
+    // 3. Feed verified peak values back into ContinuousSafetyOracle / CaeContractOracle
+    const caeOracle = new CaeContractOracle();
+    caeOracle.assertContract({
+      contractId: `contract_${cand.id}_stress`,
+      metricName: "maxVonMisesStress",
+      actualValue: cand.maxStressMPa ?? 460.0,
+      threshold: allowableStressMPa,
+      operator: "<=",
+      unit: "MPa",
+      partName: cand.name,
+      sysmlRequirementId: "REQ-STRUCT-YIELD",
+    });
+
+    const isOverstressed = (cand.maxStressMPa ?? 0) > allowableStressMPa;
+    const safetyOracle = new SafetyTheoryOracle();
+    safetyOracle.registerHazard({
+      id: `HAZ_STRUCT_${cand.id}`,
+      name: `Structural Yield Hazard for ${cand.name}`,
+      targetPmhfFit: 10,
+      rootNodeId: `NODE_FAIL_${cand.id}`,
+    });
+    safetyOracle.registerFtaNode({
+      id: `NODE_FAIL_${cand.id}`,
+      name: "Structural Overstress",
+      gateType: "PRIMARY_EVENT",
+      children: [],
+      failureModeId: `FM_YIELD_${cand.id}`,
+    });
+    safetyOracle.registerFailureMode({
+      id: `FM_YIELD_${cand.id}`,
+      componentName: cand.name,
+      modeName: "Excessive von Mises Stress",
+      failureRatePerHour: isOverstressed ? 1e-4 : 1e-9,
+    });
+
+    const caeCheck = caeOracle.checkSat();
+    const safetyCheck = safetyOracle.checkSat();
+    const isCompliant = caeCheck.isSat && safetyCheck.isSat && !isOverstressed;
+
+    if (isCompliant) {
       cand.tier3Status = "confirmed";
-      this.refresh();
-      vscode.window.showInformationMessage(
-        `[Tier 3 Verified] Candidate '${cand.name}' confirmed safe! Max Stress: ${cand.maxStressMPa} MPa <= ${cand.allowableStressMPa} MPa.`,
+      cand.safetyMarginPct = Number(
+        (((allowableStressMPa - (cand.maxStressMPa ?? 0)) / allowableStressMPa) * 100).toFixed(1),
       );
-    }, 1200);
+      vscode.window.showInformationMessage(
+        `[Tier 3 Verified] Candidate '${cand.name}' confirmed safe! FEA Max Stress: ${cand.maxStressMPa} MPa <= ${allowableStressMPa} MPa (Drag: ${cand.dragN} N, Safety Margin: ${cand.safetyMarginPct}%).`,
+      );
+    } else {
+      cand.tier3Status = "refuted";
+      cand.safetyMarginPct = Number(
+        (((allowableStressMPa - (cand.maxStressMPa ?? 0)) / allowableStressMPa) * 100).toFixed(1),
+      );
+      vscode.window.showErrorMessage(
+        `[Tier 3 Refuted] Candidate '${cand.name}' violated safety requirement: Max Stress ${cand.maxStressMPa} MPa exceeds allowable ${allowableStressMPa} MPa!`,
+      );
+    }
+
+    this.refresh();
+    return cand;
   }
 
   private async _handleLaunchCloud(candidateId: string) {

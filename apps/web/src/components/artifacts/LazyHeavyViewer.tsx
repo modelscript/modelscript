@@ -2,6 +2,7 @@ import { PlayIcon } from "@primer/octicons-react";
 import { useTheme } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import Box from "../Box";
+import ArtifactPlaceholder from "./ArtifactPlaceholder";
 
 interface LazyHeavyViewerProps {
   artifactId: number;
@@ -90,20 +91,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
           }}
         />
       ) : (
-        <img
-          src={`/placeholders/${placeholderType}_${resolvedColorMode === "dark" ? "dark" : "light"}.png`}
-          alt={title || "Placeholder"}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            borderTopLeftRadius: "8px",
-            borderTopRightRadius: "8px",
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
-            filter: "brightness(0.7) blur(2px)",
-          }}
-        />
+        <ArtifactPlaceholder type={placeholderType} title={title} height="100%" />
       )}
 
       {/* Play button overlay */}

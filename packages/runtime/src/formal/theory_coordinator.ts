@@ -43,6 +43,8 @@ export interface SharedEquality {
   bounds?: [number, number];
   explanation?: string;
   sourceOracle?: string;
+  justifications?: number[];
+  justification?: number[];
 }
 
 export interface ConflictClause {
@@ -53,12 +55,14 @@ export interface ConflictClause {
 }
 
 export interface CoordinatorSatResult {
+  status: "SAT" | "UNSAT" | "UNKNOWN";
   isSat: boolean;
   conflict?: ConflictClause;
   sharedEqualities: SharedEquality[];
   models?: Record<string, any>;
   iterations: number;
   durationMs: number;
+  reason?: string;
 }
 
 export type PropagationEvent =
@@ -103,7 +107,9 @@ export class SemanticTheoryCoordinator {
   private knownEqualities = new Map<string, SharedEquality>();
   private parentMap = new Map<string, string>();
   private canonicalBounds = new Map<string, [number, number]>();
+  private canonicalBoundJustifications = new Map<string, Set<number>>();
   private varSubscribers = new Map<string, Set<TheoryOracle>>();
+  private canonSubscribers = new Map<string, Set<TheoryOracle>>();
   private domainSubscribers = new Map<TheoryDomain, Set<TheoryOracle>>();
   private dirtyOracles = new Set<string>();
   private worklist: PropagationEvent[] = [];
@@ -113,6 +119,8 @@ export class SemanticTheoryCoordinator {
     equalityKeys: string[];
     parentSnapshot?: Map<string, string>;
     boundsSnapshot?: Map<string, [number, number]>;
+    canonSubscribersSnapshot?: Map<string, Set<TheoryOracle>>;
+    boundJustificationsSnapshot?: Map<string, Set<number>>;
   }[] = [];
   private nextLitId = 1;
 
@@ -142,6 +150,12 @@ export class SemanticTheoryCoordinator {
       this.varSubscribers.set(varName, new Set());
     }
     this.varSubscribers.get(varName)!.add(oracle);
+
+    const canon = this.getCanonicalVar(varName);
+    if (!this.canonSubscribers.has(canon)) {
+      this.canonSubscribers.set(canon, new Set());
+    }
+    this.canonSubscribers.get(canon)!.add(oracle);
   }
 
   /**
@@ -149,6 +163,8 @@ export class SemanticTheoryCoordinator {
    */
   public unsubscribe(varName: string, oracle: TheoryOracle): void {
     this.varSubscribers.get(varName)?.delete(oracle);
+    const canon = this.getCanonicalVar(varName);
+    this.canonSubscribers.get(canon)?.delete(oracle);
   }
 
   /**
@@ -205,6 +221,27 @@ export class SemanticTheoryCoordinator {
         const hi = Math.min(bA ? bA[1] : Infinity, bB ? bB[1] : Infinity);
         this.canonicalBounds.set(rootB, [lo, hi]);
       }
+      // Merge justifications
+      const jA = this.canonicalBoundJustifications.get(rootA);
+      const jB = this.canonicalBoundJustifications.get(rootB);
+      if (jA || jB) {
+        if (!this.canonicalBoundJustifications.has(rootB)) {
+          this.canonicalBoundJustifications.set(rootB, new Set());
+        }
+        const setB = this.canonicalBoundJustifications.get(rootB)!;
+        if (jA) for (const id of jA) setB.add(id);
+      }
+      // Merge canonical subscribers
+      const subsA = this.canonSubscribers.get(rootA);
+      if (subsA && subsA.size > 0) {
+        if (!this.canonSubscribers.has(rootB)) {
+          this.canonSubscribers.set(rootB, new Set());
+        }
+        const subsB = this.canonSubscribers.get(rootB)!;
+        for (const oracle of subsA) {
+          subsB.add(oracle);
+        }
+      }
       return rootB;
     }
     return rootA;
@@ -228,8 +265,29 @@ export class SemanticTheoryCoordinator {
     if (predicate === "hyperplane" && args[0] && typeof args[0] === "object") {
       return Object.keys(args[0]);
     }
-    if (predicate === "bundleClosure" && Array.isArray(args[1])) {
-      return [...args[1]];
+    if (
+      predicate === "bundleClosure" ||
+      predicate === "subClassOf" ||
+      predicate === "disjoint" ||
+      predicate === "portType"
+    ) {
+      return [];
+    }
+    if (predicate === "type" || predicate === "isa" || predicate === "classAssertion") {
+      if (typeof args[0] === "string") vars.push(args[0]);
+      return vars;
+    }
+    if (predicate === "dimension" || predicate === "portUsage") {
+      if (typeof args[0] === "string") vars.push(args[0]);
+      return vars;
+    }
+    if (predicate === "distribution" || predicate === "probBound" || predicate === "sampleRate") {
+      if (typeof args[0] === "string") vars.push(args[0]);
+      return vars;
+    }
+    if (predicate === "requirement") {
+      if (typeof args[1] === "string") vars.push(args[1]);
+      return vars;
     }
 
     const extractVarsFromExprNode = (node: any, out: string[]): void => {
@@ -251,11 +309,37 @@ export class SemanticTheoryCoordinator {
       return vars;
     }
 
+    const reservedWords = new Set([
+      "<=",
+      ">=",
+      "==",
+      "<",
+      ">",
+      "!=",
+      "normal",
+      "uniform",
+      "exponential",
+      "weibull",
+      "kg",
+      "m",
+      "s",
+      "N",
+      "Pa",
+      "W",
+      "V",
+      "kN",
+      "MPa",
+      "degC",
+      "m/s",
+      "m/s2",
+      "rad/s",
+      "bar",
+      "J",
+    ]);
+
     for (const arg of args) {
       if (typeof arg === "string" && arg.length > 0 && !arg.includes(" ") && !arg.includes("\n")) {
-        if (
-          !["<=", ">=", "==", "<", ">", "!=", "normal", "uniform", "kg", "m", "s", "N", "Pa", "W", "V"].includes(arg)
-        ) {
+        if (!reservedWords.has(arg)) {
           vars.push(arg);
         }
       }
@@ -312,7 +396,7 @@ export class SemanticTheoryCoordinator {
         receivingOracles.push(oracle.name);
 
         for (const v of refVars) {
-          this.varSubscribers.get(v)!.add(oracle);
+          this.subscribe(v, oracle);
         }
       }
     }
@@ -329,6 +413,7 @@ export class SemanticTheoryCoordinator {
           bounds: [lo, hi],
           theoryDomain: fullLit.domain,
           sourceOracle: srcOracle,
+          justification: [id],
         });
       }
     } else if (fullLit.predicate === "bound" && Array.isArray(fullLit.args) && fullLit.args.length >= 3) {
@@ -345,6 +430,7 @@ export class SemanticTheoryCoordinator {
             bounds: b,
             theoryDomain: fullLit.domain,
             sourceOracle: srcOracle,
+            justification: [id],
           });
         }
       }
@@ -358,6 +444,7 @@ export class SemanticTheoryCoordinator {
           domain: "real",
           theoryDomain: fullLit.domain,
           sourceOracle: srcOracle,
+          justification: [id],
         });
       }
     } else if (fullLit.predicate === "sameIndividual" && Array.isArray(fullLit.args) && fullLit.args.length >= 2) {
@@ -370,6 +457,7 @@ export class SemanticTheoryCoordinator {
           domain: "concept",
           theoryDomain: fullLit.domain,
           sourceOracle: srcOracle,
+          justification: [id],
         });
       }
     }
@@ -433,11 +521,21 @@ export class SemanticTheoryCoordinator {
    * Pushes a backtracking decision level.
    */
   public pushLevel(): void {
+    const csSnapshot = new Map<string, Set<TheoryOracle>>();
+    for (const [k, v] of this.canonSubscribers.entries()) {
+      csSnapshot.set(k, new Set(v));
+    }
+    const bjSnapshot = new Map<string, Set<number>>();
+    for (const [k, v] of this.canonicalBoundJustifications.entries()) {
+      bjSnapshot.set(k, new Set(v));
+    }
     this.levelStack.push({
       literalIds: [],
       equalityKeys: [],
       parentSnapshot: new Map(this.parentMap),
       boundsSnapshot: new Map(this.canonicalBounds),
+      canonSubscribersSnapshot: csSnapshot,
+      boundJustificationsSnapshot: bjSnapshot,
     });
     for (const oracle of this.oracles.values()) {
       oracle.pushLevel?.();
@@ -454,7 +552,7 @@ export class SemanticTheoryCoordinator {
     this.memoizedResult = undefined;
 
     for (const id of top.literalIds) {
-      this.retractLiteral(id);
+      this.activeLiterals.delete(id);
     }
 
     for (const key of top.equalityKeys) {
@@ -467,9 +565,21 @@ export class SemanticTheoryCoordinator {
     if (top.boundsSnapshot) {
       this.canonicalBounds = top.boundsSnapshot;
     }
+    if (top.canonSubscribersSnapshot) {
+      this.canonSubscribers = top.canonSubscribersSnapshot;
+    }
+    if (top.boundJustificationsSnapshot) {
+      this.canonicalBoundJustifications = top.boundJustificationsSnapshot;
+    }
 
     for (const oracle of this.oracles.values()) {
-      oracle.popLevel?.();
+      if (oracle.popLevel) {
+        oracle.popLevel();
+      } else {
+        for (const id of top.literalIds) {
+          oracle.retractLiteral(id);
+        }
+      }
       this.dirtyOracles.add(oracle.name);
     }
   }
@@ -482,7 +592,9 @@ export class SemanticTheoryCoordinator {
     this.knownEqualities.clear();
     this.parentMap.clear();
     this.canonicalBounds.clear();
+    this.canonicalBoundJustifications.clear();
     this.varSubscribers.clear();
+    this.canonSubscribers.clear();
     this.domainSubscribers.clear();
     this.dirtyOracles.clear();
     this.worklist = [];
@@ -499,18 +611,13 @@ export class SemanticTheoryCoordinator {
    * Checks if an oracle is subscribed to a variable or any variable in its equivalence class.
    */
   private isSubscribedToVar(oracle: TheoryOracle, varName: string): boolean {
+    const canon = this.getCanonicalVar(varName);
+    const canonSubs = this.canonSubscribers.get(canon);
+    if (canonSubs && canonSubs.has(oracle)) return true;
+
     const directSubs = this.varSubscribers.get(varName);
     if (directSubs && directSubs.has(oracle)) return true;
 
-    const canon = this.getCanonicalVar(varName);
-    const canonSubs = this.varSubscribers.get(canon);
-    if (canonSubs && canonSubs.has(oracle)) return true;
-
-    for (const [v, subs] of this.varSubscribers.entries()) {
-      if (subs.has(oracle) && this.getCanonicalVar(v) === canon) {
-        return true;
-      }
-    }
     return false;
   }
 
@@ -576,6 +683,7 @@ export class SemanticTheoryCoordinator {
         const res = oracle.checkSat();
         if (!res.isSat) {
           return {
+            status: "UNSAT",
             isSat: false,
             conflict: res.conflict ?? {
               literals: [],
@@ -597,6 +705,7 @@ export class SemanticTheoryCoordinator {
         if (!oracle) continue;
         const props = oracle.propagateEqualities();
         for (const eq of props) {
+          const justs = eq.justifications ?? (eq as any).justification ?? [];
           this.enqueueEvent({
             kind: "equality",
             varA: eq.varA,
@@ -606,6 +715,7 @@ export class SemanticTheoryCoordinator {
             bounds: eq.bounds,
             explanation: eq.explanation,
             sourceOracle: eq.sourceOracle ?? oracle.name,
+            justification: justs,
           });
         }
       }
@@ -622,15 +732,29 @@ export class SemanticTheoryCoordinator {
           const canonRoot = this.unionVars(event.varA, event.varB);
           const currentBound = this.canonicalBounds.get(canonRoot);
 
+          if (event.justification && event.justification.length > 0) {
+            if (!this.canonicalBoundJustifications.has(canonRoot)) {
+              this.canonicalBoundJustifications.set(canonRoot, new Set());
+            }
+            const jSet = this.canonicalBoundJustifications.get(canonRoot)!;
+            for (const id of event.justification) jSet.add(id);
+          }
+
           if (event.bounds) {
             const lo = Math.max(currentBound ? currentBound[0] : -Infinity, event.bounds[0]);
             const hi = Math.min(currentBound ? currentBound[1] : Infinity, event.bounds[1]);
-            // Guard against micro-contractions (Zeno loop prevention)
-            if (!currentBound || lo > currentBound[0] + 1e-7 || hi < currentBound[1] - 1e-7) {
+            // Guard against micro-contractions (Zeno loop prevention) using 1e-9 tolerance
+            if (!currentBound || lo > currentBound[0] + 1e-9 || hi < currentBound[1] - 1e-9) {
               this.canonicalBounds.set(canonRoot, [lo, hi]);
               isNewOrTightened = true;
             }
           }
+
+          const allJustifications = this.canonicalBoundJustifications.get(canonRoot)
+            ? Array.from(this.canonicalBoundJustifications.get(canonRoot)!)
+            : event.justification
+              ? [...event.justification]
+              : [];
 
           let eqToBroadcast: SharedEquality | null = null;
           if (!existing) {
@@ -644,6 +768,8 @@ export class SemanticTheoryCoordinator {
                 (this.canonicalBounds.get(canonRoot) ? [...this.canonicalBounds.get(canonRoot)!] : undefined),
               explanation: event.explanation,
               sourceOracle: event.sourceOracle,
+              justifications: allJustifications,
+              justification: allJustifications,
             };
             this.knownEqualities.set(key, eqToBroadcast);
             if (this.levelStack.length > 0) {
@@ -652,8 +778,26 @@ export class SemanticTheoryCoordinator {
           } else if (isNewOrTightened && event.bounds) {
             existing.bounds = [...event.bounds];
             existing.sourceOracle = event.sourceOracle;
+            existing.justifications = allJustifications;
+            existing.justification = allJustifications;
             eqToBroadcast = { ...existing };
           }
+
+          const isTargetedByDomain = (oracle: TheoryOracle, ev: PropagationEvent): boolean => {
+            if (ev.kind === "bound") {
+              // Only oracles that consume numerical interval bounds should receive bound events
+              return (
+                oracle.name === "ConstraintTheoryOracle" ||
+                oracle.name === "SpatialPhysicsOracle" ||
+                oracle.name === "ToleranceStackOracle"
+              );
+            }
+            // Equalities are routed if an oracle specifically matches the event's theory domain,
+            // or if it is the core constraint solver
+            return (
+              oracle.name === "ConstraintTheoryOracle" || (ev.theoryDomain ? oracle.domain === ev.theoryDomain : false)
+            );
+          };
 
           if (isNewOrTightened && eqToBroadcast) {
             eventsProcessed++;
@@ -664,31 +808,54 @@ export class SemanticTheoryCoordinator {
                 this.isSubscribedToVar(oracle, event.varA) ||
                 this.isSubscribedToVar(oracle, event.varB) ||
                 (event.theoryDomain ? this.isSubscribedToDomain(oracle, event.theoryDomain) : false);
-              const isRelevantDomain =
-                !event.domain ||
-                oracle.domain === "constraint" ||
-                (event.theoryDomain ? oracle.domain === event.theoryDomain : false);
-              if (isSubscribed || isRelevantDomain) {
+              if (isSubscribed || isTargetedByDomain(oracle, event)) {
                 oracle.onSharedEquality(eqToBroadcast);
                 this.dirtyOracles.add(oracle.name);
               }
             }
           }
         } else if (event.kind === "bound") {
+          const isTargetedByDomain = (oracle: TheoryOracle, ev: PropagationEvent): boolean => {
+            if (ev.kind === "bound") {
+              return (
+                oracle.name === "ConstraintTheoryOracle" ||
+                oracle.name === "SpatialPhysicsOracle" ||
+                oracle.name === "ToleranceStackOracle"
+              );
+            }
+            return (
+              oracle.name === "ConstraintTheoryOracle" || (ev.theoryDomain ? oracle.domain === ev.theoryDomain : false)
+            );
+          };
+
           const canonRoot = this.getCanonicalVar(event.varName);
           const currentBound = this.canonicalBounds.get(canonRoot);
+
+          if (event.justification && event.justification.length > 0) {
+            if (!this.canonicalBoundJustifications.has(canonRoot)) {
+              this.canonicalBoundJustifications.set(canonRoot, new Set());
+            }
+            const jSet = this.canonicalBoundJustifications.get(canonRoot)!;
+            for (const id of event.justification) jSet.add(id);
+          }
 
           const lo = Math.max(currentBound ? currentBound[0] : -Infinity, event.bounds[0]);
           const hi = Math.min(currentBound ? currentBound[1] : Infinity, event.bounds[1]);
 
           let isNewOrTightened = false;
-          if (!currentBound || lo > currentBound[0] + 1e-7 || hi < currentBound[1] - 1e-7) {
+          if (!currentBound || lo > currentBound[0] + 1e-9 || hi < currentBound[1] - 1e-9) {
             this.canonicalBounds.set(canonRoot, [lo, hi]);
             isNewOrTightened = true;
           }
 
           if (isNewOrTightened) {
             eventsProcessed++;
+            const allJustifications = this.canonicalBoundJustifications.get(canonRoot)
+              ? Array.from(this.canonicalBoundJustifications.get(canonRoot)!)
+              : event.justification
+                ? [...event.justification]
+                : [];
+
             const boundEq: SharedEquality = {
               varA: event.varName,
               varB: event.varName,
@@ -696,6 +863,8 @@ export class SemanticTheoryCoordinator {
               bounds: [lo, hi],
               explanation: event.explanation ?? `Contracted bound on '${event.varName}' to [${lo}, ${hi}]`,
               sourceOracle: event.sourceOracle,
+              justifications: allJustifications,
+              justification: allJustifications,
             };
 
             for (const oracle of this.oracles.values()) {
@@ -703,7 +872,7 @@ export class SemanticTheoryCoordinator {
               const isSubscribed =
                 this.isSubscribedToVar(oracle, event.varName) ||
                 (event.theoryDomain ? this.isSubscribedToDomain(oracle, event.theoryDomain) : false);
-              if (isSubscribed) {
+              if (isSubscribed || isTargetedByDomain(oracle, event)) {
                 oracle.onSharedEquality(boundEq);
                 this.dirtyOracles.add(oracle.name);
               }
@@ -726,7 +895,22 @@ export class SemanticTheoryCoordinator {
       }
     }
 
+    const isFixedPoint = this.dirtyOracles.size === 0 && this.worklist.length === 0;
+
+    if (!isFixedPoint && iteration >= maxIterations) {
+      return {
+        status: "UNKNOWN",
+        isSat: false,
+        reason: `Contraction iteration limit (${maxIterations}) reached without achieving fixpoint.`,
+        sharedEqualities: Array.from(this.knownEqualities.values()),
+        models: combinedModels,
+        iterations: iteration,
+        durationMs: performance.now() - startTime,
+      };
+    }
+
     return {
+      status: "SAT",
       isSat: true,
       sharedEqualities: Array.from(this.knownEqualities.values()),
       models: combinedModels,

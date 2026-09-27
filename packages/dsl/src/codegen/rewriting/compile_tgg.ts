@@ -100,7 +100,7 @@ export function compileTGGRules(
   // 1b. Run Automated Round-Trip Losslessness Proofs
   const losslessnessReport = verifySuiteLosslessness(rulesToCompile);
   if (options.strictCpa && cpaReport.hasConflicts) {
-    const errorConflicts = cpaReport.conflicts.filter((c) => c.severity === "error");
+    const errorConflicts = cpaReport.conflicts.filter((c) => c.severity === "error" || c.kind === "overlap");
     if (errorConflicts.length > 0) {
       throw new Error(
         `Critical Pair Analysis failed with ${errorConflicts.length} error(s):\n` +
@@ -116,7 +116,7 @@ export function compileTGGRules(
   code += `import { CorrespondenceIndex, CORR_FLAG_SYNCED, CORR_FLAG_STALE, CORR_FLAG_CONFLICT } from "./correspondence";\n`;
   code += `import { PolyglotArena } from "./polyglot_arena";\n`;
   code += `import { graph, ModelAPI } from "./graph";\n`;
-  code += `import { getNodeType, getNodeFirstChild, getNodeNextSibling, ast_createNode } from "./arena";\n`;
+  code += `import { getNodeType, getNodeFirstChild, getNodeNextSibling, ast_createNode, atomicChunkAlloc } from "./arena";\n`;
   code += `import { tgg_reconcile_scalar, tgg_reconcile_interval } from "./tgg_reconciler";\n\n`;
 
   for (let idx = 0; idx < activeRules.length; idx++) {
@@ -140,7 +140,20 @@ export function compileTGGRules(
     code += `  // Check if target already created in correspondence index\n`;
     code += `  let existingTarget = corr.findBySource(sourceNodeId);\n`;
     code += `  if (existingTarget != 0) return existingTarget;\n\n`;
-    code += `  // Allocate target AST node\n`;
+
+    // Guard: Verify literal source bindings
+    for (const [srcProp, srcVal] of Object.entries(srcBindings)) {
+      const srcPropHash = getDJB2Hash(srcProp) as u32;
+      if (typeof srcVal === "string" && !srcVal.startsWith("__var_")) {
+        code += `  if (graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32) != ${getDJB2Hash(srcVal)} as u32) return 0;\n`;
+      } else if (typeof srcVal === "number") {
+        code += `  if (graph.model.getProperty<f64>(sourceNodeId, ${srcPropHash} as u32) != ${srcVal}) return 0;\n`;
+      } else if (typeof srcVal === "boolean") {
+        code += `  if (graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32) != ${srcVal ? 1 : 0} as u32) return 0;\n`;
+      }
+    }
+
+    // Allocate target AST node
     code += `  let targetNodeId = graph.model.create((${targetNodeHash} & 0xffff) as u16);\n\n`;
 
     // Emit real AST property assignments from bindings
@@ -244,11 +257,27 @@ export function compileTGGRules(
       } else if (c.kind === "invertible") {
         const [fwd, bwd] = c.args;
         code += `  // Invertible constraint: forward='${fwd}' backward='${bwd || "auto-derived"}'\n`;
+      } else if (c.kind === "exprMap") {
+        const [srcExpr, tgtExpr, dialect] = c.args;
+        code += `  // Mathematical expression mapping: ${srcExpr} <-> ${tgtExpr} (${dialect})\n`;
       }
     }
 
+    const compConstraint = constraints.find((c) => c.kind === "complement");
+    const compFields: string[] = compConstraint?.args?.[0] || [];
+
     code += `  // Register bidirectional link in correspondence index\n`;
-    code += `  corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0);\n`;
+    code += `  let corrSlot = corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0);\n`;
+    if (compFields.length > 0) {
+      code += `  // Allocate and store shadow complement fiber in linear memory\n`;
+      code += `  let compPtr = atomicChunkAlloc(${compFields.length * 8});\n`;
+      for (let fIdx = 0; fIdx < compFields.length; fIdx++) {
+        const fHash = getDJB2Hash(compFields[fIdx]) as u32;
+        code += `  store<u32>(compPtr + ${fIdx * 8}, ${fHash});\n`;
+        code += `  store<u32>(compPtr + ${fIdx * 8 + 4}, graph.model.getProperty<u32>(sourceNodeId, ${fHash}));\n`;
+      }
+      code += `  corr.setComplement(corrSlot, compPtr as u32);\n`;
+    }
     code += `  return targetNodeId;\n`;
     code += `}\n\n`;
 
@@ -259,6 +288,19 @@ export function compileTGGRules(
     code += `  \n`;
     code += `  let existingSource = corr.findByTarget(targetNodeId);\n`;
     code += `  if (existingSource != 0) return existingSource;\n\n`;
+
+    // Check literal target bindings as preconditions
+    for (const [tgtProp, tgtVal] of Object.entries(tgtBindings)) {
+      const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+      if (typeof tgtVal === "string" && !tgtVal.startsWith("__var_")) {
+        code += `  if (graph.model.getProperty<u32>(targetNodeId, ${tgtPropHash} as u32) != ${getDJB2Hash(tgtVal)} as u32) return 0;\n`;
+      } else if (typeof tgtVal === "number") {
+        code += `  if (graph.model.getProperty<f64>(targetNodeId, ${tgtPropHash} as u32) != ${tgtVal}) return 0;\n`;
+      } else if (typeof tgtVal === "boolean") {
+        code += `  if (graph.model.getProperty<u32>(targetNodeId, ${tgtPropHash} as u32) != ${tgtVal ? 1 : 0} as u32) return 0;\n`;
+      }
+    }
+
     code += `  let sourceNodeId = graph.model.create((${sourceNodeHash} & 0xffff) as u16);\n\n`;
 
     // Reverse attribute assignments
@@ -281,6 +323,20 @@ export function compileTGGRules(
     }
 
     code += `  corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0);\n`;
+    if (compFields.length > 0) {
+      code += `  // Restore preserved shadow complement fiber from linear memory\n`;
+      code += `  let targetSlotPlusOne = corr.targetToSlot.get(targetNodeId as u64);\n`;
+      code += `  if (targetSlotPlusOne != 0) {\n`;
+      code += `    let compPtr = corr.getComplement((targetSlotPlusOne - 1) as u32);\n`;
+      code += `    if (compPtr != 0) {\n`;
+      for (let fIdx = 0; fIdx < compFields.length; fIdx++) {
+        code += `      let compHash_${fIdx} = load<u32>((compPtr as usize) + ${fIdx * 8});\n`;
+        code += `      let compVal_${fIdx} = load<u32>((compPtr as usize) + ${fIdx * 8 + 4});\n`;
+        code += `      graph.model.setProperty<u32>(sourceNodeId, compHash_${fIdx}, compVal_${fIdx});\n`;
+      }
+      code += `    }\n`;
+      code += `  }\n`;
+    }
     code += `  return sourceNodeId;\n`;
     code += `}\n\n`;
 
@@ -359,10 +415,18 @@ export function compileTGGRules(
       for (const r of group) {
         if (r.targetLang) {
           const langId = getDJB2Hash(r.targetLang) & 0xffff;
-          code += `      if (targetLangId == ${langId}) return tgg_forward_${r.ruleName}(sourceNodeId, corr, arena);\n`;
+          code += `      if (targetLangId == 0 || targetLangId == ${langId}) {\n`;
+          code += `        let res_${r.rIdx} = tgg_forward_${r.ruleName}(sourceNodeId, corr, arena);\n`;
+          code += `        if (res_${r.rIdx} != 0) return res_${r.rIdx};\n`;
+          code += `      }\n`;
+        } else {
+          code += `      {\n`;
+          code += `        let res_${r.rIdx} = tgg_forward_${r.ruleName}(sourceNodeId, corr, arena);\n`;
+          code += `        if (res_${r.rIdx} != 0) return res_${r.rIdx};\n`;
+          code += `      }\n`;
         }
       }
-      code += `      return tgg_forward_${group[0].ruleName}(sourceNodeId, corr, arena);\n`;
+      code += `      return 0;\n`;
     }
     code += `    }\n`;
   }
@@ -390,10 +454,18 @@ export function compileTGGRules(
       for (const r of group) {
         if (r.sourceLang) {
           const langId = getDJB2Hash(r.sourceLang) & 0xffff;
-          code += `      if (sourceLangId == ${langId}) return tgg_backward_${r.ruleName}(targetNodeId, corr, arena);\n`;
+          code += `      if (sourceLangId == 0 || sourceLangId == ${langId}) {\n`;
+          code += `        let res_bwd_${r.rIdx} = tgg_backward_${r.ruleName}(targetNodeId, corr, arena);\n`;
+          code += `        if (res_bwd_${r.rIdx} != 0) return res_bwd_${r.rIdx};\n`;
+          code += `      }\n`;
+        } else {
+          code += `      {\n`;
+          code += `        let res_bwd_${r.rIdx} = tgg_backward_${r.ruleName}(targetNodeId, corr, arena);\n`;
+          code += `        if (res_bwd_${r.rIdx} != 0) return res_bwd_${r.rIdx};\n`;
+          code += `      }\n`;
         }
       }
-      code += `      return tgg_backward_${group[0].ruleName}(targetNodeId, corr, arena);\n`;
+      code += `      return 0;\n`;
     }
     code += `    }\n`;
   }

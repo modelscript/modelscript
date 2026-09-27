@@ -328,6 +328,7 @@ type TabType =
 
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("account");
+  const [searchQuery, setSearchQuery] = useState("");
   const [accountInfoMode, setAccountInfoMode] = useState<"password" | "form">("password");
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
   const [publicKeys, setPublicKeys] = useState<PublicKeyInfo[]>([]);
@@ -509,47 +510,100 @@ const SettingsPage: React.FC = () => {
       >
         <Header>Settings</Header>
         <Box p={3}>
-          <SearchInput placeholder="Search Settings" />
+          <SearchInput
+            placeholder="Search Settings"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </Box>
-        <MenuItem
-          $active={activeTab === "account" || activeTab === "accountInfo" || activeTab === "changePassword"}
-          onClick={() => handleTabChange("account")}
-        >
-          <span>Your account</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem $active={activeTab === "security"} onClick={() => handleTabChange("security")}>
-          <span>Security and account access</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem $active={activeTab === "billing"} onClick={() => handleTabChange("billing")}>
-          <span>Billing &amp; Compute Quotas</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem $active={activeTab === "bots"} onClick={() => handleTabChange("bots")}>
-          <span>Developer / Bots</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem onClick={() => handleTabChange("other")}>
-          <span>Privacy and safety</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem $active={activeTab === "notifications"} onClick={() => handleTabChange("notifications")}>
-          <span>Notifications</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem $active={activeTab === "contentPreferences"} onClick={() => handleTabChange("contentPreferences")}>
-          <span>Content preferences</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem $active={activeTab === "display"} onClick={() => handleTabChange("display")}>
-          <span>Accessibility, display, and languages</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
-        <MenuItem onClick={() => handleTabChange("other")}>
-          <span>Additional resources</span>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </MenuItem>
+        {(() => {
+          const menuList = [
+            {
+              id: "account",
+              label: "Your account",
+              tab: "account" as TabType,
+              keywords: "username email password profile credentials",
+              isActive: activeTab === "account" || activeTab === "accountInfo" || activeTab === "changePassword",
+            },
+            {
+              id: "security",
+              label: "Security and account access",
+              tab: "security" as TabType,
+              keywords: "2fa security access keys ssh token sessions",
+              isActive: activeTab === "security",
+            },
+            {
+              id: "billing",
+              label: "Billing & Compute Quotas",
+              tab: "billing" as TabType,
+              keywords: "billing quota compute invoice payment usage",
+              isActive: activeTab === "billing",
+            },
+            {
+              id: "bots",
+              label: "Developer / Bots",
+              tab: "bots" as TabType,
+              keywords: "bots developer tokens webhook agents",
+              isActive: activeTab === "bots",
+            },
+            {
+              id: "privacy",
+              label: "Privacy and safety",
+              tab: "other" as TabType,
+              keywords: "privacy safety mute block data",
+              isActive: false,
+            },
+            {
+              id: "notifications",
+              label: "Notifications",
+              tab: "notifications" as TabType,
+              keywords: "notifications alerts email push filters mentions",
+              isActive: activeTab === "notifications",
+            },
+            {
+              id: "contentPreferences",
+              label: "Content preferences",
+              tab: "contentPreferences" as TabType,
+              keywords: "content preferences topics feed interests recommendations",
+              isActive: activeTab === "contentPreferences",
+            },
+            {
+              id: "display",
+              label: "Accessibility, display, and languages",
+              tab: "display" as TabType,
+              keywords: "display accessibility theme dark light language font",
+              isActive: activeTab === "display",
+            },
+            {
+              id: "resources",
+              label: "Additional resources",
+              tab: "other" as TabType,
+              keywords: "resources help support docs terms",
+              isActive: false,
+            },
+          ];
+
+          const filtered = menuList.filter((item) => {
+            if (!searchQuery.trim()) return true;
+            const q = searchQuery.toLowerCase();
+            return item.label.toLowerCase().includes(q) || item.keywords.includes(q);
+          });
+
+          if (filtered.length === 0) {
+            return (
+              <Box p={3} textAlign="center" color="var(--color-fg-muted)">
+                No settings found matching &ldquo;{searchQuery}&rdquo;
+              </Box>
+            );
+          }
+
+          return filtered.map((item) => (
+            <MenuItem key={item.id} $active={item.isActive} onClick={() => handleTabChange(item.tab)}>
+              <span>{item.label}</span>
+              <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+            </MenuItem>
+          ));
+        })()}
       </MenuColumn>
 
       <DetailColumn

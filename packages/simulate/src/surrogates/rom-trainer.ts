@@ -13,6 +13,9 @@
  */
 
 import type { ArenaDoEResult } from "../uq/doe.js";
+import { computeMultivariateBounds, type MultivariateBounds } from "./multivariate-bounds.js";
+
+export type { MultivariateBounds };
 
 // ─────────────────────────────────────────────────────────────────────
 // Public Interfaces
@@ -52,6 +55,8 @@ export interface ROMTrainConfig {
 export interface ScalingParams {
   mean: number;
   std: number;
+  min?: number;
+  max?: number;
 }
 
 export type ROMWeights =
@@ -65,6 +70,8 @@ export interface TrainedROM {
   outputNames: string[];
   inputScaling: ScalingParams[];
   outputScaling: ScalingParams[];
+  parameterBounds?: Record<string, { min: number; max: number }>;
+  multivariateBounds?: MultivariateBounds;
   weights: ROMWeights;
   metrics: { trainMSE: number; valMSE: number; r2: number };
   lossCurve?: { epoch: number; trainLoss: number; valLoss: number }[];
@@ -80,12 +87,24 @@ function computeScaling(data: number[][]): ScalingParams[] {
   const result: ScalingParams[] = [];
   for (let j = 0; j < nCols; j++) {
     let sum = 0;
-    for (const row of data) sum += row[j]!;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const row of data) {
+      const v = row[j]!;
+      sum += v;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
     const mean = sum / data.length;
     let sumSq = 0;
     for (const row of data) sumSq += (row[j]! - mean) ** 2;
     const std = Math.sqrt(sumSq / data.length) || 1;
-    result.push({ mean, std });
+    result.push({
+      mean,
+      std,
+      min: isFinite(min) ? min : undefined,
+      max: isFinite(max) ? max : undefined,
+    });
   }
   return result;
 }
@@ -585,12 +604,33 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
     inputNames,
   );
 
+  // Compute parameter bounds for extrapolation guardrails
+  const parameterBounds: Record<string, { min: number; max: number }> = {};
+  for (let i = 0; i < inputNames.length; i++) {
+    const sc = inputScaling[i];
+    if (sc && sc.min !== undefined && sc.max !== undefined) {
+      parameterBounds[inputNames[i]!] = { min: sc.min, max: sc.max };
+    }
+  }
+
+  // Compute multivariate ellipsoid bounds
+  let multivariateBounds: MultivariateBounds | undefined;
+  try {
+    if (rawInputs.length > 0 && rawInputs[0]!.length > 0) {
+      multivariateBounds = computeMultivariateBounds(rawInputs);
+    }
+  } catch {
+    // Fall back gracefully if samples are degenerate
+  }
+
   const result: TrainedROM = {
     architecture,
     inputNames,
     outputNames: data.outputNames,
     inputScaling,
     outputScaling,
+    parameterBounds,
+    multivariateBounds,
     weights,
     metrics: { trainMSE, valMSE, r2 },
   };
@@ -731,6 +771,7 @@ export interface OnnxNodeProto {
 export interface OnnxGraphExport {
   producerName: string;
   modelFormat: "ONNX-v1.14";
+  metadataProps?: Record<string, string>;
   graph: {
     name: string;
     inputs: { name: string; dims: (number | string)[] }[];
@@ -870,6 +911,10 @@ export function exportROMToONNX(rom: TrainedROM, modelName = "ROM_Surrogate"): O
   return {
     producerName: "ModelScript",
     modelFormat: "ONNX-v1.14",
+    metadataProps: {
+      inputNames: rom.inputNames.join(","),
+      outputNames: rom.outputNames.join(","),
+    },
     graph: {
       name: modelName,
       inputs: [{ name: "input", dims: ["batch_size", nIn] }],

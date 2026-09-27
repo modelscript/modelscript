@@ -43,6 +43,9 @@ export class CadViewerPanel {
             break;
           case "select":
             break;
+          case "commitGizmoDelta":
+            this.handleCommitGizmoDelta(message.payload);
+            break;
         }
       },
       null,
@@ -171,6 +174,83 @@ export class CadViewerPanel {
 
   public postMessage(msg: unknown): void {
     this._panel.webview.postMessage(msg);
+  }
+
+  /**
+   * Applies viewport gizmo drag writebacks atomically to the active editor document.
+   */
+  public async handleCommitGizmoDelta(payload: {
+    componentName: string;
+    delta: [number, number, number];
+    newPosition: [number, number, number];
+    sourceMetadata?: {
+      parameterName?: string;
+      transformMethod?: string;
+      argIndex?: number;
+      startByte?: number;
+      endByte?: number;
+    };
+  }): Promise<void> {
+    if (!payload) return;
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+
+    const doc = editor.document;
+    const source = doc.getText();
+    const { componentName, newPosition, sourceMetadata } = payload;
+
+    // 1. OpenSCAD document writeback
+    if (doc.languageId === "scad" || doc.fileName.endsWith(".scad")) {
+      try {
+        const { getScadParser, ScadPatcher } = await import("@modelscript/scad");
+        const parser = await getScadParser();
+        const tree = parser.parse(source);
+        if (!tree) return;
+
+        let patchRes = null;
+
+        if (sourceMetadata?.parameterName) {
+          patchRes = ScadPatcher.patchVariable(source, tree.rootNode, sourceMetadata.parameterName, newPosition[0]);
+        } else if (sourceMetadata?.transformMethod) {
+          patchRes = ScadPatcher.patchTransformArgument(
+            source,
+            tree.rootNode,
+            sourceMetadata.transformMethod,
+            sourceMetadata.argIndex ?? 0,
+            newPosition,
+          );
+        }
+
+        if (patchRes) {
+          const edit = new vscode.WorkspaceEdit();
+          const startPos = doc.positionAt(patchRes.replacedRange.startByte);
+          const endPos = doc.positionAt(patchRes.replacedRange.endByte);
+          edit.replace(doc.uri, new vscode.Range(startPos, endPos), patchRes.newValue);
+          await vscode.workspace.applyEdit(edit);
+          return;
+        }
+      } catch (e) {
+        console.warn("[CAD Viewer] Failed to patch OpenSCAD source:", e);
+      }
+    }
+
+    // 2. Modelica document writeback (annotation CAD(..., position={...}))
+    if (doc.languageId === "modelica" || doc.fileName.endsWith(".mo")) {
+      const compRegex = new RegExp(
+        `(${componentName}\\b[\\s\\S]*?annotation\\([\\s\\S]*?CAD\\([^)]*?position\\s*=\\s*\\{)[^}]*(\\}[\\s\\S]*?\\))`,
+      );
+      const match = compRegex.exec(source);
+      if (match) {
+        const edit = new vscode.WorkspaceEdit();
+        const startIdx = match.index + match[1].length;
+        const endIdx = startIdx + match[0].length - match[1].length - match[2].length;
+        const newCoords = `${newPosition[0].toFixed(2)}, ${newPosition[1].toFixed(2)}, ${newPosition[2].toFixed(2)}`;
+        const startPos = doc.positionAt(startIdx);
+        const endPos = doc.positionAt(endIdx);
+        edit.replace(doc.uri, new vscode.Range(startPos, endPos), newCoords);
+        await vscode.workspace.applyEdit(edit);
+      }
+    }
   }
 
   public dispose() {

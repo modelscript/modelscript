@@ -39,30 +39,60 @@ export interface AlignedDomainElement {
 export class ThreadDiagnosticsProvider {
   /**
    * Evaluates cross-domain consistency across aligned digital thread projections.
+   *
+   * @param threadId - Unique digital thread alignment identifier.
+   * @param domainElements - Aligned domain projections across SysML, Modelica, CAD, etc.
+   * @param tolerance - Relative numerical tolerance for physics parameter divergence.
+   * @param conflict - Optional Formal Semantic Theory Coordinator conflict clause.
+   * @param targetDomain - Optional target domain filter ("all", specific domain like "modelica", or undefined for primary).
    */
   static diagnoseThread(
     threadId: string | number,
     domainElements: AlignedDomainElement[],
     tolerance: number = 0.05, // 5% tolerance
     conflict?: { explanation?: string; culpritEntities?: string[] },
+    targetDomain?: string,
   ): ThreadDiagnostic[] {
     const diagnostics: ThreadDiagnostic[] = [];
 
     // 0. Check Formal Semantic Theory Coordinator conflict clause
     if (conflict) {
-      const primaryElem =
-        domainElements.find((e) => e.domain === "sysml2" || e.domain === "sysml") || domainElements[0];
-      diagnostics.push({
-        domain: primaryElem?.domain || "sysml2",
-        elementName: conflict.culpritEntities?.[0] || primaryElem?.name || String(threadId),
-        severity: "error",
-        code: "THREAD_THEORY_CONFLICT",
-        threadId,
-        message: `[Digital Thread Theory Conflict] ${conflict.explanation || "Formal theory contradiction detected."}`,
-        line: primaryElem?.line ?? 1,
-        column: primaryElem?.column ?? 1,
-        source: "modelscript-digital-thread",
-      });
+      let targetElements: AlignedDomainElement[] = [];
+      if (targetDomain && targetDomain.toLowerCase() !== "all") {
+        const match = domainElements.filter((e) => e.domain.toLowerCase() === targetDomain.toLowerCase());
+        targetElements = match.length > 0 ? match : [];
+      } else if (targetDomain === "all") {
+        targetElements = domainElements;
+      } else {
+        const primary = domainElements.find((e) => e.domain === "sysml2" || e.domain === "sysml") || domainElements[0];
+        if (primary) targetElements = [primary];
+      }
+
+      for (const elem of targetElements) {
+        const culprit =
+          conflict.culpritEntities?.find(
+            (c) =>
+              c.toLowerCase().includes(elem.name.toLowerCase()) ||
+              elem.name.toLowerCase().includes(c.toLowerCase()) ||
+              (elem.properties && c in elem.properties),
+          ) ||
+          conflict.culpritEntities?.[0] ||
+          elem.name ||
+          String(threadId);
+
+        diagnostics.push({
+          domain: elem.domain,
+          elementName: culprit,
+          severity: "error",
+          code: "THREAD_THEORY_CONFLICT",
+          threadId,
+          slot: typeof threadId === "number" ? threadId : undefined,
+          message: `[Digital Thread Theory Conflict] ${conflict.explanation || "Formal theory contradiction detected."}`,
+          line: elem.line ?? 1,
+          column: elem.column ?? 1,
+          source: "modelscript-digital-thread",
+        });
+      }
     }
 
     const sysmlElem = domainElements.find((e) => e.domain === "sysml2" || e.domain === "sysml");

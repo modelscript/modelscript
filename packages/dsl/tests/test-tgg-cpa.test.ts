@@ -117,4 +117,35 @@ describe("TGG Critical Pair Analysis (CPA) & Confluence Checker", () => {
     expect(compiled.cpaReport?.hasConflicts).toBe(false);
     expect(compiled.cpaReport?.ruleCount).toBe(1);
   });
+
+  it("should enforce strict CPA and throw an error on unresolvable rule overlaps", () => {
+    const conflictingRules = [
+      tggRule({
+        name: "PartToModelA",
+        priority: 0,
+        source: ($, v) => $.PartDefinition({ name: v("name") }),
+        target: ($, v) => $.ModelicaClass({ name: v("name") }),
+      }),
+      tggRule({
+        name: "PartToBlockB",
+        priority: 0,
+        source: ($, v) => $.PartDefinition({ name: v("name") }),
+        target: ($, v) => $.ModelicaBlock({ name: v("name") }),
+      }),
+    ];
+
+    assert.throws(
+      () => {
+        compileTGGRules(conflictingRules, { strictCpa: true });
+      },
+      (err: any) => {
+        return (
+          err instanceof Error &&
+          err.message.includes("Critical Pair Analysis failed") &&
+          err.message.includes("[overlap]")
+        );
+      },
+      "strictCpa must throw an error when forward overlap ambiguity is detected",
+    );
+  });
 });

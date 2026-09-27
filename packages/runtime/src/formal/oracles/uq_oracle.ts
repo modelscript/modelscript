@@ -48,6 +48,11 @@ export class UqTheoryOracle implements TheoryOracle {
   private distributions = new Map<string, DistributionSpec>();
   private requirements: ProbabilisticRequirement[] = [];
   private assertedLiterals = new Map<number, TheoryLiteral>();
+  private levelStack: {
+    distributions: Map<string, DistributionSpec>;
+    requirements: ProbabilisticRequirement[];
+    assertedLitIds: number[];
+  }[] = [];
 
   constructor() {
     this.reset();
@@ -57,6 +62,25 @@ export class UqTheoryOracle implements TheoryOracle {
     this.distributions.clear();
     this.requirements = [];
     this.assertedLiterals.clear();
+    this.levelStack = [];
+  }
+
+  public pushLevel(): void {
+    this.levelStack.push({
+      distributions: new Map(this.distributions),
+      requirements: [...this.requirements],
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.distributions = top.distributions;
+    this.requirements = top.requirements;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
   }
 
   public setDistribution(varName: string, dist: DistributionSpec): void {
@@ -65,6 +89,9 @@ export class UqTheoryOracle implements TheoryOracle {
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -92,8 +119,10 @@ export class UqTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }

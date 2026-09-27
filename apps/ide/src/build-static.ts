@@ -256,7 +256,95 @@ const landingHtml = `<!DOCTYPE html>
   <form onsubmit="event.preventDefault(); go();">
     <input id="url" type="text" placeholder="Enter a GitHub repository, e.g. owner/repo" autofocus />
   </form>
-  <div class="divider">or start a new project</div>
+  <div class="divider">Featured Polyglot Scenarios</div>
+  <div class="templates">
+    <a href="/vscode/workbench/#memfs:injection-molding-cosim" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <span class="tpl-name">Injection Molding Co-Simulation</span>
+      <span class="tpl-desc">Orchestrate 1D Modelica with 3D OpenFOAM WASM.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:drone-chassis" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path><circle cx="12" cy="12" r="2" fill="currentColor"></circle></svg></div>
+      <span class="tpl-name">Drone Chassis Thread</span>
+      <span class="tpl-desc">Complete digital thread example integrating SysML, CAD, FEA, CFD, and Modelica.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:surrogate" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <span class="tpl-name">AI Surrogate ROMs</span>
+      <span class="tpl-desc">Train AI neural networks from physics models and export as edge-ready WebAssembly.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:cfd-verification" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M14.5 5.5L16 4M9.5 5.5L8 4" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <span class="tpl-name">CFD-FMU Verification</span>
+      <span class="tpl-desc">Verify thermal requirements using an embedded reduced-order CFD FMU.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:calibration" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg></div>
+      <span class="tpl-name">Parameter Calibration</span>
+      <span class="tpl-desc">Calibrate spring-damper parameters against measurement data.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:optimica-polyglot" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      <span class="tpl-name">SysML2 Optimization</span>
+      <span class="tpl-desc">Solve optimal control problems constrained by SysML2 requirements.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:uncertainty" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18 C6 18 8 6 12 6 C16 6 18 18 21 18" stroke-opacity="0.3" stroke-width="8" stroke-linecap="round"/><path d="M3 18 C6 18 8 10 12 10 C16 10 18 18 21 18" stroke-opacity="0.5" stroke-width="4" stroke-linecap="round"/><path d="M3 18 C6 16 8 12 12 12 C16 12 18 16 21 18" stroke-width="2"/></svg></div>
+      <span class="tpl-name">Monte Carlo Analysis</span>
+      <span class="tpl-desc">Run stochastic simulations to estimate system uncertainty.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:assembly-to-multibody" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>
+      <span class="tpl-name">STEP to Multi-Body</span>
+      <span class="tpl-desc">Auto-generate simulation-ready Modelica assemblies directly from 3D STEP CAD geometry.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:modelica-procedural-cad" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path><circle cx="12" cy="12" r="2" fill="currentColor"></circle></svg></div>
+      <span class="tpl-name">Modelica Procedural CAD</span>
+      <span class="tpl-desc">Construct 3D CAD geometries procedurally using the Modelica shape language extension.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:cosim" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></div>
+      <span class="tpl-name">Co-Simulation Master</span>
+      <span class="tpl-desc">Browser-local multi-FMU coupled co-simulation with controller and plant models.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:uns-mqtt" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+      <span class="tpl-name">UNS / MQTT Digital Twin</span>
+      <span class="tpl-desc">Stream real-time simulation telemetry to an external web HMI via Unified Namespace.</span>
+    </a>
+  </div>
+
+  <div class="divider">Semantic Web &amp; OWL2 Ontologies</div>
+  <div class="templates">
+    <a href="/vscode/workbench/#memfs:owl2-contradiction" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <span class="tpl-name">Contradiction Detection</span>
+      <span class="tpl-desc">Catch cross-domain inconsistencies between Modelica models and OWL2 disjoint axioms.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-fmea" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+      <span class="tpl-name">FMEA Fault Propagation</span>
+      <span class="tpl-desc">Trace failure propagation paths through connection topology using transitive OWL2 properties.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-manufacturing" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></div>
+      <span class="tpl-name">Supply Chain Validation</span>
+      <span class="tpl-desc">Verify system manufacturability against supplier and material process ontologies.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-subsumption" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+      <span class="tpl-name">Component Subsumption</span>
+      <span class="tpl-desc">Automated component selection satisfying SysML requirements via subsumption reasoning.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:owl2-units" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></div>
+      <span class="tpl-name">Semantic Unit Verification</span>
+      <span class="tpl-desc">Verify SI unit compatibility across ports to catch dimensional errors before simulation.</span>
+    </a>
+  </div>
+
+  <div class="divider">Basic Templates</div>
   <div class="templates">
     <a href="/vscode/workbench/#memfs:empty" class="tpl-card dash">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M11.75 4.5a.75.75 0 0 1 .75.75V11h5.75a.75.75 0 0 1 0 1.5H12.5v5.75a.75.75 0 0 1-1.5 0V12.5H5.25a.75.75 0 0 1 0-1.5H11V5.25a.75.75 0 0 1 .75-.75Z"></path></svg></div>

@@ -9,6 +9,8 @@
  */
 
 import type { TrainedCaeSurrogate } from "./cae-surrogate-bridge.js";
+import type { MultivariateBounds } from "./multivariate-bounds.js";
+import type { TrainedROM } from "./rom-trainer.js";
 
 export interface ModelicaEmissionOptions {
   modelName: string;
@@ -20,6 +22,48 @@ export interface ModelicaEmissionOptions {
   outputUnits?: Record<string, string>;
   /** Default parameter values */
   defaultParameters?: Record<string, number>;
+  /** Explicit bounds for parameter validation (e.g. { "velocity": { min: 0.1, max: 50.0 } }) */
+  parameterBounds?: Record<string, { min: number; max: number }>;
+  /** Multivariate ellipsoid bounds for Mahalanobis extrapolation detection */
+  multivariateBounds?: MultivariateBounds;
+  /** Whether to emit multivariate Mahalanobis extrapolation checks (default: true if bounds exist). */
+  enableMultivariateGuardrails?: boolean;
+  /**
+   * Whether to emit extrapolation checks in the Modelica model.
+   * If true (or when parameterBounds are provided and this is not explicitly false),
+   * emits Modelica assert statements for out-of-bound inputs.
+   */
+  enableExtrapolationWarnings?: boolean;
+  /** Severity level for Modelica assertions: "warning" | "error" (default: "warning"). */
+  extrapolationLevel?: "warning" | "error";
+  /** Whether to emit a Boolean 'isExtrapolating' output flag (default: false). */
+  emitExtrapolationFlag?: boolean;
+}
+
+export interface ModelicaRomEmissionOptions {
+  modelName: string;
+  packageName?: string;
+  description?: string;
+  /** Units for parameters/inputs (e.g. { "airspeed": "Modelica.Units.SI.Velocity" }) */
+  inputUnits?: Record<string, string>;
+  /** Units for scalar outputs (e.g. { "drag": "Modelica.Units.SI.Force" }) */
+  outputUnits?: Record<string, string>;
+  /** Explicit bounds for parameter validation (e.g. { "velocity": { min: 0.1, max: 50.0 } }) */
+  parameterBounds?: Record<string, { min: number; max: number }>;
+  /** Multivariate ellipsoid bounds for Mahalanobis extrapolation detection */
+  multivariateBounds?: MultivariateBounds;
+  /** Whether to emit multivariate Mahalanobis extrapolation checks (default: true if bounds exist). */
+  enableMultivariateGuardrails?: boolean;
+  /**
+   * Whether to emit extrapolation checks in the Modelica model.
+   * If true (or when parameterBounds are provided and this is not explicitly false),
+   * emits Modelica assert statements for out-of-bound inputs.
+   */
+  enableExtrapolationWarnings?: boolean;
+  /** Severity level for Modelica assertions: "warning" | "error" (default: "warning"). */
+  extrapolationLevel?: "warning" | "error";
+  /** Whether to emit a Boolean 'isExtrapolating' output flag (default: true when bounds exist). */
+  emitExtrapolationFlag?: boolean;
 }
 
 export class ModelicaSurrogateEmitter {
@@ -45,6 +89,21 @@ export class ModelicaSurrogateEmitter {
     const safeParams = params.map((p) => p.replace(/[^A-Za-z0-9_]/g, "_"));
     const safeOutputs = outputs.map((out) => out.replace(/[^A-Za-z0-9_]/g, "_"));
 
+    // Resolve parameter bounds
+    const effectiveBounds: Record<string, { min: number; max: number }> = {};
+    for (let i = 0; i < params.length; i++) {
+      const p = params[i]!;
+      const safeP = safeParams[i]!;
+      const b = options.parameterBounds?.[p] ?? options.parameterBounds?.[safeP] ?? pod.parameterBounds?.[p];
+      if (b) {
+        effectiveBounds[safeP] = b;
+      }
+    }
+
+    const hasBounds = Object.keys(effectiveBounds).length > 0;
+    const shouldEmitExtrap =
+      options.enableExtrapolationWarnings ?? (options.parameterBounds !== undefined || hasBounds);
+
     for (let i = 0; i < params.length; i++) {
       const p = params[i]!;
       const safeP = safeParams[i]!;
@@ -62,10 +121,32 @@ export class ModelicaSurrogateEmitter {
       lines.push(`  ${u} ${safeOut} "Surrogate predicted output ${out}";`);
     }
 
+    if (shouldEmitExtrap && options.emitExtrapolationFlag) {
+      lines.push(``);
+      lines.push(`  // --- Diagnostics & Extrapolation ---`);
+      lines.push(`  output Boolean isExtrapolating "True if any parameter exceeds training bounds";`);
+    }
+
     lines.push(``);
     lines.push(`  // --- Internal Latent Modes ---`);
     for (let m = 0; m < pod.numModes; m++) {
       lines.push(`  protected Real a_mode_${m} "POD Latent mode coordinate ${m}";`);
+    }
+
+    const multiBounds = options.multivariateBounds ?? pod.multivariateBounds;
+    const shouldEmitMultivariate = (options.enableMultivariateGuardrails ?? true) && multiBounds !== undefined;
+
+    if (shouldEmitMultivariate && multiBounds) {
+      const d = multiBounds.dimensions;
+      lines.push(
+        ``,
+        `  // --- Multivariate Ellipsoid Bounds (Mahalanobis Distance) ---`,
+        `  parameter Real cov_mean[${d}] = { ${multiBounds.mean.map(formatNumber).join(", ")} };`,
+        `  parameter Real precision_M[${d}, ${d}] = { ${multiBounds.precisionMatrix.map((row) => "{" + row.map(formatNumber).join(", ") + "}").join(", ")} };`,
+        `  parameter Real chi2_threshold = ${formatNumber(multiBounds.chi2Threshold)};`,
+        `  protected Real delta_u[${d}];`,
+        `  protected Real mahalanobis_dist_sq;`,
+      );
     }
 
     lines.push(``);
@@ -91,6 +172,48 @@ export class ModelicaSurrogateEmitter {
         ? buildTrainedPolynomialEquation(safeParams, pod.polyDegree ?? 2, coeffs)
         : buildPolynomialEquation(safeParams, surrogate.config.polynomialDegree ?? 2, q, "scalar");
       lines.push(`  ${safeOut} = ${eqRhs};`);
+    }
+
+    // Extrapolation guardrails
+    if ((shouldEmitExtrap && hasBounds) || (shouldEmitMultivariate && multiBounds)) {
+      lines.push(``);
+      lines.push(`  // --- Extrapolation Guardrails ---`);
+      const extrapConds: string[] = [];
+      const level = options.extrapolationLevel ?? "warning";
+      const levelStr = level === "error" ? "AssertionLevel.error" : "AssertionLevel.warning";
+
+      if (shouldEmitExtrap && hasBounds) {
+        for (let i = 0; i < params.length; i++) {
+          const p = params[i]!;
+          const safeP = safeParams[i]!;
+          const b = effectiveBounds[safeP];
+          if (b) {
+            const minStr = formatNumber(b.min);
+            const maxStr = formatNumber(b.max);
+            lines.push(
+              `  assert(${safeP} >= ${minStr} and ${safeP} <= ${maxStr}, "Extrapolation warning: Parameter '${p}' (" + String(${safeP}) + ") is outside training range [" + String(${minStr}) + ", " + String(${maxStr}) + "].", level = ${levelStr});`,
+            );
+            extrapConds.push(`(${safeP} < ${minStr} or ${safeP} > ${maxStr})`);
+          }
+        }
+      }
+
+      if (shouldEmitMultivariate && multiBounds) {
+        const d = multiBounds.dimensions;
+        lines.push(``, `  // Multivariate Ellipsoid (Mahalanobis Distance) Check`);
+        for (let j = 0; j < d; j++) {
+          lines.push(`  delta_u[${j + 1}] = ${safeParams[j]!} - cov_mean[${j + 1}];`);
+        }
+        lines.push(
+          `  mahalanobis_dist_sq = sum(delta_u[j] * sum(precision_M[j, k] * delta_u[k] for k in 1:${d}) for j in 1:${d});`,
+          `  assert(mahalanobis_dist_sq <= chi2_threshold, "Multivariate extrapolation warning: Parameter vector is outside training manifold (D_M^2 = " + String(mahalanobis_dist_sq) + " > " + String(chi2_threshold) + ").", level = ${levelStr});`,
+        );
+        extrapConds.push(`(mahalanobis_dist_sq > chi2_threshold)`);
+      }
+
+      if (options.emitExtrapolationFlag) {
+        lines.push(`  isExtrapolating = ${extrapConds.length > 0 ? extrapConds.join(" or ") : "false"};`);
+      }
     }
 
     lines.push(``);
@@ -214,7 +337,213 @@ export class ModelicaSurrogateEmitter {
       modelDescriptionXml,
     };
   }
+
+  /**
+   * Emits a self-contained, compliant Modelica (.mo) block for a TrainedROM (MLP or polynomial),
+   * embedding full neural network / polynomial evaluation equations and optional extrapolation guardrails.
+   */
+  public static emitModelicaFromROM(rom: TrainedROM, options: ModelicaRomEmissionOptions): string {
+    const pkg = options.packageName;
+    const desc =
+      options.description ??
+      `AI Reduced Order Model (${rom.architecture.toUpperCase()}, R² = ${rom.metrics.r2.toFixed(4)})`;
+    const inputs = rom.inputNames;
+    const outputs = rom.outputNames;
+
+    const safeInputs = inputs.map((p) => p.replace(/[^A-Za-z0-9_]/g, "_"));
+    const safeOutputs = outputs.map((out) => out.replace(/[^A-Za-z0-9_]/g, "_"));
+
+    // Resolve parameter bounds
+    const effectiveBounds: Record<string, { min: number; max: number }> = {};
+    for (let i = 0; i < inputs.length; i++) {
+      const inp = inputs[i]!;
+      const safeIn = safeInputs[i]!;
+      const b = options.parameterBounds?.[inp] ?? options.parameterBounds?.[safeIn] ?? rom.parameterBounds?.[inp];
+      if (b) {
+        effectiveBounds[safeIn] = b;
+      }
+    }
+
+    const hasBounds = Object.keys(effectiveBounds).length > 0;
+    const shouldEmitExtrap =
+      options.enableExtrapolationWarnings ?? (options.parameterBounds !== undefined || hasBounds);
+    const shouldEmitFlag = options.emitExtrapolationFlag ?? (shouldEmitExtrap && hasBounds);
+
+    const lines: string[] = [];
+    if (pkg) {
+      lines.push(`within ${pkg};`, ``);
+    }
+
+    lines.push(`block ${options.modelName} "${desc}"`, `  import Modelica.Units.SI;`, ``, `  // --- Inputs ---`);
+
+    for (let i = 0; i < inputs.length; i++) {
+      const inp = inputs[i]!;
+      const safeIn = safeInputs[i]!;
+      const u = options.inputUnits?.[inp] ?? options.inputUnits?.[safeIn] ?? "Real";
+      lines.push(`  input ${u} ${safeIn} "Surrogate input ${inp}";`);
+    }
+
+    lines.push(``, `  // --- Outputs ---`);
+    for (let i = 0; i < outputs.length; i++) {
+      const out = outputs[i]!;
+      const safeOut = safeOutputs[i]!;
+      const u = options.outputUnits?.[out] ?? options.outputUnits?.[safeOut] ?? "Real";
+      lines.push(`  output ${u} ${safeOut} "Surrogate predicted output ${out}";`);
+    }
+
+    if (shouldEmitFlag) {
+      lines.push(``, `  // --- Diagnostics & Extrapolation ---`);
+      lines.push(`  output Boolean isExtrapolating "True if any input exceeds training bounds";`);
+    }
+
+    // Normalization parameters
+    lines.push(
+      ``,
+      `  // --- Normalization Parameters ---`,
+      `  parameter Real in_mean[${inputs.length}] = { ${rom.inputScaling.map((s) => formatNumber(s.mean)).join(", ")} };`,
+      `  parameter Real in_std[${inputs.length}] = { ${rom.inputScaling.map((s) => formatNumber(s.std)).join(", ")} };`,
+      `  parameter Real out_mean[${outputs.length}] = { ${rom.outputScaling.map((s) => formatNumber(s.mean)).join(", ")} };`,
+      `  parameter Real out_std[${outputs.length}] = { ${rom.outputScaling.map((s) => formatNumber(s.std)).join(", ")} };`,
+      `  protected Real u_norm[${inputs.length}];`,
+    );
+
+    if (rom.weights.type === "mlp") {
+      const mlp = rom.weights;
+      lines.push(``, `  // --- Neural Network Layer Weights & Biases ---`);
+      for (let l = 0; l < mlp.layers.length; l++) {
+        const layer = mlp.layers[l]!;
+        const fanOut = layer.W.length;
+        const fanIn = layer.W[0]!.length;
+        const matrixRows = layer.W.map((row) => "{" + row.map(formatNumber).join(", ") + "}").join(", ");
+        lines.push(`  parameter Real W_${l}[${fanOut}, ${fanIn}] = { ${matrixRows} };`);
+        lines.push(`  parameter Real b_${l}[${fanOut}] = { ${layer.b.map(formatNumber).join(", ")} };`);
+        lines.push(`  protected Real h_${l}[${fanOut}];`);
+      }
+    }
+
+    const multiBounds = options.multivariateBounds ?? rom.multivariateBounds;
+    const shouldEmitMultivariate = (options.enableMultivariateGuardrails ?? true) && multiBounds !== undefined;
+
+    if (shouldEmitMultivariate && multiBounds) {
+      const d = multiBounds.dimensions;
+      lines.push(
+        ``,
+        `  // --- Multivariate Ellipsoid Bounds (Mahalanobis Distance) ---`,
+        `  parameter Real cov_mean[${d}] = { ${multiBounds.mean.map(formatNumber).join(", ")} };`,
+        `  parameter Real precision_M[${d}, ${d}] = { ${multiBounds.precisionMatrix.map((row) => "{" + row.map(formatNumber).join(", ") + "}").join(", ")} };`,
+        `  parameter Real chi2_threshold = ${formatNumber(multiBounds.chi2Threshold)};`,
+        `  protected Real delta_u[${d}];`,
+        `  protected Real mahalanobis_dist_sq;`,
+      );
+    }
+
+    // Equations section for guardrails and flags
+    const extrapConds: string[] = [];
+    if ((shouldEmitExtrap && hasBounds) || (shouldEmitMultivariate && multiBounds)) {
+      lines.push(``, `equation`, `  // --- Extrapolation Guardrails ---`);
+      const level = options.extrapolationLevel ?? "warning";
+      const levelStr = level === "error" ? "AssertionLevel.error" : "AssertionLevel.warning";
+
+      if (shouldEmitExtrap && hasBounds) {
+        for (let i = 0; i < inputs.length; i++) {
+          const inp = inputs[i]!;
+          const safeIn = safeInputs[i]!;
+          const b = effectiveBounds[safeIn];
+          if (b) {
+            const minStr = formatNumber(b.min);
+            const maxStr = formatNumber(b.max);
+            lines.push(
+              `  assert(${safeIn} >= ${minStr} and ${safeIn} <= ${maxStr}, "Extrapolation warning: Input '${inp}' (" + String(${safeIn}) + ") is outside training range [" + String(${minStr}) + ", " + String(${maxStr}) + "].", level = ${levelStr});`,
+            );
+            extrapConds.push(`(${safeIn} < ${minStr} or ${safeIn} > ${maxStr})`);
+          }
+        }
+      }
+
+      if (shouldEmitMultivariate && multiBounds) {
+        const d = multiBounds.dimensions;
+        lines.push(``, `  // Multivariate Ellipsoid (Mahalanobis Distance) Check`);
+        for (let j = 0; j < d; j++) {
+          lines.push(`  delta_u[${j + 1}] = ${safeInputs[j]!} - cov_mean[${j + 1}];`);
+        }
+        lines.push(
+          `  mahalanobis_dist_sq = sum(delta_u[j] * sum(precision_M[j, k] * delta_u[k] for k in 1:${d}) for j in 1:${d});`,
+          `  assert(mahalanobis_dist_sq <= chi2_threshold, "Multivariate extrapolation warning: Input vector is outside training manifold (D_M^2 = " + String(mahalanobis_dist_sq) + " > " + String(chi2_threshold) + ").", level = ${levelStr});`,
+        );
+        extrapConds.push(`(mahalanobis_dist_sq > chi2_threshold)`);
+      }
+
+      if (shouldEmitFlag) {
+        lines.push(`  isExtrapolating = ${extrapConds.length > 0 ? extrapConds.join(" or ") : "false"};`);
+      }
+    } else if (shouldEmitFlag) {
+      lines.push(``, `equation`, `  isExtrapolating = false;`);
+    }
+
+    // Algorithm section for forward evaluation
+    lines.push(``, `algorithm`, `  // --- Forward Inference ---`);
+    for (let i = 0; i < inputs.length; i++) {
+      lines.push(`  u_norm[${i + 1}] := (${safeInputs[i]} - in_mean[${i + 1}]) / in_std[${i + 1}];`);
+    }
+
+    if (rom.weights.type === "mlp") {
+      const mlp = rom.weights;
+      for (let l = 0; l < mlp.layers.length; l++) {
+        const layer = mlp.layers[l]!;
+        const fanOut = layer.W.length;
+        const fanIn = layer.W[0]!.length;
+        const prevVar = l === 0 ? "u_norm" : `h_${l - 1}`;
+        const isHidden = l < mlp.layers.length - 1;
+
+        lines.push(``, `  // Layer ${l}`);
+        lines.push(`  for i in 1:${fanOut} loop`);
+        lines.push(`    h_${l}[i] := b_${l}[i];`);
+        lines.push(`    for j in 1:${fanIn} loop`);
+        lines.push(`      h_${l}[i] := h_${l}[i] + W_${l}[i, j] * ${prevVar}[j];`);
+        lines.push(`    end for;`);
+
+        if (isHidden) {
+          if (mlp.activation === "tanh") {
+            lines.push(`    h_${l}[i] := Modelica.Math.tanh(h_${l}[i]);`);
+          } else if (mlp.activation === "relu") {
+            lines.push(`    h_${l}[i] := if h_${l}[i] > 0.0 then h_${l}[i] else 0.0;`);
+          } else if (mlp.activation === "sigmoid") {
+            lines.push(`    h_${l}[i] := 1.0 / (1.0 + Modelica.Math.exp(-h_${l}[i]));`);
+          }
+        }
+        lines.push(`  end for;`);
+      }
+
+      lines.push(``, `  // Denormalization`);
+      const lastL = mlp.layers.length - 1;
+      for (let q = 0; q < outputs.length; q++) {
+        lines.push(`  ${safeOutputs[q]} := h_${lastL}[${q + 1}] * out_std[${q + 1}] + out_mean[${q + 1}];`);
+      }
+    } else if (rom.weights.type === "polynomial") {
+      const w = rom.weights;
+      lines.push(``, `  // Polynomial Regression`);
+      for (let q = 0; q < outputs.length; q++) {
+        const eqRhs = buildTrainedPolynomialEquation(safeInputs, w.degree, w.coefficients[q]!);
+        lines.push(`  ${safeOutputs[q]} := (${eqRhs}) * out_std[${q + 1}] + out_mean[${q + 1}];`);
+      }
+    }
+
+    lines.push(
+      ``,
+      `  annotation(`,
+      `    Documentation(info="<html><p>Trained AI Surrogate Model generated by ModelScript.</p>`,
+      `    <p>Architecture: ${rom.architecture.toUpperCase()}, R²: ${rom.metrics.r2.toFixed(4)}, MSE: ${rom.metrics.trainMSE.toExponential(4)}</p></html>"),`,
+      `    Icon(coordinateSystem(preserveAspectRatio=true, extent={{-100,-100},{100,100}}))`,
+      `  );`,
+      `end ${options.modelName};`,
+      ``,
+    );
+
+    return lines.join("\n");
+  }
 }
+
+export const emitModelicaROM = ModelicaSurrogateEmitter.emitModelicaFromROM;
 
 function formatNumber(val: number): string {
   if (Number.isInteger(val)) return `${val}.0`;

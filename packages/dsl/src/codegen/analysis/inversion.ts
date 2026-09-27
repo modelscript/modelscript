@@ -173,7 +173,47 @@ export function invertExpression(forwardExpr: string, targetVarName: string = "y
     };
   }
 
+  // 9. Relational Equality / Equation: lhs == rhs or lhs = rhs
+  const eqMatch = trimmed.match(/^(.+?)\s*(?:==|=)\s*(.+)$/);
+  if (eqMatch) {
+    const [, lhs, rhs] = eqMatch;
+    return {
+      isInvertible: true,
+      kind: "custom",
+      sourceVar: lhs.trim(),
+      targetVar: rhs.trim(),
+      invertedExpr: `${rhs.trim()} == ${lhs.trim()}`,
+    };
+  }
+
   return {
     isInvertible: false,
   };
+}
+
+/**
+ * Translates mathematical expressions between Modelica and SysML v2 dialects.
+ */
+export function translateExpression(
+  expr: string,
+  dialect: "modelica-sysml2" | "sysml2-modelica" = "modelica-sysml2",
+): string {
+  if (!expr) return "";
+  let res = expr;
+  if (dialect === "modelica-sysml2") {
+    // der(x) -> rate(x)
+    res = res.replace(/\bder\s*\(\s*([a-zA-Z_]\w*)\s*\)/g, "rate($1)");
+    // <> -> !=
+    res = res.replace(/<>/g, "!=");
+    // ^ -> **
+    res = res.replace(/\^/g, "**");
+  } else if (dialect === "sysml2-modelica") {
+    // rate(x) -> der(x)
+    res = res.replace(/\brate\s*\(\s*([a-zA-Z_]\w*)\s*\)/g, "der($1)");
+    // != -> <>
+    res = res.replace(/!=/g, "<>");
+    // ** -> ^
+    res = res.replace(/\*\*/g, "^");
+  }
+  return res;
 }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimationController } from "./cad-viewer/animation-controller";
-import CadViewer, { type CadComponent } from "./cad-viewer/cad-viewer";
+import CadViewer, { type CadComponent, type GizmoCommitPayload } from "./cad-viewer/cad-viewer";
 import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
 import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
@@ -135,6 +135,13 @@ function App() {
     vscode?.postMessage({ type: "select", name });
   };
 
+  const handleCommitGizmoDelta = (payload: GizmoCommitPayload) => {
+    vscode?.postMessage({
+      type: "commitGizmoDelta",
+      payload,
+    });
+  };
+
   return (
     <div
       className="cad-webview-container"
@@ -144,6 +151,7 @@ function App() {
         components={components}
         selectedName={selectedName}
         onSelect={handleSelect}
+        onCommitGizmoDelta={handleCommitGizmoDelta}
         dark={isDark}
         assetBaseUrl={(window as unknown as { __CAD_ASSET_BASE_URL__: string }).__CAD_ASSET_BASE_URL__}
         animationController={animationControllerRef.current}

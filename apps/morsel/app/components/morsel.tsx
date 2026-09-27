@@ -14,6 +14,7 @@ import {
   PulseIcon,
   RowsIcon,
   SearchIcon,
+  ServerIcon,
   ShareAndroidIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
@@ -52,6 +53,7 @@ import {
 } from "~/util/lsp-bridge";
 import { startLsp } from "~/util/lsp-worker";
 import { useMqttSimulation } from "~/util/use-mqtt-simulation";
+import { CloudDispatchModal } from "./cloud-dispatch-modal";
 import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
 import type { DiagramEditorHandle } from "./diagram";
@@ -152,6 +154,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const openFileButtonRef = useRef<HTMLButtonElement>(null);
   const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
   const [flattenedCode, setFlattenedCode] = useState("");
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
   const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
   const mqtt = useMqttSimulation({ source: cosimDataSource });
@@ -1039,7 +1042,7 @@ end Manufacturing;`,
                           });
                         }}
                       />
-                      <div className="p-3">
+                      <div className="p-3" style={{ display: "flex", gap: 8 }}>
                         <Button
                           variant="primary"
                           block
@@ -1047,6 +1050,14 @@ end Manufacturing;`,
                           disabled={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
                         >
                           Simulate
+                        </Button>
+                        <Button
+                          variant="default"
+                          onClick={() => setIsCloudModalOpen(true)}
+                          leadingVisual={ServerIcon}
+                          title="Run on ModelScript Cloud HPC"
+                        >
+                          Cloud
                         </Button>
                       </div>
                     </div>
@@ -1801,6 +1812,14 @@ end Manufacturing;`,
             onClick={() => handleSimulate()}
           />
           <IconButton
+            icon={ServerIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Run on ModelScript Cloud HPC"
+            title="Run on ModelScript Cloud HPC"
+            onClick={() => setIsCloudModalOpen(true)}
+          />
+          <IconButton
             icon={StackIcon}
             size="small"
             variant="invisible"
@@ -2082,6 +2101,32 @@ end Manufacturing;`,
             translations={translations}
           />
         )}
+        <CloudDispatchModal
+          isOpen={isCloudModalOpen}
+          onClose={() => setIsCloudModalOpen(false)}
+          modelName={selectedTreeClassName || "Model"}
+          sourceCode={editor?.getValue() || content}
+          experimentConfig={{
+            startTime: experimentOverrides.startTime,
+            stopTime: experimentOverrides.stopTime,
+            interval: experimentOverrides.interval,
+          }}
+          onResultLoaded={(data) => {
+            const chartData = data.t.map((t: number, i: number) => {
+              const rowObj: Record<string, number | string> = { time: t };
+              data.states.forEach((state: string, vIndex: number) => {
+                rowObj[state] = data.y[vIndex]?.[i] ?? data.y[i]?.[vIndex] ?? 0;
+              });
+              return rowObj;
+            });
+            setSimulationVariables(data.states);
+            setSelectedSimulationVariables(data.states.slice(0, 5));
+            setLocalSimulationData(chartData);
+            setShowResultsView(true);
+            setSimulationStatus({ status: "success", error: null });
+            setIsCloudModalOpen(false);
+          }}
+        />
       </div>
     </>
   );

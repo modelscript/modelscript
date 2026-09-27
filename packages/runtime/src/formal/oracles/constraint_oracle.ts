@@ -20,12 +20,14 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
   private aliases = new Map<string, string>(); // canonical alias mapping
+  private varJustifications = new Map<string, Set<number>>();
   private sharedEqualities: SharedEquality[] = [];
   private levelStack: {
     intervals: Map<string, Interval | null>;
     aliases: Map<string, string>;
     propagatedEqualities: Set<string>;
     assertedLitIds: number[];
+    varJustifications: Map<string, Set<number>>;
   }[] = [];
 
   constructor() {
@@ -37,16 +39,22 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
     this.aliases.clear();
+    this.varJustifications.clear();
     this.sharedEqualities = [];
     this.levelStack = [];
   }
 
   public pushLevel(): void {
+    const vjSnapshot = new Map<string, Set<number>>();
+    for (const [k, v] of this.varJustifications) {
+      vjSnapshot.set(k, new Set(v));
+    }
     this.levelStack.push({
       intervals: new Map(this.intervals),
       aliases: new Map(this.aliases),
       propagatedEqualities: new Set(this.propagatedEqualities),
       assertedLitIds: [],
+      varJustifications: vjSnapshot,
     });
   }
 
@@ -56,6 +64,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     this.intervals = top.intervals;
     this.aliases = top.aliases;
     this.propagatedEqualities = top.propagatedEqualities;
+    this.varJustifications = top.varJustifications;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
@@ -82,6 +91,15 @@ export class ConstraintTheoryOracle implements TheoryOracle {
       const intB = this.intervals.get(rootB) ?? new Interval(-Infinity, Infinity);
       const merged = intA && intB ? intersectInterval(intA, intB) : null;
       this.intervals.set(rootB, merged);
+
+      // Merge justifications
+      const jA = this.varJustifications.get(rootA);
+      const jB = this.varJustifications.get(rootB);
+      if (jA || jB) {
+        if (!this.varJustifications.has(rootB)) this.varJustifications.set(rootB, new Set());
+        const setB = this.varJustifications.get(rootB)!;
+        if (jA) for (const id of jA) setB.add(id);
+      }
     }
   }
 
@@ -104,6 +122,9 @@ export class ConstraintTheoryOracle implements TheoryOracle {
       case "bound": {
         const [varName, op, val] = args as [string, "<=" | "<" | ">=" | ">" | "==", number];
         const canon = this.getCanonicalVar(varName);
+        if (!this.varJustifications.has(canon)) this.varJustifications.set(canon, new Set());
+        this.varJustifications.get(canon)!.add(lit.id);
+
         const curr = this.getInterval(canon);
         if (!curr) {
           this.intervals.set(canon, null);
@@ -126,12 +147,22 @@ export class ConstraintTheoryOracle implements TheoryOracle {
       }
       case "equal": {
         const [varA, varB] = args as [string, string];
+        const canonA = this.getCanonicalVar(varA);
+        const canonB = this.getCanonicalVar(varB);
+        if (!this.varJustifications.has(canonA)) this.varJustifications.set(canonA, new Set());
+        this.varJustifications.get(canonA)!.add(lit.id);
+        if (!this.varJustifications.has(canonB)) this.varJustifications.set(canonB, new Set());
+        this.varJustifications.get(canonB)!.add(lit.id);
+
         this.unionVars(varA, varB);
         break;
       }
       case "interval": {
         const [varName, lo, hi] = args as [string, number, number];
         const canon = this.getCanonicalVar(varName);
+        if (!this.varJustifications.has(canon)) this.varJustifications.set(canon, new Set());
+        this.varJustifications.get(canon)!.add(lit.id);
+
         const curr = this.getInterval(canon);
         if (!curr) {
           this.intervals.set(canon, null);
@@ -149,6 +180,9 @@ export class ConstraintTheoryOracle implements TheoryOracle {
 
         for (const [vName, coeff] of Object.entries(coeffs)) {
           const canon = this.getCanonicalVar(vName);
+          if (!this.varJustifications.has(canon)) this.varJustifications.set(canon, new Set());
+          this.varJustifications.get(canon)!.add(lit.id);
+
           const current = this.getInterval(canon);
           if (current === null) {
             isAlreadyInfeasible = true;
@@ -204,10 +238,14 @@ export class ConstraintTheoryOracle implements TheoryOracle {
           if (!valid) {
             for (const [v] of box.entries()) {
               this.intervals.set(v, null);
+              if (!this.varJustifications.has(v)) this.varJustifications.set(v, new Set());
+              this.varJustifications.get(v)!.add(lit.id);
             }
           } else {
             for (const [v, contractedInt] of box.entries()) {
               this.intervals.set(v, contractedInt);
+              if (!this.varJustifications.has(v)) this.varJustifications.set(v, new Set());
+              this.varJustifications.get(v)!.add(lit.id);
             }
           }
         }
@@ -221,10 +259,12 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     // Replay remaining asserted literals and re-apply shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
     const savedShared = [...this.sharedEqualities];
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
@@ -236,9 +276,29 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
     for (const [varName, interval] of this.intervals.entries()) {
       if (interval === null || interval.lo > interval.hi + 1e-9) {
-        const culprits = Array.from(this.assertedLiterals.values()).filter(
-          (l) => l.args.includes(varName) || this.getCanonicalVar(l.args[0] as string) === varName,
-        );
+        const culpritLitIds = this.varJustifications.get(varName) ?? new Set<number>();
+        const culprits: TheoryLiteral[] = [];
+        for (const id of culpritLitIds) {
+          const l = this.assertedLiterals.get(id);
+          if (l) {
+            culprits.push(l);
+          } else {
+            culprits.push({
+              id,
+              predicate: "crossTheoryAntecedent",
+              args: [varName],
+            });
+          }
+        }
+
+        for (const l of this.assertedLiterals.values()) {
+          if (
+            (l.args.includes(varName) || this.getCanonicalVar(l.args[0] as string) === varName) &&
+            !culpritLitIds.has(l.id)
+          ) {
+            culprits.push(l);
+          }
+        }
 
         return {
           isSat: false,
@@ -269,22 +329,28 @@ export class ConstraintTheoryOracle implements TheoryOracle {
 
     for (const [val, vars] of pointVars.entries()) {
       if (vars.length > 1) {
-        for (let i = 0; i < vars.length; i++) {
-          for (let j = i + 1; j < vars.length; j++) {
-            const vA = vars[i]!;
-            const vB = vars[j]!;
-            const key = vA < vB ? `${vA}==${vB}` : `${vB}==${vA}`;
-            if (!this.propagatedEqualities.has(key)) {
-              this.propagatedEqualities.add(key);
-              equalities.push({
-                varA: vA,
-                varB: vB,
-                domain: "real",
-                bounds: [val, val],
-                explanation: `Deduced from identical point intervals [${val}, ${val}]`,
-                sourceOracle: this.name,
-              });
-            }
+        // Emit spanning path v[i] == v[i+1] rather than O(V^2) clique
+        for (let i = 0; i < vars.length - 1; i++) {
+          const vA = vars[i]!;
+          const vB = vars[i + 1]!;
+          const key = vA < vB ? `${vA}==${vB}` : `${vB}==${vA}`;
+          if (!this.propagatedEqualities.has(key)) {
+            this.propagatedEqualities.add(key);
+            const justA = this.varJustifications.get(this.getCanonicalVar(vA));
+            const justB = this.varJustifications.get(this.getCanonicalVar(vB));
+            const justs = new Set<number>();
+            if (justA) for (const id of justA) justs.add(id);
+            if (justB) for (const id of justB) justs.add(id);
+            equalities.push({
+              varA: vA,
+              varB: vB,
+              domain: "real",
+              bounds: [val, val],
+              explanation: `Deduced from identical point intervals [${val}, ${val}]`,
+              sourceOracle: this.name,
+              justifications: Array.from(justs),
+              justification: Array.from(justs),
+            });
           }
         }
       }
@@ -300,21 +366,27 @@ export class ConstraintTheoryOracle implements TheoryOracle {
 
     for (const [, vars] of aliasGroups.entries()) {
       if (vars.length > 1) {
-        for (let i = 0; i < vars.length; i++) {
-          for (let j = i + 1; j < vars.length; j++) {
-            const vA = vars[i]!;
-            const vB = vars[j]!;
-            const key = vA < vB ? `${vA}==${vB}` : `${vB}==${vA}`;
-            if (!this.propagatedEqualities.has(key)) {
-              this.propagatedEqualities.add(key);
-              equalities.push({
-                varA: vA,
-                varB: vB,
-                domain: "real",
-                explanation: `Deduced from alias union ${vA} == ${vB}`,
-                sourceOracle: this.name,
-              });
-            }
+        // Emit spanning path v[i] == v[i+1] rather than O(V^2) clique
+        for (let i = 0; i < vars.length - 1; i++) {
+          const vA = vars[i]!;
+          const vB = vars[i + 1]!;
+          const key = vA < vB ? `${vA}==${vB}` : `${vB}==${vA}`;
+          if (!this.propagatedEqualities.has(key)) {
+            this.propagatedEqualities.add(key);
+            const justA = this.varJustifications.get(this.getCanonicalVar(vA));
+            const justB = this.varJustifications.get(this.getCanonicalVar(vB));
+            const justs = new Set<number>();
+            if (justA) for (const id of justA) justs.add(id);
+            if (justB) for (const id of justB) justs.add(id);
+            equalities.push({
+              varA: vA,
+              varB: vB,
+              domain: "real",
+              explanation: `Deduced from alias union ${vA} == ${vB}`,
+              sourceOracle: this.name,
+              justifications: Array.from(justs),
+              justification: Array.from(justs),
+            });
           }
         }
       }
@@ -325,6 +397,18 @@ export class ConstraintTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     this.sharedEqualities.push(eq);
+    const justs = eq.justifications ?? eq.justification;
+    if (justs && justs.length > 0) {
+      const rA = this.getCanonicalVar(eq.varA);
+      const rB = this.getCanonicalVar(eq.varB);
+      if (!this.varJustifications.has(rA)) this.varJustifications.set(rA, new Set());
+      const setA = this.varJustifications.get(rA)!;
+      for (const id of justs) setA.add(id);
+      if (!this.varJustifications.has(rB)) this.varJustifications.set(rB, new Set());
+      const setB = this.varJustifications.get(rB)!;
+      for (const id of justs) setB.add(id);
+    }
+
     this.unionVars(eq.varA, eq.varB);
     if (eq.bounds) {
       const canon = this.getCanonicalVar(eq.varA);

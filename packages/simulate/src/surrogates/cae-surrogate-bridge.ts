@@ -18,6 +18,9 @@ import {
   type PodTrainConfig,
 } from "./cfd-pod-surrogate.js";
 import type { SnapshotMatrixDataset } from "./cfd-snapshot-collector.js";
+import type { MultivariateBounds } from "./multivariate-bounds.js";
+
+export type { MultivariateBounds };
 
 export interface CaeSurrogateBridgeConfig extends PodTrainConfig {
   /** Target cumulative energy threshold (default: 0.999 = 99.9%). */
@@ -68,6 +71,11 @@ export interface TrainedCaeSurrogate {
     latentVarIds: number[];
   };
 
+  /** Parameter bounds extracted from training dataset for extrapolation detection. */
+  parameterBounds?: Record<string, { min: number; max: number }>;
+  /** Multivariate ellipsoid extrapolation bounds. */
+  multivariateBounds?: MultivariateBounds;
+
   /**
    * Serializes the trained surrogate model to JSON-friendly data for real-time webview exploration.
    */
@@ -115,6 +123,7 @@ export class CaeSurrogateBridge {
           capturedEnergy: pod.capturedEnergy,
         },
         config: config ?? {},
+        parameterBounds: pod.parameterBounds,
         evaluate: (params) => pod.predict(params),
         lowerToDae: (builder, inputMap, opts) => pod.lowerToDae(builder, inputMap, opts),
         toData: () => pod.toData(),
@@ -140,6 +149,8 @@ export class CaeSurrogateBridge {
       podSurrogate: pod,
       metrics,
       config: config ?? {},
+      parameterBounds: pod.parameterBounds,
+      multivariateBounds: pod.multivariateBounds,
       evaluate: (params) => pod.predict(params),
       lowerToDae: (builder, inputMap, opts) => pod.lowerToDae(builder, inputMap, opts),
       toData: () => pod.toData(),

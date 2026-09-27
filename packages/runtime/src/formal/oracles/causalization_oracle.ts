@@ -38,6 +38,12 @@ export class CausalizationTheoryOracle implements TheoryOracle {
   private samplingChecks: SamplingCheck[] = [];
   private algebraicLoops: AlgebraicLoopSpec[] = [];
   private assertedLiterals = new Map<number, TheoryLiteral>();
+  private levelStack: {
+    equations: EquationAssignment[];
+    samplingChecks: SamplingCheck[];
+    algebraicLoops: AlgebraicLoopSpec[];
+    assertedLitIds: number[];
+  }[] = [];
 
   constructor() {
     this.reset();
@@ -48,10 +54,34 @@ export class CausalizationTheoryOracle implements TheoryOracle {
     this.samplingChecks = [];
     this.algebraicLoops = [];
     this.assertedLiterals.clear();
+    this.levelStack = [];
+  }
+
+  public pushLevel(): void {
+    this.levelStack.push({
+      equations: [...this.equations],
+      samplingChecks: [...this.samplingChecks],
+      algebraicLoops: [...this.algebraicLoops],
+      assertedLitIds: [],
+    });
+  }
+
+  public popLevel(): void {
+    const top = this.levelStack.pop();
+    if (!top) return;
+    this.equations = top.equations;
+    this.samplingChecks = top.samplingChecks;
+    this.algebraicLoops = top.algebraicLoops;
+    for (const id of top.assertedLitIds) {
+      this.assertedLiterals.delete(id);
+    }
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
+    if (this.levelStack.length > 0) {
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
+    }
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -83,8 +113,10 @@ export class CausalizationTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }

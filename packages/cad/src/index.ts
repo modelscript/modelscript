@@ -21,6 +21,7 @@ export type {
   ParamOptions,
   PartEntry,
   Solid,
+  SolidSourceMetadata,
   SphereOptions,
   SphereSolid,
   TaggedPatchSolid,

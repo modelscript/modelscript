@@ -2,6 +2,7 @@ import { BaseStyles, ThemeProvider } from "@primer/react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
 import AppShell from "./components/AppShell";
+import ErrorBoundary from "./components/ErrorBoundary";
 import BookmarksPage from "./pages/BookmarksPage";
 import ClassDetailPage from "./pages/ClassDetailPage";
 import EditProfilePage from "./pages/EditProfilePage";
@@ -13,6 +14,7 @@ import HomeFeedPage from "./pages/HomeFeedPage";
 import LibraryListPage from "./pages/LibraryListPage";
 import LibraryVersionPage from "./pages/LibraryVersionPage";
 import LoginPage from "./pages/LoginPage";
+import NotFoundPage from "./pages/NotFoundPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 import PackageDetailPage from "./pages/PackageDetailPage";
@@ -48,45 +50,48 @@ function App() {
       >
         <div id="portal-root" />
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Navigate to={user ? "/home" : "/explore"} replace />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
-            <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Navigate to={user ? "/home" : "/explore"} replace />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+              <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
 
-            {/* Social shell routes */}
-            <Route element={<AppShell />}>
-              <Route path="/home" element={user ? <HomeFeedPage /> : <Navigate to="/explore" replace />} />
-              <Route path="/explore" element={<ExplorePage />} />
-              <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/bookmarks" element={<BookmarksPage />} />
-              <Route path="/feeds" element={<FeedsPage />} />
+              {/* Social shell routes */}
+              <Route element={<AppShell />}>
+                <Route path="/home" element={user ? <HomeFeedPage /> : <Navigate to="/explore" replace />} />
+                <Route path="/explore" element={<ExplorePage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/bookmarks" element={<BookmarksPage />} />
+                <Route path="/feeds" element={<FeedsPage />} />
 
-              {/* Package browser */}
-              <Route path="/packages" element={<LibraryListPage />} />
-              <Route path="/packages/:name" element={<LibraryVersionPage />} />
-              <Route path="/packages/:name/:version" element={<PackageDetailPage />} />
-              <Route path="/packages/:name/:version/classes/:className" element={<ClassDetailPage />} />
+                {/* Package browser */}
+                <Route path="/packages" element={<LibraryListPage />} />
+                <Route path="/packages/:name" element={<LibraryVersionPage />} />
+                <Route path="/packages/:name/:version" element={<PackageDetailPage />} />
+                <Route path="/packages/:name/:version/classes/:className" element={<ClassDetailPage />} />
 
-              {/* Repositories */}
-              <Route path="/repos" element={<RepositoryListPage />} />
-              <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
+                {/* Repositories */}
+                <Route path="/repos" element={<RepositoryListPage />} />
+                <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
 
-              {/* Scripts */}
-              <Route path="/scripts" element={<ScriptsListPage />} />
-              <Route path="/scripts/templates/:id" element={<TemplateDetailPage />} />
-              <Route path="/scripts/:id" element={<ScriptDetailPage />} />
+                {/* Scripts */}
+                <Route path="/scripts" element={<ScriptsListPage />} />
+                <Route path="/scripts/templates/:id" element={<TemplateDetailPage />} />
+                <Route path="/scripts/:id" element={<ScriptDetailPage />} />
 
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/settings/profile" element={<EditProfilePage />} />
-              <Route path="/:username" element={<ProfilePage />} />
-              <Route path="/:username/status/:id" element={<PostDetailPage />} />
-              <Route path="/:username/status/:id/activity" element={<PostActivityPage />} />
-              <Route path="/:username/followers" element={<FollowersPage />} />
-              <Route path="/:username/following" element={<FollowingPage />} />
-            </Route>
-          </Routes>
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/settings/profile" element={<EditProfilePage />} />
+                <Route path="/:username" element={<ProfilePage />} />
+                <Route path="/:username/status/:id" element={<PostDetailPage />} />
+                <Route path="/:username/status/:id/activity" element={<PostActivityPage />} />
+                <Route path="/:username/followers" element={<FollowersPage />} />
+                <Route path="/:username/following" element={<FollowingPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
+            </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </BaseStyles>
     </ThemeProvider>

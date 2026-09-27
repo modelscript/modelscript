@@ -15,6 +15,7 @@ import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { billingRouter } from "./routes/billing.js";
 import { caeRouter } from "./routes/cae.js";
+import { cloudRouter } from "./routes/cloud.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { federationRouter } from "./routes/federation.js";
 import { fmuRouter } from "./routes/fmu.js";
@@ -355,6 +356,7 @@ graph TD
   app.use("/api/v1", simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", physicsRouter(jobQueue, database));
   app.use("/api/v1", caeRouter(jobQueue, database));
+  app.use("/api/v1", cloudRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", billingRouter(database));
   app.use("/api/v1", mcpRouter(database));
   app.use("/api/v1/jobs", scriptsRouter(database));

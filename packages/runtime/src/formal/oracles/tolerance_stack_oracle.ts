@@ -18,6 +18,7 @@ export class ToleranceStackOracle implements TheoryOracle {
   private toleranceSpecs = new Map<string, GdtToleranceSpecification>();
   private chains = new Map<string, ToleranceChainSpec>();
   private clearanceConstraints = new Map<string, { min: number; max: number }>();
+  private clearanceJustifications = new Map<string, Set<number>>();
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
 
@@ -25,6 +26,7 @@ export class ToleranceStackOracle implements TheoryOracle {
     specs: Map<string, GdtToleranceSpecification>;
     chains: Map<string, ToleranceChainSpec>;
     constraints: Map<string, { min: number; max: number }>;
+    clearanceJustifications: Map<string, Set<number>>;
     assertedLitIds: number[];
   }[] = [];
 
@@ -36,16 +38,22 @@ export class ToleranceStackOracle implements TheoryOracle {
     this.toleranceSpecs.clear();
     this.chains.clear();
     this.clearanceConstraints.clear();
+    this.clearanceJustifications.clear();
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
     this.levelStack = [];
   }
 
   public pushLevel(): void {
+    const clearJustSnap = new Map<string, Set<number>>();
+    for (const [k, v] of this.clearanceJustifications) {
+      clearJustSnap.set(k, new Set(v));
+    }
     this.levelStack.push({
       specs: new Map(this.toleranceSpecs),
       chains: new Map(this.chains),
       constraints: new Map(this.clearanceConstraints),
+      clearanceJustifications: clearJustSnap,
       assertedLitIds: [],
     });
   }
@@ -56,6 +64,7 @@ export class ToleranceStackOracle implements TheoryOracle {
     this.toleranceSpecs = top.specs;
     this.chains = top.chains;
     this.clearanceConstraints = top.constraints;
+    this.clearanceJustifications = top.clearanceJustifications;
     for (const litId of top.assertedLitIds) {
       this.assertedLiterals.delete(litId);
     }
@@ -238,6 +247,28 @@ export class ToleranceStackOracle implements TheoryOracle {
             (l.predicate === "clearanceConstraint" && String(l.args[0]) === chainId),
         );
 
+        const existingIds = new Set(conflictLits.map((l) => l.id));
+        const justs = this.clearanceJustifications.get(chainId);
+        if (justs) {
+          for (const jId of justs) {
+            if (!existingIds.has(jId)) {
+              const lit = this.assertedLiterals.get(jId);
+              if (lit) {
+                conflictLits.push(lit);
+                existingIds.add(jId);
+              } else {
+                conflictLits.push({
+                  id: jId,
+                  predicate: "crossTheoryAntecedent",
+                  args: [`clearance_${chainId}`],
+                  isNegated: false,
+                });
+                existingIds.add(jId);
+              }
+            }
+          }
+        }
+
         return {
           isSat: false,
           conflict: {
@@ -286,6 +317,16 @@ export class ToleranceStackOracle implements TheoryOracle {
         const tightenedMin = Math.max(current.min, sharedMin);
         const tightenedMax = Math.min(current.max, sharedMax);
         this.clearanceConstraints.set(chainId, { min: tightenedMin, max: tightenedMax });
+
+        const justs = eq.justifications ?? eq.justification ?? [];
+        if (justs.length > 0) {
+          if (!this.clearanceJustifications.has(chainId)) {
+            this.clearanceJustifications.set(chainId, new Set());
+          }
+          for (const j of justs) {
+            this.clearanceJustifications.get(chainId)!.add(j);
+          }
+        }
       }
     }
   }
