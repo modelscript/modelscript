@@ -2,6 +2,8 @@
 
 import { fork, type ChildProcess } from "node:child_process";
 
+import type { HpcUsageMetrics } from "./services/hpc/hpc-types.js";
+
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface JobInfo {
@@ -10,6 +12,8 @@ export interface JobInfo {
   resultPath?: string;
   classesProcessed?: number;
   logs?: string[];
+  profile?: string;
+  usage?: HpcUsageMetrics;
 }
 
 type JobFn = () => Promise<void>;

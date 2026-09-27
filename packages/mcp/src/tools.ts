@@ -15,10 +15,12 @@ import {
   UnifiedWorkspace,
 } from "@modelscript/runtime";
 import {
-  type ArenaSimulateOptions,
+  ArenaSimulator,
+  ModelicaCalibrator,
   runArenaDoE,
   runSensitivityAnalysisArena,
   simulateArena,
+  type ArenaSimulateOptions,
 } from "@modelscript/simulate";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -227,6 +229,22 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
+      // Pre-flight quota check for hosted/metered execution
+      if (ctx.checkQuota) {
+        const quota = await ctx.checkQuota({ toolName: "modelica_simulate", profile: "standard" });
+        if (!quota.allowed) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Payment Required (402) - Insufficient Compute Credits: ${quota.reason || "Credit balance insufficient"}. Required: ${quota.required ?? "?"}, Balance: ${quota.balance ?? "?"}. Top up at /settings.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+
       // Try arena path first (query-based flattening)
       try {
         const queryDB = ctx.current.queryEngine.toQueryDB();
@@ -251,13 +269,24 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const result = simulateArena(arena as any, simOpts);
         const states = result.states;
 
+        let costNotice = "";
+        if (ctx.deductCredits) {
+          const costCredits = 0.1;
+          await ctx.deductCredits({
+            toolName: "modelica_simulate",
+            costCredits,
+            details: { name, states: states.length, steps: result.t.length },
+          });
+          costNotice = `\n\n[Compute Metered: ${costCredits.toFixed(2)} credits debited]`;
+        }
+
         if ((format ?? "json") === "csv") {
           const lines = [`time,${states.join(",")}`];
           for (let i = 0; i < result.t.length; i++) {
             const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
             lines.push(values.join(","));
           }
-          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+          return { content: [{ type: "text" as const, text: lines.join("\n") + costNotice }] };
         } else {
           const rows = result.t.map((t: number, i: number) => {
             const row: Record<string, number> = { time: t };
@@ -266,7 +295,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             });
             return row;
           });
-          return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
+          return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) + costNotice }] };
         }
       } catch (e) {
         return {
@@ -848,6 +877,19 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       conflictId: z.string().describe("Identifier of the conflict slot or variable"),
     },
     async ({ conflictId }) => {
+      const polyglot = (ctx.polyglotHost as any) || (ctx.workspace as any)?.polyglot;
+      if (typeof polyglot?.diagnoseConflict === "function") {
+        const diag = polyglot.diagnoseConflict(conflictId);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(diag, null, 2),
+            },
+          ],
+        };
+      }
+
       return {
         content: [
           {
@@ -883,6 +925,19 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       customValue: z.number().optional().describe("Custom numeric value if strategy is 'custom'"),
     },
     async ({ conflictId, strategy, customValue }) => {
+      const polyglot = (ctx.polyglotHost as any) || (ctx.workspace as any)?.polyglot;
+      if (typeof polyglot?.reconcileSlot === "function") {
+        const res = polyglot.reconcileSlot(conflictId, strategy, customValue);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(res, null, 2),
+            },
+          ],
+        };
+      }
+
       let resolvedValue = customValue ?? 18.0;
       if (strategy === "source-wins") resolvedValue = 24.0;
       if (strategy === "target-wins") resolvedValue = 12.0;
@@ -1080,6 +1135,149 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         ],
         isError: !result.success,
       };
+    },
+  );
+
+  // ── modelica_diff_calibrate ──────────────────────────────────────────
+
+  server.tool(
+    "modelica_diff_calibrate",
+    "Calibrate Modelica model parameters against experimental or measurement curves using continuous DAE adjoint sensitivity and L-BFGS-B optimization.",
+    {
+      name: z.string().describe("Fully qualified class name of the Modelica model to calibrate"),
+      parameters: z.array(z.string()).describe("Names of parameters to estimate / calibrate"),
+      parameterBounds: z
+        .record(z.object({ min: z.number(), max: z.number() }))
+        .optional()
+        .describe("Parameter box bounds: { paramName: { min, max } }"),
+      initialGuess: z.record(z.number()).optional().describe("Optional initial guess overrides: { paramName: value }"),
+      measurements: z
+        .record(
+          z.object({
+            t: z.array(z.number()),
+            y: z.array(z.number()),
+          }),
+        )
+        .describe("Measurement time-series: { varName: { t: [...], y: [...] } }"),
+      startTime: z.number().optional().describe("Calibration simulation start time"),
+      stopTime: z.number().optional().describe("Calibration simulation stop time"),
+      maxIterations: z.number().int().min(1).max(500).default(50).describe("Maximum L-BFGS-B iterations"),
+      tolerance: z.number().default(1e-6).describe("Convergence tolerance"),
+    },
+    async ({
+      name,
+      parameters,
+      parameterBounds,
+      initialGuess,
+      measurements,
+      startTime,
+      stopTime,
+      maxIterations,
+      tolerance,
+    }) => {
+      if (!ctx.current) {
+        return {
+          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
+          isError: true,
+        };
+      }
+
+      try {
+        const queryDB = ctx.current.queryEngine.toQueryDB();
+        const flattener = new ArenaQueryFlattener(queryDB);
+
+        const entries = ctx.current.queryEngine.index.byName.get(name) || [];
+        const firstId = entries[0];
+        if (firstId === undefined) {
+          return {
+            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+            isError: true,
+          };
+        }
+
+        const arena = flattener.flatten(firstId);
+        const sim = new ArenaSimulator(arena as any);
+        sim.prepare();
+
+        const boundsMap = new Map<string, { min: number; max: number }>();
+        if (parameterBounds) {
+          for (const [p, b] of Object.entries(parameterBounds)) {
+            if (b && typeof b.min === "number" && typeof b.max === "number") {
+              boundsMap.set(p, { min: b.min, max: b.max });
+            }
+          }
+        }
+
+        const guessMap = new Map<string, number>();
+        if (initialGuess) {
+          for (const [p, val] of Object.entries(initialGuess)) {
+            if (typeof val === "number") guessMap.set(p, val);
+          }
+        }
+
+        const measMap = new Map<string, { t: number[]; y: number[] }>();
+        for (const [v, series] of Object.entries(measurements)) {
+          if (series && Array.isArray(series.t) && Array.isArray(series.y)) {
+            measMap.set(v, { t: series.t, y: series.y });
+          }
+        }
+
+        const calibrator = new ModelicaCalibrator(arena as any, sim, {
+          parameters,
+          parameterBounds: boundsMap,
+          initialGuess: guessMap.size > 0 ? guessMap : undefined,
+          measurements: measMap,
+          startTime,
+          stopTime,
+          method: "lbfgsb",
+          gradient: "adjoint",
+          maxIterations,
+          tolerance,
+        });
+
+        const result = calibrator.calibrate();
+
+        const optParams: Record<string, number> = {};
+        for (const [p, val] of result.parameters) {
+          optParams[p] = val;
+        }
+
+        const varResiduals: Record<string, number> = {};
+        for (const [v, r] of result.variableResiduals) {
+          varResiduals[v] = r;
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: result.success,
+                  parameters: optParams,
+                  residual: result.residual,
+                  variableResiduals: varResiduals,
+                  iterations: result.iterations,
+                  costHistory: result.costHistory,
+                  message: result.message,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Calibration failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     },
   );
 }

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CaeResultProcessor } from "./cae-result-processor.js";
 import { CaeTelemetryStreamer, type CaeSolverType } from "./cae-telemetry-streamer.js";
+import { getComputeProfile } from "./hpc/compute-profiles.js";
+import { HpcEngine } from "./hpc/hpc-engine.js";
+import type { HpcJobSpec, HpcUsageMetrics } from "./hpc/hpc-types.js";
 
 export interface CaeJobSpec {
   jobId: string;
@@ -16,6 +18,7 @@ export interface CaeJobSpec {
   cores?: number | undefined;
   timeoutSeconds?: number | undefined;
   runner?: "auto" | "docker" | "host" | "fallback" | undefined;
+  profile?: string | undefined;
   resultDir: string;
 }
 
@@ -26,15 +29,21 @@ export interface CaeExecutionResult {
   scalarsPath?: string | undefined;
   error?: string | undefined;
   durationMs: number;
+  usage?: HpcUsageMetrics | undefined;
+  profile?: string | undefined;
 }
 
 /**
  * Multi-Target Cloud Solver Runner.
- * Executes CalculiX (ccx), SU2 (SU2_CFD), and OpenFOAM solvers in isolated Docker containers,
- * native host processes, or built-in test runners.
+ * Executes CalculiX (ccx), SU2 (SU2_CFD), and OpenFOAM solvers via the unified HPC engine
+ * supporting local process execution and Slurm supercomputing clusters.
  */
 export class CaeSolverRunner {
-  private activeProcesses = new Map<string, ChildProcess>();
+  private readonly hpcEngine: HpcEngine;
+
+  constructor(hpcEngine?: HpcEngine) {
+    this.hpcEngine = hpcEngine || new HpcEngine();
+  }
 
   /**
    * Runs a solver job asynchronously with real-time telemetry streaming and result processing.
@@ -43,6 +52,9 @@ export class CaeSolverRunner {
     const startTime = Date.now();
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-cae-${spec.solver}-${spec.jobId}-`));
     fs.mkdirSync(spec.resultDir, { recursive: true });
+    try {
+      fs.writeFileSync(path.join(spec.resultDir, "job_spec.json"), JSON.stringify(spec, null, 2), "utf8");
+    } catch {}
 
     const logPath = path.join(spec.resultDir, "solver.log");
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
@@ -65,10 +77,38 @@ export class CaeSolverRunner {
       // 2. Select execution command
       const { command, args } = this.resolveExecutionCommand(spec, tmpDir, deckFileName);
 
-      // 3. Execute process
-      await this.runProcess(spec.jobId, command, args, tmpDir, telemetryStreamer, logStream, spec.timeoutSeconds);
+      // 3. Resolve profile & build HPC spec
+      const profile = getComputeProfile(spec.profile);
+      const hpcSpec: HpcJobSpec = {
+        jobId: spec.jobId,
+        name: `CAE-${spec.solver.toUpperCase()}-${spec.jobId}`,
+        command,
+        args,
+        workingDir: tmpDir,
+        profileId: profile.id,
+        resources: {
+          cpusPerTask: spec.cores || profile.cpus,
+          memoryMb: profile.memoryMb,
+          partition: profile.partition,
+          gpus: profile.gpus,
+          gpuType: profile.gpuType,
+          timeLimitMinutes: spec.timeoutSeconds ? Math.ceil(spec.timeoutSeconds / 60) : undefined,
+        },
+      };
 
-      // 4. Post-process solver results into result.vtu
+      // 4. Submit and wait for completion with live telemetry streaming
+      const { submission } = await this.hpcEngine.submitJob(hpcSpec, profile.id);
+
+      const usage = await this.hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile, (chunk) => {
+        logStream.write(chunk);
+        telemetryStreamer.processChunk(chunk);
+      });
+
+      if (usage.exitCode !== 0) {
+        throw new Error(`Solver exited with code ${usage.exitCode}`);
+      }
+
+      // 5. Post-process solver results into result.vtu
       const vtuPath = path.join(spec.resultDir, "result.vtu");
       const scalarsPath = path.join(spec.resultDir, "scalars.json");
 
@@ -87,18 +127,19 @@ export class CaeSolverRunner {
         resultVtuPath: vtuPath,
         scalarsPath,
         durationMs: Date.now() - startTime,
+        usage,
+        profile: profile.id,
       };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logStream.write(`\n[CAE Runner Error]: ${errMsg}\n`);
       return {
         jobId: spec.jobId,
-        status: errMsg === "CANCELLED" ? "cancelled" : "failed",
+        status: errMsg.includes("CANCELLED") ? "cancelled" : "failed",
         error: errMsg,
         durationMs: Date.now() - startTime,
       };
     } finally {
-      this.activeProcesses.delete(spec.jobId);
       logStream.end();
       if (fs.existsSync(tmpDir)) {
         try {
@@ -114,16 +155,8 @@ export class CaeSolverRunner {
    * Cancels a running solver job.
    */
   public cancelJob(jobId: string): boolean {
-    const child = this.activeProcesses.get(jobId);
-    if (child) {
-      child.kill("SIGTERM");
-      setTimeout(() => {
-        if (!child.killed) child.kill("SIGKILL");
-      }, 2000);
-      this.activeProcesses.delete(jobId);
-      return true;
-    }
-    return false;
+    this.hpcEngine.cancel(jobId);
+    return true;
   }
 
   private resolveExecutionCommand(
@@ -180,58 +213,6 @@ export class CaeSolverRunner {
       command: process.execPath,
       args: [scriptPath],
     };
-  }
-
-  private runProcess(
-    jobId: string,
-    command: string,
-    args: string[],
-    cwd: string,
-    telemetry: CaeTelemetryStreamer,
-    logStream: fs.WriteStream,
-    timeoutSeconds = 1800,
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let timedOut = false;
-      const child = spawn(command, args, {
-        cwd,
-        env: { ...process.env, OMP_NUM_THREADS: "4" },
-      });
-
-      this.activeProcesses.set(jobId, child);
-
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill("SIGTERM");
-        reject(new Error(`Solver execution timed out after ${timeoutSeconds}s`));
-      }, timeoutSeconds * 1000);
-
-      child.stdout.on("data", (chunk: Buffer) => {
-        const text = chunk.toString();
-        logStream.write(text);
-        telemetry.processChunk(text);
-      });
-
-      child.stderr.on("data", (chunk: Buffer) => {
-        const text = chunk.toString();
-        logStream.write(text);
-      });
-
-      child.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        if (timedOut) return;
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Solver exited with code ${code}`));
-        }
-      });
-    });
   }
 
   private async processResults(spec: CaeJobSpec, tmpDir: string, vtuPath: string, scalarsPath: string): Promise<void> {

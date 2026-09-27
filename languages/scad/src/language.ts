@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, def, field, language, optional, prec, repeat, seq } from "@modelscript/dsl";
+import {
+  choice,
+  def,
+  field,
+  language,
+  optional,
+  prec,
+  repeat,
+  seq,
+  tggComplement,
+  tggEq,
+  tggRule,
+} from "@modelscript/dsl";
 import { scadWriteback } from "./writeback.js";
 
 const PREC = {
@@ -21,6 +33,53 @@ export const scadLanguage = language({
   name: "scad",
 
   writeback: scadWriteback,
+
+  polyglot: {
+    languages: ["sysml2", "step", "modelica"],
+    rules: [
+      tggRule({
+        name: "ScadModuleToSysmlPart",
+        sourceLang: "scad",
+        targetLang: "sysml2",
+        source: ($, v) => $.ModuleDeclaration({ name: v("modName") }),
+        target: ($, v) => $.PartDefinition({ declaredName: v("modName") }),
+        where: (v) => [tggEq(v("modName"), v("modName")), tggComplement(["parameters", "body"])],
+      }),
+      tggRule({
+        name: "ScadTagPortToSysmlPort",
+        sourceLang: "scad",
+        targetLang: "sysml2",
+        source: ($, v) => $.TagPortOp({ args: v("portName") }),
+        target: ($, v) => $.PortUsage({ declaredName: v("portName") }),
+        where: (v) => [tggEq(v("portName"), v("portName")), tggComplement(["transformStack"])],
+      }),
+      tggRule({
+        name: "ScadVariableToSysmlAttribute",
+        sourceLang: "scad",
+        targetLang: "sysml2",
+        source: ($, v) => $.VariableDeclaration({ name: v("varName"), value: v("val") }),
+        target: ($, v) => $.AttributeUsage({ declaredName: v("varName"), defaultValue: v("val") }),
+        where: (v) => [tggEq(v("varName"), v("varName")), tggEq(v("val"), v("val"))],
+      }),
+      tggRule({
+        name: "ScadSolidToStepProduct",
+        sourceLang: "scad",
+        targetLang: "step",
+        source: ($, v) => $.CubePrimitive({ args: v("dims") }),
+        target: ($, v) => $.ProductDefinition({ name: v("dims") }),
+        where: (v) => [tggEq(v("dims"), v("dims")), tggComplement(["transforms", "color"])],
+      }),
+      tggRule({
+        name: "ScadTagPortToModelicaFrame",
+        sourceLang: "scad",
+        targetLang: "modelica",
+        source: ($, v) => $.TagPortOp({ args: v("portName") }),
+        target: ($, v) =>
+          $.ComponentClause({ name: v("portName"), typeSpecifier: "Modelica.Mechanics.MultiBody.Interfaces.Frame_a" }),
+        where: (v) => [tggEq(v("portName"), v("portName")), tggComplement(["transformStack"])],
+      }),
+    ],
+  },
 
   primitives: {
     nestedComment: { open: "/*", close: "*/" },

@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
-import { DigitalThreadHypergraph, ThreadDomain } from "@modelscript/runtime";
 import { LspContext } from "../LspContext.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
@@ -460,54 +459,8 @@ export function registerMiscEndpoints(context: LspContext) {
   });
 
   // ── Digital Thread Hypergraph Explorer Endpoints ────────────────────
-  const sharedHypergraph = new DigitalThreadHypergraph();
-  const sharedMetadataMap = new Map<
-    string,
-    { name?: string; uri?: string; line?: number; column?: number; properties?: Record<string, any> }
-  >();
-
-  // Seed with representative multi-domain threads if empty
-  const s0 = sharedHypergraph.createThread(101, 1);
-  sharedHypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
-  sharedHypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
-  sharedHypergraph.bindDomainNode(s0, ThreadDomain.Modelica, 3001);
-  sharedHypergraph.bindDomainNode(s0, ThreadDomain.CAD, 4001);
-  sharedHypergraph.bindDomainNode(s0, ThreadDomain.FEA, 5001);
-  sharedHypergraph.bindDomainNode(s0, ThreadDomain.BOM, 6001);
-
-  sharedMetadataMap.set("requirements:1001", {
-    name: "REQ-TORQUE-01 (Peak Torque >= 350Nm)",
-    line: 12,
-    column: 1,
-    properties: { status: "Verified" },
-  });
-  sharedMetadataMap.set("sysml2:2001", { name: "part def PowertrainInverter", line: 45, column: 5 });
-  sharedMetadataMap.set("modelica:3001", {
-    name: "model InverterDrive",
-    line: 14,
-    column: 1,
-    properties: { mass: 1.0 },
-  });
-  sharedMetadataMap.set("cad:4001", { name: "Inverter_Chassis.step", line: 1, column: 1, properties: { mass: 1.02 } });
-  sharedMetadataMap.set("fea:5001", { name: "InverterMount_CalculiX.inp", line: 1, column: 1 });
-  sharedMetadataMap.set("bom:6001", { name: "P/N 840-0219 (Inverter Assy)", line: 1, column: 1 });
-
-  const s1 = sharedHypergraph.createThread(102, 2);
-  sharedHypergraph.bindDomainNode(s1, ThreadDomain.Requirements, 1002);
-  sharedHypergraph.bindDomainNode(s1, ThreadDomain.SysML2, 2002);
-  sharedHypergraph.bindDomainNode(s1, ThreadDomain.Modelica, 3002);
-  sharedHypergraph.bindDomainNode(s1, ThreadDomain.CAD, 4002);
-  sharedHypergraph.markStale(s1);
-
-  sharedMetadataMap.set("requirements:1002", { name: "REQ-THERMAL-02 (Junction Temp <= 85C)", line: 28, column: 1 });
-  sharedMetadataMap.set("sysml2:2002", { name: "part def CoolingPlate", line: 88, column: 5 });
-  sharedMetadataMap.set("modelica:3002", {
-    name: "model CoolingCircuit",
-    line: 32,
-    column: 1,
-    properties: { mass: 0.8 },
-  });
-  sharedMetadataMap.set("cad:4002", { name: "CoolingPlate.step", line: 1, column: 1, properties: { mass: 1.15 } });
+  const sharedHypergraph = context.workspaceManager.hypergraph;
+  const sharedMetadataMap = context.workspaceManager.threadMetadataMap;
 
   context.connection.onRequest("modelscript/getThreadGraph", async () => {
     return ThreadExplorerProvider.buildThreadGraph(sharedHypergraph, sharedMetadataMap);
@@ -516,6 +469,66 @@ export function registerMiscEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/getBlastRadius", async (params: { domain: string; nodeId: number }) => {
     return ThreadExplorerProvider.getBlastRadius(sharedHypergraph, params.domain, params.nodeId);
   });
+
+  context.connection.onRequest(
+    "modelscript/reconcileThreadSlot",
+    async (params: {
+      slot: number;
+      strategy?: "physics-simplex" | "source-wins" | "target-wins" | "custom";
+      customValue?: number;
+    }) => {
+      const { slot, strategy = "physics-simplex", customValue } = params;
+      const isConflicted = sharedHypergraph.isConflicted(slot);
+      const isStale = sharedHypergraph.isStale(slot);
+
+      if (!isConflicted && !isStale) {
+        return { success: true, message: "Slot not in conflict or stale.", reconciledValue: undefined };
+      }
+
+      let consensusVal = customValue;
+      if (consensusVal === undefined) {
+        // Evaluate physics-simplex balance across aligned domain elements
+        const elements = context.workspaceManager.findAlignedElementsBySlot(slot);
+        const vals: number[] = [];
+        for (const el of elements) {
+          const m = el.properties?.mass ?? el.properties?.voltage ?? el.properties?.value;
+          if (typeof m === "number") vals.push(m);
+        }
+        if (vals.length >= 2) {
+          consensusVal = (Math.min(...vals) + Math.max(...vals)) / 2;
+        } else if (vals.length === 1) {
+          consensusVal = vals[0];
+        } else {
+          consensusVal = 1.0;
+        }
+      }
+
+      // Clear conflict and stale flags in hypergraph
+      sharedHypergraph.recordTheorySat(slot);
+
+      // Update properties in threadMetadataMap
+      for (let dom = 0; dom < 16; dom++) {
+        const nodeId = sharedHypergraph.getDomainNode(slot, dom);
+        if (nodeId && nodeId > 0) {
+          const domName = (DOMAIN_INDEX_TO_NAME as any)[dom] ?? "unknown";
+          const key = `${domName}:${nodeId}`;
+          const meta = sharedMetadataMap.get(key);
+          if (meta && meta.properties) {
+            if (meta.properties.mass !== undefined) meta.properties.mass = consensusVal;
+            if (meta.properties.voltage !== undefined) meta.properties.voltage = consensusVal;
+            if (meta.properties.value !== undefined) meta.properties.value = consensusVal;
+          }
+        }
+      }
+
+      return {
+        success: true,
+        slot,
+        reconciledValue: consensusVal,
+        strategy,
+      };
+    },
+  );
 }
 
 // @ts-nocheck

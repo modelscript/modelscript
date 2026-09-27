@@ -15,10 +15,12 @@ import {
   BinOp,
   Causality,
   DAEBuilder,
+  EqKind,
   executeArenaStatements,
   initBltWasm,
   StmtKind,
   UnaryOp,
+  VarAttrKind,
   Variability,
   VarType,
 } from "@modelscript/runtime";
@@ -31,6 +33,15 @@ export interface LoweredActionDae {
   locals: string[];
   startStmtIdx: number;
   stmtCount: number;
+}
+
+export interface LoweredConstraintDae {
+  arena: DAEBuilder;
+  name: string;
+  parameters: string[];
+  states: string[];
+  derivatives: string[];
+  eqCount: number;
 }
 
 export interface SysML2Token {
@@ -229,6 +240,9 @@ class SysmlExprParser {
         }
         if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === ")") {
           this.next(); // consume ')'
+        }
+        if (t.val === "der" && args.length === 1) {
+          return this.arena.addDerExpr(args[0]!);
         }
         return this.arena.addCallExpr(t.val, args);
       }
@@ -518,5 +532,481 @@ export class SysML2DaeLowerer {
     }
 
     return result;
+  }
+
+  /**
+   * Helper to prefix local variable and port identifiers in an equation or expression string.
+   */
+  public static prefixExpression(exprText: string, prefix: string, localNames: Set<string>): string {
+    if (!prefix || localNames.size === 0) return exprText;
+    const tokens = tokenizeSysml(exprText);
+    const result: string[] = [];
+    for (const t of tokens) {
+      if (t.type === "ident") {
+        const root = t.val.split(".")[0]!;
+        if (localNames.has(root)) {
+          result.push(prefix + t.val);
+        } else {
+          result.push(t.val);
+        }
+      } else {
+        result.push(t.val);
+      }
+    }
+    return result.join(" ");
+  }
+
+  /**
+   * Lowers a physical SysML v2 Constraint or Part definition with differential and algebraic equations into a DAEBuilder.
+   */
+  public static async lowerConstraint(sysmlSource: string, existingArena?: DAEBuilder): Promise<LoweredConstraintDae> {
+    try {
+      await initBltWasm();
+    } catch {}
+
+    const arena = existingArena ?? new DAEBuilder();
+
+    // 1. Strip comments
+    const cleanSource = sysmlSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\r\n]*/g, "");
+
+    // 2. Extract experiment configurations (if any)
+    const startMatch = /\bstartTime\s*=\s*([0-9.eE+-]+)/.exec(cleanSource);
+    if (startMatch) arena.experiment.startTime = parseFloat(startMatch[1]!);
+    const stopMatch = /\bstopTime\s*=\s*([0-9.eE+-]+)/.exec(cleanSource);
+    if (stopMatch) arena.experiment.stopTime = parseFloat(stopMatch[1]!);
+    const intervalMatch = /\b(?:interval|step)\s*=\s*([0-9.eE+-]+)/.exec(cleanSource);
+    if (intervalMatch) arena.experiment.interval = parseFloat(intervalMatch[1]!);
+    const tolMatch = /\btolerance\s*=\s*([0-9.eE+-]+)/.exec(cleanSource);
+    if (tolMatch) arena.experiment.tolerance = parseFloat(tolMatch[1]!);
+
+    // 3. Extract port definitions: port def Pin { attribute v : Real; flow attribute i : Real; }
+    interface PortDef {
+      name: string;
+      potentialAttrs: string[];
+      flowAttrs: string[];
+    }
+    const portDefs = new Map<string, PortDef>();
+    const portDefRegex = /\bport\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
+    let pdm: RegExpExecArray | null;
+    while ((pdm = portDefRegex.exec(cleanSource)) !== null) {
+      const portName = pdm[1]!;
+      const openBrace = cleanSource.indexOf("{", pdm.index);
+      const { body } = this.extractBraceBlock(cleanSource, openBrace);
+      const potentialAttrs: string[] = [];
+      const flowAttrs: string[] = [];
+
+      const attrLineRegex =
+        /\b(?:(in|out|inout)\s+)?(?:(flow)\s+)?attribute\s+(?:item\s+)?(?:(flow)\s+)?([A-Za-z_][A-Za-z0-9_]*)/g;
+      let am: RegExpExecArray | null;
+      while ((am = attrLineRegex.exec(body)) !== null) {
+        const isFlow = Boolean(am[2] || am[3] || /\bflow\b/.test(am[0]));
+        const attrName = am[4]!;
+        if (isFlow) {
+          flowAttrs.push(attrName);
+        } else {
+          potentialAttrs.push(attrName);
+        }
+      }
+      portDefs.set(portName, { name: portName, potentialAttrs, flowAttrs });
+    }
+
+    // 4. Extract component templates (part def, constraint def)
+    interface CompDef {
+      name: string;
+      bodyText: string;
+    }
+    const compDefs = new Map<string, CompDef>();
+    const compRegex = /\b(part|constraint|model|package)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
+    let cdm: RegExpExecArray | null;
+    while ((cdm = compRegex.exec(cleanSource)) !== null) {
+      const cName = cdm[2]!;
+      const openBrace = cleanSource.indexOf("{", cdm.index);
+      const { body } = this.extractBraceBlock(cleanSource, openBrace);
+      compDefs.set(cName, { name: cName, bodyText: body });
+    }
+
+    // Determine root component name
+    let rootCompName = "SysmlModel";
+    const nameMatch = /(?:constraint|part|package|model)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(cleanSource);
+    if (nameMatch) rootCompName = nameMatch[1]!;
+
+    // If multiple compDefs, find the one that is not instantiated as a subpart in others
+    if (compDefs.size > 1) {
+      const referenced = new Set<string>();
+      for (const comp of compDefs.values()) {
+        const subpartMatch = /\bpart\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*([A-Za-z_][A-Za-z0-9_]*)/g;
+        let sm: RegExpExecArray | null;
+        while ((sm = subpartMatch.exec(comp.bodyText)) !== null) {
+          referenced.add(sm[1]!);
+        }
+      }
+      for (const name of compDefs.keys()) {
+        if (!referenced.has(name)) {
+          rootCompName = name;
+        }
+      }
+    }
+
+    const parameters: string[] = [];
+    const states: string[] = [];
+    const derivatives: string[] = [];
+    const initialEqCount = arena.eqCount;
+
+    interface ActivePort {
+      fullName: string;
+      portType: string;
+      potentialAttrs: string[];
+      flowAttrs: string[];
+    }
+    const activePorts = new Map<string, ActivePort>();
+    const allConnects: { p1: string; p2: string }[] = [];
+
+    // Helper to instantiate a component definition
+    const instantiateComponent = (
+      compName: string,
+      compBody: string,
+      prefix: string,
+      overrides: Record<string, number>,
+    ) => {
+      const localNames = new Set<string>();
+
+      // 4a. Extract ports
+      const portInstRegex =
+        /\b(?:(in|out|inout)\s+)?port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = portInstRegex.exec(compBody)) !== null) {
+        const portInstName = pm[2]!;
+        const portTypeName = pm[3]!;
+        const portFullName = prefix + portInstName;
+        localNames.add(portInstName);
+
+        const pDef = portDefs.get(portTypeName) ?? {
+          name: portTypeName,
+          potentialAttrs: ["v"],
+          flowAttrs: ["i"],
+        };
+
+        for (const pot of pDef.potentialAttrs) {
+          const varName = `${portFullName}.${pot}`;
+          arena.addVariable(varName, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        }
+        for (const fl of pDef.flowAttrs) {
+          const varName = `${portFullName}.${fl}`;
+          arena.addVariable(varName, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        }
+
+        activePorts.set(portFullName, {
+          fullName: portFullName,
+          portType: portTypeName,
+          potentialAttrs: pDef.potentialAttrs,
+          flowAttrs: pDef.flowAttrs,
+        });
+      }
+
+      // 4b. Extract subparts
+      let scrubbedBody = compBody;
+      const subpartRegex = /\bpart\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_]*)/g;
+      let spm: RegExpExecArray | null;
+      while ((spm = subpartRegex.exec(compBody)) !== null) {
+        const subName = spm[1]!;
+        const subTypeName = spm[2]!;
+        localNames.add(subName);
+
+        let overrideText = "";
+        let nextPos = spm.index + spm[0].length;
+        while (nextPos < compBody.length && /\s/.test(compBody[nextPos]!)) nextPos++;
+        let endSubPos = nextPos;
+        if (nextPos < compBody.length && compBody[nextPos] === "{") {
+          const { body: obody, endPos } = this.extractBraceBlock(compBody, nextPos);
+          overrideText = obody;
+          endSubPos = endPos;
+          subpartRegex.lastIndex = endPos;
+        } else if (nextPos < compBody.length && compBody[nextPos] === ";") {
+          endSubPos = nextPos + 1;
+          subpartRegex.lastIndex = nextPos + 1;
+        }
+
+        scrubbedBody = scrubbedBody.replace(compBody.slice(spm.index, endSubPos), "/* subpart */");
+
+        const subOverrides: Record<string, number> = {};
+        const ovRegex = /(?:attribute\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([0-9.eE+-]+)/g;
+        let om: RegExpExecArray | null;
+        while ((om = ovRegex.exec(overrideText)) !== null) {
+          subOverrides[om[1]!] = parseFloat(om[2]!);
+        }
+
+        const childComp = compDefs.get(subTypeName);
+        if (childComp) {
+          instantiateComponent(childComp.name, childComp.bodyText, `${prefix}${subName}.`, subOverrides);
+        }
+      }
+
+      // 4c. Extract attributes
+      const attrRegex =
+        /\b(?:(in|out|inout)\s+)?attribute\s+(?:item\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.:]+))?(?:\s*=\s*([^;]+))?\s*;/g;
+      let am: RegExpExecArray | null;
+      while ((am = attrRegex.exec(compBody)) !== null) {
+        const dir = am[1];
+        const pName = am[2]!;
+        localNames.add(pName);
+
+        const fullName = prefix + pName;
+        const defaultValStr = am[4]?.trim();
+        let defaultVal = defaultValStr ? parseFloat(defaultValStr) : 0.0;
+        if (overrides[pName] !== undefined) {
+          defaultVal = overrides[pName]!;
+        }
+
+        let causality = Causality.Local;
+        if (dir === "in") causality = Causality.Input;
+        else if (dir === "out") causality = Causality.Output;
+
+        const isState = new RegExp(`\\bder\\s*\\(\\s*${pName}\\s*\\)`).test(compBody);
+        const isParam = !isState && (dir === "in" || defaultValStr !== undefined || overrides[pName] !== undefined);
+        const variability = isParam ? Variability.Parameter : Variability.Continuous;
+
+        if (isParam) {
+          parameters.push(fullName);
+        } else {
+          states.push(fullName);
+        }
+
+        const varIdx = arena.addVariable(
+          fullName,
+          VarType.Real,
+          variability,
+          causality,
+          isNaN(defaultVal) ? 0.0 : defaultVal,
+        );
+        if (isState) {
+          const startExpr = arena.addRealLiteral(isNaN(defaultVal) ? 0.0 : defaultVal);
+          arena.setVarAttrExpr(varIdx, VarAttrKind.Start, startExpr);
+          const fixedExpr = arena.addBoolLiteral(true);
+          arena.setVarAttrExpr(varIdx, VarAttrKind.Fixed, fixedExpr);
+          arena.setVarFixed(varIdx, true);
+        }
+      }
+
+      // 4d. Extract when-clauses: when cond { actions }
+      const whenRegex = /\bwhen\s+(?:\(([^)]+)\)|([^{]+))\s*\{/g;
+      let wm: RegExpExecArray | null;
+      while ((wm = whenRegex.exec(compBody)) !== null) {
+        const rawCond = (wm[1] || wm[2])!.trim();
+        const openBrace = compBody.indexOf("{", wm.index);
+        const { body: whenBody, endPos } = this.extractBraceBlock(compBody, openBrace);
+        scrubbedBody = scrubbedBody.replace(compBody.slice(wm.index, endPos), "/* when */");
+
+        const prefixedCond = this.prefixExpression(rawCond, prefix, localNames);
+        const condExprId = this.lowerExpression(prefixedCond, arena);
+        const whenIdx = arena.addWhenEquation(condExprId);
+
+        // Parse assignments in when body
+        const assignRegex = /(?:assign\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*(?::=|=)\s*([^;]+);/g;
+        let asm: RegExpExecArray | null;
+        while ((asm = assignRegex.exec(whenBody)) !== null) {
+          const target = this.prefixExpression(asm[1]!.trim(), prefix, localNames);
+          const expr = this.prefixExpression(asm[2]!.trim(), prefix, localNames);
+
+          const targetNameId = arena.interner.intern(target);
+          const targetExprId = arena.addName(targetNameId);
+          const rhsExprId = this.lowerExpression(expr, arena);
+          arena.addWhenBodyEquation(whenIdx, EqKind.Simple, targetExprId, rhsExprId);
+
+          if (!states.includes(target) && !parameters.includes(target)) {
+            states.push(target);
+          }
+        }
+      }
+
+      // 4e. Extract equations
+      const statements = scrubbedBody
+        .split(";")
+        .map((s) => s.replace(/^[\s{}]+/, "").trim())
+        .filter((s) => s.length > 0);
+
+      for (const stmt of statements) {
+        if (
+          /^\b(?:(?:in|out|inout|private|protected|public)\s+)?(?:attribute|item|part|port|action|calc|constraint|def|import|package|alias|metadata)\b/.test(
+            stmt,
+          )
+        ) {
+          continue;
+        }
+        if (/^(?:startTime|stopTime|interval|step|tolerance)\s*=/i.test(stmt)) {
+          continue;
+        }
+        if (/^\bconnect\b/.test(stmt)) {
+          continue;
+        }
+
+        let eqSplitIndex = -1;
+        let eqOpLen = 0;
+
+        const dblEqIdx = stmt.indexOf("==");
+        if (dblEqIdx !== -1) {
+          eqSplitIndex = dblEqIdx;
+          eqOpLen = 2;
+        } else {
+          const singleEqMatch = /(?<![:<>!])=(?!=)/.exec(stmt);
+          if (singleEqMatch && singleEqMatch.index !== undefined) {
+            eqSplitIndex = singleEqMatch.index;
+            eqOpLen = 1;
+          }
+        }
+
+        if (eqSplitIndex !== -1) {
+          let lhsText = stmt.slice(0, eqSplitIndex).trim();
+          lhsText = lhsText.replace(/^(?:assert\s+constraint\s*\{?\s*|\{\s*)/, "").trim();
+          const rhsText = stmt
+            .slice(eqSplitIndex + eqOpLen)
+            .trim()
+            .replace(/\}$/, "")
+            .trim();
+
+          if (lhsText && rhsText) {
+            const prefixedLhs = this.prefixExpression(lhsText, prefix, localNames);
+            const prefixedRhs = this.prefixExpression(rhsText, prefix, localNames);
+            const lhsExprId = this.lowerExpression(prefixedLhs, arena);
+            const rhsExprId = this.lowerExpression(prefixedRhs, arena);
+            arena.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
+          }
+        }
+      }
+
+      // 4f. Extract connects
+      const connectRegex = /\bconnect\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)\s*;/g;
+      let cm: RegExpExecArray | null;
+      while ((cm = connectRegex.exec(compBody)) !== null) {
+        const p1 = this.prefixExpression(cm[1]!, prefix, localNames);
+        const p2 = this.prefixExpression(cm[2]!, prefix, localNames);
+        allConnects.push({ p1, p2 });
+      }
+    };
+
+    // Instantiate root component (or whole source if flat)
+    const rootDef = compDefs.get(rootCompName);
+    if (rootDef) {
+      instantiateComponent(rootDef.name, rootDef.bodyText, "", {});
+    } else {
+      instantiateComponent(rootCompName, cleanSource, "", {});
+    }
+
+    // 5. Connect Port Conservation & Kirchhoff Balancing
+    const flowJunctions = new Map<string, string[]>(); // flowAttrName -> [pin1, pin2, ...]
+    const unionMap = new Map<string, string>();
+    const findRoot = (x: string): string => {
+      let curr = x;
+      while (unionMap.has(curr)) curr = unionMap.get(curr)!;
+      return curr;
+    };
+    const union = (a: string, b: string) => {
+      const ra = findRoot(a);
+      const rb = findRoot(b);
+      if (ra !== rb) unionMap.set(rb, ra);
+    };
+
+    for (const conn of allConnects) {
+      const portA = activePorts.get(conn.p1);
+      const portB = activePorts.get(conn.p2);
+
+      if (portA && portB) {
+        // Potential variables: across equality (vA == vB)
+        for (const pot of portA.potentialAttrs) {
+          if (portB.potentialAttrs.includes(pot)) {
+            const lhsExprId = this.lowerExpression(`${conn.p1}.${pot}`, arena);
+            const rhsExprId = this.lowerExpression(`${conn.p2}.${pot}`, arena);
+            arena.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
+          }
+        }
+
+        // Flow variables: Kirchhoff flow conservation (sum-to-zero)
+        for (const fl of portA.flowAttrs) {
+          if (portB.flowAttrs.includes(fl)) {
+            union(`${conn.p1}.${fl}`, `${conn.p2}.${fl}`);
+          }
+        }
+      } else {
+        // Simple direct connection: equality
+        const lhsExprId = this.lowerExpression(conn.p1, arena);
+        const rhsExprId = this.lowerExpression(conn.p2, arena);
+        arena.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
+      }
+    }
+
+    // Group flow pins by junction root
+    const junctionGroups = new Map<string, string[]>();
+    for (const port of activePorts.values()) {
+      for (const fl of port.flowAttrs) {
+        const pinName = `${port.fullName}.${fl}`;
+        const root = findRoot(pinName);
+        if (!junctionGroups.has(root)) junctionGroups.set(root, []);
+        junctionGroups.get(root)!.push(pinName);
+      }
+    }
+
+    // Emit Kirchhoff sum-to-zero equations for flow junctions with multiple pins
+    for (const pins of junctionGroups.values()) {
+      if (pins.length >= 2) {
+        let sumExprId = this.lowerExpression(pins[0]!, arena);
+        for (let i = 1; i < pins.length; i++) {
+          const nextPinId = this.lowerExpression(pins[i]!, arena);
+          sumExprId = arena.addBinaryExpr(BinOp.Add, sumExprId, nextPinId);
+        }
+        const zeroExprId = arena.addRealLiteral(0.0);
+        arena.addEquation(EqKind.Simple, sumExprId, zeroExprId);
+      }
+    }
+
+    // 6. Collect derivatives
+    for (const st of states) {
+      const derName = `der(${st})`;
+      if (cleanSource.includes(derName) || cleanSource.includes(`der(${st.replace(/^[^.]+\./, "")})`)) {
+        if (!derivatives.includes(derName)) {
+          derivatives.push(derName);
+        }
+      }
+    }
+
+    const eqCount = arena.eqCount - initialEqCount;
+
+    return {
+      arena,
+      name: rootCompName,
+      parameters,
+      states,
+      derivatives,
+      eqCount,
+    };
+  }
+
+  /**
+   * Universal entry point: lowers any SysML v2 source (Action, Calculation, Constraint, or Part) into a DAEBuilder.
+   */
+  public static async lowerSystem(sysmlSource: string, existingArena?: DAEBuilder): Promise<DAEBuilder> {
+    if (
+      /\b(?:constraint|assert\s+constraint|when)\b/.test(sysmlSource) ||
+      /==/.test(sysmlSource) ||
+      /\bder\s*\(/.test(sysmlSource) ||
+      /\bport\s+def\b/.test(sysmlSource) ||
+      /\bpart\s+def\b/.test(sysmlSource)
+    ) {
+      const res = await this.lowerConstraint(sysmlSource, existingArena);
+      return res.arena;
+    } else {
+      const res = await this.lowerAction(sysmlSource, existingArena);
+      return res.arena;
+    }
+  }
+
+  /**
+   * Simulates a SysML v2 specification directly using the arena-native numerical solver.
+   */
+  public static async simulate(
+    sysmlSource: string,
+    options: import("@modelscript/simulate").ArenaSimulateOptions = {},
+  ): Promise<import("@modelscript/simulate").ArenaSimulationResult> {
+    const { simulateArena } = await import("@modelscript/simulate");
+    const arena = await this.lowerSystem(sysmlSource);
+    return simulateArena(arena, options);
   }
 }

@@ -13,6 +13,7 @@ import { JobQueue } from "./jobs.js";
 import { setAuthDatabase } from "./middleware/auth-middleware.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
+import { billingRouter } from "./routes/billing.js";
 import { caeRouter } from "./routes/cae.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { federationRouter } from "./routes/federation.js";
@@ -21,6 +22,7 @@ import { gitRouter } from "./routes/git.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
 import { instancesRouter } from "./routes/instances.js";
+import { mcpRouter } from "./routes/mcp.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
 import { npmRegistryRouter } from "./routes/npm-registry.js";
 import { packagesRouter } from "./routes/packages.js";
@@ -35,6 +37,8 @@ import { socialRouter } from "./routes/social.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
 import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
+import { threadRouter } from "./routes/thread.js";
+import { twinsRouter } from "./routes/twins.js";
 import { usersRouter } from "./routes/users.js";
 import { seedCadAssembly } from "./seed-cad-assembly.js";
 import { seedCfdAnimation } from "./seed-cfd-animation.js";
@@ -52,6 +56,8 @@ export interface AppOptions {
   database?: LibraryDatabase | undefined;
   /** MQTT client for co-simulation (null = no MQTT). */
   mqttClient?: CosimMqttClient | null | undefined;
+  /** Optional job queue override. */
+  jobQueue?: JobQueue | undefined;
   /** PostgreSQL pool for historian queries (null = stubs). */
   dbPool?: Pool | null | undefined;
 }
@@ -60,11 +66,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const app = express();
 
   // Support legacy signature: createApp(storage?)
-  const opts: AppOptions =
-    options && "storage" in options ? (options as AppOptions) : { storage: options as LibraryStorage | undefined };
+  const opts: AppOptions = options instanceof LibraryStorage ? { storage: options } : (options ?? {});
 
   const libraryStorage = opts.storage ?? new LibraryStorage();
-  const jobQueue = new JobQueue();
+  const jobQueue = opts.jobQueue ?? new JobQueue();
   app.locals.jobQueue = jobQueue;
 
   const database = opts.database ?? new LibraryDatabase();
@@ -347,19 +352,25 @@ graph TD
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
   app.use("/api/v1/libraries", sparqlRouter(database));
-  app.use("/api/v1", simulateRouter(libraryStorage, jobQueue));
+  app.use("/api/v1", simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", physicsRouter(jobQueue, database));
   app.use("/api/v1", caeRouter(jobQueue, database));
+  app.use("/api/v1", billingRouter(database));
+  app.use("/api/v1", mcpRouter(database));
   app.use("/api/v1/jobs", scriptsRouter(database));
 
   // Artifact viewer routes (query artifact metadata, viewer configs)
   app.use("/api/v1", artifactViewerRouter(database));
+
+  // Digital Thread Hypergraph Explorer routes
+  app.use("/api/v1/threads", threadRouter());
 
   // Co-simulation routes (with MQTT client injection)
   app.use("/api/v1/cosim", cosimRouter(mqttClient));
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(mqttClient));
   app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
   app.use("/api/v1/instances", instancesRouter(database, dbPool));
+  app.use("/api/v1/twins", twinsRouter(database));
   app.use("/api/v1/fmus", fmuRouter());
   app.use("/api/v1/git", gitRouter());
   app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility

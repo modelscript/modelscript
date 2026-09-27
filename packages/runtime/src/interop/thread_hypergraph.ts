@@ -293,6 +293,10 @@ export class DigitalThreadHypergraph {
     return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_REMOVED) !== 0;
   }
 
+  get size(): number {
+    return this.count;
+  }
+
   getThreadCount(): number {
     return this.count;
   }

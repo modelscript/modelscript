@@ -14,5 +14,7 @@ export * from "./meshing/index.js";
 export * from "./optimizer/index.js";
 export * from "./solvers/index.js";
 export * from "./surrogates/index.js";
+export * from "./sysml2/index.js";
+export * from "./twin/index.js";
 export * from "./uq/index.js";
 export * from "./utils/index.js";

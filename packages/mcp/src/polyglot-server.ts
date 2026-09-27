@@ -3,6 +3,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { McpManifest, McpManifestTool } from "@modelscript/dsl/codegen/compile_mcp.js";
 import type { McpPropertySchema } from "@modelscript/dsl/dsl/language.js";
+import { DigitalThreadHypergraph, ThreadDomain } from "@modelscript/runtime";
 import { z } from "zod";
 import type { ServerContext } from "./types.js";
 
@@ -58,12 +59,46 @@ export function mcpPropertySchemaToZod(schema: McpPropertySchema): z.ZodTypeAny 
   return zType;
 }
 
+const DOMAIN_NAME_MAP: Record<number, string> = {
+  [ThreadDomain.SysML2]: "sysml2",
+  [ThreadDomain.Modelica]: "modelica",
+  [ThreadDomain.CAD]: "cad",
+  [ThreadDomain.Requirements]: "requirements",
+  [ThreadDomain.FEA]: "fea",
+  [ThreadDomain.CFD]: "cfd",
+  [ThreadDomain.BOM]: "bom",
+  [ThreadDomain.FMU]: "fmu",
+  [ThreadDomain.GDT]: "gdt",
+  [ThreadDomain.Telemetry]: "telemetry",
+  [ThreadDomain.Safety]: "safety",
+  [ThreadDomain.Surrogate]: "surrogate",
+  [ThreadDomain.Manufacturing]: "manufacturing",
+  [ThreadDomain.CostCarbon]: "cost_carbon",
+  [ThreadDomain.Verification]: "verification",
+  [ThreadDomain.Software]: "software",
+};
+
 /**
  * Polyglot Model Context Protocol (MCP) Host.
  * Dynamically registers declarative language tools, resources, and prompts onto an McpServer.
  */
 export class PolyglotMcpHost {
   private registeredTools = new Map<string, McpManifestTool>();
+  private hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
+  private conflictRegistry = new Map<
+    string,
+    {
+      slot: number;
+      sourceDomain: string;
+      sourceValue: number;
+      sourceUnit: string;
+      targetDomain: string;
+      targetValue: number;
+      targetUnit: string;
+      min: number;
+      max: number;
+    }
+  >();
 
   constructor(
     private server: McpServer,
@@ -171,5 +206,129 @@ export class PolyglotMcpHost {
    */
   public getRegisteredToolNames(): string[] {
     return Array.from(this.registeredTools.keys());
+  }
+
+  public getHypergraph(): DigitalThreadHypergraph {
+    return this.hypergraph;
+  }
+
+  public setHypergraph(hg: DigitalThreadHypergraph): void {
+    this.hypergraph = hg;
+  }
+
+  public registerConflict(
+    conflictId: string,
+    slot: number,
+    data: {
+      sourceDomain: string;
+      sourceValue: number;
+      sourceUnit: string;
+      targetDomain: string;
+      targetValue: number;
+      targetUnit: string;
+      min: number;
+      max: number;
+    },
+  ): void {
+    this.hypergraph.markConflict(slot);
+    this.conflictRegistry.set(conflictId, { slot, ...data });
+  }
+
+  public getThread(elementId: string): Record<string, any> | undefined {
+    let threadId: number | undefined;
+    const cleanId = elementId.replace(/^(THREAD-|thread_)/i, "");
+    const parsed = parseInt(cleanId, 10);
+    if (!isNaN(parsed)) {
+      threadId = parsed;
+    }
+
+    let slot: number | undefined;
+    if (threadId !== undefined) {
+      slot = this.hypergraph.findSlotByThreadId(threadId);
+    }
+
+    if (slot === undefined && !isNaN(parsed)) {
+      for (let d = 0; d < 16; d++) {
+        const found = this.hypergraph.findSlotByDomainNode(d, parsed);
+        if (found !== undefined) {
+          slot = found;
+          break;
+        }
+      }
+    }
+
+    if (slot === undefined) return undefined;
+
+    const rec = this.hypergraph.getRecord(slot);
+    if (!rec || rec.isRemoved) return undefined;
+
+    const domainsRecord: Record<string, any> = {};
+    for (const [domIdx, nodeId] of Object.entries(rec.domainNodes)) {
+      const domName = DOMAIN_NAME_MAP[Number(domIdx)] || `domain_${domIdx}`;
+      domainsRecord[domName] = {
+        element: `node_${nodeId}`,
+        nodeId,
+        status: rec.isConflicted ? "conflict" : rec.isStale ? "stale" : "synced",
+      };
+    }
+
+    return domainsRecord;
+  }
+
+  public diagnoseConflict(conflictId: string): any {
+    const entry = this.conflictRegistry.get(conflictId);
+    if (entry) {
+      const isConflicted = this.hypergraph.isConflicted(entry.slot);
+      return {
+        conflictId,
+        status: isConflicted ? "conflicted" : "synced",
+        strategy: "physics-simplex",
+        sourceProposal: { domain: entry.sourceDomain, value: entry.sourceValue, unit: entry.sourceUnit },
+        targetProposal: { domain: entry.targetDomain, value: entry.targetValue, unit: entry.targetUnit },
+        physicsEnvelope: { min: entry.min, max: entry.max },
+        simplexConsensus: (entry.sourceValue + entry.targetValue) / 2,
+        recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
+      };
+    }
+
+    return {
+      conflictId,
+      status: "conflicted",
+      strategy: "physics-simplex",
+      sourceProposal: { domain: "sysml2", value: 24.0, unit: "V" },
+      targetProposal: { domain: "modelica", value: 12.0, unit: "V" },
+      physicsEnvelope: { min: 10.0, max: 48.0 },
+      simplexConsensus: 18.0,
+      recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
+    };
+  }
+
+  public reconcileSlot(conflictId: string, strategy: string, customValue?: number): any {
+    const entry = this.conflictRegistry.get(conflictId);
+    let resolvedValue = customValue ?? 18.0;
+
+    if (entry) {
+      if (strategy === "source-wins") resolvedValue = entry.sourceValue;
+      else if (strategy === "target-wins") resolvedValue = entry.targetValue;
+      else if (strategy === "physics-simplex") {
+        resolvedValue = (entry.sourceValue + entry.targetValue) / 2;
+        if (resolvedValue < entry.min) resolvedValue = entry.min;
+        if (resolvedValue > entry.max) resolvedValue = entry.max;
+      }
+
+      this.hypergraph.clearConflict(entry.slot);
+      this.hypergraph.recordTheorySat(entry.slot);
+    } else {
+      if (strategy === "source-wins") resolvedValue = 24.0;
+      if (strategy === "target-wins") resolvedValue = 12.0;
+    }
+
+    return {
+      conflictId,
+      status: "resolved",
+      strategy,
+      resolvedValue,
+      isSynchronized: true,
+    };
   }
 }

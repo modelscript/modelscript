@@ -9,6 +9,9 @@ import {
   prec,
   repeat,
   seq,
+  tggComplement,
+  tggEq,
+  tggRule,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
@@ -26,6 +29,53 @@ const PREC = {
 
 export const cfdLanguage = language({
   name: "cfd",
+
+  polyglot: {
+    languages: ["modelica", "sysml2"],
+    rules: [
+      tggRule({
+        name: "CfdInletToModelicaFluidPort",
+        sourceLang: "cfd",
+        targetLang: "modelica",
+        source: ($, v) => $.Directive({ key: v("markerKey"), value: v("markerVal") }),
+        target: ($, v) =>
+          $.ComponentClause({ name: v("markerKey"), typeSpecifier: "Modelica.Fluid.Interfaces.FluidPort_a" }),
+        where: (v) => [tggEq(v("markerKey"), v("markerKey")), tggComplement(["dialect", "meshFilename", "options"])],
+      }),
+      tggRule({
+        name: "CfdHeatFluxToModelicaHeatPort",
+        sourceLang: "cfd",
+        targetLang: "modelica",
+        source: ($, v) => $.Directive({ key: v("markerKey"), value: v("markerVal") }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("markerKey"),
+            typeSpecifier: "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
+          }),
+        where: (v) => [tggEq(v("markerKey"), v("markerKey")), tggComplement(["dialect", "meshFilename", "options"])],
+      }),
+      tggRule({
+        name: "CfdMarkerToSysmlPort",
+        sourceLang: "cfd",
+        targetLang: "sysml2",
+        source: ($, v) => $.Directive({ key: v("markerKey"), value: v("markerVal") }),
+        target: ($, v) => $.PortUsage({ declaredName: v("markerKey"), declaredType: v("markerVal") }),
+        where: (v) => [
+          tggEq(v("markerKey"), v("markerKey")),
+          tggEq(v("markerVal"), v("markerVal")),
+          tggComplement(["dialect", "options"]),
+        ],
+      }),
+      tggRule({
+        name: "CfdDirectiveToSysmlConstraint",
+        sourceLang: "cfd",
+        targetLang: "sysml2",
+        source: ($, v) => $.Directive({ key: v("dirKey"), value: v("dirVal") }),
+        target: ($, v) => $.ConstraintUsage({ declaredName: v("dirKey") }),
+        where: (v) => [tggEq(v("dirKey"), v("dirKey")), tggComplement(["dirVal"])],
+      }),
+    ],
+  },
 
   primitives: {
     lineComment: "%",

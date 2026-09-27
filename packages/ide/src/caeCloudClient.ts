@@ -1,5 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export interface ComputeProfileInfo {
+  id: string;
+  name: string;
+  description: string;
+  partition: string;
+  cpus: number;
+  memoryMb: number;
+  gpus?: number | undefined;
+  costCreditsPerHour: number;
+}
+
 export interface CaeCloudJobSubmission {
   solver: "calculix" | "su2" | "openfoam";
   title?: string;
@@ -14,6 +25,8 @@ export interface CaeCloudJobSubmission {
   options?: {
     cores?: number;
     timeoutSeconds?: number;
+    profile?: string;
+    runner?: "auto" | "docker" | "host" | "fallback";
   };
 }
 
@@ -22,6 +35,13 @@ export interface CaeCloudJobStatus {
   name: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   resultPath?: string;
+  profile?: string;
+  usage?: {
+    cpuSeconds?: number;
+    peakMemoryMb?: number;
+    gpuSeconds?: number;
+    costCredits?: number;
+  };
 }
 
 /**
@@ -29,6 +49,18 @@ export interface CaeCloudJobStatus {
  */
 export class CaeCloudClient {
   constructor(private readonly apiBaseUrl = "http://localhost:3000/api/v1") {}
+
+  /**
+   * Fetches the available compute profiles (node configurations and cost rates) from the cluster.
+   */
+  public async getComputeProfiles(): Promise<ComputeProfileInfo[]> {
+    const res = await fetch(`${this.apiBaseUrl}/cae/profiles`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch compute profiles: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { profiles: ComputeProfileInfo[] };
+    return data.profiles;
+  }
 
   /**
    * Uploads raw mesh or CAD geometry to the cloud server with Content-Addressable Storage (CAS) deduplication.

@@ -55,6 +55,10 @@ export interface TGGRuleOptions<
   where?: (v: (name: string) => any) => TGGConstraint[];
   /** Priority override (default: 0, higher wins in dispatch) */
   priority?: number;
+  /** Target language identifier for multi-target polyglot dispatch */
+  targetLang?: string;
+  /** Source language identifier */
+  sourceLang?: string;
 }
 
 export interface PolyglotConfig<

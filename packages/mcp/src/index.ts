@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./factory.js";
 export * from "./filesystem.js";
 export * from "./polyglot-server.js";
 export * from "./resources.js";

@@ -1118,6 +1118,9 @@ class ScopeAPI {
     let charLen: u32 = len / step;
     if (charLen == 0) return 0;
     let srcPtr = buffer + actualOffset;
+    if (step == 2) {
+      return this.pool.internUtf16(srcPtr, len);
+    }
     return this.pool.intern(srcPtr, charLen);
   }
 

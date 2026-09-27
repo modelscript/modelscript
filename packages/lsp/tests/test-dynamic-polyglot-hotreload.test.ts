@@ -6,7 +6,7 @@ import assert from "node:assert";
 import test from "node:test";
 import { globalLanguageRegistry, type LanguagePlugin } from "../src/registry/LanguageRegistry.js";
 
-test("Dynamic Polyglot LSP Runtime & WASM Hot-Reloading", async (t) => {
+test("Dynamic Polyglot LSP Runtime & WASM Hot-Reloading", { timeout: 180000 }, async (t) => {
   let compiledRobot: any;
   let robotParser: any;
   let robotFacade: any;

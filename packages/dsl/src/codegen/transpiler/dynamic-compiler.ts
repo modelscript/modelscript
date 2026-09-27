@@ -82,10 +82,13 @@ export async function compileDslToWasm(
     "--exportRuntime",
     "--enable",
     "threads",
-    "--optimize",
     "--runtime",
     "stub",
   ];
+
+  if (options?.optimize) {
+    flags.push("--optimize");
+  }
 
   if (options?.shrink) {
     flags.push("--shrinkLevel", "2");

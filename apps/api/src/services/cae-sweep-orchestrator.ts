@@ -19,6 +19,7 @@ import { CaeDoeSampler, type DoEStrategy, type ParametricSweepVariable } from ".
 import type { CaeScalarSummary, FeaMeshPayload } from "./cae-result-processor.js";
 import { CaeSolverRunner, type CaeJobSpec } from "./cae-solver-runner.js";
 import { CaeTelemetryStreamer, type CaeSolverType } from "./cae-telemetry-streamer.js";
+import type { HpcUsageMetrics } from "./hpc/hpc-types.js";
 
 export interface CaeSweepSpec {
   title?: string;
@@ -39,6 +40,7 @@ export interface CaeSweepSpec {
     cores?: number;
     timeoutSeconds?: number;
     runner?: "auto" | "docker" | "host" | "fallback";
+    profile?: string;
   };
 }
 
@@ -53,6 +55,8 @@ export interface CaeSweepRun {
   scalars?: CaeScalarSummary;
   resultDir: string;
   error?: string;
+  usage?: HpcUsageMetrics | undefined;
+  costCredits?: number | undefined;
 }
 
 export interface CaeSweepState {
@@ -65,6 +69,8 @@ export interface CaeSweepState {
   failedRuns: number;
   runningRuns: number;
   progressPercent: number;
+  totalCostCredits?: number | undefined;
+  totalCpuSeconds?: number | undefined;
   status: "queued" | "running" | "completed" | "partial_success" | "failed" | "cancelled";
   createdAt: string;
   completedAt?: string | undefined;
@@ -466,6 +472,7 @@ export class CaeSweepOrchestrator {
         cores: spec.options?.cores || 2,
         timeoutSeconds: spec.options?.timeoutSeconds || 300,
         runner: spec.options?.runner || "auto",
+        profile: spec.options?.profile || "standard",
         resultDir: run.resultDir,
       };
 
@@ -480,6 +487,13 @@ export class CaeSweepOrchestrator {
           run.status = "completed";
           state.completedRuns++;
 
+          if (execRes.usage) {
+            run.usage = execRes.usage;
+            run.costCredits = execRes.usage.costCredits;
+            state.totalCostCredits = Number(((state.totalCostCredits || 0) + execRes.usage.costCredits).toFixed(2));
+            state.totalCpuSeconds = Number(((state.totalCpuSeconds || 0) + execRes.usage.cpuCoreSeconds).toFixed(2));
+          }
+
           // Read scalars.json
           const scalarsFile = path.join(run.resultDir, "scalars.json");
           if (fs.existsSync(scalarsFile)) {
@@ -492,6 +506,7 @@ export class CaeSweepOrchestrator {
             parameters: run.parameters,
             scalars: run.scalars,
             durationMs: run.durationMs,
+            costCredits: run.costCredits,
           });
         } else {
           run.status = "failed";
@@ -524,6 +539,8 @@ export class CaeSweepOrchestrator {
           failedRuns: state.failedRuns,
           runningRuns: state.runningRuns,
           progressPercent: state.progressPercent,
+          totalCostCredits: state.totalCostCredits || 0,
+          totalCpuSeconds: state.totalCpuSeconds || 0,
         });
 
         // Trigger next run in pool

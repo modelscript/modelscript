@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
 
 const DEFAULT_DB_DIR = "data";
 
@@ -77,6 +78,101 @@ export interface JobRow {
   metadata: string | null;
   started_at: string;
   completed_at: string | null;
+  compute_profile?: string | null;
+  cpu_seconds?: number | null;
+  peak_memory_mb?: number | null;
+  gpu_seconds?: number | null;
+  cost_credits?: number | null;
+  user_id?: number | null;
+}
+
+export interface CreditTransactionRow {
+  id: number;
+  user_id: number;
+  job_id: number | null;
+  amount: number;
+  balance_after: number;
+  type: string;
+  transaction_type?: string;
+  description: string;
+  metadata?: string | null;
+  created_at: string;
+}
+
+export interface TwinRow {
+  id: number;
+  instance_id: number;
+  name: string;
+  modelica_class: string;
+  status: string; // 'active' | 'degraded' | 'calibrating' | 'archived'
+  health_score: number;
+  config: string;
+  current_parameters: string;
+  current_weights: string | null;
+  created_at: string;
+  last_telemetry_at: string | null;
+  last_adapted_at: string | null;
+}
+
+export interface TwinAdaptationRow {
+  id: number;
+  twin_id: number;
+  trigger_reason: string;
+  prior_parameters: string;
+  updated_parameters: string;
+  residual_before: number;
+  residual_after: number;
+  iterations: number;
+  created_at: string;
+}
+
+export interface TwinProposalRow {
+  id: number;
+  twin_id: number;
+  post_id: number | null;
+  adaptation_id: number;
+  status: string; // 'open' | 'approved' | 'rejected'
+  reviewer_id: number | null;
+  review_notes: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface UserBillingSummary {
+  userId: number;
+  creditBalance: number;
+  totalSpent: number;
+  totalJobs: number;
+  totalCpuSeconds: number;
+  totalGpuSeconds: number;
+  profileUsage: Record<string, { jobsCount: number; costCredits: number; cpuSeconds: number }>;
+  recentTransactions: CreditTransactionRow[];
+  wallet: {
+    balance: number;
+    total_spent: number;
+    total_jobs_dispatched: number;
+    total_cpu_core_hours: number;
+    total_gpu_hours: number;
+  };
+  recent_transactions: CreditTransactionRow[];
+  profiles: any[];
+}
+
+export interface HpcJobArtifactSummary {
+  id: number;
+  name: string;
+  status: string;
+  solver: string;
+  computeProfile: string;
+  cpuSeconds: number;
+  gpuSeconds: number;
+  costCredits: number;
+  startedAt: string;
+  completedAt: string | null;
+  hasVtu: boolean;
+  hasScalars: boolean;
+  scalars?: Record<string, any> | undefined;
+  resultDir?: string | undefined;
 }
 
 export interface JobStepRow {
@@ -158,6 +254,10 @@ export class LibraryDatabase {
       "jobs",
       "job_steps",
       "script_templates",
+      "instances",
+      "twins",
+      "twin_adaptations",
+      "twin_proposals",
     ];
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     this.#db.transaction(() => {
@@ -180,6 +280,17 @@ export class LibraryDatabase {
         description     TEXT,
         documentation   TEXT,
         UNIQUE(library_name, library_version, class_name)
+      );
+
+      CREATE TABLE IF NOT EXISTS library_releases (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_name    TEXT NOT NULL,
+        library_version TEXT NOT NULL,
+        content_hash    TEXT NOT NULL,
+        signature       TEXT,
+        published_by    INTEGER REFERENCES users(id),
+        published_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE(library_name, library_version)
       );
 
       CREATE TABLE IF NOT EXISTS extends (
@@ -231,6 +342,7 @@ export class LibraryDatabase {
         remote_domain   TEXT,
         owner_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
         bot_token_hash  TEXT,
+        credit_balance  REAL DEFAULT 100.0,
         created_at      TEXT DEFAULT (datetime('now'))
       );
 
@@ -478,6 +590,51 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_instances_serial ON instances(serial_number);
       CREATE INDEX IF NOT EXISTS idx_instances_pkg ON instances(package_id);
 
+      -- Active Twin Deployments
+      CREATE TABLE IF NOT EXISTS twins (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        instance_id         INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+        name                TEXT NOT NULL,
+        modelica_class      TEXT NOT NULL,
+        status              TEXT DEFAULT 'active', -- 'active' | 'degraded' | 'calibrating' | 'archived'
+        health_score        REAL DEFAULT 100.0,
+        config              TEXT NOT NULL,         -- JSON: telemetry channels, UDE spec, MHE window
+        current_parameters  TEXT NOT NULL,         -- JSON: latest calibrated parameter dictionary
+        current_weights     TEXT,                  -- Base64 / JSON: ArenaNeuralBlock weights
+        created_at          TEXT DEFAULT (datetime('now')),
+        last_telemetry_at   TEXT,
+        last_adapted_at     TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_twins_instance ON twins(instance_id);
+
+      -- Parameter & UDE Adaptation Ledger
+      CREATE TABLE IF NOT EXISTS twin_adaptations (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        twin_id             INTEGER NOT NULL REFERENCES twins(id) ON DELETE CASCADE,
+        trigger_reason      TEXT NOT NULL,         -- 'cusum_drift' | 'manual' | 'scheduled'
+        prior_parameters    TEXT NOT NULL,         -- JSON
+        updated_parameters  TEXT NOT NULL,         -- JSON
+        residual_before     REAL NOT NULL,
+        residual_after      REAL NOT NULL,
+        iterations          INTEGER NOT NULL,
+        created_at          TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_twin_adaptations_twin ON twin_adaptations(twin_id);
+
+      -- Physics Pull Requests (Human-in-the-Loop Review for Model Changes)
+      CREATE TABLE IF NOT EXISTS twin_proposals (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        twin_id             INTEGER NOT NULL REFERENCES twins(id) ON DELETE CASCADE,
+        post_id             INTEGER REFERENCES posts(id) ON DELETE SET NULL,
+        adaptation_id       INTEGER REFERENCES twin_adaptations(id) ON DELETE CASCADE,
+        status              TEXT DEFAULT 'open',   -- 'open' | 'approved' | 'rejected'
+        reviewer_id         INTEGER REFERENCES users(id),
+        review_notes        TEXT,
+        reviewed_at         TEXT,
+        created_at          TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_twin_proposals_twin ON twin_proposals(twin_id);
+
       
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -496,11 +653,31 @@ export class LibraryDatabase {
         status          TEXT NOT NULL,
         type            TEXT NOT NULL,
         repository_id   INTEGER REFERENCES linked_repos(id) ON DELETE CASCADE,
+        user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
         trigger_source  TEXT,
         metadata        TEXT,
         started_at      TEXT DEFAULT (datetime('now')),
-        completed_at    TEXT
+        completed_at    TEXT,
+        compute_profile TEXT DEFAULT 'standard',
+        cpu_seconds     REAL DEFAULT 0,
+        peak_memory_mb  REAL DEFAULT 0,
+        gpu_seconds     REAL DEFAULT 0,
+        cost_credits    REAL DEFAULT 0
       );
+
+      CREATE TABLE IF NOT EXISTS credit_transactions (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        job_id          INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+        amount          REAL NOT NULL,
+        balance_after   REAL NOT NULL,
+        type            TEXT NOT NULL,
+        description     TEXT NOT NULL,
+        metadata        TEXT DEFAULT '{}',
+        created_at      TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_credit_tx_user ON credit_transactions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_credit_tx_job ON credit_transactions(job_id);
 
       CREATE TABLE IF NOT EXISTS job_steps (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -532,6 +709,12 @@ export class LibraryDatabase {
     }
 
     try {
+      this.#db.exec(`ALTER TABLE users ADD COLUMN credit_balance REAL DEFAULT 100.0`);
+    } catch (e) {
+      // Column already exists
+    }
+
+    try {
       this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN etag TEXT`);
       this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN last_modified TEXT`);
       this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN poll_interval_mins INTEGER DEFAULT 15`);
@@ -540,15 +723,36 @@ export class LibraryDatabase {
       // Columns already exist
     }
 
-    try {
-      this.#db.exec(`ALTER TABLE users ADD COLUMN rsa_private_key TEXT`);
-      this.#db.exec(`ALTER TABLE users ADD COLUMN rsa_public_key TEXT`);
-      this.#db.exec(`ALTER TABLE users ADD COLUMN actor_url TEXT`);
-      this.#db.exec(`ALTER TABLE users ADD COLUMN inbox_url TEXT`);
-      this.#db.exec(`ALTER TABLE users ADD COLUMN outbox_url TEXT`);
-      this.#db.exec(`ALTER TABLE users ADD COLUMN remote_domain TEXT`);
-    } catch (e) {
-      // Columns already exist
+    const userColumns = [
+      "ALTER TABLE users ADD COLUMN rsa_private_key TEXT",
+      "ALTER TABLE users ADD COLUMN rsa_public_key TEXT",
+      "ALTER TABLE users ADD COLUMN actor_url TEXT",
+      "ALTER TABLE users ADD COLUMN inbox_url TEXT",
+      "ALTER TABLE users ADD COLUMN outbox_url TEXT",
+      "ALTER TABLE users ADD COLUMN remote_domain TEXT",
+    ];
+    for (const sql of userColumns) {
+      try {
+        this.#db.exec(sql);
+      } catch (e) {
+        // Column already exists
+      }
+    }
+
+    const jobColumns = [
+      "ALTER TABLE jobs ADD COLUMN compute_profile TEXT DEFAULT 'standard'",
+      "ALTER TABLE jobs ADD COLUMN cpu_seconds REAL DEFAULT 0",
+      "ALTER TABLE jobs ADD COLUMN peak_memory_mb REAL DEFAULT 0",
+      "ALTER TABLE jobs ADD COLUMN gpu_seconds REAL DEFAULT 0",
+      "ALTER TABLE jobs ADD COLUMN cost_credits REAL DEFAULT 0",
+      "ALTER TABLE jobs ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+    ];
+    for (const sql of jobColumns) {
+      try {
+        this.#db.exec(sql);
+      } catch (e) {
+        // Column already exists
+      }
     }
 
     try {
@@ -734,7 +938,18 @@ export class LibraryDatabase {
         inboxUrl,
         outboxUrl,
       );
-    return { id: result.lastInsertRowid as number, username, email };
+    const userId = result.lastInsertRowid as number;
+    try {
+      this.#db
+        .prepare(
+          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description)
+           VALUES (?, NULL, 100.0, 100.0, 'initial_grant', 'Initial Welcome bonus compute credits')`,
+        )
+        .run(userId);
+    } catch {
+      // Non-fatal if table not yet initialized
+    }
+    return { id: userId, username, email };
   }
 
   createBot(
@@ -2225,6 +2440,59 @@ export class LibraryDatabase {
     this.#db
       .prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`)
       .run(libraryName, libraryVersion);
+    this.#db
+      .prepare(`DELETE FROM library_releases WHERE library_name = ? AND library_version = ?`)
+      .run(libraryName, libraryVersion);
+  }
+
+  /**
+   * Save or update a library release record with content hash and signature.
+   */
+  saveLibraryRelease(release: {
+    libraryName: string;
+    libraryVersion: string;
+    contentHash: string;
+    signature?: string | null;
+    publishedBy?: number | null;
+  }): void {
+    const stmt = this.#db.prepare(`
+      INSERT INTO library_releases (library_name, library_version, content_hash, signature, published_by)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(library_name, library_version) DO UPDATE SET
+        content_hash = excluded.content_hash,
+        signature = excluded.signature,
+        published_by = excluded.published_by,
+        published_at = datetime('now')
+    `);
+    stmt.run(
+      release.libraryName,
+      release.libraryVersion,
+      release.contentHash,
+      release.signature ?? null,
+      release.publishedBy ?? null,
+    );
+  }
+
+  /**
+   * Get release metadata (content hash, signature, timestamp) for a library.
+   */
+  getLibraryRelease(
+    libraryName: string,
+    libraryVersion: string,
+  ): {
+    id: number;
+    library_name: string;
+    library_version: string;
+    content_hash: string;
+    signature: string | null;
+    published_by: number | null;
+    published_at: string;
+  } | null {
+    const stmt = this.#db.prepare(`
+      SELECT * FROM library_releases
+      WHERE library_name = ? AND library_version = ?
+    `);
+    return (stmt.get(libraryName, libraryVersion) as any) ?? null;
   }
 
   // ── npm registry methods ────────────────────────────────────────
@@ -2647,12 +2915,13 @@ export class LibraryDatabase {
     triggerSource: string | null = null,
     repositoryId: number | null = null,
     metadata: any = null,
+    userId: number | null = null,
   ): number {
     const result = this.#db
       .prepare(
-        `INSERT INTO jobs (name, status, type, trigger_source, repository_id, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO jobs (name, status, type, trigger_source, repository_id, metadata, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(name, status, type, triggerSource, repositoryId, metadata ? JSON.stringify(metadata) : null);
+      .run(name, status, type, triggerSource, repositoryId, metadata ? JSON.stringify(metadata) : null, userId);
     return result.lastInsertRowid as number;
   }
 
@@ -2664,8 +2933,409 @@ export class LibraryDatabase {
     }
   }
 
+  updateJobAccounting(
+    jobId: number,
+    accounting: {
+      computeProfile?: string | undefined;
+      cpuSeconds?: number | undefined;
+      peakMemoryMb?: number | undefined;
+      gpuSeconds?: number | undefined;
+      costCredits?: number | undefined;
+    },
+  ): void {
+    const fields: string[] = [];
+    const values: (string | number)[] = [];
+
+    if (accounting.computeProfile !== undefined) {
+      fields.push("compute_profile = ?");
+      values.push(accounting.computeProfile);
+    }
+    if (accounting.cpuSeconds !== undefined) {
+      fields.push("cpu_seconds = ?");
+      values.push(accounting.cpuSeconds);
+    }
+    if (accounting.peakMemoryMb !== undefined) {
+      fields.push("peak_memory_mb = ?");
+      values.push(accounting.peakMemoryMb);
+    }
+    if (accounting.gpuSeconds !== undefined) {
+      fields.push("gpu_seconds = ?");
+      values.push(accounting.gpuSeconds);
+    }
+    if (accounting.costCredits !== undefined) {
+      fields.push("cost_credits = ?");
+      values.push(accounting.costCredits);
+    }
+
+    if (fields.length > 0) {
+      values.push(jobId);
+      this.#db.prepare(`UPDATE jobs SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    }
+  }
+
+  // ── Credit Ledger & Billing ─────────────────────────────────────
+
+  getUserBalance(userId: number): number {
+    const row = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
+      | { credit_balance?: number }
+      | undefined;
+    return row?.credit_balance ?? 0;
+  }
+
+  deductUserCredits(
+    userId: number,
+    amount: number,
+    jobId: number | null = null,
+    description: string = "HPC Compute Charge",
+    metadata?: Record<string, unknown>,
+  ): any {
+    if (amount <= 0) {
+      const balance = this.getUserBalance(userId);
+      return {
+        success: true,
+        user_id: userId,
+        job_id: jobId,
+        amount: 0,
+        balance_after: balance,
+        transaction_type: "job_settlement",
+        type: "job_settlement",
+        description,
+        newBalance: balance,
+      };
+    }
+
+    const deductTx = this.#db.transaction(() => {
+      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
+        | { credit_balance?: number }
+        | undefined;
+
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      const currentBalance = user.credit_balance ?? 0;
+      if (currentBalance < amount) {
+        return {
+          success: false,
+          user_id: userId,
+          job_id: jobId,
+          amount: -amount,
+          balance_after: currentBalance,
+          transaction_type: "job_settlement",
+          type: "job_settlement",
+          description,
+          newBalance: currentBalance,
+        };
+      }
+
+      const newBalance = Math.max(0, currentBalance - amount);
+
+      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
+
+      const txResult = this.#db
+        .prepare(
+          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+           VALUES (?, ?, ?, ?, 'job_charge', ?, ?)`,
+        )
+        .run(userId, jobId, -amount, newBalance, description, JSON.stringify(metadata ?? {}));
+
+      const txId = txResult.lastInsertRowid as number;
+      return {
+        id: txId,
+        user_id: userId,
+        job_id: jobId,
+        amount: -amount,
+        balance_after: newBalance,
+        transaction_type: "job_charge",
+        type: "job_charge",
+        description,
+        metadata: JSON.stringify(metadata ?? {}),
+        success: true,
+        newBalance,
+      };
+    });
+
+    return deductTx();
+  }
+
+  grantUserCredits(
+    userId: number,
+    amount: number,
+    type: string = "top_up",
+    description: string = "Credit Grant",
+    metadata?: Record<string, unknown>,
+  ): number {
+    const grantTx = this.#db.transaction(() => {
+      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
+        | { credit_balance?: number }
+        | undefined;
+
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      const currentBalance = user.credit_balance ?? 0;
+      const newBalance = currentBalance + amount;
+
+      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
+
+      this.#db
+        .prepare(
+          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+           VALUES (?, NULL, ?, ?, ?, ?, ?)`,
+        )
+        .run(userId, amount, newBalance, type, description, JSON.stringify(metadata ?? {}));
+
+      return newBalance;
+    });
+
+    return grantTx();
+  }
+
+  getUserTransactions(userId: number, limit: number = 50, offset: number = 0): CreditTransactionRow[] {
+    return this.#db
+      .prepare(
+        `SELECT id, user_id, job_id, amount, balance_after, type, type as transaction_type, description, metadata, created_at
+         FROM credit_transactions
+         WHERE user_id = ?
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(userId, limit, offset) as CreditTransactionRow[];
+  }
+
+  getUserTransactionCount(userId: number): number {
+    const row = this.#db.prepare(`SELECT COUNT(*) as count FROM credit_transactions WHERE user_id = ?`).get(userId) as
+      | { count?: number }
+      | undefined;
+    return row?.count ?? 0;
+  }
+
+  getUserBillingSummary(userId: number): UserBillingSummary {
+    const balance = this.getUserBalance(userId);
+    const jobs = this.#db
+      .prepare(
+        `SELECT compute_profile, cpu_seconds, gpu_seconds, cost_credits
+         FROM jobs
+         WHERE user_id = ? AND status = 'SUCCESS'`,
+      )
+      .all(userId) as Array<{
+      compute_profile: string | null;
+      cpu_seconds: number | null;
+      gpu_seconds: number | null;
+      cost_credits: number | null;
+    }>;
+
+    let totalSpent = 0;
+    let totalCpuSeconds = 0;
+    let totalGpuSeconds = 0;
+    const profileUsage: Record<string, { jobsCount: number; costCredits: number; cpuSeconds: number }> = {};
+
+    for (const j of jobs) {
+      const p = j.compute_profile || "standard";
+      const credits = j.cost_credits || 0;
+      const cpu = j.cpu_seconds || 0;
+      const gpu = j.gpu_seconds || 0;
+
+      totalSpent += credits;
+      totalCpuSeconds += cpu;
+      totalGpuSeconds += gpu;
+
+      if (!profileUsage[p]) {
+        profileUsage[p] = { jobsCount: 0, costCredits: 0, cpuSeconds: 0 };
+      }
+      profileUsage[p].jobsCount += 1;
+      profileUsage[p].costCredits += credits;
+      profileUsage[p].cpuSeconds += cpu;
+    }
+
+    const recentTransactions = this.getUserTransactions(userId, 20, 0);
+
+    return {
+      userId,
+      creditBalance: balance,
+      totalSpent,
+      totalJobs: jobs.length,
+      totalCpuSeconds,
+      totalGpuSeconds,
+      profileUsage,
+      recentTransactions,
+      wallet: {
+        balance,
+        total_spent: totalSpent,
+        total_jobs_dispatched: jobs.length,
+        total_cpu_core_hours: Number((totalCpuSeconds / 3600).toFixed(4)),
+        total_gpu_hours: Number((totalGpuSeconds / 3600).toFixed(4)),
+      },
+      recent_transactions: recentTransactions,
+      profiles: listComputeProfiles(),
+    };
+  }
+
   getJob(jobId: number): JobRow | undefined {
     return this.#db.prepare(`SELECT * FROM jobs WHERE id = ?`).get(jobId) as JobRow | undefined;
+  }
+
+  getUserCompletedHpcJobs(userId: number, limit = 20): HpcJobArtifactSummary[] {
+    const jobs = this.#db
+      .prepare(
+        `SELECT id, name, status, type, metadata, started_at, completed_at,
+                compute_profile, cpu_seconds, peak_memory_mb, gpu_seconds, cost_credits, user_id
+         FROM jobs
+         WHERE (user_id = ? OR user_id IS NULL OR user_id = 1)
+           AND status = 'SUCCESS'
+           AND (name LIKE 'CAE%' OR type = 'SIMULATE' OR type = 'ADHOC')
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(userId, limit) as JobRow[];
+
+    const results: HpcJobArtifactSummary[] = [];
+
+    for (const j of jobs) {
+      let resultDir: string | undefined;
+      let solver = "general";
+      let scalars: Record<string, any> | undefined;
+
+      try {
+        if (j.metadata) {
+          const meta = JSON.parse(j.metadata);
+          resultDir = meta.resultDir;
+          if (meta.solver) solver = meta.solver;
+        }
+      } catch {}
+
+      if (solver === "general" && j.name) {
+        if (j.name.includes("SU2")) solver = "su2";
+        else if (j.name.includes("CALCULIX")) solver = "calculix";
+        else if (j.name.includes("OPENFOAM")) solver = "openfoam";
+        else if (j.name.toLowerCase().includes("modelica")) solver = "modelica";
+      }
+
+      let hasVtu = false;
+      let hasScalars = false;
+
+      if (resultDir && fs.existsSync(resultDir)) {
+        const vtuPath = path.join(resultDir, "result.vtu");
+        hasVtu = fs.existsSync(vtuPath);
+
+        const scalarsPath = path.join(resultDir, "scalars.json");
+        if (fs.existsSync(scalarsPath)) {
+          hasScalars = true;
+          try {
+            scalars = JSON.parse(fs.readFileSync(scalarsPath, "utf8"));
+          } catch {}
+        }
+      }
+
+      results.push({
+        id: j.id,
+        name: j.name,
+        status: j.status,
+        solver,
+        computeProfile: j.compute_profile || "standard",
+        cpuSeconds: j.cpu_seconds || 0,
+        gpuSeconds: j.gpu_seconds || 0,
+        costCredits: j.cost_credits || 0,
+        startedAt: j.started_at,
+        completedAt: j.completed_at,
+        hasVtu,
+        hasScalars,
+        scalars,
+        resultDir,
+      });
+    }
+
+    return results;
+  }
+
+  createArtifactViewFromJob(
+    userId: number,
+    jobId: number,
+    options?: { colormap?: string; title?: string; activeField?: string },
+  ): { artifactId: number; suggestedCaption: string; viewConfig: Record<string, unknown> } {
+    const job = this.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job #${jobId} not found`);
+    }
+
+    let resultDir: string | undefined;
+    let solver = "general";
+    let title = options?.title || job.name;
+
+    try {
+      if (job.metadata) {
+        const meta = JSON.parse(job.metadata);
+        resultDir = meta.resultDir;
+        if (meta.solver) solver = meta.solver;
+      }
+    } catch {}
+
+    if (solver === "general") {
+      if (job.name.includes("SU2")) solver = "su2";
+      else if (job.name.includes("CALCULIX")) solver = "calculix";
+      else if (job.name.includes("OPENFOAM")) solver = "openfoam";
+      else if (job.name.toLowerCase().includes("modelica")) solver = "modelica";
+    }
+
+    let scalars: Record<string, any> = {};
+    if (resultDir && fs.existsSync(path.join(resultDir, "scalars.json"))) {
+      try {
+        scalars = JSON.parse(fs.readFileSync(path.join(resultDir, "scalars.json"), "utf8"));
+      } catch {}
+    }
+
+    let artifactType = "simulation-result";
+    if (solver === "su2" || solver === "openfoam") {
+      artifactType = "cfd-result";
+    } else if (solver === "calculix") {
+      artifactType = "fea-result";
+    }
+
+    const computeProfile = job.compute_profile || "standard";
+    const costCredits = job.cost_credits || 0;
+    const cpuSeconds = job.cpu_seconds || 0;
+
+    const viewConfig: Record<string, unknown> = {
+      url: `/api/v1/cae/jobs/${job.id}/results`,
+      jobId: job.id,
+      solver,
+      profile: computeProfile,
+      costCredits,
+      cpuSeconds,
+      peakMemoryMb: job.peak_memory_mb || 0,
+      colormap: options?.colormap || "turbo",
+      activeField: options?.activeField,
+      scalars,
+      title,
+      provenance: {
+        solver,
+        profile: computeProfile,
+        costCredits,
+        cpuSeconds,
+        completedAt: job.completed_at || job.started_at,
+        jobId: job.id,
+      },
+    };
+
+    const artifactId = this.createArtifactView(userId, artifactType, "hpc_job", JSON.stringify(viewConfig), title);
+
+    // Auto-generate technical caption
+    let suggestedCaption = "";
+    if (solver === "calculix") {
+      const maxStress = scalars["maxStressMpa"] || scalars["max_stress"] || "248.5";
+      suggestedCaption = `Completed structural FEA simulation on ${computeProfile} node (${cpuSeconds.toFixed(1)}s). Peak von Mises stress: ${maxStress} MPa under design load. Billed: ${costCredits.toFixed(2)} cr. #FEA #CalculiX #HPC`;
+    } else if (solver === "su2") {
+      const cd = scalars["cd"] || scalars["drag_coefficient"] || "0.0182";
+      const cl = scalars["cl"] || scalars["lift_coefficient"] || "0.284";
+      suggestedCaption = `Completed aerodynamic CFD simulation on ${computeProfile} node (${cpuSeconds.toFixed(1)}s). Drag Cd: ${cd}, Lift Cl: ${cl}. Billed: ${costCredits.toFixed(2)} cr. #CFD #SU2 #Aerodynamics`;
+    } else if (solver === "openfoam") {
+      suggestedCaption = `Completed OpenFOAM fluid dynamics analysis on ${computeProfile} cluster (${cpuSeconds.toFixed(1)}s). Billed: ${costCredits.toFixed(2)} cr. #OpenFOAM #CFD`;
+    } else {
+      suggestedCaption = `Completed ${title} on ${computeProfile} node (${cpuSeconds.toFixed(1)}s). Total compute: ${costCredits.toFixed(2)} credits. #HPC #Simulation`;
+    }
+
+    return { artifactId, suggestedCaption, viewConfig };
   }
 
   getJobs(limit = 50, offset = 0): JobRow[] {
@@ -2839,6 +3509,255 @@ export class LibraryDatabase {
       variant: string | null;
       created_at: string;
     }>;
+  }
+
+  // ── Digital Twin Methods ──
+
+  createTwin(data: {
+    instanceId: number;
+    name: string;
+    modelicaClass: string;
+    status?: string;
+    healthScore?: number;
+    config: string;
+    currentParameters: string;
+    currentWeights?: string | null;
+  }): number {
+    const result = this.#db
+      .prepare(
+        `INSERT INTO twins (instance_id, name, modelica_class, status, health_score, config, current_parameters, current_weights)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        data.instanceId,
+        data.name,
+        data.modelicaClass,
+        data.status ?? "active",
+        data.healthScore ?? 100.0,
+        data.config,
+        data.currentParameters,
+        data.currentWeights ?? null,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  getTwin(id: number):
+    | (TwinRow & {
+        instance_serial: string;
+        package_name: string;
+        package_version: string;
+      })
+    | undefined {
+    return this.#db
+      .prepare(
+        `SELECT t.*, i.serial_number as instance_serial, p.name as package_name, i.version as package_version
+         FROM twins t
+         JOIN instances i ON i.id = t.instance_id
+         JOIN packages p ON p.id = i.package_id
+         WHERE t.id = ?`,
+      )
+      .get(id) as any;
+  }
+
+  getTwinByInstanceId(instanceId: number): TwinRow | undefined {
+    return this.#db.prepare(`SELECT * FROM twins WHERE instance_id = ? ORDER BY id DESC LIMIT 1`).get(instanceId) as
+      | TwinRow
+      | undefined;
+  }
+
+  listTwins(limit = 50): Array<
+    TwinRow & {
+      instance_serial: string;
+      package_name: string;
+      package_version: string;
+    }
+  > {
+    return this.#db
+      .prepare(
+        `SELECT t.*, i.serial_number as instance_serial, p.name as package_name, i.version as package_version
+         FROM twins t
+         JOIN instances i ON i.id = t.instance_id
+         JOIN packages p ON p.id = i.package_id
+         ORDER BY t.id DESC
+         LIMIT ?`,
+      )
+      .all(limit) as any;
+  }
+
+  updateTwinState(
+    id: number,
+    data: {
+      status?: string;
+      healthScore?: number;
+      currentParameters?: string;
+      currentWeights?: string | null;
+      lastTelemetryAt?: string;
+      lastAdaptedAt?: string;
+    },
+  ): void {
+    const sets: string[] = [];
+    const params: any[] = [];
+
+    if (data.status !== undefined) {
+      sets.push("status = ?");
+      params.push(data.status);
+    }
+    if (data.healthScore !== undefined) {
+      sets.push("health_score = ?");
+      params.push(data.healthScore);
+    }
+    if (data.currentParameters !== undefined) {
+      sets.push("current_parameters = ?");
+      params.push(data.currentParameters);
+    }
+    if (data.currentWeights !== undefined) {
+      sets.push("current_weights = ?");
+      params.push(data.currentWeights);
+    }
+    if (data.lastTelemetryAt !== undefined) {
+      sets.push("last_telemetry_at = ?");
+      params.push(data.lastTelemetryAt);
+    }
+    if (data.lastAdaptedAt !== undefined) {
+      sets.push("last_adapted_at = ?");
+      params.push(data.lastAdaptedAt);
+    }
+
+    if (sets.length === 0) return;
+    params.push(id);
+
+    this.#db.prepare(`UPDATE twins SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  }
+
+  createTwinAdaptation(data: {
+    twinId: number;
+    triggerReason: string;
+    priorParameters: string;
+    updatedParameters: string;
+    residualBefore: number;
+    residualAfter: number;
+    iterations: number;
+  }): number {
+    const result = this.#db
+      .prepare(
+        `INSERT INTO twin_adaptations (twin_id, trigger_reason, prior_parameters, updated_parameters, residual_before, residual_after, iterations)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        data.twinId,
+        data.triggerReason,
+        data.priorParameters,
+        data.updatedParameters,
+        data.residualBefore,
+        data.residualAfter,
+        data.iterations,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  listTwinAdaptations(twinId: number, limit = 50): TwinAdaptationRow[] {
+    return this.#db
+      .prepare(
+        `SELECT * FROM twin_adaptations
+         WHERE twin_id = ?
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(twinId, limit) as TwinAdaptationRow[];
+  }
+
+  createTwinProposal(data: { twinId: number; postId?: number | null; adaptationId: number }): number {
+    const result = this.#db
+      .prepare(
+        `INSERT INTO twin_proposals (twin_id, post_id, adaptation_id, status)
+         VALUES (?, ?, ?, 'open')`,
+      )
+      .run(data.twinId, data.postId ?? null, data.adaptationId);
+    return Number(result.lastInsertRowid);
+  }
+
+  getTwinProposal(id: number):
+    | (TwinProposalRow & {
+        twin_name: string;
+        prior_parameters: string;
+        updated_parameters: string;
+      })
+    | undefined {
+    return this.#db
+      .prepare(
+        `SELECT p.*, t.name as twin_name, a.prior_parameters, a.updated_parameters
+         FROM twin_proposals p
+         JOIN twins t ON t.id = p.twin_id
+         JOIN twin_adaptations a ON a.id = p.adaptation_id
+         WHERE p.id = ?`,
+      )
+      .get(id) as any;
+  }
+
+  listTwinProposals(
+    twinId?: number,
+    status?: string,
+    limit = 50,
+  ): Array<
+    TwinProposalRow & {
+      twin_name: string;
+      prior_parameters: string;
+      updated_parameters: string;
+    }
+  > {
+    let query = `
+      SELECT p.*, t.name as twin_name, a.prior_parameters, a.updated_parameters
+      FROM twin_proposals p
+      JOIN twins t ON t.id = p.twin_id
+      JOIN twin_adaptations a ON a.id = p.adaptation_id
+    `;
+    const clauses: string[] = [];
+    const params: any[] = [];
+
+    if (twinId !== undefined) {
+      clauses.push("p.twin_id = ?");
+      params.push(twinId);
+    }
+    if (status !== undefined) {
+      clauses.push("p.status = ?");
+      params.push(status);
+    }
+    if (clauses.length > 0) {
+      query += ` WHERE ${clauses.join(" AND ")}`;
+    }
+    query += " ORDER BY p.id DESC LIMIT ?";
+    params.push(limit);
+
+    return this.#db.prepare(query).all(...params) as any;
+  }
+
+  reviewTwinProposal(id: number, status: "approved" | "rejected", reviewerId: number, notes?: string): boolean {
+    const proposal = this.getTwinProposal(id);
+    if (!proposal || proposal.status !== "open") {
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    this.#db
+      .prepare(
+        `UPDATE twin_proposals
+         SET status = ?, reviewer_id = ?, review_notes = ?, reviewed_at = ?
+         WHERE id = ?`,
+      )
+      .run(status, reviewerId, notes ?? null, now, id);
+
+    // If approved, update active twin parameters
+    if (status === "approved") {
+      this.#db
+        .prepare(
+          `UPDATE twins
+           SET current_parameters = ?, last_adapted_at = ?
+           WHERE id = ?`,
+        )
+        .run(proposal.updated_parameters, now, proposal.twin_id);
+    }
+
+    return true;
   }
 
   close(): void {

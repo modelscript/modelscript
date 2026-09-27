@@ -8,6 +8,7 @@ export * from "./solvers/coinor-wasm.js";
 export * from "./solvers/global-optimizer.js";
 export * from "./solvers/gpu-codegen.js";
 export * from "./solvers/ipopt-solver.js";
+export * from "./solvers/lbfgsb.js";
 
 // Re-export ArenaSimulator from the sibling simulator package for convenience
 export { ArenaSimulator } from "../core/simulate-arena.js";

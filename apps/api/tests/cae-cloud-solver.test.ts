@@ -204,6 +204,21 @@ Cantilever Beam Study
     assert.ok(meshPayloadRes.body.fields.displacements.length > 0);
     assert.ok(meshPayloadRes.body.stats.maxStress > 0);
     assert.ok(meshPayloadRes.body.stats.maxDisplacement > 0);
+
+    // Verify accounting metrics on completed job
+    const finalJobRes = await request(app).get(`/api/v1/cae/jobs/${createdJobId}`).expect(200);
+    assert.strictEqual(finalJobRes.body.profile, "standard");
+    assert.ok(finalJobRes.body.usage, "Job should return usage metrics");
+    assert.ok(finalJobRes.body.usage.costCredits >= 0, "Cost credits should be tracked");
+  });
+
+  await t.test("GET /api/v1/cae/profiles: lists available compute profiles", async () => {
+    const res = await request(app).get("/api/v1/cae/profiles").expect(200);
+    assert.ok(Array.isArray(res.body.profiles), "Must return profiles array");
+    assert.ok(res.body.profiles.some((p: any) => p.id === "standard"));
+    assert.ok(res.body.profiles.some((p: any) => p.id === "high-memory"));
+    assert.ok(res.body.profiles.some((p: any) => p.id === "gpu-a100"));
+    assert.ok(res.body.profiles.some((p: any) => p.id === "hpc-mpi-64"));
   });
 
   await t.test("DELETE /api/v1/cae/jobs/:id: aborts running solver job", async () => {

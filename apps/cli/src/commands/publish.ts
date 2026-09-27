@@ -6,21 +6,28 @@ import path from "node:path";
 import type { CommandModule } from "yargs";
 import { requireToken } from "../util/auth.js";
 import { parsePackageMo } from "../util/package-mo.js";
+import { computePackageContentHash } from "../util/package-verify.js";
 
 interface PublishArgs {
   path: string;
+  signature?: string;
 }
 
 export const Publish: CommandModule<{}, PublishArgs> = {
   command: "publish <path>",
-  describe: "Publish a library director or single Modelica file to the ModelScript Registry",
-  builder: (yargs) => {
-    return yargs.positional("path", {
-      demandOption: true,
-      description: "Path to the unzipped library directory (containing package.mo) or a single .mo file",
-      type: "string",
-    });
-  },
+  describe: "Publish a library directory or single Modelica file to the ModelScript Registry",
+  builder: ((yargs: any) => {
+    return yargs
+      .positional("path", {
+        demandOption: true,
+        description: "Path to the unzipped library directory (containing package.mo) or a single .mo file",
+        type: "string",
+      })
+      .option("signature", {
+        description: "Cryptographic detached signature for supply chain verification",
+        type: "string",
+      });
+  }) as CommandModule<{}, PublishArgs>["builder"],
   handler: async (args) => {
     const targetPath = path.resolve(args.path);
 
@@ -78,6 +85,8 @@ export const Publish: CommandModule<{}, PublishArgs> = {
 
     const token = requireToken();
     const zipBuffer = zip.toBuffer();
+    const contentHash = computePackageContentHash(zipBuffer);
+    console.log(`Content Hash (SHA-256): ${contentHash}`);
 
     // Create FormData manually since Node 18+ has a global Request/Response/FormData
     const formData = new FormData();
@@ -86,16 +95,28 @@ export const Publish: CommandModule<{}, PublishArgs> = {
 
     // 'file' is the field name multer expects on the API side
     formData.append("file", blob, "library.zip");
+    formData.append("contentHash", contentHash);
+    if (args.signature) {
+      formData.append("signature", args.signature);
+    }
 
     try {
       // Connects to local dev registry; could be configurable
       const API_URL = process.env.MODELSCRIPT_API_URL || "http://localhost:3000";
       const endpoint = `${API_URL}/api/v1/libraries/${name}/${version}`;
 
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        "X-Content-SHA256": contentHash,
+      };
+      if (args.signature) {
+        headers["X-Package-Signature"] = args.signature;
+      }
+
       const res = await fetch(endpoint, {
         method: "POST",
         body: formData,
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       });
 
       if (!res.ok) {

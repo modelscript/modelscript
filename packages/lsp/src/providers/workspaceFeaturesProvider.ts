@@ -209,6 +209,110 @@ export function registerWorkspaceFeaturesProvider(
     if (!document) return actions;
 
     for (const diagnostic of params.context.diagnostics) {
+      // ── Digital Thread Quick-Fixes ──────────────────────────────────
+      if (diagnostic.source === "modelscript-digital-thread") {
+        const text = document.getText();
+        const startOffset = document.offsetAt(diagnostic.range.start);
+        const endOffset = document.offsetAt(diagnostic.range.end);
+        const termText = text.substring(startOffset, endOffset).trim();
+
+        const data = diagnostic.data as any;
+        const consensus = data?.simplexConsensus;
+        const sourceVal = data?.sourceValue;
+        const unit = data?.unit ? ` ${data.unit}` : "";
+        const elemName = data?.elementName || termText;
+        const threadId = data?.threadId;
+        const slot = data?.slot;
+
+        // Try to locate line content to construct accurate replacement
+        const lineStart = document.offsetAt({ line: diagnostic.range.start.line, character: 0 });
+        const lineEnd = document.offsetAt({ line: diagnostic.range.start.line + 1, character: 0 });
+        const lineContent = text.substring(lineStart, lineEnd);
+
+        // 1. SMT Physics-Simplex Consensus QuickFix
+        if (consensus !== undefined) {
+          let newRange = diagnostic.range;
+          let newText = `${consensus}`;
+
+          // If the line contains an assignment (e.g. mass = 1.0 or Real mass = 1.0;), replace the value part
+          const assignMatch = lineContent.match(/(=|:=)\s*([0-9]+(?:\.[0-9]+)?)/);
+          if (assignMatch && assignMatch.index !== undefined) {
+            const valStartChar = lineContent.indexOf(assignMatch[2]!, assignMatch.index);
+            const valEndChar = valStartChar + assignMatch[2]!.length;
+            newRange = {
+              start: { line: diagnostic.range.start.line, character: valStartChar },
+              end: { line: diagnostic.range.start.line, character: valEndChar },
+            };
+            newText = `${consensus}`;
+          }
+
+          actions.push({
+            title: `Reconcile '${elemName}' with SMT Physics-Simplex consensus (${consensus}${unit})`,
+            kind: CodeActionKind.QuickFix,
+            isPreferred: true,
+            diagnostics: [diagnostic],
+            edit: {
+              changes: {
+                [params.textDocument.uri]: [
+                  {
+                    range: newRange,
+                    newText,
+                  },
+                ],
+              },
+            },
+          });
+        }
+
+        // 2. Accept Source Value QuickFix
+        if (sourceVal !== undefined && data?.sourceDomain) {
+          let newRange = diagnostic.range;
+          let newText = `${sourceVal}`;
+          const assignMatch = lineContent.match(/(=|:=)\s*([0-9]+(?:\.[0-9]+)?)/);
+          if (assignMatch && assignMatch.index !== undefined) {
+            const valStartChar = lineContent.indexOf(assignMatch[2]!, assignMatch.index);
+            const valEndChar = valStartChar + assignMatch[2]!.length;
+            newRange = {
+              start: { line: diagnostic.range.start.line, character: valStartChar },
+              end: { line: diagnostic.range.start.line, character: valEndChar },
+            };
+            newText = `${sourceVal}`;
+          }
+
+          actions.push({
+            title: `Accept '${elemName}' from ${data.sourceDomain.toUpperCase()} source (${sourceVal}${unit})`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diagnostic],
+            edit: {
+              changes: {
+                [params.textDocument.uri]: [
+                  {
+                    range: newRange,
+                    newText,
+                  },
+                ],
+              },
+            },
+          });
+        }
+
+        // 3. Open in Digital Thread Explorer Command
+        if (threadId !== undefined) {
+          actions.push({
+            title: `Open Thread #${threadId} in Digital Thread Explorer`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diagnostic],
+            command: {
+              title: "Open in Digital Thread Explorer",
+              command: "modelscript.openDigitalThread",
+              arguments: [{ threadId, slot }],
+            },
+          });
+        }
+
+        continue;
+      }
+
       if (diagnostic.source !== "modelscript") continue;
 
       // Suggest adding import for unresolved references

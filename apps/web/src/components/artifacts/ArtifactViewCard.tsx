@@ -9,6 +9,8 @@ import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
 import CfdAnimationViewer from "./CfdAnimationViewer";
 import CsvViewer from "./CsvViewer";
+import DigitalThreadExplorerViewer from "./DigitalThreadExplorerViewer";
+import DigitalTwinDashboardViewer from "./DigitalTwinDashboardViewer";
 import GCodeViewer from "./GCodeViewer";
 import LazyHeavyViewer from "./LazyHeavyViewer";
 import LinkPreviewViewer from "./LinkPreviewViewer";
@@ -30,9 +32,10 @@ import type { SpatialPin } from "./spatial-pin";
 interface ArtifactViewCardProps {
   artifactId: number;
   onPinCreated?: (pin: SpatialPin) => void;
+  onThreadNodeSelected?: (threadId: string | number) => void;
 }
 
-const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCreated }) => {
+const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCreated, onThreadNodeSelected }) => {
   const [artifact, setArtifact] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isLoaded, setIsLoaded] = useState(true);
@@ -156,7 +159,12 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             title="Simulation Result Viewer"
             placeholderType={artifact.view_type === "cfd-result" ? "cfd" : "fea"}
           >
-            <SimulationResultViewer viewConfig={viewConfig} isFullScreen={isFullScreen} onPinCreated={onPinCreated} />
+            <SimulationResultViewer
+              viewConfig={viewConfig}
+              isFullScreen={isFullScreen}
+              onPinCreated={onPinCreated}
+              onThreadNodeSelected={onThreadNodeSelected}
+            />
           </LazyHeavyViewer>
         );
       case "cfd-animation":
@@ -190,6 +198,20 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
       case "cyber-physical-system":
       case "hardware-project":
         return <AasPackageViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "digital-thread":
+      case "digital_thread":
+      case "thread-explorer":
+        return (
+          <DigitalThreadExplorerViewer
+            viewConfig={viewConfig}
+            isFullScreen={isFullScreen}
+            onNodeSelected={(node) => onThreadNodeSelected?.(node.nodeId)}
+          />
+        );
+      case "digital-twin-dashboard":
+      case "digital_twin_dashboard":
+      case "digital-twin":
+        return <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       default:
         return (
           <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">
@@ -320,30 +342,72 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
         justifyContent="space-between"
         alignItems="center"
       >
-        <Text fontSize="12px" fontWeight="bold">
-          {artifact.title || ""}
-        </Text>
-        {isLoaded && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsFullScreen(true);
-            }}
-            style={{
-              background: "transparent",
-              color: "var(--color-fg-default)",
-              border: "none",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-            }}
-            title="Full screen"
-          >
-            <ScreenFullIcon size={16} />
-          </button>
-        )}
+        <Box display="flex" alignItems="center" gap={2}>
+          <Text fontSize="12px" fontWeight="bold">
+            {artifact.title || ""}
+          </Text>
+          {viewConfig.provenance && (
+            <span
+              style={{
+                fontSize: "11px",
+                background: "rgba(31, 111, 235, 0.15)",
+                color: "#58a6ff",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                fontWeight: 600,
+              }}
+            >
+              ⚡ {viewConfig.provenance.solver?.toUpperCase()} • {viewConfig.provenance.profile}
+            </span>
+          )}
+        </Box>
+        <Box display="flex" alignItems="center" gap={2}>
+          {viewConfig.provenance && viewConfig.jobId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(`/api/v1/cae/jobs/${viewConfig.jobId}/reproduce-spec`, "_blank");
+              }}
+              style={{
+                background: "var(--color-canvas-subtle)",
+                color: "var(--color-text-primary)",
+                border: "1px solid var(--color-border-default)",
+                borderRadius: "4px",
+                padding: "3px 8px",
+                fontSize: "11px",
+                fontWeight: "600",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+              title="Inspect execution recipe and reproduction parameters"
+            >
+              Fork &amp; Reproduce
+            </button>
+          )}
+          {isLoaded && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFullScreen(true);
+              }}
+              style={{
+                background: "transparent",
+                color: "var(--color-fg-default)",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+              }}
+              title="Full screen"
+            >
+              <ScreenFullIcon size={16} />
+            </button>
+          )}
+        </Box>
       </Box>
     </Box>
   );

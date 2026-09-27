@@ -257,6 +257,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       return;
     }
 
+    const release = database.getLibraryRelease(name, version);
+    const contentHash = release?.content_hash || storage.getContentHash(name, version);
+
     try {
       const packageMoContent = await extractPackageMoFromZip(file.buffer);
       const parsed = parsePackageMo(packageMoContent);
@@ -267,6 +270,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         description: parsed.description,
         modelicaVersion: parsed.version,
         size: file.size,
+        contentHash: contentHash || undefined,
+        signature: release?.signature ?? undefined,
+        publishedAt: release?.published_at ?? undefined,
       });
     } catch {
       // If we cannot parse the zip, still return basic info
@@ -276,6 +282,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         description: null,
         modelicaVersion: null,
         size: file.size,
+        contentHash: contentHash || undefined,
+        signature: release?.signature ?? undefined,
+        publishedAt: release?.published_at ?? undefined,
       });
     }
   });
@@ -400,6 +409,16 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       res.status(404).json({ error: `Package "${name}@${version}" not found` });
       return;
+    }
+
+    const release = database.getLibraryRelease(name, version);
+    const contentHash = release?.content_hash || storage.getContentHash(name, version);
+    if (contentHash) {
+      res.setHeader("ETag", `"${contentHash}"`);
+      res.setHeader("X-Content-SHA256", contentHash);
+      if (release?.signature) {
+        res.setHeader("X-Package-Signature", release.signature);
+      }
     }
 
     res.setHeader("Content-Type", "application/zip");

@@ -6,6 +6,7 @@ import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
+import { getComputeProfiles, type ComputeProfileInfo } from "../../api";
 import Box from "../Box";
 interface CadStepViewerProps {
   viewConfig: any;
@@ -44,9 +45,21 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
   const [className, setClassName] = useState("SimulationConfig");
   const [config, setConfig] = useState<any>({ parameters: {} });
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [profiles, setProfiles] = useState<ComputeProfileInfo[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>("standard");
 
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    getComputeProfiles()
+      .then((data) => {
+        if (data && data.length > 0) {
+          setProfiles(data);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const loadConfig = async () => {
     setIsLoadingConfig(true);
@@ -81,6 +94,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
         className: className,
         stepFile: viewConfig.url.split("/").pop() || "geometry.step",
         parameters: config.parameters || {},
+        profile: selectedProfileId,
       };
 
       // 1. Fetch step file blob
@@ -314,6 +328,57 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
               </Box>
               <FormControl.Caption>Enter the Modelica study class name to load its parameters.</FormControl.Caption>
             </FormControl>
+
+            {/* HPC Compute Profile Selector */}
+            <Box mt={2}>
+              <Text fontWeight="bold" fontSize="13px" color="var(--color-fg-default)" display="block" mb={2}>
+                Compute Node Profile & Resources
+              </Text>
+              <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
+                {profiles.map((p) => {
+                  const isSelected = p.id === selectedProfileId;
+                  const ramGb = Math.round(p.memoryMb / 1024);
+                  return (
+                    <Box
+                      key={p.id}
+                      p={2}
+                      borderRadius="6px"
+                      border="1px solid"
+                      borderColor={
+                        isSelected ? "var(--color-accent-fg, #0969da)" : "var(--color-border-default, #30363d)"
+                      }
+                      bg={
+                        isSelected
+                          ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.1))"
+                          : "var(--color-canvas-subtle, #161b22)"
+                      }
+                      style={{ cursor: "pointer", transition: "all 0.15s ease" }}
+                      onClick={() => setSelectedProfileId(p.id)}
+                    >
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                        <Text
+                          fontWeight="bold"
+                          fontSize="12px"
+                          color={isSelected ? "var(--color-accent-fg, #58a6ff)" : "var(--color-fg-default)"}
+                        >
+                          {p.name}
+                        </Text>
+                        <Text fontSize="11px" fontWeight="bold" color="var(--color-success-fg, #3fb950)">
+                          {p.costCreditsPerHour} cr/hr
+                        </Text>
+                      </Box>
+                      <Text fontSize="11px" color="var(--color-fg-muted)" display="block" mb={1}>
+                        {p.description}
+                      </Text>
+                      <Text fontSize="10px" color="var(--color-fg-subtle)" fontFamily="monospace">
+                        {p.cpus} CPUs · {ramGb} GB RAM{" "}
+                        {p.gpus > 0 ? `· ${p.gpus}x ${p.gpuType?.toUpperCase() || "GPU"}` : ""}
+                      </Text>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
 
             {Object.keys(config.parameters || {}).length > 0 && (
               <Box

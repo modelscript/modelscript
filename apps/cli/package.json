@@ -34,7 +34,7 @@
     "clean": "rimraf dist",
     "test": "npm run test:jest && npm run test:node",
     "test:jest": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:node": "npx tsx --test tests/test-dhf-export.test.ts tests/test-digital-thread-complete.test.ts tests/test-multidomain-falsify-cli.test.ts tests/test-pr-diff.test.ts tests/test-tgg-multi-domain.test.ts tests/test-unified-verify.test.ts",
+    "test:node": "npx tsx --test tests/test-dhf-export.test.ts tests/test-digital-thread-complete.test.ts tests/test-multidomain-falsify-cli.test.ts tests/test-package-verify.test.ts tests/test-pr-diff.test.ts tests/test-simulate-cloud.test.ts tests/test-tgg-multi-domain.test.ts tests/test-unified-verify.test.ts",
     "watch": "tsc --watch"
   },
   "dependencies": {

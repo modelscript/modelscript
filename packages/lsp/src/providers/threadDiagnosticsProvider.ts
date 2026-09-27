@@ -14,7 +14,17 @@ export interface ThreadDiagnostic {
   message: string;
   line: number;
   column: number;
+  length?: number;
   source: "modelscript-digital-thread";
+  code?: string;
+  threadId?: string | number;
+  slot?: number;
+  sourceDomain?: string;
+  sourceValue?: number;
+  targetDomain?: string;
+  targetValue?: number;
+  simplexConsensus?: number;
+  unit?: string;
 }
 
 export interface AlignedDomainElement {
@@ -31,7 +41,7 @@ export class ThreadDiagnosticsProvider {
    * Evaluates cross-domain consistency across aligned digital thread projections.
    */
   static diagnoseThread(
-    threadId: string,
+    threadId: string | number,
     domainElements: AlignedDomainElement[],
     tolerance: number = 0.05, // 5% tolerance
     conflict?: { explanation?: string; culpritEntities?: string[] },
@@ -44,8 +54,10 @@ export class ThreadDiagnosticsProvider {
         domainElements.find((e) => e.domain === "sysml2" || e.domain === "sysml") || domainElements[0];
       diagnostics.push({
         domain: primaryElem?.domain || "sysml2",
-        elementName: conflict.culpritEntities?.[0] || primaryElem?.name || threadId,
+        elementName: conflict.culpritEntities?.[0] || primaryElem?.name || String(threadId),
         severity: "error",
+        code: "THREAD_THEORY_CONFLICT",
+        threadId,
         message: `[Digital Thread Theory Conflict] ${conflict.explanation || "Formal theory contradiction detected."}`,
         line: primaryElem?.line ?? 1,
         column: primaryElem?.column ?? 1,
@@ -66,15 +78,78 @@ export class ThreadDiagnosticsProvider {
       if (!isNaN(cadMass) && !isNaN(moMass) && cadMass > 0 && moMass > 0) {
         const diffRel = Math.abs(cadMass - moMass) / moMass;
         if (diffRel > tolerance) {
+          const consensus = (cadMass + moMass) / 2;
           diagnostics.push({
             domain: "modelica",
             elementName: modelicaElem.name,
             severity: "warning",
-            message: `[Digital Thread] Mass divergence: Modelica parameter mass (${moMass} kg) differs from CAD STEP geometry (${cadMass} kg) by ${(diffRel * 100).toFixed(1)}%. Run parameter inversion to synchronize.`,
+            code: "THREAD_DIVERGENCE",
+            threadId,
+            sourceDomain: "cad",
+            sourceValue: cadMass,
+            targetDomain: "modelica",
+            targetValue: moMass,
+            simplexConsensus: consensus,
+            unit: "kg",
+            message: `[Digital Thread] Mass divergence: Modelica parameter mass (${moMass} kg) differs from CAD STEP geometry (${cadMass} kg) by ${(diffRel * 100).toFixed(1)}%. Physics-simplex consensus: ${consensus.toFixed(2)} kg.`,
             line: modelicaElem.line ?? 1,
             column: modelicaElem.column ?? 1,
             source: "modelscript-digital-thread",
           });
+        }
+      }
+    }
+
+    // 2. Check SysML v2 vs Modelica parameter divergence (mass, voltage, etc.)
+    if (sysmlElem?.properties && modelicaElem?.properties) {
+      for (const [propKey, sysmlValRaw] of Object.entries(sysmlElem.properties)) {
+        const sysmlVal = Number(sysmlValRaw);
+        const moValRaw = modelicaElem.properties[propKey];
+        const moVal = Number(moValRaw);
+        if (!isNaN(sysmlVal) && !isNaN(moVal) && sysmlVal > 0 && moVal > 0) {
+          const diffRel = Math.abs(sysmlVal - moVal) / Math.max(sysmlVal, moVal);
+          if (diffRel > tolerance) {
+            const consensus = (sysmlVal + moVal) / 2;
+            const unit = propKey.toLowerCase().includes("volt")
+              ? "V"
+              : propKey.toLowerCase().includes("mass")
+                ? "kg"
+                : "";
+            diagnostics.push({
+              domain: "modelica",
+              elementName: modelicaElem.name,
+              severity: "error",
+              code: "THREAD_CONFLICT",
+              threadId,
+              sourceDomain: "sysml2",
+              sourceValue: sysmlVal,
+              targetDomain: "modelica",
+              targetValue: moVal,
+              simplexConsensus: consensus,
+              unit,
+              message: `[Digital Thread Conflict] Parameter '${propKey}' divergence: Modelica (${moVal}${unit ? " " + unit : ""}) conflicts with SysML v2 source (${sysmlVal}${unit ? " " + unit : ""}). SMT physics-simplex consensus: ${consensus.toFixed(2)}${unit ? " " + unit : ""}.`,
+              line: modelicaElem.line ?? 1,
+              column: modelicaElem.column ?? 1,
+              source: "modelscript-digital-thread",
+            });
+            diagnostics.push({
+              domain: "sysml2",
+              elementName: sysmlElem.name,
+              severity: "error",
+              code: "THREAD_CONFLICT",
+              threadId,
+              sourceDomain: "sysml2",
+              sourceValue: sysmlVal,
+              targetDomain: "modelica",
+              targetValue: moVal,
+              simplexConsensus: consensus,
+              unit,
+              message: `[Digital Thread Conflict] Parameter '${propKey}' divergence: SysML v2 source (${sysmlVal}${unit ? " " + unit : ""}) conflicts with Modelica (${moVal}${unit ? " " + unit : ""}). SMT physics-simplex consensus: ${consensus.toFixed(2)}${unit ? " " + unit : ""}.`,
+              line: sysmlElem.line ?? 1,
+              column: sysmlElem.column ?? 1,
+              source: "modelscript-digital-thread",
+            });
+          }
         }
       }
     }

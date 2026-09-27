@@ -1618,53 +1618,46 @@ export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: Record<stri
     lastIdent = id;
   }
 
-  let container: u32 = docRoot;
-  let rootChild = db.ast.getFirstChild(docRoot);
-  while (rootChild != 0) {
-    if (db.ast.getType(rootChild) == $.stored_definition) {
-      container = rootChild;
-      break;
-    }
-    rootChild = db.ast.getNextSibling(rootChild);
-  }
-
-  let child = db.ast.getFirstChild(container);
-  while (child != 0) {
-    if (db.ast.getType(child) == $.class_definition) {
-      let spec = db.ast.getFirstChild(child);
-      while (spec != 0) {
-        let specType = db.ast.getType(spec);
-        let targetSpec: u32 = 0;
-        if (specType == $.class_specifier) {
-          let s = db.ast.getFirstChild(spec);
-          while (s != 0) {
-            let st = db.ast.getType(s);
-            if (st == $.long_class_specifier || st == $.short_class_specifier) {
-              targetSpec = s;
-              break;
-            }
-            s = db.ast.getNextSibling(s);
-          }
-        } else if (specType == $.long_class_specifier || specType == $.short_class_specifier) {
-          targetSpec = spec;
+  if ($.long_class_specifier != 0) {
+    for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+      let cName = db.ast.getChildByFieldId(spec, "name");
+      if (cName == 0) {
+        for (const id of db.ast.getDescendants(spec, $.identifier)) {
+          cName = id;
+          break;
         }
-
-        if (targetSpec != 0) {
-          const cName = db.ast.getChildByFieldId(targetSpec, "name");
-          if (
-            cName != 0 &&
-            (db.ast.textEqualsNode(nameNode, cName) ||
-              db.ast.textEqualsNode(firstIdent, cName) ||
-              db.ast.textEqualsNode(lastIdent, cName))
-          ) {
-            return true;
-          }
-        }
-        spec = db.ast.getNextSibling(spec);
+      }
+      if (
+        cName != 0 &&
+        (db.ast.textEqualsNode(nameNode, cName) ||
+          db.ast.textEqualsNode(firstIdent, cName) ||
+          db.ast.textEqualsNode(lastIdent, cName))
+      ) {
+        return true;
       }
     }
-    child = db.ast.getNextSibling(child);
   }
+
+  if ($.short_class_specifier != 0) {
+    for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+      let cName = db.ast.getChildByFieldId(spec, "name");
+      if (cName == 0) {
+        for (const id of db.ast.getDescendants(spec, $.identifier)) {
+          cName = id;
+          break;
+        }
+      }
+      if (
+        cName != 0 &&
+        (db.ast.textEqualsNode(nameNode, cName) ||
+          db.ast.textEqualsNode(firstIdent, cName) ||
+          db.ast.textEqualsNode(lastIdent, cName))
+      ) {
+        return true;
+      }
+    }
+  }
+
   return false;
 }
 

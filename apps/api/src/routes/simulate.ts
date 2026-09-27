@@ -1,21 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import express from "express";
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
+import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { getComputeProfile } from "../services/hpc/compute-profiles.js";
+import { HpcEngine } from "../services/hpc/hpc-engine.js";
+import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
+import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
 import type { LibraryStorage } from "../storage.js";
 
-const execFileAsync = promisify(execFile);
-
-export function simulateRouter(storage: LibraryStorage, jobQueue: JobQueue): express.Router {
+export function simulateRouter(
+  storage: LibraryStorage,
+  jobQueue: JobQueue,
+  database?: LibraryDatabase,
+): express.Router {
   const router = express.Router();
+  const hpcEngine = new HpcEngine();
 
   // POST /api/v1/simulate
-  // Request body: { libraryName?: string, libraryVersion?: string, modelName: string, modelSource?: string, dependencies?: { name: string; version: string }[] }
+  // Request body: { libraryName?: string, libraryVersion?: string, modelName: string, modelSource?: string, dependencies?: { name: string; version: string }[], profile?: string }
   router.post("/simulate", async (req, res) => {
     const { libraryName, libraryVersion, modelName, modelSource, dependencies = [] } = req.body;
 
@@ -25,6 +31,22 @@ export function simulateRouter(storage: LibraryStorage, jobQueue: JobQueue): exp
 
     if (!modelSource && (!libraryName || !libraryVersion)) {
       return res.status(400).json({ error: "Either modelSource or (libraryName and libraryVersion) must be provided" });
+    }
+
+    // Pre-flight quota check
+    const profile = getComputeProfile(req.body.profile as string | undefined);
+    const userId = database ? resolveRequestUserId(req, database) : null;
+    if (database && userId) {
+      const quota = checkComputeQuota(userId, profile.id, database);
+      if (!quota.allowed) {
+        return res.status(402).json({
+          error: "Payment Required: Insufficient Compute Credits",
+          message: quota.reason,
+          balance: quota.userBalance,
+          required: quota.estimatedCost,
+          profile: quota.profileId,
+        });
+      }
     }
 
     const allLibraries = dependencies.slice();
@@ -103,11 +125,49 @@ getErrorString();
 
         fs.writeFileSync(mosScriptPath, mosContents, "utf8");
 
-        // Execute OpenModelica Compiler (omc) with MODELICAPATH
-        const { stdout, stderr } = await execFileAsync("omc", [mosScriptPath], {
-          cwd: tmpDir,
-          env: { ...process.env, MODELICAPATH: modelicaPath },
-        });
+        const profile = getComputeProfile(req.body.profile as string | undefined);
+        let dbJobId: number | null = null;
+        if (database) {
+          try {
+            dbJobId = database.createJob(
+              `Simulation: ${modelName}`,
+              "RUNNING",
+              "ADHOC",
+              "omc",
+              null,
+              {
+                jobId,
+                profile: profile.id,
+              },
+              userId,
+            );
+          } catch {
+            // DB tracking is optional
+          }
+        }
+
+        const hpcSpec: HpcJobSpec = {
+          jobId,
+          name: `OMC-${fileNamePrefix}`,
+          command: "omc",
+          args: [mosScriptPath],
+          workingDir: tmpDir,
+          env: {
+            ...process.env,
+            MODELICAPATH: modelicaPath,
+            OMP_NUM_THREADS: String(profile.cpus),
+          },
+          profileId: profile.id,
+          resources: {
+            cpusPerTask: profile.cpus,
+            memoryMb: profile.memoryMb,
+            partition: profile.partition,
+            gpus: profile.gpus,
+          },
+        };
+
+        const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
+        const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);
 
         const csvFilePath = path.join(tmpDir, `${fileNamePrefix}_res.csv`);
 
@@ -117,11 +177,16 @@ getErrorString();
           if (fs.existsSync(logPath)) {
             details = fs.readFileSync(logPath, "utf8");
           }
+          const slurmLog = path.join(tmpDir, `slurm-${submission.nativeJobId}.out`);
+          let slurmDetails = "";
+          if (fs.existsSync(slurmLog)) {
+            slurmDetails = fs.readFileSync(slurmLog, "utf8");
+          }
           const files = fs.readdirSync(tmpDir);
           throw new Error(
-            `Simulation failed to produce a .csv result file.\nExpected path: ${csvFilePath}\nFiles in tmpDir: ${files.join(
+            `Simulation failed to produce a .csv result file (exitCode: ${usage.exitCode}).\nExpected path: ${csvFilePath}\nFiles in tmpDir: ${files.join(
               ", ",
-            )}\nSTDOUT: ${stdout}\nSTDERR: ${stderr}\nLOG: ${details}`,
+            )}\nLOG: ${details}\nSLURM: ${slurmDetails}`,
           );
         }
 
@@ -129,6 +194,19 @@ getErrorString();
         const status = jobQueue.getStatus(jobId);
         if (status) {
           status.resultPath = csvFilePath;
+          status.profile = profile.id;
+          status.usage = usage;
+        }
+
+        if (database && dbJobId) {
+          database.updateJobStatus(dbJobId, "SUCCESS");
+          database.updateJobAccounting(dbJobId, usage);
+          if (userId && usage.costCredits > 0) {
+            database.deductUserCredits(userId, usage.costCredits, dbJobId, `Simulation: ${modelName}`, {
+              profile: profile.id,
+              ...usage,
+            });
+          }
         }
       } catch (err) {
         // If it's a simulation failure, we might want to keep the tmp dir for debugging
@@ -151,7 +229,11 @@ getErrorString();
       return res.status(404).json({ error: "Job not found" });
     }
 
-    res.json(status);
+    res.json({
+      ...status,
+      profile: status.profile,
+      usage: status.usage,
+    });
   });
 
   // GET /api/v1/simulate/:jobId/result

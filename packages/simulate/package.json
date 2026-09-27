@@ -34,6 +34,10 @@
       "types": "./dist/uq/index.d.ts",
       "default": "./dist/uq/index.js"
     },
+    "./twin": {
+      "types": "./dist/twin/index.d.ts",
+      "default": "./dist/twin/index.js"
+    },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
       "default": "./dist/utils/index.js"

@@ -2081,6 +2081,7 @@ export function initializeArenaEnvironment(
   options?: {
     startTime?: number;
     parameterOverrides?: Map<string, number>;
+    initialStateOverrides?: Map<string, number>;
   },
 ): {
   valuesByStringId: Float64Array;
@@ -2162,6 +2163,14 @@ export function initializeArenaEnvironment(
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
 
+  // Apply initial state overrides (for MHE, Kalman filtering, or state re-initialization)
+  if (options?.initialStateOverrides) {
+    for (const [name, val] of options.initialStateOverrides) {
+      const nameId = arena.interner.intern(name);
+      valuesByStringId[nameId] = val;
+    }
+  }
+
   // Identify state/derivative StringIds
   const stateNameIds: number[] = [];
   const derivNameIds: number[] = [];
@@ -2209,6 +2218,8 @@ export interface ArenaSimulateOptions {
   outputStringIds?: number[];
   /** Parameter overrides (name → value). */
   parameterOverrides?: Map<string, number>;
+  /** Initial state overrides (name → value) at startTime. */
+  initialStateOverrides?: Map<string, number>;
   /** Abort signal for cooperative cancellation. */
   signal?: AbortSignal;
   /** Optional FMU co-simulation subsystem registry for hybrid simulation. */
@@ -2323,6 +2334,14 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   // Copy initial solution back
   valuesByStringId.set(initResult.valuesByStringId);
+
+  // Apply initial state overrides
+  if (options?.initialStateOverrides) {
+    for (const [name, val] of options.initialStateOverrides) {
+      const nameId = arena.interner.intern(name);
+      valuesByStringId[nameId] = val;
+    }
+  }
 
   // ── Step 5: Identify state/derivative StringIds ──
   const stateNameIds: number[] = [];

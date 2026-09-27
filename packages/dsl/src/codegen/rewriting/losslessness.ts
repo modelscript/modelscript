@@ -65,23 +65,34 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
 
   for (const attr of knownSourceAttrs) {
     let isMapped = false;
+    const srcVar = srcBindings[attr];
 
-    // Direct mapping in bindings
+    // 1. Direct mapping in target bindings
     if (attr in tgtBindings) {
       isMapped = true;
     }
 
-    // Checked in constraint equations
+    // 2. Shared variable binding (source attr and target attr both bind the same pattern variable)
+    if (srcVar !== undefined && Object.values(tgtBindings).includes(srcVar)) {
+      isMapped = true;
+    }
+
+    // 3. Checked in constraint equations
+    const isArgMatching = (arg: any) =>
+      arg === attr ||
+      arg === srcVar ||
+      (typeof arg === "string" && arg.startsWith("__var_") && (arg.slice(6) === attr || arg === srcVar));
+
     for (const c of constraints) {
-      if (c.kind === "eq" && (c.args[0] === attr || c.args[1] === attr)) {
+      if (c.kind === "eq" && (isArgMatching(c.args[0]) || isArgMatching(c.args[1]))) {
         isMapped = true;
-      } else if (c.kind === "formatUri" && c.args[0] === attr) {
+      } else if (c.kind === "formatUri" && isArgMatching(c.args[0])) {
         isMapped = true;
-      } else if (c.kind === "typeMap" && c.args[0] === attr) {
+      } else if (c.kind === "typeMap" && isArgMatching(c.args[0])) {
         isMapped = true;
       } else if (c.kind === "invertible") {
         const inv = invertExpression(c.args[0]);
-        if (inv.isInvertible && inv.sourceVar === attr) {
+        if (inv.isInvertible && (isArgMatching(inv.sourceVar) || inv.sourceVar === attr)) {
           isMapped = true;
         }
       }

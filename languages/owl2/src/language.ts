@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
+import {
+  choice,
+  field,
+  language,
+  optional,
+  repeat,
+  semanticToken,
+  seq,
+  tggComplement,
+  tggEq,
+  tggRule,
+} from "@modelscript/dsl";
 
 export const owl2Language = language({
   name: "owl2",
@@ -97,6 +108,52 @@ export const owl2Language = language({
         arguments: [],
         template: () => "Diagnose inconsistency and minimal conflict cores in active ontology.",
       },
+    ],
+  },
+
+  polyglot: {
+    languages: ["sysml2", "modelica"],
+    rules: [
+      tggRule({
+        name: "OWL2ClassToSysML2Part",
+        sourceLang: "owl2",
+        targetLang: "sysml2",
+        source: ($, v) => $.ClassDeclaration({ iri: v("iri") }),
+        target: ($, v) => $.PartDefinition({ declaredName: v("iri") }),
+        where: (v) => [tggEq(v("iri"), v("iri")), tggComplement(["annotations"])],
+      }),
+      tggRule({
+        name: "OWL2SubClassToSysML2Specialization",
+        sourceLang: "owl2",
+        targetLang: "sysml2",
+        source: ($, v) => $.SubClassOfAxiom({ subClass: v("sub"), superClass: v("sup") }),
+        target: ($, v) => $.Specialization({ generalName: v("sup"), specificName: v("sub") }),
+        where: (v) => [tggEq(v("sub"), v("sub")), tggEq(v("sup"), v("sup"))],
+      }),
+      tggRule({
+        name: "OWL2ObjectPropertyToSysML2Port",
+        sourceLang: "owl2",
+        targetLang: "sysml2",
+        source: ($, v) => $.ObjectPropertyDeclaration({ iri: v("iri") }),
+        target: ($, v) => $.PortDefinition({ declaredName: v("iri") }),
+        where: (v) => [tggEq(v("iri"), v("iri")), tggComplement(["isFunctional", "isTransitive"])],
+      }),
+      tggRule({
+        name: "OWL2DataPropertyToSysML2Attribute",
+        sourceLang: "owl2",
+        targetLang: "sysml2",
+        source: ($, v) => $.DataPropertyDeclaration({ iri: v("iri") }),
+        target: ($, v) => $.AttributeDefinition({ declaredName: v("iri") }),
+        where: (v) => [tggEq(v("iri"), v("iri")), tggComplement(["rangeType"])],
+      }),
+      tggRule({
+        name: "OWL2ClassToModelicaModel",
+        sourceLang: "owl2",
+        targetLang: "modelica",
+        source: ($, v) => $.ClassDeclaration({ iri: v("iri") }),
+        target: ($, v) => $.ClassDefinition({ name: v("iri"), classKind: "model" }),
+        where: (v) => [tggEq(v("iri"), v("iri")), tggComplement(["annotations"])],
+      }),
     ],
   },
 

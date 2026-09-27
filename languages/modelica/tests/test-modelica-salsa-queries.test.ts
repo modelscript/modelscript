@@ -76,6 +76,6 @@ end Y;`;
     const diags = facade.getDiagnostics(root);
     const mismatchDiag = diags.find((d: any) => d.code === 5001);
     expect(mismatchDiag).toBeDefined();
-    expect(mismatchDiag.message).toContain("Type mismatch in equation 'x = 1'.");
+    expect(mismatchDiag.message).toContain("Type mismatch in equation x = 1");
   }, 60000);
 });

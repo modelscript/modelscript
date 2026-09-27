@@ -2,10 +2,12 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { McpManifest } from "@modelscript/dsl/codegen/compile_mcp.js";
-import { mcpPropertySchemaToZod, PolyglotMcpHost } from "@modelscript/mcp/polyglot-server.js";
-import type { ServerContext } from "@modelscript/mcp/types.js";
+import { ThreadDomain } from "@modelscript/runtime";
 import expect from "expect";
 import { describe, test } from "node:test";
+import { mcpPropertySchemaToZod, PolyglotMcpHost } from "../src/polyglot-server.js";
+import { registerTools } from "../src/tools.js";
+import type { ServerContext } from "../src/types.js";
 
 describe("Polyglot MCP Host Engine", () => {
   test("converts declarative property schemas to Zod types correctly", () => {
@@ -96,5 +98,66 @@ describe("Polyglot MCP Host Engine", () => {
     const registered = host.getRegisteredToolNames();
     expect(registered).toContain("modelica_flatten_decl");
     expect(registered).toContain("sysml2_extract_topology_decl");
+  });
+
+  test("queries live DigitalThreadHypergraph and reconciles conflicts", () => {
+    const server = new McpServer({
+      name: "test-polyglot-mcp-live",
+      version: "1.0.0",
+    });
+
+    const ctx: ServerContext = { current: null };
+    const host = new PolyglotMcpHost(server, ctx);
+    const hg = host.getHypergraph();
+
+    // Create a live thread
+    const slot = hg.createThread(1001);
+    hg.bindDomainNode(slot, ThreadDomain.SysML2, 42);
+    hg.bindDomainNode(slot, ThreadDomain.Modelica, 84);
+
+    // Query thread by ID
+    const threadRecord = host.getThread("1001");
+    expect(threadRecord).toBeDefined();
+    expect(threadRecord?.sysml2?.nodeId).toBe(42);
+    expect(threadRecord?.modelica?.nodeId).toBe(84);
+    expect(threadRecord?.sysml2?.status).toBe("synced");
+
+    // Register active conflict
+    host.registerConflict("conflict_bus_voltage", slot, {
+      sourceDomain: "sysml2",
+      sourceValue: 24.0,
+      sourceUnit: "V",
+      targetDomain: "modelica",
+      targetValue: 12.0,
+      targetUnit: "V",
+      min: 10.0,
+      max: 48.0,
+    });
+
+    // Verify conflict diagnosed
+    const diag = host.diagnoseConflict("conflict_bus_voltage");
+    expect(diag.status).toBe("conflicted");
+    expect(diag.simplexConsensus).toBe(18.0);
+    expect(hg.isConflicted(slot)).toBe(true);
+
+    // Reconcile conflict using physics-simplex
+    const reconciled = host.reconcileSlot("conflict_bus_voltage", "physics-simplex");
+    expect(reconciled.status).toBe("resolved");
+    expect(reconciled.resolvedValue).toBe(18.0);
+    expect(hg.isConflicted(slot)).toBe(false);
+
+    // Thread is now verified synchronized
+    const updatedRecord = host.getThread("1001");
+    expect(updatedRecord?.sysml2?.status).toBe("synced");
+  });
+
+  test("registers modelica_diff_calibrate tool cleanly on McpServer", () => {
+    const server = new McpServer({
+      name: "test-diff-calibrate",
+      version: "1.0.0",
+    });
+    const ctx: ServerContext = { current: null };
+    registerTools(server, ctx);
+    expect(server).toBeDefined();
   });
 });

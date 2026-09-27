@@ -382,7 +382,13 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           const docRoot = db.ast.getRootNode();
           if (docRoot != 0) {
             for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
-              const cName = db.ast.getChildByFieldId(spec, "name");
+              let cName = db.ast.getChildByFieldId(spec, "name");
+              if (cName == 0) {
+                for (const id of db.ast.getDescendants(spec, $.identifier)) {
+                  cName = id;
+                  break;
+                }
+              }
               if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
                 let classDef: u32 = spec;
                 for (const anc of db.ast.getAncestors(spec)) {
@@ -397,7 +403,13 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             }
             if (expectedType == TYPE_UNKNOWN) {
               for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
-                const cName = db.ast.getChildByFieldId(spec, "name");
+                let cName = db.ast.getChildByFieldId(spec, "name");
+                if (cName == 0) {
+                  for (const id of db.ast.getDescendants(spec, $.identifier)) {
+                    cName = id;
+                    break;
+                  }
+                }
                 if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
                   let classDef: u32 = spec;
                   for (const anc of db.ast.getAncestors(spec)) {

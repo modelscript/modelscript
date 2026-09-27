@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -94,7 +93,29 @@ export class LibraryStorage {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(filePath, buffer);
 
+    const hash = crypto.createHash("sha256").update(buffer).digest("hex");
+    fs.writeFileSync(path.join(dir, `${this.#safe(version)}.sha256`), hash, "utf-8");
+
     return filePath;
+  }
+
+  /**
+   * Retrieves the cryptographic SHA-256 content hash of a stored library version.
+   */
+  getContentHash(name: string, version: string): string | null {
+    const shaFile = path.resolve(this.#dataDir, this.#safe(name), `${this.#safe(version)}.sha256`);
+    if (fs.existsSync(shaFile)) {
+      return `sha256:${fs.readFileSync(shaFile, "utf-8").trim()}`;
+    }
+    const file = this.read(name, version);
+    if (!file) return null;
+    const hash = crypto.createHash("sha256").update(file.buffer).digest("hex");
+    try {
+      fs.writeFileSync(shaFile, hash, "utf-8");
+    } catch {
+      // ignore
+    }
+    return `sha256:${hash}`;
   }
 
   /**

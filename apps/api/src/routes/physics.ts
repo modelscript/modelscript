@@ -10,13 +10,16 @@
 
 import express, { type Router } from "express";
 import multer from "multer";
-import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { getComputeProfile } from "../services/hpc/compute-profiles.js";
+import { HpcEngine } from "../services/hpc/hpc-engine.js";
+import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
+import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
 
 const PHYSICS_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
 
@@ -56,6 +59,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200
 
 export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
+  const hpcEngine = new HpcEngine();
   ensureCacheDir();
 
   // ── Upload .step geometry with CAS deduplication ──
@@ -167,8 +171,24 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       return res.status(400).json({ error: "Invalid result directory." });
     }
 
+    // Pre-flight quota check
+    const profile = getComputeProfile(config.profile as string | undefined);
+    const userId = resolveRequestUserId(req, database);
+    if (userId) {
+      const quota = checkComputeQuota(userId, profile.id, database);
+      if (!quota.allowed) {
+        return res.status(402).json({
+          error: "Payment Required: Insufficient Compute Credits",
+          message: quota.reason,
+          balance: quota.userBalance,
+          required: quota.estimatedCost,
+          profile: quota.profileId,
+        });
+      }
+    }
+
     // Create job in the database
-    const dbJobId = database.createJob(`Physics ${simType}`, "RUNNING", "ADHOC", "ide", null, { resultDir });
+    const dbJobId = database.createJob(`Physics ${simType}`, "RUNNING", "ADHOC", "ide", null, { resultDir }, userId);
     const cachedResult = path.resolve(resultDir, "result.vtu");
     const cachedScalars = path.resolve(resultDir, "scalars.json");
 
@@ -205,23 +225,32 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         const runnerScript = path.resolve(process.cwd(), "scripts", "physics", scriptName);
         database.updateJobStepStatus(currentStepId, "SUCCESS");
 
-        // Execute the solver
+        // Execute the solver via HPC engine
         currentStepId = database.createJobStep(dbJobId, "Run Solver", "RUNNING");
-        await new Promise<void>((resolve, reject) => {
-          const child = spawn("python3", [runnerScript, "--config", studyPath], {
-            cwd: tmpDir,
-            env: { ...process.env },
-          });
+        const profile = getComputeProfile(config.profile as string | undefined);
+        const hpcSpec: HpcJobSpec = {
+          jobId: `physics-${dbJobId}`,
+          name: `Physics-${simType}-${dbJobId}`,
+          command: "python3",
+          args: [runnerScript, "--config", studyPath],
+          workingDir: tmpDir,
+          profileId: profile.id,
+          resources: {
+            cpusPerTask: profile.cpus,
+            memoryMb: profile.memoryMb,
+            partition: profile.partition,
+            gpus: profile.gpus,
+          },
+        };
 
-          child.stdout.on("data", (data) => logStream.write(data));
-          child.stderr.on("data", (data) => logStream.write(data));
-
-          child.on("error", reject);
-          child.on("close", (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`Solver exited with code ${code}`));
-          });
+        const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
+        const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile, (chunk) => {
+          logStream.write(chunk);
         });
+
+        if (usage.exitCode !== 0) {
+          throw new Error(`Solver exited with code ${usage.exitCode}`);
+        }
         database.updateJobStepStatus(currentStepId, "SUCCESS");
 
         // Process results
@@ -233,8 +262,34 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         fs.copyFileSync(path.join(tmpDir, vtuFiles[0]!), cachedResult);
         fs.copyFileSync(studyPath, path.join(resultDir, "study.json"));
 
+        const sbatchFile = path.join(tmpDir, "run.sbatch");
+        if (fs.existsSync(sbatchFile)) {
+          fs.copyFileSync(sbatchFile, path.join(resultDir, "run.sbatch"));
+        }
+
         const scalars = extractScalarsFromVtu(cachedResult);
+        scalars["hpc"] = {
+          profile: profile.id,
+          cpuCoreSeconds: usage.cpuCoreSeconds,
+          peakMemoryMb: usage.peakMemoryMb,
+          costCredits: usage.costCredits,
+        };
         fs.writeFileSync(cachedScalars, JSON.stringify(scalars, null, 2), "utf8");
+
+        database.updateJobAccounting(dbJobId, {
+          computeProfile: profile.id,
+          cpuSeconds: usage.cpuCoreSeconds,
+          peakMemoryMb: usage.peakMemoryMb,
+          gpuSeconds: usage.gpuSeconds,
+          costCredits: usage.costCredits,
+        });
+
+        if (userId && usage.costCredits > 0) {
+          database.deductUserCredits(userId, usage.costCredits, dbJobId, `Physics ${simType} Simulation`, {
+            profile: profile.id,
+            ...usage,
+          });
+        }
 
         database.updateJobStepStatus(currentStepId, "SUCCESS");
         database.updateJobStatus(dbJobId, "SUCCESS");
@@ -397,13 +452,13 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
  * This runs server-side to avoid sending huge .vtu files to the client
  * when only scalar values are needed (e.g., for Modelica parameter binding).
  */
-function extractScalarsFromVtu(vtuPath: string): Record<string, Record<string, number>> {
+function extractScalarsFromVtu(vtuPath: string): Record<string, Record<string, number | string>> {
   const resolved = path.resolve(vtuPath);
   if (!resolved.startsWith(PHYSICS_CACHE_DIR + path.sep) && !resolved.startsWith(os.tmpdir())) {
     throw new Error("Access denied: invalid VTU path");
   }
   const xml = fs.readFileSync(resolved, "utf8");
-  const result: Record<string, Record<string, number>> = {};
+  const result: Record<string, Record<string, number | string>> = {};
 
   // Simple regex-based extraction for ASCII VTU format
   // Matches <DataArray ... Name="FieldName" ...> data </DataArray> within <PointData>

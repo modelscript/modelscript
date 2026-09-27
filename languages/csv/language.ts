@@ -6,6 +6,7 @@ import {
   optional,
   repeat,
   seq,
+  tggComplement,
   tggDefaultVal,
   tggEq,
   tggRule,
@@ -133,12 +134,20 @@ export const csvLanguage = language({
     rules: [
       tggRule({
         name: "CsvDocumentToModelicaPackage",
+        sourceLang: "csv",
+        targetLang: "modelica",
         source: ($, v) => $.SourceFile({ rows: v("docName") }),
         target: ($, v) => $.ClassDefinition({ name: v("docName"), classKind: "package" }),
-        where: (v) => [tggEq(v("docName"), v("docName")), tggDefaultVal(v("isAbstract"), false)],
+        where: (v) => [
+          tggEq(v("docName"), v("docName")),
+          tggDefaultVal(v("isAbstract"), false),
+          tggComplement(["rows", "headers"]),
+        ],
       }),
       tggRule({
         name: "CsvVirtualComponentToModelicaComponent",
+        sourceLang: "csv",
+        targetLang: "modelica",
         source: ($, v) => $.CSVVirtualComponent({ name: v("varName"), typeSpecifier: v("typeName") }),
         target: ($, v) => $.ComponentClause({ name: v("varName"), typeSpecifier: v("typeName") }),
         where: (v) => [

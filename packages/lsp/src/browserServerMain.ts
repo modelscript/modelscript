@@ -720,6 +720,12 @@ documents.onDidChangeContent((change) => {
   validationService.verificationDiagnosticsByUri.delete(uri);
   validationService.verificationResultsByUri.delete(uri);
 
+  // Invalidate digital thread slots associated with this URI
+  const threadEntries = workspaceManager.getThreadsForUri(uri);
+  for (const entry of threadEntries) {
+    workspaceManager.hypergraph.markStale(entry.slot);
+  }
+
   // Bump revision — any in-flight deferred semantic work for an older revision
   // will check this and bail out before doing expensive linting.
   const currentRevision = (validationService.documentRevisions.get(uri) ?? 0) + 1;

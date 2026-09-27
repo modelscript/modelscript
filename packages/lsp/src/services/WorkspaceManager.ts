@@ -1,6 +1,13 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-import { QueryEngine, UnifiedWorkspace } from "@modelscript/runtime";
+import {
+  DigitalThreadHypergraph,
+  DOMAIN_INDEX_TO_NAME,
+  DOMAIN_NAME_TO_INDEX,
+  QueryEngine,
+  ThreadDomain,
+  UnifiedWorkspace,
+} from "@modelscript/runtime";
 import { createRequire } from "node:module";
+import type { AlignedDomainElement } from "../providers/threadDiagnosticsProvider.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
 import { DocumentManager } from "./DocumentManager.js";
@@ -19,6 +26,16 @@ export interface LanguageWorkspaceContext {
   queryEngine: QueryEngine | null;
 }
 
+export interface ThreadElementMetadata {
+  name: string;
+  uri: string;
+  line: number;
+  column: number;
+  length?: number;
+  domain?: string;
+  properties?: Record<string, any>;
+}
+
 export class WorkspaceManager {
   private languageContexts = new Map<string, LanguageWorkspaceContext>();
   public unifiedWorkspace = new UnifiedWorkspace();
@@ -26,6 +43,176 @@ export class WorkspaceManager {
   public workspaceInstances = new Map<string, any[]>();
   public documentInstances = new Map<string, any[]>();
   public documentContexts = new Map<string, any>();
+
+  // Canonical Digital Thread Hypergraph
+  public hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
+  public threadMetadataMap = new Map<string, ThreadElementMetadata>();
+
+  public initDefaultThreads(): void {
+    if (this.hypergraph.getThreadCount() > 0) return;
+    const s0 = this.hypergraph.createThread(101, 1);
+    this.hypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
+    this.hypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
+    this.hypergraph.bindDomainNode(s0, ThreadDomain.Modelica, 3001);
+    this.hypergraph.bindDomainNode(s0, ThreadDomain.CAD, 4001);
+    this.hypergraph.bindDomainNode(s0, ThreadDomain.FEA, 5001);
+    this.hypergraph.bindDomainNode(s0, ThreadDomain.BOM, 6001);
+
+    this.threadMetadataMap.set("requirements:1001", {
+      name: "REQ-TORQUE-01 (Peak Torque >= 350Nm)",
+      uri: "file:///workspace/requirements/powertrain.reqif",
+      line: 12,
+      column: 1,
+      domain: "requirements",
+      properties: { status: "Verified" },
+    });
+    this.threadMetadataMap.set("sysml2:2001", {
+      name: "part def PowertrainInverter",
+      uri: "file:///workspace/sysml/Powertrain.sysml",
+      line: 45,
+      column: 5,
+      domain: "sysml2",
+      properties: { mass: 1.0 },
+    });
+    this.threadMetadataMap.set("modelica:3001", {
+      name: "model InverterDrive",
+      uri: "file:///workspace/modelica/InverterDrive.mo",
+      line: 14,
+      column: 1,
+      domain: "modelica",
+      properties: { mass: 1.0 },
+    });
+    this.threadMetadataMap.set("cad:4001", {
+      name: "Inverter_Chassis.step",
+      uri: "file:///workspace/cad/Inverter_Chassis.step",
+      line: 1,
+      column: 1,
+      domain: "cad",
+      properties: { mass: 1.02 },
+    });
+    this.threadMetadataMap.set("fea:5001", {
+      name: "InverterMount_CalculiX.inp",
+      uri: "file:///workspace/fea/InverterMount_CalculiX.inp",
+      line: 1,
+      column: 1,
+      domain: "fea",
+    });
+    this.threadMetadataMap.set("bom:6001", {
+      name: "P/N 840-0219 (Inverter Assy)",
+      uri: "file:///workspace/bom/parts.csv",
+      line: 1,
+      column: 1,
+      domain: "bom",
+    });
+
+    const s1 = this.hypergraph.createThread(102, 2);
+    this.hypergraph.bindDomainNode(s1, ThreadDomain.Requirements, 1002);
+    this.hypergraph.bindDomainNode(s1, ThreadDomain.SysML2, 2002);
+    this.hypergraph.bindDomainNode(s1, ThreadDomain.Modelica, 3002);
+    this.hypergraph.bindDomainNode(s1, ThreadDomain.CAD, 4002);
+    this.hypergraph.markStale(s1);
+
+    this.threadMetadataMap.set("requirements:1002", {
+      name: "REQ-THERMAL-02 (Junction Temp <= 85C)",
+      uri: "file:///workspace/requirements/thermal.reqif",
+      line: 28,
+      column: 1,
+      domain: "requirements",
+    });
+    this.threadMetadataMap.set("sysml2:2002", {
+      name: "part def CoolingPlate",
+      uri: "file:///workspace/sysml/Cooling.sysml",
+      line: 88,
+      column: 5,
+      domain: "sysml2",
+    });
+    this.threadMetadataMap.set("modelica:3002", {
+      name: "model CoolingCircuit",
+      uri: "file:///workspace/modelica/CoolingCircuit.mo",
+      line: 32,
+      column: 1,
+      domain: "modelica",
+      properties: { mass: 0.8 },
+    });
+    this.threadMetadataMap.set("cad:4002", {
+      name: "CoolingPlate.step",
+      uri: "file:///workspace/cad/CoolingPlate.step",
+      line: 1,
+      column: 1,
+      domain: "cad",
+      properties: { mass: 1.15 },
+    });
+  }
+
+  public bindThreadSlot(threadId: number, domain: ThreadDomain, nodeId: number, meta: ThreadElementMetadata): number {
+    let slot = this.hypergraph.findSlotByThreadId(threadId);
+    if (slot === null || slot === undefined) {
+      slot = this.hypergraph.createThread(threadId, 1);
+    }
+    this.hypergraph.bindDomainNode(slot, domain, nodeId);
+    const domName = DOMAIN_INDEX_TO_NAME[domain] ?? "unknown";
+    const key = `${domName}:${nodeId}`;
+    this.threadMetadataMap.set(key, { ...meta, domain: domName });
+    return slot;
+  }
+
+  public getThreadsForUri(
+    uri: string,
+  ): { slot: number; record: any; meta: ThreadElementMetadata; domain: string; nodeId: number }[] {
+    const results: {
+      slot: number;
+      record: any;
+      meta: ThreadElementMetadata;
+      domain: string;
+      nodeId: number;
+    }[] = [];
+
+    const normUri = uri.toLowerCase();
+    for (const [key, meta] of this.threadMetadataMap.entries()) {
+      if (meta.uri && (meta.uri.toLowerCase() === normUri || normUri.endsWith(meta.uri.toLowerCase()))) {
+        const parts = key.split(":");
+        const domName = parts[0]!;
+        const nodeId = parseInt(parts[1]!, 10);
+        const domIdx = DOMAIN_NAME_TO_INDEX[domName];
+        if (domIdx !== undefined) {
+          const slot = this.hypergraph.findSlotByDomainNode(domIdx, nodeId);
+          if (slot !== null && slot !== undefined) {
+            const record = this.hypergraph.getRecord(slot);
+            results.push({ slot, record, meta, domain: domName, nodeId });
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  public findAlignedElementsBySlot(slot: number): AlignedDomainElement[] {
+    const record = this.hypergraph.getRecord(slot);
+    if (!record) return [];
+
+    const domainElements: AlignedDomainElement[] = [];
+    const isConflict = this.hypergraph.isConflicted(slot);
+    const isStale = this.hypergraph.isStale(slot);
+    const status = isConflict ? "conflict" : isStale ? "stale" : "synced";
+
+    for (let dom = 0; dom < 16; dom++) {
+      const nodeId = this.hypergraph.getDomainNode(slot, dom);
+      if (nodeId && nodeId > 0) {
+        const domName = DOMAIN_INDEX_TO_NAME[dom] ?? "unknown";
+        const key = `${domName}:${nodeId}`;
+        const meta = this.threadMetadataMap.get(key);
+        domainElements.push({
+          domain: domName,
+          name: meta?.name ?? `${domName}_node_${nodeId}`,
+          line: meta?.line ?? 1,
+          column: meta?.column ?? 1,
+          properties: meta?.properties,
+          status,
+        });
+      }
+    }
+    return domainElements;
+  }
 
   public getWorkspaceIndex(langId: string): any {
     const norm = langId.toLowerCase();
@@ -218,10 +405,11 @@ export class WorkspaceManager {
     this.setQueryEngine("step", val);
   }
 
-  private documentManager: DocumentManager;
+  private documentManager?: DocumentManager;
 
-  constructor(documentManager: DocumentManager) {
+  constructor(documentManager?: DocumentManager) {
     this.documentManager = documentManager;
+    this.initDefaultThreads();
 
     // Seed default workspace indices from registered language plugins
     for (const plugin of globalLanguageRegistry.getAllPlugins()) {

@@ -6,6 +6,7 @@ import {
   getFlowVariableCount,
   hasTypePrefix,
   isClassKind,
+  isConnectorCompatible,
   isDescendantOfInnerClass,
   isExpandableConnector,
   resolveDottedComponentClass,
@@ -67,7 +68,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
           }
           const lhsFlows = getFlowVariableCount(db, lhsClass, $);
           const rhsFlows = getFlowVariableCount(db, rhsClass, $);
-          if (lhsFlows != rhsFlows) {
+          if (lhsFlows != rhsFlows || !isConnectorCompatible(db, lhsClass, rhsClass, $)) {
             db.diagnostic(node, lhs, rhs);
           }
         }

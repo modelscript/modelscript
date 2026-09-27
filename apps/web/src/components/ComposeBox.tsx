@@ -8,6 +8,7 @@ import {
   ImageIcon,
   MentionIcon,
   PersonIcon,
+  ServerIcon,
   SlidersIcon,
   SmileyIcon,
   XIcon,
@@ -19,6 +20,7 @@ import { useAuth } from "../AuthContext";
 import { API_BASE_URL } from "../config";
 import { getAvatarUrl } from "../util/avatar";
 import Box from "./Box";
+import HpcArtifactPickerModal from "./HpcArtifactPickerModal";
 import SimpleEmojiPicker from "./SimpleEmojiPicker";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 
@@ -192,6 +194,7 @@ export default function ComposeBox({
   const [submitting, setSubmitting] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showHpcPicker, setShowHpcPicker] = useState(false);
   const [replyVisibility, setReplyVisibility] = useState<"everyone" | "following" | "mentioned">("everyone");
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -946,6 +949,14 @@ export default function ComposeBox({
                   >
                     <CodeIcon size={20} />
                   </ActionIconButton>
+                  <ActionIconButton
+                    onClick={() => setShowHpcPicker(true)}
+                    disabled={artifactId !== null}
+                    aria-label="Attach HPC Artifact"
+                    title="Attach HPC Simulation Artifact (FEA, CFD, DOEs)"
+                  >
+                    <ServerIcon size={20} />
+                  </ActionIconButton>
                   <input
                     type="file"
                     style={{ display: "none" }}
@@ -1019,6 +1030,17 @@ export default function ComposeBox({
           </Box>
         </Box>
       </Box>
+
+      <HpcArtifactPickerModal
+        isOpen={showHpcPicker}
+        onClose={() => setShowHpcPicker(false)}
+        onSelect={(res) => {
+          setArtifactId(res.artifactId);
+          if (!content.trim() && res.suggestedCaption) {
+            setContent(res.suggestedCaption);
+          }
+        }}
+      />
     </>
   );
 }

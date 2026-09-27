@@ -9,6 +9,9 @@ import {
   prec,
   repeat,
   seq,
+  tggComplement,
+  tggEq,
+  tggRule,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
@@ -26,6 +29,53 @@ const PREC = {
 
 export const feaLanguage = language({
   name: "fea",
+
+  polyglot: {
+    languages: ["sysml2", "modelica"],
+    rules: [
+      tggRule({
+        name: "FeaMaterialToSysmlAttribute",
+        sourceLang: "fea",
+        targetLang: "sysml2",
+        source: ($, v) => $.KeywordCard({ name: v("matName"), parameter: v("modulus") }),
+        target: ($, v) => $.AttributeUsage({ declaredName: v("matName"), defaultValue: v("modulus") }),
+        where: (v) => [
+          tggEq(v("matName"), v("matName")),
+          tggEq(v("modulus"), v("modulus")),
+          tggComplement(["nu", "rho", "yieldStrength"]),
+        ],
+      }),
+      tggRule({
+        name: "FeaBoundaryFixToModelicaFixed",
+        sourceLang: "fea",
+        targetLang: "modelica",
+        source: ($, v) => $.KeywordCard({ name: v("fixName"), parameter: v("nodeId") }),
+        target: ($, v) =>
+          $.ComponentClause({ name: v("fixName"), typeSpecifier: "Modelica.Mechanics.Translational.Components.Fixed" }),
+        where: (v) => [tggEq(v("fixName"), v("fixName")), tggComplement(["nodeId", "dofs"])],
+      }),
+      tggRule({
+        name: "FeaSpringToModelicaSpring",
+        sourceLang: "fea",
+        targetLang: "modelica",
+        source: ($, v) => $.KeywordCard({ name: v("springName"), parameter: v("stiffness") }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("springName"),
+            typeSpecifier: "Modelica.Mechanics.Translational.Components.Spring",
+          }),
+        where: (v) => [tggEq(v("springName"), v("springName")), tggComplement(["stiffness", "damping"])],
+      }),
+      tggRule({
+        name: "FeaLoadCaseToSysmlRequirement",
+        sourceLang: "fea",
+        targetLang: "sysml2",
+        source: ($, v) => $.KeywordCard({ name: v("reqName"), parameter: v("limitVal") }),
+        target: ($, v) => $.ConstraintUsage({ declaredName: v("reqName") }),
+        where: (v) => [tggEq(v("reqName"), v("reqName")), tggComplement(["limitVal", "loadSteps"])],
+      }),
+    ],
+  },
 
   primitives: {
     lineComment: "**",

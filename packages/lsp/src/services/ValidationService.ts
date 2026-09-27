@@ -12,6 +12,7 @@ import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { simulateArena } from "@modelscript/simulate";
 import { parseStepReferences, STEP_SCHEMA } from "@modelscript/step";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
+import { ThreadDiagnosticsProvider } from "../providers/threadDiagnosticsProvider.js";
 import { getArenaParameterInfo } from "../utils/arenaUtils.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
 import { ReasonerService } from "./ReasonerService.js";
@@ -710,6 +711,12 @@ export class ValidationService {
         newSemanticDiagnostics.push(...vDiags);
       }
 
+      // Digital Thread Cross-Domain Diagnostics
+      const threadDiags = this.collectThreadDiagnostics(effectiveUri, textDocument);
+      if (threadDiags.length > 0) {
+        newSemanticDiagnostics.push(...threadDiags);
+      }
+
       // ── Step 7: Populate Class / Symbol Wrappers for Trees ───────────────
       this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
 
@@ -728,6 +735,79 @@ export class ValidationService {
         this.connection.sendDiagnostics({ uri, diagnostics });
       }
     }
+  }
+
+  public collectThreadDiagnostics(uri: string, textDocument?: TextDocument): Diagnostic[] {
+    const diagnostics: Diagnostic[] = [];
+    if (!this.workspaceManager) return diagnostics;
+
+    const threadEntries = this.workspaceManager.getThreadsForUri(uri);
+    if (!threadEntries || threadEntries.length === 0) return diagnostics;
+
+    const text = textDocument ? textDocument.getText() : "";
+
+    for (const entry of threadEntries) {
+      const { slot, record, meta, domain } = entry;
+      const alignedElements = this.workspaceManager.findAlignedElementsBySlot(slot);
+      const conflict =
+        typeof (this.workspaceManager.hypergraph as any).getConflict === "function"
+          ? (this.workspaceManager.hypergraph as any).getConflict(slot)
+          : undefined;
+
+      const threadDiags = ThreadDiagnosticsProvider.diagnoseThread(record?.id ?? slot, alignedElements, 0.05, conflict);
+
+      for (const td of threadDiags) {
+        if (td.domain.toLowerCase() !== domain.toLowerCase()) continue;
+
+        let startLine = Math.max(0, (td.line || meta.line || 1) - 1);
+        let startCol = Math.max(0, (td.column || meta.column || 1) - 1);
+        let len = td.length || meta.length || (meta.name ? meta.name.length : 8);
+
+        // If textDocument is provided and variable name is found, match exact token position if possible
+        if (text && td.elementName) {
+          const varBase = td.elementName.split(".").pop() || td.elementName;
+          const lineOffsets = text.split("\n");
+          if (startLine < lineOffsets.length) {
+            const lineStr = lineOffsets[startLine] || "";
+            const idx = lineStr.indexOf(varBase);
+            if (idx >= 0) {
+              startCol = idx;
+              len = varBase.length;
+            }
+          }
+        }
+
+        diagnostics.push({
+          range: {
+            start: { line: startLine, character: startCol },
+            end: { line: startLine, character: startCol + len },
+          },
+          severity:
+            td.severity === "error"
+              ? DiagnosticSeverity.Error
+              : td.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Warning,
+          code: td.code || "THREAD_CONFLICT",
+          source: td.source || "modelscript-digital-thread",
+          message: td.message,
+          data: {
+            threadId: td.threadId ?? record?.id ?? slot,
+            slot,
+            elementName: td.elementName,
+            sourceDomain: td.sourceDomain,
+            sourceValue: td.sourceValue,
+            targetDomain: td.targetDomain,
+            targetValue: td.targetValue,
+            simplexConsensus: td.simplexConsensus,
+            unit: td.unit,
+            alignedElements,
+          },
+        });
+      }
+    }
+
+    return diagnostics;
   }
 
   /**

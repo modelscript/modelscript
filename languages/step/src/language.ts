@@ -1,4 +1,17 @@
-import { choice, def, field, language, optional, ref, repeat, repeat1, seq } from "@modelscript/dsl";
+import {
+  choice,
+  def,
+  field,
+  language,
+  optional,
+  ref,
+  repeat,
+  repeat1,
+  seq,
+  tggComplement,
+  tggEq,
+  tggRule,
+} from "@modelscript/dsl";
 
 export const stepLanguage = language({
   name: "step",
@@ -39,6 +52,40 @@ export const stepLanguage = language({
           path: { type: "string", description: "Path to .step / .stp file", required: true },
         },
       },
+    ],
+  },
+
+  polyglot: {
+    languages: ["sysml2", "modelica"],
+    rules: [
+      tggRule({
+        name: "StepProductToSysML2Part",
+        sourceLang: "step",
+        targetLang: "sysml2",
+        source: ($, v) => $.ProductDefinition({ name: v("prodName") }),
+        target: ($, v) => $.PartDefinition({ declaredName: v("prodName") }),
+        where: (v) => [tggEq(v("prodName"), v("prodName")), tggComplement(["description", "id", "formation"])],
+      }),
+      tggRule({
+        name: "StepPropertyToSysML2Attribute",
+        sourceLang: "step",
+        targetLang: "sysml2",
+        source: ($, v) => $.PropertyDefinition({ name: v("propName"), value: v("val") }),
+        target: ($, v) => $.AttributeUsage({ declaredName: v("propName"), defaultValue: v("val") }),
+        where: (v) => [
+          tggEq(v("propName"), v("propName")),
+          tggEq(v("val"), v("val")),
+          tggComplement(["definition", "representation"]),
+        ],
+      }),
+      tggRule({
+        name: "StepPlacementToSysML2Port",
+        sourceLang: "step",
+        targetLang: "sysml2",
+        source: ($, v) => $.Axis2Placement3D({ name: v("frameName") }),
+        target: ($, v) => $.PortUsage({ declaredName: v("frameName") }),
+        where: (v) => [tggEq(v("frameName"), v("frameName")), tggComplement(["location", "axis", "refDirection"])],
+      }),
     ],
   },
 

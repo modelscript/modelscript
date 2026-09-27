@@ -7,7 +7,7 @@
  * polyglot cross-language projections for SSP archives and SSD models.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, tggComplement, tggDefaultVal, tggEq, tggRule } from "@modelscript/dsl";
 import { sspToModelicaBlock } from "./projection.js";
 import { parseSsd } from "./ssd-parser.js";
 
@@ -70,6 +70,102 @@ export const sspLanguage = language({
         Enumeration: "Integer",
       },
     },
+    rules: [
+      // SSP <-> Modelica
+      tggRule({
+        name: "SspSystemToModelicaModel",
+        sourceLang: "ssp",
+        targetLang: "modelica",
+        source: ($, v) => $.System({ name: v("sysName") }),
+        target: ($, v) => $.ClassDefinition({ name: v("sysName"), classKind: "model" }),
+        where: (v) => [
+          tggEq(v("sysName"), v("sysName")),
+          tggDefaultVal(v("isAbstract"), false),
+          tggComplement(["version", "description"]),
+        ],
+      }),
+      tggRule({
+        name: "SspComponentToModelicaComponent",
+        sourceLang: "ssp",
+        targetLang: "modelica",
+        source: ($, v) => $.Component({ name: v("compName"), source: v("sourceFile") }),
+        target: ($, v) => $.ComponentClause({ name: v("compName"), typeSpecifier: v("sourceFile") }),
+        where: (v) => [
+          tggEq(v("compName"), v("compName")),
+          tggEq(v("sourceFile"), v("sourceFile")),
+          tggComplement(["type", "connectors"]),
+        ],
+      }),
+      tggRule({
+        name: "SspConnectorToModelicaConnector",
+        sourceLang: "ssp",
+        targetLang: "modelica",
+        source: ($, v) => $.Connector({ name: v("connName"), type: v("typeName") }),
+        target: ($, v) => $.ComponentClause({ name: v("connName"), typeSpecifier: v("typeName") }),
+        where: (v) => [
+          tggEq(v("connName"), v("connName")),
+          tggEq(v("typeName"), v("typeName")),
+          tggComplement(["kind", "unit"]),
+        ],
+      }),
+      tggRule({
+        name: "SspConnectionToModelicaConnect",
+        sourceLang: "ssp",
+        targetLang: "modelica",
+        source: ($, v) => $.Connection({ startElement: v("fromEl"), endElement: v("toEl") }),
+        target: ($, v) => $.ConnectClause({ connector1: v("fromEl"), connector2: v("toEl") }),
+        where: (v) => [
+          tggEq(v("fromEl"), v("fromEl")),
+          tggEq(v("toEl"), v("toEl")),
+          tggComplement(["startConnector", "endConnector"]),
+        ],
+      }),
+
+      // SSP <-> SysML v2
+      tggRule({
+        name: "SspSystemToSysmlPackage",
+        sourceLang: "ssp",
+        targetLang: "sysml2",
+        source: ($, v) => $.System({ name: v("sysName") }),
+        target: ($, v) => $.PackageDefinition({ declaredName: v("sysName") }),
+        where: (v) => [tggEq(v("sysName"), v("sysName")), tggComplement(["version", "description"])],
+      }),
+      tggRule({
+        name: "SspComponentToSysmlPart",
+        sourceLang: "ssp",
+        targetLang: "sysml2",
+        source: ($, v) => $.Component({ name: v("compName"), source: v("sourceFile") }),
+        target: ($, v) => $.PartUsage({ declaredName: v("compName"), declaredType: v("sourceFile") }),
+        where: (v) => [
+          tggEq(v("compName"), v("compName")),
+          tggEq(v("sourceFile"), v("sourceFile")),
+          tggComplement(["type", "connectors"]),
+        ],
+      }),
+      tggRule({
+        name: "SspConnectorToSysmlPort",
+        sourceLang: "ssp",
+        targetLang: "sysml2",
+        source: ($, v) => $.Connector({ name: v("connName"), type: v("typeName") }),
+        target: ($, v) => $.PortUsage({ declaredName: v("connName"), declaredType: v("typeName") }),
+        where: (v) => [
+          tggEq(v("connName"), v("connName")),
+          tggEq(v("typeName"), v("typeName")),
+          tggComplement(["kind", "unit"]),
+        ],
+      }),
+      tggRule({
+        name: "SspConnectionToSysmlConnection",
+        sourceLang: "ssp",
+        targetLang: "sysml2",
+        source: ($, v) => $.Connection({ startElement: v("fromEl"), endElement: v("toEl") }),
+        target: ($, v) => $.ConnectionUsage({ declaredName: v("fromEl") }),
+        where: (v) => [
+          tggEq(v("fromEl"), v("fromEl")),
+          tggComplement(["startConnector", "endElement", "endConnector"]),
+        ],
+      }),
+    ],
   },
 });
 

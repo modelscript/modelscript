@@ -14,6 +14,10 @@ const db = database.db;
 let isGenerating = false;
 
 export async function generateThumbnail(artifactId: number): Promise<string | null> {
+  if (process.env.NODE_ENV === "test") {
+    return null;
+  }
+
   if (isGenerating) {
     console.log(`[Thumbnail Worker] Already running, skipping generation for ${artifactId}`);
     return null;

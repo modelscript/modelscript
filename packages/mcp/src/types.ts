@@ -27,9 +27,24 @@ export interface TopologyGraph {
   variableMap?: Map<string, string>;
 }
 
+export type ComputeQuotaChecker = (params: { toolName: string; profile?: string | undefined }) => Promise<{
+  allowed: boolean;
+  reason?: string | undefined;
+  balance?: number | undefined;
+  required?: number | undefined;
+  profileId?: string | undefined;
+}>;
+
+export type ComputeCreditDeductor = (params: {
+  toolName: string;
+  costCredits: number;
+  details?: Record<string, unknown> | undefined;
+}) => Promise<void>;
+
 /**
  * Shared server context — holds the current compiler Context,
- * lazily populated by the modelica_load tool.
+ * lazily populated by the modelica_load tool, and optional
+ * quota and accounting hooks for hosted execution.
  */
 export interface ServerContext {
   current: Context | null;
@@ -37,4 +52,7 @@ export interface ServerContext {
   paths?: string[];
   ontologyBuilder?: OntologyBuilder | null;
   polyglotHost?: unknown | null;
+  userId?: number | null;
+  checkQuota?: ComputeQuotaChecker | null;
+  deductCredits?: ComputeCreditDeductor | null;
 }

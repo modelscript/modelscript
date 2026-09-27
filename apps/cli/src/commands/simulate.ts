@@ -14,11 +14,12 @@ import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 import { generateSimulationC } from "./sim-c-codegen.js";
+import { simulateCloud } from "./simulate-cloud.js";
 
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
-interface SimulateArgs {
+export interface SimulateArgs {
   name: string;
   paths: string[];
   "start-time"?: number;
@@ -36,6 +37,17 @@ interface SimulateArgs {
   memoryProfile?: boolean;
   jacobian: "dense" | "sparse" | "fd";
   flattener?: "ts" | "wasm" | "hybrid" | "diff";
+
+  // Cloud bursting options
+  cloud?: boolean;
+  profile?: string;
+  async?: boolean;
+  "poll-interval"?: number;
+  pollInterval?: number;
+  "output-dir"?: string;
+  outputDir?: string;
+  "api-url"?: string;
+  apiUrl?: string;
 }
 
 export const Simulate: CommandModule<{}, SimulateArgs> = {
@@ -116,40 +128,91 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         description:
           "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
         type: "string",
+      })
+      .option("cloud", {
+        description: "dispatch simulation to ModelScript Cloud HPC cluster",
+        type: "boolean",
+        default: false,
+      })
+      .option("profile", {
+        description: "cloud compute profile (standard, high-memory, gpu-a100, hpc-mpi-64)",
+        type: "string",
+        default: "standard",
+      })
+      .option("async", {
+        description: "submit cloud job asynchronously and return immediately with Job ID",
+        type: "boolean",
+        default: false,
+      })
+      .option("poll-interval", {
+        description: "polling interval in milliseconds for cloud simulation status",
+        type: "number",
+        default: 1500,
+      })
+      .option("output-dir", {
+        description: "directory to write downloaded simulation result file",
+        type: "string",
+        default: "./results",
+      })
+      .option("api-url", {
+        description: "override ModelScript API base URL",
+        type: "string",
       });
   }) as CommandModule<{}, SimulateArgs>["builder"],
   handler: async (args) => {
-    const profiler = new Profiler();
-    const { parser } = await createWasmParser(modelicaWasmPath);
-
-    Context.registerParser(".mo", parser as any);
-    const context = Context.createBatch(new NodeFileSystem());
-
-    // Build mapping from absolute resolved paths to user-provided paths
-    const pathMap = new Map<string, string>();
-    for (const p of args.paths) {
-      pathMap.set(path.resolve(p), p);
+    if (args.cloud) {
+      await simulateCloud(args);
+      return;
     }
-
+    const profiler = new Profiler();
     const memProfiles: Record<string, unknown> = {};
     let lastSnap = args.memoryProfile ? snapshotMemory(true) : null;
 
-    profiler.start("parsing");
-    for (const p of args.paths) await context.addLibrary(p);
-    profiler.end("parsing");
+    const isSysml = args.paths.some((p) => p.endsWith(".sysml") || p.endsWith(".kerml"));
+    let arena: DAEBuilder | null = null;
 
-    if (args.memoryProfile && lastSnap) {
-      const snap = snapshotMemory(true);
-      memProfiles["parsing"] = { before: lastSnap, after: snap };
-      lastSnap = snap;
+    if (isSysml) {
+      profiler.start("parsing");
+      let combinedSource = "";
+      for (const p of args.paths) {
+        if (p.endsWith(".sysml") || p.endsWith(".kerml")) {
+          combinedSource += fs.readFileSync(p, "utf-8") + "\n";
+        }
+      }
+      profiler.end("parsing");
+
+      profiler.start("flattening");
+      const { SysML2DaeLowerer } = await import("@modelscript/sysml2");
+      arena = await SysML2DaeLowerer.lowerSystem(combinedSource);
+      profiler.end("flattening");
+    } else {
+      const { parser } = await createWasmParser(modelicaWasmPath);
+      Context.registerParser(".mo", parser as any);
+      const context = Context.createBatch(new NodeFileSystem());
+
+      // Build mapping from absolute resolved paths to user-provided paths
+      const pathMap = new Map<string, string>();
+      for (const p of args.paths) {
+        pathMap.set(path.resolve(p), p);
+      }
+
+      profiler.start("parsing");
+      for (const p of args.paths) await context.addLibrary(p);
+      profiler.end("parsing");
+
+      if (args.memoryProfile && lastSnap) {
+        const snap = snapshotMemory(true);
+        memProfiles["parsing"] = { before: lastSnap, after: snap };
+        lastSnap = snap;
+      }
+
+      // Flatten the model
+      profiler.start("flattening");
+      arena = context.flattenArena(args.name, undefined, undefined, {
+        backend: args.flattener,
+      });
+      profiler.end("flattening");
     }
-
-    // Flatten the model
-    profiler.start("flattening");
-    let arena = context.flattenArena(args.name, undefined, undefined, {
-      backend: args.flattener,
-    });
-    profiler.end("flattening");
 
     if (arena) {
       let hasArrays = false;

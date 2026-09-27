@@ -31,7 +31,9 @@
 
 import { DAEBuilder } from "@modelscript/runtime";
 import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { solveDaeAdjoint } from "../../core/dae-adjoint-solver.js";
 import { ArenaSimulator, simulateArena } from "../../core/simulate-arena.js";
+import { lbfgsbSolve } from "../solvers/lbfgsb.js";
 
 // ── Public interfaces ──
 
@@ -53,10 +55,10 @@ export interface CalibrationProblem {
   tolerance?: number;
   /** Maximum iterations (default 100). */
   maxIterations?: number;
-  /** Solver method (default: "lm"). */
-  method?: "lm" | "sqp";
-  /** Gradient method (default: "sensitivity"). */
-  gradient?: "sensitivity" | "finite-difference";
+  /** Solver method (default: "lm", or "lbfgsb" for large parameter sets). */
+  method?: "lm" | "sqp" | "lbfgsb";
+  /** Gradient method (default: "sensitivity" or "adjoint"). */
+  gradient?: "sensitivity" | "finite-difference" | "adjoint";
   /** Optional progress callback invoked after each accepted iteration. */
   onProgress?: (progress: { iteration: number; cost: number; parameters: Record<string, number> }) => void;
 }
@@ -95,11 +97,139 @@ export class ModelicaCalibrator {
    * Run the calibration.
    */
   public calibrate(): CalibrationResult {
-    const method = this.problem.method ?? "lm";
+    const method =
+      this.problem.method ??
+      (this.problem.gradient === "adjoint" || this.problem.parameters.length >= 6 ? "lbfgsb" : "lm");
+    if (method === "lbfgsb") {
+      return this.solveLBFGSB();
+    }
     if (method === "lm") {
       return this.solveLM();
     }
     return this.solveSQP();
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // L-BFGS-B solver (Scalable Adjoint Sensitivity)
+  // ────────────────────────────────────────────────────────────────────
+
+  private solveLBFGSB(): CalibrationResult {
+    const { parameters, parameterBounds, measurements, weights } = this.problem;
+    const tol = this.problem.tolerance ?? 1e-6;
+    const maxIter = this.problem.maxIterations ?? 100;
+    const nParams = parameters.length;
+
+    const lb = new Float64Array(nParams);
+    const ub = new Float64Array(nParams);
+    const theta0 = new Float64Array(nParams);
+
+    for (let i = 0; i < nParams; i++) {
+      const pName = parameters[i]!;
+      const bounds = parameterBounds.get(pName);
+      lb[i] = bounds?.min ?? -Infinity;
+      ub[i] = bounds?.max ?? Infinity;
+      theta0[i] = this.problem.initialGuess?.get(pName) ?? this.extractDefaultValue(pName);
+    }
+
+    const { startTime, stopTime } = this.resolveTimeRange();
+    const measNames = Array.from(measurements.keys());
+    const firstMeas = measurements.get(measNames[0]!)!;
+    const targetTimes = firstMeas.t;
+    const targetY: number[][] = [];
+    for (let i = 0; i < measNames.length; i++) {
+      const mName = measNames[i]!;
+      targetY.push(measurements.get(mName)!.y);
+    }
+
+    const evalCostAndGrad = (currentTheta: Float64Array) => {
+      const paramMap = new Map<string, number>();
+      for (let i = 0; i < nParams; i++) {
+        paramMap.set(parameters[i]!, currentTheta[i]!);
+      }
+
+      const dt = targetTimes.length > 1 ? targetTimes[1]! - targetTimes[0]! : (stopTime - startTime) / 30;
+      // Exact parameter gradients and trajectory tracking loss via DAE adjoint
+      const adjRes = solveDaeAdjoint(this.dae, {
+        startTime,
+        stopTime,
+        step: dt,
+        parameterOverrides: paramMap,
+        parametersToDifferentiate: parameters,
+        targetTrajectory: {
+          names: measNames,
+          t: targetTimes,
+          y: targetY,
+        },
+      });
+
+      const grad = new Float64Array(nParams);
+      for (let i = 0; i < nParams; i++) {
+        grad[i] = adjRes.gradients.get(parameters[i]!) ?? 0;
+      }
+
+      return { cost: adjRes.loss, grad };
+    };
+
+    let latestX = new Float64Array(theta0);
+    const lbfgsRes = lbfgsbSolve(theta0, evalCostAndGrad, lb, ub, {
+      maxIterations: maxIter,
+      tolerance: tol,
+      onIteration: (iter, cost) => {
+        if (this.problem.onProgress) {
+          const pObj: Record<string, number> = {};
+          for (let i = 0; i < nParams; i++) pObj[parameters[i]!] = latestX[i]!;
+          this.problem.onProgress({ iteration: iter, cost, parameters: pObj });
+        }
+      },
+    });
+    latestX = new Float64Array(lbfgsRes.x);
+
+    const optParams = new Map<string, number>();
+    for (let i = 0; i < nParams; i++) {
+      optParams.set(parameters[i]!, lbfgsRes.x[i]!);
+    }
+
+    const optSim = simulateArena(this.dae, {
+      startTime,
+      stopTime,
+      parameterOverrides: optParams,
+    });
+
+    const simTrajectories = new Map<string, number[]>();
+    for (const mName of measNames) {
+      const colIdx = optSim.states.indexOf(mName);
+      if (colIdx !== -1) {
+        simTrajectories.set(
+          mName,
+          optSim.y.map((row) => row[colIdx] ?? 0),
+        );
+      }
+    }
+
+    const varResiduals = new Map<string, number>();
+    for (const mName of measNames) {
+      const meas = measurements.get(mName)!;
+      const colIdx = optSim.states.indexOf(mName);
+      let r = 0;
+      if (colIdx !== -1) {
+        for (let k = 0; k < meas.t.length; k++) {
+          const diff = interpolate(optSim.t, optSim.y, colIdx, meas.t[k]!) - meas.y[k]!;
+          r += diff * diff;
+        }
+      }
+      varResiduals.set(mName, r);
+    }
+
+    return {
+      success: lbfgsRes.converged,
+      parameters: optParams,
+      residual: lbfgsRes.cost,
+      variableResiduals: varResiduals,
+      iterations: lbfgsRes.iterations,
+      simulated: { t: optSim.t, y: simTrajectories },
+      costHistory: lbfgsRes.costHistory,
+      message: lbfgsRes.message,
+    };
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -691,6 +821,25 @@ export class ModelicaCalibrator {
         ? `Converged in ${iterations} iterations. Final residual: ${cost.toExponential(4)}.`
         : `Did not converge after ${iterations} iterations. Final residual: ${cost.toExponential(4)}.`,
     };
+  }
+
+  private resolveTimeRange(): { startTime: number; stopTime: number } {
+    const { measurements } = this.problem;
+    let startTime = this.problem.startTime;
+    let stopTime = this.problem.stopTime;
+    if (startTime === undefined || stopTime === undefined) {
+      let tMin = Infinity;
+      let tMax = -Infinity;
+      for (const [, meas] of measurements) {
+        for (const t of meas.t) {
+          tMin = Math.min(tMin, t);
+          tMax = Math.max(tMax, t);
+        }
+      }
+      if (startTime === undefined) startTime = tMin === Infinity ? 0 : tMin;
+      if (stopTime === undefined) stopTime = tMax === -Infinity ? 1 : tMax;
+    }
+    return { startTime, stopTime };
   }
 }
 

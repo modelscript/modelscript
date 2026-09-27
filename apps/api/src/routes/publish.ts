@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import multer from "multer";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
 
@@ -52,6 +51,24 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, datab
         return;
       }
 
+      // Compute cryptographic SHA-256 CAS content hash
+      const actualSha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+      const actualContentHash = `sha256:${actualSha256}`;
+
+      const clientContentHash = (req.body?.contentHash || req.headers["x-content-sha256"]) as string | undefined;
+      if (clientContentHash) {
+        const expected = clientContentHash.toLowerCase().replace(/^sha256:/, "");
+        if (expected !== actualSha256) {
+          res.status(400).json({
+            error: `Content hash mismatch: client specified ${clientContentHash}, but computed hash is ${actualContentHash}. Package archive may be corrupted or tampered (M3010).`,
+            computedHash: actualContentHash,
+          });
+          return;
+        }
+      }
+
+      const signature = (req.body?.signature || req.headers["x-package-signature"]) as string | undefined;
+
       try {
         // 3. Extract package.mo from the zip
         const packageMoContent = await extractPackageMoFromZip(req.file.buffer);
@@ -87,6 +104,15 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, datab
         // 7. Store the library
         const filePath = await storage.store(name, version, req.file.buffer);
 
+        // Record verified release with content hash and optional signature
+        database.saveLibraryRelease({
+          libraryName: name,
+          libraryVersion: version,
+          contentHash: actualContentHash,
+          signature: signature ?? null,
+          publishedBy: req.user?.id ?? null,
+        });
+
         // 8. Extract the zip to disk (I/O-bound, fine in main thread)
         const libraryPath = await storage.extractLibrary(name, version);
 
@@ -101,6 +127,8 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, datab
         res.status(201).json({
           message: `Library ${name}@${version} published successfully`,
           path: filePath,
+          contentHash: actualContentHash,
+          signature: signature ?? null,
           processing: "pending",
         });
       } catch (err) {

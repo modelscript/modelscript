@@ -3,6 +3,7 @@ import {
   BookIcon,
   CheckCircleFillIcon,
   CircleIcon,
+  CloudIcon,
   CodeIcon,
   EyeIcon,
   FileDirectoryIcon,
@@ -55,6 +56,7 @@ import {
   getGitlabTree,
 } from "../api";
 import Box from "../components/Box";
+import CloudSimulationModal from "../components/CloudSimulationModal";
 
 // Helper for formatting relative time
 function getRelativeTime(dateString: string) {
@@ -209,6 +211,7 @@ function CodeTab({ projectId, repo, provider }: { projectId: string; repo: Gitla
   const [readme, setReadme] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showCloudSim, setShowCloudSim] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -496,6 +499,28 @@ git push -u origin main`}
                 </ActionMenu>
               </>
             )}
+            <Button
+              variant="default"
+              leadingVisual={CloudIcon}
+              size="small"
+              style={{ height: "32px", gap: "6px" }}
+              onClick={() => setShowCloudSim(true)}
+            >
+              Run on Cloud
+            </Button>
+            <Button
+              variant="default"
+              leadingVisual={PlayIcon}
+              size="small"
+              style={{ height: "32px", gap: "6px" }}
+              onClick={() => {
+                const targetRef = repo.default_branch || "main";
+                const ideUrl = `/vscode/workbench#${repo.path_with_namespace || repo.name}@${targetRef}`;
+                window.open(ideUrl, "_blank");
+              }}
+            >
+              Open in VS Code
+            </Button>
             <ActionMenu>
               <ActionMenu.Button
                 variant="primary"
@@ -512,7 +537,25 @@ git push -u origin main`}
               </ActionMenu.Button>
               <ActionMenu.Overlay>
                 <ActionList>
-                  <ActionList.Item>Clone</ActionList.Item>
+                  <ActionList.Item
+                    onSelect={() => {
+                      const targetRef = repo.default_branch || "main";
+                      const ideUrl = `/vscode/workbench#${repo.path_with_namespace || repo.name}@${targetRef}`;
+                      window.open(ideUrl, "_blank");
+                    }}
+                  >
+                    Open in ModelScript IDE (Web VS Code)
+                  </ActionList.Item>
+                  <ActionList.Item
+                    onSelect={() => {
+                      navigator.clipboard?.writeText(
+                        `https://modelscript.com/${repo.path_with_namespace || repo.name}.git`,
+                      );
+                      alert("Clone URL copied to clipboard!");
+                    }}
+                  >
+                    Copy Git Clone URL (HTTPS)
+                  </ActionList.Item>
                 </ActionList>
               </ActionMenu.Overlay>
             </ActionMenu>
@@ -599,21 +642,61 @@ git push -u origin main`}
             )}
 
             {currentFile && fileContent !== null ? (
-              <Box style={{ height: "600px", borderTop: "1px solid var(--color-border-default)" }}>
-                <Editor
-                  height="100%"
-                  language={getLanguageFromFileName(currentFile)}
-                  theme="vs-dark"
-                  value={fileContent}
-                  options={{
-                    readOnly: true,
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    fontSize: 14,
-                    wordWrap: "on",
-                    padding: { top: 16, bottom: 16 },
-                  }}
-                />
+              <Box style={{ borderTop: "1px solid var(--color-border-default)" }}>
+                <Box
+                  p={2}
+                  px={3}
+                  bg="var(--color-canvas-subtle)"
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  borderBottom="1px solid var(--color-border-muted)"
+                >
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <CodeIcon />
+                    <Text fontWeight="bold" fontSize="13px">
+                      {currentFile.split("/").pop()}
+                    </Text>
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <Button
+                      size="small"
+                      variant="primary"
+                      leadingVisual={CloudIcon}
+                      onClick={() => setShowCloudSim(true)}
+                    >
+                      Run on Cloud HPC
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="default"
+                      leadingVisual={PlayIcon}
+                      onClick={() => {
+                        const targetRef = repo.default_branch || "main";
+                        const ideUrl = `/vscode/workbench#${repo.path_with_namespace || repo.name}@${targetRef}`;
+                        window.open(ideUrl, "_blank");
+                      }}
+                    >
+                      Edit in VS Code
+                    </Button>
+                  </Box>
+                </Box>
+                <Box style={{ height: "600px" }}>
+                  <Editor
+                    height="100%"
+                    language={getLanguageFromFileName(currentFile)}
+                    theme="vs-dark"
+                    value={fileContent}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                      fontSize: 14,
+                      wordWrap: "on",
+                      padding: { top: 16, bottom: 16 },
+                    }}
+                  />
+                </Box>
               </Box>
             ) : (
               tree.map((node) => (
@@ -722,6 +805,14 @@ git push -u origin main`}
           </Box>
         </Box>
       </Box>
+
+      <CloudSimulationModal
+        isOpen={showCloudSim}
+        onClose={() => setShowCloudSim(false)}
+        fileName={currentFile || ""}
+        fileContent={fileContent || ""}
+        libraryName={repo?.name}
+      />
     </Box>
   );
 }

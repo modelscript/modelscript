@@ -21,6 +21,7 @@
  */
 
 import type { DAEBuilder } from "@modelscript/runtime";
+import { DenseHermiteCheckpointTape } from "./dense-checkpoint-tape.js";
 import type { ArenaSimulationResult } from "./simulate-arena.js";
 import { ArenaSimulator, initializeArenaEnvironment } from "./simulate-arena.js";
 
@@ -76,6 +77,8 @@ export interface ArenaAdjointResult {
   gradients: Map<string, number>;
   /** Forward simulation trajectory result. */
   trajectory: ArenaSimulationResult;
+  /** Continuous Hermite checkpoint tape for dense trajectory reconstruction. */
+  tape?: DenseHermiteCheckpointTape;
   /** Adjoint states over time (lambda_i(t)). */
   adjointTrajectory?: {
     t: number[];
@@ -139,6 +142,7 @@ export class ArenaAdjointIntegrator {
     const valuesByStringId = new Float64Array(initRes.valuesByStringId);
     const timeId = this.arena.interner.intern("time");
 
+    const tape = new DenseHermiteCheckpointTape(this.stateNames);
     const checkpoints: Checkpoint[] = [];
     const tValues: number[] = [];
     const yValues: number[][] = [];
@@ -148,8 +152,13 @@ export class ArenaAdjointIntegrator {
 
     // Initial checkpoint
     const initialMap = new Map<string, number>();
+    let prevX = new Float64Array(nStates);
+    let prevDx = new Float64Array(nStates);
     for (let i = 0; i < nStates; i++) {
-      initialMap.set(this.stateNames[i]!, valuesByStringId[this.stateNameIds[i]!] ?? 0);
+      const val = valuesByStringId[this.stateNameIds[i]!] ?? 0;
+      initialMap.set(this.stateNames[i]!, val);
+      prevX[i] = val;
+      prevDx[i] = valuesByStringId[this.derivNameIds[i]!] ?? 0;
     }
     checkpoints.push({ t: currentTime, stateValues: new Map(initialMap) });
     tValues.push(currentTime);
@@ -172,10 +181,18 @@ export class ArenaAdjointIntegrator {
       this.evaluateBlocksAndDerivs(valuesByStringId);
 
       const stepMap = new Map<string, number>();
+      const currX = new Float64Array(nStates);
+      const currDx = new Float64Array(nStates);
       for (let i = 0; i < nStates; i++) {
         const nextY = valuesByStringId[this.stateNameIds[i]!] ?? 0;
         stepMap.set(this.stateNames[i]!, nextY);
+        currX[i] = nextY;
+        currDx[i] = valuesByStringId[this.derivNameIds[i]!] ?? 0;
       }
+
+      tape.pushSegment(currentTime - h, currentTime, prevX, currX, prevDx, currDx);
+      prevX = currX;
+      prevDx = currDx;
 
       checkpoints.push({ t: currentTime, stateValues: stepMap });
       tValues.push(currentTime);
@@ -367,6 +384,7 @@ export class ArenaAdjointIntegrator {
       loss: totalLoss,
       gradients: gradParams,
       trajectory: forwardTrajectory,
+      tape,
       adjointTrajectory: {
         t: tValues,
         lambda: adjointTrajectoryMap,

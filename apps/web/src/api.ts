@@ -641,4 +641,252 @@ export const revokePublicKey = async (id: number) => {
   return data;
 };
 
+// ── HPC Compute Profiles API ──────────────────────────────────────
+
+export interface ComputeProfileInfo {
+  id: string;
+  name: string;
+  description: string;
+  cpus: number;
+  memoryMb: number;
+  gpus: number;
+  gpuType?: string;
+  partition: string;
+  costCreditsPerHour: number;
+}
+
+export const getComputeProfiles = async (): Promise<ComputeProfileInfo[]> => {
+  try {
+    const { data } = await api.get<{ profiles: ComputeProfileInfo[] }>("/cae/profiles");
+    return data.profiles;
+  } catch {
+    return [
+      {
+        id: "standard",
+        name: "Standard Compute",
+        description: "General ODE, 2D FEA and fast simulation runs",
+        cpus: 4,
+        memoryMb: 16384,
+        gpus: 0,
+        partition: "compute",
+        costCreditsPerHour: 10,
+      },
+      {
+        id: "high-memory",
+        name: "High Memory",
+        description: "Large 3D FEA solid models and dense matrices",
+        cpus: 16,
+        memoryMb: 262144,
+        gpus: 0,
+        partition: "highmem",
+        costCreditsPerHour: 35,
+      },
+      {
+        id: "gpu-a100",
+        name: "GPU-Accelerated (NVIDIA A100)",
+        description: "Machine learning surrogates, neural operators, GPU CFD",
+        cpus: 8,
+        memoryMb: 65536,
+        gpus: 1,
+        gpuType: "a100",
+        partition: "gpu",
+        costCreditsPerHour: 80,
+      },
+      {
+        id: "hpc-mpi-64",
+        name: "Multi-Node MPI Cluster (64 Cores)",
+        description: "High-resolution turbulent CFD and multi-domain models",
+        cpus: 64,
+        memoryMb: 131072,
+        gpus: 0,
+        partition: "mpi",
+        costCreditsPerHour: 150,
+      },
+    ];
+  }
+};
+
+// ── HPC Credit Wallet & Billing API ─────────────────────────────────
+
+export interface UserWalletInfo {
+  userId: number;
+  creditBalance: number;
+  totalSpent: number;
+  totalJobs: number;
+  totalCpuSeconds: number;
+  totalGpuSeconds: number;
+}
+
+export interface CreditTransaction {
+  id: number;
+  user_id: number;
+  job_id: number | null;
+  amount: number;
+  balance_after: number;
+  type: "initial_grant" | "job_charge" | "top_up" | "refund";
+  description: string;
+  metadata?: any;
+  created_at: string;
+}
+
+export interface UserBillingSummary {
+  userId: number;
+  creditBalance: number;
+  totalSpent: number;
+  totalJobs: number;
+  totalCpuSeconds: number;
+  totalGpuSeconds: number;
+  profileUsage: Record<string, { jobsCount: number; costCredits: number; cpuSeconds: number }>;
+  recentTransactions: CreditTransaction[];
+}
+
+export const getUserWallet = async (): Promise<UserWalletInfo> => {
+  try {
+    const { data } = await api.get<UserWalletInfo>("/billing/wallet");
+    return data;
+  } catch {
+    return {
+      userId: 1,
+      creditBalance: 100.0,
+      totalSpent: 0,
+      totalJobs: 0,
+      totalCpuSeconds: 0,
+      totalGpuSeconds: 0,
+    };
+  }
+};
+
+export const getUserTransactions = async (
+  limit = 50,
+  offset = 0,
+): Promise<{ transactions: CreditTransaction[]; count: number }> => {
+  try {
+    const { data } = await api.get<{ transactions: CreditTransaction[]; count: number }>("/billing/transactions", {
+      params: { limit, offset },
+    });
+    return data;
+  } catch {
+    return { transactions: [], count: 0 };
+  }
+};
+
+export const getUserBillingSummary = async (): Promise<UserBillingSummary> => {
+  try {
+    const { data } = await api.get<UserBillingSummary>("/billing/usage");
+    return data;
+  } catch {
+    return {
+      userId: 1,
+      creditBalance: 100.0,
+      totalSpent: 0,
+      totalJobs: 0,
+      totalCpuSeconds: 0,
+      totalGpuSeconds: 0,
+      profileUsage: {},
+      recentTransactions: [],
+    };
+  }
+};
+
+export const topUpCredits = async (
+  amount: number,
+  paymentMethod = "sandbox_card",
+): Promise<{ success: boolean; amountAdded: number; newBalance: number }> => {
+  const { data } = await api.post("/billing/topup", { amount, paymentMethod });
+  return data;
+};
+
+export interface HpcJobSummary {
+  id: number;
+  name: string;
+  status: string;
+  solver: string;
+  computeProfile: string;
+  cpuSeconds: number;
+  gpuSeconds: number;
+  costCredits: number;
+  startedAt: string;
+  completedAt: string | null;
+  hasVtu: boolean;
+  hasScalars: boolean;
+  scalars?: Record<string, any>;
+  resultDir?: string;
+}
+
+export interface ArtifactViewFromJobResult {
+  id: number;
+  artifactId: number;
+  suggestedCaption: string;
+  viewConfig: Record<string, unknown>;
+}
+
+export const getUserHpcJobs = async (limit = 20): Promise<HpcJobSummary[]> => {
+  try {
+    const { data } = await api.get<{ jobs: HpcJobSummary[]; count: number }>("/cae/user-jobs", {
+      params: { limit },
+    });
+    return data.jobs || [];
+  } catch {
+    return [];
+  }
+};
+
+export const createArtifactViewFromHpcJob = async (
+  jobId: number,
+  options?: { colormap?: string; activeField?: string; title?: string },
+): Promise<ArtifactViewFromJobResult> => {
+  const { data } = await api.post<ArtifactViewFromJobResult>("/social/artifact-views/from-hpc-job", {
+    jobId,
+    ...options,
+  });
+  return data;
+};
+
+export const getHpcJobReproduceSpec = async (jobId: number) => {
+  const { data } = await api.get(`/cae/jobs/${jobId}/reproduce-spec`);
+  return data;
+};
+
+// ── Cloud Simulation API ──────────────────────────────────────────
+
+export interface CloudSimulationRequest {
+  modelName: string;
+  modelSource?: string;
+  libraryName?: string;
+  libraryVersion?: string;
+  dependencies?: { name: string; version: string }[];
+  profile?: string;
+  numberOfIntervals?: number;
+}
+
+export interface CloudSimulationStatus {
+  id: string;
+  status: "pending" | "processing" | "queued" | "running" | "completed" | "success" | "failed" | string;
+  profile?: string;
+  usage?: {
+    cpuSeconds: number;
+    gpuSeconds: number;
+    costCredits: number;
+    exitCode: number;
+  };
+  error?: string;
+}
+
+export const submitCloudSimulation = async (req: CloudSimulationRequest): Promise<{ jobId: string }> => {
+  const { data } = await api.post<{ jobId: string }>("/simulate", req);
+  return data;
+};
+
+export const getCloudSimulationStatus = async (jobId: string): Promise<CloudSimulationStatus> => {
+  const { data } = await api.get<CloudSimulationStatus>(`/simulate/${jobId}`);
+  return data;
+};
+
+export const getCloudSimulationResultCsv = async (jobId: string): Promise<string> => {
+  const { data } = await api.get<string>(`/simulate/${jobId}/result`, {
+    responseType: "text",
+  });
+  return data;
+};
+
 export default api;

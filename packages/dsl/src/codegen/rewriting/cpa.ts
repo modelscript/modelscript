@@ -18,6 +18,103 @@ export interface CpaReport {
   ruleCount: number;
 }
 
+export function inferRuleLanguages(
+  rule: TGGRuleOptions,
+  evaluatedSource: any,
+  evaluatedTarget: any,
+  constraints: TGGConstraint[] = [],
+): { sourceLang?: string; targetLang?: string } {
+  let sourceLang = rule.sourceLang;
+  let targetLang = rule.targetLang;
+
+  // 1. Check constraints for typeMap
+  for (const c of constraints) {
+    if (c.kind === "typeMap" && typeof c.args[2] === "string") {
+      const mapKey = c.args[2].toLowerCase();
+      if (mapKey.includes("sysml2") || mapKey.includes("sysml")) targetLang = targetLang || "sysml2";
+      else if (mapKey.includes("modelica")) targetLang = targetLang || "modelica";
+      else if (mapKey.includes("owl2")) targetLang = targetLang || "owl2";
+      else if (mapKey.includes("step")) targetLang = targetLang || "step";
+      else if (mapKey.includes("csv")) targetLang = targetLang || "csv";
+      else if (mapKey.includes("ssp")) targetLang = targetLang || "ssp";
+    }
+  }
+
+  // 2. Check rule name
+  const name = rule.name || "";
+  if (!targetLang) {
+    if (name.includes("ToSysml") || name.includes("ToSysML2")) targetLang = "sysml2";
+    else if (name.includes("ToModelica") || name.includes("ToModel")) targetLang = "modelica";
+    else if (name.includes("ToOWL2") || name.includes("ToOwl2")) targetLang = "owl2";
+    else if (name.includes("ToStep") || name.includes("ToSTEP")) targetLang = "step";
+    else if (name.includes("ToCsv") || name.includes("ToCSV")) targetLang = "csv";
+    else if (name.includes("ToSsp") || name.includes("ToSSP")) targetLang = "ssp";
+  }
+
+  if (!sourceLang) {
+    if (
+      name.startsWith("SysML2") ||
+      name.startsWith("Sysml") ||
+      name.startsWith("PartDef") ||
+      name.startsWith("AttributeUsage") ||
+      name.startsWith("PortUsage")
+    )
+      sourceLang = "sysml2";
+    else if (name.startsWith("Modelica")) sourceLang = "modelica";
+    else if (name.startsWith("Csv") || name.startsWith("CSV")) sourceLang = "csv";
+    else if (name.startsWith("Step") || name.startsWith("STEP")) sourceLang = "step";
+    else if (name.startsWith("OWL2") || name.startsWith("Owl2")) sourceLang = "owl2";
+    else if (name.startsWith("Ssp") || name.startsWith("SSP")) sourceLang = "ssp";
+  }
+
+  // 3. Check target node types
+  const tgtType = evaluatedTarget?.nodeType || "";
+  if (!targetLang) {
+    if (
+      [
+        "BlockDefinition",
+        "PartUsage",
+        "ConnectionUsage",
+        "ConstraintUsage",
+        "PortUsage",
+        "AttributeUsage",
+        "Specialization",
+      ].includes(tgtType)
+    ) {
+      targetLang = "sysml2";
+    } else if (
+      [
+        "ClassDefinition",
+        "ComponentClause",
+        "ConnectClause",
+        "EquationClause",
+        "ModelicaClass",
+        "ModelicaBlock",
+      ].includes(tgtType)
+    ) {
+      targetLang = "modelica";
+    } else if (
+      [
+        "ClassDeclaration",
+        "SubClassOfAxiom",
+        "ObjectPropertyDeclaration",
+        "DataPropertyDeclaration",
+        "NamedIndividualDeclaration",
+      ].includes(tgtType)
+    ) {
+      targetLang = "owl2";
+    } else if (["ProductDefinition", "PropertyDefinition", "Axis2Placement3D"].includes(tgtType)) {
+      targetLang = "step";
+    } else if (["CsvColumnHeader", "CSVVirtualComponent", "SourceFile"].includes(tgtType)) {
+      targetLang = "csv";
+    } else if (["System", "Component", "Connector", "Connection"].includes(tgtType)) {
+      targetLang = "ssp";
+    }
+  }
+
+  return { sourceLang, targetLang };
+}
+
 interface RuleSignature {
   index: number;
   name: string;
@@ -27,6 +124,8 @@ interface RuleSignature {
   targetBindings: Record<string, any>;
   constraints: TGGConstraint[];
   priority: number;
+  targetLang?: string;
+  sourceLang?: string;
 }
 
 /**
@@ -58,6 +157,7 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
     const evaluatedSource = typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source;
     const evaluatedTarget = typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target;
     const constraints = typeof rule.where === "function" ? rule.where(vProxy) : rule.where || [];
+    const { sourceLang, targetLang } = inferRuleLanguages(rule, evaluatedSource, evaluatedTarget, constraints);
 
     signatures.push({
       index: i,
@@ -68,6 +168,8 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
       targetBindings: evaluatedTarget?.bindings || {},
       constraints,
       priority: rule.priority ?? 0,
+      sourceLang,
+      targetLang,
     });
   }
 
@@ -116,9 +218,12 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
           }
         }
 
-        // If guards or bindings are disjoint, rules are confluent and do not conflict
-        if (hasDisjointBinding || hasDisjointNac) {
-          // Confluent via semantic guard
+        // Check if rules target different languages: if so, they do not overlap in forward execution
+        const isDifferentTargetLang = Boolean(r1.targetLang && r2.targetLang && r1.targetLang !== r2.targetLang);
+
+        // If guards or bindings are disjoint or target different languages, rules do not conflict
+        if (hasDisjointBinding || hasDisjointNac || isDifferentTargetLang) {
+          // Confluent via semantic guard or distinct target languages
         } else if (r1.priority === r2.priority) {
           // Check if target outputs differ
           if (r1.targetNodeType !== r2.targetNodeType) {
@@ -163,7 +268,14 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
           }
         }
 
-        if (!hasDisjointTargetBinding && r1.priority === r2.priority && r1.sourceNodeType !== r2.sourceNodeType) {
+        const isDifferentSourceLang = Boolean(r1.sourceLang && r2.sourceLang && r1.sourceLang !== r2.sourceLang);
+
+        if (
+          !hasDisjointTargetBinding &&
+          !isDifferentSourceLang &&
+          r1.priority === r2.priority &&
+          r1.sourceNodeType !== r2.sourceNodeType
+        ) {
           conflicts.push({
             kind: "overlap",
             rule1: r1.name,

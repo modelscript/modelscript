@@ -523,6 +523,39 @@ export function socialRouter(database: LibraryDatabase): Router {
   });
 
   /**
+   * POST /api/v1/social/artifact-views/from-hpc-job
+   */
+  router.post("/artifact-views/from-hpc-job", optionalAuth, (req: Request, res: Response) => {
+    const userId = req.user?.id || 1;
+    const { jobId, colormap, activeField, title } = req.body;
+
+    if (!jobId) {
+      return res.status(400).json({ error: "Missing required jobId parameter" });
+    }
+
+    try {
+      const result = database.createArtifactViewFromJob(userId, Number(jobId), {
+        colormap,
+        activeField,
+        title,
+      });
+
+      // Asynchronously trigger thumbnail generation
+      generateThumbnail(result.artifactId).catch((err) => console.error("Error triggering thumbnail generation:", err));
+
+      res.status(201).json({
+        id: result.artifactId,
+        artifactId: result.artifactId,
+        suggestedCaption: result.suggestedCaption,
+        viewConfig: result.viewConfig,
+      });
+    } catch (err: any) {
+      console.error("[SocialRouter] POST /artifact-views/from-hpc-job error:", err);
+      res.status(500).json({ error: err.message || "Failed to create artifact view from HPC job" });
+    }
+  });
+
+  /**
    * GET /api/v1/social/bookmarks
    */
   router.get("/bookmarks", requireAuth, (req: Request, res: Response) => {

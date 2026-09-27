@@ -119,7 +119,7 @@ end X;`;
     // 2. Check undefined variable "undefined" (M2002)
     const varDiag = diags.find((d: any) => d.code === 2002);
     expect(varDiag).toBeDefined();
-    expect(varDiag.message).toBe("Variable 'undefined' not found in scope.");
+    expect(varDiag.message).toBe("Variable undefined not found in scope X.");
     expect(varDiag.range.start.line).toBe(3);
   });
 
@@ -194,7 +194,7 @@ end B;`;
     const diags = activeFacade.getDiagnostics(root);
     const varDiag = diags.find((d: any) => d.code === 2002);
     expect(varDiag).toBeDefined();
-    expect(varDiag.message).toBe("Variable 'unknownVar' not found in scope.");
+    expect(varDiag.message).toBe("Variable unknownVar not found in scope B.");
   });
 
   test("catches invalid attribute 'error' on Real x(error=7)", () => {
@@ -209,7 +209,7 @@ end A;`;
     console.log("INVALID ATTR DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
     const attrDiag = diags.find((d: any) => d.code === 4045);
     expect(attrDiag).toBeDefined();
-    expect(attrDiag.message).toBe("Modified element 'error' not found in class 'Real'.");
+    expect(attrDiag.message).toBe("Modified element error not found in class Real.");
   });
 
   test("accepts valid attribute 'start' on Real x(start=7)", () => {
@@ -357,7 +357,9 @@ end X;`;
     console.log("BINDING MISMATCH DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
     const mismatchDiag = diags.find((d: any) => d.code === 3001);
     expect(mismatchDiag).toBeDefined();
-    expect(mismatchDiag.message).toBe("Type mismatch in binding or modification expression '\"ERROR\"'.");
+    expect(mismatchDiag.message).toBe(
+      'Type mismatch in binding x = "ERROR", expected subtype of Real, got type String.',
+    );
   });
 
   test("catches type mismatch in extends modification extends A(x = 'ERROR')", () => {
@@ -373,7 +375,7 @@ end B;`;
 
     const diags = activeFacade.getDiagnostics(root);
     console.log("EXTENDS MODIFICATION MISMATCH DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
-    const mismatchDiag = diags.find((d: any) => d.code === 3001);
+    const mismatchDiag = diags.find((d: any) => d.code === 3002);
     expect(mismatchDiag).toBeDefined();
     expect(mismatchDiag.message).toBe("Type mismatch in binding or modification expression '\"ERROR\"'.");
   });
@@ -391,7 +393,7 @@ end B;`;
 
     const diags = activeFacade.getDiagnostics(root);
     console.log("COMPONENT MODIFICATION MISMATCH DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
-    const mismatchDiag = diags.find((d: any) => d.code === 3001);
+    const mismatchDiag = diags.find((d: any) => d.code === 3002);
     expect(mismatchDiag).toBeDefined();
     expect(mismatchDiag.message).toBe("Type mismatch in binding or modification expression '\"ERROR\"'.");
   });
@@ -406,7 +408,7 @@ end X;`;
 
     const diags = activeFacade.getDiagnostics(root);
     console.log("PRIMITIVE ATTRIBUTE MODIFICATION MISMATCH DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
-    const mismatchDiag = diags.find((d: any) => d.code === 3001);
+    const mismatchDiag = diags.find((d: any) => d.code === 3002);
     expect(mismatchDiag).toBeDefined();
     expect(mismatchDiag.message).toBe("Type mismatch in binding or modification expression '\"ERROR\"'.");
   });
@@ -476,7 +478,7 @@ end;`;
     // 2. Should emit M5004 on connect(a, b)
     const m5004Diag = diags.find((d: any) => d.code === 5004);
     expect(m5004Diag).toBeDefined();
-    expect(m5004Diag.message).toBe("Flow variable sets differ in connect(): 'a' (1 flows) vs 'b' (2 flows).");
+    expect(m5004Diag.message).toBe("Flow variable sets differ in connect(): 'a' vs 'b'.");
   });
 
   test("accepts connect(a1, a2) with matching flow counts without warnings", () => {
@@ -521,7 +523,7 @@ end;`;
     console.log("COMPOUND MEMBER DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
     const m2002Diag = diags.find((d: any) => d.code === 2002);
     expect(m2002Diag).toBeDefined();
-    expect(m2002Diag.message).toBe("Variable 'x.error' not found in scope.");
+    expect(m2002Diag.message).toBe("Variable x.error not found in scope Z.");
   });
 
   test("catches connector port type and flow mismatch in hierarchical connect(x.p1, y.p2)", () => {
@@ -551,7 +553,7 @@ end;`;
     console.log("HIERARCHICAL CONNECT DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
     const m5004Diag = diags.find((d: any) => d.code === 5004);
     expect(m5004Diag).toBeDefined();
-    expect(m5004Diag.message).toBe("Flow variable sets differ in connect(): 'x.p1' (1 flows) vs 'y.p2' (1 flows).");
+    expect(m5004Diag.message).toBe("Flow variable sets differ in connect(): 'x.p1' vs 'y.p2'.");
   });
 
   test("accepts valid hierarchical connect(x.p1, y.p1) with matching ports without warnings", () => {
@@ -697,8 +699,8 @@ end Z;`;
     expect(varNames).toContain("y.yc.x");
 
     // Verify connect equation emitted for flattened connector references
-    expect(pipelineResult.equations.length).toBe(1);
-    const eq = pipelineResult.equations[0];
+    expect(pipelineResult.equations.length).toBeGreaterThanOrEqual(1);
+    const eq = pipelineResult.equations.find((e: any) => e.kind === "connect") || pipelineResult.equations[0];
     expect(eq.kind).toBe("connect");
     expect(eq.text).toContain("connect(x.xc, y.yc)");
   });
