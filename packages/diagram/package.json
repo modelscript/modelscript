@@ -97,7 +97,7 @@
     "vscode-languageserver-protocol": "^3.17.5"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^26.6.2",
     "esbuild": "^0.28.1",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"

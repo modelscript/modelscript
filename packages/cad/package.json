@@ -30,7 +30,7 @@
     "opencascade.js": "^1.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^26.6.2",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
   }

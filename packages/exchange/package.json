@@ -80,7 +80,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^26.6.2",
     "@types/pako": "^2.0.4",
     "@types/ws": "^8.18.0",
     "rimraf": "^6.1.0",
