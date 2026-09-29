@@ -37,7 +37,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/runtime";
-import { Cst, type SyntaxNode } from "../src-gen/bindings.js";
+import { Cst, FieldId, type SyntaxNode } from "../src-gen/bindings.js";
 import { BUILTIN_FUNCTIONS } from "./builtins.js";
 import { ModelicaPortBalancer } from "./connections.js";
 import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
@@ -953,14 +953,37 @@ function getIndexedElementText(text: string, indices: number[]): string {
   return curr;
 }
 
+function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): string[] | null {
+  if (Array.isArray(targetMeta?.literals) && targetMeta.literals.length > 0) {
+    return targetMeta.literals;
+  }
+  const shortSpec = getShortClassSpecifierNode(cstNode);
+  const enumListNode = shortSpec ? Cst.ShortClassSpecifier.enumList(shortSpec) : null;
+  if (enumListNode) {
+    const lits: string[] = [];
+    for (const c of enumListNode.children || []) {
+      if (c.type === "enumeration_literal" || Cst.EnumerationLiteral.is(c)) {
+        const litText = c.text?.trim()?.split(/\s+/)[0];
+        if (litText) lits.push(litText);
+      }
+    }
+    if (lits.length > 0) return lits;
+  }
+  const cstText = cstNode?.text ?? "";
+  const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+  if (enumMatch) {
+    return enumMatch[1]
+      .split(",")
+      .map((x: string) => x.trim().split(/\s+/)[0])
+      .filter(Boolean);
+  }
+  return null;
+}
+
 function flattenColonNodes(n: any): any[] {
   if (!n) return [];
   while (n.childCount === 1) n = n.child(0);
-  if (
-    n.childCount === 3 &&
-    (n.child(0).text === "(" || n.child(0).type === '"("') &&
-    (n.child(2).text === ")" || n.child(2).type === '")"')
-  ) {
+  if (n.childCount === 3 && Cst.kind(n.child(0)) === "(" && Cst.kind(n.child(2)) === ")") {
     return flattenColonNodes(n.child(1));
   }
   if (n.childCount === 3) {
@@ -979,8 +1002,7 @@ function getArrayLiteralItems(node: any): any[] {
     for (let i = 0; i < node.childCount; i++) {
       const c = node.child(i);
       if (!c) continue;
-      const cText = c.text?.trim() ?? "";
-      if (cText === "," || c.type === "," || c.type === '","') continue;
+      if (Cst.kind(c) === ",") continue;
       items.push(c);
     }
     return items;
@@ -995,12 +1017,12 @@ function getArrayLiteralItems(node: any): any[] {
     for (let i = 0; i < node.childCount; i++) {
       const c = node.child(i);
       if (!c) continue;
-      const cText = c.text?.trim() ?? "";
-      if (c.type === ";" || c.type === '";"' || cText === ";") {
+      const norm = Cst.kind(c);
+      if (norm === ";") {
         hasSemicolon = true;
         continue;
       }
-      if (cText === "[" || cText === "]") continue;
+      if (norm === "[" || norm === "]") continue;
       rows.push(c);
     }
     if (!hasSemicolon && rows.length === 1) {
@@ -1055,7 +1077,7 @@ function findImplicitArrayDim(bodyNodes: any[], iterName: string, dae: DAEBuilde
       (n.childCount >= 2 && n.child(n.childCount - 1)?.type === "array_subscripts")
     ) {
       const subsNode = (n.children || []).find((c: any) => c.type === "array_subscripts") ?? n.child(n.childCount - 1);
-      if (subsNode && (subsNode.type === "array_subscripts" || subsNode.type === "ArraySubscripts")) {
+      if (subsNode && subsNode.type === "array_subscripts") {
         for (let i = 0; i < subsNode.childCount; i++) {
           const sc = subsNode.child(i);
           if (sc.type === "subscript" || sc.type === "expression") {
@@ -1109,21 +1131,113 @@ function splitTopLevelArgs(text: string): string[] {
   return parts;
 }
 
+function evalArithmeticString(expr: string): number | null {
+  let pos = 0;
+  const len = expr.length;
+
+  function skipWhitespace(): void {
+    while (pos < len && expr.charCodeAt(pos) <= 32) pos++;
+  }
+
+  function parsePrimary(): number | null {
+    skipWhitespace();
+    if (pos >= len) return null;
+    const ch = expr.charCodeAt(pos);
+    if (ch === 43) {
+      pos++;
+      return parsePrimary();
+    }
+    if (ch === 45) {
+      pos++;
+      const val = parsePrimary();
+      return val === null ? null : -val;
+    }
+    if (ch === 40) {
+      pos++;
+      const val = parseExpr();
+      skipWhitespace();
+      if (pos >= len || expr.charCodeAt(pos) !== 41) return null;
+      pos++;
+      return val;
+    }
+    const start = pos;
+    while (pos < len) {
+      const c = expr.charCodeAt(pos);
+      if ((c >= 48 && c <= 57) || c === 46) {
+        pos++;
+      } else {
+        break;
+      }
+    }
+    if (pos === start) return null;
+    const num = Number(expr.slice(start, pos));
+    return isNaN(num) ? null : num;
+  }
+
+  function parseMulDiv(): number | null {
+    let left = parsePrimary();
+    if (left === null) return null;
+    while (pos < len) {
+      skipWhitespace();
+      if (pos >= len) break;
+      const c = expr.charCodeAt(pos);
+      if (c === 42) {
+        pos++;
+        const right = parsePrimary();
+        if (right === null) return null;
+        left = left * right;
+      } else if (c === 47) {
+        pos++;
+        const right = parsePrimary();
+        if (right === null || right === 0) return null;
+        left = left / right;
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseExpr(): number | null {
+    let left = parseMulDiv();
+    if (left === null) return null;
+    while (pos < len) {
+      skipWhitespace();
+      if (pos >= len) break;
+      const c = expr.charCodeAt(pos);
+      if (c === 43) {
+        pos++;
+        const right = parseMulDiv();
+        if (right === null) return null;
+        left = left + right;
+      } else if (c === 45) {
+        pos++;
+        const right = parseMulDiv();
+        if (right === null) return null;
+        left = left - right;
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  const res = parseExpr();
+  skipWhitespace();
+  if (res === null || pos < len) return null;
+  return Math.round(res);
+}
+
 function evalArithmeticText(str: string, subs?: Map<string, number>): number | null {
   if (!str) return null;
   let s = str.trim();
-  if (subs) {
-    for (const [k, v] of subs.entries()) {
-      s = s.replace(new RegExp(`\\b${k}\\b`, "g"), String(v));
-    }
+  if (subs && subs.size > 0) {
+    s = s.replace(/\b[a-zA-Z_]\w*\b/g, (id) => {
+      const v = subs.get(id);
+      return v !== undefined ? String(v) : id;
+    });
   }
-  try {
-    if (/^[0-9+\-*/().\s]+$/.test(s)) {
-      const val = Function(`"use strict"; return (${s})`)();
-      if (typeof val === "number" && !isNaN(val)) return Math.round(val);
-    }
-  } catch {}
-  return null;
+  return evalArithmeticString(s);
 }
 
 function evaluateCSTNumber(
@@ -1135,18 +1249,16 @@ function evaluateCSTNumber(
   prefix = "",
 ): number | null {
   if (!node) return null;
-  while (node.childCount === 1) {
-    node = node.child(0);
-  }
-  if (
-    node.childCount === 3 &&
-    (node.child(0).text === "(" || node.child(0).type === '"("') &&
-    (node.child(2).text === ")" || node.child(2).type === '")"')
-  ) {
-    return evaluateCSTNumber(node.child(1), subs, scopeId, db, dae, prefix);
+  if (typeof node !== "string") {
+    while (node.childCount === 1) {
+      node = node.child(0);
+    }
+    if (node.childCount === 3 && Cst.kind(node.child(0)) === "(" && Cst.kind(node.child(2)) === ")") {
+      return evaluateCSTNumber(node.child(1), subs, scopeId, db, dae, prefix);
+    }
   }
 
-  const text = node.text?.trim() ?? "";
+  const text = (typeof node === "string" ? node : node.text)?.trim() ?? "";
   if (subs && subs.has(text)) return subs.get(text)!;
   const num = parseInt(text, 10);
   if (!isNaN(num) && String(num) === text) return num;
@@ -1163,6 +1275,14 @@ function evaluateCSTNumber(
       (dae as any).namedArrayShapes?.get(arrName);
     if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! >= 0) {
       return namedShape[dim - 1]!;
+    }
+    const varIdx =
+      dae.getVarIdxByName(resolvedName) >= 0 ? dae.getVarIdxByName(resolvedName) : dae.getVarIdxByName(arrName);
+    if (varIdx >= 0) {
+      const shape = dae.getVarShape(varIdx);
+      if (shape && shape.length >= dim && shape[dim - 1]! >= 0) {
+        return shape[dim - 1]!;
+      }
     }
     let maxDim = 0;
     const prefixMatch = `${resolvedName}[`;
@@ -1198,7 +1318,7 @@ function evaluateCSTNumber(
   }
 
   // Binary expression
-  if (node.childCount === 3 && (node.type === "expression" || node.type === "BinaryExpression")) {
+  if (typeof node !== "string" && node.childCount === 3 && node.type === "expression") {
     const op = (node.child(1)?.text?.trim() ?? node.child(1)?.type ?? "").replace(/^"|"$/g, "");
     const left = evaluateCSTNumber(node.child(0), subs, scopeId, db, dae, prefix);
     const right = evaluateCSTNumber(node.child(2), subs, scopeId, db, dae, prefix);
@@ -1211,10 +1331,7 @@ function evaluateCSTNumber(
   }
 
   // Unary expression
-  if (
-    node.childCount === 2 &&
-    (node.type === "expression" || node.type === "UnaryExpression" || node.type === "unary_expression")
-  ) {
+  if (typeof node !== "string" && node.childCount === 2 && node.type === "expression") {
     const op = (node.child(0)?.text?.trim() ?? "").replace(/^"|"$/g, "");
     const val = evaluateCSTNumber(node.child(1), subs, scopeId, db, dae, prefix);
     if (val !== null) {
@@ -1260,6 +1377,22 @@ function evaluateCSTNumber(
       const dim = parseInt(dimStr, 10);
       if (dae) {
         const resolvedName = resolveScopedName(arrName, prefix, dae);
+        const namedShape =
+          (dae as any).getNamedArrayShape?.(resolvedName) ??
+          (dae as any).namedArrayShapes?.get(resolvedName) ??
+          (dae as any).getNamedArrayShape?.(arrName) ??
+          (dae as any).namedArrayShapes?.get(arrName);
+        if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! >= 0) {
+          return String(namedShape[dim - 1]!);
+        }
+        const varIdx =
+          dae.getVarIdxByName(resolvedName) >= 0 ? dae.getVarIdxByName(resolvedName) : dae.getVarIdxByName(arrName);
+        if (varIdx >= 0) {
+          const shape = dae.getVarShape(varIdx);
+          if (shape && shape.length >= dim && shape[dim - 1]! >= 0) {
+            return String(shape[dim - 1]!);
+          }
+        }
         let maxDim = 0;
         const prefixMatch = `${resolvedName}[`;
         for (let i = 0; i < dae.varCount; i++) {
@@ -1766,12 +1899,7 @@ function getExprDims(exprId: number, dae: DAEBuilder, db?: any): number[] | null
               targetMeta?.isEnumeration ||
               Boolean(cstText.includes("enumeration("));
             if (isEnum) {
-              const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-              const literals = enumMatch
-                ? enumMatch[1].split(",").map((x: string) => x.trim().split(/\s+/)[0])
-                : Array.isArray(targetMeta?.literals)
-                  ? targetMeta.literals
-                  : null;
+              const literals = extractEnumLiteralsFromCst(cstNode, targetMeta);
               if (literals) {
                 return [literals.length];
               }
@@ -2483,9 +2611,7 @@ function getEnclosingClauseRange(
   while (
     curr &&
     curr.type !== "component_clause" &&
-    curr.type !== "ComponentClause" &&
     curr.type !== "simple_equation" &&
-    curr.type !== "equality_equation" &&
     curr.type !== "statement" &&
     curr.type !== "assignment_statement"
   ) {
@@ -2529,10 +2655,8 @@ function findArraySubscriptsForIter(
       n.type === "component_reference" ||
       (n.childCount >= 2 && n.child(n.childCount - 1)?.type === "array_subscripts")
     ) {
-      const subsNode =
-        (n.children || []).find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts") ??
-        n.child(n.childCount - 1);
-      if (subsNode && (subsNode.type === "array_subscripts" || subsNode.type === "ArraySubscripts")) {
+      const subsNode = (n.children || []).find((c: any) => c.type === "array_subscripts") ?? n.child(n.childCount - 1);
+      if (subsNode && subsNode.type === "array_subscripts") {
         let subIdx = 0;
         for (let i = 0; i < subsNode.childCount; i++) {
           const sc = subsNode.child(i);
@@ -2540,8 +2664,8 @@ function findArraySubscriptsForIter(
             if (sc.text?.trim() === iterName) {
               let baseName = "";
               for (const ch of n.children || []) {
-                if (ch === subsNode || ch.type === "array_subscripts" || ch.type === "ArraySubscripts") break;
-                if (ch.type === "identifier" || ch.type === "name" || ch.type === "property") {
+                if (ch === subsNode || ch.type === "array_subscripts") break;
+                if (ch.type === "identifier" || ch.type === "name") {
                   baseName = baseName ? `${baseName}.${ch.text?.trim()}` : (ch.text?.trim() ?? "");
                 }
               }
@@ -3090,7 +3214,6 @@ function dispatchBinaryOperator(
     while (
       eqNode &&
       eqNode.type !== "simple_equation" &&
-      eqNode.type !== "equality_equation" &&
       eqNode.type !== "component_clause" &&
       eqNode.type !== "statement" &&
       eqNode.type !== "assignment_statement"
@@ -3182,7 +3305,6 @@ function dispatchBinaryOperator(
   while (
     eqNode &&
     eqNode.type !== "simple_equation" &&
-    eqNode.type !== "equality_equation" &&
     eqNode.type !== "component_clause" &&
     eqNode.type !== "statement" &&
     eqNode.type !== "assignment_statement"
@@ -3658,11 +3780,7 @@ function lowerCSTExpression(
   }
 
   // Parenthesized expression: "(" expr ")"
-  if (
-    node.childCount === 3 &&
-    (node.child(0).type === "(" || node.child(0).text === "(" || node.child(0).type === '"("') &&
-    (node.child(2).type === ")" || node.child(2).text === ")" || node.child(2).type === '")"')
-  ) {
+  if (node.childCount === 3 && Cst.kind(node.child(0)) === "(" && Cst.kind(node.child(2)) === ")") {
     return lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener, tupleContext);
   }
 
@@ -3873,9 +3991,7 @@ function lowerCSTExpression(
           }
         }
 
-        const forIndices = (forIndicesNode?.children || []).filter(
-          (k: any) => k.type === "for_index" || k.type === "ForIndex",
-        );
+        const forIndices = (forIndicesNode?.children || []).filter((k: any) => k.type === "for_index");
         const iters: { name: string; values: (number | string)[] }[] = [];
         for (const fi of forIndices) {
           const varName = (Cst.ForIndex.variable(fi)?.text?.trim() || fi.child(0)?.text?.trim() || "").trim();
@@ -4092,14 +4208,10 @@ function lowerCSTExpression(
 
       const collectArgs = (n: any) => {
         if (!n) return;
-        if (n.type === "named_argument" || n.type === "NamedArgument") {
+        if (n.type === "named_argument") {
           const propName = n.child(0)?.text?.trim();
           let exprChild = n.child(2) ?? n.child(1);
-          if (
-            exprChild &&
-            (exprChild.type === "function_argument" || exprChild.type === "FunctionArgument") &&
-            exprChild.childCount === 1
-          ) {
+          if (exprChild && exprChild.type === "function_argument" && exprChild.childCount === 1) {
             exprChild = exprChild.child(0);
           }
           if (propName && exprChild) {
@@ -4109,7 +4221,7 @@ function lowerCSTExpression(
             return;
           }
         }
-        if (n.type === "expression" || n.type === "Expression") {
+        if (n.type === "expression") {
           argNodes.push(n);
           argExprIds.push(lowerCSTExpression(n, dae, prefix, substitutions, imports, db, flattener));
           return;
@@ -4735,7 +4847,6 @@ function lowerCSTExpression(
           while (
             eqNode &&
             eqNode.type !== "simple_equation" &&
-            eqNode.type !== "equality_equation" &&
             eqNode.type !== "component_clause" &&
             eqNode.type !== "statement" &&
             eqNode.type !== "assignment_statement"
@@ -4977,11 +5088,11 @@ function lowerCSTExpression(
           let callRange: any = undefined;
           if (node) {
             let n: any = node;
-            while (n && n.type !== "component_clause" && n.type !== "ComponentClause" && n.parent) {
-              if (n.type === "statement" || n.type === "function_call" || n.type === "FunctionCall") break;
+            while (n && n.type !== "component_clause" && n.parent) {
+              if (n.type === "statement" || n.type === "function_call") break;
               n = n.parent;
             }
-            if (n && (n.type === "component_clause" || n.type === "ComponentClause")) {
+            if (n && n.type === "component_clause") {
               callRange = {
                 startPosition: n.startPosition,
                 endPosition: n.endPosition,
@@ -5020,11 +5131,11 @@ function lowerCSTExpression(
             let callRange: any = undefined;
             if (node) {
               let n: any = node;
-              while (n && n.type !== "component_clause" && n.type !== "ComponentClause" && n.parent) {
-                if (n.type === "statement" || n.type === "function_call" || n.type === "FunctionCall") break;
+              while (n && n.type !== "component_clause" && n.parent) {
+                if (n.type === "statement" || n.type === "function_call") break;
                 n = n.parent;
               }
-              if (n && (n.type === "component_clause" || n.type === "ComponentClause")) {
+              if (n && n.type === "component_clause") {
                 callRange = {
                   startPosition: n.startPosition,
                   endPosition: n.endPosition,
@@ -5143,11 +5254,11 @@ function lowerCSTExpression(
           let callRange: any = undefined;
           if (node) {
             let n: any = node;
-            while (n && n.type !== "component_clause" && n.type !== "ComponentClause" && n.parent) {
-              if (n.type === "statement" || n.type === "function_call" || n.type === "FunctionCall") break;
+            while (n && n.type !== "component_clause" && n.parent) {
+              if (n.type === "statement" || n.type === "function_call") break;
               n = n.parent;
             }
-            if (n && (n.type === "component_clause" || n.type === "ComponentClause")) {
+            if (n && n.type === "component_clause") {
               callRange = {
                 startPosition: n.startPosition,
                 endPosition: n.endPosition,
@@ -5233,11 +5344,11 @@ function lowerCSTExpression(
             let callRange: any = undefined;
             if (node) {
               let n: any = node;
-              while (n && n.type !== "component_clause" && n.type !== "ComponentClause" && n.parent) {
-                if (n.type === "statement" || n.type === "function_call" || n.type === "FunctionCall") break;
+              while (n && n.type !== "component_clause" && n.parent) {
+                if (n.type === "statement" || n.type === "function_call") break;
                 n = n.parent;
               }
-              if (n && (n.type === "component_clause" || n.type === "ComponentClause")) {
+              if (n && n.type === "component_clause") {
                 callRange = {
                   startPosition: n.startPosition,
                   endPosition: n.endPosition,
@@ -5393,7 +5504,6 @@ function lowerCSTExpression(
               while (
                 eqNode &&
                 eqNode.type !== "simple_equation" &&
-                eqNode.type !== "equality_equation" &&
                 eqNode.type !== "component_clause" &&
                 eqNode.type !== "statement" &&
                 eqNode.type !== "assignment_statement"
@@ -5447,8 +5557,8 @@ function lowerCSTExpression(
               while (
                 compClause &&
                 compClause.type !== "component_clause" &&
-                compClause.type !== "ComponentClause" &&
-                compClause.type !== "equation" &&
+                compClause.type !== "simple_equation" &&
+                !compClause.type?.endsWith("_equation") &&
                 compClause.type !== "statement"
               ) {
                 compClause = compClause.parent;
@@ -5580,7 +5690,7 @@ function lowerCSTExpression(
         } catch (err: any) {
           if (err?.code === 4009 || err?.message?.includes("causes a cyclic dependency")) {
             let compClause: any = node;
-            while (compClause && compClause.type !== "component_clause" && compClause.type !== "ComponentClause") {
+            while (compClause && compClause.type !== "component_clause") {
               compClause = compClause.parent;
             }
             const diagNode = compClause ?? node;
@@ -5808,12 +5918,8 @@ function lowerCSTExpression(
           const hasFor = (c.children || []).some((k: any) => k.type === "for" || k.text?.trim() === "for");
           if (hasFor) {
             const exprChild = c.child(0);
-            const indicesNode = (c.children || []).find(
-              (k: any) => k.type === "for_indices" || k.type === "ForIndices",
-            );
-            const forIndices = (indicesNode?.children || []).filter(
-              (k: any) => k.type === "for_index" || k.type === "ForIndex",
-            );
+            const indicesNode = (c.children || []).find((k: any) => k.type === "for_indices");
+            const forIndices = (indicesNode?.children || []).filter((k: any) => k.type === "for_index");
             if (exprChild && forIndices.length > 0) {
               const iters: { name: string; values: (number | string)[] }[] = [];
               for (const fi of forIndices) {
@@ -5975,7 +6081,7 @@ function lowerCSTExpression(
       const mismatchIdx = rowCounts.findIndex((r) => r !== firstRowCount);
       if (mismatchIdx !== -1) {
         let parentEq = node;
-        while (parentEq && parentEq.type !== "equation" && parentEq.type !== "Equation") {
+        while (parentEq && parentEq.type !== "simple_equation" && !parentEq.type?.endsWith("_equation")) {
           parentEq = parentEq.parent;
         }
         const diagNode = parentEq ?? node;
@@ -6074,26 +6180,7 @@ function lowerCSTExpression(
       leftChild.childCount === 3 &&
       (leftChild.child(1)?.type === ":" || leftChild.child(1)?.text === ":" || leftChild.child(1)?.type === '":"');
 
-    const isForIndex = (() => {
-      let curr = node.parent;
-      while (curr) {
-        if (curr.type === "for_index" || curr.type === "ForIndex") return true;
-        if (
-          curr.type === "for_statement" ||
-          curr.type === "ForStatement" ||
-          curr.type === "for_equation" ||
-          curr.type === "ForEquation" ||
-          curr.type === "class_definition" ||
-          curr.type === "ClassDefinition" ||
-          curr.type === "statement" ||
-          curr.type === "equation"
-        ) {
-          break;
-        }
-        curr = curr.parent;
-      }
-      return false;
-    })();
+    const isForIndex = isInsideForIndex(node);
 
     if (isLeftColon) {
       const startId = lowerCSTExpression(leftChild.child(0), dae, prefix, substitutions, imports, db, flattener);
@@ -6115,26 +6202,7 @@ function lowerCSTExpression(
     (node.child(1)?.type === ":" || node.child(1)?.text === ":" || node.child(1)?.type === '":"') &&
     (node.child(3)?.type === ":" || node.child(3)?.text === ":" || node.child(3)?.type === '":"')
   ) {
-    const isForIndex = (() => {
-      let curr = node.parent;
-      while (curr) {
-        if (curr.type === "for_index" || curr.type === "ForIndex") return true;
-        if (
-          curr.type === "for_statement" ||
-          curr.type === "ForStatement" ||
-          curr.type === "for_equation" ||
-          curr.type === "ForEquation" ||
-          curr.type === "class_definition" ||
-          curr.type === "ClassDefinition" ||
-          curr.type === "statement" ||
-          curr.type === "equation"
-        ) {
-          break;
-        }
-        curr = curr.parent;
-      }
-      return false;
-    })();
+    const isForIndex = isInsideForIndex(node);
     const startId = lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener);
     const stepId = lowerCSTExpression(node.child(2), dae, prefix, substitutions, imports, db, flattener);
     const stopId = lowerCSTExpression(node.child(4), dae, prefix, substitutions, imports, db, flattener);
@@ -7226,7 +7294,15 @@ function lowerCSTExpression(
                 let startNode: any = null;
                 let stepNode: any = null;
                 let stopNode: any = null;
-                if (expr.childCount === 3 && (expr.child(1)?.text?.trim() ?? "") === ":") {
+                const colonNodes = expr ? flattenColonNodes(expr) : [];
+                if (colonNodes.length === 2) {
+                  startNode = colonNodes[0];
+                  stopNode = colonNodes[1];
+                } else if (colonNodes.length === 3) {
+                  startNode = colonNodes[0];
+                  stepNode = colonNodes[1];
+                  stopNode = colonNodes[2];
+                } else if (expr.childCount === 3 && (expr.child(1)?.text?.trim() ?? "") === ":") {
                   const c0 = expr.child(0);
                   if (c0.childCount === 3 && (c0.child(1)?.text?.trim() ?? "") === ":") {
                     startNode = c0.child(0);
@@ -7239,7 +7315,7 @@ function lowerCSTExpression(
                 }
                 const evalBound = (bNode: any): number | null => {
                   if (!bNode) return null;
-                  const t = bNode.text?.trim() ?? "";
+                  const t = (typeof bNode === "string" ? bNode : bNode.text)?.trim() ?? "";
                   if (t === "end") return dimSize > 0 ? dimSize : null;
                   if (t === "false") return 1;
                   if (t === "true") return 2;
@@ -7263,12 +7339,12 @@ function lowerCSTExpression(
                 if (startVal === null || stopVal === null) {
                   const colonParts = subText.split(":");
                   if (colonParts.length === 2) {
-                    startVal = evalBound({ text: colonParts[0] });
-                    stopVal = evalBound({ text: colonParts[1] });
+                    startVal = evalBound(colonParts[0]);
+                    stopVal = evalBound(colonParts[1]);
                   } else if (colonParts.length === 3) {
-                    startVal = evalBound({ text: colonParts[0] });
-                    stepVal = evalBound({ text: colonParts[1] }) ?? 1;
-                    stopVal = evalBound({ text: colonParts[2] });
+                    startVal = evalBound(colonParts[0]);
+                    stepVal = evalBound(colonParts[1]) ?? 1;
+                    stopVal = evalBound(colonParts[2]);
                   }
                 }
                 if (startVal !== null && stopVal !== null) {
@@ -7289,9 +7365,21 @@ function lowerCSTExpression(
               }
 
               // 4. Scalar subscript
-              const isLoopVar =
-                Boolean(flattener?.activeLoopVars && flattener.activeLoopVars.size > 0) &&
-                [...flattener!.activeLoopVars].some((lv) => new RegExp(`\\b${lv}\\b`).test(subText));
+              let isLoopVar = false;
+              if (flattener?.activeLoopVars && flattener.activeLoopVars.size > 0) {
+                if (flattener.activeLoopVars.has(subText)) {
+                  isLoopVar = true;
+                } else {
+                  const idRegex = /\b[a-zA-Z_]\w*\b/g;
+                  let m: RegExpExecArray | null;
+                  while ((m = idRegex.exec(subText)) !== null) {
+                    if (flattener.activeLoopVars.has(m[0])) {
+                      isLoopVar = true;
+                      break;
+                    }
+                  }
+                }
+              }
               if (subsWithEnd && subsWithEnd.has(subText)) {
                 const sVal = subsWithEnd.get(subText)!;
                 lastPart.subscripts.push({
@@ -7381,9 +7469,8 @@ function lowerCSTExpression(
                 while (curr) {
                   if (
                     curr.type === "component_clause" ||
-                    curr.type === "ComponentClause" ||
-                    curr.type === "equation" ||
-                    curr.type === "Equation"
+                    curr.type === "simple_equation" ||
+                    curr.type?.endsWith("_equation")
                   ) {
                     stmtNode = curr;
                     break;
@@ -7449,11 +7536,9 @@ function lowerCSTExpression(
                   while (curr) {
                     if (
                       curr.type === "connect_equation" ||
-                      curr.type === "ConnectEquation" ||
+                      curr.type === "simple_equation" ||
                       curr.type === "component_clause" ||
-                      curr.type === "ComponentClause" ||
-                      curr.type === "equation" ||
-                      curr.type === "Equation"
+                      curr.type?.endsWith("_equation")
                     ) {
                       stmtNode = curr;
                       break;
@@ -7487,7 +7572,7 @@ function lowerCSTExpression(
                           : x.ident,
                     )
                     .join(".");
-                  const isConnect = stmtNode.type === "connect_equation" || stmtNode.type === "ConnectEquation";
+                  const isConnect = stmtNode.type === "connect_equation";
                   const targetRefStr = isConnect ? refStr : rawParts[pi].ident;
                   dae.diagnostics.push({
                     severity: "error",
@@ -7512,9 +7597,8 @@ function lowerCSTExpression(
             while (curr) {
               if (
                 curr.type === "component_clause" ||
-                curr.type === "ComponentClause" ||
-                curr.type === "equation" ||
-                curr.type === "Equation"
+                curr.type === "simple_equation" ||
+                curr.type?.endsWith("_equation")
               ) {
                 stmtNode = curr;
                 break;
@@ -7876,7 +7960,7 @@ function lowerCSTExpression(
                     const childCst = db.cstNode(child.id) as any;
                     const findBindingExpr = (n: any): any => {
                       if (!n) return null;
-                      if (n.type === "expression" || n.type === "Expression") return n;
+                      if (n.type === "expression") return n;
                       for (const c of n.children || []) {
                         const res = findBindingExpr(c);
                         if (res) return res;
@@ -7984,7 +8068,7 @@ function lowerCSTExpression(
     );
     if (outerErr) {
       let clauseNode: any = node;
-      while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+      while (clauseNode && clauseNode.type !== "component_clause") {
         clauseNode = clauseNode.parent;
       }
       const rangeObj = clauseNode
@@ -8004,7 +8088,7 @@ function lowerCSTExpression(
           : undefined;
 
       let clsNode: any = clauseNode;
-      while (clsNode && clsNode.type !== "class_definition" && clsNode.type !== "ClassDefinition") {
+      while (clsNode && clsNode.type !== "class_definition") {
         clsNode = clsNode.parent;
       }
 
@@ -8013,16 +8097,11 @@ function lowerCSTExpression(
         const names: string[] = [];
         let curr = cNode;
         while (curr) {
-          if (curr.type === "class_definition" || curr.type === "ClassDefinition") {
+          if (curr.type === "class_definition") {
             let idName = "";
             for (const ch of curr.children || []) {
-              if (
-                ch.type === "class_specifier" ||
-                ch.type === "long_class_specifier" ||
-                ch.type === "ClassSpecifier" ||
-                ch.type === "LongClassSpecifier"
-              ) {
-                const id = ch.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+              if (ch.type === "class_specifier" || ch.type === "long_class_specifier") {
+                const id = ch.children?.find((c: any) => c.type === "identifier");
                 if (id) {
                   idName = id.text?.trim();
                   break;
@@ -8030,7 +8109,7 @@ function lowerCSTExpression(
               }
             }
             if (!idName) {
-              const id = curr.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+              const id = curr.children?.find((c: any) => c.type === "identifier");
               if (id) idName = id.text?.trim();
             }
             if (idName) names.unshift(idName);
@@ -8284,6 +8363,27 @@ function getConstVal(id: number, dae: DAEBuilder): number | null {
   return null;
 }
 
+function isInsideForIndex(node: any): boolean {
+  let curr = node?.parent;
+  while (curr) {
+    if (curr.type === "for_index") return true;
+    if (
+      curr.type === "for_statement" ||
+      curr.type === "for_equation" ||
+      curr.type === "class_definition" ||
+      curr.type === "statement" ||
+      curr.type === "simple_equation" ||
+      curr.type === "connect_equation" ||
+      curr.type === "if_equation" ||
+      curr.type === "when_equation"
+    ) {
+      break;
+    }
+    curr = curr.parent;
+  }
+  return false;
+}
+
 function expandColonToArrayCtor(exprId: number, dae: DAEBuilder, varType?: VarType): number | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
@@ -8373,6 +8473,24 @@ export class ModelicaFlattener {
   public expandableBuses = new Map<string, SymbolId>();
   public evaluatedConstantArrays = new Map<string, any>();
   public currentParentMods?: any;
+  private nodeProtectionCache = new WeakMap<any, boolean>();
+
+  private getFileSymbols(resourceId: string): any[] {
+    const result: any[] = [];
+    const roots = (this.db.childrenOf(null) ?? []).filter((s: any) => s.resourceId === resourceId);
+    const queue = [...roots];
+    while (queue.length > 0) {
+      const sym = queue.pop()!;
+      result.push(sym);
+      const children = this.db.childrenOf(sym.id) ?? [];
+      for (const child of children) {
+        if (child.resourceId === resourceId) {
+          queue.push(child);
+        }
+      }
+    }
+    return result;
+  }
 
   private extractClassAnnotations(dae: DAEBuilder, classId: SymbolId): void {
     const cst = this.db.cstNode(classId) as any;
@@ -8508,13 +8626,7 @@ export class ModelicaFlattener {
     const cst = this.db.cstNode(elemId) as any;
     if (!cst) return false;
     let curr = cst;
-    while (
-      curr &&
-      curr.type !== "component_declaration" &&
-      curr.type !== "ComponentDeclaration" &&
-      curr.type !== "component_clause" &&
-      curr.type !== "ComponentClause"
-    ) {
+    while (curr && curr.type !== "component_declaration" && curr.type !== "component_clause") {
       curr = curr.parent;
     }
     if (!curr) curr = cst;
@@ -8532,17 +8644,10 @@ export class ModelicaFlattener {
     if (!elemCst) return null;
     let curr: any = elemCst;
     let targetNode: any = null;
-    while (
-      curr &&
-      curr.type !== "component_clause" &&
-      curr.type !== "ComponentClause" &&
-      curr.type !== "class_definition"
-    ) {
+    while (curr && curr.type !== "component_clause" && curr.type !== "class_definition") {
       if (
         curr.type === "component_declaration" ||
-        curr.type === "ComponentDeclaration" ||
         curr.type === "component_declaration1" ||
-        curr.type === "ComponentDeclaration1" ||
         Cst.ComponentDeclaration.is(curr)
       ) {
         targetNode = curr;
@@ -8557,18 +8662,16 @@ export class ModelicaFlattener {
       for (const c of node.children || []) {
         if (
           c.type === "description_string" ||
-          c.type === "DescriptionString" ||
           c.type === "string_literal" ||
           c.type === "comment" ||
           Cst.DescriptionString.is(c)
         ) {
           return c;
         }
-        if (c.type === "description" || c.type === "Description" || Cst.Description.is(c)) {
+        if (c.type === "description" || Cst.Description.is(c)) {
           for (const ch of c.children || []) {
             if (
               ch.type === "description_string" ||
-              ch.type === "DescriptionString" ||
               ch.type === "string_literal" ||
               ch.type === "comment" ||
               Cst.DescriptionString.is(ch)
@@ -8634,11 +8737,15 @@ export class ModelicaFlattener {
     const rootSym = this.db.symbol(rootClassId);
     if (!rootSym || !rootSym.resourceId) return;
     const rootCst = this.db.cstNode(rootClassId) as any;
-    const isOldFrontend = Boolean(rootCst?.text?.includes("-d=-newInst") || (this.options as any)?.isOldFrontend);
+    const isOldFrontend = Boolean(
+      (this.options as any)?.isOldFrontend ||
+      (this.options as any)?.scodeinstMode ||
+      rootCst?.text?.includes("-d=-newInst"),
+    );
 
-    const candidates = this.db
-      .allEntries()
-      .filter((s: any) => s.resourceId === rootSym.resourceId && s.kind === "Class" && this.isOperatorRecordSym(s));
+    const candidates = this.getFileSymbols(rootSym.resourceId).filter(
+      (s: any) => s.kind === "Class" && this.isOperatorRecordSym(s),
+    );
 
     for (const rec of candidates) {
       const recCst = this.db.cstNode(rec.id) as any;
@@ -8740,12 +8847,13 @@ export class ModelicaFlattener {
     if (words.includes("record")) return true;
     const cst = this.db.cstNode(sym.id) as any;
     if (cst) {
-      for (const child of cst.children || []) {
-        if (child.type === "class_prefixes") {
-          const childText = stripComments(child.text ?? "").trim();
-          const childWords = childText.split(/\s+/).filter(Boolean);
-          if (childWords.includes("record")) return true;
-        }
+      const pfx = Cst.ClassDefinition.classPrefixes(cst);
+      if (pfx) {
+        const pfxWords = stripComments(pfx.text ?? "")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        if (pfxWords.includes("record")) return true;
       }
       const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
       if (/^(?:(?:encapsulated|partial)\s+)*record\b/.test(text)) return true;
@@ -9475,19 +9583,15 @@ export class ModelicaFlattener {
     const hasDirectOldFrontend = (node: SyntaxNode | null): boolean => {
       if (!node) return false;
       const spec =
-        node.childForFieldName?.("class_specifier") ??
-        node.children?.find((c: any) => c.type === "class_specifier" || c.type === "ClassSpecifier");
+        node.childForFieldName?.("class_specifier") ?? node.children?.find((c: any) => c.type === "class_specifier");
       const lcs =
         spec?.childForFieldName?.("long_class_specifier") ??
-        spec?.children?.find((c: any) => c.type === "long_class_specifier" || c.type === "LongClassSpecifier");
-      const comp =
-        lcs?.childForFieldName?.("composition") ??
-        lcs?.children?.find((c: any) => c.type === "composition" || c.type === "Composition");
+        spec?.children?.find((c: any) => c.type === "long_class_specifier");
+      const comp = lcs?.childForFieldName?.("composition") ?? lcs?.children?.find((c: any) => c.type === "composition");
       const el =
-        comp?.childForFieldName?.("element_list") ??
-        comp?.children?.find((c: any) => c.type === "element_list" || c.type === "ElementList");
+        comp?.childForFieldName?.("element_list") ?? comp?.children?.find((c: any) => c.type === "element_list");
       for (const elem of el?.children || []) {
-        if (elem.type === "element" || elem.type === "Element") {
+        if (elem.type === "element") {
           const text = elem.text ?? "";
           if (text.startsWith("annotation") && text.includes("-d=-newInst")) {
             return true;
@@ -9607,8 +9711,8 @@ export class ModelicaFlattener {
           if (isRep) {
             const repCst = this.db.cstNode(item.symbol.id) as any;
             let repParent = repCst;
-            while (repParent && repParent.type !== "element" && repParent.type !== "Element") {
-              if (repParent.type === "composition" || repParent.type === "Composition") break;
+            while (repParent && repParent.type !== "element") {
+              if (repParent.type === "composition") break;
               repParent = repParent.parent;
             }
             const targetRepNode = repParent ?? repCst;
@@ -9754,7 +9858,7 @@ export class ModelicaFlattener {
         const currCst = this.db.cstNode(comp.id) as any;
         const getClause = (node: any) => {
           let curr = node;
-          while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause") curr = curr.parent;
+          while (curr && curr.type !== "component_clause") curr = curr.parent;
           return curr;
         };
         const prevClause = getClause(prevCst);
@@ -9830,8 +9934,8 @@ export class ModelicaFlattener {
 
               const getClause = (node: any) => {
                 let curr = node;
-                while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause") curr = curr.parent;
-                if (curr && curr.parent && (curr.parent.type === "element" || curr.parent.type === "Element")) {
+                while (curr && curr.type !== "component_clause") curr = curr.parent;
+                if (curr && curr.parent && curr.parent.type === "element") {
                   const parentText = curr.parent.text?.trim() ?? "";
                   if (parentText.startsWith("final")) {
                     return curr.parent;
@@ -10060,7 +10164,10 @@ export class ModelicaFlattener {
       const rootCst = this.db.cstNode(rootClassId) as any;
       const rootSym = this.db.symbol(rootClassId);
       const isOldFrontend = Boolean(
-        rootCst?.text?.includes("-d=-newInst") || rootSym?.resourceId?.includes("/scodeinst/"),
+        (this.options as any)?.isOldFrontend ||
+        (this.options as any)?.scodeinstMode ||
+        rootCst?.text?.includes("-d=-newInst") ||
+        rootSym?.resourceId?.includes("/scodeinst/"),
       );
       let flowThreshold = this.options.flowThreshold;
       if (flowThreshold === undefined && rootCst?.text) {
@@ -10148,26 +10255,14 @@ export class ModelicaFlattener {
       if (!node) return;
       if (
         node.type === "extends_clause" ||
-        node.type === "ExtendsClause" ||
         node.type === "component_clause" ||
-        node.type === "ComponentClause" ||
         node.type === "component_clause1" ||
-        node.type === "component_declaration" ||
-        node.type === "ComponentDeclaration"
+        node.type === "component_declaration"
       ) {
         return;
       }
 
-      if (
-        node.type === "simple_equation" ||
-        node.type === "SimpleEquation" ||
-        node.type === "equality_equation" ||
-        node.type === "EqualityEquation" ||
-        node.type === "connect_equation" ||
-        node.type === "ConnectEquation" ||
-        node.type === "function_call" ||
-        node.type === "FunctionCall"
-      ) {
+      if (node.type === "simple_equation" || node.type === "connect_equation" || node.type === "function_call") {
         const sB = node.startIndex ?? node.startByte;
         const eB = node.endIndex ?? node.endByte;
         if (sB != null && eB != null && eqIdx < dae.getEqCount()) {
@@ -10185,13 +10280,8 @@ export class ModelicaFlattener {
 
     const walkVars = (node: any): void => {
       if (!node) return;
-      if (
-        node.type === "declaration" ||
-        node.type === "Declaration" ||
-        node.type === "component_declaration1" ||
-        node.type === "ComponentDeclaration1"
-      ) {
-        const idChild = (node.children || []).find((c: any) => c.type === "identifier" || c.type === "Identifier");
+      if (node.type === "declaration" || node.type === "component_declaration1") {
+        const idChild = (node.children || []).find((c: any) => c.type === "identifier");
         const name = idChild ? idChild.text?.trim() : node.text?.trim()?.split(/\s|=|\[|\(/)[0];
         if (name) {
           let varIdx = dae.getVarIdxByName(name);
@@ -10376,11 +10466,19 @@ export class ModelicaFlattener {
           let baseName = varName.split("[")[0];
 
           // 3a. Check variable renaming first (e.g. parameter Real L_new = 1.0; or parameter Real my_alpha = 1e-4;)
-          const nameMatch = modText.match(
-            /(?:(?:parameter|constant|discrete)\s+)?(?:Real|Integer|Boolean|String|\w+)\s+([a-zA-Z_]\w*)/,
-          );
-          const declMatch = modText.match(/^([a-zA-Z_]\w*)/);
-          const newName = nameMatch ? nameMatch[1] : declMatch ? declMatch[1] : null;
+          const declNode =
+            Cst.ComponentDeclaration.declaration(effectiveNode) ?? effectiveNode.childForFieldId?.(FieldId.declaration);
+          const nameNode = declNode
+            ? (Cst.Declaration.name(declNode) ?? declNode.childForFieldId?.(FieldId.name))
+            : null;
+          let newName = nameNode?.text?.trim() ?? null;
+          if (!newName) {
+            const nameMatch = modText.match(
+              /(?:(?:parameter|constant|discrete)\s+)?(?:Real|Integer|Boolean|String|\w+)\s+([a-zA-Z_]\w*)/,
+            );
+            const declMatch = modText.match(/^([a-zA-Z_]\w*)/);
+            newName = nameMatch ? nameMatch[1] : declMatch ? declMatch[1] : null;
+          }
           if (newName) {
             if (baseName && newName !== baseName) {
               (dae as any).renameVar?.(baseName, newName);
@@ -10393,14 +10491,14 @@ export class ModelicaFlattener {
                   targetVarIdx = dae.getVarIdxByName(`${baseName}[1]`);
                 }
               }
-              // Target var not found by range; check if an existing parameter was replaced
-              for (let v = 0; v < dae.varCount; v++) {
-                const vn = dae.getVarName(v);
-                if (!vn.includes("[") && rootCst.text && !rootCst.text.includes(vn)) {
+              // Target var not found by range; check if an existing parameter was replaced at edit range
+              if (targetVarIdx < 0) {
+                const oldVarIdx = dae.findVarAtRange(range.startByte, range.endByte);
+                if (oldVarIdx >= 0) {
+                  const vn = dae.getVarName(oldVarIdx).split("[")[0];
                   (dae as any).renameVar?.(vn, newName);
-                  targetVarIdx = v;
+                  targetVarIdx = oldVarIdx;
                   baseName = newName;
-                  break;
                 }
               }
             }
@@ -10472,8 +10570,8 @@ export class ModelicaFlattener {
             } else {
               // Expression binding like dx = L_new / N;
               const exprNode = effectiveNode.children
-                ?.find((c: any) => c.type === "modification" || c.type === "Modification")
-                ?.children?.find((c: any) => c.type === "expression" || c.type === "Expression");
+                ?.find((c: any) => c.type === "modification")
+                ?.children?.find((c: any) => c.type === "expression");
               if (exprNode) {
                 const exprId = this.lowerExpr(exprNode, dae, "");
                 dae.setVarExpression(targetVarIdx, exprId);
@@ -10513,11 +10611,7 @@ export class ModelicaFlattener {
       if (!curr) continue;
       const s = curr.startIndex ?? curr.startByte ?? 0;
       const e = curr.endIndex ?? curr.endByte ?? 0;
-      const isEq =
-        curr.type === "simple_equation" ||
-        curr.type === "SimpleEquation" ||
-        curr.type === "equality_equation" ||
-        curr.type === "EqualityEquation";
+      const isEq = curr.type === "simple_equation";
       if (isEq && ((s <= start && e >= end) || (s >= start && e <= end) || (s < end && e > start))) {
         candidate = curr;
       }
@@ -10540,15 +10634,10 @@ export class ModelicaFlattener {
       const e = curr.endIndex ?? curr.endByte ?? 0;
       const isComp =
         curr.type === "component_declaration" ||
-        curr.type === "ComponentDeclaration" ||
         curr.type === "component_declaration1" ||
-        curr.type === "ComponentDeclaration1" ||
         curr.type === "component_clause" ||
-        curr.type === "ComponentClause" ||
         curr.type === "component_clause1" ||
-        curr.type === "ComponentClause1" ||
-        curr.type === "declaration" ||
-        curr.type === "Declaration";
+        curr.type === "declaration";
       if (isComp && ((s <= start && e >= end) || (s >= start && e <= end) || (s < end && e > start))) {
         candidate = curr;
       }
@@ -10562,15 +10651,14 @@ export class ModelicaFlattener {
   }
 
   private isCstNodeProtected(node: any): boolean {
+    if (!node) return false;
+    if (this.nodeProtectionCache.has(node)) {
+      return this.nodeProtectionCache.get(node)!;
+    }
     let curr = node;
     const nodeStart = node?.startIndex ?? node?.startByte ?? 0;
     while (curr) {
-      if (curr.type === "ElementSection" || curr.type === "element_section") {
-        const vis = curr.children?.find((c: any) => c.text === "protected" || c.text === "public")?.text?.trim();
-        if (vis === "protected" || curr.text?.trim()?.startsWith("protected")) return true;
-        if (vis === "public" || curr.text?.trim()?.startsWith("public")) return false;
-      }
-      if (curr.type === "composition" || curr.type === "Composition") {
+      if (curr.type === "composition") {
         let isProt = false;
         for (const child of curr.children || []) {
           const t = child.text?.trim();
@@ -10583,14 +10671,17 @@ export class ModelicaFlattener {
           const end = child.endIndex ?? child.endByte;
           if (start !== undefined && end !== undefined) {
             if (nodeStart >= start && nodeStart < end) {
+              this.nodeProtectionCache.set(node, isProt);
               return isProt;
             }
           }
         }
+        this.nodeProtectionCache.set(node, isProt);
         return isProt;
       }
       curr = curr.parent;
     }
+    this.nodeProtectionCache.set(node, false);
     return false;
   }
 
@@ -10727,16 +10818,14 @@ export class ModelicaFlattener {
           } else {
             const findBindingExprNode = (n: any): any => {
               if (!n) return null;
-              if (n.type === "expression" || n.type === "Expression") return n;
+              if (n.type === "expression") return n;
               for (const c of n.children || []) {
                 const res = findBindingExprNode(c);
                 if (res) return res;
               }
               return null;
             };
-            const modChild = (compCst as any)?.children?.find(
-              (c: any) => c.type === "modification" || c.type === "Modification",
-            );
+            const modChild = (compCst as any)?.children?.find((c: any) => c.type === "modification");
             const exprCst = findBindingExprNode(modChild ?? compCst);
             if (exprCst) {
               const exprId = this.lowerExpr(exprCst, fn, "");
@@ -10768,10 +10857,10 @@ export class ModelicaFlattener {
     for (const sym of childEntries) {
       if (sym && sym.kind === "Class" && sym.id !== rootClassId) candidates.push(sym);
     }
+    let fileSymbols: any[] = [];
     if (rootSym?.resourceId) {
-      const fileClasses = this.db
-        .allEntries()
-        .filter((s: any) => s.resourceId === rootSym.resourceId && s.kind === "Class" && s.id !== rootClassId);
+      fileSymbols = this.getFileSymbols(rootSym.resourceId);
+      const fileClasses = fileSymbols.filter((s: any) => s.kind === "Class" && s.id !== rootClassId);
       for (const fc of fileClasses) {
         if (!candidates.some((c) => c.id === fc.id)) candidates.push(fc);
       }
@@ -10799,9 +10888,7 @@ export class ModelicaFlattener {
         }
       }
       if (rootSym?.resourceId) {
-        const fileComps = this.db
-          .allEntries()
-          .filter((s: any) => s.resourceId === rootSym.resourceId && s.kind === "Component");
+        const fileComps = fileSymbols.filter((s: any) => s.kind === "Component");
         for (const comp of fileComps) {
           // Skip components defined inside sym itself
           let pId: SymbolId | null = comp.parentId;
@@ -10837,9 +10924,7 @@ export class ModelicaFlattener {
 
         // In OMC compatibility mode, synthesize specialized constructors for modified record components in the file
         if (this.options.omcCompatibility && rootSym?.resourceId) {
-          const fileComps = this.db
-            .allEntries()
-            .filter((s: any) => s.resourceId === rootSym.resourceId && s.kind === "Component");
+          const fileComps = fileSymbols.filter((s: any) => s.kind === "Component");
           for (const c of fileComps) {
             const typeSpec = this.db.query<string | null>("typeSpecifier", c.id);
             if (typeSpec === sym.name || typeSpec === `.${sym.name}`) {
@@ -11381,15 +11466,10 @@ export class ModelicaFlattener {
       if (!node) return null;
       if (
         node.type === "element" ||
-        node.type === "Element" ||
         node.type === "component_clause" ||
-        node.type === "ComponentClause" ||
         node.type === "external_clause" ||
-        node.type === "ExternalClause" ||
         node.type === "algorithm_section" ||
-        node.type === "AlgorithmSection" ||
-        node.type === "equation_section" ||
-        node.type === "EquationSection"
+        node.type === "equation_section"
       ) {
         return null;
       }
@@ -11424,7 +11504,7 @@ export class ModelicaFlattener {
     if (shortSpec) {
       const typeSpecNode =
         Cst.ShortClassSpecifier.typeSpecifier(shortSpec) ??
-        shortSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        shortSpec.children?.find((c: any) => c.type === "type_specifier");
       const baseName = typeSpecNode?.text?.trim() ?? "";
       if (baseName) {
         const baseSym = this.db.byName(baseName).find((e) => e.kind === "Class");
@@ -11434,7 +11514,7 @@ export class ModelicaFlattener {
       }
       const modNode =
         Cst.ShortClassSpecifier.classModification(shortSpec) ??
-        shortSpec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
+        shortSpec.children?.find((c: any) => c.type === "class_modification");
       if (modNode) {
         const parsed = this.db.query<any>("effectiveModification", fnSymId);
         if (parsed?.args) {
@@ -11457,9 +11537,7 @@ export class ModelicaFlattener {
 
     if (extClause) {
       const hasCall =
-        extClause.children?.some(
-          (c: any) => c.type === "external_function_call" || c.type === "ExternalFunctionCall",
-        ) || /\(/.test(extClause.text ?? "");
+        extClause.children?.some((c: any) => c.type === "external_function_call") || /\(/.test(extClause.text ?? "");
       let extText = extClause.text?.trim() ?? "";
       extText = extText.replace(/\s*annotation\s*\([\s\S]*?\)\s*;?$/, "").trim();
       if (extText.endsWith(";")) extText = extText.slice(0, -1).trim();
@@ -11679,12 +11757,9 @@ export class ModelicaFlattener {
 
     // 3. Top-level functions in the same file that are referenced in rootClassId
     if (rootSym.resourceId) {
-      const fileClasses = this.db
-        .allEntries()
-        .filter(
-          (s: any) =>
-            s.resourceId === rootSym.resourceId && s.kind === "Class" && s.id !== rootClassId && s.parentId === null,
-        );
+      const fileClasses = (this.db.childrenOf(null) ?? []).filter(
+        (s: any) => s.resourceId === rootSym.resourceId && s.kind === "Class" && s.id !== rootClassId,
+      );
       const rootCst = this.db.cstNode(rootClassId) as any;
       const rootText = rootCst?.text ?? "";
       for (const fc of fileClasses) {
@@ -11905,20 +11980,8 @@ export class ModelicaFlattener {
     if (/\btype\b/.test(cleanPrefixes)) return true;
     if (/\b(model|record|block|package)\b/.test(cleanPrefixes)) return false;
 
-    let spec = Cst.ClassDefinition.classSpecifier(cst);
-    const isShort =
-      Cst.ShortClassSpecifier.is(cst) ||
-      cst.type === "short_class_specifier" ||
-      cst.type === "ShortClassSpecifier" ||
-      Cst.ShortClassSpecifier.is(spec) ||
-      spec?.type === "short_class_specifier" ||
-      spec?.type === "ShortClassSpecifier" ||
-      Boolean(
-        spec?.children?.find(
-          (c: any) =>
-            Cst.ShortClassSpecifier.is(c) || c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
-        ),
-      );
+    const shortSpec = getShortClassSpecifierNode(cst);
+    const isShort = Boolean(shortSpec);
 
     if (/\bconnector\b/.test(cleanPrefixes) && !isShort) return false;
 
@@ -12070,7 +12133,7 @@ export class ModelicaFlattener {
         if (compInst.name === leafType) {
           const elemCst = this.db.cstNode(elemId) as any;
           let clauseNode: any = elemCst;
-          while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+          while (clauseNode && clauseNode.type !== "component_clause") {
             clauseNode = clauseNode.parent;
           }
           const rangeObj = clauseNode
@@ -12384,9 +12447,7 @@ export class ModelicaFlattener {
           conditionAttrNode = findCondAttr(elemCst);
         }
         if (conditionAttrNode) {
-          const condExpr = conditionAttrNode.children?.find(
-            (c: any) => c.type === "expression" || c.type === "Expression",
-          );
+          const condExpr = conditionAttrNode.children?.find((c: any) => c.type === "expression");
           if (condExpr) {
             const condText = condExpr.text?.trim() ?? "";
             let condVal: boolean | null = null;
@@ -12624,7 +12685,7 @@ export class ModelicaFlattener {
             (isModel || isConnector || isBlock || words.includes("class") || isUserClass)
           ) {
             let clauseNode: any = elemCst;
-            while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+            while (clauseNode && clauseNode.type !== "component_clause") {
               clauseNode = clauseNode.parent;
             }
             const rangeObj = clauseNode
@@ -12653,7 +12714,7 @@ export class ModelicaFlattener {
             parentMods?.instantiatingClassIds ?? new Set(this.currentRootClassId ? [this.currentRootClassId] : []);
           if (classTargetId && instantiatingClassIds.has(classTargetId)) {
             let clauseNode: any = elemCst;
-            while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+            while (clauseNode && clauseNode.type !== "component_clause") {
               clauseNode = clauseNode.parent;
             }
             const rangeObj = clauseNode
@@ -12692,11 +12753,7 @@ export class ModelicaFlattener {
                     ? { startByte: ncCst.startIndex ?? ncCst.startByte, endByte: ncCst.endIndex ?? ncCst.endByte }
                     : undefined;
                   let clauseNode: any = elemCst;
-                  while (
-                    clauseNode &&
-                    clauseNode.type !== "component_clause" &&
-                    clauseNode.type !== "ComponentClause"
-                  ) {
+                  while (clauseNode && clauseNode.type !== "component_clause") {
                     clauseNode = clauseNode.parent;
                   }
                   const compRange = clauseNode
@@ -12737,12 +12794,10 @@ export class ModelicaFlattener {
           const isOpRec = Boolean(classTarget && isRecordTarget && this.isOperatorRecordSym(classTarget));
           const hasOpRecBinding = Boolean(isOpRec && compInst?.modification?.bindingExpression);
           if (hasOpRecBinding) {
-            const modChild = elemCst?.children?.find(
-              (c: any) => c.type === "modification" || c.type === "Modification",
-            );
+            const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
             const findBindingExprNode = (n: any): any => {
               if (!n) return null;
-              if (n.type === "expression" || n.type === "Expression") return n;
+              if (n.type === "expression") return n;
               for (const c of n.children || []) {
                 const res = findBindingExprNode(c);
                 if (res) return res;
@@ -12770,7 +12825,7 @@ export class ModelicaFlattener {
               if (specShort) {
                 const tName = (
                   Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
-                  specShort.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier")
+                  specShort.children?.find((c: any) => c.type === "type_specifier")
                 )?.text?.trim();
                 if (tName) {
                   const aliased = this.db.byName(tName).find((e) => e.kind === "Class" || e.kind === "Package");
@@ -12843,11 +12898,7 @@ export class ModelicaFlattener {
             : (parentMods?.bindingScope ?? prefix);
 
           let compClauseNode: any = elemCst;
-          while (
-            compClauseNode &&
-            compClauseNode.type !== "component_clause" &&
-            compClauseNode.type !== "ComponentClause"
-          ) {
+          while (compClauseNode && compClauseNode.type !== "component_clause") {
             compClauseNode = compClauseNode.parent;
           }
           const compClauseRange = compClauseNode
@@ -12952,7 +13003,7 @@ export class ModelicaFlattener {
                     }
                   }
                   if (typeof evalVal !== "number" || evalVal <= 0) {
-                    evalVal = evaluateCSTNumber({ text: dimName }, undefined, undefined, this.db, dae, prefix);
+                    evalVal = evaluateCSTNumber(dimName, undefined, undefined, this.db, dae, prefix);
                   }
                   if (typeof evalVal === "number" && evalVal > 0) {
                     resolvedDims[i] = evalVal;
@@ -12995,11 +13046,7 @@ export class ModelicaFlattener {
                 const ctorElems = parseArrayLiteralElements(cleanB);
                 if (ctorElems.length !== arrayDims[0]) {
                   let clauseNode: any = elemCst;
-                  while (
-                    clauseNode &&
-                    clauseNode.type !== "component_clause" &&
-                    clauseNode.type !== "ComponentClause"
-                  ) {
+                  while (clauseNode && clauseNode.type !== "component_clause") {
                     clauseNode = clauseNode.parent;
                   }
                   const rangeNode = clauseNode ?? elemCst;
@@ -13033,11 +13080,7 @@ export class ModelicaFlattener {
                   ctorElems.every((e) => e.startsWith('"') && e.endsWith('"'))
                 ) {
                   let clauseNode: any = elemCst;
-                  while (
-                    clauseNode &&
-                    clauseNode.type !== "component_clause" &&
-                    clauseNode.type !== "ComponentClause"
-                  ) {
+                  while (clauseNode && clauseNode.type !== "component_clause") {
                     clauseNode = clauseNode.parent;
                   }
                   const rangeNode = clauseNode ?? elemCst;
@@ -13068,11 +13111,7 @@ export class ModelicaFlattener {
                 );
                 if (!hasEach) {
                   let clauseNode: any = elemCst;
-                  while (
-                    clauseNode &&
-                    clauseNode.type !== "component_clause" &&
-                    clauseNode.type !== "ComponentClause"
-                  ) {
+                  while (clauseNode && clauseNode.type !== "component_clause") {
                     clauseNode = clauseNode.parent;
                   }
                   const rangeNode = clauseNode ?? elemCst;
@@ -13275,12 +13314,9 @@ export class ModelicaFlattener {
               if (!customType && enumSym) {
                 customType = getSymbolQualifiedName(this.db, enumSym.id);
               }
-              const cstText = (this.db.cstNode(enumSym.id) as any)?.text ?? "";
-              const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-              if (enumMatch) {
-                enumLiterals = enumMatch[1].split(",").map((s) => ({ stringValue: s.trim().split(/\s+/)[0] }));
-              } else if (Array.isArray(targetMeta?.literals)) {
-                enumLiterals = targetMeta.literals.map((s: string) => ({ stringValue: s }));
+              const enumLits = extractEnumLiteralsFromCst(this.db.cstNode(enumSym.id) as any, targetMeta);
+              if (enumLits) {
+                enumLiterals = enumLits.map((s: string) => ({ stringValue: s }));
               }
             }
           }
@@ -13340,14 +13376,11 @@ export class ModelicaFlattener {
                 spec?.type === "ShortClassSpecifier"
                   ? spec
                   : spec?.children?.find(
-                      (c: any) =>
-                        Cst.ShortClassSpecifier.is(c) ||
-                        c.type === "short_class_specifier" ||
-                        c.type === "ShortClassSpecifier",
+                      (c: any) => Cst.ShortClassSpecifier.is(c) || c.type === "short_class_specifier",
                     );
               const basePrefixNode =
                 Cst.ShortClassSpecifier.basePrefix(short) ??
-                short?.children?.find((c: any) => c.type === "base_prefix" || c.type === "BasePrefix");
+                short?.children?.find((c: any) => c.type === "base_prefix");
               const text = basePrefixNode?.text?.trim();
               if (text === "input") {
                 causality = Causality.Input;
@@ -13419,8 +13452,7 @@ export class ModelicaFlattener {
                   let memClauseEnd = memCst?.endIndex ?? memCst?.endByte;
                   if (memCst) {
                     let curr = memCst;
-                    while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause")
-                      curr = curr.parent;
+                    while (curr && curr.type !== "component_clause") curr = curr.parent;
                     if (curr) {
                       memClauseStart = curr.startIndex ?? curr.startByte;
                       memClauseEnd = curr.endIndex ?? curr.endByte;
@@ -13430,8 +13462,7 @@ export class ModelicaFlattener {
                   let kClauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
                   if (elemCst) {
                     let curr = elemCst;
-                    while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause")
-                      curr = curr.parent;
+                    while (curr && curr.type !== "component_clause") curr = curr.parent;
                     if (curr) {
                       kClauseStart = curr.startIndex ?? curr.startByte;
                       kClauseEnd = curr.endIndex ?? curr.endByte;
@@ -13632,7 +13663,7 @@ export class ModelicaFlattener {
             // Try lowering from CST node if available
             const findBindingExprNode = (n: any): any => {
               if (!n) return null;
-              if (n.type === "expression" || n.type === "Expression") return n;
+              if (n.type === "expression") return n;
               for (const c of n.children || []) {
                 const res = findBindingExprNode(c);
                 if (res) return res;
@@ -13640,16 +13671,14 @@ export class ModelicaFlattener {
               return null;
             };
 
-            const modChild = elemCst?.children?.find(
-              (c: any) => c.type === "modification" || c.type === "Modification",
-            );
+            const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
             const exprCst = findBindingExprNode(modChild ?? elemCst);
             if (idxTuple.length === 0 && bText) {
               const cleanB = bText.replace(/^=/, "").trim();
               if (cleanB.startsWith("{") && cleanB.endsWith("}") && !/\bfor\b/.test(cleanB)) {
                 const ctorElems = parseArrayLiteralElements(cleanB);
                 let clauseNode: any = elemCst;
-                while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+                while (clauseNode && clauseNode.type !== "component_clause") {
                   clauseNode = clauseNode.parent;
                 }
                 const rangeNode = clauseNode ?? elemCst;
@@ -13683,7 +13712,7 @@ export class ModelicaFlattener {
                 !isAssignableType(providedType, varType, { intEnumConversion: this.options?.intEnumConversion })
               ) {
                 let clauseNode: any = elemCst;
-                while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+                while (clauseNode && clauseNode.type !== "component_clause") {
                   clauseNode = clauseNode.parent;
                 }
                 const rangeObj = clauseNode
@@ -13756,12 +13785,7 @@ export class ModelicaFlattener {
                       : bindCst;
                   let scalarFactorExprId: number | null = null;
                   if (idxTuple.length > 0) {
-                    if (
-                      innerCst &&
-                      (innerCst.type === "binary_expression" ||
-                        innerCst.type === "BinaryExpression" ||
-                        innerCst.children?.some((k: any) => k.text === "*"))
-                    ) {
+                    if (innerCst && innerCst.children?.some((k: any) => k.text === "*")) {
                       const leftChild = innerCst.children?.[0];
                       const rightChild = innerCst.children?.[innerCst.children.length - 1];
                       const leftText = leftChild?.text?.trim() ?? "";
@@ -13861,11 +13885,7 @@ export class ModelicaFlattener {
                       !isAssignableType(providedType, varType, { intEnumConversion: this.options?.intEnumConversion })
                     ) {
                       let clauseNode: any = elemCst;
-                      while (
-                        clauseNode &&
-                        clauseNode.type !== "component_clause" &&
-                        clauseNode.type !== "ComponentClause"
-                      ) {
+                      while (clauseNode && clauseNode.type !== "component_clause") {
                         clauseNode = clauseNode.parent;
                       }
                       const rangeObj = clauseNode
@@ -14218,11 +14238,7 @@ export class ModelicaFlattener {
                           } catch (err: any) {
                             if (err?.code === 4009 || err?.message?.includes("causes a cyclic dependency")) {
                               let compClause: any = elemCst;
-                              while (
-                                compClause &&
-                                compClause.type !== "component_clause" &&
-                                compClause.type !== "ComponentClause"
-                              ) {
+                              while (compClause && compClause.type !== "component_clause") {
                                 compClause = compClause.parent;
                               }
                               const diagNode = compClause ?? elemCst;
@@ -14292,7 +14308,7 @@ export class ModelicaFlattener {
           for (const d of rawDimsInitial) {
             if (d.kind === "literal" && d.value < 0) {
               let clauseNode: any = elemCst;
-              while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+              while (clauseNode && clauseNode.type !== "component_clause") {
                 clauseNode = clauseNode.parent;
               }
               const diagNode = clauseNode ?? elemCst;
@@ -14393,7 +14409,7 @@ export class ModelicaFlattener {
               let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
               if (elemCst) {
                 let curr = elemCst;
-                while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause") curr = curr.parent;
+                while (curr && curr.type !== "component_clause") curr = curr.parent;
                 if (curr) {
                   clauseStart = curr.startIndex ?? curr.startByte;
                   clauseEnd = curr.endIndex ?? curr.endByte;
@@ -14484,7 +14500,7 @@ export class ModelicaFlattener {
                     }
                   }
                   if (typeof evalVal !== "number" || evalVal <= 0) {
-                    evalVal = evaluateCSTNumber({ text: dimName }, undefined, undefined, this.db, dae, prefix);
+                    evalVal = evaluateCSTNumber(dimName, undefined, undefined, this.db, dae, prefix);
                   }
                   if (typeof evalVal !== "number" || evalVal <= 0) {
                     if (rawDims && rawDims[i]?.cstBytes) {
@@ -14595,7 +14611,7 @@ export class ModelicaFlattener {
                   const parts = splitTopLevelArgs(inner);
                   const dimArgs = bRef.startsWith("fill(") ? parts.slice(1) : parts;
                   if (dimArgs.length > i) {
-                    const dimVal = evaluateCSTNumber({ text: dimArgs[i] }, undefined, undefined, this.db, dae, prefix);
+                    const dimVal = evaluateCSTNumber(dimArgs[i], undefined, undefined, this.db, dae, prefix);
                     if (typeof dimVal === "number" && dimVal >= 0) {
                       resolvedDims[i] = dimVal;
                     }
@@ -14758,8 +14774,7 @@ export class ModelicaFlattener {
                     let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
                     if (elemCst) {
                       let curr = elemCst;
-                      while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause")
-                        curr = curr.parent;
+                      while (curr && curr.type !== "component_clause") curr = curr.parent;
                       if (curr) {
                         clauseStart = curr.startIndex ?? curr.startByte;
                         clauseEnd = curr.endIndex ?? curr.endByte;
@@ -14808,8 +14823,7 @@ export class ModelicaFlattener {
                 let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
                 if (elemCst) {
                   let curr = elemCst;
-                  while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause")
-                    curr = curr.parent;
+                  while (curr && curr.type !== "component_clause") curr = curr.parent;
                   if (curr) {
                     clauseStart = curr.startIndex ?? curr.startByte;
                     clauseEnd = curr.endIndex ?? curr.endByte;
@@ -14844,8 +14858,7 @@ export class ModelicaFlattener {
                   let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
                   if (elemCst) {
                     let curr = elemCst;
-                    while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause")
-                      curr = curr.parent;
+                    while (curr && curr.type !== "component_clause") curr = curr.parent;
                     if (curr) {
                       clauseStart = curr.startIndex ?? curr.startByte;
                       clauseEnd = curr.endIndex ?? curr.endByte;
@@ -14874,8 +14887,7 @@ export class ModelicaFlattener {
                 let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
                 if (elemCst) {
                   let curr = elemCst;
-                  while (curr && curr.type !== "component_clause" && curr.type !== "ComponentClause")
-                    curr = curr.parent;
+                  while (curr && curr.type !== "component_clause") curr = curr.parent;
                   if (curr) {
                     clauseStart = curr.startIndex ?? curr.startByte;
                     clauseEnd = curr.endIndex ?? curr.endByte;
@@ -14964,11 +14976,7 @@ export class ModelicaFlattener {
               if (dae.classKind === "function" && (causality === Causality.Input || causality === Causality.Output)) {
                 if (!dae.diagnostics.some((d) => d.code === ModelicaErrorCode.FUNCTION_PROTECTED_IO.code)) {
                   let clauseNode: any = elemCst;
-                  while (
-                    clauseNode &&
-                    clauseNode.type !== "component_clause" &&
-                    clauseNode.type !== "ComponentClause"
-                  ) {
+                  while (clauseNode && clauseNode.type !== "component_clause") {
                     clauseNode = clauseNode.parent;
                   }
                   const diagNode = clauseNode ?? elemCst;
@@ -15049,7 +15057,7 @@ export class ModelicaFlattener {
               const ctorElems = parseArrayLiteralElements(cleanB);
               if (ctorElems.length !== arrayDims[0]) {
                 let clauseNode: any = elemCst;
-                while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+                while (clauseNode && clauseNode.type !== "component_clause") {
                   clauseNode = clauseNode.parent;
                 }
                 const rangeNode = clauseNode ?? elemCst;
@@ -15083,7 +15091,7 @@ export class ModelicaFlattener {
                 ctorElems.every((e) => e.startsWith('"') && e.endsWith('"'))
               ) {
                 let clauseNode: any = elemCst;
-                while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+                while (clauseNode && clauseNode.type !== "component_clause") {
                   clauseNode = clauseNode.parent;
                 }
                 const rangeNode = clauseNode ?? elemCst;
@@ -15114,7 +15122,7 @@ export class ModelicaFlattener {
               );
               if (!hasEach) {
                 let clauseNode: any = elemCst;
-                while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+                while (clauseNode && clauseNode.type !== "component_clause") {
                   clauseNode = clauseNode.parent;
                 }
                 const rangeNode = clauseNode ?? elemCst;
@@ -15162,11 +15170,7 @@ export class ModelicaFlattener {
               if (dae.classKind === "function" && (causality === Causality.Input || causality === Causality.Output)) {
                 if (!dae.diagnostics.some((d) => d.code === ModelicaErrorCode.FUNCTION_PROTECTED_IO.code)) {
                   let clauseNode: any = elemCst;
-                  while (
-                    clauseNode &&
-                    clauseNode.type !== "component_clause" &&
-                    clauseNode.type !== "ComponentClause"
-                  ) {
+                  while (clauseNode && clauseNode.type !== "component_clause") {
                     clauseNode = clauseNode.parent;
                   }
                   const diagNode = clauseNode ?? elemCst;
@@ -15208,12 +15212,10 @@ export class ModelicaFlattener {
           ) {
             const bText = effectiveBinding.text.trim();
             let rhsExprId: number | null = null;
-            const modChild = elemCst?.children?.find(
-              (c: any) => c.type === "modification" || c.type === "Modification",
-            );
+            const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
             const findBindingExprNode = (n: any): any => {
               if (!n) return null;
-              if (n.type === "expression" || n.type === "Expression") return n;
+              if (n.type === "expression") return n;
               for (const c of n.children || []) {
                 const res = findBindingExprNode(c);
                 if (res) return res;
@@ -15291,7 +15293,7 @@ export class ModelicaFlattener {
             if (dae.classKind === "function" && (causality === Causality.Input || causality === Causality.Output)) {
               if (!dae.diagnostics.some((d) => d.code === ModelicaErrorCode.FUNCTION_PROTECTED_IO.code)) {
                 let clauseNode: any = elemCst;
-                while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "ComponentClause") {
+                while (clauseNode && clauseNode.type !== "component_clause") {
                   clauseNode = clauseNode.parent;
                 }
                 const diagNode = clauseNode ?? elemCst;
@@ -15382,7 +15384,7 @@ export class ModelicaFlattener {
     if (specShort) {
       const typeSpec =
         Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
-        specShort.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        specShort.children?.find((c: any) => c.type === "type_specifier");
       const typeName = typeSpec?.text?.trim();
       if (typeName) {
         const matches = this.db.byName(typeName);
@@ -15600,16 +15602,12 @@ export class ModelicaFlattener {
             console.log("WALK NODE:", node.type, node.text?.slice(0, 30));
           }
           if (
-            (node !== cst && (node.type === "class_definition" || node.type === "ClassDefinition")) ||
+            (node !== cst && node.type === "class_definition") ||
             node.type === "extends_clause" ||
-            node.type === "ExtendsClause" ||
             node.type === "inheritance_modification" ||
-            node.type === "InheritanceModification" ||
             node.type === "component_clause" ||
-            node.type === "ComponentClause" ||
             node.type === "component_clause1" ||
-            node.type === "component_declaration" ||
-            node.type === "ComponentDeclaration"
+            node.type === "component_declaration"
           ) {
             return;
           }
@@ -15839,7 +15837,7 @@ export class ModelicaFlattener {
               let hasConnectInNonParamIf = false;
               for (const b of branches) {
                 for (const eq of b.equationNodes) {
-                  if (eq.type === "connect_equation" || eq.type === "ConnectEquation") {
+                  if (eq.type === "connect_equation") {
                     const connText = eq.text?.trim()?.replace(/;$/, "") ?? "connect(...)";
                     dae.diagnostics.push({
                       severity: "error",
@@ -15867,13 +15865,11 @@ export class ModelicaFlattener {
               const lowerInlineEq = (n: any): { kind: EqKind; lhsExprId: number; rhsExprId: number } | null => {
                 if (!n) return null;
                 if (n.type === "some_equation" && n.childCount === 1) n = n.child(0);
-                if (
-                  n.type === "simple_equation" ||
-                  n.type === "SimpleEquation" ||
-                  n.type === "equality_equation" ||
-                  n.type === "EqualityEquation"
-                ) {
-                  const exprs = (n.children || []).filter(isEquationExpr);
+                if (n.type === "simple_equation") {
+                  const leftNode = Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs);
+                  const rightNode = Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs);
+                  const exprs =
+                    leftNode && rightNode ? [leftNode, rightNode] : (n.children || []).filter(isEquationExpr);
                   if (exprs.length >= 2) {
                     let lId = this.lowerExpr(exprs[0], dae, prefix, substitutions);
                     let rId = this.lowerExpr(exprs[1], dae, prefix, substitutions);
@@ -15883,7 +15879,7 @@ export class ModelicaFlattener {
                     return { kind: EqKind.Simple, lhsExprId: lId, rhsExprId: rId };
                   }
                 }
-                if (n.type === "function_call" || n.type === "FunctionCall") {
+                if (n.type === "function_call") {
                   const callId = this.lowerExpr(n, dae, prefix, substitutions);
                   return { kind: EqKind.FunctionCall, lhsExprId: callId, rhsExprId: -1 };
                 }
@@ -15933,12 +15929,7 @@ export class ModelicaFlattener {
           }
 
           // Simple and Equality equations: lhs = rhs;
-          if (
-            node.type === "simple_equation" ||
-            node.type === "SimpleEquation" ||
-            node.type === "equality_equation" ||
-            node.type === "EqualityEquation"
-          ) {
+          if (node.type === "simple_equation") {
             if (curBreakContext.brokenComponents.size > 0) {
               const checkNodeForBroken = (n: any): string | null => {
                 if (!n) return null;
@@ -16419,7 +16410,7 @@ export class ModelicaFlattener {
                   t = c.text?.trim() ?? "";
                   break;
                 }
-                if (c.type === "comment" || c.type === "Comment") {
+                if (c.type === "comment") {
                   const sc = (c.children || []).find(
                     (ch: any) =>
                       ch.type === "description" || ch.type === "description_string" || ch.type === "string_literal",
@@ -16432,13 +16423,13 @@ export class ModelicaFlattener {
               }
               if (!t) {
                 let p = node.parent;
-                while (p && p.type !== "equation_section" && p.type !== "EquationSection") {
+                while (p && p.type !== "equation_section") {
                   for (const c of p.children || []) {
                     if (c.type === "description" || c.type === "description_string" || c.type === "string_literal") {
                       t = c.text?.trim() ?? "";
                       break;
                     }
-                    if (c.type === "comment" || c.type === "Comment") {
+                    if (c.type === "comment") {
                       const sc = (c.children || []).find(
                         (ch: any) =>
                           ch.type === "description" || ch.type === "description_string" || ch.type === "string_literal",
@@ -16464,20 +16455,25 @@ export class ModelicaFlattener {
           }
 
           // Function call equations (e.g. terminate(...), reinit(...))
-          if (node.type === "function_call" || node.type === "FunctionCall") {
+          if (node.type === "function_call") {
             this.emitFunctionCallEquation(node, dae, prefix, substitutions, isInitial, -1);
             return;
           }
 
           // Connect equations: connect(c1, c2);
-          if (node.type === "connect_equation" || node.type === "ConnectEquation") {
-            const refs = (node.children || []).filter(
-              (c: any) =>
-                c.type === "component_reference" ||
-                c.type === "expression" ||
-                c.type === "identifier" ||
-                c.type === "name",
-            );
+          if (node.type === "connect_equation") {
+            const lhsNode = Cst.ConnectEquation.lhs(node) ?? node.childForFieldId?.(FieldId.lhs);
+            const rhsNode = Cst.ConnectEquation.rhs(node) ?? node.childForFieldId?.(FieldId.rhs);
+            const refs =
+              lhsNode && rhsNode
+                ? [lhsNode, rhsNode]
+                : (node.children || []).filter(
+                    (c: any) =>
+                      c.type === "component_reference" ||
+                      c.type === "expression" ||
+                      c.type === "identifier" ||
+                      c.type === "name",
+                  );
             if (refs.length >= 2) {
               const r0Raw = refs[0].text?.trim().replace(/\s+/g, "") ?? "";
               const r1Raw = refs[1].text?.trim().replace(/\s+/g, "") ?? "";
@@ -16499,10 +16495,13 @@ export class ModelicaFlattener {
               let r0Sub = r0Raw;
               let r1Sub = r1Raw;
               if (substitutions && substitutions.size > 0) {
-                for (const [sKey, sVal] of substitutions) {
-                  r0Sub = r0Sub.replace(new RegExp(`\\b${sKey}\\b`, "g"), String(sVal));
-                  r1Sub = r1Sub.replace(new RegExp(`\\b${sKey}\\b`, "g"), String(sVal));
-                }
+                const applySubs = (s: string) =>
+                  s.replace(/\b[a-zA-Z_]\w*\b/g, (match) => {
+                    const val = substitutions.get(match);
+                    return val !== undefined ? String(val) : match;
+                  });
+                r0Sub = applySubs(r0Sub);
+                r1Sub = applySubs(r1Sub);
               }
 
               for (const bConn of curBreakContext.brokenConnections) {
@@ -16647,22 +16646,19 @@ export class ModelicaFlattener {
             }
           }
 
-          if (Cst.WhenEquation.is(node) || node.type === "when_equation" || node.type === "WhenEquation") {
+          if (Cst.WhenEquation.is(node) || node.type === "when_equation") {
             const cond =
-              Cst.WhenEquation.condition(node) ??
-              (node.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
+              Cst.WhenEquation.condition(node) ?? (node.children || []).find((c: any) => c.type === "expression");
             const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
             const whenIdx = dae.addWhenEquation(condId);
 
             const collectWhenBody = (n: any) => {
               if (!n) return;
-              if (
-                n.type === "simple_equation" ||
-                n.type === "equality_equation" ||
-                n.type === "SimpleEquation" ||
-                n.type === "EqualityEquation"
-              ) {
-                const expressions = (n.children || []).filter(isEquationExpr);
+              if (n.type === "simple_equation") {
+                const leftNode = Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs);
+                const rightNode = Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs);
+                const expressions =
+                  leftNode && rightNode ? [leftNode, rightNode] : (n.children || []).filter(isEquationExpr);
                 if (expressions.length >= 2) {
                   let lhsId = this.lowerExpr(expressions[0], dae, prefix, substitutions);
                   let rhsId = this.lowerExpr(expressions[1], dae, prefix, substitutions);
@@ -16705,7 +16701,7 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (n.type === "connect_equation" || n.type === "ConnectEquation") {
+              if (n.type === "connect_equation") {
                 const connText = n.text?.trim()?.replace(/;$/, "") ?? "connect(...)";
                 dae.diagnostics.push({
                   severity: "error",
@@ -16719,7 +16715,7 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (n.type === "function_call" || n.type === "FunctionCall") {
+              if (n.type === "function_call") {
                 this.emitFunctionCallEquation(n, dae, prefix, substitutions, false, whenIdx);
                 return;
               }
@@ -16740,7 +16736,7 @@ export class ModelicaFlattener {
           }
 
           // Algorithm sections:
-          if (node.type === "algorithm_section" || node.type === "AlgorithmSection") {
+          if (node.type === "algorithm_section") {
             (dae as any).hasAlgorithmSection = true;
             const secStart = dae.stmtCount;
             const isInitAlg =
@@ -16754,17 +16750,11 @@ export class ModelicaFlattener {
               const text = n.text?.trim() ?? "";
               if (
                 n.type === "assignment_statement" ||
-                n.type === "AssignmentStatement" ||
                 n.type === "when_statement" ||
-                n.type === "WhenStatement" ||
                 n.type === "for_statement" ||
-                n.type === "ForStatement" ||
                 n.type === "while_statement" ||
-                n.type === "WhileStatement" ||
                 n.type === "if_statement" ||
-                n.type === "IfStatement" ||
                 n.type === "function_call" ||
-                n.type === "FunctionCall" ||
                 n.type === "break" ||
                 n.type === '"break"' ||
                 text === "break" ||
@@ -16780,8 +16770,7 @@ export class ModelicaFlattener {
                 }
                 const hasAssign = (n.children || []).some((c: any) => c.text?.trim() === ":=" || c.type === ":=");
                 const hasCallArgs = (n.children || []).some(
-                  (c: any) =>
-                    c.type === "function_call_args" || c.type === "FunctionCallArgs" || c.text?.trim() === "(",
+                  (c: any) => c.type === "function_call_args" || c.text?.trim() === "(",
                 );
                 if (!hasAssign && hasCallArgs) {
                   return [n];
@@ -16801,12 +16790,8 @@ export class ModelicaFlattener {
               if (!sNode) return;
 
               if (sNode.type === "statement" || sNode.type === "statement_or_procedure") {
-                const outList = (sNode.children || []).find(
-                  (c: any) => c.type === "output_expression_list" || c.type === "OutputExpressionList",
-                );
-                const fnCall = (sNode.children || []).find(
-                  (c: any) => c.type === "function_call" || c.type === "FunctionCall",
-                );
+                const outList = (sNode.children || []).find((c: any) => c.type === "output_expression_list");
+                const fnCall = (sNode.children || []).find((c: any) => c.type === "function_call");
                 if (outList && fnCall) {
                   const rawTargets: (any | null)[] = [];
                   let currentExpr: any | null = null;
@@ -16896,8 +16881,7 @@ export class ModelicaFlattener {
 
                 const hasAssign = (sNode.children || []).some((c: any) => c.text?.trim() === ":=" || c.type === ":=");
                 const hasCallArgs = (sNode.children || []).some(
-                  (c: any) =>
-                    c.type === "function_call_args" || c.type === "FunctionCallArgs" || c.text?.trim() === "(",
+                  (c: any) => c.type === "function_call_args" || c.text?.trim() === "(",
                 );
                 if (!hasAssign && hasCallArgs) {
                   const callId = this.lowerExpr(sNode, dae, prefix, substitutions);
@@ -16926,7 +16910,7 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (sNode.type === "function_call" || sNode.type === "FunctionCall") {
+              if (sNode.type === "function_call") {
                 const callId = this.lowerExpr(sNode, dae, prefix, substitutions);
                 if (this.isStaticTrueAssert(callId, dae)) {
                   return;
@@ -16935,16 +16919,12 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (sNode.type === "for_statement" || sNode.type === "ForStatement") {
-                const indicesNode = (sNode.children || []).find(
-                  (c: any) => c.type === "for_indices" || c.type === "ForIndices",
-                );
-                const forIndices = (indicesNode?.children || []).filter(
-                  (c: any) => c.type === "for_index" || c.type === "ForIndex",
-                );
+              if (sNode.type === "for_statement") {
+                const indicesNode = (sNode.children || []).find((c: any) => c.type === "for_indices");
+                const forIndices = (indicesNode?.children || []).filter((c: any) => c.type === "for_index");
                 if (forIndices.length === 0) {
                   const fIndex = indicesNode
-                    ? (indicesNode.children || []).find((c: any) => c.type === "for_index" || c.type === "ForIndex")
+                    ? (indicesNode.children || []).find((c: any) => c.type === "for_index")
                     : null;
                   if (fIndex) forIndices.push(fIndex);
                 }
@@ -17003,14 +16983,29 @@ export class ModelicaFlattener {
 
                   if (targetArr && targetDimIdx >= 0) {
                     let maxIdx = 0;
-                    const prefixPattern = new RegExp(`^${targetArr}\\[([0-9,]+)\\]$`);
-                    for (let v = 0; v < dae.varCount; v++) {
-                      const vName = dae.getVarName(v);
-                      const m = prefixPattern.exec(vName);
-                      if (m) {
-                        const indices = m[1].split(",").map(Number);
-                        if (targetDimIdx < indices.length && indices[targetDimIdx] > maxIdx) {
-                          maxIdx = indices[targetDimIdx];
+                    const namedShape =
+                      (dae as any).getNamedArrayShape?.(targetArr) ?? (dae as any).namedArrayShapes?.get(targetArr);
+                    if (namedShape && namedShape.length > targetDimIdx && namedShape[targetDimIdx]! > 0) {
+                      maxIdx = namedShape[targetDimIdx]!;
+                    } else {
+                      const vIdx = dae.getVarIdxByName(targetArr);
+                      if (vIdx >= 0) {
+                        const shape = dae.getVarShape(vIdx);
+                        if (shape && shape.length > targetDimIdx && shape[targetDimIdx]! > 0) {
+                          maxIdx = shape[targetDimIdx]!;
+                        }
+                      }
+                    }
+                    if (maxIdx === 0) {
+                      const prefix = `${targetArr}[`;
+                      for (let v = 0; v < dae.varCount; v++) {
+                        const vName = dae.getVarName(v);
+                        if (vName.startsWith(prefix) && vName.endsWith("]")) {
+                          const rest = vName.slice(prefix.length, -1);
+                          const indices = rest.split(",").map(Number);
+                          if (targetDimIdx < indices.length && indices[targetDimIdx]! > maxIdx) {
+                            maxIdx = indices[targetDimIdx]!;
+                          }
                         }
                       }
                     }
@@ -17032,9 +17027,7 @@ export class ModelicaFlattener {
                   }
                   const fi = forIndices[idx];
                   const varName = fi.child(0)?.text?.trim() ?? "i";
-                  const rangeNode = (fi.children || []).find(
-                    (c: any) => c.type === "expression" || c.type === "colon_expression",
-                  );
+                  const rangeNode = (fi.children || []).find((c: any) => c.type === "expression");
                   let rangeExprId = -1;
                   const rangeText = rangeNode?.text?.trim() ?? "";
                   if (rangeText && this.db) {
@@ -17048,12 +17041,7 @@ export class ModelicaFlattener {
                         targetMeta?.isEnumeration ||
                         Boolean(cstText.includes("enumeration("));
                       if (isEnum) {
-                        const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-                        const literals = enumMatch
-                          ? enumMatch[1].split(",").map((x: string) => x.trim().split(/\s+/)[0])
-                          : Array.isArray(targetMeta?.literals)
-                            ? targetMeta.literals
-                            : null;
+                        const literals = extractEnumLiteralsFromCst(cstNode, targetMeta);
                         if (literals) {
                           const qualType = getSymbolQualifiedName(this.db, s.id);
                           const litExprIds = literals.map((lit: string) =>
@@ -17086,26 +17074,32 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (Cst.WhileStatement.is(sNode) || sNode.type === "while_statement" || sNode.type === "WhileStatement") {
+              if (Cst.WhileStatement.is(sNode) || sNode.type === "while_statement") {
                 const cond =
                   Cst.WhileStatement.condition(sNode) ??
-                  (sNode.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
+                  (sNode.children || []).find((c: any) => c.type === "expression");
                 const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
                 const bodyStmts: any[] = [];
-                let inLoop = false;
-                for (const child of sNode.children || []) {
-                  const t = child.text?.trim() ?? "";
-                  const ty = child.type ?? "";
-                  if (t === "loop" || ty === '"loop"') {
-                    inLoop = true;
-                    continue;
+                const cstBodies = Cst.WhileStatement.bodyList(sNode);
+                if (cstBodies && cstBodies.length > 0) {
+                  for (const b of cstBodies) {
+                    bodyStmts.push(...extractExecutableStmts(b));
                   }
-                  if (t === "end while" || ty === '"end while"') {
-                    inLoop = false;
-                    break;
-                  }
-                  if (inLoop && child.type !== ";" && child.text?.trim() !== ";") {
-                    bodyStmts.push(...extractExecutableStmts(child));
+                } else {
+                  let inLoop = false;
+                  for (const child of sNode.children || []) {
+                    const norm = Cst.kind(child);
+                    if (norm === "loop") {
+                      inLoop = true;
+                      continue;
+                    }
+                    if (norm === "end while") {
+                      inLoop = false;
+                      break;
+                    }
+                    if (inLoop && norm !== ";") {
+                      bodyStmts.push(...extractExecutableStmts(child));
+                    }
                   }
                 }
                 dae.addStatement(StmtKind.While, condId, bodyStmts.length);
@@ -17115,10 +17109,9 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (Cst.IfStatement.is(sNode) || sNode.type === "if_statement" || sNode.type === "IfStatement") {
+              if (Cst.IfStatement.is(sNode) || sNode.type === "if_statement") {
                 const cond =
-                  Cst.IfStatement.condition(sNode) ??
-                  (sNode.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
+                  Cst.IfStatement.condition(sNode) ?? (sNode.children || []).find((c: any) => c.type === "expression");
                 const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
 
                 let inThen = false;
@@ -17130,9 +17123,8 @@ export class ModelicaFlattener {
                 let currBranch: { condNode: any; stmts: any[] } | null = null;
 
                 for (const child of sNode.children || []) {
-                  const t = child.text?.trim() ?? "";
-                  const ty = child.type ?? "";
-                  if (t === "then" || ty === '"then"') {
+                  const norm = Cst.kind(child);
+                  if (norm === "then") {
                     if (inElseIf) {
                       inElseIfThen = true;
                     } else if (!inElse) {
@@ -17140,7 +17132,7 @@ export class ModelicaFlattener {
                     }
                     continue;
                   }
-                  if (t === "elseif" || ty === '"elseif"') {
+                  if (norm === "elseif") {
                     inThen = false;
                     inElseIf = true;
                     inElseIfThen = false;
@@ -17149,7 +17141,7 @@ export class ModelicaFlattener {
                     branches.push(currBranch);
                     continue;
                   }
-                  if (t === "else" || ty === '"else"') {
+                  if (norm === "else") {
                     inThen = false;
                     inElseIf = false;
                     inElseIfThen = false;
@@ -17158,7 +17150,7 @@ export class ModelicaFlattener {
                     branches.push(currBranch);
                     continue;
                   }
-                  if (t === "end if" || ty === '"end if"') {
+                  if (norm === "end if") {
                     inThen = false;
                     inElseIf = false;
                     inElseIfThen = false;
@@ -17167,18 +17159,18 @@ export class ModelicaFlattener {
                   }
                   if (inElseIf && currBranch) {
                     if (!inElseIfThen) {
-                      if (child.type === "expression" || child.type === "Expression") {
+                      if (child.type === "expression") {
                         currBranch.condNode = child;
                       }
-                    } else if (child.type !== ";" && child.text?.trim() !== ";") {
+                    } else if (norm !== ";") {
                       currBranch.stmts.push(...extractExecutableStmts(child));
                     }
                   } else if (inElse && currBranch) {
-                    if (child.type !== ";" && child.text?.trim() !== ";") {
+                    if (norm !== ";") {
                       currBranch.stmts.push(...extractExecutableStmts(child));
                     }
                   } else if (inThen) {
-                    if (child.type !== ";" && child.text?.trim() !== ";") {
+                    if (norm !== ";") {
                       thenStmts.push(...extractExecutableStmts(child));
                     }
                   }
@@ -17247,7 +17239,7 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (sNode.type === "assignment_statement" || sNode.type === "AssignmentStatement") {
+              if (sNode.type === "assignment_statement") {
                 const exprs = (sNode.children || []).filter(
                   (c: any) => c.type === "expression" || c.type === "component_reference",
                 );
@@ -17365,10 +17357,10 @@ export class ModelicaFlattener {
                 return;
               }
 
-              if (Cst.WhenStatement.is(sNode) || sNode.type === "when_statement" || sNode.type === "WhenStatement") {
+              if (Cst.WhenStatement.is(sNode) || sNode.type === "when_statement") {
                 const cond =
                   Cst.WhenStatement.condition(sNode) ??
-                  (sNode.children || []).find((c: any) => c.type === "expression" || c.type === "Expression");
+                  (sNode.children || []).find((c: any) => c.type === "expression");
                 const condId = cond ? this.lowerExpr(cond, dae, prefix, substitutions) : -1;
 
                 let inThen = false;
@@ -17378,32 +17370,31 @@ export class ModelicaFlattener {
                 let currEw: { condNode: any; stmts: any[] } | null = null;
 
                 for (const child of sNode.children || []) {
-                  const t = child.text?.trim() ?? "";
-                  const ty = child.type ?? "";
-                  if (t === "then" || ty === '"then"') {
+                  const norm = Cst.kind(child);
+                  if (norm === "then") {
                     if (!inElseWhen) inThen = true;
                     continue;
                   }
-                  if (t === "elsewhen" || ty === '"elsewhen"') {
+                  if (norm === "elsewhen") {
                     inThen = false;
                     inElseWhen = true;
                     currEw = { condNode: null, stmts: [] };
                     elseWhenList.push(currEw);
                     continue;
                   }
-                  if (t === "end when" || ty === '"end when"') {
+                  if (norm === "end when") {
                     inThen = false;
                     inElseWhen = false;
                     break;
                   }
                   if (inElseWhen && currEw) {
-                    if (!currEw.condNode && (child.type === "expression" || child.type === "Expression")) {
+                    if (!currEw.condNode && child.type === "expression") {
                       currEw.condNode = child;
-                    } else if (child.type !== ";" && child.text?.trim() !== ";") {
+                    } else if (norm !== ";") {
                       currEw.stmts.push(...extractExecutableStmts(child));
                     }
                   } else if (inThen) {
-                    if (child.type !== ";" && child.text?.trim() !== ";") {
+                    if (norm !== ";") {
                       thenStmts.push(...extractExecutableStmts(child));
                     }
                   }
@@ -17429,11 +17420,8 @@ export class ModelicaFlattener {
                   child.type === "assignment_statement" ||
                   child.type === "when_statement" ||
                   child.type === "for_statement" ||
-                  child.type === "ForStatement" ||
                   child.type === "while_statement" ||
-                  child.type === "WhileStatement" ||
-                  child.type === "if_statement" ||
-                  child.type === "IfStatement"
+                  child.type === "if_statement"
                 ) {
                   lowerStatement(child);
                 }
@@ -17446,11 +17434,8 @@ export class ModelicaFlattener {
                 stmt.type === "assignment_statement" ||
                 stmt.type === "when_statement" ||
                 stmt.type === "for_statement" ||
-                stmt.type === "ForStatement" ||
                 stmt.type === "while_statement" ||
-                stmt.type === "WhileStatement" ||
-                stmt.type === "if_statement" ||
-                stmt.type === "IfStatement"
+                stmt.type === "if_statement"
               ) {
                 lowerStatement(stmt);
               }
@@ -17463,7 +17448,7 @@ export class ModelicaFlattener {
             return;
           }
 
-          if (node.type === "equation_section" || node.type === "EquationSection") {
+          if (node.type === "equation_section") {
             const isInit =
               isInitial ||
               (node.text?.trim()?.startsWith("initial") ?? false) ||
@@ -17476,11 +17461,11 @@ export class ModelicaFlattener {
             return;
           }
 
-          if (node.type === "composition" || node.type === "Composition") {
+          if (node.type === "composition") {
             const eqSections: any[] = [];
             const otherChildren: any[] = [];
             for (const kid of node.children || []) {
-              if (kid.type === "equation_section" || kid.type === "EquationSection") {
+              if (kid.type === "equation_section") {
                 eqSections.push(kid);
               } else {
                 otherChildren.push(kid);
@@ -17496,7 +17481,7 @@ export class ModelicaFlattener {
           }
 
           for (const kid of node.children || []) {
-            if (kid.type !== "class_definition" && kid.type !== "ClassDefinition") {
+            if (kid.type !== "class_definition") {
               walk(kid, substitutions, isInitial);
             }
           }
@@ -17512,7 +17497,7 @@ export class ModelicaFlattener {
     if (specShort) {
       const typeSpec =
         Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
-        specShort.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        specShort.children?.find((c: any) => c.type === "type_specifier");
       const typeName = typeSpec?.text?.trim();
       if (typeName) {
         const matches = this.db.byName(typeName);

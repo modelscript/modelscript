@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { GPUArenaBuffers } from "./gpu-buffers.js";
 
 const DB_NAME = "modelscript-wgsl-cache";

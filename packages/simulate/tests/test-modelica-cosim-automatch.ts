@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { compileScadToSolid } from "@modelscript/scad";
 import { LbmVoxelizer } from "../src/cfd/lbm-voxelizer.js";
 import { LiveCoSimOrchestrator } from "../src/core/live-cosim-orchestrator.js";

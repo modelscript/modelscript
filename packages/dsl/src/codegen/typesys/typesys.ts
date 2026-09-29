@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { LanguageOptions as GrammarOptions } from "../../dsl/language.js";
 import { typesysEngineCode } from "../../src-gen/runtime-templates.js";
 import { getDJB2Hash } from "../shared/utils.js";

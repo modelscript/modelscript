@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Native DPLL(T) SMT Engine ---
 // Incremental SAT Solver using Two-Watched Literals, 1-UIP Conflict Analysis,
 // VSIDS Branching, Luby Restarts, and Theory Solvers (LRA & E-Graph / EUF).

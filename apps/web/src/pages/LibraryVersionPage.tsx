@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { PackageIcon, TagIcon } from "@primer/octicons-react";
 import { Flash, Heading, Label, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";

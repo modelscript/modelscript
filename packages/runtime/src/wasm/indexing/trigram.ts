@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * @fileoverview High-Performance Zero-GC Trigram Inverted Index & Dex-Style Fuzzy Search.
  *

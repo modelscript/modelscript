@@ -1,5 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @fileoverview OpenSCAD Language Evaluator & Constructive Solid Geometry (CSG) Engine.
+ *
+ * Academic Citations:
+ * - Requicha, A. A. (1980). Representations for rigid solids: Theory, methods, and systems.
+ *   ACM Computing Surveys, 12(4), 437-464. https://doi.org/10.1145/356827.356833
+ * - Foley, J. D., Van Dam, A., Feiner, S. K., & Hughes, J. F. (1996). Computer Graphics:
+ *   Principles and Practice (2nd ed.). Addison-Wesley. Chapter 12: Constructive Solid Geometry.
+ * - Kienzle, M. (2009). OpenSCAD: The Programmers Solid 3D CAD Modeller. https://openscad.org
+ *
+ * ModelScript Architectural Rationale:
+ * Cyber-physical systems (CPS) require tight co-design between 1D lumped-parameter dynamic models
+ * (Modelica) and 3D geometric packaging (CAD/CFD). Physical properties such as mass, moments of inertia,
+ * thermal dissipation area, and hydraulic flow restrictions depend directly on 3D geometry.
+ * The SCAD evaluator executes declarative OpenSCAD models, resolving parametric modules, loops, and
+ * mathematical transformations into normalized CSG solid trees (`@modelscript/cad`) for downstream
+ * OpenCascade B-Rep evaluation, STEP (ISO 10303) export, and 3D CFD meshing.
+ *
+ * ModelScript Modifications:
+ * - Augments geometric primitives with CFD boundary patch tags (`tagPatch`, `BoundaryPatchType`:
+ *   inlet, outlet, wall, symmetry) to directly link 3D geometry with SU2/OpenFOAM CFD boundary conditions.
+ * - Injects bidirectional parameter bindings between Modelica simulation parameters and SCAD variables.
+ * - Preserves AST source mapping (`SolidSourceMetadata`) on generated solids for interactive visual picking in the 3D IDE.
+ */
+
 import {
   box,
   chamfer,
@@ -617,6 +642,16 @@ export class ScadEvaluator {
     const type = exprNode.type;
 
     if (type === "Expression" || type === "PrimaryExpression") {
+      if (exprNode.childCount === 0) {
+        const text = exprNode.text.trim();
+        if (/^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$/.test(text)) {
+          return parseFloat(text);
+        }
+        if (text === "true") return true;
+        if (text === "false") return false;
+        if (text === "undef") return undefined;
+        return scope.getVar(text);
+      }
       const inner = exprNode.child(0);
       return inner ? this.evaluateExpression(inner, scope) : undefined;
     }

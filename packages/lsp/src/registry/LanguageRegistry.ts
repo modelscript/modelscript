@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { LanguageAction, LanguageOptions, WritebackConfig, WritebackHandler } from "@modelscript/dsl";
 import type { QueryEngine } from "@modelscript/runtime";
 import type { Disposable } from "vscode-languageserver";
@@ -74,8 +76,22 @@ export class LanguageRegistry {
   register(plugin: LanguagePlugin): void {
     const id = plugin.id.toLowerCase();
     const existing = this.plugins.get(id);
-    if (existing && !plugin.disposables) {
-      plugin.disposables = existing.disposables;
+    if (existing) {
+      if (!plugin.disposables) {
+        plugin.disposables = existing.disposables;
+      }
+      if (!plugin.parser && existing.parser) {
+        plugin.parser = existing.parser;
+      }
+      if (!plugin.facade && existing.facade) {
+        plugin.facade = existing.facade;
+      }
+      if (!plugin.workspaceIndex && existing.workspaceIndex) {
+        plugin.workspaceIndex = existing.workspaceIndex;
+      }
+      if (!plugin.queryEngine && existing.queryEngine) {
+        plugin.queryEngine = existing.queryEngine;
+      }
     }
     this.plugins.set(id, plugin);
 
@@ -166,9 +182,14 @@ export class LanguageRegistry {
    * Resolves a language plugin by file URI extension.
    */
   getPluginForUri(uri: string): LanguagePlugin | undefined {
-    const dotIdx = uri.lastIndexOf(".");
+    let cleanUri = uri;
+    const qIdx = cleanUri.indexOf("?");
+    if (qIdx !== -1) cleanUri = cleanUri.slice(0, qIdx);
+    const hashIdx = cleanUri.indexOf("#");
+    if (hashIdx !== -1) cleanUri = cleanUri.slice(0, hashIdx);
+    const dotIdx = cleanUri.lastIndexOf(".");
     if (dotIdx === -1) return undefined;
-    const ext = uri.slice(dotIdx).toLowerCase();
+    const ext = cleanUri.slice(dotIdx).toLowerCase();
     return this.extMap.get(ext);
   }
 

@@ -3,7 +3,14 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 
-import { dropComponentGhost, initGraph, setDiagramOptions, updateParameterText } from "@modelscript/diagram";
+import {
+  dropComponentGhost,
+  evaluatePropertyPredicate,
+  initGraph,
+  setDiagramOptions,
+  updateParameterText,
+  validatePropertyValue,
+} from "@modelscript/diagram";
 
 function escapeHtml(str: unknown): string {
   if (str === null || str === undefined) return "";
@@ -119,8 +126,10 @@ window.addEventListener("DOMContentLoaded", () => {
     },
     onShowProperties: (nodeId: unknown, cachedProps: unknown, isLoading?: boolean) => {
       showProperties({ id: nodeId, properties: cachedProps, isLoading });
-      // We moved showProperties into diagram-core but didn't bring the DOM logic
-      vscode.postMessage({ type: "getProperties", componentName: nodeId });
+      // Only request full properties if not already loaded or if currently in loading state
+      if (!cachedProps || isLoading) {
+        vscode.postMessage({ type: "getProperties", componentName: nodeId });
+      }
     },
     onUndo: () => vscode.postMessage({ type: "undo" }),
     onRedo: () => vscode.postMessage({ type: "redo" }),
@@ -225,10 +234,12 @@ function showProperties(nodeData: any) {
     const hasSchemaTabs = props.schema?.tabs && props.schema.tabs.length > 0;
 
     if (hasSchemaTabs) {
-      const availableTabs = props.schema.tabs;
+      const availableTabs = props.schema.tabs.filter((t: any) =>
+        evaluatePropertyPredicate(t.visibleIf, props.values || {}),
+      );
       let activeTabId = nodeActiveTabMap.get(nodeData.id);
       if (!activeTabId || !availableTabs.some((t: any) => t.id === activeTabId)) {
-        activeTabId = availableTabs[0].id;
+        activeTabId = availableTabs[0]?.id;
         if (activeTabId) {
           nodeActiveTabMap.set(String(nodeData.id), activeTabId);
         }
@@ -253,26 +264,22 @@ function showProperties(nodeData: any) {
       // Active tab groups
       if (activeTab && activeTab.groups) {
         for (const group of activeTab.groups) {
+          if (!evaluatePropertyPredicate(group.visibleIf, props.values || {})) continue;
           html += `
             <details open style="margin-bottom: 12px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
               <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground); margin-bottom: 8px;">${group.label}</summary>
               <div style="display: flex; flex-direction: column; gap: 8px;">
           `;
           for (const field of group.fields || []) {
+            if (!evaluatePropertyPredicate(field.visibleIf, props.values || {})) continue;
             const val = props.values?.[field.key] ?? field.defaultValue ?? "";
             const escapedVal = escapeHtml(val);
             const escapedDesc = escapeHtml(field.description || "");
             const escapedLabel = escapeHtml(field.label);
 
-            let isDisabled = false;
-            if (field.enabledIf && props.values) {
-              const cond = field.enabledIf.trim();
-              if (cond.startsWith("!")) {
-                isDisabled = props.values[cond.slice(1)] === true || props.values[cond.slice(1)] === "true";
-              } else {
-                isDisabled = props.values[cond] === false || props.values[cond] === "false" || !props.values[cond];
-              }
-            }
+            const isEnabled = evaluatePropertyPredicate(field.enabledIf, props.values || {});
+            const isDisabled = !isEnabled || Boolean(field.readOnly);
+            const fieldErr = validatePropertyValue(field, val, props.values || {});
 
             if (field.kind === "boolean") {
               const isChecked = val === true || val === "true";
@@ -306,15 +313,24 @@ function showProperties(nodeData: any) {
                   </div>
                 </div>
               `;
+            } else if (field.kind === "color") {
+              html += `
+                <div class="prop-group" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; opacity: ${isDisabled ? 0.5 : 1};">
+                  <label class="prop-label" title="${escapedDesc}">${escapedLabel}</label>
+                  <input type="color" class="prop-input-property" data-prop="${field.key}" value="${escapedVal || "#000000"}" ${isDisabled ? "disabled" : ""} style="border: 1px solid var(--vscode-dropdown-border); background: transparent; cursor: pointer; border-radius: 4px; height: 26px; width: 40px; padding: 2px;" />
+                </div>
+              `;
             } else {
               const escapedUnit = field.unit ? `[${escapeHtml(field.unit)}]` : "";
+              const inputType = field.kind === "number" ? "number" : "text";
               html += `
                 <div class="prop-group" style="opacity: ${isDisabled ? 0.5 : 1};">
                   <label class="prop-label" title="${escapedDesc}">${escapedLabel} ${escapedUnit}</label>
                   <div style="display: flex; gap: 4px; align-items: center;">
-                    <input type="text" class="prop-input prop-input-property" data-prop="${field.key}" value="${escapedVal}" ${field.readOnly ? "readonly" : ""} ${isDisabled ? "disabled" : ""} style="flex: 1;" />
+                    <input type="${inputType}" class="prop-input prop-input-property" data-prop="${field.key}" value="${escapedVal}" ${field.readOnly ? "readonly" : ""} ${isDisabled ? "disabled" : ""} style="flex: 1;" />
                     ${field.unit ? `<span style="font-size: 11px; color: var(--vscode-descriptionForeground);">${escapeHtml(field.unit)}</span>` : ""}
                   </div>
+                  ${fieldErr ? `<div class="prop-error" style="color: var(--vscode-errorForeground, #f85149); font-size: 11px; margin-top: 2px;">${escapeHtml(fieldErr)}</div>` : ""}
                 </div>
               `;
             }
@@ -460,29 +476,25 @@ function showProperties(nodeData: any) {
       // Optimistically patch diagram SVG text in-place
       updateParameterText(nodeData.id, propKey, String(prevValue ?? ""), String(newValue));
 
-      // Live condition evaluation for enabledIf fields in the current DOM
+      // Live condition evaluation for enabledIf and visibleIf fields in the current DOM
       const allPropInputs = document.querySelectorAll(".prop-input-property");
       allPropInputs.forEach((otherInput) => {
         const otherKey = otherInput.getAttribute("data-prop");
         for (const tab of props?.schema?.tabs || []) {
           for (const grp of tab.groups || []) {
             const f = grp.fields?.find((field: any) => field.key === otherKey);
-            if (f?.enabledIf && props.values) {
-              const cond = f.enabledIf.trim();
-              let disabled = false;
-              if (cond.startsWith("!")) {
-                disabled = props.values[cond.slice(1)] === true || props.values[cond.slice(1)] === "true";
-              } else {
-                disabled = props.values[cond] === false || props.values[cond] === "false" || !props.values[cond];
-              }
+            if (f && props.values) {
+              const isEnabled = evaluatePropertyPredicate(f.enabledIf, props.values);
+              const isVisible = evaluatePropertyPredicate(f.visibleIf, props.values);
               const parentGroup = otherInput.closest(".prop-group") as HTMLElement | null;
               if (parentGroup) {
-                parentGroup.style.opacity = disabled ? "0.5" : "1";
+                parentGroup.style.display = isVisible ? "" : "none";
+                parentGroup.style.opacity = isEnabled && !f.readOnly ? "1" : "0.5";
               }
-              if (disabled) {
-                otherInput.setAttribute("disabled", "");
-              } else {
+              if (isEnabled && !f.readOnly) {
                 otherInput.removeAttribute("disabled");
+              } else {
+                otherInput.setAttribute("disabled", "");
               }
             }
           }
@@ -503,12 +515,6 @@ function showProperties(nodeData: any) {
             key: propKey,
             value: newValue,
             previousValue: prevValue,
-          });
-          enqueueDiagramAction({
-            type: "updateParameter",
-            name: nodeData.id,
-            parameter: propKey,
-            value: String(newValue),
           });
         }, 100),
       );

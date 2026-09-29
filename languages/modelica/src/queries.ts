@@ -1,5 +1,5 @@
-/* eslint-disable */
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable */
 /**
  * Modelica Salsa Query Hooks.
  * Semantic query definitions for QueryEngine.
@@ -862,6 +862,10 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
       }
       if (!importKind) importKind = "simple";
 
+      if (db.ensureFQNIndexed && pkgName) {
+        db.ensureFQNIndexed(pkgName);
+      }
+
       if (importKind === "simple") {
         const shortName = aliasName ?? pkgName.split(".").pop() ?? pkgName;
         qualifiedImports[shortName] = pkgName;
@@ -1029,6 +1033,9 @@ export function resolveSimpleNameHelper(
   }
 
   // 7. Predefined types fallback
+  if (db.ensureFQNIndexed) {
+    db.ensureFQNIndexed(name);
+  }
   const predefined = db.byName(name);
   return (
     predefined?.find((e) => (e.metadata as any)?.isPredefined) ??
@@ -1048,6 +1055,9 @@ export function resolveSimpleNameHelper(
 function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
   if (path.startsWith(".")) {
     path = path.slice(1);
+  }
+  if (db.ensureFQNIndexed) {
+    db.ensureFQNIndexed(path);
   }
   const parts = path.split(".");
   if (parts.length === 0 || !parts[0]) return null;

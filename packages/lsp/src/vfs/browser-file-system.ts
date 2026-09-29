@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { Dirent, FileSystem, Stats } from "../utils/filesystem.js";
 
 export interface MemFile {

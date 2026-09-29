@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createChunkedUint8Array } from "../core/array";
 import { DaeBuilder, ExprKind, EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT, EQ_STRIDE, EQ_LHS, EQ_RHS, VAR_STRIDE, VAR_FLAGS, FLAG_TEARING_VAR } from "../dae/builder";
 import { atomicChunkAlloc, debugLog } from "../arena";
@@ -5,10 +7,33 @@ import { simplifyAst } from "../parser";
 
 /**
  * Block Lower Triangular (BLT) Transformation Engine.
- * Converts flat DAE systems into block lower triangular form using:
- * 1. CSR Dependency Graph Construction
- * 2. Maximum Cardinality Bipartite Matching (Hopcroft-Karp / DFS)
- * 3. Tarjan's Strongly Connected Components (SCC) Decomposition
+ *
+ * Transforms flat Differential-Algebraic Equation (DAE) systems into block lower
+ * triangular form using bipartite matching and strongly connected components (SCC).
+ *
+ * Academic Citations:
+ *   - Tarjan, R. E. (1972). "Depth-first search and linear graph algorithms."
+ *     SIAM Journal on Computing, 1(2), pp. 146–160. DOI: 10.1137/0201010. (SCC Decomposition)
+ *   - Hopcroft, J. E., & Karp, R. M. (1973). "An n^(5/2) algorithm for maximum matchings in bipartite graphs."
+ *     SIAM Journal on Computing, 2(4), pp. 225–231. DOI: 10.1137/0202019.
+ *   - Dulmage, A. L., & Mendelsohn, N. S. (1958). "Coverings of bipartite graphs."
+ *     Canadian Journal of Mathematics, 10, pp. 517–534. DOI: 10.4153/CJM-1958-052-0. (Bipartite Structure)
+ *   - Cellier, F. E., & Kofman, E. (2006). Continuous System Simulation. Springer.
+ *     ISBN: 978-0-387-26102-7. (BLT Partitioning for Physical Systems)
+ *
+ * ModelScript Architectural Rationale:
+ *   Flattened Modelica and cyber-physical models produce large-scale systems of coupled differential
+ *   and algebraic equations. Solving a monolithic system of size N is computationally prohibitive (O(N^3)).
+ *   BLT partitions the equation-variable dependency graph into a topological sequence of minimal
+ *   strongly connected components (scalar assignments and small algebraic loops). This enables
+ *   ModelScript's solvers to execute sequential forward evaluations interspersed with localized
+ *   Newton-Raphson or Gröbner solves on isolated subproblems.
+ *
+ * Modifications:
+ *   - Implemented entirely within WebAssembly linear memory (`@unmanaged`) with zero GC overhead.
+ *   - Bipartite incidence graph is maintained in Compressed Sparse Row (CSR) format using `ChunkedInt32Array`.
+ *   - Augmenting path matching and Tarjan's SCC stack operate directly on 32-bit arena node identifiers.
+ *   - SCC block outputs feed directly into downstream tearing (`TornBlock`) and integrator stages.
  */
 @unmanaged
 export class BltEngine {

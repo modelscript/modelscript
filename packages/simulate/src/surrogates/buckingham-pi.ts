@@ -1,14 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Buckingham Pi Theorem & Similarity Dedimensionalization Engine.
+ * @fileoverview Buckingham Pi Theorem & Similarity Dedimensionalization Engine.
  *
- * Implements dimensional matrix analysis and rational kernel reduction to
- * transform physical simulation variables into canonical dimensionless groups
- * (Reynolds Re, Nusselt Nu, Euler Eu, Prandtl Pr, etc.).
+ * Academic Citations:
+ * - Buckingham, E. (1914). On physically similar systems; illustrations of the use of
+ *   dimensional equations. Physical Review, 4(4), 345-376. https://doi.org/10.1103/PhysRev.4.345
+ * - Vaschy, A. (1892). Sur les lois de similitude en physique. Annales Télégraphiques, 19, 25-28.
+ * - Langhaar, H. L. (1951). Dimensional Analysis and Theory of Models. John Wiley & Sons.
+ * - Barenblatt, G. I. (1996). Scaling, Self-Similarity, and Intermediate Asymptotics.
+ *   Cambridge Texts in Applied Mathematics 14, Cambridge University Press.
+ *   https://doi.org/10.1017/CBO9781107050242
  *
- * This enables scale-invariant surrogate models that generalize across
- * arbitrary geometry scales, operating pressures, and working fluids.
+ * ModelScript Architectural Rationale:
+ * Data-driven surrogate models (neural networks, Gaussian processes, polynomial response surfaces)
+ * trained directly on raw dimensional variables (e.g. pipe diameters in meters, pressures in Pascals,
+ * flow velocities in m/s) suffer from poor extrapolation and violate fundamental physical scaling
+ * laws. The Buckingham Pi theorem guarantees that any physically meaningful relationship f(q1,...,qn)=0
+ * involving n physical quantities with r fundamental dimensions can be recast into a relationship
+ * between (n - r) independent dimensionless groups Pi_1,...,Pi_{n-r}. Dedimensionalizing model spaces
+ * reduces surrogate parameter dimensionality, eliminates unit sensitivity, and ensures scale invariance
+ * across micro, lab, and industrial dimensions.
+ *
+ * ModelScript Modifications:
+ * - Computes the null-space of the 7-dimensional SI unit exponent matrix [L, M, T, I, Theta, N, J]
+ *   using exact rational Gaussian elimination to produce coprime integer powers for Pi groups.
+ * - Recognizes standard engineering dimensionless numbers (Reynolds Re, Nusselt Nu, Prandtl Pr,
+ *   Euler Eu, Mach Ma, Froude Fr, Weber We) via canonical dimensionless fingerprint matching.
+ * - Generates forward (dimensional -> dimensionless) and backward (dimensionless -> dimensional)
+ *   coordinate transform pipelines used by surrogate training and online simulation evaluation.
  */
 
 export type DimensionVector = [number, number, number, number, number, number, number];

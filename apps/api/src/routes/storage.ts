@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import express, { Router as createRouter, type Request, type Response, type Router } from "express";
 import multer from "multer";
 import fs from "node:fs";

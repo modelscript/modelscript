@@ -1,11 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * WebAssembly-Native Salsa Query Engine & QueryDB Bridge.
+ * @fileoverview WebAssembly-Native Salsa Incremental Query Engine & QueryDB Bridge.
  *
- * Provides the canonical incremental dependency graph and semantic query
- * execution engine, backed by the zero-GC WebAssembly runtime (`src/codegen/runtime/graph.ts`)
- * and `WasmWorkspaceIndex`.
+ * Academic Citations:
+ * - Matsakis, N. (2018). Salsa: Incremental On-Demand Computation. Rust Latin America.
+ *   https://github.com/salsa-rs/salsa
+ * - Hammer, M. A., Khoo, Y. P., Hicks, M., & Foster, J. S. (2014). Adapton: Composable,
+ *   demand-driven incremental computation. In Proceedings of the 35th ACM SIGPLAN Conference
+ *   on Programming Language Design and Implementation (PLDI '14), 281-293.
+ *   https://doi.org/10.1145/2666356.2594324
+ * - Demers, A., Reps, T., & Teitelbaum, T. (1981). Incremental evaluation for attribute
+ *   grammars with application to syntax-directed editors. In Proceedings of the 8th ACM
+ *   SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL '81), 105-116.
+ *   https://doi.org/10.1145/567532.567544
+ *
+ * ModelScript Architectural Rationale:
+ * ModelScript's Language Server Protocol (LSP), visual IDE, and polyglot compiler require
+ * sub-millisecond incremental re-analysis across multi-file Modelica libraries (such as the
+ * Modelica Standard Library with 10,000+ classes) and SysML v2 / KerML taxonomies. Full recompilation
+ * on every keystroke is intractable. The Salsa query engine decomposes compilation into pure,
+ * memoized queries with fine-grained dependency tracking. Using the Red-Green algorithm with
+ * early cut-off (backdating), when a source file is edited, only queries depending on invalidated
+ * CST ranges or symbol entries are recomputed; unchanged downstream semantic derivations remain valid.
+ *
+ * ModelScript Modifications:
+ * - Bridges high-level TypeScript query definitions with WebAssembly linear memory dependency
+ *   graphs (`WasmWorkspaceIndex`) and linear CST nodes (`db.cstNode()`).
+ * - Employs zero-GC linear memory handles and integer symbol IDs (`SymbolId`) rather than heavy
+ *   AST objects to eliminate garbage collection pressure in the IDE thread.
+ * - Integrates semantic query hooks (`lint__*`) directly into the Salsa dependency graph to provide
+ *   demand-driven, incremental compiler diagnostics.
  */
 
 import { TaxonomyIndex } from "@modelscript/dsl";
@@ -943,6 +968,13 @@ export class WasmQueryEngine {
     };
   }
 
+  public ensureFQNIndexed(fqn: string): void {
+    const ws = (this.index as any)?.workspace;
+    if (ws && typeof ws.ensureFQNIndexed === "function") {
+      ws.ensureFQNIndexed(fqn);
+    }
+  }
+
   // -- Standalone QueryDB Facade --
 
   private _queryDBCache: QueryDB | null = null;
@@ -953,6 +985,10 @@ export class WasmQueryEngine {
     const engine = this;
 
     const db: QueryDB = {
+      ensureFQNIndexed(fqn: string): void {
+        engine.ensureFQNIndexed(fqn);
+      },
+
       symbol(id: SymbolId): SymbolEntry | undefined {
         return engine.resolveEntry(id);
       },

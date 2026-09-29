@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 export type SymbolKind = string;
 
@@ -150,6 +152,9 @@ export interface QueryDB {
    * Execute a query with arguments and an optional custom hash for cache keying.
    */
   queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>, hashOverride?: string): T;
+
+  /** Ensure all packages and symbols along the specified FQN path are indexed. */
+  ensureFQNIndexed?(fqn: string): void;
 
   // -------------------------------------------------------------------------
   // Specialization — language-agnostic parameterized instances

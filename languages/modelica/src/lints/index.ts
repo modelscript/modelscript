@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { CompilerLint } from "@modelscript/dsl";
 import { modelicaConnectionLints } from "./connections-streams.js";
 import { modelicaHierarchyLints } from "./hierarchy-variability.js";

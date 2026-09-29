@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Minimal Express server for previewing the static IDE build locally.
 // Unlike `serve`, this handles CORS preflight + Private Network Access headers
 // required by VS Code's extension host worker iframe.

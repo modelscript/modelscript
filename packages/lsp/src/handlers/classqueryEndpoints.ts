@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/prefer-for-of */
 // @ts-nocheck
-import { LspContext } from "../LspContext.js";
+import { LspContext } from "../lsp-context.js";
 
 export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(

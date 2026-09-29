@@ -1,4 +1,6 @@
-import { LspContext } from "../LspContext.js";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import { LspContext } from "../lsp-context.js";
 
 let replInterpreter: any = null;
 

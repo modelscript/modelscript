@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Distance-2 Graph Coloring (Curtis-Powell-Reid 1974) ---
 // Compresses sparse Jacobian column directional derivatives for Automatic Differentiation
 

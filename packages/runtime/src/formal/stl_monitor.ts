@@ -16,6 +16,31 @@
  *
  * Property holds iff rho(phi, w, 0) >= 0.
  * If rho < 0, |rho| represents the critical margin of safety violation.
+ *
+ * Academic Citations:
+ *   - Maler, O., & Nickovic, D. (2004). "Monitoring temporal properties of continuous signals."
+ *     In Formal Techniques, Modelling and Analysis of Timed and Fault-Tolerant Systems
+ *     (FORMATS 2004), LNCS 3253, pp. 152–166. Springer. DOI: 10.1007/978-3-540-30206-3_12.
+ *   - Fainekos, G. E., & Pappas, G. J. (2009). "Robustness of temporal logic specifications
+ *     for continuous-time signals." Theoretical Computer Science, 410(42), pp. 4262–4291.
+ *     DOI: 10.1016/j.tcs.2009.06.021.
+ *   - Donzé, A., & Maler, O. (2010). "Robust satisfaction of temporal logic specifications
+ *     in Breach." In Computer Aided Verification (CAV 2010), LNCS 6174, pp. 683–689.
+ *     Springer. DOI: 10.1007/978-3-642-14295-6_59.
+ *
+ * ModelScript Architectural Rationale:
+ *   In continuous simulation and digital twin runtime monitoring, binary pass/fail verification
+ *   is insufficient: engineers need to know not just whether a requirement was met, but how close
+ *   the system came to violating safety margins. STL quantitative robustness provides a signed
+ *   metric: rho > 0 measures the distance to violation (robustness margin), while rho < 0 quantifies
+ *   the severity of the violation. In ModelScript, STL monitors guide adaptive falsification search,
+ *   safety envelope certification, and real-time dashboard telemetry.
+ *
+ * Modifications:
+ *   - Pure TypeScript zero-dependency implementation operating directly on `TrajectoryTrace` arrays.
+ *   - Efficient sliding-window dynamic programming for bounded temporal operators (Always[a, b], Eventually[a, b]).
+ *   - Computes both point robustness rho(0) and continuous robustness trajectories rho(t).
+ *   - Pinpoints critical timestamps and time intervals of maximal safety margin violation.
  */
 
 export type StlFormula =

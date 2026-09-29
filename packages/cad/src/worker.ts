@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import * as fs from "fs";
 import { createRequire } from "module";
 import * as path from "path";

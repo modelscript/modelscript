@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { OpcAasxPackager } from "../aasx/opc-packager.js";
 import { DdpPackager } from "../ddp/packager.js";
 import type { DdpArtifactDescriptor, DdpManifest, DdpPackageContent } from "../ddp/types.js";

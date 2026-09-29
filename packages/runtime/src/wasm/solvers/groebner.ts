@@ -17,9 +17,32 @@ import {
 /**
  * Gröbner Basis & Multivariate Polynomial Algebra Engine in WASM.
  *
- * Provides zero-GC polynomial arithmetic, monomial orderings (LEX, GRLEX, GREVLEX),
- * multivariate polynomial division, Buchberger's algorithm, reduced Gröbner basis
- * computation, and DAE algebraic loop triangularization.
+ * Implements symbolic computational algebraic geometry algorithms including Buchberger's
+ * algorithm, multivariate polynomial division, and reduced Gröbner basis extraction
+ * for exact triangularization of DAE algebraic loops.
+ *
+ * Academic Citations:
+ *   - Buchberger, B. (1965). Ein Algorithmus zum Auffinden der Basiselemente des Restklassenringes
+ *     nach einem nulldimensionalen Polynomideal. PhD thesis, University of Innsbruck.
+ *   - Buchberger, B. (1976). "A theoretical basis for the reduction of polynomials to canonical forms."
+ *     ACM SIGSAM Bulletin, 10(3), pp. 19–29. DOI: 10.1145/1088216.1088219.
+ *   - Cox, D., Little, J., & O'Shea, D. (2015). Ideals, Varieties, and Algorithms: An Introduction to
+ *     Computational Algebraic Geometry and Commutative Algebra (4th ed.). Springer.
+ *     DOI: 10.1007/978-3-319-16721-3.
+ *
+ * ModelScript Architectural Rationale:
+ *   Algebraic loops in physical simulation (such as kinematic linkages or power-flow networks)
+ *   are notoriously prone to Newton-Raphson divergence or convergence to incorrect roots when solved
+ *   purely numerically. Gröbner basis elimination with lexicographic ordering (ORDER_LEX) triangulates
+ *   multivariate polynomial systems symbolically. This produces a single univariate polynomial in the
+ *   primary tearing variable followed by explicit rational back-substitutions, allowing ModelScript
+ *   to determine all real roots analytically and avoid numerical tearing failures.
+ *
+ * Modifications:
+ *   - Implemented in AssemblyScript targeting WebAssembly linear memory.
+ *   - Provides zero-GC monomial orderings (LEX, GRLEX, GREVLEX) with total degree caching.
+ *   - S-polynomial formation and reduction pipeline optimized for sparse polynomial systems.
+ *   - Ingests equations directly from `DAEBuilder` AST structures and re-emits triangularized assignment chains.
  */
 
 export const ORDER_LEX: u32 = 1;

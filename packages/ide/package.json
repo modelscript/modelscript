@@ -4,7 +4,7 @@
   "private": true,
   "description": "ModelScript VS Code Web Extension client, custom editors, and webview panels",
   "type": "module",
-  "main": "src/browserClientMain.ts",
+  "main": "src/browser-client-main.ts",
   "scripts": {
     "clean": "rimraf dist",
     "lint": "eslint src --no-warn-ignored",

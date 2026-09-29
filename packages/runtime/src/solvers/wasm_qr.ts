@@ -8,6 +8,26 @@
  *     where Q is orthogonal (Q^T * Q = I) and R is upper triangular.
  *   - Coordinate frame rotations: x = x_0 + Q * y
  *   - Wrapping-effect mitigation: computes minimal-volume bounding boxes for rotated interval sets.
+ *
+ * Academic Citations:
+ *   - Householder, A. S. (1958). "Unitary triangularization of a nonsymmetric matrix."
+ *     Journal of the ACM, 5(4), pp. 339–342. DOI: 10.1145/320941.320947.
+ *   - Golub, G. H., & Van Loan, C. F. (2013). Matrix Computations (4th ed.).
+ *     Johns Hopkins University Press. ISBN: 978-1-4214-0794-4.
+ *   - Lohner, R. (1987). "Enclosing the solutions of ordinary initial and boundary value problems."
+ *     In Computer Arithmetic: Scientific Computation and Programming Languages, pp. 255–286.
+ *
+ * ModelScript Architectural Rationale:
+ *   In reachability analysis and verified ODE integration, propagating axis-aligned bounding boxes
+ *   leads to exponential over-approximation known as the wrapping effect. By factoring the state
+ *   transition sensitivity matrix via Householder QR, the orthogonal matrix Q provides an optimal
+ *   curvilinear coordinate frame, orienting the interval bounding box along the principal expansion
+ *   axes and drastically reducing over-estimation during formal safety verification.
+ *
+ * Modifications:
+ *   - Operates on Float64Array memory buffers mapped directly from WebAssembly linear memory.
+ *   - Uses backward accumulation of Householder elementary reflectors to synthesize explicit Q matrices.
+ *   - Outward interval rounding protects against floating-point inaccuracies during frame rotation.
  */
 
 import { Interval } from "../analysis/wasm_interval.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import {
   DaeBuilder,
   ExprKind,
@@ -276,9 +278,30 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
 
 /**
  * Pantelides Structural Index Reduction Engine.
- * Formulates the bipartite graph of equations and highest-order derivatives,
- * finds maximal matchings via augmenting paths, differentiates structurally singular
- * constraint subsets, and selects dummy derivatives via Mattsson-Söderlind.
+ *
+ * Implements structural index reduction for high-index Differential-Algebraic Equation (DAE)
+ * systems using Pantelides algorithm and Mattsson-Söderlind dummy derivative selection.
+ *
+ * Academic Citations:
+ *   - Pantelides, C. C. (1988). "The consistent initialization of differential-algebraic systems."
+ *     SIAM Journal on Scientific and Statistical Computing, 9(2), pp. 213–231. DOI: 10.1137/0909014.
+ *   - Mattsson, S. E., & Söderlind, G. (1993). "Index reduction in differential-algebraic equations
+ *     using dummy derivatives." SIAM Journal on Scientific Computing, 14(3), pp. 677–692.
+ *     DOI: 10.1137/0914043.
+ *
+ * ModelScript Architectural Rationale:
+ *   Object-oriented physical models (e.g. multi-body mechanics, closed kinematic loops, incompressible
+ *   fluid networks) frequently yield high-index DAEs (index >= 2). Standard numerical integrators
+ *   are unstable or fail to converge on systems with differential index > 1. Pantelides algorithm
+ *   identifies structurally singular subsets of equations and differentiates them analytically
+ *   until an index-1 formulation is achieved. Mattsson-Söderlind dummy derivatives select a minimal
+ *   set of independent state derivatives to avoid equation over-determination and drift.
+ *
+ * Modifications:
+ *   - Implemented as an in-WASM zero-GC kernel directly inspecting `DAEBuilder` linear arrays.
+ *   - Performs symbolic differentiation directly on AST expression nodes in WebAssembly linear memory.
+ *   - Tracks differentiation levels and dummy derivative substitutions using flat `ChunkedInt32Array` buffers.
+ *   - Seamlessly pairs with `BltEngine` for alternating augmenting path matching on highest-order variables.
  */
 @unmanaged
 export class PantelidesEngine {

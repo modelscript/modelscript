@@ -1,3 +1,34 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * @fileoverview Graph-Structured Stack (GSS) for WebAssembly GLR Parser.
+ *
+ * Implements the core Graph-Structured Stack (GSS) runtime supporting Generalized
+ * LR (GLR / RNGLR) parsing of engineering DSLs within WebAssembly linear memory.
+ *
+ * Academic Citations:
+ *   - Tomita, M. (1985). Efficient Parsing for Natural Language: A Fast Generalized LR Algorithm.
+ *     Kluwer Academic Publishers. DOI: 10.1007/978-1-4613-2621-2.
+ *   - Scott, E., & Johnstone, A. (2006). "Right Numerate Generalized LR Parsers."
+ *     ACM Transactions on Programming Languages and Systems (TOPLAS), 28(4), pp. 577–618.
+ *     DOI: 10.1145/1176894.1176896. (RNGLR Algorithm)
+ *   - McPeak, S., & Necula, G. C. (2004). "Elkhound: A fast, practical GLR parser generator."
+ *     In International Conference on Compiler Construction (CC 2004), LNCS 2985, pp. 73–88.
+ *     Springer. DOI: 10.1007/978-3-540-24723-4_6.
+ *
+ * ModelScript Architectural Rationale:
+ *   Domain-specific languages like Modelica and SysML v2 feature non-LR(k) grammatical constructs
+ *   (e.g., expression vs. component declaration ambiguities, type prefix modifiers). A GLR parser
+ *   handles nondeterministic branching by splitting and merging parse paths using the GSS,
+ *   enabling expressive, declarative grammars without fragile manual lookahead hacks.
+ *
+ * Modifications:
+ *   - Implemented entirely in WebAssembly linear memory with zero GC allocations.
+ *   - Active, next, and candidate stack heads reside in contiguous unmanaged buffers (`t_activeHeads`).
+ *   - Fast fixed-size power-of-two hash probing (`HEAD_PROBE_SIZE = 2048`) for O(1) stack head merging.
+ *   - Direct integration with incremental error recovery and CST node arena allocation.
+ */
+
 /* eslint-disable */
 import {
   allocGen0,

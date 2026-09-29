@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { compileTGGRules } from "@modelscript/dsl";
 import assert from "node:assert";
 import owl2Config from "../../owl2/src/language.js";

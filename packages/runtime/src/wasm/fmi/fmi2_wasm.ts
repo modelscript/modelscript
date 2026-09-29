@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { DaeBuilder, VAR_STRIDE, VAR_FLAGS, FLAG_VAR_STATE } from "../dae/builder";
 import { computeDerivatives, stepEuler } from "../solvers/integrators";
 import { atomicChunkAlloc } from "../arena";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import Editor from "@monaco-editor/react";
 import {
   BookIcon,

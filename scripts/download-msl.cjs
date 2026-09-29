@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Downloads and extracts the Modelica Standard Library (MSL) if not already present.
 // Supports both MSL 4.0.0 and MSL 4.1.0.
 // Canonical download location: scripts/ModelicaStandardLibrary_v{version}.zip

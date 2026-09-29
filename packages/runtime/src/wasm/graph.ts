@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 // @ts-nocheck
 // True CodeGraph Incremental Database and LSP Bridge

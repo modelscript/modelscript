@@ -13,6 +13,7 @@ import { Interval } from "../analysis/wasm_interval.js";
 import { computeGroebnerBasis, Polynomial, reduceGroebnerBasis, Term } from "../solvers/wasm_groebner.js";
 import { CdclSatSolver, type LitId } from "./cdcl_sat.js";
 import { type ExprNode, Hc4Contractor, type NonlinearConstraint } from "./hc4_contractor.js";
+import { type NlsatConstraint, NlsatSolver } from "./nlsat_solver.js";
 import { SemanticTheoryCoordinator, type TheoryLiteral } from "./theory_coordinator.js";
 
 /**
@@ -98,6 +99,7 @@ export interface SmtProblem {
   maxSubdivisions?: number;
   coordinator?: SemanticTheoryCoordinator;
   multiTheoryLiterals?: Map<LitId, TheoryLiteral>;
+  useNlsat?: boolean;
 }
 
 export type SmtStatus = "DELTA_SAT" | "UNSAT" | "UNKNOWN";
@@ -117,6 +119,8 @@ export class DpllTSolver {
   private coordinator?: SemanticTheoryCoordinator;
   private delta: number;
   private maxSubdivisions: number;
+  private useNlsat: boolean;
+  private initialBox?: Map<string, Interval>;
   private conflicts = 0;
   private subdivisions = 0;
 
@@ -127,6 +131,8 @@ export class DpllTSolver {
     this.coordinator = problem.coordinator;
     this.delta = problem.delta ?? 1e-3;
     this.maxSubdivisions = problem.maxSubdivisions ?? 1000;
+    this.useNlsat = problem.useNlsat ?? true;
+    this.initialBox = problem.initialBox;
 
     for (const c of problem.clauses) {
       this.sat.addClause(c);
@@ -303,7 +309,18 @@ export class DpllTSolver {
    * Runs the full DPLL(T) solving loop.
    */
   public solve(initialBox?: Map<string, Interval>): SmtResult {
-    const box = initialBox ? this.cloneBox(initialBox) : new Map<string, Interval>();
+    const effectiveBox = initialBox ?? this.initialBox;
+    const box = effectiveBox ? this.cloneBox(effectiveBox) : new Map<string, Interval>();
+
+    if (box.size === 0 && this.theoryLits.size > 0) {
+      const discoveredVars = new Set<string>();
+      for (const c of this.theoryLits.values()) {
+        extractVariablesFromNode(c.expr, discoveredVars);
+      }
+      for (const v of discoveredVars) {
+        box.set(v, new Interval(-1e5, 1e5));
+      }
+    }
 
     while (true) {
       // 1. Solve Boolean skeleton
@@ -403,6 +420,64 @@ export class DpllTSolver {
         }
 
         const boxCopy = this.cloneBox(box);
+
+        // 3a. Exact NLSAT CAD engine for polynomial systems
+        if (this.useNlsat) {
+          const nlsatConstraints: NlsatConstraint[] = [];
+          const cidToLit = new Map<number, LitId>();
+          let allPolynomial = true;
+
+          for (let i = 0; i < activeConstraints.length; i++) {
+            const cid = i + 1;
+            const parsed = NlsatSolver.fromNonlinearConstraint(cid, activeConstraints[i]!);
+            if (parsed) {
+              nlsatConstraints.push(parsed);
+              cidToLit.set(cid, activeLits[i]!);
+            } else {
+              allPolynomial = false;
+              break;
+            }
+          }
+
+          if (allPolynomial && nlsatConstraints.length > 0) {
+            const nlsat = new NlsatSolver(nlsatConstraints, undefined, boxCopy);
+            const nlsatRes = nlsat.solve();
+
+            if (nlsatRes.status === "UNSAT") {
+              this.conflicts++;
+              const conflictClause =
+                nlsatRes.conflictingConstraintIds && nlsatRes.conflictingConstraintIds.length > 0
+                  ? nlsatRes.conflictingConstraintIds
+                      .filter((cid) => cidToLit.has(cid))
+                      .map((cid) => -cidToLit.get(cid)!)
+                  : activeLits.map((l) => -l);
+
+              if (!this.sat.addClause(conflictClause.length > 0 ? conflictClause : activeLits.map((l) => -l))) {
+                return {
+                  status: "UNSAT",
+                  conflictsEncountered: this.conflicts,
+                  subdivisions: this.subdivisions,
+                  summary: `Problem certified UNSAT via NLSAT CAD engine: ${nlsatRes.summary}`,
+                };
+              }
+              continue;
+            } else if (nlsatRes.status === "SAT" && nlsatRes.model) {
+              const exactBox = new Map<string, Interval>();
+              for (const [v, val] of nlsatRes.model.entries()) {
+                exactBox.set(v, new Interval(val - 1e-6, val + 1e-6));
+              }
+              return {
+                status: "DELTA_SAT",
+                solutionBox: exactBox,
+                conflictsEncountered: this.conflicts,
+                subdivisions: this.subdivisions,
+                summary: `SAT certified with exact real model via NLSAT CAD: ${nlsatRes.summary}`,
+              };
+            }
+          }
+        }
+
+        // 3b. Fall back to Gröbner preprocessing + HC4 interval contraction
         const theoryRes = this.solveTheoryBox(boxCopy, activeConstraints);
 
         if (!theoryRes.isSat) {

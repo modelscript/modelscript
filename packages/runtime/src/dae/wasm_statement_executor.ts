@@ -362,12 +362,12 @@ function executeArenaForStatement(
 
   if (arena.getExprKind(rangeExprId) === ExprKind.Range) {
     const startId = arena.getExprData1(rangeExprId);
-    const stopId = arena.getExprLeft(rangeExprId);
-    const stepId = arena.getExprRight(rangeExprId);
+    const stepId = arena.getExprLeft(rangeExprId);
+    const stopId = arena.getExprRight(rangeExprId);
 
     startVal = evaluateArenaRuntime(arena, startId, valuesByStringId);
     endVal = evaluateArenaRuntime(arena, stopId, valuesByStringId);
-    if (stepId !== -1) {
+    if (stepId !== -1 && stepId !== 0xffffffff) {
       stepVal = evaluateArenaRuntime(arena, stepId, valuesByStringId);
     } else {
       stepVal = 1;
@@ -785,12 +785,12 @@ async function executeArenaForStatementAsync(
 
   if (arena.getExprKind(rangeExprId) === ExprKind.Range) {
     const startId = arena.getExprData1(rangeExprId);
-    const stopId = arena.getExprLeft(rangeExprId);
-    const stepId = arena.getExprRight(rangeExprId);
+    const stepId = arena.getExprLeft(rangeExprId);
+    const stopId = arena.getExprRight(rangeExprId);
 
     startVal = evaluateArenaRuntime(arena, startId, valuesByStringId);
     endVal = evaluateArenaRuntime(arena, stopId, valuesByStringId);
-    if (stepId !== -1) {
+    if (stepId !== -1 && stepId !== 0xffffffff) {
       stepVal = evaluateArenaRuntime(arena, stepId, valuesByStringId);
     } else {
       stepVal = 1;

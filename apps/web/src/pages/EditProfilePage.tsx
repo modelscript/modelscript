@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { Button, Heading, TextInput, Textarea } from "@primer/react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";

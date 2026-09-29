@@ -7,8 +7,28 @@
  *   min_x f(x)
  *   s.t.  l_i <= x_i <= u_i
  *
- * Optimized for large-scale DAE adjoint parameter calibration where
- * exact gradients are provided by DaeAdjointSolver.
+ * Academic Citations:
+ *   - Byrd, R. H., Lu, P., Nocedal, J., & Zhu, C. (1995). "A limited memory algorithm for
+ *     bound constrained optimization." SIAM Journal on Scientific Computing, 16(5),
+ *     pp. 1190–1208. DOI: 10.1137/0916069.
+ *   - Zhu, C., Byrd, R. H., Lu, P., & Nocedal, J. (1997). "Algorithm 778: L-BFGS-B: Fortran
+ *     subroutines for large-scale bound-constrained optimization." ACM Transactions on
+ *     Mathematical Software, 23(4), pp. 550–560. DOI: 10.1145/279232.279236.
+ *
+ * ModelScript Architectural Rationale:
+ *   System identification, digital twin calibration, and engineering design optimization require
+ *   optimizing cost functions against physical parameter boundaries (e.g., resistances, masses,
+ *   friction coefficients must remain strictly positive). Full-memory BFGS requires O(N^2) memory
+ *   to maintain dense inverse Hessian approximations. L-BFGS-B stores only the m most recent
+ *   displacement and gradient updates (m=8), scaling linearly O(m N) to thousands of parameters.
+ *   In ModelScript, it directly ingests adjoint gradients computed by `DaeAdjointSolver` to calibrate
+ *   complex DAE systems against empirical time-series data.
+ *
+ * Modifications:
+ *   - Pure zero-dependency TypeScript implementation runnable in Node.js, Web Workers, and browser environments.
+ *   - Uses circular ring buffers for displacement (s_k) and gradient difference (y_k) vectors.
+ *   - Implements projected gradient Cauchy point computation and Armijo-Goldstein backtracking line search.
+ *   - Direct TypedArray vectorization for fast WebAssembly memory interoperability.
  */
 
 export interface LbfgsbOptions {

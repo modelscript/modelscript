@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ArrowLeftIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, Dialog, FormControl, Heading, Select, Text, TextInput } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";

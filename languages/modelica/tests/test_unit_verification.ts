@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import assert from "node:assert";
 import { performance } from "node:perf_hooks";
 import { checkEquationUnits, parseUnit, unitsCompatible } from "../src/units.js";

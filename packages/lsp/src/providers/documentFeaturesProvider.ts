@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import { nodeRange } from "../utils/astUtils.js";
+import { nodeRange } from "../utils/ast-utils.js";
 import type { SyntaxNode } from "../utils/cst-facade.js";
 
 export function registerDocumentFeaturesProvider(

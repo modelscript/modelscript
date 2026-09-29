@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * SysML v2 to Modelica AST Transformation and Code Generation.
  * Translates SysML v2 Part Definitions into Modelica models.

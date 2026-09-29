@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { allocNode, getNodeByteLength, getNodeEnvHash, getNodePadding, getNodeType } from "./src-gen/arena";
 
 describe("ASTNode pointer arithmetic", () => {

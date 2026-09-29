@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { generateJavaScriptWrapper } from "../bindings/javascript/index.js";
 import { compileMcpConfig, type McpManifest } from "../codegen/compile_mcp.js";
 import type { GeneratedFile } from "../codegen/parser.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path, { basename, dirname, join, normalize, resolve } from "node:path";

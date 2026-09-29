@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Triple Graph Grammar (TGG) & DPO Graph Rewriting Declarative DSL.
  */

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { expect } from "expect";
 import fs from "node:fs";
 import path from "node:path";

@@ -1,6 +1,33 @@
-// --- Native Octagon Abstract Domain Generator ---
-// Generates zero-GC WASM AssemblyScript Difference Bound Matrix (DBM) routines.
-// Operates on +/- x_i +/- x_j <= c linear memory constraints using Floyd-Warshall closure.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * @fileoverview Native Octagon Abstract Domain Engine for WebAssembly.
+ *
+ * Implements a zero-GC Difference Bound Matrix (DBM) abstract domain supporting
+ * relational linear invariants of the form (+- x_i +- x_j <= c).
+ *
+ * Academic Citations:
+ *   - Miné, A. (2001). "A new numerical abstract domain based on difference-bound matrices."
+ *     In The 2nd SBMF, ENTCS, Elsevier.
+ *   - Miné, A. (2006). "The octagon abstract domain." Higher-Order and Symbolic Computation,
+ *     19(1), pp. 31–100. DOI: 10.1007/s10990-006-8609-1.
+ *   - Floyd, R. W. (1962). "Algorithm 97: Shortest path." Communications of the ACM, 5(6), p. 345.
+ *     (All-Pairs Shortest Path Closure)
+ *
+ * ModelScript Architectural Rationale:
+ *   Static verification and type inference of physical languages (Modelica algorithms, SysML v2
+ *   actions) require discovering relational bounds between variables (e.g. buffer bounds, clock
+ *   delays x_i - x_j <= dt, loop counters). Classical Interval analysis cannot capture variable
+ *   dependencies, while general convex Polyhedra analysis exhibits exponential O(2^N) complexity.
+ *   The Octagon abstract domain represents relational constraints in O(N^2) memory and computes
+ *   strong closures in O(N^3) time, striking the optimal balance for interactive compile-time checks.
+ *
+ * Modifications:
+ *   - Implemented in AssemblyScript compiling to WebAssembly linear memory with zero GC allocations.
+ *   - Maps N variables to a 2N x 2N Difference Bound Matrix (DBM) using (+x_i -> 2i, -x_i -> 2i+1).
+ *   - In-place incremental Floyd-Warshall shortest-path transitive closure.
+ *   - Directly extracts single-variable interval projections and satisfies Nelson-Oppen bound queries.
+ */
 
 import { allocGen0 } from "../arena";
 import { DenseInt32MatrixView } from "../core/array";

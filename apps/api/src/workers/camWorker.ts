@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import * as fs from "node:fs/promises";
 
 // In a real production system, this worker would integrate with a headless CAM slicer.

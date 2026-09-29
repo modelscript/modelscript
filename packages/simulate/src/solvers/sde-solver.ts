@@ -1,16 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Stochastic Differential Equation (SDE) Solvers.
+ * @fileoverview Stochastic Differential Equation (SDE) Solvers: Euler-Maruyama & Rößler SRIW1.
  *
- * Implements continuous-time Brownian diffusion path integrators for Ito SDEs:
- *   dx(t) = f(t, x, p) dt + g(t, x, p) dW_t
+ * Academic Citations:
+ * - Maruyama, G. (1955). Continuous Markov processes and stochastic equations.
+ *   Rendiconti del Circolo Matematico di Palermo, 4(1), 48-90. https://doi.org/10.1007/BF02846028
+ * - Kloeden, P. E., & Platen, E. (1992). Numerical Solution of Stochastic Differential
+ *   Equations. Applications of Mathematics 23, Springer. https://doi.org/10.1007/978-3-662-12616-5
+ * - Rößler, A. (2010). Runge-Kutta methods for the strong approximation of solutions of
+ *   stochastic differential equations. SIAM Journal on Numerical Analysis, 48(3), 922-952.
+ *   https://doi.org/10.1137/09076636X
+ * - Blackman, D., & Vigna, S. (2021). Scrambled linear pseudorandom number generators.
+ *   ACM Transactions on Mathematical Software, 47(4), 1-32. https://doi.org/10.1145/3460772
  *
- * Provides:
- *   - Euler-Maruyama: 1st-order weak / 0.5-order strong Ito integrator
- *   - SRIW1: Rößler's adaptive Stochastic Runge-Kutta order (1.5, 2.0)
- *   - SDE Ensemble Simulator: Parallel trajectory generation with mean, variance,
- *     and quantile interval statistics
+ * ModelScript Architectural Rationale:
+ * Cyber-physical systems operate under stochastic disturbances, such as Johnson-Nyquist thermal
+ * noise in analog electronics, atmospheric turbulence in flight dynamics, sensor measurement noise,
+ * and stochastic load fluctuations in power grids. Standard deterministic ODE/DAE integrators
+ * cannot capture diffusion dynamics or probabilistic failure margins. ModelScript integrates Itô
+ * stochastic differential equations (dx = f(t, x) dt + g(t, x) dW_t) to enable Monte Carlo ensemble
+ * rollouts, uncertainty quantification, and stochastic stability verification.
+ *
+ * ModelScript Modifications:
+ * - Employs WebAssembly-accelerated `Xoshiro256pp` PRNG with Box-Muller normal sampling for
+ *   deterministic, reproducible parallel ensemble simulations.
+ * - Implements both fixed-step Euler-Maruyama (order 0.5 strong / 1.0 weak) and high-order
+ *   Rößler SRIW1 stochastic Runge-Kutta (order 1.5 strong / 2.0 weak) for scalar and multi-dimensional
+ *   Wiener processes.
+ * - Collects batched trajectory statistics (time-varying mean, variance, and percentile bounds)
+ *   with minimal memory footprint.
  */
 
 import { Xoshiro256pp } from "@modelscript/runtime/wasm_monte_carlo.js";

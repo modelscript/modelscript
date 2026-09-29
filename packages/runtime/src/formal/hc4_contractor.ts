@@ -3,11 +3,28 @@
 /**
  * @modelscript/runtime — HC4-Revise Non-Linear Interval Constraint Contractor.
  *
- * Implements:
- *   - Forward evaluation of interval bounds on computational DAGs.
- *   - Backward propagation of interval constraints using inverse arithmetic.
- *   - Non-linear constraint filtering for equations and inequalities: f(x) = 0, f(x) <= 0.
- *   - Zero external dependencies; builds directly on wasm_interval.ts.
+ * Implements Hull Consistency (HC4-Revise) filtering over nonlinear expression DAGs
+ * using forward interval arithmetic and backward constraint narrowing.
+ *
+ * Academic Citations:
+ *   - Benhamou, F., Goualard, F., Granvilliers, L., & Puget, J. F. (1999). "Revising hull and
+ *     box consistency." In Proceedings of the International Conference on Logic Programming
+ *     (ICLP '99), pp. 230–244. MIT Press.
+ *   - Moore, R. E. (1966). Interval Analysis. Prentice-Hall.
+ *
+ * ModelScript Architectural Rationale:
+ *   In continuous SMT solving (DPLL(T)) and reachability analysis, checking feasibility of
+ *   non-linear differential/algebraic constraints over continuous intervals is computationally
+ *   hard. HC4 provides a fast, sound pruning filter: a forward evaluation sweep computes guaranteed
+ *   outer enclosures, while a backward sweep uses inverse interval operations to contract variable
+ *   domains towards hull consistency. In ModelScript, HC4 prunes branch-and-bound search spaces by
+ *   orders of magnitude before invoking expensive CAD or Newton solvers.
+ *
+ * Modifications:
+ *   - Pure TypeScript zero-dependency implementation coupled with `wasm_interval.ts`.
+ *   - Incorporates outward-directed IEEE-754 rounding to guarantee strict mathematical enclosure.
+ *   - Directly processes computational expression DAGs containing transcendental operators (sin, cos, sqrt).
+ *   - Tight integration with `DpllTSolver` for nonlinear real theory conflict clause generation.
  */
 
 import { Interval, outwardRoundInterval } from "../analysis/wasm_interval.js";
@@ -19,6 +36,8 @@ export type ExprNode =
   | { kind: "sub"; left: ExprNode; right: ExprNode }
   | { kind: "mul"; left: ExprNode; right: ExprNode }
   | { kind: "div"; left: ExprNode; right: ExprNode }
+  | { kind: "pow"; left: ExprNode; right: ExprNode }
+  | { kind: "call"; fn: string; args: ExprNode[] }
   | { kind: "neg"; child: ExprNode }
   | { kind: "sqr"; child: ExprNode }
   | { kind: "sqrt"; child: ExprNode }
@@ -27,7 +46,7 @@ export type ExprNode =
 
 export interface NonlinearConstraint {
   expr: ExprNode;
-  rel: "<=" | ">=" | "==";
+  rel: "<=" | ">=" | "==" | "<" | ">";
   rhs: number;
 }
 
@@ -339,11 +358,20 @@ export class Hc4Contractor {
       case "<=":
         targetInterval = new Interval(-Infinity, constraint.rhs);
         break;
+      case "<":
+        targetInterval = new Interval(-Infinity, constraint.rhs - 1e-9);
+        break;
       case ">=":
         targetInterval = new Interval(constraint.rhs, Infinity);
         break;
+      case ">":
+        targetInterval = new Interval(constraint.rhs + 1e-9, Infinity);
+        break;
       case "==":
         targetInterval = new Interval(constraint.rhs, constraint.rhs);
+        break;
+      default:
+        targetInterval = new Interval(-Infinity, Infinity);
         break;
     }
 

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { LanguageWorkspaceIndex, UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "assert";
-import { getTreeChildrenFast } from "../src/utils/hierarchyUtils.js";
+import { getTreeChildrenFast } from "../src/utils/hierarchy-utils.js";
 
 async function testLibraryTree() {
   console.log("Starting Library Tree test...");

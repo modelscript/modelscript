@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { QueryEngine } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";

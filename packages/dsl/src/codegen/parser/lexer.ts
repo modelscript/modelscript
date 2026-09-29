@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { compileRegexToDFA } from "../../dsl/automata.js";
 import { NormalizedGrammar } from "../../dsl/grammar.js";
 import type { LanguageOptions, Rule } from "../../dsl/language.js";
@@ -13,6 +15,14 @@ import { transpileQuery } from "../transpiler/transpiler.js";
  * @param normalized Normalized grammar containing symbol-to-integer mappings.
  * @returns AssemblyScript source code string for the lexer.
  */
+export function toCodePoints(str: string): number[] {
+  const result: number[] = [];
+  for (const ch of str) {
+    result.push(ch.codePointAt(0)!);
+  }
+  return result;
+}
+
 export function generateLexer(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
   // Extract all token patterns from the grammar rules
   const stringTokens = new Map<string, string>();
@@ -186,34 +196,62 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 export function peekChar(pos: u32): i32 {
     if (pos >= inputLength) return 0;
     if (inputEncoding == 0) {
-        let b0 = load<u8>(getInputBuffer() + pos);
+        let b0: u32 = load<u8>(getInputBuffer() + pos);
         if (b0 >= 0xC0) {
-            if (b0 >= 0xF0 && pos + 3 < inputLength) {
-                return ((b0 & 0x07) << 18) | ((load<u8>(getInputBuffer() + pos + 1) & 0x3F) << 12) | ((load<u8>(getInputBuffer() + pos + 2) & 0x3F) << 6) | (load<u8>(getInputBuffer() + pos + 3) & 0x3F);
-            } else if (b0 >= 0xE0 && pos + 2 < inputLength) {
-                return ((b0 & 0x0F) << 12) | ((load<u8>(getInputBuffer() + pos + 1) & 0x3F) << 6) | (load<u8>(getInputBuffer() + pos + 2) & 0x3F);
+            if (b0 >= 0xF0) {
+                if (pos + 3 < inputLength) {
+                    let b1: u32 = load<u8>(getInputBuffer() + pos + 1);
+                    let b2: u32 = load<u8>(getInputBuffer() + pos + 2);
+                    let b3: u32 = load<u8>(getInputBuffer() + pos + 3);
+                    if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80 && (b3 & 0xC0) == 0x80) {
+                        return ((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
+                    }
+                }
+                return 0xFFFD;
+            } else if (b0 >= 0xE0) {
+                if (pos + 2 < inputLength) {
+                    let b1: u32 = load<u8>(getInputBuffer() + pos + 1);
+                    let b2: u32 = load<u8>(getInputBuffer() + pos + 2);
+                    if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80) {
+                        return ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
+                    }
+                }
+                return 0xFFFD;
             } else if (pos + 1 < inputLength) {
-                return ((b0 & 0x1F) << 6) | (load<u8>(getInputBuffer() + pos + 1) & 0x3F);
+                let b1: u32 = load<u8>(getInputBuffer() + pos + 1);
+                if ((b1 & 0xC0) == 0x80) {
+                    return ((b0 & 0x1F) << 6) | (b1 & 0x3F);
+                }
+                return 0xFFFD;
             }
+            return 0xFFFD;
         }
         return b0;
     } else if (inputEncoding == 1) {
-        let b0 = load<u16>(getInputBuffer() + pos);
-        if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 2 < inputLength) {
-            let b1 = load<u16>(getInputBuffer() + pos + 2);
-            return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
+        if (pos + 1 >= inputLength) return load<u8>(getInputBuffer() + pos);
+        let b0: u32 = load<u16>(getInputBuffer() + pos);
+        if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 3 < inputLength) {
+            let b1: u32 = load<u16>(getInputBuffer() + pos + 2);
+            if (b1 >= 0xDC00 && b1 <= 0xDFFF) {
+                return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
+            }
         }
         return b0;
     } else if (inputEncoding == 2) {
-        let b0 = bswap<u16>(load<u16>(getInputBuffer() + pos));
-        if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 2 < inputLength) {
-            let b1 = bswap<u16>(load<u16>(getInputBuffer() + pos + 2));
-            return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
+        if (pos + 1 >= inputLength) return load<u8>(getInputBuffer() + pos);
+        let b0: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos));
+        if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 3 < inputLength) {
+            let b1: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos + 2));
+            if (b1 >= 0xDC00 && b1 <= 0xDFFF) {
+                return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
+            }
         }
         return b0;
     } else if (inputEncoding == 3) {
+        if (pos + 3 >= inputLength) return 0;
         return load<u32>(getInputBuffer() + pos);
     } else if (inputEncoding == 4) {
+        if (pos + 3 >= inputLength) return 0;
         return bswap<u32>(load<u32>(getInputBuffer() + pos));
     }
     return 0;
@@ -221,22 +259,108 @@ export function peekChar(pos: u32): i32 {
 
 export function peekCharLen(pos: u32): u32 {
     if (pos >= inputLength) return 0;
+    let rem: u32 = inputLength - pos;
     if (inputEncoding == 0) {
-        let b0 = load<u8>(getInputBuffer() + pos);
-        if (b0 >= 0xF0) return 4;
-        if (b0 >= 0xE0) return 3;
-        if (b0 >= 0xC0) return 2;
+        let b0: u32 = load<u8>(getInputBuffer() + pos);
+        if (b0 >= 0xF0) return rem >= 4 ? 4 : rem;
+        if (b0 >= 0xE0) return rem >= 3 ? 3 : rem;
+        if (b0 >= 0xC0) return rem >= 2 ? 2 : rem;
         return 1;
     } else if (inputEncoding == 1) {
-        let b0 = load<u16>(getInputBuffer() + pos);
-        if (b0 >= 0xD800 && b0 <= 0xDBFF) return 4;
+        if (rem < 2) return rem;
+        let b0: u32 = load<u16>(getInputBuffer() + pos);
+        if (b0 >= 0xD800 && b0 <= 0xDBFF && rem >= 4) {
+            let b1: u32 = load<u16>(getInputBuffer() + pos + 2);
+            if (b1 >= 0xDC00 && b1 <= 0xDFFF) return 4;
+        }
         return 2;
     } else if (inputEncoding == 2) {
-        let b0 = bswap<u16>(load<u16>(getInputBuffer() + pos));
-        if (b0 >= 0xD800 && b0 <= 0xDBFF) return 4;
+        if (rem < 2) return rem;
+        let b0: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos));
+        if (b0 >= 0xD800 && b0 <= 0xDBFF && rem >= 4) {
+            let b1: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos + 2));
+            if (b1 >= 0xDC00 && b1 <= 0xDFFF) return 4;
+        }
         return 2;
     }
-    return 4;
+    return rem >= 4 ? 4 : rem;
+}
+
+export function peekPrevChar(pos: u32): i32 {
+    if (pos == 0 || pos > inputLength) return 0;
+    if (inputEncoding == 0) {
+        let p: u32 = pos - 1;
+        let b: u32 = load<u8>(getInputBuffer() + p);
+        if ((b & 0x80) == 0) return b;
+        let count: u32 = 1;
+        while (p > 0 && (load<u8>(getInputBuffer() + p) & 0xC0) == 0x80 && count < 4) {
+            p--;
+            count++;
+        }
+        let lead: u32 = load<u8>(getInputBuffer() + p);
+        if ((lead & 0xC0) != 0x80) {
+            let ch = peekChar(p);
+            let len = peekCharLen(p);
+            if (p + len == pos) return ch;
+        }
+        return b;
+    } else if (inputEncoding == 1) {
+        if (pos < 2) return 0;
+        let b0: u32 = load<u16>(getInputBuffer() + pos - 2);
+        if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
+            let b1: u32 = load<u16>(getInputBuffer() + pos - 4);
+            if (b1 >= 0xD800 && b1 <= 0xDBFF) {
+                return ((b1 - 0xD800) << 10) + (b0 - 0xDC00) + 0x10000;
+            }
+        }
+        return b0;
+    } else if (inputEncoding == 2) {
+        if (pos < 2) return 0;
+        let b0: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos - 2));
+        if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
+            let b1: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos - 4));
+            if (b1 >= 0xD800 && b1 <= 0xDBFF) {
+                return ((b1 - 0xD800) << 10) + (b0 - 0xDC00) + 0x10000;
+            }
+        }
+        return b0;
+    } else if (inputEncoding == 3) {
+        if (pos < 4) return 0;
+        return load<u32>(getInputBuffer() + pos - 4);
+    } else if (inputEncoding == 4) {
+        if (pos < 4) return 0;
+        return bswap<u32>(load<u32>(getInputBuffer() + pos - 4));
+    }
+    return 0;
+}
+
+export function peekPrevCharLen(pos: u32): u32 {
+    if (pos == 0 || pos > inputLength) return 0;
+    if (inputEncoding == 0) {
+        let p: u32 = pos - 1;
+        let b: u32 = load<u8>(getInputBuffer() + p);
+        if ((b & 0x80) == 0) return 1;
+        let count: u32 = 1;
+        while (p > 0 && (load<u8>(getInputBuffer() + p) & 0xC0) == 0x80 && count < 4) {
+            p--;
+            count++;
+        }
+        let lead: u32 = load<u8>(getInputBuffer() + p);
+        if ((lead & 0xC0) != 0x80) {
+            let len = peekCharLen(p);
+            if (p + len == pos) return len;
+        }
+        return 1;
+    } else if (inputEncoding == 1 || inputEncoding == 2) {
+        if (pos < 2) return pos;
+        let b0: u32 = inputEncoding == 1 ? load<u16>(getInputBuffer() + pos - 2) : bswap<u16>(load<u16>(getInputBuffer() + pos - 2));
+        if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
+            let b1: u32 = inputEncoding == 1 ? load<u16>(getInputBuffer() + pos - 4) : bswap<u16>(load<u16>(getInputBuffer() + pos - 4));
+            if (b1 >= 0xD800 && b1 <= 0xDBFF) return 4;
+        }
+        return 2;
+    }
+    return pos >= 4 ? 4 : pos;
 }
 `;
   lexerCode += `export let inputLength: u32 = 0;
@@ -296,7 +420,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `    let charLen: u32 = peekCharLen(lexPos);\n`;
 
     if (hasWhitespaceExtra) {
-      lexerCode += `    if (c == 32 || c == 9 || c == 10 || c == 13) {\n`;
+      lexerCode += `    if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0xFEFF) {\n`;
       lexerCode += `      lexPos += charLen;\n`;
       lexerCode += `      continue;\n`;
       lexerCode += `    }\n`;
@@ -305,17 +429,18 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     // Task 1.3: Line comment scanner
     if (sp && sp.lineComment) {
       const lc = sp.lineComment;
-      if (lc.length === 2) {
+      const lcCps = toCodePoints(lc);
+      if (lcCps.length === 2) {
         lexerCode += `    // Line comment: ${lc}\n`;
         lexerCode += `    let c2_lc = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
-        lexerCode += `    if (c == ${lc.charCodeAt(0)} && c2_lc == ${lc.charCodeAt(1)}) {\n`;
+        lexerCode += `    if (c == ${lcCps[0]} && c2_lc == ${lcCps[1]}) {\n`;
         lexerCode += `      lexPos += charLen + peekCharLen(lexPos + charLen);\n`;
         lexerCode += `      while (lexPos < inputLength && peekChar(lexPos) != 10) lexPos += peekCharLen(lexPos);\n`;
         lexerCode += `      if (lexPos < inputLength) lexPos += peekCharLen(lexPos); // skip newline\n`;
         lexerCode += `      continue;\n`;
         lexerCode += `    }\n`;
-      } else if (lc.length === 1) {
-        lexerCode += `    if (c == ${lc.charCodeAt(0)}) {\n`;
+      } else if (lcCps.length === 1) {
+        lexerCode += `    if (c == ${lcCps[0]}) {\n`;
         lexerCode += `      lexPos += charLen;\n`;
         lexerCode += `      while (lexPos < inputLength && peekChar(lexPos) != 10) lexPos += peekCharLen(lexPos);\n`;
         lexerCode += `      if (lexPos < inputLength) lexPos += peekCharLen(lexPos);\n`;
@@ -327,10 +452,12 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     // Task 1.2: Nested comment scanner
     if (sp && sp.nestedComment) {
       const nc = sp.nestedComment;
-      const o0 = nc.open.charCodeAt(0);
-      const o1 = nc.open.charCodeAt(1);
-      const c0 = nc.close.charCodeAt(0);
-      const c1 = nc.close.charCodeAt(1);
+      const oCps = toCodePoints(nc.open);
+      const cCps = toCodePoints(nc.close);
+      const o0 = oCps[0];
+      const o1 = oCps.length > 1 ? oCps[1] : 0;
+      const c0 = cCps[0];
+      const c1 = cCps.length > 1 ? cCps[1] : 0;
       lexerCode += `    // Nested block comment: ${nc.open} ... ${nc.close}\n`;
       lexerCode += `    let c2_nc = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
       lexerCode += `    if (c == ${o0} && c2_nc == ${o1}) {\n`;
@@ -364,8 +491,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   // Task 1.4: Escaped identifier scanner (e.g., Modelica Q-IDENT: 'name with spaces')
   if (sp && sp.escapedIdent) {
     const ei = sp.escapedIdent;
-    const q = ei.quote.charCodeAt(0);
-    const esc = ei.escape ? ei.escape.charCodeAt(0) : -1;
+    const q = ei.quote.codePointAt(0)!;
+    const esc = ei.escape ? ei.escape.codePointAt(0)! : -1;
     lexerCode += `  // Escaped identifier: ${ei.quote}...${ei.quote}\n`;
     lexerCode += `  if (char0 == ${q}) {\n`;
     lexerCode += `    let peek = lexPos + char0Len;\n`;
@@ -395,7 +522,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   // Task 1.5: String literal with escape sequences
   if (sp && sp.stringLiteral) {
     const sl = sp.stringLiteral;
-    const d = sl.delim.charCodeAt(0);
+    const d = sl.delim.codePointAt(0)!;
     lexerCode += `  // String literal with escapes: ${sl.delim}...${sl.delim}\n`;
     lexerCode += `  if (char0 == ${d}) {\n`;
     lexerCode += `    let peek = lexPos + char0Len;\n`;
@@ -483,7 +610,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       `;
     }
 
-    if (val.length === 1) {
+    const cps = toCodePoints(val);
+    if (cps.length === 1) {
       if (val === "/") {
         lexerCode += `  if (char0 == 47 && !(lexPos + char0Len < inputLength && (peekChar(lexPos + char0Len) == 42 || peekChar(lexPos + char0Len) == 47))) {\n`;
       } else if (val === "'") {
@@ -502,17 +630,17 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         lexerCode += `  }\n`;
         lexerCode += `  if (char0 == 39 && !hasClosingQuote) {\n`;
       } else {
-        lexerCode += `  if (char0 == ${val.charCodeAt(0)}) {\n`;
+        lexerCode += `  if (char0 == ${cps[0]}) {\n`;
       }
       lexerCode += `    let cPos = lexPos + char0Len;\n`;
       lexerCode += wordBoundaryCheck;
       lexerCode += `  }\n`;
     } else {
-      lexerCode += `  if (char0 == ${val.charCodeAt(0)}) {\n`;
+      lexerCode += `  if (char0 == ${cps[0]}) {\n`;
       lexerCode += `    let cPos = lexPos + char0Len;\n`;
       lexerCode += `    let sMatch = true;\n`;
-      for (let i = 1; i < val.length; i++) {
-        lexerCode += `    if (sMatch && cPos < inputLength && peekChar(cPos) == ${val.charCodeAt(i)}) { cPos += peekCharLen(cPos); } else { sMatch = false; }\n`;
+      for (let i = 1; i < cps.length; i++) {
+        lexerCode += `    if (sMatch && cPos < inputLength && peekChar(cPos) == ${cps[i]}) { cPos += peekCharLen(cPos); } else { sMatch = false; }\n`;
       }
       lexerCode += `    if (sMatch) {\n`;
       lexerCode += wordBoundaryCheck;
@@ -669,9 +797,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
           lexerCode += `        let cPos = lexPos;\n`;
           for (const [kw, _] of keywordTokens.entries()) {
             const kwTokenInt = normalized.symToInt.get(`"${kw}"`);
+            const kwCps = toCodePoints(kw);
             lexerCode += `        kwMatch = true; cPos = lexPos;\n`;
-            for (let i = 0; i < kw.length; i++) {
-              lexerCode += `        if (kwMatch && peekChar(cPos) == ${kw.charCodeAt(i)}) { cPos += peekCharLen(cPos); } else { kwMatch = false; }\n`;
+            for (let i = 0; i < kwCps.length; i++) {
+              lexerCode += `        if (kwMatch && peekChar(cPos) == ${kwCps[i]}) { cPos += peekCharLen(cPos); } else { kwMatch = false; }\n`;
             }
             lexerCode += `        if (kwMatch && (cPos - lexPos == lexLen)) {\n`;
             lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
@@ -705,9 +834,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
           for (const rt of reservedTokens) {
             const rtVal = rt.startsWith('"') ? rt.slice(1, -1) : rt;
             const kwTokenInt = normalized.symToInt.get(rt);
+            const rtCps = toCodePoints(rtVal);
             lexerCode += `        kwMatch2 = true; cPos2 = lexPos;\n`;
-            for (let i = 0; i < rtVal.length; i++) {
-              lexerCode += `        if (kwMatch2 && peekChar(cPos2) == ${rtVal.charCodeAt(i)}) { cPos2 += peekCharLen(cPos2); } else { kwMatch2 = false; }\n`;
+            for (let i = 0; i < rtCps.length; i++) {
+              lexerCode += `        if (kwMatch2 && peekChar(cPos2) == ${rtCps[i]}) { cPos2 += peekCharLen(cPos2); } else { kwMatch2 = false; }\n`;
             }
             lexerCode += `        if (kwMatch2 && (cPos2 - lexPos == lexLen)) {\n`;
             lexerCode += `           return SyntaxType.T_${kwTokenInt};\n`;
@@ -756,13 +886,15 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         helpers += `  {\n`;
         helpers += `    let mMatch = true;\n`;
         helpers += `    let mPos = startPos;\n`;
-        for (let i = 0; i < firstWord.length; i++) {
-          helpers += `    if (mMatch && peekChar(mPos) == ${firstWord.charCodeAt(i)}) { mPos += peekCharLen(mPos); } else { mMatch = false; }\n`;
+        const firstCps = toCodePoints(firstWord);
+        for (let i = 0; i < firstCps.length; i++) {
+          helpers += `    if (mMatch && peekChar(mPos) == ${firstCps[i]}) { mPos += peekCharLen(mPos); } else { mMatch = false; }\n`;
         }
         helpers += `    if (mMatch && (mPos - startPos == identLen)) {\n`;
         helpers += `      let rPos = wsPos;\n`;
-        for (let i = 0; i < restWords.length; i++) {
-          helpers += `      if (mMatch && peekChar(rPos) == ${restWords.charCodeAt(i)}) { rPos += peekCharLen(rPos); } else { mMatch = false; }\n`;
+        const restCps = toCodePoints(restWords);
+        for (let i = 0; i < restCps.length; i++) {
+          helpers += `      if (mMatch && peekChar(rPos) == ${restCps[i]}) { rPos += peekCharLen(rPos); } else { mMatch = false; }\n`;
         }
         helpers += `      if (mMatch && rPos <= inputLength) {\n`;
         helpers += `        let afterCh = rPos < inputLength ? peekChar(rPos) : 0;\n`;
@@ -782,7 +914,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   }
   lexerCode += `
   lexLen = peekCharLen(lexPos);
-  if (lexLen == 0) lexLen = 2; // Fail-safe
+  if (lexLen == 0) lexLen = (inputEncoding == 0 ? 1 : (inputEncoding == 1 || inputEncoding == 2 ? 2 : 4)); // Fail-safe
   return SyntaxType.ERROR;
 }
 `;
@@ -811,7 +943,7 @@ export function scanMarkEnd(): void {
 export function scanSkipWhitespace(): void {
   while (lexPos < inputLength) {
     let c = peekChar(lexPos);
-    if (c == 32 || c == 9 || c == 10 || c == 13) {
+    if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0xFEFF) {
       lexPos += peekCharLen(lexPos);
     } else {
       break;

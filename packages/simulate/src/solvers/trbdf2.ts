@@ -1,20 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * TR-BDF2: Composite Trapezoidal - Backward Differentiation Formula 2.
+ * @fileoverview TR-BDF2: Composite Trapezoidal - Backward Differentiation Formula 2 Stiff Solver.
  *
- * An L-stable, one-step, 2nd-order implicit Singly Diagonally Implicit Runge-Kutta
- * (SDIRK) method designed specifically for stiff and differential-algebraic equations.
+ * Academic Citations:
+ * - Bank, R. E., Coughran, W. M., Fichtner, W., Grosse, E. H., Rose, D. J., & Smith, R. K. (1985).
+ *   Transient simulation of silicon devices and circuits. IEEE Transactions on Computer-Aided
+ *   Design of Integrated Circuits and Systems, 4(4), 436-446. https://doi.org/10.1109/TCAD.1985.1270142
+ * - Hosea, M. E., & Shampine, L. F. (1996). Analysis and implementation of TR-BDF2.
+ *   Applied Numerical Mathematics, 20(1-2), 21-37. https://doi.org/10.1016/0168-9274(95)00115-8
+ * - Hairer, E., & Wanner, G. (1996). Solving Ordinary Differential Equations II: Stiff
+ *   and Differential-Algebraic Problems (2nd ed.). Springer. Section IV.8.
  *
- * Characteristics:
- *   - L-stable: Damps out stiff high-frequency numerical oscillations that plague Trapezoidal/Crank-Nicolson.
- *   - Identical diagonal coefficient d = 1 - 1/√2 on both stages:
- *     Only a SINGLE LU factorization of (I - d*h*J) is computed and reused for both stage solves!
- *   - One-step composite: Resets cleanly on events without multistep order-reduction penalties.
+ * ModelScript Architectural Rationale:
+ * Cyber-physical systems featuring frequent hybrid discrete events (switches, impacts, valves)
+ * degrade multistep BDF solvers (such as CVODE or BDF 1-5), which must discard their history
+ * buffers and restart from order 1 with tiny step sizes after every event. TR-BDF2 is a one-step
+ * composite method combining a trapezoidal half-step with a BDF-2 completion step. It is L-stable
+ * (damping high-frequency numerical oscillations that plague Crank-Nicolson) and restarts
+ * instantaneously after zero-crossing events with zero multistep baggage.
  *
- * Reference:
- *   Bank, R.E., Coughran, W.M., Fichtner, W., Grosse, E.H., Rose, D.J., Smith, R.K. (1985),
- *   "Transient simulation of silicon devices and circuits", IEEE Trans. CAD, 4(4), 436-446.
+ * ModelScript Modifications:
+ * - Shares the identical diagonal coefficient d = 1 - 1/√2 across both stage Jacobians,
+ *   computing only a single sparse/dense LU factorization per step.
+ * - Integrates with `@modelscript/runtime`'s sparse solver bridge (`factorizeLinearMatrix`)
+ *   for automatic sparse vs. dense linear algebra selection.
+ * - Robust Newton iteration with backtracking linesearch for nonlinear stage equations.
  */
 
 import type { CommonSolverResult, DAEProblem, ODEProblem, SolverStats } from "../core/problem-types.js";

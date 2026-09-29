@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Generic Polyglot Transformer: Language-agnostic graph transformation and semantic reasoner engine.
  *

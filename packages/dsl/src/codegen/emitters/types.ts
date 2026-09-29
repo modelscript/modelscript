@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { NormalizedGrammar } from "../../dsl/grammar.js";
 import { LanguageOptions } from "../../dsl/language.js";
 

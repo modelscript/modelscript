@@ -352,9 +352,14 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
 
   const connectEquations = classInstance?.connectEquations ?? [];
   for (const connectEquation of connectEquations) {
-    const c1 = connectEquation.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "");
-
-    const c2 = connectEquation.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "");
+    let c1 = connectEquation.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "");
+    let c2 = connectEquation.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "");
+    if ((!c1 || c1.length === 0) && connectEquation.lhs) {
+      c1 = typeof connectEquation.lhs === "string" ? connectEquation.lhs.split(".") : undefined;
+    }
+    if ((!c2 || c2.length === 0) && connectEquation.rhs) {
+      c2 = typeof connectEquation.rhs === "string" ? connectEquation.rhs.split(".") : undefined;
+    }
     if (!c1 || !c2 || c1.length === 0 || c2.length === 0) continue;
     if (!nodeIds.has(c1[0]) || !nodeIds.has(c2[0])) continue;
 
@@ -1595,15 +1600,45 @@ export function buildComponentProperties(
           ? String(dialogAnn.enable)
           : undefined;
 
-      // Extract choices/enumeration
+      // Extract choices/enumeration or choices(...) annotation
       let choices: string[] | undefined = undefined;
       const enumLits = element.classInstance?.enumLiterals;
       if (Array.isArray(enumLits) && enumLits.length > 0) {
         choices = enumLits.map((lit: any) => lit.name ?? String(lit));
       }
 
+      let choicesAnn: any = null;
+      if (typeof element.annotation === "function") {
+        try {
+          choicesAnn = element.annotation("choices");
+        } catch {
+          // ignore
+        }
+      }
+      if (!choicesAnn && element.abstractSyntaxNode) {
+        try {
+          choicesAnn = evaluator.evaluate(element.abstractSyntaxNode, "choices");
+        } catch {
+          // ignore
+        }
+      }
+      if (choicesAnn && typeof choicesAnn === "object") {
+        const rawChoices = choicesAnn.choice || choicesAnn.choices;
+        if (Array.isArray(rawChoices)) {
+          choices = rawChoices.map((c: any) =>
+            typeof c === "object" && c !== null ? String(c.value ?? c.name ?? c) : String(c),
+          );
+        } else if (rawChoices !== undefined) {
+          choices = [String(rawChoices)];
+        }
+      }
+
       let kind: PropertyFieldConfig["kind"] = "expression";
-      if (isBoolean) {
+      if (dialogAnn && typeof dialogAnn === "object" && dialogAnn.colorSelector) {
+        kind = "color";
+      } else if (dialogAnn && typeof dialogAnn === "object" && (dialogAnn.loadSelector || dialogAnn.saveSelector)) {
+        kind = "filePicker";
+      } else if (isBoolean) {
         kind = "boolean";
       } else if (choices && choices.length > 0) {
         kind = "choice";
@@ -1636,6 +1671,28 @@ export function buildComponentProperties(
       };
 
       getOrCreateGroup(tabName, groupName).push(fieldConfig);
+
+      if (dialogAnn && typeof dialogAnn === "object" && dialogAnn.showStartAttribute) {
+        const startMod =
+          (element.classInstance?.modification as any)?.getModificationArgument?.("start") ??
+          (element.modification as any)?.getModificationArgument?.("start");
+        const compStartArg = (component.modification as any)
+          ?.getModificationArgument?.(element.name ?? "")
+          ?.classModification?.getModificationArgument?.("start");
+        const startVal =
+          formatPropertyValue(compStartArg?.expression) ?? formatPropertyValue(startMod?.expression) ?? "-";
+        const startKey = `${element.name}.start`;
+        values[startKey] = startVal;
+        getOrCreateGroup(tabName, groupName).push({
+          key: startKey,
+          label: `${element.name}.start`,
+          kind: unit ? "quantity" : "expression",
+          description: `Start attribute for ${element.name}`,
+          defaultValue: startVal,
+          unit,
+          enabledIf: enableCondition,
+        });
+      }
     }
   }
 

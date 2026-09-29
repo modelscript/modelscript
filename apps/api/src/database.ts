@@ -1,5 +1,5 @@
-/* eslint-disable */
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable */
 
 import Database from "better-sqlite3";
 import crypto from "node:crypto";

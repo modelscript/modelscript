@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Grammar combinator functions, rule builders, and rewriting DSL helpers.
  */

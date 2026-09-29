@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { ArenaBltResult } from "../analysis/wasm_blt.js";
 import { type DAEBuilder, getDefaultWasmExports } from "../dae/wasm_dae.js";
 

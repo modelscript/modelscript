@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { collectArenaExprDeps } from "../analysis/wasm_blt.js";
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp } from "../dae/wasm_dae.js";
 import { Polynomial, Term, computeGroebnerBasis } from "../solvers/wasm_groebner.js";

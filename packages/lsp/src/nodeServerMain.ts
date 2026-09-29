@@ -55,7 +55,7 @@ import { registerReplEndpoints } from "./handlers/replEndpoints.js";
 import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
-import { LspContext } from "./LspContext.js";
+import { LspContext } from "./lsp-context.js";
 import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerColorProvider } from "./providers/colorProvider.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
@@ -68,13 +68,13 @@ import { legend, registerSemanticTokensProvider } from "./providers/semanticToke
 import { registerSignatureHelpProvider } from "./providers/signatureHelpProvider.js";
 import { registerWorkspaceFeaturesProvider } from "./providers/workspaceFeaturesProvider.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
-import { DiagramService } from "./services/DiagramService.js";
-import { DocumentManager } from "./services/DocumentManager.js";
-import { HierarchyService } from "./services/HierarchyService.js";
-import { ParserService } from "./services/ParserService.js";
-import { ValidationService } from "./services/ValidationService.js";
-import { WorkspaceManager } from "./services/WorkspaceManager.js";
-import { computeTreeEdit } from "./utils/astUtils.js";
+import { DiagramService } from "./services/diagram-service.js";
+import { DocumentManager } from "./services/document-manager.js";
+import { HierarchyService } from "./services/hierarchy-service.js";
+import { ParserService } from "./services/parser-service.js";
+import { ValidationService } from "./services/validation-service.js";
+import { WorkspaceManager } from "./services/workspace-manager.js";
+import { computeTreeEdit } from "./utils/ast-utils.js";
 import {
   getCompositeName as _getCompositeName,
   buildClassHierarchy,
@@ -83,7 +83,7 @@ import {
   getTreeChildrenFast,
   hasClassChildren,
   isTreeVisible,
-} from "./utils/hierarchyUtils.js";
+} from "./utils/hierarchy-utils.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 
 /**

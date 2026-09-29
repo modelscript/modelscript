@@ -955,6 +955,33 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     const propConfig = (config as any)?.properties;
     if (propConfig) {
       const className = params.className || "Component";
+
+      // 1. Dynamic in-model discovery hook
+      if (typeof propConfig.inModelDiscovery?.extractSchema === "function") {
+        try {
+          const symIndex = this.deps.getSymbolIndex?.(params.uri);
+          const rawAst = this.deps.getRawAstData?.(params.uri);
+          const dynamicSchema = propConfig.inModelDiscovery.extractSchema(rawAst, params.componentName, symIndex);
+          if (dynamicSchema) {
+            const dynamicValues =
+              typeof propConfig.inModelDiscovery.extractValues === "function"
+                ? propConfig.inModelDiscovery.extractValues(rawAst, params.componentName, symIndex)
+                : { name: params.componentName };
+            return {
+              className,
+              name: params.componentName,
+              description: "",
+              parameters: [],
+              schema: dynamicSchema,
+              values: dynamicValues || { name: params.componentName },
+            };
+          }
+        } catch (e) {
+          console.error("[diagram] inModelDiscovery.extractSchema error:", e);
+        }
+      }
+
+      // 2. Static schema lookup fallback
       const schema =
         propConfig.entities?.[className] ||
         (propConfig.entities && Object.keys(propConfig.entities).length > 0
@@ -1349,9 +1376,41 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "updateParameter":
         case "updateProperty": {
-          const paramName = action.type === "updateProperty" ? action.key : action.parameter;
+          const paramName =
+            action.type === "updateProperty"
+              ? (action.key ?? (action as any).propertyName ?? (action as any).parameter)
+              : action.parameter;
           const paramVal = action.type === "updateProperty" ? action.value : action.value;
           if (docText !== undefined && paramName && paramVal !== undefined) {
+            // Check custom mutator hook
+            const mutator = config?.properties?.mutator;
+            if (typeof mutator?.updateProperty === "function") {
+              try {
+                const prevVal = (action as any).previousValue;
+                const rawAst = this.deps.getRawAstData?.(params.uri);
+                let customEdits = mutator.updateProperty(rawAst ?? docText, action.name, paramName, paramVal, prevVal);
+                if (!customEdits) {
+                  customEdits = (mutator.updateProperty as any)(action.name, paramName, paramVal, docText);
+                }
+                if (Array.isArray(customEdits) && customEdits.length > 0) {
+                  allEdits.push(...customEdits);
+                  break;
+                }
+              } catch (e) {
+                console.error("[diagram] mutator.updateProperty error:", e);
+              }
+            } else if (typeof mutator?.updateModifier === "function") {
+              try {
+                const customEdits = mutator.updateModifier(docText, action.name, paramName, paramVal);
+                if (Array.isArray(customEdits) && customEdits.length > 0) {
+                  allEdits.push(...customEdits);
+                  break;
+                }
+              } catch (e) {
+                console.error("[diagram] mutator.updateModifier error:", e);
+              }
+            }
+
             const escParam = paramName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const paramRegex = new RegExp(`\\b(${escParam}\\s*=\\s*)([^,;\\)\\}\\n]+)`);
             let matched = false;
@@ -1395,7 +1454,32 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                     },
                     newText: String(paramVal),
                   });
+                  matched = true;
                   break;
+                }
+              }
+            }
+
+            // If not matched, try appending new modifier to component declaration
+            if (!matched && action.name) {
+              const escName = action.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const nameRegex = new RegExp(`\\b${escName}\\b`);
+              for (let i = 0; i < lines.length; i++) {
+                if (nameRegex.test(maskedLines[i])) {
+                  const openParen = lines[i].indexOf("(", lines[i].indexOf(action.name));
+                  const closeParen = lines[i].lastIndexOf(")");
+                  if (openParen !== -1 && closeParen !== -1 && closeParen > openParen) {
+                    const hasArgs = lines[i].substring(openParen + 1, closeParen).trim().length > 0;
+                    allEdits.push({
+                      range: {
+                        start: { line: i, character: closeParen },
+                        end: { line: i, character: closeParen },
+                      },
+                      newText: `${hasArgs ? ", " : ""}${paramName} = ${paramVal}`,
+                    });
+                    matched = true;
+                    break;
+                  }
                 }
               }
             }

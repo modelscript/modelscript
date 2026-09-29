@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- AD Jacobian & Hessian Sparsity Extraction (Phase 4) ---
 // Variables are identified by their AST node pointers.
 // All data structures use the arena allocator (zero-GC).

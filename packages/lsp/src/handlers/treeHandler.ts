@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
-import { LspContext } from "../LspContext.js";
-import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchyUtils.js";
+import { LspContext } from "../lsp-context.js";
+import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchy-utils.js";
 
 export const iconCache = new Map<string, string | null>();
 

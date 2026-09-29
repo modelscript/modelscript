@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * @fileoverview High-Performance Unmanaged 64-bit Hash Structures & Memory Pooling
  *

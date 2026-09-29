@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # Download Qwen3-0.6B-q4f16_1-MLC model weights and WASM for WebLLM.
 # Files are cached — re-running is a no-op if all files already exist.
 #

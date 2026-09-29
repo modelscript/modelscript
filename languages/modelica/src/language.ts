@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { CodeGraph, u16, u32 } from "@modelscript/dsl";
 import {
   choice,
@@ -285,7 +287,6 @@ export const modelicaLanguage = language({
     [$.when_statement],
     [$.for_equation],
     [$.for_statement],
-    [$.element_list, $.annotation_clause],
     [$.algorithm_section, $.annotation_clause],
     [$.equation_section, $.annotation_clause],
   ],
@@ -692,7 +693,6 @@ export const modelicaLanguage = language({
       choice(
         field("import_clause", $.import_clause),
         field("extends_clause", $.extends_clause),
-        field("annotation_clause", $.annotation_clause),
         seq(
           optional("redeclare"),
           optional("final"),
@@ -858,17 +858,14 @@ export const modelicaLanguage = language({
     short_class_definition: ($) => seq($.class_prefixes, $.short_class_specifier),
 
     // A.2.6 Equations
-    equation_section: ($) => seq(optional("initial"), "equation", repeat(seq($.some_equation, ";"))),
+    equation_section: ($) => seq(optional("initial"), "equation", repeat(choice(seq($.some_equation, ";"), seq($.annotation_clause, ";")))),
 
-    algorithm_section: ($) => seq(optional("initial"), "algorithm", repeat(seq($.statement, ";"))),
+    algorithm_section: ($) => seq(optional("initial"), "algorithm", repeat(choice(seq($.statement, ";"), seq($.annotation_clause, ";")))),
 
     some_equation: ($) =>
-      choice(
-        seq(
-          choice($.equation_or_procedure, $.if_equation, $.for_equation, $.connect_equation, $.when_equation),
-          $.description,
-        ),
-        $.annotation_clause,
+      seq(
+        choice($.equation_or_procedure, $.if_equation, $.for_equation, $.connect_equation, $.when_equation),
+        $.description,
       ),
 
     // GLR parsers handle this without needing left-factoring!
@@ -877,21 +874,18 @@ export const modelicaLanguage = language({
     simple_equation: ($) => seq(field("lhs", $.lhs_expression), "=", field("rhs", $.expression)),
 
     statement: ($) =>
-      choice(
-        seq(
-          choice(
-            $.statement_or_procedure,
-            seq("(", $.output_expression_list, ")", ":=", $.function_call),
-            "break",
-            "return",
-            $.if_statement,
-            $.for_statement,
-            $.while_statement,
-            $.when_statement,
-          ),
-          $.description,
+      seq(
+        choice(
+          $.statement_or_procedure,
+          seq("(", $.output_expression_list, ")", ":=", $.function_call),
+          "break",
+          "return",
+          $.if_statement,
+          $.for_statement,
+          $.while_statement,
+          $.when_statement,
         ),
-        $.annotation_clause,
+        $.description,
       ),
 
     statement_or_procedure: ($) => choice($.function_call, $.assignment_statement),
@@ -1205,7 +1199,7 @@ export const modelicaLanguage = language({
 
     description: ($) => seq($.description_string, optional($.annotation_clause)),
 
-    description_string: ($) => optional(seq($.string_literal, repeat(seq("+", $.string_literal)))),
+    description_string: ($) => choice(prec(1, seq($.string_literal, repeat(seq("+", $.string_literal)))), prec(0, seq())),
 
     annotation_clause: ($) => seq("annotation", $.class_modification),
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * DAE enums, flags, chunked array polyfills, and DaeBuilder interfaces.
  */

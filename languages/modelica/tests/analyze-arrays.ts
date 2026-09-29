@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import * as fs from "fs";
 
 const data = JSON.parse(fs.readFileSync("ctrf/ctrf-testsuite-report.json", "utf-8"));

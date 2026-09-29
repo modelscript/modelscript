@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import fs from "fs";
 import occtimportjs from "occt-import-js";
 import path from "path";

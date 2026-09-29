@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { createWasmParser } from "@modelscript/dsl";
 import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";

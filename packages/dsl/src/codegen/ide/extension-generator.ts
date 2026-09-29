@@ -1498,7 +1498,9 @@ module.exports.default = module.exports;
   };
 
   // Build browser client
-  const clientMainPath = path.join(ideDir, "browserClientMain.ts");
+  const clientMainPath = fs.existsSync(path.join(ideDir, "browser-client-main.ts"))
+    ? path.join(ideDir, "browser-client-main.ts")
+    : path.join(ideDir, "browserClientMain.ts");
   if (fs.existsSync(clientMainPath)) {
     await esbuild.build({
       entryPoints: [clientMainPath],

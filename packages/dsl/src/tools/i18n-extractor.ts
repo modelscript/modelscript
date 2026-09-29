@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export interface I18nTextConfig {
   field: string;
   context?: "self" | "scope";

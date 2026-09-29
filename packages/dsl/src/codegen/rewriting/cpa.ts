@@ -1,5 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @fileoverview Critical Pair Analysis (CPA) Engine for Graph Rewriting Rules.
+ *
+ * Implements static confluence and conflict analysis for ModelScript's Triple Graph
+ * Grammar (TGG) transformation rules.
+ *
+ * Academic Citations:
+ *   - Knuth, D. E., & Bendix, P. B. (1970). "Simple word problems in universal algebras."
+ *     In J. Leech (Ed.), Computational Problems in Abstract Algebra, pp. 263–297. Pergamon Press.
+ *   - Ehrig, H., Ehrig, K., de Lara, J., Taentzer, G., Varró, D., & Varró, G. (2005).
+ *     "Termination and confluence of graph transformation systems." In Formal Methods in
+ *     Software and Systems Modeling, LNCS 3440, pp. 180–195. Springer.
+ *   - Heckel, R., & Taentzer, G. (2020). Graph Transformation for Software Engineers:
+ *     Formal Foundation and Industrial Applications. Springer. DOI: 10.1007/978-3-030-43969-9.
+ *
+ * ModelScript Architectural Rationale:
+ *   In polyglot engineering workflows, multiple transformation rules may attempt to translate
+ *   the same source AST elements (e.g. Modelica connector or SysML v2 part definition) into target
+ *   constructs. Such rule overlaps can lead to non-deterministic transformations or translation
+ *   cycles. CPA statically detects all critical pairs (conflicting rule overlaps, target collisions,
+ *   and circular translation loops) at compile time, guaranteeing deterministic, confluent model
+ *   transformations.
+ *
+ * Modifications:
+ *   - Tailored for polyglot AST metamodels across Modelica, SysML v2, STEP, and OWL2.
+ *   - Classifies conflicts into source overlaps, target collisions, cyclic loops, and type mismatches.
+ *   - Generates actionable diagnostics formatted for LSP and CLI reporting.
+ */
+
 import type { TGGConstraint, TGGRuleOptions } from "../../dsl/language.js";
 
 export interface CpaConflict {

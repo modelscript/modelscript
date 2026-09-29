@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { InlayHint, InlayHintKind, Position, Range } from "vscode-languageserver";
-import type { LspContext } from "../LspContext.js";
+import type { LspContext } from "../lsp-context.js";
 
 export function registerInlayHintProvider(context: LspContext) {
   context.connection.onRequest(

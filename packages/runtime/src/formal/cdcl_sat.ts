@@ -3,12 +3,36 @@
 /**
  * @modelscript/runtime — High-Performance In-Engine CDCL SAT Solver.
  *
- * Implements:
- *   - Two-Watched-Literals scheme for O(1) Boolean Constraint Propagation (BCP).
- *   - 1-UIP (Unique Implication Point) conflict graph analysis and non-chronological backjumping.
- *   - VSIDS (Variable State Independent Decaying Sum) decision heuristics with geometric restarts (1.5× conflict limit growth).
- *   - Tseitin CNF transformation from propositional logic ASTs into equisatisfiable 3-CNF.
- *   - Incremental solving with assumptions and UNSAT core extraction for IC3/PDR.
+ * Implements a modern Conflict-Driven Clause Learning (CDCL) Boolean satisfiability solver
+ * with incremental solving, assumption vectors, and UNSAT core extraction.
+ *
+ * Academic Citations:
+ *   - Moskewicz, M. W., Madigan, C. F., Zhao, Y., Zhang, L., & Malik, S. (2001).
+ *     "Chaff: Accelerating engineering design with a fresh look at SAT."
+ *     In Proceedings of the 38th Design Automation Conference (DAC '01), pp. 530–535.
+ *     DOI: 10.1145/378239.379017. (Two-Watched-Literals Scheme & VSIDS Decision Heuristic)
+ *   - Marques-Silva, J. P., & Sakallah, K. A. (1999). "GRASP: A search algorithm for propositional
+ *     satisfiability." IEEE Transactions on Computers, 48(5), pp. 506–521.
+ *     DOI: 10.1109/12.769433. (1-UIP Conflict Analysis & Non-Chronological Backjumping)
+ *   - Tseitin, G. S. (1968). "On the complexity of derivation in propositional calculus."
+ *     In Studies in Constructive Mathematics and Mathematical Logic, Part II, pp. 115–125.
+ *   - Eén, N., & Sörensson, N. (2003). "An extensible SAT-solver." In Theory and Applications
+ *     of Satisfiability Testing (SAT '03), LNCS 2919, pp. 502–518. Springer.
+ *     DOI: 10.1007/978-3-540-24605-3_37. (MiniSat Incremental Assumptions & Core Extraction)
+ *
+ * ModelScript Architectural Rationale:
+ *   Propositional satisfiability is the core decision engine for discrete logic across ModelScript:
+ *   validating variability configurations in product lines, checking SysML v2 structural constraints,
+ *   driving boolean case splits in DPLL(T), and powering unbounded safety verification in IC3/PDR.
+ *   Having an in-engine, zero-overhead CDCL solver avoids spawning external processes and allows
+ *   interactive formal model checking in browser IDE and LSP environments.
+ *
+ * Modifications:
+ *   - Self-contained pure TypeScript implementation with zero external runtime dependencies.
+ *   - Two-Watched-Literals pointer scheme for O(1) Boolean Constraint Propagation (BCP).
+ *   - 1-UIP conflict graph analysis with non-chronological backjumping and decay-weighted VSIDS.
+ *   - Built-in Tseitin transformation translating arbitrary propositional logic ASTs into equisatisfiable CNF.
+ *   - Incremental solving with temporary assumption literals and minimal UNSAT core derivation for IC3.
  */
 
 export type VarId = number; // 1-indexed: 1, 2, 3, ...

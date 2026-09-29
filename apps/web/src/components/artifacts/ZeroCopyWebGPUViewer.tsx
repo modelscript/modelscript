@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { WebGPUSimulationRunner } from "@modelscript/simulate";
 import { Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";

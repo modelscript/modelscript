@@ -8,10 +8,31 @@
  *   s.t. <A_i, X> = b_i,  i = 1...m
  *        X \succeq 0  (symmetric positive semidefinite)
  *
- * Features:
- *   - In-WASM Cholesky factorization and positive definiteness testing.
- *   - Primal-Dual central path following with damped step lengths.
- *   - SOS Gram matrix feasibility verification.
+ * Academic Citations:
+ *   - Vandenberghe, L., & Boyd, S. (1996). "Semidefinite Programming."
+ *     SIAM Review, 38(1), pp. 49–95. DOI: 10.1137/1038003.
+ *   - Helmberg, C., Rendl, F., Vanderbei, R. J., & Wolkowicz, H. (1996).
+ *     "An interior-point method for semidefinite programming."
+ *     SIAM Journal on Optimization, 6(2), pp. 342–361. DOI: 10.1137/0806018.
+ *   - Alizadeh, F., Haeberly, J. P. A., & Overton, M. L. (1998). "Primal-dual interior-point methods
+ *     for semidefinite programming: convergence rates, stability and numerical results."
+ *     SIAM Journal on Optimization, 8(3), pp. 746–768. DOI: 10.1137/S105262349528701X.
+ *   - Parrilo, P. A. (2003). "Semidefinite programming relaxations for semialgebraic problems."
+ *     Mathematical Programming, 96(2), pp. 293–320. DOI: 10.1007/s10107-003-0387-5. (SOS Programming)
+ *
+ * ModelScript Architectural Rationale:
+ *   Continuous safety verification of non-linear physical models requires certifying that state
+ *   trajectories never breach safety envelopes. Synthesizing polynomial Lyapunov functions and
+ *   barrier certificates reduces to Sum-of-Squares (SOS) polynomial decompositions. By casting
+ *   SOS constraints into semidefinite programs over positive semidefinite Gram matrices, SdpSolver
+ *   provides formal safety certificates natively in the browser and CLI without relying on external
+ *   monolithic solvers like Mosek or SeDuMi.
+ *
+ * Modifications:
+ *   - Standalone in-process interior-point solver with zero external C/Fortran shared library dependencies.
+ *   - In-WASM Cholesky factorization and Sylvester criterion positive definiteness testing.
+ *   - Primal-Dual central path following with damped backtracking step lengths.
+ *   - Direct extraction of Gram matrix SOS witness certificates for Nelson-Oppen theory propagation.
  */
 
 export interface SdpProblem {

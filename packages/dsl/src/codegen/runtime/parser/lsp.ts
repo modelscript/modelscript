@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
 import {
   atomicChunkAlloc,
@@ -542,7 +544,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
             break;
           }
         }
-        while (dEnd > dStart) {
+        while (dEnd > dStart && dEnd >= step && dEnd - step >= dStart) {
           let ch = peekChar(dEnd - step);
           if (ch == 10 || ch == 13 || ch == 32 || ch == 9 || ch == 0) {
             dEnd -= step;
@@ -562,7 +564,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
             dEnd = dStart + step <= totalInputBytes ? dStart + step : totalInputBytes;
           } else {
             let scanPos = totalInputBytes;
-            while (scanPos > 0) {
+            while (scanPos >= step) {
               let ch = peekChar(scanPos - step);
               if (ch != 10 && ch != 13 && ch != 32 && ch != 9 && ch != 0) {
                 break;
@@ -580,7 +582,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
                   dEnd = scanPos;
                 } else {
                   let tokStart = scanPos - step;
-                  while (tokStart > 0) {
+                  while (tokStart >= step) {
                     let c = peekChar(tokStart - step);
                     if (c == 10 || c == 13 || c == 32 || c == 9 || c == 0) break;
                     tokStart -= step;
@@ -607,10 +609,10 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
           let ch = peekChar(dStart);
           if (ch == 32 || ch == 9 || ch == 10 || ch == 13 || ch == 0) {
             let prevNonWs = dStart;
-            while (prevNonWs > 0 && (peekChar(prevNonWs - step) == 32 || peekChar(prevNonWs - step) == 9)) {
+            while (prevNonWs >= step && (peekChar(prevNonWs - step) == 32 || peekChar(prevNonWs - step) == 9)) {
               prevNonWs -= step;
             }
-            if (prevNonWs > 0 && peekChar(prevNonWs - step) != 10 && peekChar(prevNonWs - step) != 13) {
+            if (prevNonWs >= step && peekChar(prevNonWs - step) != 10 && peekChar(prevNonWs - step) != 13) {
               let prevCh = peekChar(prevNonWs - step);
               let isPunct = prevCh == 59 || prevCh == 44 || prevCh == 40 || prevCh == 41 ||
                             prevCh == 123 || prevCh == 125 || prevCh == 91 || prevCh == 93 ||
@@ -620,7 +622,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
                 dEnd = prevNonWs;
               } else {
                 let tokStart = prevNonWs - step;
-                while (tokStart > 0) {
+                while (tokStart >= step) {
                   let c = peekChar(tokStart - step);
                   if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0 ||
                       c == 59 || c == 44 || c == 40 || c == 41 || c == 123 || c == 125 || c == 91 || c == 93 || c == 61 || c == 58) break;
@@ -657,20 +659,20 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
         tokType = 0;
       }
       if (dEnd > dStart && totalInputBytes > 0) {
-        if (dStart > 0 && dStart < totalInputBytes) {
+        if (dStart >= step && dStart < totalInputBytes) {
           let chCurr = peekChar(dStart);
           let chPrev = peekChar(dStart - step);
           let isCurrWord = (chCurr >= 97 && chCurr <= 122) || (chCurr >= 65 && chCurr <= 90) || (chCurr >= 48 && chCurr <= 57) || chCurr == 95;
           let isPrevWord = (chPrev >= 97 && chPrev <= 122) || (chPrev >= 65 && chPrev <= 90) || (chPrev >= 48 && chPrev <= 57) || chPrev == 95;
           if (isCurrWord && isPrevWord) {
-            while (dStart > 0) {
+            while (dStart >= step) {
               let c = peekChar(dStart - step);
               if (!((c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95)) break;
               dStart -= step;
             }
           }
         }
-        if (dEnd > 0 && dEnd < totalInputBytes) {
+        if (dEnd >= step && dEnd < totalInputBytes) {
           let chEnd = peekChar(dEnd);
           let chBeforeEnd = peekChar(dEnd - step);
           let isEndWord = (chEnd >= 97 && chEnd <= 122) || (chEnd >= 65 && chEnd <= 90) || (chEnd >= 48 && chEnd <= 57) || chEnd == 95;
@@ -964,13 +966,14 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
               cLen = inputLength - childOffset;
             }
             
-            let step: u32 = getEncodingStep();
             // LSP4 fix: split multi-line tokens into line-by-line segments instead of truncating/skipping
             let segStart: u32 = childOffset;
             let segLen: u32 = 0;
             let i: u32 = 0;
             while (i < cLen) {
               let c = peekChar(childOffset + i);
+              let chLen = peekCharLen(childOffset + i);
+              if (chLen == 0) chLen = 1;
               if (c == 10 || c == 13) {
                 if (segLen > 0) {
                   t_lspBinaryBuffer.push(segStart);
@@ -978,16 +981,17 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
                   t_lspBinaryBuffer.push(tokenTypeId);
                   t_lspBinaryBuffer.push(bitmask);
                 }
-                if (c == 13 && i + step < cLen && peekChar(childOffset + i + step) == 10) {
-                  i += step * 2;
+                if (c == 13 && i + chLen < cLen && peekChar(childOffset + i + chLen) == 10) {
+                  let nextLen = peekCharLen(childOffset + i + chLen);
+                  i += chLen + (nextLen > 0 ? nextLen : 1);
                 } else {
-                  i += step;
+                  i += chLen;
                 }
                 segStart = childOffset + i;
                 segLen = 0;
               } else {
-                segLen += step;
-                i += step;
+                segLen += chLen;
+                i += chLen;
               }
             }
             if (segLen > 0) {

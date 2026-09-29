@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import expect from "expect";
 import { describe, test } from "node:test";
 import { IndexFileTask, LspWorkerPool } from "../src/workers/worker-pool.js";

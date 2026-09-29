@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { expect } from "expect";
 import cjsFs, * as cjsFsModule from "fs";
 import fs, * as fsModule from "node:fs";

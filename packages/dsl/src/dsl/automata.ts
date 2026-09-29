@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 import type { Production, SymbolName } from "./grammar.js";
 import { NormalizedGrammar } from "./grammar.js";
@@ -872,6 +874,40 @@ type AST =
   | { type: "PLUS"; child: AST }
   | { type: "OPT"; child: AST };
 
+function invertRanges(ranges: [number, number][]): [number, number][] {
+  const sorted = ranges
+    .map(([s, e]): [number, number] => [Math.max(0, Math.min(s, e)), Math.min(0x10ffff, Math.max(s, e))])
+    .filter(([s, e]) => s <= e)
+    .sort((a, b) => a[0] - b[0]);
+
+  const merged: [number, number][] = [];
+  for (const r of sorted) {
+    if (merged.length === 0) {
+      merged.push([r[0], r[1]]);
+    } else {
+      const last = merged[merged.length - 1];
+      if (r[0] <= last[1] + 1) {
+        last[1] = Math.max(last[1], r[1]);
+      } else {
+        merged.push([r[0], r[1]]);
+      }
+    }
+  }
+
+  const inverted: [number, number][] = [];
+  let cur = 0;
+  for (const [s, e] of merged) {
+    if (s > cur) {
+      inverted.push([cur, s - 1]);
+    }
+    cur = Math.max(cur, e + 1);
+  }
+  if (cur <= 0x10ffff) {
+    inverted.push([cur, 0x10ffff]);
+  }
+  return inverted;
+}
+
 function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
   // Safely strip standard regex anchors as DFAs inherently match from current pos
   let stripped = false;
@@ -1025,9 +1061,11 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
           else if (esc === "f") return { isClass: false, char: 12 };
           else if (esc === "v") return { isClass: false, char: 11 };
           else if (esc === "b") return { isClass: false, char: 8 };
-          else return { isClass: false, char: esc.charCodeAt(0) };
+          else return { isClass: false, char: esc.codePointAt(0)! };
         } else {
-          return { isClass: false, char: pattern.charCodeAt(pos++) };
+          const cp = pattern.codePointAt(pos)!;
+          pos += cp > 0xffff ? 2 : 1;
+          return { isClass: false, char: cp };
         }
       }
 
@@ -1043,7 +1081,9 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
               ranges.push([item1.char!, item1.char!]);
               for (const r of item2.ranges!) ranges.push(r);
             } else {
-              ranges.push([item1.char!, item2.char!]);
+              const rStart = Math.min(item1.char!, item2.char!);
+              const rEnd = Math.max(item1.char!, item2.char!);
+              ranges.push([rStart, rEnd]);
             }
           } else {
             ranges.push([item1.char!, item1.char!]);
@@ -1051,7 +1091,10 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
         }
       }
       if (pattern[pos++] !== "]") throw new Error("Unclosed [");
-      return { type: "CLASS", ranges, invert };
+      if (invert) {
+        return { type: "CLASS", ranges: invertRanges(ranges), invert: false };
+      }
+      return { type: "CLASS", ranges, invert: false };
     } else if (ch === "\\") {
       const esc = pattern[pos++];
       if (esc === "u") {
@@ -1101,7 +1144,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
       if (esc === "f") return { type: "CHAR", char: 12 };
       if (esc === "v") return { type: "CHAR", char: 11 };
       if (esc === "b") return { type: "CHAR", char: 8 };
-      return { type: "CHAR", char: esc.charCodeAt(0) };
+      return { type: "CHAR", char: esc.codePointAt(0)! };
     } else if (ch === ".") {
       return {
         type: "CLASS",
@@ -1113,7 +1156,10 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
         invert: false,
       }; // Standard JS: excludes \n and \r
     } else {
-      return { type: "CHAR", char: ch.charCodeAt(0) };
+      const prevPos = pos - 1;
+      const cp = pattern.codePointAt(prevPos)!;
+      if (cp > 0xffff) pos++;
+      return { type: "CHAR", char: cp };
     }
   }
 
@@ -1135,6 +1181,50 @@ interface NFAState {
  * to convert to DFA, and finally applies Hopcroft's algorithm for minimization.
  */
 export function compileRegexToDFA(regexes: { pattern: string; tokenName: string }[]) {
+  const parsed = regexes.map((r) => ({
+    ast: parseRegex(r.pattern, r.tokenName),
+    tokenName: r.tokenName,
+  }));
+
+  // Collect boundary points to partition [0, 0x10ffff] into disjoint atomic intervals
+  const cutPoints = new Set<number>([0, 0x10ffff + 1]);
+
+  function collectCutPoints(node: AST) {
+    if (node.type === "CHAR") {
+      cutPoints.add(node.char);
+      if (node.char + 1 <= 0x10ffff + 1) cutPoints.add(node.char + 1);
+    } else if (node.type === "CLASS") {
+      for (const [s, e] of node.ranges) {
+        cutPoints.add(s);
+        if (e + 1 <= 0x10ffff + 1) cutPoints.add(e + 1);
+      }
+    } else if (node.type === "CONCAT" || node.type === "ALT") {
+      collectCutPoints(node.left);
+      collectCutPoints(node.right);
+    } else if (node.type === "STAR" || node.type === "PLUS" || node.type === "OPT") {
+      collectCutPoints(node.child);
+    }
+  }
+
+  for (const { ast } of parsed) {
+    collectCutPoints(ast);
+  }
+
+  const p = Array.from(cutPoints).sort((a, b) => a - b);
+  const numIntervals = p.length - 1;
+
+  function findInterval(cp: number): number {
+    let l = 0,
+      r = numIntervals - 1;
+    while (l <= r) {
+      const m = (l + r) >> 1;
+      if (cp < p[m]) r = m - 1;
+      else if (cp >= p[m + 1]) l = m + 1;
+      else return m;
+    }
+    return 0;
+  }
+
   let stateId = 0;
   function newState(): NFAState {
     return { id: stateId++, transitions: new Map() };
@@ -1143,32 +1233,20 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
     if (!from.transitions.has(-1)) from.transitions.set(-1, []);
     from.transitions.get(-1)!.push(to);
   }
-  function addTrans(from: NFAState, to: NFAState, ch: number) {
-    if (!from.transitions.has(ch)) from.transitions.set(ch, []);
-    from.transitions.get(ch)!.push(to);
+  function addTrans(from: NFAState, to: NFAState, interval: number) {
+    if (!from.transitions.has(interval)) from.transitions.set(interval, []);
+    from.transitions.get(interval)!.push(to);
   }
 
   function buildNFA(ast: AST, start: NFAState, end: NFAState) {
     if (ast.type === "CHAR") {
-      addTrans(start, end, ast.char);
+      addTrans(start, end, findInterval(ast.char));
     } else if (ast.type === "CLASS") {
-      if (ast.invert) {
-        // Inverted classes match standard byte/ASCII character set
-        for (let i = 0; i <= 0xff; i++) {
-          let match = false;
-          for (const [s, e] of ast.ranges) {
-            if (i >= s && i <= e) {
-              match = true;
-              break;
-            }
-          }
-          if (!match) addTrans(start, end, i);
-        }
-      } else {
-        for (const [s, e] of ast.ranges) {
-          for (let cp = s; cp <= e; cp++) {
-            addTrans(start, end, cp);
-          }
+      for (const [s, e] of ast.ranges) {
+        const kStart = findInterval(s);
+        const kEnd = findInterval(e);
+        for (let k = kStart; k <= kEnd; k++) {
+          addTrans(start, end, k);
         }
       }
     } else if (ast.type === "CONCAT") {
@@ -1200,11 +1278,10 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
   }
 
   const nfaStart = newState();
-  for (const r of regexes) {
-    const ast = parseRegex(r.pattern, r.tokenName);
+  for (const { ast, tokenName } of parsed) {
     const s = newState();
     const e = newState();
-    e.accepts = r.tokenName;
+    e.accepts = tokenName;
     addEpsilon(nfaStart, s);
     buildNFA(ast, s, e);
   }
@@ -1243,9 +1320,6 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
           accepts.push(r.tokenName);
         }
       }
-    }
-    if (accepts.includes("IDENT")) {
-      console.log(`automata.ts: getAccepts found IDENT! accepts =`, accepts);
     }
     return accepts.length > 0 ? accepts : null;
   }
@@ -1296,8 +1370,8 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
     if (!acceptGroups.has(acc)) acceptGroups.set(acc, new Set());
     acceptGroups.get(acc)!.add(s.id);
   }
-  for (const p of acceptGroups.values()) {
-    P.push(p);
+  for (const pGroup of acceptGroups.values()) {
+    P.push(pGroup);
   }
 
   const W = [...P];
@@ -1392,11 +1466,18 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
   const classVectors: number[][] = [];
   const vectorMap = new Map<string, number>();
 
-  const charToClass = new Int32Array(0x10ffff + 1);
-  for (const ch of allActiveChars) {
+  // Default class (for intervals with no transitions in any state)
+  const defaultVec = minDfaStates.map(() => -1);
+  const defaultKey = defaultVec.join(",");
+  const defaultClassId = 0;
+  classVectors.push(defaultVec);
+  vectorMap.set(defaultKey, defaultClassId);
+
+  const intervalToClass = new Int32Array(numIntervals);
+  for (let k = 0; k < numIntervals; k++) {
     const vec = [];
     for (const s of minDfaStates) {
-      const to = s.transitions.get(ch);
+      const to = s.transitions.get(k);
       vec.push(to === undefined ? -1 : to);
     }
     const key = vec.join(",");
@@ -1406,34 +1487,18 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
       classVectors.push(vec);
       vectorMap.set(key, cId);
     }
-    charToClass[ch] = cId;
+    intervalToClass[k] = cId;
   }
 
-  // Default class (for characters with no transitions)
-  const defaultVec = minDfaStates.map(() => -1);
-  const defaultKey = defaultVec.join(",");
-  let defaultClassId = vectorMap.get(defaultKey);
-  if (defaultClassId === undefined) {
-    defaultClassId = classVectors.length;
-    classVectors.push(defaultVec);
-    vectorMap.set(defaultKey, defaultClassId);
-  }
-
-  // Fill inactive characters with default class
-  for (let ch = 0; ch <= 0x10ffff; ch++) {
-    if (!allActiveChars.has(ch)) {
-      charToClass[ch] = defaultClassId;
-    }
-  }
-
+  // Merge contiguous intervals that map to the same equivalence class
   const classRanges: { s: number; e: number; c: number }[] = [];
   let curStart = 0;
-  let curClass = charToClass[0];
-  for (let ch = 1; ch <= 0x10ffff; ch++) {
-    if (charToClass[ch] !== curClass) {
-      classRanges.push({ s: curStart, e: ch - 1, c: curClass });
-      curStart = ch;
-      curClass = charToClass[ch];
+  let curClass = intervalToClass[0];
+  for (let k = 1; k < numIntervals; k++) {
+    if (intervalToClass[k] !== curClass) {
+      classRanges.push({ s: curStart, e: p[k] - 1, c: curClass });
+      curStart = p[k];
+      curClass = intervalToClass[k];
     }
   }
   classRanges.push({ s: curStart, e: 0x10ffff, c: curClass });

@@ -17,6 +17,7 @@
 import { OCTAGON_INF, OctagonDBM } from "../analysis/octagon_dbm.js";
 import { Interval } from "../analysis/wasm_interval.js";
 import type { LitId } from "./cdcl_sat.js";
+import { CraigInterpolator } from "./craig_interpolator.js";
 import { DpllTSolver, type SmtProblem } from "./dpll_t_solver.js";
 import { type ExprNode, type NonlinearConstraint } from "./hc4_contractor.js";
 
@@ -170,7 +171,7 @@ export class InductiveProver {
    * and automated lemma strengthening.
    */
   public static proveInvariant(spec: InductiveSpec): InductiveProofResult {
-    const maxAttempts = spec.maxStrengtheningAttempts ?? 5;
+    const maxAttempts = spec.maxStrengtheningAttempts ?? 15;
     const defaultRange = new Interval(-1e5, 1e5);
 
     // Build base box covering all variables and primed variables
@@ -229,8 +230,23 @@ export class InductiveProver {
       }
     }
 
-    // Generate candidate strengthening lemmas
-    const candidateLemmas = InductiveProver.synthesizeCandidateLemmas(spec, ctiPreState);
+    // Generate candidate strengthening lemmas:
+    // 1. Mathematically exact separating hyperplanes via Craig Interpolation (Farkas' Lemma)
+    const craigLemmas = CraigInterpolator.synthesizeInductiveLemmas(spec, ctiPreState, failedConstraint);
+    // 2. Karr affine invariants, Monotonic bounds, and Octagon DBM invariants
+    const heuristicLemmas = InductiveProver.synthesizeCandidateLemmas(spec, ctiPreState);
+
+    // Merge and deduplicate candidate lemmas: conserved quantities, Craig interpolants, Octagon bounds
+    const seenLemmas = new Set<string>();
+    const candidateLemmas: NonlinearConstraint[] = [];
+    for (const l of [...heuristicLemmas, ...craigLemmas]) {
+      const key = formatConstraint(l);
+      if (!seenLemmas.has(key)) {
+        seenLemmas.add(key);
+        candidateLemmas.push(l);
+      }
+    }
+
     const validStrengtheningLemmas: NonlinearConstraint[] = [];
 
     let currentInvariant = [...spec.invariant];

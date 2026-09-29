@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Chunked Array for Zero-GC Memory Growth
 
 export function atomicChunkAlloc(size: u32): u32 {

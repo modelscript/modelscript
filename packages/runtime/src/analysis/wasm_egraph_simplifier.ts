@@ -226,6 +226,7 @@ export function simplifyArenaExpr(arena: DAEBuilder, exprId: number, stats?: Sim
 
         if (didCancel && activeTerms.length === 0) {
           if (stats) stats.identitiesFolded++;
+          if (!hasConst) return arena.addRealLiteral(0.0);
           return isFloat ? arena.addRealLiteral(constVal) : arena.addIntLiteral(Math.trunc(constVal));
         }
       }

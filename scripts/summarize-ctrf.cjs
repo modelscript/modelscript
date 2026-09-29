@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // scripts/summarize-ctrf.cjs
 // Aggregates all CTRF JSON reports across the monorepo and outputs a formatted summary table.
 const fs = require("node:fs");

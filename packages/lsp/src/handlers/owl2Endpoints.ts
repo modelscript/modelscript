@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
-import { LspContext } from "../LspContext.js";
+import { LspContext } from "../lsp-context.js";
 
 export interface OWL2ClassNode {
   iri: string;

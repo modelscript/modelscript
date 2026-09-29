@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // scripts/node-test-ctrf-reporter.cjs
 // Zero-dependency Common Test Report Format (CTRF) reporter for Node.js native test runner (node:test)
 const fs = require("node:fs");

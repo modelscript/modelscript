@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";

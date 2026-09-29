@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { atomicChunkAlloc } from "../arena";
 import { UnmanagedFloat64Array } from "../core/array";
 

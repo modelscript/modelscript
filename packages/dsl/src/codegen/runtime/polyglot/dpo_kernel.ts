@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 /**
  * @fileoverview WASM In-Place DPO (Double Pushout) Graph Rewriting Kernel

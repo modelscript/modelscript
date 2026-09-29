@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- SSA Form & Dominator Tree Construction ---
 // Implements Cooper-Harvey-Kennedy Immediate Dominator (idom) computation,
 // Dominance Frontiers (DF), and minimal Phi-node placement in AssemblyScript zero-GC linear memory.

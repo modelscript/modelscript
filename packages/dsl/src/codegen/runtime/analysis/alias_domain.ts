@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Steensgaard Points-To Alias Analysis ---
 // Zero-GC Union-Find Disjoint Set data structure in WASM linear memory.
 

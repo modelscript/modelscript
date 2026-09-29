@@ -1,8 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//
-// Port-Aware Orthogonal Router with Obstacle Avoidance and Staggered Parallel Offsets.
-// Computes orthogonal routing waypoints for AntV X6 edges, routing around intermediate
-// blocks and offsetting parallel bus connections.
+
+/**
+ * @fileoverview Port-Aware Orthogonal Router with Obstacle Avoidance and Staggered Parallel Offsets.
+ *
+ * Academic Citations:
+ * - Lee, C. Y. (1961). An algorithm for path connection and its applications.
+ *   IRE Transactions on Electronic Computers, EC-10(3), 346-365.
+ *   https://doi.org/10.1109/TEC.1961.5219222
+ * - Hart, P. E., Nilsson, N. J., & Raphael, B. (1968). A formal basis for the heuristic
+ *   determination of minimum cost paths. IEEE Transactions on Systems Science and Cybernetics,
+ *   4(2), 100-107. https://doi.org/10.1109/TSSC.1968.300136
+ * - Deutsch, D. N. (1976). A 'dogleg' channel router. In Proceedings of the 13th Design
+ *   Automation Conference (DAC '76), 425-433. https://doi.org/10.1145/800263.810688
+ *
+ * ModelScript Architectural Rationale:
+ * In ModelScript's polyglot diagram system, edges correspond to physical connections
+ * (electrical wires, hydraulic lines, thermal contacts, mechanical joints). Wires must never
+ * intersect component bounding boxes, and multi-variable connections between blocks must remain
+ * visually distinguishable rather than collapsing into a single merged line. This router uses
+ * orthogonal A* maze routing over obstacle bounding boxes with directional port stubs and dogleg
+ * channel routing offsets.
+ *
+ * ModelScript Modifications:
+ * - Computes port outward normal vectors to force edge stubs to exit perpendicular to component
+ *   boundaries before seeking orthogonal path channels.
+ * - Staggers parallel multi-edge connections using channel offsets (`parallelIndex`, `parallelCount`,
+ *   `channelSpacing`), preventing visual occlusion in bus connections.
+ * - Employs fast AABB segment intersection tests (`segmentIntersectsRect`) and bend-penalized A*
+ *   heuristics to produce aesthetically clean paths with minimal corners.
+ */
 
 export interface PointLike {
   x: number;

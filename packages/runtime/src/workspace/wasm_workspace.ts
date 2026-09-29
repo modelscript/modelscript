@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { PolyglotTransformer, type PolyglotNode } from "../interop/polyglot-transformer.js";
 import { WasmOntologyStore } from "../ontology/wasm_ontology.js";
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "../runtime.js";
@@ -250,16 +252,22 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     if (editRanges && Array.isArray(editRanges)) {
       this.fileDirtyRanges.set(uri, editRanges);
     }
-    if (parentFQN) {
-      const filename = uri
-        .split("/")
-        .pop()
-        ?.replace(/\.(mo|sysml|csv|step)$/i, "");
-      if (filename && filename !== "package") {
-        this.fqnToUri.set(`${parentFQN}.${filename}`, uri);
-      } else {
-        this.fqnToUri.set(parentFQN, uri);
+    const rawFilename = uri.split("/").pop();
+    const filename = rawFilename?.replace(/\.(mo|sysml|csv|step)$/i, "");
+    if (filename === "package") {
+      const parts = uri.split("/");
+      const pkgDirRaw = parts.length >= 2 ? decodeURIComponent(parts[parts.length - 2]).split(" ")[0] : "";
+      if (pkgDirRaw) {
+        let pkgFqn = pkgDirRaw;
+        if (parentFQN) {
+          const parentLast = parentFQN.split(".").pop();
+          pkgFqn = parentLast === pkgDirRaw ? parentFQN : `${parentFQN}.${pkgDirRaw}`;
+        }
+        this.fqnToUri.set(pkgFqn, uri);
       }
+    } else if (filename) {
+      const fqn = parentFQN ? `${parentFQN}.${filename}` : filename;
+      this.fqnToUri.set(fqn, uri);
     }
     if (typeof loader === "function") {
       if (lazy) {
@@ -289,10 +297,31 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const entry = this.fileLoaders.get(uri);
     if (entry) {
       this.fileLoaders.delete(uri);
+      if (entry.parentFQN) {
+        this.ensureFQNIndexed(entry.parentFQN);
+      }
       const rootNode = entry.loader();
       if (rootNode) {
         this.indexCst(uri, rootNode, entry.parentFQN);
       }
+    }
+  }
+
+  /**
+   * Ensures that all ancestor packages and files along the specified FQN path are indexed in hierarchical order.
+   */
+  ensureFQNIndexed(fqn: string): void {
+    if (!fqn) return;
+    const parts = fqn.split(".");
+    this.ensureChildrenIndexed("");
+    let prefix = "";
+    for (let i = 0; i < parts.length; i++) {
+      prefix = prefix ? `${prefix}.${parts[i]}` : parts[i];
+      const uri = this.fqnToUri.get(prefix);
+      if (uri) {
+        this.ensureIndexed(uri);
+      }
+      this.ensureChildrenIndexed(prefix);
     }
   }
 
@@ -354,6 +383,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Resolves a fully qualified class name to its backing file URI, evaluating lazy loader if needed.
    */
   getFileUriForFQN(fqn: string): string | undefined {
+    this.ensureFQNIndexed(fqn);
     let uri = this.fqnToUri.get(fqn);
     if (!uri) {
       const parts = fqn.split(".");
@@ -976,6 +1006,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   toUnifiedPartial(): SymbolIndex {
+    (this.unifiedIndex as any).workspace = this;
     return this.unifiedIndex;
   }
 
@@ -1622,6 +1653,14 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     }
   }
 
+  ensureFQNIndexed(fqn: string): void {
+    for (const ws of this.workspaces.values()) {
+      if (ws && typeof (ws as any).ensureFQNIndexed === "function") {
+        (ws as any).ensureFQNIndexed(fqn);
+      }
+    }
+  }
+
   hasPendingChildren(parentFQN?: string): boolean {
     for (const ws of this.workspaces.values()) {
       if (ws && typeof (ws as any).hasPendingChildren === "function") {
@@ -1787,6 +1826,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         merged.childrenOf.set(parentId, existing.concat(childIds));
       }
     }
+    (merged as any).workspace = this;
     return merged;
   }
 

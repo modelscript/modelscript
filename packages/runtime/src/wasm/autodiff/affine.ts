@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import {
   Interval,
   INF,
@@ -39,6 +41,29 @@ import {
 /**
  * Noise Term entry in unmanaged linear memory (16 bytes).
  * Stride: [symbolId: u32, pad: u32, coeff: f64]
+ *
+ * Implements affine arithmetic noise symbol tracking to preserve first-order
+ * correlations and suppress the interval dependency problem.
+ *
+ * Academic Citations:
+ *   - de Figueiredo, L. H., & Stolfi, J. (1997). "Self-validated numerical methods and applications."
+ *     In 21st Brazilian Mathematics Colloquium Monographs, IMPA.
+ *   - de Figueiredo, L. H., & Stolfi, J. (2004). "Affine arithmetic: concepts and applications."
+ *     Numerical Algorithms, 37(1), pp. 147–158. DOI: 10.1023/B:NUMA.0000049462.70970.b6.
+ *
+ * ModelScript Architectural Rationale:
+ *   Standard interval arithmetic treats multiple instances of the same variable as independent,
+ *   causing exponential bounding explosion (e.g. [0, 1] - [0, 1] = [-1, 1] instead of 0).
+ *   In verified reachability and parameter bounding of cyber-physical systems, this dependency
+ *   problem quickly invalidates safety proofs. Affine arithmetic tracks shared symbolic noise
+ *   symbols (epsilon_i in [-1, 1]) across state variables, allowing cancellation of correlated
+ *   uncertainties and maintaining order-of-magnitude tighter trajectory bounds.
+ *
+ * Modifications:
+ *   - Implemented as an unmanaged 16-byte struct (`@unmanaged`) in WebAssembly linear memory.
+ *   - Contiguous chunk-allocated storage for noise symbol arrays.
+ *   - Optimal Chebyshev affine approximations for transcendental terms (sin, cos, exp, log)
+ *     with explicit residual noise term allocation in linear memory.
  */
 @unmanaged
 export class AffineTerm {

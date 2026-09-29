@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Computes a 32-bit unsigned DJB2 hash for string identifiers.
  * Used for fast hashing of node types, field names, and symbol keys.

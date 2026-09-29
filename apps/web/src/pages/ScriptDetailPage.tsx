@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ArrowLeftIcon, CheckCircleFillIcon, CircleIcon, ClockIcon, XCircleFillIcon } from "@primer/octicons-react";
 import { Heading, Label, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";

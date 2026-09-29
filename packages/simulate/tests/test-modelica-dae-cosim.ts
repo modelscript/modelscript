@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { BinOp, Causality, DAEBuilder, EqKind, initBltWasm, Variability, VarType } from "@modelscript/runtime";
 import { LbmVoxelizer } from "../src/cfd/lbm-voxelizer.js";
 import { LiveCoSimOrchestrator } from "../src/core/live-cosim-orchestrator.js";

@@ -1,8 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//
-// Global Port Constraint ILP Solver.
-// Solves optimal face assignment, planar crossing elimination, and 1D continuous
-// collinear coordinate alignment to produce 0-bend connections between blocks.
+
+/**
+ * @fileoverview Global Port Constraint ILP & Continuous Alignment Solver.
+ *
+ * Academic Citations:
+ * - Spönemann, M., von Hanxleden, R., & Fuhrmann, H. (2014). Port constraints in layout
+ *   algorithms. In Graph Drawing (GD 2014), Lecture Notes in Computer Science, vol 8871,
+ *   351-362. Springer. https://doi.org/10.1007/978-3-662-45803-7_29
+ * - Kieffer, S., Dwyer, T., Marriott, K., & Wybrow, M. (2016). Incremental layout for dynamic
+ *   schematic diagrams. IEEE Transactions on Visualization and Computer Graphics, 22(1),
+ *   876-885. https://doi.org/10.1109/TVCG.2015.2467364
+ * - Eiglsperger, M., Fößmeier, U., & Kaufmann, M. (2001). Orthogonal graph drawing with
+ *   constraints. Journal of Graph Algorithms and Applications, 5(2), 1-24.
+ *   https://doi.org/10.7155/jgaa.00035
+ *
+ * ModelScript Architectural Rationale:
+ * High-quality cyber-physical schematics (such as Modelica block diagrams and SysML internal block
+ * diagrams) require that connection lines between adjacent components are straight (0-bend)
+ * whenever geometry permits, and that port order on component boundaries avoids unnecessary edge
+ * crossings. This solver resolves port side assignment, crossing-free port permutation, and
+ * 1D continuous coordinate alignment along component perimeters under minimum port spacing
+ * and corner margin constraints.
+ *
+ * ModelScript Modifications:
+ * - Two-phase optimization combining discrete face assignment / crossing elimination with
+ *   continuous 1D coordinate relaxation and collinear port snapping (`straightTolerance`).
+ * - Supports fixed port constraints, causality biases (e.g. input ports biased left, output ports
+ *   biased right), and bidirectional multi-connector bus groups.
+ * - Lightweight solver executable synchronously in browser UI layout passes without requiring
+ *   external mixed-integer linear programming solvers.
+ */
 
 export type SolverPortSide = "top" | "bottom" | "left" | "right";
 

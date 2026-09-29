@@ -1,5 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @fileoverview Worst-Case Optimal Join (WCOJ) & Leapfrog Triejoin Query Planner.
+ *
+ * Implements worst-case optimal join query planning for declarative graph pattern
+ * matching within ModelScript's Triple Graph Grammar (TGG) engine.
+ *
+ * Academic Citations:
+ *   - Ngo, H. Q., Porat, E., Ré, C., & Rudra, A. (2012). "Worst-case optimal join algorithms."
+ *     In Proceedings of the 31st ACM SIGMOD-SIGACT-SIGART Symposium on Principles of Database
+ *     Systems (PODS '12), pp. 37–48. DOI: 10.1145/2213556.2213565.
+ *   - Veldhuizen, T. L. (2014). "Leapfrog Triejoin: A simple, worst-case optimal join algorithm."
+ *     In 17th International Conference on Database Theory (ICDT '14), pp. 96–106.
+ *     DOI: 10.4230/LIPIcs.ICDT.2014.96.
+ *   - Atserias, A., Grohe, M., & Marx, D. (2008). "Size bounds and query plans for relational joins."
+ *     In 49th Annual IEEE Symposium on Foundations of Computer Science (FOCS '08), pp. 739–748. (AGM Bound)
+ *
+ * ModelScript Architectural Rationale:
+ *   ModelScript synchronizes heterogeneous engineering models (e.g. Modelica DAEs, SysML v2
+ *   hierarchies, CAD B-Rep solids, and OWL2 ontologies) via multi-edge graph patterns.
+ *   Traditional binary relational joins (nested-loop or hash joins) suffer from catastrophic
+ *   intermediate result explosion on cyclic subgraphs (e.g. triangle topologies between ports,
+ *   connectors, and component definitions). WCOJ guarantees that query evaluation runtime is
+ *   strictly bounded by the Atserias-Grohe-Marx (AGM) bound, achieving O(N^(3/2)) for triangle
+ *   queries rather than O(N^2).
+ *
+ * Modifications:
+ *   - Tailored specifically for Triple Graph Grammar (TGG) Left-Hand Side (LHS) AST pattern compilation.
+ *   - Employs a descending vertex degree heuristic to formulate Leapfrog Triejoin iteration orders.
+ *   - Emits complexity bounds directly into the AOT WebAssembly transformation plan.
+ */
+
 export interface WcojEdge {
   fromVar: string;
   toVar: string;
@@ -24,6 +55,9 @@ export interface WcojPlan {
 /**
  * Analyzes a multi-edge LHS pattern to compute optimal variable ordering
  * and detect cyclic subgraphs that require Leapfrog Triejoin.
+ *
+ * Implements the degree-based variable ordering heuristic of Veldhuizen (2014)
+ * to achieve worst-case optimal runtime conforming to the AGM bound.
  */
 export function planWcojPattern(pattern: WcojPattern): WcojPlan {
   const { name, variables, edges } = pattern;

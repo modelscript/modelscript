@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // @ts-nocheck
 // Auto-generated TypeScript Wrapper for __LANG_NAME__
 
@@ -179,7 +181,48 @@ export class Parser {
   ): ASTNode | null {
     let view: Uint8Array;
     if (typeof source === "string") {
-      view = new TextEncoder().encode(source);
+      const currentEnc =
+        typeof this.runtime.getInputEncoding === "function"
+          ? this.runtime.getInputEncoding()
+          : ((this.runtime as any).wasmExports?.getInputEncoding?.() ??
+            (this.runtime as any).nativeAddon?.getInputEncoding?.() ??
+            InputEncoding.UTF8);
+      if (currentEnc === InputEncoding.UTF16LE) {
+        const u8 = new Uint8Array(source.length * 2);
+        const u16 = new Uint16Array(u8.buffer);
+        for (let i = 0; i < source.length; i++) {
+          u16[i] = source.charCodeAt(i);
+        }
+        view = u8;
+      } else if (currentEnc === InputEncoding.UTF16BE) {
+        const u8 = new Uint8Array(source.length * 2);
+        const view16 = new DataView(u8.buffer);
+        for (let i = 0; i < source.length; i++) {
+          view16.setUint16(i * 2, source.charCodeAt(i), false);
+        }
+        view = u8;
+      } else if (currentEnc === InputEncoding.UTF32LE || currentEnc === InputEncoding.UTF32BE) {
+        const cps: number[] = [];
+        for (const ch of source) {
+          cps.push(ch.codePointAt(0)!);
+        }
+        const u8 = new Uint8Array(cps.length * 4);
+        const view32 = new DataView(u8.buffer);
+        const isLE = currentEnc === InputEncoding.UTF32LE;
+        for (let i = 0; i < cps.length; i++) {
+          view32.setUint32(i * 4, cps[i], isLE);
+        }
+        view = u8;
+      } else {
+        view = new TextEncoder().encode(source);
+        if (this.runtime.setInputEncoding) {
+          this.runtime.setInputEncoding(InputEncoding.UTF8);
+        } else if ((this.runtime as any).wasmExports && (this.runtime as any).wasmExports.setInputEncoding) {
+          (this.runtime as any).wasmExports.setInputEncoding(InputEncoding.UTF8);
+        } else if ((this.runtime as any).nativeAddon && (this.runtime as any).nativeAddon.setInputEncoding) {
+          (this.runtime as any).nativeAddon.setInputEncoding(InputEncoding.UTF8);
+        }
+      }
     } else {
       view = source;
     }
@@ -461,6 +504,8 @@ export function createWasmImports(grammar: any, facade: LspFacade): any {
 export class LspFacade {
   public syntaxNames: string[] = SYNTAX_NAMES;
   public fieldNames: Record<string, number> = FIELD_NAMES;
+  public lintMessages: Record<string, any> = LINT_MESSAGES;
+  public lintSeverities: Record<string, number> = LINT_SEVERITIES;
   private _idToFieldName: (string | null)[] | null = null;
 
   public getFieldNameById(id: number): string | null {
@@ -1061,8 +1106,8 @@ export class LspFacade {
     const encoding = this.getInputEncoding();
 
     let lenBytes = this.currentInputLength;
-    if (encoding === 1) lenBytes *= 2;
-    else if (encoding === 2) lenBytes *= 4;
+    if (encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE) lenBytes *= 2;
+    else if (encoding === InputEncoding.UTF32LE || encoding === InputEncoding.UTF32BE) lenBytes *= 4;
 
     if (this.currentInputLength === 0) {
       lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength ?? 0;
@@ -1073,7 +1118,7 @@ export class LspFacade {
     const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     const inputBufPtr = getInputBuf ? getInputBuf() : 0;
 
-    if (encoding === 0) {
+    if (encoding === InputEncoding.UTF8) {
       const lenChars = lenBytes;
       const textBuffer = new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
       for (let i = 0; i < lenChars; i++) {
@@ -1087,6 +1132,54 @@ export class LspFacade {
           }
         } else if (c === 10) {
           starts.push(i + 1);
+        }
+      }
+    } else if (encoding === InputEncoding.UTF16BE) {
+      const lenChars = lenBytes / 2;
+      const view = new DataView(this.wasmMemory.buffer, inputBufPtr, lenBytes);
+      for (let i = 0; i < lenChars; i++) {
+        const c = view.getUint16(i * 2, false);
+        if (c === 13) {
+          if (i + 1 < lenChars && view.getUint16((i + 1) * 2, false) === 10) {
+            starts.push((i + 2) * 2);
+            i++;
+          } else {
+            starts.push((i + 1) * 2);
+          }
+        } else if (c === 10 || c === 0x2028 || c === 0x2029) {
+          starts.push((i + 1) * 2);
+        }
+      }
+    } else if (encoding === InputEncoding.UTF32LE) {
+      const lenChars = lenBytes / 4;
+      const textBuffer = new Uint32Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
+      for (let i = 0; i < lenChars; i++) {
+        const c = textBuffer[i];
+        if (c === 13) {
+          if (i + 1 < lenChars && textBuffer[i + 1] === 10) {
+            starts.push((i + 2) * 4);
+            i++;
+          } else {
+            starts.push((i + 1) * 4);
+          }
+        } else if (c === 10) {
+          starts.push((i + 1) * 4);
+        }
+      }
+    } else if (encoding === InputEncoding.UTF32BE) {
+      const lenChars = lenBytes / 4;
+      const view = new DataView(this.wasmMemory.buffer, inputBufPtr, lenBytes);
+      for (let i = 0; i < lenChars; i++) {
+        const c = view.getUint32(i * 4, false);
+        if (c === 13) {
+          if (i + 1 < lenChars && view.getUint32((i + 1) * 4, false) === 10) {
+            starts.push((i + 2) * 4);
+            i++;
+          } else {
+            starts.push((i + 1) * 4);
+          }
+        } else if (c === 10) {
+          starts.push((i + 1) * 4);
         }
       }
     } else {
@@ -1131,7 +1224,12 @@ export class LspFacade {
     }
 
     const encoding = this.getInputEncoding();
-    const charDiv = encoding === 1 ? 2 : 1;
+    const charDiv =
+      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
+        ? 2
+        : encoding === InputEncoding.UTF32LE || encoding === InputEncoding.UTF32BE
+          ? 4
+          : 1;
     const charOffset = Math.floor((offset - lineStarts[line]) / charDiv);
     return { line, character: charOffset };
   }
@@ -1141,7 +1239,12 @@ export class LspFacade {
    */
   public posToOffset(line: number, character: number, lineStarts: Uint32Array): number {
     const encoding = this.getInputEncoding();
-    const charMult = encoding === 1 ? 2 : 1;
+    const charMult =
+      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
+        ? 2
+        : encoding === InputEncoding.UTF32LE || encoding === InputEncoding.UTF32BE
+          ? 4
+          : 1;
     if (line < lineStarts.length) {
       return lineStarts[line] + character * charMult;
     }
@@ -1160,7 +1263,12 @@ export class LspFacade {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
     const encoding = typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
-    const encStep = encoding === 1 ? 2 : 1;
+    const encStep =
+      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
+        ? 2
+        : encoding === InputEncoding.UTF32LE || encoding === InputEncoding.UTF32BE
+          ? 4
+          : 1;
     const rStartByte = rangeStart * encStep;
     const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
     const numElements =
@@ -1408,16 +1516,18 @@ export class LspFacade {
       }
 
       if (rawLintId > 0) {
-        const key = LINT_MESSAGES[lintId.toString()]
+        const activeLintMessages = this.lintMessages || LINT_MESSAGES;
+        const activeLintSeverities = this.lintSeverities || LINT_SEVERITIES;
+        const key = activeLintMessages[lintId.toString()]
           ? lintId.toString()
-          : LINT_MESSAGES[rawLintId.toString()]
+          : activeLintMessages[rawLintId.toString()]
             ? rawLintId.toString()
             : null;
         if (lintId < 0x8000 && key !== null) {
-          if (LINT_SEVERITIES[key]) {
-            severity = LINT_SEVERITIES[key];
+          if (activeLintSeverities[key]) {
+            severity = activeLintSeverities[key];
           }
-          let msgVal = LINT_MESSAGES[key];
+          let msgVal = activeLintMessages[key];
           if (typeof msgVal === "function") {
             const lenBytes = this.exports.inputLength
               ? typeof this.exports.inputLength.value === "number"
@@ -4244,28 +4354,50 @@ export class SyntaxNode {
 
   /** Extracts the substring from the original source code corresponding to this node. */
   get text(): string {
+    const enc = this.tree.facade?.getInputEncoding ? this.tree.facade.getInputEncoding() : 1;
+    if (enc === 0 && (this.tree.facade as any)?.wasmMemory) {
+      const getInputBuf =
+        this.tree.facade.exports.getInputBuffer || (this.tree.facade.exports as any).lsp_getInputBuffer;
+      if (getInputBuf) {
+        const inputBufPtr = getInputBuf();
+        const rawBytes = new Uint8Array(
+          (this.tree.facade as any).wasmMemory.buffer,
+          inputBufPtr + this._startOffset + this._cachedPad,
+          this._cachedLen,
+        );
+        return new TextDecoder("utf-8").decode(rawBytes);
+      }
+    }
     if (!this.tree.sourceCode) return "";
     return this.tree.sourceCode.substring(this.startIndex, this.endIndex);
   }
 
-  /** The start character index of the node (UTF-16). */
+  /** The start character index of the node. */
   get startIndex(): number {
-    return (this._startOffset + this._cachedPad) / 2;
+    const enc = this.tree.facade?.getInputEncoding ? this.tree.facade.getInputEncoding() : 1;
+    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    return Math.floor((this._startOffset + this._cachedPad) / div);
   }
 
-  /** The end character index of the node (UTF-16). */
+  /** The end character index of the node. */
   get endIndex(): number {
-    return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
+    const enc = this.tree.facade?.getInputEncoding ? this.tree.facade.getInputEncoding() : 1;
+    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    return Math.floor((this._startOffset + this._cachedPad + this._cachedLen) / div);
   }
 
   /** The start byte index of the node (character offset matching Tree-sitter JS). */
   get startByte(): number {
-    return (this._startOffset + this._cachedPad) / 2;
+    const enc = this.tree.facade?.getInputEncoding ? this.tree.facade.getInputEncoding() : 1;
+    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    return Math.floor((this._startOffset + this._cachedPad) / div);
   }
 
   /** The end byte index of the node (character offset matching Tree-sitter JS). */
   get endByte(): number {
-    return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
+    const enc = this.tree.facade?.getInputEncoding ? this.tree.facade.getInputEncoding() : 1;
+    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    return Math.floor((this._startOffset + this._cachedPad + this._cachedLen) / div);
   }
 
   /**
@@ -4946,10 +5078,11 @@ export class Tree {
     public readonly rootPtr: number,
     public readonly sourceCode: string,
   ) {
-    // Build lineStarts in byte offsets (UTF-16: 2 bytes per character)
+    const enc = this.facade?.getInputEncoding ? this.facade.getInputEncoding() : 1;
+    const mult = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
     this.lineStarts = [0];
     for (let i = 0; i < sourceCode.length; i++) {
-      if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * 2);
+      if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * mult);
     }
   }
 
@@ -5241,11 +5374,18 @@ export class LspWorkspaceManager {
  */
 export async function createWasmParser(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
-  options?: { syntaxNames?: string[]; fieldNames?: Record<string, number> },
+  options?: {
+    syntaxNames?: string[];
+    fieldNames?: Record<string, number>;
+    lintMessages?: Record<string, any>;
+    lintSeverities?: Record<string, number>;
+  },
 ): Promise<{ facade: LspFacade; parser: TreeSitterParser }> {
   let bytes: ArrayBuffer;
   let syntaxNames = options?.syntaxNames;
   let fieldNames = options?.fieldNames;
+  let lintMessages = options?.lintMessages;
+  let lintSeverities = options?.lintSeverities;
 
   if (typeof wasmUrlOrBytes === "string") {
     if (
@@ -5272,7 +5412,7 @@ export async function createWasmParser(
       bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
 
-    if (!syntaxNames || !fieldNames) {
+    if (!syntaxNames || !fieldNames || !lintMessages) {
       const candidates = [
         wasmUrlOrBytes.replace(/\/dist\/parser\.wasm$/, "/src-gen/bindings.js"),
         wasmUrlOrBytes.replace(/\.wasm$/, ".bindings.js"),
@@ -5290,7 +5430,13 @@ export async function createWasmParser(
             if (!fieldNames && mod.FIELD_NAMES && typeof mod.FIELD_NAMES === "object") {
               fieldNames = mod.FIELD_NAMES;
             }
-            if (syntaxNames && fieldNames) break;
+            if (!lintMessages && mod.LINT_MESSAGES && typeof mod.LINT_MESSAGES === "object") {
+              lintMessages = mod.LINT_MESSAGES;
+            }
+            if (!lintSeverities && mod.LINT_SEVERITIES && typeof mod.LINT_SEVERITIES === "object") {
+              lintSeverities = mod.LINT_SEVERITIES;
+            }
+            if (syntaxNames && fieldNames && lintMessages) break;
           }
         } catch {
           // Companion bindings optional; ignore if not present
@@ -5335,8 +5481,12 @@ export async function createWasmParser(
   }
   if (fieldNames) {
     facade.fieldNames = fieldNames;
-    Object.assign(FIELD_NAMES, fieldNames);
-    ID_TO_FIELD_NAME = null;
+  }
+  if (lintMessages) {
+    facade.lintMessages = lintMessages;
+  }
+  if (lintSeverities) {
+    facade.lintSeverities = lintSeverities;
   }
   if (facade.exports.configEnableMultiFile) {
     facade.exports.configEnableMultiFile.value = 1;

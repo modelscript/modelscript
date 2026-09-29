@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * OMC Verification Script
  * Automates the validation of ModelScript-generated FMUs by importing

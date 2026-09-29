@@ -1,4 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import Box from "../Box";

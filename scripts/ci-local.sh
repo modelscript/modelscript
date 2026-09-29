@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # scripts/ci-local.sh - Local simulation of GitHub Actions CI pipeline
 set -eo pipefail
 
@@ -122,6 +124,9 @@ run_task() {
 # 1. Lint Step
 if [ "$MODE_LINT" = true ]; then
   echo ""
+  log_info "Verifying file headers and filename conventions..."
+  npm run lint:headers
+  npm run lint:filenames
   run_task "lint" "Lint and TypeScript checking"
 fi
 

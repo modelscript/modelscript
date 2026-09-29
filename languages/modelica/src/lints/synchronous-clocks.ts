@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/dsl";
 
 export const modelicaSyncLints: Record<string, CompilerLint> = {

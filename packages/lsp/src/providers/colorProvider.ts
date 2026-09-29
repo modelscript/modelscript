@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-for-of */
 import { Color, ColorInformation, ColorPresentation, Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";

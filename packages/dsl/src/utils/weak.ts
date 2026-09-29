@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export function makeWeakRef<T extends WeakKey>(target: T | null | undefined): WeakRef<T> | null {
   if (target) return { deref: () => target } as unknown as WeakRef<T>;
   else return null;

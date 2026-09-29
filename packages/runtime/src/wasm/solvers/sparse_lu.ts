@@ -1,9 +1,35 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { CCSMatrix } from "../autodiff/coloring";
 import { ChunkedInt32Array, createChunkedInt32Array, UnmanagedFloat64Array, UnmanagedInt32Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 
 /**
- * Sparse LU Factorization Data Structure (Gilbert-Peierls Left-Looking)
+ * Sparse LU Factorization Data Structure (Gilbert-Peierls Left-Looking).
+ *
+ * Implements high-performance sparse LU decomposition with partial pivoting
+ * for large-scale sparse linear systems in WebAssembly linear memory.
+ *
+ * Academic Citations:
+ *   - Gilbert, J. R., & Peierls, T. (1988). "Sparse partial pivoting in time proportional
+ *     to arithmetic operations." SIAM Journal on Scientific and Statistical Computing, 9(5),
+ *     pp. 862–874. DOI: 10.1137/0909058.
+ *   - Davis, T. A. (2006). Direct Methods for Sparse Linear Systems. SIAM.
+ *     ISBN: 978-0-898716-13-9. (CSparse / KLU Sparse Factorization Algorithms)
+ *
+ * ModelScript Architectural Rationale:
+ *   Newton iterations in stiff DAE solvers (BDF, TR-BDF2, and algebraic tearing loops) repeatedly
+ *   solve large Jacobian systems J * dx = -r. For large physical networks, J is ultra-sparse (<1% non-zero).
+ *   Dense LU factorization takes O(N^3) time and O(N^2) memory, which is completely non-viable in
+ *   WebAssembly. The Gilbert-Peierls algorithm computes sparse LU factorizations in time proportional
+ *   to actual floating-point operations by determining nonzero fill-in patterns via depth-first
+ *   search on the dependency graph of L, providing near-linear solving performance for sparse DAEs.
+ *
+ * Modifications:
+ *   - Implemented as an unmanaged AssemblyScript structure (`@unmanaged`) in WebAssembly linear memory.
+ *   - Operates on Compressed Column Storage (`CCSMatrix`) matrices with zero GC allocation.
+ *   - Performs symbolic graph reachability via DFS on DAG(L) to identify non-zero fill-in positions.
+ *   - Employs dense accumulator vectors and unmanaged scratch buffers allocated via `atomicChunkAlloc`.
  */
 @unmanaged
 export class SparseLU {

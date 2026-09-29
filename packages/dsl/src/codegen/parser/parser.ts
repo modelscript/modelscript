@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { GLRTable, LRAutomaton } from "../../dsl/automata.js";
@@ -82,7 +84,7 @@ import { generateOctagonDomain } from "../typesys/octagon.js";
 import { generateReasoner } from "../typesys/reasoner.js";
 import { generateSAT } from "../typesys/sat.js";
 import { generateTypeSystem } from "../typesys/typesys.js";
-import { generateLexer } from "./lexer.js";
+import { generateLexer, toCodePoints } from "./lexer.js";
 
 /**
  * The consolidated result of a successful grammar analysis and parsing phase.
@@ -478,10 +480,11 @@ export function generateParserTables(
   for (const [sym, symId] of symToInt.entries()) {
     if (sym.startsWith('"') && sym.endsWith('"') && sym.length > 2) {
       const literal = sym.slice(1, -1);
+      const cps = toCodePoints(literal);
       tokenStringOffsets[symId] = tokenStringBytes.length;
-      tokenStringBytes.push(literal.length);
-      for (let i = 0; i < literal.length; i++) {
-        tokenStringBytes.push(literal.charCodeAt(i));
+      tokenStringBytes.push(cps.length);
+      for (const cp of cps) {
+        tokenStringBytes.push(cp);
       }
     }
   }
@@ -1073,7 +1076,7 @@ export function generateParserTables(
     .replace("export const CHAR_RPAREN: u8 = 41;", `export const CHAR_RPAREN: u8 = ${hasToken(")") ? 41 : 0};`);
   let lspCodeTemplate = lspCode;
 
-  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, peekChar, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, MAX_SYMBOL_ID, executeLints } from "../parser";\n`;
+  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, peekChar, peekCharLen, peekPrevChar, peekPrevCharLen, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, MAX_SYMBOL_ID, executeLints } from "../parser";\n`;
   let importedLints = new Set<string>();
   if (originalGrammar.lints) {
     for (const lintName of Object.keys(originalGrammar.lints)) {

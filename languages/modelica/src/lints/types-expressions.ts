@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { CodeGraph, CompilerLint, i32, u16, u32 } from "@modelscript/dsl";
 import { unitsCompatible } from "../units.js";
 import {

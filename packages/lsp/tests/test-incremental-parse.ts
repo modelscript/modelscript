@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
 import * as fs from "fs";
 import * as path from "path";
-import { computeTreeEdit } from "../src/utils/astUtils.js";
+import { computeTreeEdit } from "../src/utils/ast-utils.js";
 
 async function main() {
   const wasmPath = path.resolve("apps/ide/dist/extension/server/dist/tree-sitter-modelica.wasm");

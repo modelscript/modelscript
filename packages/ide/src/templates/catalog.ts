@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type * as vscode from "vscode";
-import { droneStepContent } from "../droneStepContent.js";
+import { droneStepContent } from "../drone-step-content.js";
 
 function joinPath(base: vscode.Uri, ...pathSegments: string[]): vscode.Uri {
   const globalVsCode = (globalThis as any).vscode;

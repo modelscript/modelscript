@@ -9,6 +9,26 @@
  *   - Inductive Generalization via SAT Unsat-Cores.
  *   - Monotonic Clause Propagation and Fixpoint Convergence (F_i == F_{i+1}).
  *   - Counterexample Trace Reconstruction.
+ *
+ * Academic Citations:
+ *   - Bradley, A. R. (2011). "SAT-based model checking without unrolling."
+ *     In Verification, Model Checking, and Abstract Interpretation (VMCAI 2011),
+ *     LNCS 6538, pp. 70–87. Springer. DOI: 10.1007/978-3-642-18275-4_7.
+ *   - Eén, N., Mishchenko, A., & Brayton, R. (2011). "Efficient implementation of property
+ *     directed reachability." In Formal Methods in Computer-Aided Design (FMCAD '11), pp. 125–134.
+ *
+ * ModelScript Architectural Rationale:
+ *   Cyber-physical models combine continuous physical dynamics with discrete digital controllers
+ *   (e.g. state machines, mode switches, valve logic). Bounded model checking (BMC) cannot prove
+ *   safety over infinite time horizons, and BDD-based reachability suffers from memory explosion.
+ *   IC3/PDR constructs step-inductive invariant approximations without unrolling the transition
+ *   relation, proving safety properties unconditionally for discrete statecharts and hybrid automata.
+ *
+ * Modifications:
+ *   - Powered by the built-in `CdclSatSolver` with assumption literals and unsat core extraction.
+ *   - Automatic prime/unprime variable mapping over discrete model variables.
+ *   - Recursive cube blocking queue with inductive generalization to drop non-essential literals.
+ *   - Emits structured counterexample traces and inductive invariant manifests for certificate export.
  */
 
 import { CdclSatSolver, type LitId, type VarId } from "./cdcl_sat.js";

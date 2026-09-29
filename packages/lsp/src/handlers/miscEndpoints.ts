@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
-import { LspContext } from "../LspContext.js";
+import { LspContext } from "../lsp-context.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
-import { getCompositeName } from "../utils/hierarchyUtils.js";
+import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { loadDependencyFromRegistry } from "../vfs/library-loader.js";
 
 function isValueCarryingEntry(entry: any, slice?: string): boolean {
@@ -220,7 +222,7 @@ export function registerMiscEndpoints(context: LspContext) {
   });
 
   context.connection.onRequest("modelscript/computeWritebackEdit", async (params: any) => {
-    const { computeWritebackEdit } = await import("../services/WritebackService.js");
+    const { computeWritebackEdit } = await import("../services/writeback-service.js");
     return await computeWritebackEdit(context, params);
   });
 

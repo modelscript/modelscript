@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * VTU (VTK XML Unstructured Grid) Parser
  *

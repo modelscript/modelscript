@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { tggComplement, tggEq, tggReconcilePhysics, tggRule, tggThreadRule } from "@modelscript/dsl";
 import { compileTGGRules } from "@modelscript/dsl/codegen/compile_tgg.js";
 import { runCPA } from "@modelscript/dsl/codegen/cpa.js";

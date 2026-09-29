@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { BinOp, type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/runtime";
 
 import { type Fmi3Variable } from "./fmi3.js";

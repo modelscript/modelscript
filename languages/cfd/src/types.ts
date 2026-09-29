@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export interface BoundaryActionPayload {
   kind: "fix" | "force" | "inlet" | "outlet" | "wall" | "heatflux" | "isothermal";
   targetId: number | string;

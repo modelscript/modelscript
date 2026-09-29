@@ -53,8 +53,37 @@ export class IntUnionFind {
 
 /**
  * Modelica Multi-Way Physical Connector Port Balancer.
- * Implements Union-Find connection set unification, Kirchhoff zero-sum flow balances,
- * potential variable equalities, and stream mixing equations.
+ *
+ * Implements acausal connection set resolution, potential variable equalization,
+ * Kirchhoff zero-sum flow balance generation, and stream convective transport mixing.
+ *
+ * Academic Citations:
+ *   - Mattsson, S. E., Elmqvist, H., & Otter, M. (1998). "Physical system modeling with Modelica."
+ *     Control Engineering Practice, 6(4), pp. 501–510. DOI: 10.1016/S0967-0661(98)00047-1.
+ *   - Franke, R., Casella, F., Otter, M., Sielemann, M., Elmqvist, H., Mattsson, S. E., & Olsson, H.
+ *     (2009). "Stream Connectors - An Extension of Modelica for Device-Oriented Modeling of
+ *     Convective Transport." In Proceedings of the 7th Modelica Conference, pp. 116–123.
+ *     DOI: 10.3384/ecp09430076.
+ *   - Otter, M., Elmqvist, H., & Mattsson, S. E. (2005). "Object-oriented modeling of bus systems
+ *     with Modelica." In Proceedings of the 4th Modelica Conference, pp. 295–308. (Expandable Connectors)
+ *   - Tarjan, R. E. (1975). "Efficiency of a good but not linear set union algorithm."
+ *     Journal of the ACM, 22(2), pp. 215–225. DOI: 10.1145/321879.321884. (Union-Find)
+ *
+ * ModelScript Architectural Rationale:
+ *   A fundamental pillar of Modelica is acausal physical modeling: components expose multi-domain
+ *   connector interfaces (e.g. electrical pins, mechanical flanges, hydraulic ports) connected via
+ *   `connect(a, b)` clauses. ModelicaPortBalancer bridges declarative connection topology into the
+ *   flat DAE arena by:
+ *     1. Unifying connection sets into disjoint equivalence classes using Union-Find.
+ *     2. Emitting equality constraints for across/potential variables (v_1 = v_2 = ... = v_m).
+ *     3. Emitting generalized Kirchhoff conservation balances for through/flow variables (sum f_i = 0).
+ *     4. Expanding stream variables into upstream-directed convective transport equations with
+ *        directional regularized mixing to prevent division by zero near zero flow.
+ *
+ * Modifications:
+ *   - Employs an integer-indexed Union-Find structure with two-pass path compression and rank balancing.
+ *   - Dynamic prefix resolution supports nested sub-component hierarchies and expandable bus connectors.
+ *   - Generates minimal non-redundant equation sets directly into the `DAEBuilder` linear arena.
  */
 /* eslint-disable @typescript-eslint/no-extraneous-class */
 export class ModelicaPortBalancer {

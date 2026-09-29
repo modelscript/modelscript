@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";

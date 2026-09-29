@@ -9,6 +9,29 @@ import { NumericalInterval as Interval } from "./interval_domain.js";
  *   - currentElement: Interval for current element at loop index i
  *   - prefixSummary: Elements before index i
  *   - suffixSummary: Elements after index i
+ *
+ * Implements the array segmentation abstract domain for verifying array loops
+ * and index-dependent invariants.
+ *
+ * Academic Citations:
+ *   - Cousot, P., Gopan, D., & Reps, T. (2005). "A framework for numeric analysis of array operations."
+ *     In Proceedings of the 32nd ACM SIGPLAN-SIGACT Symposium on Principles of Programming
+ *     Languages (POPL '05), pp. 338–350. DOI: 10.1145/1040305.1040333.
+ *   - Dillig, I., Dillig, T., & Aiken, A. (2010). "Fluid updates: Beyond strong and weak updates."
+ *     In Programming Languages and Systems (ESOP 2010), LNCS 6012, pp. 246–266. Springer.
+ *     DOI: 10.1007/978-3-642-11957-6_14.
+ *
+ * ModelScript Architectural Rationale:
+ *   Modelica algorithm sections and discrete controllers perform vectorized operations over
+ *   discretization meshes, state vectors, and lookup tables. Standard abstract interpretation
+ *   "smashes" all array elements into a single scalar interval, losing all index-specific properties.
+ *   Array segmentation partitions an array dynamically into symbolic slices relative to loop counters,
+ *   enabling strong updates for the active index and proving absence of array out-of-bounds errors.
+ *
+ * Modifications:
+ *   - 5-part parametric symbolic partition adapted for Modelica 1-indexed for-loops.
+ *   - Direct lattice join/meet operations over `NumericalInterval` bounds.
+ *   - Integrated into the `FixpointSolver` verification waterfall.
  */
 export class ArraySegmentState {
   constructor(

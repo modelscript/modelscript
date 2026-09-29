@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import {
   DaeBuilder,
   ExprKind,
@@ -18,6 +20,30 @@ import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 /**
  * Unmanaged Dual number structure (16 bytes: val f64, dot f64) for
  * zero-garbage forward-mode automatic differentiation in WebAssembly linear memory.
+ *
+ * Implements dual number hypercomplex algebra (x + epsilon * x_dot, where epsilon^2 = 0)
+ * for exact forward automatic differentiation.
+ *
+ * Academic Citations:
+ *   - Clifford, W. K. (1873). "Preliminary sketch of biquaternions."
+ *     Proceedings of the London Mathematical Society, 4, pp. 381–395. DOI: 10.1112/plms/s1-4.1.381.
+ *   - Study, E. (1903). Geometrie der Dynamen: Die Zusammensetzung von Kräften und
+ *     verwandte Gegenstände der Geometrie. B.G. Teubner.
+ *   - Rall, L. B. (1981). Automatic Differentiation: Techniques and Applications.
+ *     Lecture Notes in Computer Science 120, Springer. DOI: 10.1007/3-540-10861-0.
+ *
+ * ModelScript Architectural Rationale:
+ *   Numerical finite differences suffer from truncation errors (large h) and floating-point
+ *   cancellation errors (small h). Dual numbers compute analytical directional derivatives
+ *   simultaneously with primal function evaluation at exact machine precision. In ModelScript,
+ *   Dual is the fundamental arithmetic primitive for computing directional sensitivities,
+ *   evaluating Newton residuals in tearing loops, and generating Jacobian columns without
+ *   constructing intermediate expression graphs.
+ *
+ * Modifications:
+ *   - Packaged as an unmanaged 16-byte struct (`@unmanaged`) in WebAssembly linear memory.
+ *   - Inlined zero-overhead elementary arithmetic and transcendental functions (sin, cos, exp, pow).
+ *   - Direct pointer arithmetic eliminates all runtime object allocation during solver iterations.
  */
 @unmanaged
 export class Dual {

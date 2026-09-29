@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { SyntaxNode } from "@modelscript/dsl/utils";
 import type { QueryEngine } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, type ArenaSimulateOptions } from "@modelscript/simulate";

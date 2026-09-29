@@ -16,12 +16,15 @@ import { ConstrainedZonotope } from "./wasm_constrained_zonotope.js";
 import type { FlowpipeReachabilityResult, FlowpipeRequirement, FlowpipeStepResult } from "./wasm_taylor_model.js";
 import { Interval, TaylorModel } from "./wasm_taylor_model.js";
 import { Zonotope } from "./wasm_zonotope.js";
+import { computeMatrixExponential } from "./wasm_zonotope_reach.js";
 
 export interface HybridMode {
   id: string;
   name?: string;
   /** Continuous dynamics: dy/dt = f(t, y) returning an array of TaylorModels */
   dynamics: (t: TaylorModel, y: TaylorModel[]) => TaylorModel[];
+  /** Optional linear dynamics A where dy/dt = A y for wrapping-free ConstrainedZonotope propagation */
+  linearDynamics?: { A: number[][]; B?: number[][] };
   /** Invariants: state bounds that must hold while active in this mode */
   invariants?: { stateIndex: number; min?: number; max?: number }[];
 }
@@ -35,6 +38,8 @@ export interface HybridTransition {
    * A guard crossing occurs when g(y) crosses 0 or becomes <= 0.
    */
   guard: (y: TaylorModel[]) => TaylorModel;
+  /** Optional linear guard hyperplane for exact CZ slicing: h^T x == gamma or h^T x <= gamma */
+  linearGuard?: { normal: number[]; threshold: number; operator?: "==" | "<=" };
   /** Optional point evaluator for nominal trajectory checks: g(y) <= 0 */
   guardPoint?: (y: number[]) => number;
   /** State reset map: computes post-jump state enclosure from pre-jump enclosure */
@@ -241,6 +246,9 @@ export class HybridFlowpipeSolver {
     const maxOrder = options.maxOrder ?? Math.max(order, 6);
     const useConstrainedZonotopes = options.useConstrainedZonotopes ?? false;
     const maxConstrainedGenerators = options.maxConstrainedGenerators ?? 2 * nStates;
+    let currentCZ: ConstrainedZonotope | null = useConstrainedZonotopes
+      ? ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(initialEnclosure))
+      : null;
     let totalSteps = 0;
 
     let currentSegmentSteps: FlowpipeStepResult[] = [];
@@ -448,9 +456,20 @@ export class HybridFlowpipeSolver {
           const clustered = Zonotope.enclose(z1, z2).reduce(maxBranches).toIntervals();
           preJumpEnclosure.splice(0, preJumpEnclosure.length, ...clustered);
         } else if (useConstrainedZonotopes && nStates > 1) {
-          const baseZ = Zonotope.fromIntervals(preJumpEnclosure);
-          const cz = ConstrainedZonotope.fromZonotope(baseZ);
-          const reduced = cz.reduce(maxConstrainedGenerators).toIntervals();
+          if (!currentCZ) {
+            const baseZ = Zonotope.fromIntervals(preJumpEnclosure);
+            currentCZ = ConstrainedZonotope.fromZonotope(baseZ);
+          }
+          if (triggeredTransition.linearGuard) {
+            const lg = triggeredTransition.linearGuard;
+            if (lg.operator === "==") {
+              currentCZ = currentCZ.intersectHyperplane(lg.normal, lg.threshold);
+            } else {
+              currentCZ = currentCZ.intersectHalfspace(lg.normal, lg.threshold);
+            }
+          }
+          currentCZ = currentCZ.reduce(maxConstrainedGenerators);
+          const reduced = currentCZ.toIntervals();
           for (let j = 0; j < nStates; j++) {
             preJumpEnclosure[j] = new Interval(
               Math.max(preJumpEnclosure[j]!.lo, reduced[j]!.lo),
@@ -505,6 +524,9 @@ export class HybridFlowpipeSolver {
         // Switch to target mode
         currentModeId = triggeredTransition.targetModeId;
         currentEnclosure = postJumpEnclosure;
+        if (useConstrainedZonotopes) {
+          currentCZ = ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(postJumpEnclosure));
+        }
         currentNominal = postJumpNominal;
         currentTime = crossingTime;
 
@@ -576,12 +598,28 @@ export class HybridFlowpipeSolver {
       }
 
       // Enclosure at end of step
-      const endDomain = [new Interval(currentDt, currentDt), ...stepDomain.slice(1)];
-      currentEnclosure = [];
-      for (let j = 0; j < nStates; j++) {
-        const endTM = new TaylorModel(picardTMs[j]!.numVars, currentOrder, endDomain, picardTMs[j]!.remainder);
-        for (const [k, v] of picardTMs[j]!.terms.entries()) endTM.terms.set(k, v);
-        currentEnclosure.push(endTM.evaluateRange());
+      if (mode.linearDynamics && useConstrainedZonotopes) {
+        if (!currentCZ) {
+          currentCZ = ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(currentEnclosure));
+        }
+        const { expM } = computeMatrixExponential(mode.linearDynamics.A, currentDt);
+        currentCZ = currentCZ.linearMap(expM);
+        if (currentCZ.numGenerators > maxConstrainedGenerators) {
+          currentCZ = currentCZ.reduce(maxConstrainedGenerators);
+        }
+        const czIntervals = currentCZ.toIntervals();
+        currentEnclosure = czIntervals.map((inv) => new Interval(inv.lo, inv.hi));
+      } else {
+        const endDomain = [new Interval(currentDt, currentDt), ...stepDomain.slice(1)];
+        currentEnclosure = [];
+        for (let j = 0; j < nStates; j++) {
+          const endTM = new TaylorModel(picardTMs[j]!.numVars, currentOrder, endDomain, picardTMs[j]!.remainder);
+          for (const [k, v] of picardTMs[j]!.terms.entries()) endTM.terms.set(k, v);
+          currentEnclosure.push(endTM.evaluateRange());
+        }
+        if (useConstrainedZonotopes) {
+          currentCZ = ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(currentEnclosure));
+        }
       }
       currentNominal = nextNominal;
 

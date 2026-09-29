@@ -5,7 +5,7 @@
  * into structured CadComponent objects for the CadViewer.
  */
 
-import type { CadAnnotation, CadComponent, CadPortAnnotation } from "./cad-viewer";
+import type { CadAnnotation, CadComponent, CadPortAnnotation } from "./CadViewer";
 
 /**
  * Parse a CAD annotation string like:

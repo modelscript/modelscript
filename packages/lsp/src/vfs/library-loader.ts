@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { BrowserFileSystem } from "./browser-file-system.js";
 import {
   getSalsaIndexCache,

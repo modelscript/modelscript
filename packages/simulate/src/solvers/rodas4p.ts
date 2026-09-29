@@ -1,25 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * RODAS4P: 6-Stage 4th-Order L-Stable Rosenbrock-W Stiff DAE Solver.
+ * @fileoverview RODAS4P: 6-Stage 4th-Order L-Stable Rosenbrock-W Stiff DAE Solver.
  *
- * Implements the Steinebach (1995) 4th-order Rosenbrock method with index-1 DAE
- * algebraic variable projection and mass matrix support:
- *   M * dy/dt = f(t, y)
+ * Academic Citations:
+ * - Steinebach, G. (1995). Order-reduction of ROW-methods for DAEs and method of lines
+ *   applications. Preprint 1741, FB Mathematik, Technische Hochschule Darmstadt.
+ * - Hairer, E., & Wanner, G. (1996). Solving Ordinary Differential Equations II: Stiff
+ *   and Differential-Algebraic Problems (2nd ed.). Springer Series in Computational Mathematics 14.
+ *   Section IV.7. https://doi.org/10.1007/978-3-642-05221-7
+ * - Sandu, A., Verwer, J. G., Blom, J. G., Spee, E. J., Carmichael, G. R., & Potra, F. A. (1997).
+ *   Benchmarking stiff ODE solvers for atmospheric chemistry problems II: Rosenbrock solvers.
+ *   Atmospheric Environment, 31(20), 3459-3472. https://doi.org/10.1016/S1352-2310(97)00185-8
  *
- * Characteristics:
- *   - 6 stages with identical diagonal coefficient gamma = 0.25:
- *     Only a SINGLE LU factorization of W = (M - gamma * h * J) is computed per step!
- *   - L-stable: Eliminates stiff numerical ringing, perfectly suited for DAEs and
- *     parabolic method-of-lines discretizations.
- *   - Embedded 3rd-order error estimation with PI adaptive step control.
- *   - Mass matrix support for implicit DAEs in mass-matrix form.
+ * ModelScript Architectural Rationale:
+ * Modelica electrical, chemical, and semi-discretized PDE systems contain algebraic constraints and
+ * extremely stiff decay modes where standard Newton-based BDF solvers can exhibit convergence difficulties
+ * or high per-step linear algebra overhead. Rosenbrock-W methods avoid nonlinear Newton iterations by
+ * incorporating the Jacobian directly into the stage equations. Because RODAS4P uses an identical diagonal
+ * coefficient gamma = 0.25 across all 6 stages, only a SINGLE LU factorization of W = (M - gamma * h * J)
+ * is needed per time step, yielding rapid, unconditionally stable progress.
  *
- * Reference:
- *   Steinebach, G. (1995), "Order-reduction of ROW-methods for DAEs and method of
- *   lines applications", Preprint 1741, FB Mathematik, TH Darmstadt.
- *   Hairer, E. & Wanner, G. (1996), "Solving Ordinary Differential Equations II:
- *   Stiff and Differential-Algebraic Problems", Section IV.7.
+ * ModelScript Modifications:
+ * - Supports singular mass matrices M * dy/dt = f(t, y) for index-1 DAE algebraic constraints.
+ * - Leverages `@modelscript/runtime`'s WebAssembly LU solver (`luFactor`, `luSolve`) with
+ *   dense and sparse AD Jacobian caches.
+ * - PI step-size controller tuned for rapid convergence through stiff transients and sharp discontinuities.
  */
 
 import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";

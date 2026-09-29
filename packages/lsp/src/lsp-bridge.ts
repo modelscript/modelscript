@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 import type { SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import type { QueryEngine } from "@modelscript/runtime/wasm_query_engine.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { ScreenFullIcon } from "@primer/octicons-react";
 import { Spinner, Text, useTheme } from "@primer/react";

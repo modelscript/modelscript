@@ -1,19 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Tsitouras 5(4) Adaptive Runge-Kutta ODE Solver (Tsit5).
+ * @fileoverview Tsitouras 5(4) Adaptive Runge-Kutta ODE Solver (Tsit5).
  *
- * Implements the 7-stage embedded Runge-Kutta pair of orders 5 and 4 with the
- * First-Same-As-Last (FSAL) property and 4th/5th order continuous dense output.
+ * Academic Citations:
+ * - Tsitouras, Ch. (2011). Runge-Kutta pairs of order 5 (4) satisfying only the first
+ *   column simplifying assumption. Computers & Mathematics with Applications, 62(2), 770-775.
+ *   https://doi.org/10.1016/j.camwa.2011.06.002
+ * - Dormand, J. R., & Prince, P. J. (1980). A family of embedded Runge-Kutta formulae.
+ *   Journal of Computational and Applied Mathematics, 6(1), 19-26.
+ *   https://doi.org/10.1016/0771-050X(80)90013-3
+ * - Rackauckas, C., & Nie, Q. (2017). DifferentialEquations.jl – A Performant and
+ *   Feature-Rich Ecosystem for Solving Differential Equations in Julia.
+ *   Journal of Open Research Software, 5(1), 15. https://doi.org/10.5334/jors.151
  *
- * Characteristics:
- *   - Outperforms Dormand-Prince 5(4) (DOPRI5) on efficiency, error per step, and stability
- *   - Recommended default for non-stiff initial value problems (IVPs)
- *   - Continuous interpolation for root-finding and event detection
+ * ModelScript Architectural Rationale:
+ * For non-stiff or mildly stiff ordinary differential equations (such as mechanical multi-body
+ * trajectories, kinematic chains, and orbital/flight dynamics), high-order adaptive explicit Runge-Kutta
+ * pairs offer peak performance without the linear algebra overhead of Newton-Raphson solves.
+ * Tsitouras 5(4) has lower error coefficients and larger stability regions than classical Dormand-Prince
+ * (DOPRI5), serving as ModelScript's default explicit simulation solver.
  *
- * Reference:
- *   Tsitouras, Ch. (2011), "Runge-Kutta pairs of order 5 (4) satisfying only the first
- *   column simplifying assumption", Computers & Mathematics with Applications, 62(2), 770-775.
+ * ModelScript Modifications:
+ * - Exploits the First-Same-As-Last (FSAL) property to eliminate the first stage RHS evaluation in successive steps.
+ * - Integrates a continuous 4th/5th-order dense output polynomial for high-accuracy event zero-crossing detection.
+ * - Proportional-Integral (PI) adaptive step-size controller tuned to prevent step oscillation around events.
  */
 
 import type { CommonSolverResult, ODEProblem, SolverStats } from "../core/problem-types.js";

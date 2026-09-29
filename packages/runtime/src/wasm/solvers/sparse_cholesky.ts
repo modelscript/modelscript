@@ -1,10 +1,35 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ChunkedInt32Array, createChunkedInt32Array, UnmanagedFloat64Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 import { CCSMatrix } from "../autodiff/coloring";
 
 /**
  * High-Performance, Zero-GC In-WASM Sparse Cholesky (LDL^T / LL^T) Linear Solver.
- * Solves symmetric positive-definite (and regularized quasi-definite) systems A x = b.
+ *
+ * Implements symbolic elimination tree analysis and up-looking numerical factorization
+ * for symmetric positive-definite (and regularized quasi-definite) linear systems.
+ *
+ * Academic Citations:
+ *   - Schreiber, R. (1982). "A new implementation of sparse Gaussian elimination."
+ *     ACM Transactions on Mathematical Software, 8(3), pp. 256–276. DOI: 10.1145/356004.356006.
+ *   - Liu, J. W. (1990). "The role of elimination trees in sparse factorization."
+ *     SIAM Journal on Matrix Analysis and Applications, 11(1), pp. 134–172. DOI: 10.1137/0611010.
+ *   - Davis, T. A. (2006). Direct Methods for Sparse Linear Systems. SIAM.
+ *     ISBN: 978-0-898716-13-9. (Sparse Cholesky & Up-Looking Factorization)
+ *
+ * ModelScript Architectural Rationale:
+ *   Symmetric positive-definite (SPD) linear systems arise extensively in ModelScript's physical
+ *   simulation pipeline: mechanical mass/inertia matrices, finite element stiffness equations,
+ *   quadratic programming (QP) subproblems, and Semidefinite Programming (SDP) barrier certificates.
+ *   Cholesky factorization exploits symmetry to achieve twice the speed of general LU decomposition
+ *   with zero pivoting overhead and unconditional numerical stability.
+ *
+ * Modifications:
+ *   - Implemented as an unmanaged AssemblyScript structure (`@unmanaged`) in WebAssembly linear memory.
+ *   - Two-phase solving: symbolic analysis builds `etree(A)` and column nonzero counts prior to numerical steps.
+ *   - Up-looking numerical factorization writes factor matrix L and diagonal D into flat `ChunkedInt32Array` buffers.
+ *   - Scratch memory and dense accumulators are allocated from the linear arena via `atomicChunkAlloc`.
  */
 @unmanaged
 export class SparseCholesky {

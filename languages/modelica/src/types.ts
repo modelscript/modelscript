@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export enum ModelicaBinaryOperator {
   LOGICAL_OR = "or",
   LOGICAL_AND = "and",

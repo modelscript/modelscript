@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * fmusim Verification Script
  * Automates the validation of ModelScript-generated FMUs by simulating them

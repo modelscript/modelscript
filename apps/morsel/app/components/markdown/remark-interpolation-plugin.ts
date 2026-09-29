@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { Node, Parent } from "unist";
 import { visit } from "unist-util-visit";
 

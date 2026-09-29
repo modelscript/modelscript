@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { HpcJobSpec } from "./hpc-types.js";
 import type { JobStagingManifest } from "./staging/staging-types.js";
 

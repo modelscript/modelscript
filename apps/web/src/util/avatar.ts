@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export function getAvatarUrl(username: string, originalUrl?: string): string {
   if (originalUrl) {
     try {

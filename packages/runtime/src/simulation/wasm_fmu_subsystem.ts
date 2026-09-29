@@ -51,6 +51,19 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
       act = next;
     }
     normOutput = act;
+  } else if (w && w.type === "mlp" && Array.isArray(w.layers)) {
+    let a = normInput;
+    for (let l = 0; l < w.layers.length; l++) {
+      const { W, b } = w.layers[l]!;
+      const next: number[] = [];
+      for (let i = 0; i < W.length; i++) {
+        let z = b[i]!;
+        for (let j = 0; j < a.length; j++) z += W[i]![j]! * a[j]!;
+        next.push(z);
+      }
+      a = next;
+    }
+    normOutput = a;
   } else if (w && Array.isArray(w.coefficients)) {
     normOutput = w.coefficients.map((row: number[]) => {
       let sum = 0;

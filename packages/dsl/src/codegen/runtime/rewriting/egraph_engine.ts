@@ -1,5 +1,35 @@
-// --- EGraph Engine (Zero-GC) ---
-// Implements zero-GC union-find, dense e-node arrays, hash-consing deduplication, and e-graph rebuilding.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * @fileoverview High-Performance Zero-GC E-Graph & Equality Saturation Engine.
+ *
+ * Implements a WebAssembly linear-memory E-Graph (Equivalence Graph) data structure
+ * with Union-Find congruence closure, hash-consing deduplication, and invariant rebuilding.
+ *
+ * Academic Citations:
+ *   - Nelson, G., & Oppen, D. C. (1980). "Fast decision procedures based on congruence closure."
+ *     Journal of the ACM, 27(2), pp. 356–364. DOI: 10.1145/322186.322198.
+ *   - Tate, R., Stepp, M., Tatlock, Z., & Lerner, S. (2009). "Equality saturation: A new approach
+ *     to optimization." In Proceedings of the 36th ACM SIGPLAN-SIGACT Symposium on Principles
+ *     of Programming Languages (POPL '09), pp. 264–276. DOI: 10.1145/1480881.1480915.
+ *   - Willsey, M., Nandi, C., Wang, Y. R., Flatt, O., Tatlock, Z., & Panchekha, P. (2021).
+ *     "egg: Fast and extensible equality saturation." In Proceedings of the 48th ACM SIGPLAN
+ *     Symposium on Principles of Programming Languages (POPL '21), pp. 1–29. DOI: 10.1145/3434304.
+ *
+ * ModelScript Architectural Rationale:
+ *   In Modelica equation lowering and symbolic simplification, traditional term rewriting systems
+ *   suffer from phase-ordering issues: applying one simplification rule can destroy opportunities
+ *   for subsequent rules. E-graphs simultaneously represent exponentially large equivalence
+ *   classes of syntactically distinct but mathematically equivalent expressions. In ModelScript,
+ *   equality saturation evaluates multiple rewriting candidates simultaneously and extracts the
+ *   globally minimal expression before DAE code emission.
+ *
+ * Modifications:
+ *   - Native WebAssembly/AssemblyScript zero-GC implementation allocated via `atomicChunkAlloc`.
+ *   - Flattened unmanaged 32-bit Union-Find with rank and two-pass path compression.
+ *   - Fixed power-of-two open-addressing hash table (`HASH_MASK = 65535`) for O(1) e-node deduplication.
+ *   - In-place upward congruence propagation and e-graph rebuilding without intermediate heap objects.
+ */
 
 import { atomicChunkAlloc, getNodeType, getNodeFirstChild, getNodeNextSibling, allocNode } from "../arena";
 import { DaeBuilder } from "../dae";

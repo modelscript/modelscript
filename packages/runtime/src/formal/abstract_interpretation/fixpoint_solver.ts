@@ -32,6 +32,34 @@ export type InstructionTransferFunction = (
   collector: (check: RTECheckResult) => void,
 ) => ReducedProductState;
 
+/**
+ * Static Analysis Fixpoint Solver with Widening.
+ *
+ * Computes least fixpoints over Control Flow Graphs (CFG) using chaotic iteration
+ * and delayed threshold widening over reduced product abstract domains.
+ *
+ * Academic Citations:
+ *   - Cousot, P., & Cousot, R. (1977). "Abstract interpretation: a unified lattice model
+ *     for static analysis of programs by construction or approximation of fixpoints."
+ *     In Proceedings of the 4th ACM SIGACT-SIGPLAN Symposium on Principles of Programming
+ *     Languages (POPL '77), pp. 238–252. DOI: 10.1145/512950.512973.
+ *   - Bourdoncle, F. (1993). "Efficient chaotic iteration strategies with widening."
+ *     In Formal Methods in Programming and Their Applications, LNCS 735, pp. 128–141.
+ *     Springer. DOI: 10.1007/3-540-57316-X_23.
+ *
+ * ModelScript Architectural Rationale:
+ *   Modelica algorithms and procedural functions contain loops and branches that can trigger
+ *   critical runtime errors (division by zero, array out-of-bounds, math domain violations).
+ *   FixpointSolver performs whole-function static verification across CFG basic blocks,
+ *   propagating relational abstract states to mathematical convergence. Widening with jump
+ *   thresholds guarantees termination in polynomial iterations while preserving precision.
+ *
+ * Modifications:
+ *   - Uses Reverse Post-Order (RPO) block scheduling to minimize iteration counts.
+ *   - Detects natural loop headers via dominator tree analysis, applying widening strictly at loop cuts.
+ *   - Operates on a `ReducedProductDomain` coupling interval and relational polyhedral domains.
+ *   - Emits structured Run-Time Error (RTE) verdicts for IDE and LSP diagnostic feeds.
+ */
 export class FixpointSolver {
   private domain = new ReducedProductDomain();
 

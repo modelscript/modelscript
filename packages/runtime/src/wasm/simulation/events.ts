@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createChunkedUint8Array, UnmanagedFloat64Array } from "../core/array";
 import { DaeBuilder } from "../dae/builder";
 import { evalExpr } from "../dae/eval";

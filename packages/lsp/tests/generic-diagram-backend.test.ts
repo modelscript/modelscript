@@ -380,4 +380,108 @@ test("GenericDSLDiagramBackend & Diagram Dispatch", async (t) => {
     assert.strictEqual(res.breadcrumbs[0].id, "root");
     assert.strictEqual(res.breadcrumbs[1].id, "node_sub");
   });
+
+  await t.test("should extract schema and values using inModelDiscovery when configured", () => {
+    const backend = new GenericDSLDiagramBackend({
+      getDocumentText: () => "component Valve v1 { setpoint = 50; }",
+      getDiagramConfig: () => ({
+        properties: {
+          inModelDiscovery: {
+            extractSchema: (target: string, ast: any) => ({
+              tabs: [
+                {
+                  id: "general",
+                  label: "General",
+                  groups: [
+                    {
+                      id: "ctrl",
+                      label: "Control",
+                      fields: [{ key: "setpoint", label: "Setpoint", kind: "number", min: 0, max: 100 }],
+                    },
+                  ],
+                },
+              ],
+            }),
+            extractValues: (target: string, ast: any) => ({
+              setpoint: "50",
+            }),
+          },
+        },
+      }),
+      layoutStorage,
+    });
+
+    const props = backend.getComponentProperties({
+      uri: dummyDocUri,
+      componentName: "v1",
+      className: "Valve",
+    });
+
+    assert.ok(props);
+    assert.strictEqual(props.name, "v1");
+    assert.strictEqual(props.className, "Valve");
+    assert.ok(props.schema);
+    assert.strictEqual(props.schema.tabs.length, 1);
+    assert.strictEqual(props.schema.tabs[0].groups[0].fields[0].key, "setpoint");
+    assert.strictEqual(props.values?.["setpoint"], "50");
+  });
+
+  await t.test("should support custom mutator.updateProperty and modifier fallback", async () => {
+    // 1. With custom mutator
+    let customMutatorInvoked = false;
+    const backendWithCustomMutator = new GenericDSLDiagramBackend({
+      getDocumentText: () => "component Valve v1 { setpoint = 50; }",
+      getDiagramConfig: () => ({
+        properties: {
+          mutator: {
+            updateProperty: (db: any, target: string, prop: string, val: string) => {
+              customMutatorInvoked = true;
+              return [{ range: { start: { line: 0, character: 33 }, end: { line: 0, character: 35 } }, newText: val }];
+            },
+          },
+        },
+      }),
+      layoutStorage,
+    });
+
+    const res1 = await backendWithCustomMutator.applyEdits({
+      uri: dummyDocUri,
+      seq: 48,
+      actions: [
+        {
+          type: "updateProperty",
+          name: "v1",
+          propertyName: "setpoint",
+          value: "75",
+        },
+      ],
+    });
+
+    assert.strictEqual(customMutatorInvoked, true);
+    assert.strictEqual(res1.edits.length, 1);
+    assert.strictEqual(res1.edits[0].newText, "75");
+
+    // 2. With default modifier fallback
+    const backendWithFallback = new GenericDSLDiagramBackend({
+      getDocumentText: () => "model M {\n  Resistor R1(R = 100);\n}",
+      layoutStorage,
+    });
+
+    const res2 = await backendWithFallback.applyEdits({
+      uri: dummyDocUri,
+      seq: 49,
+      actions: [
+        {
+          type: "updateProperty",
+          name: "R1",
+          propertyName: "R",
+          value: "220",
+        },
+      ],
+    });
+
+    assert.strictEqual(res2.edits.length, 1);
+    assert.strictEqual(res2.edits[0].newText, "220");
+    assert.strictEqual(res2.edits[0].range.start.line, 1);
+  });
 });

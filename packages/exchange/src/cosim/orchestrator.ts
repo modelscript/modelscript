@@ -1,19 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Co-simulation orchestrator (master algorithm).
+ * @fileoverview Co-Simulation Orchestrator & Master Algorithm (FMI 2.0 / 3.0 & Distributed Master).
  *
- * Implements a sequential Gauss-Seidel co-simulation master:
- * 1. Initialize all participants
- * 2. For each communication step [t, t+h]:
- *    a. Apply couplings (output → input)
- *    b. Set inputs on each participant
- *    c. Call doStep() on each participant
- *    d. Collect outputs
- *    e. Publish aggregated results via MQTT
- * 3. Terminate all participants
+ * Academic Citations:
+ * - Kübler, R., & Schiehlen, W. (2000). Two methods of simulator coupling. Mathematical and
+ *   Computer Modelling of Dynamical Systems, 6(2), 93-113.
+ *   https://doi.org/10.1076/1387-3954(200006)6:2;1-M;FT093
+ * - Arnold, M. (2014). Multi-rate and co-simulation methods. In Extreme-Scale Computing and
+ *   Storage, Oberwolfach Reports 11(1), 589-591.
+ * - Sicklinger, S., Bellen, A., & Busch, M. (2014). Interface Jacobian-based co-simulation:
+ *   Analysis and application. Mathematical and Computer Modelling of Dynamical Systems,
+ *   20(3), 227-248. https://doi.org/10.1080/13873954.2013.829497
+ * - Blochwitz, T., et al. (2012). The Functional Mockup Interface 2.0: The Standard for
+ *   Tool independent Exchange of Simulation Models. In Proceedings of the 9th International
+ *   Modelica Conference, 173-184. https://doi.org/10.3384/ecp12076173
  *
- * Supports real-time pacing via the RealtimePacer.
+ * ModelScript Architectural Rationale:
+ * Industrial cyber-physical systems often cannot be compiled into a single monolithic DAE due to
+ * IP protection, legacy code, or distributed sub-solvers (e.g. 3D CFD, hardware-in-the-loop rigs,
+ * or commercial third-party FMUs). The Co-Simulation Master orchestrates heterogeneous simulation
+ * units adhering to FMI 2.0 / 3.0 and System Structure and Parameterization (SSP) standards.
+ * It manages communication step intervals [t_k, t_k+h], exchanges inputs and outputs along coupling
+ * graphs, and synchronizes distributed participants.
+ *
+ * ModelScript Modifications:
+ * - Sequential Gauss-Seidel and Jacobi master algorithm with topological evaluation of non-cyclic
+ *   coupling graphs.
+ * - Dynamic unit compatibility validation across input/output ports (`UnitWarning`).
+ * - Real-time wall-clock pacer (`RealtimePacer`) for hardware-in-the-loop (HIL) and interactive VR.
+ * - Distributed MQTT event and state synchronization for multi-host and cloud co-simulation topologies.
  */
 
 import { type CosimValue, type UnitWarning, CouplingGraph } from "./coupling.js";

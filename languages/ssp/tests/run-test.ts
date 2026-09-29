@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { createZipArchive, defaultContainerToolkit, extractContainerArchive } from "@modelscript/runtime";
 import { sspLanguage } from "../src/language.js";
 import { sspToModelicaBlock } from "../src/projection.js";

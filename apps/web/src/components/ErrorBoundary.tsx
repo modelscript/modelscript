@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { AlertIcon, HomeIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, Heading, Text } from "@primer/react";
 import { Component, ErrorInfo, ReactNode } from "react";

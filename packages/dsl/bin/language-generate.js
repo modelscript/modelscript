@@ -1,4 +1,6 @@
 #!/usr/bin/env tsx
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";

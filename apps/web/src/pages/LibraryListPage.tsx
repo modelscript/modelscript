@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { AlertIcon, HourglassIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";

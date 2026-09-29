@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Maps ModelScript variables to Reference-FMU variables.
 // In most cases we've renamed them in the .mo files to match precisely.
 const VAR_MAPS: Record<string, Record<string, string>> = {

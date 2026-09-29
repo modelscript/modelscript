@@ -1,8 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//
-// Topology-Shape-Metrics (TSM / Kandinsky) Orthogonal Layout Engine.
-// Computes orthogonal placement and bend-minimal edge routing for block diagrams,
-// state charts, and interconnection graphs without external layout dependencies.
+
+/**
+ * @fileoverview Topology-Shape-Metrics (TSM / Kandinsky) Orthogonal Layout Engine.
+ *
+ * Academic Citations:
+ * - Tamassia, R. (1987). On embedding a grid graph with minimum number of bends.
+ *   SIAM Journal on Computing, 16(3), 421-444. https://doi.org/10.1137/0216030
+ * - Fößmeier, U., & Kaufmann, M. (1996). Drawing high-degree graphs with minimum number
+ *   of bends. In Graph Drawing (GD '95), Lecture Notes in Computer Science, vol 1027,
+ *   211-225. Springer. https://doi.org/10.1007/BFb0021804
+ * - Di Battista, G., Eades, P., Tamassia, R., & Tollis, I. G. (1998). Graph Drawing:
+ *   Algorithms for the Visualization of Graphs. Prentice Hall.
+ *
+ * ModelScript Architectural Rationale:
+ * ModelScript's polyglot visual IDE (`apps/ide`, `apps/web`) and diagramming engine (`packages/diagram`)
+ * render complex cyber-physical system schematics, SysML v2 internal block diagrams (IBD), and
+ * Modelica connection diagrams. Physical engineering schematics require orthogonal routing with
+ * right-angle corners, port-aligned connections, and minimal edge crossings. The Topology-Shape-Metrics
+ * approach decomposes layout into three phases: planar topology embedding, orthogonal shape bend
+ * minimization via network flow, and metric integer coordinate compaction.
+ *
+ * ModelScript Modifications:
+ * - Adapted for high-degree engineering components where nodes possess distinct boundary ports
+ *   constrained to specific cardinal faces (North, South, East, West).
+ * - Implements a pure TypeScript/WASM compatible layout engine operating directly in browser UI
+ *   workers without heavy external C++ graph layout binaries (such as Graphviz/OGDF).
+ * - Incorporates node padding, port snapping, and bend penalty heuristics for fast interactive re-layout.
+ */
 
 export interface TsmNode {
   id: string;

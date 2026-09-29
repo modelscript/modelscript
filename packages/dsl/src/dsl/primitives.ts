@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * AssemblyScript type polyfills and primitive constants/types
  * for TypeScript IDE compatibility.

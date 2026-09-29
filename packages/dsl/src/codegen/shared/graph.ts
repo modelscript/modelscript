@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import ts from "typescript";
 import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../../dsl/language.js";
 import { graphCode } from "../../src-gen/runtime-templates.js";

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { ActionExecutionContext, LanguageAction } from "@modelscript/dsl";
-import type { LspContext } from "../LspContext.js";
+import type { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 /**

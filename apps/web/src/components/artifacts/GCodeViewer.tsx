@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PlayIcon, SquareFillIcon } from "@primer/octicons-react";
 import { IconButton, Spinner, Text } from "@primer/react";

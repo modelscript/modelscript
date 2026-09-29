@@ -8,8 +8,8 @@ export type {
   CadDynamicBinding,
   ComponentTransform,
 } from "./animation-controller";
-export { AnimationTimeline } from "./animation-timeline";
-export { default as CadViewer } from "./cad-viewer";
-export type { CadAnnotation, CadComponent, CadPortAnnotation } from "./cad-viewer";
+export { AnimationTimeline } from "./AnimationTimeline";
+export { default as CadViewer } from "./CadViewer";
+export type { CadAnnotation, CadComponent, CadPortAnnotation } from "./CadViewer";
 export { extractCadComponents, parseCadAnnotationString } from "./parse-cad-annotations";
-export { VrButton, default as VrMode } from "./vr-mode";
+export { VrButton, default as VrMode } from "./VrMode";

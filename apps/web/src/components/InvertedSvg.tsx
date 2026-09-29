@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { invertSvgColors } from "@modelscript/diagram";
 import React, { useEffect, useReducer, useRef } from "react";
 import { useTheme } from "../theme";

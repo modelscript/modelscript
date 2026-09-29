@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Removed import from lsp to break nx circular dependency
 
 export interface MultiBodyAssembly {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { LibraryDatabase } from "./database.js";
 import { generateThumbnail } from "./workers/thumbnailWorker.js";
 

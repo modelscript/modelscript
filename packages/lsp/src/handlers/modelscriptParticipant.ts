@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { CoSimParticipant, CosimValue, ParticipantMetadata } from "@modelscript/exchange/cosim";
 import { Causality, DAEBuilder } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";

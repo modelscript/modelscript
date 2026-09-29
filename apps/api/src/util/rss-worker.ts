@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
 

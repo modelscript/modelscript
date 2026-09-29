@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { CosimMqttClient } from "@modelscript/exchange/cosim";
 import { HistorianReplayer } from "@modelscript/exchange/cosim";
 import express from "express";

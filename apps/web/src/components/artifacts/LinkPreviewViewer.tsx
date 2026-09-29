@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { LinkIcon } from "@primer/octicons-react";
 import React from "react";
 import styled from "styled-components";

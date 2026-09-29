@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { PolyglotConfig, TGGConstraint, TGGRuleOptions } from "../../dsl/language.js";
 import type { u32 } from "../../dsl/primitives.js";
 import { getDJB2Hash } from "../shared/utils.js";
@@ -26,9 +28,29 @@ export interface CompiledTGGOutput {
 }
 
 /**
- * Compiles declarative Triple Graph Grammar (TGG) rules into an AOT AssemblyScript
- * transformation kernel with bidirectional forward/backward matching, correspondence indexing,
- * and O(ΔN) incremental propagation.
+ * Compiles declarative Triple Graph Grammar (TGG) rules into an Ahead-Of-Time (AOT)
+ * AssemblyScript transformation kernel with bidirectional forward/backward matching,
+ * correspondence indexing, and O(ΔN) incremental propagation.
+ *
+ * Academic Citations:
+ *   - Schürr, A. (1994). "Specification of graph translators with triple graph grammars."
+ *     In International Workshop on Graph-Theoretic Concepts in Computer Science (WG '94),
+ *     LNCS 903, pp. 151–163. Springer. DOI: 10.1007/3-540-59071-4_45.
+ *   - Greenyer, J., & Kindler, E. (2010). "Comparing operational execution strategies for
+ *     triple graph grammars." Software & Systems Modeling, 9(4), pp. 441–469.
+ *     DOI: 10.1007/s10270-009-0140-2.
+ *
+ * ModelScript Architectural Rationale:
+ *   ModelScript operates as a unified polyglot platform across multi-domain engineering languages
+ *   (e.g., Modelica 3.x, SysML v2, STEP AP242, OWL2 ontologies). TGG rules provide mathematically
+ *   rigorous, bidirectional model transformations that ensure inter-model consistency without
+ *   writing error-prone point-to-point imperatively paired translators.
+ *
+ * Modifications:
+ *   - Compiles declarative rule specifications directly to an in-WASM AssemblyScript runtime kernel.
+ *   - Integrates bidirectional correspondence mapping directly into the linear memory CST database.
+ *   - Supports O(ΔN) incremental delta propagation driven by Salsa query invalidation.
+ *   - Automates Critical Pair Analysis (CPA) for confluence and formal information-losslessness verification.
  */
 export function compileTGGRules(
   config: PolyglotConfig | TGGRuleOptions[],

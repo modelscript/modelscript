@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * @fileoverview GLR Parser Engine Loop
  * 
@@ -28,7 +30,7 @@ import {
 import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array, ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
 import {
     lexPos, lexLen, srcLexPos, currentScannerState, invokeLexer, is_extra_token, inputLength,
-    lex, setLexPos, setLexLen, setSrcLexPos, setCurrentScannerState, SYMBOL_COUNT, logInt, peekChar, peekCharLen
+    lex, setLexPos, setLexLen, setSrcLexPos, setCurrentScannerState, SYMBOL_COUNT, logInt, peekChar, peekCharLen, peekPrevChar, peekPrevCharLen
 } from "../parser";
 import {
     TOKEN_EOF, TOKEN_UNKNOWN, NODE_TYPE_ERROR, ACTION_SHIFT, ACTION_REDUCE, ACTION_ACCEPT,
@@ -3596,7 +3598,8 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32,
           hasNl = true;
           break;
         }
-        pNl += peekCharLen(pNl);
+        let cl = peekCharLen(pNl);
+        pNl += cl > 0 ? cl : 1;
       }
       if (hasNl) {
         continue; // Disallow forced reduction with missing tokens across newlines
@@ -4224,8 +4227,19 @@ export function advanceGLR(): void {
           }
         }
 
-        // Pass 3: Default reduction if state has only reductions and no shifts
+        // Pass 3: Reused node decomposition & default reduction
         if (!foundTok) {
+          // Step 3a: Decompose top-of-stack reused composite node (Tree-sitter breakdown_top_of_stack)
+          // If the top of stack was reused from the previous tree, but the next token cannot
+          // be shifted in the current state, the reuse was too coarse.
+          // Decompose the reused node into its children BEFORE applying any default reductions.
+          let brokenHead = breakdownTopOfStack(head);
+          if (brokenHead != null) {
+            head = brokenHead;
+            continue;
+          }
+
+          // Step 3b: Default reduction if state has only reductions and no shifts
           let hasAnyShift = false;
           let candidateReduce = -1;
           idx = actionOffset + 1;
@@ -4243,16 +4257,6 @@ export function advanceGLR(): void {
             let reducedHead = processReduceAction(head, candidateReduce, frontierPos);
             if (reducedHead != null) {
               head = reducedHead;
-              continue;
-            }
-          }
-
-          // Step 3b: Decompose top-of-stack reused composite node (Tree-sitter breakdown_top_of_stack)
-          if (!breakdownAttempted) {
-            breakdownAttempted = true;
-            let brokenHead = breakdownTopOfStack(head);
-            if (brokenHead != null) {
-              head = brokenHead;
               continue;
             }
           }
@@ -4830,6 +4834,20 @@ function clearSubtreeErrorFlags(nodePtr: u32): void {
 }
 
 
+function isWhitespaceBetween(from: u32, to: u32): bool {
+  let p = from;
+  while (p < to) {
+    let ch = peekChar(p);
+    if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {
+      return false;
+    }
+    let clen = peekCharLen(p);
+    if (clen == 0) break;
+    p += clen;
+  }
+  return p >= to;
+}
+
 /**
  * Searches the old incremental tree for a sub-tree that matches the current parsing
  * state and hasn't been modified by the user's edits.
@@ -4912,15 +4930,20 @@ export function findReusableNode(
 
     if (canReuse) {
       let isTouchingEdit = false;
+      let isTerminalLeaf = nodeType <= (MAX_TERMINAL_ID as u16);
       if (t_editRangesCount <= 1) {
-        if (end == g_editStart && g_editStart >= 2 && (g_editOldEnd > 0 || g_editNewEnd > 0)) {
-          let prevChar = peekChar(g_editStart - 2);
-          let isWordChar = (prevChar >= 48 && prevChar <= 57) || // 0-9
-                           (prevChar >= 65 && prevChar <= 90) || // A-Z
-                           (prevChar >= 97 && prevChar <= 122) || // a-z
-                           prevChar == 95 || // _
-                           prevChar == 46;   // .
-          if (isWordChar || nodeType <= (MAX_TERMINAL_ID as u16)) {
+        if (end <= g_editStart && g_editStart > 0 && (g_editOldEnd > 0 || g_editNewEnd > 0)) {
+          if (end == g_editStart) {
+            let prevChar = peekPrevChar(g_editStart);
+            let isWordChar = (prevChar >= 48 && prevChar <= 57) || // 0-9
+                             (prevChar >= 65 && prevChar <= 90) || // A-Z
+                             (prevChar >= 97 && prevChar <= 122) || // a-z
+                             prevChar == 95 || // _
+                             prevChar == 46;   // .
+            if (isWordChar || !isTerminalLeaf || nodeType <= (MAX_TERMINAL_ID as u16)) {
+              isTouchingEdit = true;
+            }
+          } else if (!isTerminalLeaf && isWhitespaceBetween(end, g_editStart)) {
             isTouchingEdit = true;
           }
         }
@@ -4929,14 +4952,18 @@ export function findReusableNode(
         for (let i: u32 = 0; i < t_editRangesCount; i++) {
           let edit = TextEditRange.at(t_editRangesPtr, i);
           let oldStart = (edit.start as i32 - prevDelta) as u32;
-          if (end == oldStart && oldStart >= 2) {
-            let prevChar = peekChar(oldStart - 2);
-            let isWordChar = (prevChar >= 48 && prevChar <= 57) ||
-                             (prevChar >= 65 && prevChar <= 90) ||
-                             (prevChar >= 97 && prevChar <= 122) ||
-                             prevChar == 95 ||
-                             prevChar == 46;
-            if (isWordChar || nodeType <= (MAX_TERMINAL_ID as u16)) {
+          if (end <= oldStart && oldStart > 0) {
+            if (end == oldStart) {
+              let prevChar = peekPrevChar(oldStart);
+              let isWordChar = (prevChar >= 48 && prevChar <= 57) ||
+                               (prevChar >= 65 && prevChar <= 90) ||
+                               (prevChar >= 97 && prevChar <= 122) ||
+                               prevChar == 95 ||
+                               prevChar == 46;
+              if (isWordChar || !isTerminalLeaf || nodeType <= (MAX_TERMINAL_ID as u16)) {
+                isTouchingEdit = true;
+              }
+            } else if (!isTerminalLeaf && isWhitespaceBetween(end, oldStart)) {
               isTouchingEdit = true;
             }
             break;

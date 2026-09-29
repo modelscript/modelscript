@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { CodeGraph, u16, u32, u8 } from "@modelscript/dsl";
 import type { SIUnit } from "../units.js";
 import { createDimensionless, parseUnit, unitDivide, unitMultiply, unitPower } from "../units.js";

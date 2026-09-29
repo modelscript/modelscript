@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { assembly, box, compileAssemblyToStep, cylinder, part, translate } from "@modelscript/cad";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import assert from "node:assert";

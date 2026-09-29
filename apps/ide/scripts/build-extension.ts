@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { buildIdeExtension } from "@modelscript/dsl";
 import path from "path";
 import { fileURLToPath } from "url";

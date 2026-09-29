@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { AdTape } from "../autodiff/tape";
 import { McCormickTuple, tape_evaluateMcCormick } from "../autodiff/mccormick";
 import { tape_evaluateInterval } from "../autodiff/interval";

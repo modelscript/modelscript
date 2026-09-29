@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser.js";
@@ -65,7 +67,7 @@ import { registerFormattingProvider } from "./providers/formattingProvider.js";
 import { registerHoverProvider } from "./providers/hoverProvider.js";
 import { legend, registerSemanticTokensProvider } from "./providers/semanticTokensProvider.js";
 import { registerWorkspaceFeaturesProvider } from "./providers/workspaceFeaturesProvider.js";
-import { computeTreeEdit } from "./utils/astUtils.js";
+import { computeTreeEdit } from "./utils/ast-utils.js";
 import {
   getCompositeName as _getCompositeName,
   buildClassHierarchy,
@@ -74,7 +76,7 @@ import {
   getTreeChildrenFast,
   hasClassChildren,
   isTreeVisible,
-} from "./utils/hierarchyUtils.js";
+} from "./utils/hierarchy-utils.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 import { type LoaderContext, loadRegistryPackages } from "./vfs/library-loader.js";
 
@@ -158,8 +160,8 @@ interface CachedTree {
   tokens?: SyntaxNode[];
 }
 
-import { DocumentManager } from "./services/DocumentManager.js";
-import { WorkspaceManager } from "./services/WorkspaceManager.js";
+import { DocumentManager } from "./services/document-manager.js";
+import { WorkspaceManager } from "./services/workspace-manager.js";
 
 const documents = new TextDocuments(TextDocument);
 const documentManager = new DocumentManager(documents, () => parserService.getSharedCstTreeWrapper());
@@ -249,10 +251,10 @@ import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerInlayHintProvider } from "./providers/inlayHintProvider.js";
 import { registerSignatureHelpProvider } from "./providers/signatureHelpProvider.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
-import { DiagramService } from "./services/DiagramService.js";
-import { HierarchyService } from "./services/HierarchyService.js";
-import { ParserService } from "./services/ParserService.js";
-import { ValidationService } from "./services/ValidationService.js";
+import { DiagramService } from "./services/diagram-service.js";
+import { HierarchyService } from "./services/hierarchy-service.js";
+import { ParserService } from "./services/parser-service.js";
+import { ValidationService } from "./services/validation-service.js";
 
 const moWs = workspaceManager.getWorkspaceIndex("modelica");
 if (moWs) {
@@ -352,9 +354,22 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
 
   const useLocalMsl = (params.initializationOptions?.useLocalMsl as boolean) ?? false;
 
+  let modelicaParser: any = undefined;
+  let modelicaFacade: any = undefined;
+  let sysml2Parser: any = undefined;
+  let sysml2Facade: any = undefined;
+  let sysmlParser: any = undefined;
+  let sysmlFacade: any = undefined;
+  let stepParser: any = undefined;
+  let stepFacade: any = undefined;
+  let owl2Parser: any = undefined;
+  let owl2Facade: any = undefined;
+  let csvParser: any = undefined;
+  let csvFacade: any = undefined;
+  let scadParser: any = undefined;
+  let scadFacade: any = undefined;
+
   const registerBuiltinLanguages = () => {
-    let modelicaParser: any = undefined;
-    let modelicaFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "modelica",
       name: "Modelica",
@@ -383,8 +398,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       actionHandlers: modelicaActionHandlers,
     });
 
-    let sysml2Parser: any = undefined;
-    let sysml2Facade: any = undefined;
     globalLanguageRegistry.register({
       id: "sysml2",
       name: "SysML v2",
@@ -411,8 +424,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       languageDef: sysml2LangFallback,
     });
 
-    let sysmlParser: any = undefined;
-    let sysmlFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "sysml",
       name: "SysML v2",
@@ -439,8 +450,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       languageDef: sysml2LangFallback,
     });
 
-    let stepParser: any = undefined;
-    let stepFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "step",
       name: "STEP",
@@ -468,8 +477,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       handlers: stepLanguage.lsp?.handlers,
     });
 
-    let owl2Parser: any = undefined;
-    let owl2Facade: any = undefined;
     globalLanguageRegistry.register({
       id: "owl2",
       name: "OWL2",
@@ -496,8 +503,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       languageDef: owl2LangFallback,
     });
 
-    let csvParser: any = undefined;
-    let csvFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "csv",
       name: "CSV",
@@ -517,8 +522,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       languageDef: csvLangFallback,
     });
 
-    let scadParser: any = undefined;
-    let scadFacade: any = undefined;
     globalLanguageRegistry.register({
       id: "scad",
       name: "OpenSCAD",
@@ -745,7 +748,9 @@ documents.onDidChangeContent((change) => {
   const parser =
     plugin?.parser ??
     parserService.getParserForUri(uri) ??
-    (parserService.isParserReady("modelica") ? parserService.getParser("modelica") : undefined);
+    ((uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim")) && parserService.isParserReady("modelica")
+      ? parserService.getParser("modelica")
+      : undefined);
 
   if (parser) {
     try {
@@ -1165,7 +1170,7 @@ interface SymbolicTraceResult {
 }
 
 // Listen on the connection
-import { LspContext } from "./LspContext.js";
+import { LspContext } from "./lsp-context.js";
 const lspContext: LspContext = {
   connection,
   documents,

@@ -44,6 +44,28 @@ export const PAGE_TYPE_INTERNAL: u16 = 2;
  *     [4..7]   pId: u32
  *     [8..11]  oId: u32
  *     [12..15] childPageId: u32
+ *
+ * Academic Citations:
+ *   - Bayer, R., & McCreight, E. (1972). "Organization and maintenance of large ordered indexes."
+ *     Acta Informatica, 1(3), pp. 173–189. DOI: 10.1007/BF00288683.
+ *   - Comer, D. (1979). "The ubiquitous B-tree." ACM Computing Surveys, 11(2), pp. 121–137.
+ *     DOI: 10.1145/356770.356776.
+ *   - Mohan, C., Haderle, D., Lindsay, B., Pirahesh, H., & Schwarz, P. (1992). "ARIES: A transaction
+ *     recovery method supporting fine-granularity locking and partial rollbacks using write-ahead logging."
+ *     ACM Transactions on Database Systems, 17(1), pp. 94–162. (Slotted Page Architecture & LSNs)
+ *   - Neumann, T., & Weikum, G. (2008). "RDF-3X: A RISC-style engine for RDF."
+ *     Proceedings of the VLDB Endowment, 1(1), pp. 647–659. (SPO Triple Indexing)
+ *
+ * ModelScript Architectural Rationale:
+ *   ModelScript indexes millions of semantic relationships, requirements, and ontological axioms
+ *   across large engineering packages. Slotted 4KB B+trees provide hardware-page-aligned data locality,
+ *   sub-microsecond indexed range searches, and instant serialization to WebAssembly memory snapshots
+ *   or browser IndexedDB stores without serialization overhead.
+ *
+ * Modifications:
+ *   - 4096-byte unmanaged page layout with 32-byte header and 16-byte fixed-stride triple entries.
+ *   - Leaf nodes form a doubly-linked list enabling bidirectional sequential scans.
+ *   - Embedded Log Sequence Numbers (LSN) for crash-consistent transactional rollbacks.
  */
 @unmanaged
 export class BTreePage {

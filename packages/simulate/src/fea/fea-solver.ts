@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { Tet10Element } from "./tet10-stiffness.js";
 import { Tet4Element } from "./tet4-stiffness.js";
 import type { FeaBoundaryConditions, FeaStepResult, MaterialProperties, Tet4Mesh } from "./tet4-types.js";

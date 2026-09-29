@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { InteractiveBinding } from "./interactive.js";
 import { computeStemLines } from "./port-router.js";
 import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
@@ -100,7 +102,6 @@ export interface GraphicsConfig {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Language-agnostic diagram builder for polyglot languages.
 // Reads SymbolIndex + GraphicsConfig and produces X6‑compatible JSON

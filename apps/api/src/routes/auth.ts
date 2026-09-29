@@ -1,5 +1,5 @@
-/* eslint-disable */
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable */
 
 import bcrypt from "bcryptjs";
 import type { Request, Response, Router } from "express";

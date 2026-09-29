@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 import {
@@ -9,9 +11,9 @@ import {
 } from "@modelscript/exchange/cosim";
 import { Causality, DAEBuilder } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@modelscript/simulate";
-import { LspContext } from "../LspContext.js";
-import { getArenaParameterInfo } from "../utils/arenaUtils.js";
-import { getCompositeName } from "../utils/hierarchyUtils.js";
+import { LspContext } from "../lsp-context.js";
+import { getArenaParameterInfo } from "../utils/arena-utils.js";
+import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { ModelScriptParticipant } from "./modelscriptParticipant.js";
 
 const notebookSessions = new Map<string, any>();

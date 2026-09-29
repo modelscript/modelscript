@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { LanguageOptions } from "../../dsl/language.js";
 import { dataflowFrameworkCode } from "../../src-gen/runtime-templates.js";
 import {

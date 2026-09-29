@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { LbmGridConfig, LbmStepResult } from "../cfd/lbm-types.js";
 import { WebGPULbmRunner } from "../cfd/webgpu-lbm-runner.js";
 import { FeaSolver } from "../fea/fea-solver.js";

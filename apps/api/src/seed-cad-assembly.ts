@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Seed script: Create a CAD Assembly artifact post.
  *

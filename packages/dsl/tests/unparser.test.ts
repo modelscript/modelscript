@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import expect from "expect";
+import { describe, it } from "node:test";
+import { WasmLanguageBinding } from "../src/bindings/javascript/bindings.js";
+
+describe("Zero-GC Hybrid Unparser & Formatting Engine", () => {
+  it("should have formatDocument method on WasmLanguageBinding prototype", () => {
+    expect(typeof WasmLanguageBinding.prototype.formatDocument).toBe("function");
+  });
+});

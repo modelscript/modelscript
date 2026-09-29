@@ -1,3 +1,5 @@
-export { DiagramMacro } from "./macros/diagram-macro.js";
-export { RequirementsMacro } from "./macros/requirements-macro.js";
-export { MarkdownViewer } from "./markdown-viewer.js";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+export { DiagramMacro } from "./macros/DiagramMacro.js";
+export { RequirementsMacro } from "./macros/RequirementsMacro.js";
+export { MarkdownViewer } from "./MarkdownViewer.js";

@@ -25,10 +25,31 @@ import { UnmanagedMap64, createMap64 } from "../core/hashmap";
 
 /**
  * High-Performance WASM Tearing & Sparse Dynamic Solvers for Large-Scale DAEs.
- * Implements Cellier-Elmqvist Minimum Degree Tearing Algorithm with:
- * 1. Reduced-order Newton-Raphson iteration on tearing variables
- * 2. Automatic inner forward substitution chain (explicit assignments)
- * 3. Residual equations (k residual constraints: r(x_tear) = 0)
+ *
+ * Implements the Cellier-Elmqvist Minimum Degree Tearing Algorithm for decomposing
+ * coupled algebraic equation loops in DAE systems into minimal iterative cores.
+ *
+ * Academic Citations:
+ *   - Cellier, F. E. (1979). Combined Continuous/Discrete System Simulation by Use of Digital
+ *     Computers: Techniques and Tools. PhD thesis, ETH Zurich. DOI: 10.3929/ethz-a-000179979.
+ *   - Elmqvist, H., & Otter, M. (1994). "Methods for Tearing Systems of Equations in Object-Oriented
+ *     Modeling." Proceedings of the European Simulation Multiconference (ESM'94), pp. 326–332.
+ *   - Mahana, P. N., & Eagan, J. P. (1975). "A tearing algorithm for large systems of equations."
+ *
+ * ModelScript Architectural Rationale:
+ *   Algebraic loops in physical models (such as kinematic closed loops, electrical bridge circuits,
+ *   or multi-phase fluid equilibria) create coupled non-linear equation systems of size N inside
+ *   BLT SCC blocks. Solving these with full N-dimensional Newton-Raphson incurs an O(N^3) cost per
+ *   iteration. Tearing selects a minimal set of k tearing variables (k << N) such that breaking them
+ *   allows the remaining N-k variables to be solved via a fast explicit forward substitution chain.
+ *   The iterative solver is then restricted to the small k x k residual system, accelerating
+ *   simulation runtime by orders of magnitude.
+ *
+ * Modifications:
+ *   - Implemented as an unmanaged WebAssembly kernel (`@unmanaged`) without garbage collection overhead.
+ *   - Minimum degree heuristic analyzes the incidence graph of the SCC block directly in memory.
+ *   - Partitions equations into k tearing variables, an explicit inner forward chain, and k residual constraints.
+ *   - Evaluates inner chains and residuals directly against WebAssembly linear memory DAE variables.
  */
 @unmanaged
 export class TornBlock {

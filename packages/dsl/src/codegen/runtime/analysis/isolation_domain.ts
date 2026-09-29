@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Zero-GC WASM Isolation Engine Generator ---
 // Emits AssemblyScript solver functions for all 8 symbolic isolation strategies.
 

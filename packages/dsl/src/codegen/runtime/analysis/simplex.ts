@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Native LRA Simplex Tableau (Phase 3) ---
 // High-performance linear constraint solver using flat arrays
 

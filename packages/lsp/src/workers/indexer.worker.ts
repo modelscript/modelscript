@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import type { IndexerBatchError, IndexerBatchRequest, IndexerBatchResponse } from "./indexer-protocol.js";
 

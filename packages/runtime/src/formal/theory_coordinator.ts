@@ -15,6 +15,30 @@
  *
  * Grounded in Nelson-Oppen equality exchange over stably infinite, signature-disjoint
  * theories with CDCL(T) case splitting for non-convex disjunctions.
+ *
+ * Academic Citations:
+ *   - Nelson, G., & Oppen, D. C. (1979). "Simplification by cooperating decision procedures."
+ *     ACM Transactions on Programming Languages and Systems (TOPLAS), 1(2), pp. 245–257.
+ *     DOI: 10.1145/357073.357079.
+ *   - Shostak, R. E. (1984). "Deciding combinations of theories." Journal of the ACM, 31(1),
+ *     pp. 1–12. DOI: 10.1145/2422.322411.
+ *   - Nieuwenhuis, R., Oliveras, A., & Tinelli, C. (2006). "Solving SAT and SAT Modulo Theories:
+ *     From an abstract Davis--Putnam--Logemann--Loveland procedure to DPLL(T)."
+ *     Journal of the ACM, 53(6), pp. 937–977. DOI: 10.1145/1217856.1217859.
+ *
+ * ModelScript Architectural Rationale:
+ *   Modern cyber-physical systems cannot be verified within a single monolithic logic because they
+ *   simultaneously involve discrete mode logic, continuous physical differential equations,
+ *   geometric clearance constraints, and ontological classifications. The SemanticTheoryCoordinator
+ *   acts as a central Nelson-Oppen exchange bus: specialized theory oracles reason independently
+ *   over their own domains and propagate inferred variable bounds, equalities, and conflict clauses
+ *   to each other, achieving sound cross-domain verification without semantic loss.
+ *
+ * Modifications:
+ *   - Generalized from classical software theories (arrays, uninterpreted functions) to 12 cyber-physical
+ *     engineering domains including CAD B-Reps, DAE dynamic simulation traces, STL monitors, and OWL2 DL.
+ *   - DPLL(T) lazy constraint generation with learned conflict clause backpropagation.
+ *   - Supports cancellation tokens and incremental query memoization compatible with the Salsa QueryEngine.
  */
 import { SimplificationWaterfall } from "./simplification_waterfall.js";
 

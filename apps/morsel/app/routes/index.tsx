@@ -3,7 +3,7 @@
 import parseDataUrl, { type DataUrl } from "parse-data-url";
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
-import MorselEditor from "~/components/morsel";
+import MorselEditor from "~/components/Morsel";
 
 export default function Home() {
   const location = useLocation();

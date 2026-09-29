@@ -51,6 +51,8 @@
     "format": "prettier . --write",
     "lint": "nx affected --target=lint --parallel=4",
     "lint:all": "nx run-many --target=lint --parallel=4",
+    "lint:filenames": "npx tsx scripts/lint-filenames.ts",
+    "lint:headers": "npx tsx scripts/normalize-headers.ts --check",
     "prepare": "husky",
     "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
     "release": "nx release",
@@ -63,7 +65,10 @@
     "test:single": "npx tsx languages/modelica/tests/testsuite-runner.ts"
   },
   "lint-staged": {
-    "*.{ts,tsx}": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js --no-warn-ignored",
+    "*.{ts,tsx}": [
+      "npx tsx scripts/lint-filenames.ts",
+      "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js --no-warn-ignored"
+    ],
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
   "overrides": {

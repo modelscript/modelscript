@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unused-vars, no-useless-assignment */
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unused-vars, no-useless-assignment */
 
 /**
  * FMI 3.0 Model Exchange & Co-Simulation FMU generator.

@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { CodeLens, Range } from "vscode-languageserver";
-import type { LspContext } from "../LspContext.js";
+import type { LspContext } from "../lsp-context.js";
 
 export function registerCodeLensProvider(context: LspContext) {
   context.connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {

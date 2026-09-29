@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import net from "node:net";
 
 function isPrivateIpv4(b0: number, b1?: number): boolean {

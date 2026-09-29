@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Downloads the SysML v2 standard library zip, extracts only the
 // sysml.library/ .sysml files, and repacks them into a lean zip.
 // This reduces the bundled zip from ~63 MB to ~50 KB.

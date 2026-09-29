@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import * as ts from "typescript";
 import { getDJB2Hash } from "../shared/utils.js";
 

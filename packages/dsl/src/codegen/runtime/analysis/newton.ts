@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- WASM-Native Non-Linear Newton-Raphson Algebraic Solver ---
 // Solves non-linear algebraic loops using automatic differentiation, LU factorization, and line-search damping
 

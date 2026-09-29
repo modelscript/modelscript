@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Core Language Grammar Definition & Modular DSL Architecture.
  */

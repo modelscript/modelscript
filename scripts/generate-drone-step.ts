@@ -1,4 +1,6 @@
 #!/usr/bin/env npx tsx
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Generate a valid ISO-10303-21 (STEP AP214) file representing a drone chassis.
  *

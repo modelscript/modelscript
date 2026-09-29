@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import {
   ParseHead,
   allocParseHead,
@@ -304,7 +306,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
             break;
           }
         }
-        while (diagEnd > diagStart) {
+        while (diagEnd > diagStart && diagEnd >= step && diagEnd - step >= diagStart) {
           let cl = peekCharLen(diagEnd - step);
           let lastCh = peekChar(diagEnd - step);
           if (lastCh == 32 || lastCh == 9 || lastCh == 10 || lastCh == 13 || lastCh == 0) {
@@ -407,12 +409,15 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, childTokType as u32, 2, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
 
   let crossedNl = false;
-  for (let p = pos; p < srcLexPos; p++) {
+  let p = pos;
+  while (p < srcLexPos) {
     let ch = peekChar(p);
     if (ch == 10 || ch == 13) {
       crossedNl = true;
       break;
     }
+    let cl = peekCharLen(p);
+    p += cl > 0 ? cl : 1;
   }
 
   let hasNl = false;
@@ -424,7 +429,8 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
       break;
     }
     if (ch != 32 && ch != 9) break;
-    pNl += peekCharLen(pNl);
+    let cl = peekCharLen(pNl);
+    pNl += cl > 0 ? cl : 1;
   }
   let nlPenalty: i32 = crossedNl ? PENALTY_DELETE_NEWLINE_CROSS : (hasNl ? PENALTY_DELETE_LINE_END_DANGLING : 0);
 

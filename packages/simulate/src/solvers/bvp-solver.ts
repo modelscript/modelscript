@@ -1,19 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Boundary Value Problem (BVP) Solvers.
+ * @fileoverview Boundary Value Problem (BVP) Solvers: Multiple Shooting and Direct Collocation.
  *
- * Solves two-point and multi-point ODE boundary value problems:
- *   dy/dt = f(t, y, p),   t in [t0, tEnd]
- *   subject to boundary condition residual: g(y(t0), y(tEnd), p) = 0
+ * Academic Citations:
+ * - Morrison, D. D., Riley, J. D., & Zancanaro, J. F. (1962). Multiple shooting method for
+ *   two-point boundary value problems. Communications of the ACM, 5(12), 613-614.
+ *   https://doi.org/10.1145/368996.369028
+ * - Stoer, J., & Bulirsch, R. (2002). Introduction to Numerical Analysis (3rd ed.). Texts
+ *   in Applied Mathematics 12, Springer. Section 7.3: Multiple Shooting Methods.
+ * - Ascher, U. M., Mattheij, R. M., & Russell, R. D. (1995). Numerical Solution of Boundary
+ *   Value Problems for Ordinary Differential Equations. SIAM Classics in Applied Mathematics 13.
+ *   https://doi.org/10.1137/1.9781611971231
+ * - Betts, J. T. (2010). Practical Methods for Optimal Control and Estimation Using Nonlinear
+ *   Programming (2nd ed.). SIAM Advances in Design and Control 19.
+ *   https://doi.org/10.1137/1.9780898718577
  *
- * Implementations:
- *   1. Direct Collocation (Legendre-Gauss-Radau / Trapezoidal):
- *      Converts the ODE into a sparse/dense nonlinear algebraic system R(Y) = 0
- *      and solves with damped Newton-Raphson.
- *   2. Multiple Shooting:
- *      Partitions [t0, tEnd] into M subintervals, integrates each segment with
- *      Tsit5, and solves for matching conditions and boundary constraints.
+ * ModelScript Architectural Rationale:
+ * ModelScript models frequently require solving boundary value problems for optimal trajectory
+ * planning, closed-loop model predictive control (MPC), parameter identification from end-point
+ * observations, and limit cycle computation. Unlike Initial Value Problems (IVPs), BVPs enforce
+ * boundary residuals g(y(t0), y(tEnd), p) = 0 across split domains. The multiple shooting solver
+ * subdivides the horizon into multiple subintervals to avoid catastrophic numerical instability
+ * inherent in simple single shooting on ill-conditioned or stiff dynamics, while direct collocation
+ * transcribes the continuous ODE into a simultaneous algebraic system.
+ *
+ * ModelScript Modifications:
+ * - Couples subinterval forward integration directly with the Tsitouras 5/4 Runge-Kutta integrator
+ *   (`tsit5`) with adaptive error control.
+ * - Leverages `@modelscript/runtime`'s WebAssembly linear algebra kernel (`luFactor`, `luSolve`)
+ *   for Newton-Raphson Jacobian factorizations.
+ * - Supports boundary condition functions with optional free parameter vectors `p`.
  */
 
 import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";

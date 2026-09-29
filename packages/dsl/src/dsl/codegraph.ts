@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Arena-native CodeGraph API bridging TypeScript to WASM.
  * Exposes methods to query AST nodes, allocate memory, and interact with the Semantic Reasoner.

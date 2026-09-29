@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // AssemblyScript implementation of WebAssembly Solvers, DAE Builder & BLT
 export * from "../src/wasm/dae/alias";
 export * from "../src/wasm/autodiff/affine";

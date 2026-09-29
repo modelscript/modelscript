@@ -1,6 +1,48 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import eslint from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+
+const licenseHeaderPlugin = {
+  meta: {
+    name: "modelscript-headers",
+  },
+  rules: {
+    "header-presence": {
+      meta: {
+        type: "layout" as const,
+        docs: {
+          description: "Enforce standard SPDX License Identifier header",
+        },
+        schema: [],
+        messages: {
+          missingHeader: "File must begin with '// SPDX-License-Identifier: AGPL-3.0-or-later'.",
+        },
+      },
+      create(context: {
+        sourceCode: { getText(): string };
+        report(descriptor: { loc: { line: number; column: number }; messageId: string }): void;
+      }) {
+        return {
+          Program() {
+            const text = context.sourceCode.getText();
+            const lines = text.split(/\r?\n/);
+            const firstLine = lines[0] ?? "";
+            const hasShebang = firstLine.startsWith("#!");
+            const targetLine = hasShebang ? (lines[1] ?? "") : firstLine;
+            if (!targetLine.includes("SPDX-License-Identifier: AGPL-3.0-or-later")) {
+              context.report({
+                loc: { line: hasShebang ? 2 : 1, column: 0 },
+                messageId: "missingHeader",
+              });
+            }
+          },
+        };
+      },
+    },
+  },
+};
 
 export default defineConfig([
   {
@@ -28,6 +70,14 @@ export default defineConfig([
       "**/grammar.js",
     ],
   },
+  {
+    plugins: {
+      "modelscript-headers": licenseHeaderPlugin,
+    },
+    rules: {
+      "modelscript-headers/header-presence": "error",
+    },
+  },
   eslint.configs.recommended,
   tseslint.configs.strict,
   tseslint.configs.stylistic,
@@ -35,9 +85,10 @@ export default defineConfig([
     languageOptions: {
       parserOptions: {
         projectService: {
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 100,
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 500,
           allowDefaultProject: [
             "eslint.config.ts",
+            "scripts/*.ts",
             "languages/modelica/tests/*.ts",
             "scripts/compare-trajectories.ts",
             "scripts/generate-benchmark.ts",
@@ -80,7 +131,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["scripts/**/*.ts", "packages/exchange/validation/**/*.ts", "apps/cli/tests/**/*.ts"],
+    files: ["eslint.config.ts", "scripts/**/*.ts", "packages/exchange/validation/**/*.ts", "apps/cli/tests/**/*.ts"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/consistent-generic-constructors": "off",

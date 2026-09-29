@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ChunkedUint32Array, createChunkedUint32Array, UnmanagedFloat64Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 import {
@@ -29,6 +31,30 @@ export const TAPE_STRIDE: u32 = 8; // 32 bytes per tape node: [op, left, right, 
 /**
  * Zero-cost unmanaged accessor for an 8-word (32-byte) tape node:
  * [op, left, right, aux, valLo, valHi, gradLo, gradHi]
+ *
+ * Implements reverse-mode automatic differentiation (adjoint accumulation)
+ * on a linear-memory computational graph tape.
+ *
+ * Academic Citations:
+ *   - Wengert, R. E. (1964). "A simple automatic derivative evaluation program."
+ *     Communications of the ACM, 7(8), pp. 463–464. DOI: 10.1145/355586.364791. (Wengert List)
+ *   - Linnainmaa, S. (1976). "Taylor expansion of the accumulated rounding error."
+ *     BIT Numerical Mathematics, 16(2), pp. 146–160. DOI: 10.1007/BF01931367. (Reverse-Mode AD)
+ *   - Griewank, A., & Walther, A. (2008). Evaluating Derivatives: Principles and Techniques of
+ *     Algorithmic Differentiation (2nd ed.). SIAM. ISBN: 978-0-898716-59-7.
+ *
+ * ModelScript Architectural Rationale:
+ *   In gradient-based model calibration and surrogate training, an objective scalar error
+ *   must be differentiated with respect to hundreds of physical parameters. Forward-mode AD scales
+ *   linearly O(N) with parameter count. Reverse-mode AD records elementary operations onto an
+ *   execution tape (Wengert list) during the forward pass and accumulates adjoint sensitivities
+ *   backwards, computing the exact full gradient vector in O(1) passes independent of dimension N.
+ *
+ * Modifications:
+ *   - Implemented in unmanaged WebAssembly linear memory (`@unmanaged`) without garbage collection.
+ *   - Dense 32-byte stride layout packing operation code, operand indices, values, and adjoint gradients.
+ *   - Uses an internal static object recycling pool (`TapeNodeAccessor.pool`) to avoid heap allocations.
+ *   - Performs vectorized forward and reverse adjoint sweeps directly across IEEE 754 bit-pairs.
  */
 @unmanaged
 export class TapeNodeAccessor {

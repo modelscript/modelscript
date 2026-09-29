@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import {
   DaeBuilder,
   EQ_STRIDE,
@@ -44,7 +46,35 @@ export class CCSMatrix {
 }
 
 /**
- * Distance-2 Graph Coloring Result Header in WASM Memory
+ * Distance-2 Graph Coloring Result Header in WASM Memory.
+ *
+ * Implements greedy distance-2 column coloring on bipartite sparsity graphs for
+ * compressed Jacobian matrix evaluation via directional automatic differentiation.
+ *
+ * Academic Citations:
+ *   - Curtis, A. R., Powell, M. J. D., & Reid, J. K. (1974). "On the estimation of sparse
+ *     Jacobian matrices." Journal of the Institute of Mathematics and Its Applications, 13(1),
+ *     pp. 117–119. DOI: 10.1093/imamat/13.1.117. (CPR Algorithm)
+ *   - Coleman, T. F., & Moré, J. J. (1983). "Estimation of sparse Jacobian matrices and graph
+ *     coloring problems." SIAM Journal on Numerical Analysis, 20(1), pp. 187–209.
+ *     DOI: 10.1137/0720013.
+ *   - Gebremedhin, A. H., Manne, F., & Pothen, A. (2005). "What color is your Jacobian?
+ *     Graph coloring for computing derivatives." SIAM Review, 47(4), pp. 629–705.
+ *     DOI: 10.1137/S0036144504446096.
+ *
+ * ModelScript Architectural Rationale:
+ *   Computing the full Jacobian of an N-dimensional DAE via naive automatic differentiation requires
+ *   N forward passes. For large Modelica networks with N = 10,000, this creates an insurmountable
+ *   bottleneck during implicit integration (BDF / TR-BDF2). Graph coloring identifies columns that
+ *   do not share non-zero entries in any row (distance-2 in the bipartite graph). All columns of the
+ *   same color are perturbed simultaneously in a single forward AD pass and uncompressed in O(1)
+ *   time, slashing Jacobian evaluation time from O(N) to O(p), where p is typically < 15.
+ *
+ * Modifications:
+ *   - Implemented in unmanaged WebAssembly linear memory (`@unmanaged`) without garbage collection.
+ *   - Operates on Compressed Column Storage (`CCSMatrix`) incidence structures.
+ *   - Stores color offsets and column groupings in zero-overhead `ChunkedInt32Array` tables.
+ *   - Integrates directly with WebAssembly forward AD kernel to populate sparse Jacobian matrices.
  */
 @unmanaged
 export class ColoringResult {

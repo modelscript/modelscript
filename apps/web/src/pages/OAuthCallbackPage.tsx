@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

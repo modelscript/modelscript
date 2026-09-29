@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // @ts-expect-error missing types for occt-import-js
 import occtimportjs from "occt-import-js";
 import type { LibraryDatabase } from "../database.js";

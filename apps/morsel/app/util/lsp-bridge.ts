@@ -159,8 +159,8 @@ export async function getDiagramData(
 
 export async function getComponentProperties(
   uri: string,
-  className: string,
-  componentName: string,
+  className?: string,
+  componentName?: string,
 ): Promise<ComponentPropertyData | null> {
   return (await lsp()).sendRequest(DiagramMethods.getComponentProperties, { uri, className, componentName });
 }

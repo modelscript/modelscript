@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { createWasmParser } from "../src-gen/bindings.js";

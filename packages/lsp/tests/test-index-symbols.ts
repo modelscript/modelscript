@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";

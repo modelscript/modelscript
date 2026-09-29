@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable */
 /**
  * examples/sysml2/language.ts — SysML v2 language definition
@@ -5,7 +6,7 @@
  * Port of the SysML2 Xtext grammar into metascript combinators.
  * Inherits KerML expression rules inline (flattened AST).
  *
- * @license LGPL-3.0-or-later
+ * @license AGPL-3.0-or-later
  */
 
 import { analyzeInterproceduralCfa } from "./activity-cfa.js";
@@ -2883,10 +2884,11 @@ export const sysml2Language = language({
   },
 
   primitives: {
+    nestedComment: { open: "/*", close: "*/" },
     lineComment: "//",
   },
 
-  extras: ($) => [/\s/, $.ML_NOTE, $.SL_NOTE],
+  extras: ($) => [/\s/],
 
   conflicts: ($) => [
     [$.LiteralInteger, $.RealValue],
@@ -5365,8 +5367,12 @@ export const sysml2Language = language({
 
     Name: ($) => choice($.ID, $.UNRESTRICTED_NAME),
     GlobalQualification: () => seq("$", "::"),
-    Qualification: ($) => repeat1(seq($.Name, "::")),
-    QualifiedName: ($) => seq(optional($.GlobalQualification), optional($.Qualification), field("name", $.Name)),
+    Qualification: ($) => seq($.Name, "::"),
+    QualifiedName: ($) =>
+      choice(
+        seq(optional($.GlobalQualification), field("name", $.Name)),
+        prec.left(1, seq($.QualifiedName, "::", field("name", $.Name))),
+      ),
 
     // =====================================================================
     // TERMINALS
@@ -5378,7 +5384,7 @@ export const sysml2Language = language({
     UNRESTRICTED_NAME: () => token(/'(?:[^'\\]|\\.)*'/),
     STRING_VALUE: () => token(/"(?:[^"\\]|\\.)*"/),
     REGULAR_COMMENT: () => token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
-    ML_NOTE: () => token(/\/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
+    ML_NOTE: () => token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
     SL_NOTE: () => token(/\/\/[^\r\n]*/),
   },
 

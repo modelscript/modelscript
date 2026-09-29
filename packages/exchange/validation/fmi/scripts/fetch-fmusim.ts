@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Fetch fmusim and Reference FMUs
  * Downloads the official Modelica Association FMI reference suite,

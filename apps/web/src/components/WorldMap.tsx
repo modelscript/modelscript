@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { scaleLinear } from "d3-scale";
 import React, { useMemo } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";

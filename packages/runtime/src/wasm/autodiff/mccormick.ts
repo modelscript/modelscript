@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import {
   Interval,
   INF,
@@ -40,10 +42,33 @@ import {
 import { UnmanagedFloat64Array } from "../core/array";
 
 /**
- * Unmanaged McCormick Relaxation Tuple for non-convex optimization in WASM.
- * Fixed 32-byte layout: [cv: f64, cc: f64, lo: f64, hi: f64].
- * Contains convex underestimator (cv), concave overestimator (cc),
- * and guaranteed interval bounds [lo, hi].
+ * Unmanaged McCormick Relaxation Tuple for Non-Convex Optimization in WASM.
+ *
+ * Implements convex underestimators and concave overestimators for factorable non-linear
+ * functions using the classical McCormick relaxation arithmetic.
+ *
+ * Academic Citations:
+ *   - McCormick, G. P. (1976). "Computability of global solutions to factorable nonconvex
+ *     programs: Part I—Convex underestimating problems." Mathematical Programming, 10(1),
+ *     pp. 147–175. DOI: 10.1007/BF01580665.
+ *   - Mitsos, A., Chachuat, B., & Barton, P. I. (2009). "McCormick-based relaxations of algorithms."
+ *     SIAM Journal on Optimization, 20(2), pp. 573–601. DOI: 10.1137/080717341.
+ *   - Tsoukalas, A., & Mitsos, A. (2014). "Multivariate McCormick relaxations."
+ *     Journal of Global Optimization, 59(2), pp. 633–662. DOI: 10.1007/s10898-014-0169-z.
+ *
+ * ModelScript Architectural Rationale:
+ *   Global parameter estimation and formal reachability in physical modeling often confront
+ *   highly non-convex objective landscapes and constraint boundaries where gradient descent
+ *   stalls at suboptimal local extrema. McCormick relaxations construct guaranteed convex
+ *   underestimators (cv) and concave overestimators (cc) over factorable non-linear operations
+ *   (e.g., bilinear products, power, trig terms). In ModelScript's global optimization and
+ *   branch-and-bound routines, these relaxations provide rigorous lower bounds to prune subtrees
+ *   and certify global optimality.
+ *
+ * Modifications:
+ *   - Implemented as an unmanaged 32-byte linear memory struct `[cv, cc, lo, hi]` in WebAssembly.
+ *   - Propagates relaxations across the in-memory DAE AST and automatic differentiation tape (`AdTape`).
+ *   - Combines sub-gradient evaluations with outward rounded interval bounds to ensure enclosure soundness.
  */
 @unmanaged
 export class McCormickTuple {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Shared IR Block Layout Constants ---
 // Single source of truth for Basic Block and IR Instruction memory layouts in AssemblyScript.
 

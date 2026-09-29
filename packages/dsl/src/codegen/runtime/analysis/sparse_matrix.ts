@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Sparse Matrix (CSR) Data Structure ---
 // Compressed Sparse Row format for high-performance pantelides and bipartite matching
 

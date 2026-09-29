@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Zero-GC Linear Algebra & Matrix Solvers for WASM linear memory.
  * Provides row-equilibrated LU factorization with partial pivoting and

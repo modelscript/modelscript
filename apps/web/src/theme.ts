@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 export type Theme = "dark" | "light";

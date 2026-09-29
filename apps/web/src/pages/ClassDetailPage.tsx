@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { AlertIcon, PackageIcon } from "@primer/octicons-react";
 import { Heading, Label, NavList, Spinner, Text, Truncate } from "@primer/react";
 import DOMPurify from "dompurify";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ChunkedUint32Array, createChunkedUint32Array } from "./array";
 import { ArenaStringPool } from "./string_pool";
 

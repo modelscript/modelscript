@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ChunkedUint8Array, createChunkedUint8Array, ChunkedUint32Array, createChunkedUint32Array, atomicChunkAlloc } from "./array";
 import { UnmanagedMap64 } from "./hashmap";
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * @fileoverview WASM Triple Graph Grammar (TGG) Correspondence Index
  *

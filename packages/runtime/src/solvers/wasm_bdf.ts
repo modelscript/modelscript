@@ -5,21 +5,32 @@ import type { SparseJacobian } from "./wasm_sparse_jacobian.js";
 import { sparseJacobianToDense } from "./wasm_sparse_jacobian.js";
 
 /**
- * WebAssembly-backed Variable-Order BDF (Backward Differentiation Formula) solver
- * for stiff ODE/DAE systems.
+ * @fileoverview WebAssembly-backed Variable-Order BDF (Backward Differentiation Formula) Stiff DAE Solver.
  *
- * Implements BDF orders 1-5 with:
- *  - High-performance AssemblyScript WASM integration for linear memory DAE systems
- *  - Nordsieck array representation for efficient order/step changes
- *  - Modified Newton iteration with Jacobian reuse & sparse/dense AD Jacobian acceleration
- *  - Partial-pivoting LU factorization for the Newton linear system
- *  - Adaptive order and step-size control
- *  - Dense output via cubic Hermite interpolation
- *  - Event detection with bisection root-finding
+ * Academic Citations:
+ * - Byrne, G. D., & Hindmarsh, A. C. (1975). A polyalgorithm for the numerical solution of
+ *   ordinary differential equations. ACM Transactions on Mathematical Software, 1(1), 71-96.
+ *   https://doi.org/10.1145/355626.355636
+ * - Hindmarsh, A. C., Brown, P. N., Grant, K. E., Lee, S. L., Serban, R., Shumaker, D. E., &
+ *   Woodward, C. S. (2005). SUNDIALS: Suite of nonlinear and differential/algebraic equation
+ *   solvers. ACM Transactions on Mathematical Software, 31(3), 363-396. https://doi.org/10.1145/1089014.1089020
+ * - Brenan, K. E., Campbell, S. L., & Petzold, L. R. (1996). Numerical Solution of Initial-Value
+ *   Problems in Differential-Algebraic Equations. SIAM Classics in Applied Mathematics 14.
+ *   https://doi.org/10.1137/1.9781611971224
  *
- * Reference: Byrne, G.D. & Hindmarsh, A.C. (1975),
- *   "A polyalgorithm for the numerical solution of ODEs",
- *   ACM Trans. Math. Software, 1(1), 71-96.
+ * ModelScript Architectural Rationale:
+ * Physical systems (such as electrical circuits, hydraulic networks, and chemical kinetics) exhibit
+ * extreme stiffness, spanning widely separated time scales (microseconds to minutes). Explicit Runge-Kutta
+ * integrators suffer from step size collapse due to stability constraints. ModelScript compiles
+ * index-1 Modelica models into linear memory DAE systems solved via variable-order, variable-step
+ * BDF (orders 1-5). Modified Newton iterations resolve implicit relations using sparse automatic
+ * differentiation Jacobians.
+ *
+ * ModelScript Modifications:
+ * - Implemented with zero-GC WebAssembly linear memory storage for Nordsieck history arrays,
+ *   DAE variable buffers, and residual vectors.
+ * - Exploits sparse analytical/AD Jacobians with graph coloring and LU factorization reuse across steps.
+ * - Integrates zero-crossing root finders with polynomial Hermite dense output for accurate state event detection.
  */
 
 // ── BDF coefficients ──

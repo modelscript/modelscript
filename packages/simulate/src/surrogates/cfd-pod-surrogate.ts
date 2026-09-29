@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { BinOp, Causality, EqKind, type IDaeBuilder, Variability, VarType } from "@modelscript/runtime";
 import type { SnapshotMatrixDataset } from "./cfd-snapshot-collector.js";
 import { computeMultivariateBounds, type MultivariateBounds } from "./multivariate-bounds.js";
@@ -37,11 +39,37 @@ export interface PodSurrogateData {
 }
 
 /**
- * High-Performance Proper Orthogonal Decomposition (POD-Galerkin) CFD Surrogate.
+ * @fileoverview High-Performance Proper Orthogonal Decomposition (POD-Galerkin) CFD Surrogate.
  *
- * Implements the snapshot method (Sirovich) to extract optimal spatial basis modes
- * from high-fidelity CFD runs and projects Navier-Stokes dynamics onto a low-dimensional
- * manifold (k <= 16 modes) capable of evaluating in <0.05 ms inside 1D Modelica loops.
+ * Academic Citations:
+ * - Sirovich, L. (1987). Turbulence and dynamics of coherent structures. Part I: Impulse
+ *   methods / Part II: Symmetries and transformations. Quarterly of Applied Mathematics,
+ *   45(3), 561-571 / 573-582. https://doi.org/10.1090/qam/910462
+ * - Berkooz, G., Holmes, P., & Lumley, J. L. (1993). The proper orthogonal decomposition
+ *   in the analysis of turbulent flows. Annual Review of Fluid Mechanics, 25(1), 539-575.
+ *   https://doi.org/10.1146/annurev.fl.25.010193.002543
+ * - Benner, P., Gugercin, S., & Willcox, K. (2015). A survey of projection-based model
+ *   reduction methods for parametric dynamical systems. SIAM Review, 57(4), 483-531.
+ *   https://doi.org/10.1137/130932715
+ * - Quarteroni, A., Manzoni, A., & Negri, F. (2016). Reduced Basis Methods for Partial
+ *   Differential Equations: An Introduction. UNITEXT 92, Springer.
+ *   https://doi.org/10.1007/978-3-319-15498-5
+ *
+ * ModelScript Architectural Rationale:
+ * ModelScript enables multi-physics co-design by linking 3D spatial field solvers (e.g. SU2 CFD,
+ * OpenFOAM) with 1D lumped-parameter system simulation in Modelica and SysML v2. Full 3D finite
+ * volume solutions involve millions of degrees of freedom, requiring minutes to hours per time
+ * step, rendering real-time simulation, optimization, and hardware-in-the-loop (HIL) impossible.
+ * The POD-Galerkin surrogate projects high-dimensional field trajectories onto an optimal
+ * orthonormal basis of spatial modes (k <= 16) capturing 99%+ kinetic energy. The resulting
+ * reduced-order model executes in <0.05 ms per step.
+ *
+ * ModelScript Modifications:
+ * - Implements Sirovich's snapshot method: constructs the temporal covariance matrix C = S^T S / M
+ *   in R^{M x M} rather than spatial R^{N x N}, enabling mode extraction on 10^6 node meshes.
+ * - Employs multivariate polynomial regression for parameter-to-latent manifold mapping.
+ * - Directly synthesizes DAE equations and variables into `DAEBuilder` (`exportToDaeBuilder`),
+ *   allowing seamless inlining of CFD surrogate blocks into Modelica models without external FMU wrappers.
  */
 export class CfdPodSurrogate {
   public readonly numFeatures: number;

@@ -142,7 +142,10 @@ const wasmModelicaIndexerHooks: any[] = [
     namePath: "lhs",
     exportPaths: [],
     inheritPaths: [],
-    metadataFieldPaths: {},
+    metadataFieldPaths: {
+      lhs: "lhs",
+      rhs: "rhs",
+    },
   },
   {
     ruleName: "import_clause",

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { AlertIcon, PlusIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";

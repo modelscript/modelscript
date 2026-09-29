@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { RtmIndexEngine, type RtmAnalytics, type RtmElement, type RtmLink } from "@modelscript/lsp";
 import { ProofManifestGenerator, type DigitalThreadProofManifest, type ProofManifestItem } from "@modelscript/runtime";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";

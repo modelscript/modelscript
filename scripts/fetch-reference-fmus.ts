@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { execFileSync } from "child_process";
 import fs from "fs/promises";
 import path from "path";

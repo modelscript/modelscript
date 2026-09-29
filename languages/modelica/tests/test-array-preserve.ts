@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { initBltWasm } from "@modelscript/runtime";
 import fs from "node:fs";

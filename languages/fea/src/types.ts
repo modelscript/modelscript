@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export interface BoundaryActionPayload {
   kind: "fix" | "force" | "displacement" | "pressure" | "moment" | "inlet";
   targetId: number | string;

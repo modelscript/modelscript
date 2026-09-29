@@ -216,6 +216,8 @@ export declare function createWasmImports(grammar: any, facade: LspFacade): any;
 export declare class LspFacade {
   syntaxNames: string[];
   fieldNames: Record<string, number>;
+  lintMessages: Record<string, any>;
+  lintSeverities: Record<string, number>;
   private _idToFieldName;
   getFieldNameById(id: number): string | null;
   extrasRegex: RegExp;
@@ -956,9 +958,9 @@ export declare class SyntaxNode {
   get grammarType(): string;
   /** Extracts the substring from the original source code corresponding to this node. */
   get text(): string;
-  /** The start character index of the node (UTF-16). */
+  /** The start character index of the node. */
   get startIndex(): number;
-  /** The end character index of the node (UTF-16). */
+  /** The end character index of the node. */
   get endIndex(): number;
   /** The start byte index of the node (character offset matching Tree-sitter JS). */
   get startByte(): number;
@@ -1200,6 +1202,8 @@ export declare function createWasmParser(
   options?: {
     syntaxNames?: string[];
     fieldNames?: Record<string, number>;
+    lintMessages?: Record<string, any>;
+    lintSeverities?: Record<string, number>;
   },
 ): Promise<{
   facade: LspFacade;

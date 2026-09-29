@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { ArenaStateMachine, DAEBuilder } from "@modelscript/runtime";
 
 export interface SimulationResult {

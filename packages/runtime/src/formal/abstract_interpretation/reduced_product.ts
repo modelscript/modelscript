@@ -4,12 +4,14 @@ import { OCTAGON_INF, OctagonDBM } from "../../analysis/octagon_dbm.js";
 import { ArraySegmentState } from "./array_segment_domain.js";
 import type { AbstractDomain } from "./domain.js";
 import { NumericalInterval as Interval, IntervalDomain, IntervalEnvironment } from "./interval_domain.js";
+import { TvpiDomain, TvpiState } from "./tvpi_domain.js";
 
 /**
  * State of the Reduced Product Domain combining:
  *   1. Machine-precision Numerical Intervals
  *   2. Relational Octagon Difference Bound Matrix (±x_i ± x_j ≤ c)
  *   3. Symbolic Array Segment Partitions
+ *   4. Relational Two-Variables-Per-Inequality (TVPI) Planar Network (a*x + b*y ≤ c)
  */
 export class ReducedProductState {
   constructor(
@@ -18,10 +20,18 @@ export class ReducedProductState {
     public readonly varIndices: Map<string, number>,
     public readonly arraySegments: Map<string, ArraySegmentState> = new Map(),
     public readonly isBottomState: boolean = false,
+    public readonly tvpi: TvpiState = TvpiState.top(),
   ) {}
 
   static top(maxVars: number = 32): ReducedProductState {
-    return new ReducedProductState(IntervalEnvironment.top(), new OctagonDBM(maxVars), new Map(), new Map(), false);
+    return new ReducedProductState(
+      IntervalEnvironment.top(),
+      new OctagonDBM(maxVars),
+      new Map(),
+      new Map(),
+      false,
+      TvpiState.top(),
+    );
   }
 
   static bottom(maxVars: number = 32): ReducedProductState {
@@ -31,12 +41,15 @@ export class ReducedProductState {
       new Map(),
       new Map(),
       true,
+      TvpiState.bottom(),
     );
     return s;
   }
 
   isBottom(): boolean {
-    return this.isBottomState || this.intervals.isBottomState || this.octagon.hasNegativeCycle();
+    return (
+      this.isBottomState || this.intervals.isBottomState || this.octagon.hasNegativeCycle() || this.tvpi.isBottomState
+    );
   }
 
   clone(): ReducedProductState {
@@ -51,6 +64,7 @@ export class ReducedProductState {
       newIndices,
       newArrays,
       this.isBottomState,
+      this.tvpi.clone(),
     );
   }
 
@@ -116,7 +130,7 @@ export class ReducedProductState {
       }
     }
 
-    return new ReducedProductState(tightenedEnv, this.octagon, this.varIndices, this.arraySegments, false);
+    return new ReducedProductState(tightenedEnv, this.octagon, this.varIndices, this.arraySegments, false, this.tvpi);
   }
 }
 
@@ -126,6 +140,7 @@ export class ReducedProductState {
 export class ReducedProductDomain implements AbstractDomain<ReducedProductState> {
   readonly name = "ReducedProductDomain";
   private intervalDomain = new IntervalDomain();
+  private tvpiDomain = new TvpiDomain();
 
   constructor(private maxVars: number = 64) {}
 
@@ -148,7 +163,11 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
   isLeq(a: ReducedProductState, b: ReducedProductState): boolean {
     if (a.isBottom()) return true;
     if (b.isBottom()) return false;
-    return this.intervalDomain.isLeq(a.intervals, b.intervals) && a.octagon.isLeq(b.octagon);
+    return (
+      this.intervalDomain.isLeq(a.intervals, b.intervals) &&
+      a.octagon.isLeq(b.octagon) &&
+      this.tvpiDomain.isLeq(a.tvpi, b.tvpi)
+    );
   }
 
   join(a: ReducedProductState, b: ReducedProductState): ReducedProductState {
@@ -157,6 +176,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
 
     const joinedIntervals = this.intervalDomain.join(a.intervals, b.intervals);
     const joinedOctagon = a.octagon.join(b.octagon);
+    const joinedTvpi = this.tvpiDomain.join(a.tvpi, b.tvpi);
 
     // Merge array segment states
     const joinedArrays = new Map<string, ArraySegmentState>();
@@ -172,7 +192,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
       if (!mergedIndices.has(k)) mergedIndices.set(k, v);
     }
 
-    const res = new ReducedProductState(joinedIntervals, joinedOctagon, mergedIndices, joinedArrays, false);
+    const res = new ReducedProductState(joinedIntervals, joinedOctagon, mergedIndices, joinedArrays, false, joinedTvpi);
     return res.reduce();
   }
 
@@ -184,6 +204,9 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
 
     const meetOctagon = a.octagon.meet(b.octagon);
     if (meetOctagon.hasNegativeCycle()) return this.bottom();
+
+    const meetTvpi = this.tvpiDomain.meet(a.tvpi, b.tvpi);
+    if (this.tvpiDomain.isBottom(meetTvpi)) return this.bottom();
 
     const meetArrays = new Map<string, ArraySegmentState>();
     const allArrayKeys = new Set([...a.arraySegments.keys(), ...b.arraySegments.keys()]);
@@ -200,7 +223,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
       if (!mergedIndices.has(k)) mergedIndices.set(k, v);
     }
 
-    const res = new ReducedProductState(meetIntervals, meetOctagon, mergedIndices, meetArrays, false);
+    const res = new ReducedProductState(meetIntervals, meetOctagon, mergedIndices, meetArrays, false, meetTvpi);
     return res.reduce();
   }
 
@@ -210,6 +233,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
 
     const widenedIntervals = this.intervalDomain.widen(a.intervals, b.intervals, thresholds);
     const widenedOctagon = a.octagon.widenWithThresholds(b.octagon, thresholds);
+    const widenedTvpi = this.tvpiDomain.widen(a.tvpi, b.tvpi, thresholds);
 
     const widenedArrays = new Map<string, ArraySegmentState>();
     const allArrayKeys = new Set([...a.arraySegments.keys(), ...b.arraySegments.keys()]);
@@ -224,7 +248,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
       if (!mergedIndices.has(k)) mergedIndices.set(k, v);
     }
 
-    return new ReducedProductState(widenedIntervals, widenedOctagon, mergedIndices, widenedArrays, false);
+    return new ReducedProductState(widenedIntervals, widenedOctagon, mergedIndices, widenedArrays, false, widenedTvpi);
   }
 
   narrow(a: ReducedProductState, b: ReducedProductState): ReducedProductState {
@@ -232,8 +256,16 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
 
     const narrowedIntervals = this.intervalDomain.narrow(a.intervals, b.intervals);
     const narrowedOctagon = a.octagon.narrow(b.octagon);
+    const narrowedTvpi = this.tvpiDomain.narrow(a.tvpi, b.tvpi);
 
-    return new ReducedProductState(narrowedIntervals, narrowedOctagon, a.varIndices, a.arraySegments, false).reduce();
+    return new ReducedProductState(
+      narrowedIntervals,
+      narrowedOctagon,
+      a.varIndices,
+      a.arraySegments,
+      false,
+      narrowedTvpi,
+    ).reduce();
   }
 
   clone(state: ReducedProductState): ReducedProductState {

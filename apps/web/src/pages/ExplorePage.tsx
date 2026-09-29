@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon, SearchIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";

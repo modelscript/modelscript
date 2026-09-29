@@ -9,7 +9,7 @@ import sysml2Language from "@modelscript/sysml2/language";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
-import { computeWritebackEdit } from "../src/services/WritebackService.js";
+import { computeWritebackEdit } from "../src/services/writeback-service.js";
 
 // Register language packages into polyglot registry to provide writeback handlers
 globalLanguageRegistry.register({

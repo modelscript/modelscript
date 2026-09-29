@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /* eslint-disable */
 import { getNodeByteLength, getNodeFirstChild, getNodeNextSibling, getNodePadding } from "../arena";
 import { ChunkedUint32Array } from "../core/array";

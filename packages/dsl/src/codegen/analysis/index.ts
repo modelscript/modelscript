@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export * from "./ad_jacobian.js";
 export * from "./cfg.js";
 export * from "./coloring.js";

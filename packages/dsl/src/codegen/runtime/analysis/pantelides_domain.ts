@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // --- Zero-GC WASM Pantelides Index Reduction Generator ---
 // Emits AssemblyScript wrapper routines for DAE structural singularity index reduction.
 
