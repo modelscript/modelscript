@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
-import { BinOp, DAEBuilder, EqKind, Variability, VarType } from "../src/wasm_dae.js";
-import { evaluateArenaRuntime } from "../src/wasm_evaluator.js";
-import { buildInitBLT, solveInitialEquationsArena } from "../src/wasm_init.js";
+import { BinOp, DAEBuilder, EqKind, Variability, VarType } from "../src/dae/wasm_dae.js";
+import { evaluateArenaRuntime } from "../src/dae/wasm_evaluator.js";
+import { buildInitBLT, solveInitialEquationsArena } from "../src/dae/wasm_init.js";
 
 console.log("Testing DAE Initialization: Multi-Tier BLT, Homotopy & sBB...");
 

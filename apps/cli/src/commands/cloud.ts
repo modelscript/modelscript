@@ -15,6 +15,18 @@ interface CloudArgs {
   apiUrl?: string | undefined;
 }
 
+function useColor(): boolean {
+  return Boolean(process.stdout.isTTY && !process.env["NO_COLOR"]);
+}
+
+const c = {
+  bold: (s: string) => (useColor() ? `\x1b[1m${s}\x1b[0m` : s),
+  green: (s: string) => (useColor() ? `\x1b[32m${s}\x1b[0m` : s),
+  red: (s: string) => (useColor() ? `\x1b[31m${s}\x1b[0m` : s),
+  yellow: (s: string) => (useColor() ? `\x1b[33m${s}\x1b[0m` : s),
+  blue: (s: string) => (useColor() ? `\x1b[34m${s}\x1b[0m` : s),
+};
+
 export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
   command: "cloud <action> [target]",
   describe: "Manage cloud HPC jobs, compute profiles, credit wallet, and live telemetry",
@@ -75,7 +87,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             process.exit(1);
           }
           const data = (await res.json()) as { profiles: any[] };
-          console.log(`\n\x1b[1mModelScript Cloud Compute Profiles (${apiUrl})\x1b[0m\n`);
+          console.log(`\n${c.bold(`ModelScript Cloud Compute Profiles (${apiUrl})`)}\n`);
           console.log(
             `${"PROFILE ID".padEnd(16)} ${"NAME".padEnd(28)} ${"VCPUS".padEnd(8)} ${"RAM".padEnd(10)} ${"GPUS".padEnd(10)} ${"COST (CR/HR)"}`,
           );
@@ -108,9 +120,9 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             process.exit(1);
           }
           const data = (await res.json()) as any;
-          console.log(`\n\x1b[1mModelScript Cloud Credit Wallet\x1b[0m`);
+          console.log(`\n${c.bold("ModelScript Cloud Credit Wallet")}`);
           console.log(`  User ID:        ${data.userId ?? "Default"}`);
-          console.log(`  Current Balance: \x1b[32m${Number(data.balance ?? 0).toFixed(2)} Credits\x1b[0m`);
+          console.log(`  Current Balance: ${c.green(`${Number(data.balance ?? 0).toFixed(2)} Credits`)}`);
           if (data.totalSpent !== undefined) {
             console.log(`  Lifetime Spent:  ${Number(data.totalSpent).toFixed(2)} Credits`);
           }
@@ -134,7 +146,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             process.exit(1);
           }
           const data = (await res.json()) as { jobs: any[] };
-          console.log(`\n\x1b[1mModelScript Cloud Jobs (${apiUrl})\x1b[0m\n`);
+          console.log(`\n${c.bold(`ModelScript Cloud Jobs (${apiUrl})`)}\n`);
           if (data.jobs.length === 0) {
             console.log("  No active or historical jobs found.\n");
             return;
@@ -144,15 +156,18 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           );
           console.log("-".repeat(90));
           for (const j of data.jobs) {
-            let statusColor = "\x1b[0m";
-            if (j.status === "completed") statusColor = "\x1b[32m";
-            else if (j.status === "running") statusColor = "\x1b[34m";
-            else if (j.status === "failed") statusColor = "\x1b[31m";
-            else if (j.status === "queued") statusColor = "\x1b[33m";
+            let statusStr = j.status;
+            if (j.status === "completed") statusStr = c.green(j.status);
+            else if (j.status === "running") statusStr = c.blue(j.status);
+            else if (j.status === "failed") statusStr = c.red(j.status);
+            else if (j.status === "queued") statusStr = c.yellow(j.status);
 
             const cost = j.costCredits !== undefined ? `${Number(j.costCredits).toFixed(2)} cr` : "-";
+            const paddedStatus = useColor()
+              ? statusStr + " ".repeat(Math.max(0, 12 - j.status.length))
+              : statusStr.padEnd(12);
             console.log(
-              `${j.jobId.padEnd(28)} ${(j.domain || "sim").padEnd(12)} ${(j.profile || "standard").padEnd(14)} ${statusColor}${j.status.padEnd(12)}\x1b[0m ${cost.padEnd(10)} ${j.name}`,
+              `${j.jobId.padEnd(28)} ${(j.domain || "sim").padEnd(12)} ${(j.profile || "standard").padEnd(14)} ${paddedStatus} ${cost.padEnd(10)} ${j.name}`,
             );
           }
           console.log("");
@@ -176,7 +191,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             process.exit(1);
           }
           const data = (await res.json()) as any;
-          console.log(`\n\x1b[1mJob Status: ${data.jobId}\x1b[0m`);
+          console.log(`\n${c.bold(`Job Status: ${data.jobId}`)}`);
           console.log(`  Name:           ${data.name}`);
           console.log(`  Domain:         ${data.domain}`);
           console.log(`  Profile:        ${data.profile}`);
@@ -189,7 +204,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.log(`  Result Ready:   Yes (Download: 'msc cloud download ${jobId}')`);
           }
           if (data.error) {
-            console.log(`  \x1b[31mError:          ${data.error}\x1b[0m`);
+            console.log(`  ${c.red(`Error:          ${data.error}`)}`);
           }
           console.log("");
         } catch (err: any) {
@@ -212,7 +227,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             process.exit(1);
           }
           const data = (await res.json()) as { logs: string[] };
-          console.log(`\n\x1b[1m--- Logs for ${jobId} ---\x1b[0m`);
+          console.log(`\n${c.bold(`--- Logs for ${jobId} ---`)}`);
           for (const l of data.logs) {
             console.log(l);
           }
@@ -239,7 +254,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.error(`Error: Failed to cancel job (${res.status} ${res.statusText})`);
             process.exit(1);
           }
-          console.log(`\x1b[32m✔ Job ${jobId} cancelled successfully.\x1b[0m`);
+          console.log(c.green(`✔ Job ${jobId} cancelled successfully.`));
         } catch (err: any) {
           console.error(`Failed to connect to ${apiUrl}: ${err.message}`);
           process.exit(1);
@@ -269,7 +284,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           const outPath = args.output ? path.resolve(args.output) : path.join(process.cwd(), fileName);
           const buf = Buffer.from(await res.arrayBuffer());
           fs.writeFileSync(outPath, buf);
-          console.log(`\x1b[32m✔ Result downloaded: ${outPath} (${buf.length} bytes)\x1b[0m`);
+          console.log(c.green(`✔ Result downloaded: ${outPath} (${buf.length} bytes)`));
         } catch (err: any) {
           console.error(`Download failed: ${err.message}`);
           process.exit(1);
@@ -317,7 +332,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
 
           if (res.status === 402) {
             const errData = (await res.json().catch(() => ({}))) as any;
-            console.error(`\x1b[31mPayment Required (402) - Insufficient Compute Credits\x1b[0m`);
+            console.error(c.red(`Payment Required (402) - Insufficient Compute Credits`));
             if (errData.message) console.error(`  ${errData.message}`);
             process.exit(1);
           }
@@ -328,7 +343,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           }
 
           const data = (await res.json()) as { jobId: string };
-          console.log(`\x1b[32m✔ Job dispatched successfully!\x1b[0m`);
+          console.log(c.green(`✔ Job dispatched successfully!`));
           console.log(`  Job ID: ${data.jobId}`);
           console.log(`  Check status: msc cloud status ${data.jobId}`);
           console.log(`  View logs:    msc cloud logs ${data.jobId}`);

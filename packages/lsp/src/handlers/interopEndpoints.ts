@@ -107,8 +107,9 @@ export function registerInteropEndpoints(context: LspContext) {
       error?: string;
     }> => {
       try {
-        // Dynamically import exchange for model description parsing and wrapper generation
-        const { parseModelDescription, generateFmuWrapperModelica } = await import("@modelscript/exchange");
+        // Dynamically import exchange for model description parsing, terminals, and wrapper generation
+        const { parseModelDescription, parseTerminalsAndIcons, generateFmuWrapperModelica } =
+          await import("@modelscript/exchange");
 
         // Decode base64 to bytes
         const binaryStr = atob(params.data);
@@ -120,41 +121,19 @@ export function registerInteropEndpoints(context: LspContext) {
         // Extract modelDescription.xml from ZIP using container toolkit
         const xmlContent = readZipTextEntry(fmuBytes, "modelDescription.xml");
         if (!xmlContent) return { ok: false, error: "modelDescription.xml not found in FMU" };
-        const parsedFmu = parseFmuModelDescription(xmlContent);
+        const desc = parseModelDescription(xmlContent);
+        if (!desc.modelName || desc.modelName === "Unknown") {
+          desc.modelName = params.name;
+        }
 
-        const desc = {
-          fmiVersion: "2.0",
-          modelName: parsedFmu.modelName || params.name,
-          guid: "",
-          description: parsedFmu.description || undefined,
-          author: undefined,
-          generationTool: undefined,
-          coSimulationModelIdentifier: undefined,
-          modelExchangeModelIdentifier: undefined,
-          supportsCoSimulation: true,
-          supportsModelExchange: false,
-          defaultExperiment: undefined,
-          variables: parsedFmu.variables.map((v) => ({
-            name: v.name,
-            valueReference: 0,
-            description: v.description || undefined,
-            causality: v.causality as
-              | "input"
-              | "output"
-              | "parameter"
-              | "calculatedParameter"
-              | "local"
-              | "independent",
-            variability: v.variability as "constant" | "fixed" | "tunable" | "discrete" | "continuous",
-            type: v.type as "Real" | "Integer" | "Boolean" | "String" | "Enumeration",
-            start: v.start,
-            unit: undefined,
-            displayUnit: undefined,
-          })),
-          numberOfEventIndicators: undefined,
-        };
+        // Extract FMI-LS-TI terminalsAndIcons.xml if present
+        const terminalsXml =
+          readZipTextEntry(fmuBytes, "terminalsAndIcons/terminalsAndIcons.xml") ??
+          readZipTextEntry(fmuBytes, "terminalsAndIcons.xml") ??
+          readZipTextEntry(fmuBytes, "fmi3TerminalsAndIcons.xml");
+        const terminals = terminalsXml ? parseTerminalsAndIcons(terminalsXml) : desc.terminals;
 
-        const source = generateFmuWrapperModelica(desc, `${params.name}.fmu`, params.packageName);
+        const source = generateFmuWrapperModelica(desc, `${params.name}.fmu`, params.packageName, terminals);
 
         const inputs = desc.variables.filter((v) => v.causality === "input");
         const outputs = desc.variables.filter((v) => v.causality === "output");

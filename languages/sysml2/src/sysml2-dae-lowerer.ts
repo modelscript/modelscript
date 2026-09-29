@@ -409,7 +409,7 @@ export class SysML2DaeLowerer {
       }
 
       // 4. Assignments: assign x := expr; or x := expr; or x = expr;
-      const assignMatch = /^(?:assign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*(\S[^;\r\n]*?)\s*;/.exec(remaining);
+      const assignMatch = /^(?:assign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*([^;\r\n]+);/.exec(remaining);
       if (assignMatch) {
         stmts.push({
           kind: "assign",
@@ -566,8 +566,21 @@ export class SysML2DaeLowerer {
 
     const arena = existingArena ?? new DAEBuilder();
 
-    // 1. Strip comments
-    const cleanSource = sysmlSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\r\n]*/g, "");
+    // 1. Strip comments (linear scan without polynomial backtracking)
+    let strippedComments = "";
+    let commentIdx = 0;
+    while (commentIdx < sysmlSource.length) {
+      const bStart = sysmlSource.indexOf("/*", commentIdx);
+      if (bStart === -1) {
+        strippedComments += sysmlSource.slice(commentIdx);
+        break;
+      }
+      strippedComments += sysmlSource.slice(commentIdx, bStart);
+      const bEnd = sysmlSource.indexOf("*/", bStart + 2);
+      if (bEnd === -1) break;
+      commentIdx = bEnd + 2;
+    }
+    const cleanSource = strippedComments.replace(/\/\/[^\r\n]*/g, "");
 
     // 2. Extract experiment configurations (if any)
     const startMatch = /\bstartTime\s*=\s*([0-9.eE+-]+)/.exec(cleanSource);

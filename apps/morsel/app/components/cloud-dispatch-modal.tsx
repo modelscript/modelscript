@@ -194,11 +194,11 @@ export function CloudDispatchModal({
 
   return (
     <Dialog
-      isOpen={isOpen}
-      onDismiss={onClose}
+      onClose={onClose}
       aria-labelledby="cloud-modal-title"
-      sx={{
-        width: ["95%", "85%", "640px"],
+      style={{
+        width: "95%",
+        maxWidth: "640px",
         maxHeight: "90vh",
         overflow: "hidden",
         display: "flex",

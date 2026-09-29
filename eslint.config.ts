@@ -21,7 +21,6 @@ export default defineConfig([
       "packages/dsl/src/codegen/runtime/**",
       "packages/runtime/tests/wasm/**",
       "**/scratch*/**",
-      "packages/dsl/src/codegen/typescript.mjs",
       "packages/simulate/src/wasm/**",
       "languages/**/src-gen/**",
       "**/src-gen/**",

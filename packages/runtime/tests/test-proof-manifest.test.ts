@@ -92,4 +92,34 @@ describe("Cryptographically Verifiable Digital Thread Proof Manifest Suite", () 
     assert.strictEqual(v2.isValid, false);
     assert(v2.reason?.includes("signature token verification failed"));
   });
+
+  it("should generate and verify asymmetric Ed25519 digital signatures", () => {
+    const items: ProofManifestItem[] = [
+      {
+        domain: "formal_proof",
+        identifier: "Theorem::ReachabilitySafe",
+        sha256: ProofManifestGenerator.hashContent("PROOF_TERM_OMEGA"),
+        verificationStatus: "CERTIFIED_SAFE",
+        engine: "hybrid_reachability",
+      },
+    ];
+
+    const manifest = ProofManifestGenerator.generateManifest(items, "commit-ed25519", {
+      algorithm: "ed25519",
+    });
+
+    assert.strictEqual(manifest.signatureAlgorithm, "ed25519");
+    assert.ok(manifest.publicKey);
+    assert.ok(manifest.signatureToken.length > 64);
+
+    const v = ProofManifestGenerator.verifyManifest(manifest);
+    assert.strictEqual(v.isValid, true);
+
+    // Tamper with signature
+    const tampered = JSON.parse(JSON.stringify(manifest));
+    tampered.signatureToken = "00".repeat(manifest.signatureToken.length / 2);
+    const vTampered = ProofManifestGenerator.verifyManifest(tampered);
+    assert.strictEqual(vTampered.isValid, false);
+    assert(vTampered.reason?.includes("Ed25519"));
+  });
 });

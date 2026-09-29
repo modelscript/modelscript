@@ -78,6 +78,8 @@ export async function extractPackageMoFromZip(buffer: Buffer): Promise<string> {
  */
 export async function extractZipToDir(buffer: Buffer, targetDir: string): Promise<void> {
   return new Promise((resolve, reject) => {
+    const safeTargetDir = path.resolve(targetDir);
+
     yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
       if (err || !zipfile) {
         reject(err ?? new Error("Failed to open zip"));
@@ -87,7 +89,12 @@ export async function extractZipToDir(buffer: Buffer, targetDir: string): Promis
       zipfile.readEntry();
 
       zipfile.on("entry", (entry: yauzl.Entry) => {
-        const entryPath = path.join(targetDir, entry.fileName);
+        const entryPath = path.resolve(safeTargetDir, entry.fileName);
+        if (!entryPath.startsWith(safeTargetDir + path.sep) && entryPath !== safeTargetDir) {
+          zipfile.close();
+          reject(new Error(`Zip Slip path traversal detected: illegal entry "${entry.fileName}"`));
+          return;
+        }
 
         if (entry.fileName.endsWith("/")) {
           fs.mkdirSync(entryPath, { recursive: true });

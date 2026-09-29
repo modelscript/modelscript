@@ -34,10 +34,6 @@ describe("Workspace Language Discovery & Extension Generator", () => {
     assert.ok(result.wasmAssets.length > 0, "Should discover WASM assets");
     const wasmDests = result.wasmAssets.map((a) => a.dest);
     assert.ok(wasmDests.includes("server/dist/modelica.wasm"), "Should include modelica.wasm asset");
-    assert.ok(
-      wasmDests.includes("server/dist/tree-sitter-modelica.wasm"),
-      "Should include backward-compatible tree-sitter-modelica.wasm",
-    );
 
     // Verify manifest
     const manifestModelica = result.manifest.find((m) => m.id === "modelica");

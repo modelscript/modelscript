@@ -184,8 +184,4 @@ part def BatteryPack {
 
     await request(app).get(`/projects/${evProjectId}`).expect(404);
   });
-
-  t.after(() => {
-    process.exit(0);
-  });
 });

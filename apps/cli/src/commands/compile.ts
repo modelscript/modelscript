@@ -109,7 +109,12 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     for (const p of args.paths) {
       if (p.endsWith(".sysml")) {
         const { createWasmParser: createSysmlParser } = await import("@modelscript/dsl");
-        const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
+        let wasmPath: string;
+        try {
+          wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
+        } catch {
+          wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
+        }
         if (!sysmlParser) {
           const sysmlResult = await createSysmlParser(wasmPath);
           sysmlParser = sysmlResult.parser;
@@ -206,6 +211,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
 
     if (!arena) {
       console.error(`'${args.name}' not found or had flattening errors.`);
+      process.exitCode = 1;
       return;
     }
 

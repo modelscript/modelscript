@@ -65,12 +65,25 @@ export class CaeSolverRunner {
       const deckPath = path.join(tmpDir, deckFileName);
       fs.writeFileSync(deckPath, spec.deckContent, "utf8");
 
-      if (spec.geometryPath && fs.existsSync(spec.geometryPath)) {
-        const geomDest = path.join(tmpDir, path.basename(spec.geometryPath));
-        try {
-          fs.symlinkSync(spec.geometryPath, geomDest);
-        } catch {
-          fs.copyFileSync(spec.geometryPath, geomDest);
+      if (spec.geometryPath && typeof spec.geometryPath === "string") {
+        const cleanBase = path.basename(spec.geometryPath).replace(/[^a-zA-Z0-9._-]/g, "_");
+        const resolvedGeom = path.resolve(spec.geometryPath);
+        const allowedRoots = [path.resolve(process.cwd()), path.resolve(os.tmpdir())];
+        const isAllowed = allowedRoots.some(
+          (root) => resolvedGeom === root || resolvedGeom.startsWith(root + path.sep),
+        );
+        if (!isAllowed) {
+          throw new Error(`Unauthorized geometry path: ${spec.geometryPath}`);
+        }
+        if (fs.existsSync(resolvedGeom)) {
+          const geomDest = path.resolve(tmpDir, cleanBase);
+          if (geomDest.startsWith(tmpDir + path.sep)) {
+            try {
+              fs.symlinkSync(resolvedGeom, geomDest);
+            } catch {
+              fs.copyFileSync(resolvedGeom, geomDest);
+            }
+          }
         }
       }
 

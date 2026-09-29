@@ -19,7 +19,7 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
   } else {
     out += "export function saturateEGraph(): void {}\n";
     out += "export function initDPExtractor(): void {}\n";
-    out += "export function extractAst(rootClass: u32, dae: DaeBuilder): u32 { return 0; }\n";
+    out += "export function extractAst(rootClass: u32, dae: DaeBuilder): u32 { return 0xFFFFFFFF; }\n";
   }
 
   out +=

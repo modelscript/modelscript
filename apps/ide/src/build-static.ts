@@ -56,12 +56,10 @@ if (existsSync(manifestPath)) {
         join(MODELSCRIPT_EXT_DIR, "server", "dist", lang.wasm),
         join(langDir, "dist", "parser.wasm"),
         join(langDir, "parser.wasm"),
-        join(langDir, `tree-sitter-${lang.id}.wasm`),
       ];
       const found = candidates.find(existsSync);
       if (found) {
         cpSync(found, join(serverDistDest, lang.wasm));
-        cpSync(found, join(serverDistDest, `tree-sitter-${lang.id}.wasm`));
         console.log(`  Copied ${lang.id} WASM parser (${lang.wasm}) to ${serverDistDest}`);
       } else {
         console.warn(`  Warning: WASM parser for ${lang.id} not found`);
@@ -76,7 +74,6 @@ if (existsSync(manifestPath)) {
 const releaseWasmSrc = [
   join(MODELSCRIPT_EXT_DIR, "server", "dist", "release.wasm"),
   resolve(__dirname, "..", "..", "..", "packages", "runtime", "build", "release.wasm"),
-  resolve(__dirname, "..", "..", "..", "packages", "language", "build", "release.wasm"),
 ].find(existsSync);
 const releaseWasmDest = join(extDestDir, "server", "dist", "release.wasm");
 if (releaseWasmSrc && existsSync(releaseWasmSrc)) {
@@ -389,10 +386,6 @@ const landingHtml = `<!DOCTYPE html>
     <a href="/vscode/workbench/#memfs:multi-fidelity-binding" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
       <span class="tpl-name">Multi-Fidelity Binding</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:data-driven-calibration" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18M7 14l4-4 4 4 6-6"/></svg></div>
-      <span class="tpl-name">Data-Driven Calibration</span>
     </a>
     <a href="/vscode/workbench/#memfs:hardware-ci" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>

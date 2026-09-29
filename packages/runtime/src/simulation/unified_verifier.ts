@@ -30,7 +30,7 @@ import {
   OntologyTheoryOracle,
 } from "../formal/oracles/index.js";
 import { RegionDecomposer, type RegionDecompositionResult } from "../formal/region_decomposer.js";
-import { SemanticTheoryCoordinator } from "../formal/theory_coordinator.js";
+import { SemanticTheoryCoordinator, type CancellationTokenLike } from "../formal/theory_coordinator.js";
 import { DigitalThreadHypergraph } from "../interop/thread_hypergraph.js";
 import { generateCtrfReport, generateJUnitReport, type CtrfReport } from "../util/ctrf_reporter.js";
 import { generateHtmlReport } from "../util/html_reporter.js";
@@ -95,6 +95,7 @@ export interface UnifiedVerificationOptions {
   exportFormats?: string[] | undefined; // "smt2" | "nuxmv" | "ocra" | "mos"
   exportDir?: string | undefined;
   timeoutMs?: number | undefined;
+  cancellationToken?: CancellationTokenLike | undefined;
 }
 
 export interface UnifiedVerificationReport {
@@ -279,7 +280,7 @@ export class UnifiedVerifier {
     options: UnifiedVerificationOptions = {},
   ): UnifiedVerificationReport {
     const t0 = Date.now();
-    const satRes = coordinator.checkSat();
+    const satRes = coordinator.checkSat(50, options.cancellationToken);
     const conflict = satRes.conflict;
     const durPerStage = Math.max(1, Math.round(satRes.durationMs / 6));
     const stages: Record<string, VerificationStageResult> = {};
@@ -330,9 +331,11 @@ export class UnifiedVerifier {
       passed: satRes.isSat,
       certified: satRes.isSat,
       durationMs: Date.now() - t0,
-      summary: satRes.isSat
-        ? `All theory oracles mutually satisfiable (${satRes.sharedEqualities.length} shared equalities in ${satRes.iterations} iterations).`
-        : `Formal contradiction detected: ${conflict?.explanation}`,
+      summary: satRes.reason
+        ? satRes.reason
+        : satRes.isSat
+          ? `All theory oracles mutually satisfiable (${satRes.sharedEqualities.length} shared equalities in ${satRes.iterations} iterations).`
+          : `Formal contradiction detected: ${conflict?.explanation}`,
       violations: masterViolations,
       details: satRes,
     };
@@ -1031,7 +1034,7 @@ export class UnifiedVerifier {
 
         const variables: any[] = [];
         const varDeclRegex =
-          /\b(?:(input|output)\s+)?(Real|Integer|Boolean|String)\s*(?:\[([^\]]*)\])?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[([^\]]*)\])?(?:\s*=\s*(\S[^;\r\n]*?))?\s*;/g;
+          /\b(?:(input|output)\s+)?(Real|Integer|Boolean|String)\s*(?:\[([^\]]*)\])?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[([^\]]*)\])?(?:\s*=\s*([^;\r\n]+))?;/g;
         let vMatch: RegExpExecArray | null;
         while ((vMatch = varDeclRegex.exec(body)) !== null) {
           const io = vMatch[1];

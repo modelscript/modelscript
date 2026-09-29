@@ -43,6 +43,7 @@ export class WebGPULbmRunner {
   private gpuPongBuffer: any = null;
   private gpuMacroBuffer: any = null;
   private gpuDeltaWallBuffer: any = null;
+  private gpuDragOutputBuffer: any = null;
   private gpuBindGroup0: any = null;
   private gpuBindGroup1: any = null;
   private gpuInitialized: boolean = false;
@@ -147,6 +148,13 @@ export class WebGPULbmRunner {
         device.queue.writeBuffer(this.gpuDeltaWallBuffer, 0, this.arena.deltaWall);
       }
 
+      // 6. Drag output & macroscopic reduction storage buffer [Fx, Fy, Fz, maxVel, pDrop]
+      this.gpuDragOutputBuffer = device.createBuffer({
+        label: "LBM Drag Output",
+        size: 32, // 8 * sizeof(f32)
+        usage: 0x0080 | 0x0004 | 0x0008, // STORAGE | COPY_SRC | COPY_DST
+      });
+
       // Create BindGroups for ping-pong swapping
       const layout = this.gpuPipeline.getBindGroupLayout(0);
       this.gpuBindGroup0 = device.createBindGroup({
@@ -157,7 +165,7 @@ export class WebGPULbmRunner {
           { binding: 2, resource: { buffer: this.gpuPingBuffer } },
           { binding: 3, resource: { buffer: this.gpuPongBuffer } },
           { binding: 4, resource: { buffer: this.gpuMacroBuffer } },
-          { binding: 5, resource: { buffer: this.gpuUniformBuffer } }, // placeholder for reduction
+          { binding: 5, resource: { buffer: this.gpuDragOutputBuffer } },
           { binding: 6, resource: { buffer: this.gpuDeltaWallBuffer } },
         ],
       });
@@ -170,7 +178,7 @@ export class WebGPULbmRunner {
           { binding: 2, resource: { buffer: this.gpuPongBuffer } },
           { binding: 3, resource: { buffer: this.gpuPingBuffer } },
           { binding: 4, resource: { buffer: this.gpuMacroBuffer } },
-          { binding: 5, resource: { buffer: this.gpuUniformBuffer } },
+          { binding: 5, resource: { buffer: this.gpuDragOutputBuffer } },
           { binding: 6, resource: { buffer: this.gpuDeltaWallBuffer } },
         ],
       });

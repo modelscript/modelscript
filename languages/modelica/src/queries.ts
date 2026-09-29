@@ -823,17 +823,47 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
 
     if (child.kind === "Import") {
       const meta = child.metadata as Record<string, unknown>;
-      const importKind =
+      let importKind =
         (meta?.importKind as string | undefined) ??
         (child.ruleName === "UnqualifiedImportClause"
           ? "unqualified"
           : child.ruleName === "CompoundImportClause"
             ? "compound"
-            : "simple");
-      const pkgName = (meta?.packageName ?? child.name) as string;
+            : undefined);
+      let pkgName = (meta?.packageName ?? child.name) as string;
+      let aliasName = meta?.shortName as string | undefined;
+
+      // For WASM GLR parser import_clause nodes, inspect the CST to determine the import kind
+      if (importKind === undefined && (child.ruleName === "import_clause" || child.ruleName === "ImportClause")) {
+        const importCst = db.cstNode(child.id) as any;
+        if (importCst) {
+          const aliasNode = Cst.ImportClause.alias(importCst);
+          const importListNode = Cst.ImportClause.importList(importCst);
+          const cstText: string = importCst.text ?? "";
+
+          if (aliasNode) {
+            // Renamed import: import MyC = A.B2.C;
+            aliasName = aliasNode.text;
+            importKind = "simple";
+          } else if (importListNode) {
+            // Compound import: import A.B.{C, D};
+            importKind = "compound";
+          } else if (/\.\s*\*/.test(cstText)) {
+            // Unqualified import: import A.B.*;
+            // pkgName is already the name without .* (from name field)
+            importKind = "unqualified";
+          } else {
+            // Simple import: import A.B.C;
+            importKind = "simple";
+          }
+        } else {
+          importKind = "simple";
+        }
+      }
+      if (!importKind) importKind = "simple";
 
       if (importKind === "simple") {
-        const shortName = (meta?.shortName as string) ?? pkgName.split(".").pop() ?? pkgName;
+        const shortName = aliasName ?? pkgName.split(".").pop() ?? pkgName;
         qualifiedImports[shortName] = pkgName;
       } else if (importKind === "unqualified") {
         unqualifiedImportPkgs.push(pkgName);
@@ -842,6 +872,26 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
           .childrenOfField(child.id, "importName")
           .map((c) => c.name)
           .filter(Boolean);
+        // Also try extracting import names from CST if childrenOfField returned nothing
+        if (importNames.length === 0) {
+          const importCst = db.cstNode(child.id) as any;
+          if (importCst) {
+            const importListNode = Cst.ImportClause.importList(importCst);
+            if (importListNode) {
+              const listText: string = importListNode.text ?? "";
+              const names = listText
+                .split(",")
+                .map((n: string) => n.trim())
+                .filter(Boolean);
+              if (names.length > 0) {
+                // Strip trailing ".{...}" from pkgName if present
+                pkgName = pkgName.replace(/\.\{[^}]*\}$/, "");
+                compoundImports.push({ pkg: pkgName, names });
+                continue;
+              }
+            }
+          }
+        }
         compoundImports.push({ pkg: pkgName, names: importNames });
       }
     }
@@ -983,7 +1033,9 @@ export function resolveSimpleNameHelper(
   return (
     predefined?.find((e) => (e.metadata as any)?.isPredefined) ??
     predefined?.find(
-      (e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function" || e.kind === "Definition",
+      (e) =>
+        (e.kind === "Class" || e.kind === "Package" || e.kind === "Function" || e.kind === "Definition") &&
+        e.parentId === null,
     ) ??
     null
   );

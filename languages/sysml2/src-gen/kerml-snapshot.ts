@@ -11,16 +11,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 1,
     "kind": "Package",
-    "name": "ScalarValues",
+    "name": "sML v2 / Ker",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 56,
-    "endByte": 316,
+    "startByte": 0,
+    "endByte": 260,
     "exports": [
-      "package ScalarValues {\n    abstract attribute def Real;\n    abstract attribute def Integer;\n    abstract attribute def Boolean;\n    abstract attribute def String;\n    abstract attribute def Natural :> Integer;\n    abstract attribute def Positive :> Integer;\n}"
+      "/**\n * SysML v2 / KerML standard library foundation.\n */\npackage ScalarValues {\n    abstract attribute def Real;\n    abstract attribute def Integer;\n    abstract attribute def Boolean;\n    abstract attribute def String;\n    abstract attribute def Natural :> In"
     ],
     "inherits": [],
     "metadata": {}
@@ -28,114 +28,114 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 2,
     "kind": "Definition",
-    "name": "Real",
+    "name": ".\n *",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 84,
-    "endByte": 112,
+    "startByte": 28,
+    "endByte": 56,
     "exports": [
-      "abstract attribute def Real;"
+      "dard library foundation.\n */"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "dard lib",
       "isVariation": null
     }
   },
   {
     "id": 3,
     "kind": "Definition",
-    "name": "Integer",
+    "name": "abstrac",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 117,
-    "endByte": 148,
+    "startByte": 61,
+    "endByte": 92,
     "exports": [
-      "abstract attribute def Integer;"
+      "age ScalarValues {\n    abstract"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "age Scal",
       "isVariation": null
     }
   },
   {
     "id": 4,
     "kind": "Definition",
-    "name": "Boolean",
+    "name": "tract a",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 153,
-    "endByte": 184,
+    "startByte": 97,
+    "endByte": 128,
     "exports": [
-      "abstract attribute def Boolean;"
+      "ibute def Real;\n    abstract at"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ibute de",
       "isVariation": null
     }
   },
   {
     "id": 5,
     "kind": "Definition",
-    "name": "String",
+    "name": "tract",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 189,
-    "endByte": 219,
+    "startByte": 133,
+    "endByte": 163,
     "exports": [
-      "abstract attribute def String;"
+      "te def Integer;\n    abstract a"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "te def I",
       "isVariation": null
     }
   },
   {
     "id": 6,
     "kind": "Definition",
-    "name": "Natural",
+    "name": "stract",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 224,
-    "endByte": 266,
+    "startByte": 168,
+    "endByte": 210,
     "exports": [
-      "abstract attribute def Natural :> Integer;"
+      "ute def Boolean;\n    abstract attribute de"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ute def",
       "isVariation": null
     }
   },
   {
     "id": 7,
     "kind": "Reference",
-    "name": "Integer",
+    "name": "ibute d",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 6,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 257,
-    "endByte": 265,
+    "startByte": 202,
+    "endByte": 209,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -143,34 +143,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 8,
     "kind": "Definition",
-    "name": "Positive",
+    "name": "bute def",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 271,
-    "endByte": 314,
+    "startByte": 215,
+    "endByte": 258,
     "exports": [
-      "abstract attribute def Positive :> Integer;"
+      "ing;\n    abstract attribute def Natural :>"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ing;",
       "isVariation": null
     }
   },
   {
     "id": 9,
     "kind": "Reference",
-    "name": "Integer",
+    "name": "ural :>",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 8,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 305,
-    "endByte": 313,
+    "startByte": 250,
+    "endByte": 257,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -178,16 +178,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 10,
     "kind": "Package",
-    "name": "ISQ",
+    "name": "ab",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 316,
-    "endByte": 1265,
+    "startByte": 260,
+    "endByte": 1146,
     "exports": [
-      "package ISQ {\n    import ScalarValues::*;\n\n    /* SI Base Quantities */\n    abstract attribute def Time :> Real;\n    abstract attribute def Mass :> Real;\n    abstract attribute def Length :> Real;\n    abstract attribute def ElectricCurrent :> Real;\n    abstract attribute def ThermodynamicTemperature :> Real;\n    abstract attribute def AmountOfSubstance :> Real;\n    abstract attribute def LuminousIntensity :> Real;\n\n    /* SI Derived Quantities */\n    abstract attribute def Area :> Real;\n    abstract attribute def Volume :> Real;\n    abstract attribute def Velocity :> Real;\n    abstract attribute def Acceleration :> Real;\n    abstract attribute def Force :> Real;\n    abstract attribute def Pressure :> Real;\n    abstract attribute def Energy :> Real;\n    abstract attribute def Power :> Real;\n    abstract attribute def Voltage :> Real;\n    abstract attribute def ElectricResistance :> Real;\n    abstract attribute def Frequency :> Real;\n}"
+      "teger;\n    abstract attribute def Positive :> Integer;\n}\n\npackage ISQ {\n    import ScalarValues::*;\n\n    /* SI Base Quantities */\n    abstract attribute def Time :> Real;\n    abstract attribute def Mass :> Real;\n    abstract attribute def Length :> Real;\n    abstract attribute def ElectricCurrent :> Real;\n    abstract attribute def ThermodynamicTemperature :> Real;\n    abstract attribute def AmountOfSubstance :> Real;\n    abstract attribute def LuminousIntensity :> Real;\n\n    /* SI Derived Quantities */\n    abstract attribute def Area :> Real;\n    abstract attribute def Volume :> Real;\n    abstract attribute def Velocity :> Real;\n    abstract attribute def Acceleration :> Real;\n    abstract attribute def Force :> Real;\n    abstract attribute def Pressure :> Real;\n    abstract attribute def Energy :> Real;\n    abstract attribute def Power :> Real;\n    abstract attribute def"
     ],
     "inherits": [],
     "metadata": {}
@@ -195,14 +195,14 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 11,
     "kind": "Import",
-    "name": "ScalarValues",
+    "name": "te def Posit",
     "ruleName": "NamespaceImport",
     "namePath": "importedNamespace",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 331,
-    "endByte": 358,
+    "startByte": 275,
+    "endByte": 302,
     "exports": [],
     "inherits": [],
     "metadata": {
@@ -213,34 +213,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 12,
     "kind": "Definition",
-    "name": "Time",
+    "name": "AttributeDefinition",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 394,
-    "endByte": 430,
+    "startByte": 308,
+    "endByte": 344,
     "exports": [
-      "abstract attribute def Time :> Real;"
+      "teger;\n}\n\npackage ISQ {\n    import S"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "teger;\n}",
       "isVariation": null
     }
   },
   {
     "id": 13,
     "kind": "Reference",
-    "name": "Real",
+    "name": "ort",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 12,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 424,
-    "endByte": 429,
+    "startByte": 339,
+    "endByte": 343,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -248,34 +248,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 14,
     "kind": "Definition",
-    "name": "Mass",
+    "name": "ase",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 435,
-    "endByte": 471,
+    "startByte": 349,
+    "endByte": 385,
     "exports": [
-      "abstract attribute def Mass :> Real;"
+      "Values::*;\n\n    /* SI Base Quantitie"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "Values::",
       "isVariation": null
     }
   },
   {
     "id": 15,
     "kind": "Reference",
-    "name": "Real",
+    "name": "titi",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 14,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 465,
-    "endByte": 470,
+    "startByte": 380,
+    "endByte": 384,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -283,34 +283,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 16,
     "kind": "Definition",
-    "name": "Length",
+    "name": "def Ti",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 476,
-    "endByte": 514,
+    "startByte": 390,
+    "endByte": 428,
     "exports": [
-      "abstract attribute def Length :> Real;"
+      "abstract attribute def Time :> Rea"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "abst",
       "isVariation": null
     }
   },
   {
     "id": 17,
     "kind": "Reference",
-    "name": "Real",
+    "name": "> Re",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 16,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 508,
-    "endByte": 513,
+    "startByte": 423,
+    "endByte": 427,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -318,34 +318,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 18,
     "kind": "Definition",
-    "name": "ElectricCurrent",
+    "name": "f Mass :> Real;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 519,
-    "endByte": 566,
+    "startByte": 433,
+    "endByte": 480,
     "exports": [
-      "abstract attribute def ElectricCurrent :> Real;"
+      "abstract attribute def Mass :> Real;\n    abst"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "abstra",
       "isVariation": null
     }
   },
   {
     "id": 19,
     "kind": "Reference",
-    "name": "Real",
+    "name": "abs",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 18,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 560,
-    "endByte": 565,
+    "startByte": 475,
+    "endByte": 479,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -353,34 +353,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 20,
     "kind": "Definition",
-    "name": "ThermodynamicTemperature",
+    "name": "Real;\n    abstract attr",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 571,
-    "endByte": 627,
+    "startByte": 485,
+    "endByte": 541,
     "exports": [
-      "abstract attribute def ThermodynamicTemperature :> Real;"
+      "attribute def Length :> Real;\n    abstract attribute def"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "attribut",
       "isVariation": null
     }
   },
   {
     "id": 21,
     "kind": "Reference",
-    "name": "Real",
+    "name": "e de",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 20,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 621,
-    "endByte": 626,
+    "startByte": 536,
+    "endByte": 540,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -388,34 +388,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 22,
     "kind": "Definition",
-    "name": "AmountOfSubstance",
+    "name": "abstract attrib",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 632,
-    "endByte": 681,
+    "startByte": 546,
+    "endByte": 595,
     "exports": [
-      "abstract attribute def AmountOfSubstance :> Real;"
+      "tricCurrent :> Real;\n    abstract attribute def T"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "tricCurr",
       "isVariation": null
     }
   },
   {
     "id": 23,
     "kind": "Reference",
-    "name": "Real",
+    "name": "def",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 22,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 675,
-    "endByte": 680,
+    "startByte": 590,
+    "endByte": 594,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -423,34 +423,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 24,
     "kind": "Definition",
-    "name": "LuminousIntensity",
+    "name": "eal;\n    abstract",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 686,
-    "endByte": 735,
+    "startByte": 600,
+    "endByte": 649,
     "exports": [
-      "abstract attribute def LuminousIntensity :> Real;"
+      "dynamicTemperature :> Real;\n    abstract attribut"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "dynamicT",
       "isVariation": null
     }
   },
   {
     "id": 25,
     "kind": "Reference",
-    "name": "Real",
+    "name": "ribu",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 24,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 729,
-    "endByte": 734,
+    "startByte": 644,
+    "endByte": 648,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -458,34 +458,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 26,
     "kind": "Definition",
-    "name": "Area",
+    "name": "eal;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 773,
-    "endByte": 809,
+    "startByte": 654,
+    "endByte": 690,
     "exports": [
-      "abstract attribute def Area :> Real;"
+      "AmountOfSubstance :> Real;\n    abst"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "AmountO",
       "isVariation": null
     }
   },
   {
     "id": 27,
     "kind": "Reference",
-    "name": "Real",
+    "name": "abs",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 26,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 803,
-    "endByte": 808,
+    "startByte": 685,
+    "endByte": 689,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -493,34 +493,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 28,
     "kind": "Definition",
-    "name": "Volume",
+    "name": "ntensi",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 814,
-    "endByte": 852,
+    "startByte": 695,
+    "endByte": 733,
     "exports": [
-      "abstract attribute def Volume :> Real;"
+      "attribute def LuminousIntensity :> Rea"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "attribut",
       "isVariation": null
     }
   },
   {
     "id": 29,
     "kind": "Reference",
-    "name": "Real",
+    "name": "> Re",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 28,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 846,
-    "endByte": 851,
+    "startByte": 728,
+    "endByte": 732,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -528,34 +528,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 30,
     "kind": "Definition",
-    "name": "Velocity",
+    "name": "ties */",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 857,
-    "endByte": 897,
+    "startByte": 738,
+    "endByte": 778,
     "exports": [
-      "abstract attribute def Velocity :> Real;"
+      "/* SI Derived Quantities */\n    abstr"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "/* SI",
       "isVariation": null
     }
   },
   {
     "id": 31,
     "kind": "Reference",
-    "name": "Real",
+    "name": "abst",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 30,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 891,
-    "endByte": 896,
+    "startByte": 773,
+    "endByte": 777,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -563,34 +563,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 32,
     "kind": "Definition",
-    "name": "Acceleration",
+    "name": "al;\n    abst",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 902,
-    "endByte": 946,
+    "startByte": 783,
+    "endByte": 827,
     "exports": [
-      "abstract attribute def Acceleration :> Real;"
+      "ttribute def Area :> Real;\n    abstract attr"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ttribute",
       "isVariation": null
     }
   },
   {
     "id": 33,
     "kind": "Reference",
-    "name": "Real",
+    "name": "att",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 32,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 940,
-    "endByte": 945,
+    "startByte": 822,
+    "endByte": 826,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -598,34 +598,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 34,
     "kind": "Definition",
-    "name": "Force",
+    "name": "abs",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 951,
-    "endByte": 988,
+    "startByte": 832,
+    "endByte": 869,
     "exports": [
-      "abstract attribute def Force :> Real;"
+      "def Volume :> Real;\n    abstract att"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "def Vol",
       "isVariation": null
     }
   },
   {
     "id": 35,
     "kind": "Reference",
-    "name": "Real",
+    "name": "t at",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 34,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 982,
-    "endByte": 987,
+    "startByte": 864,
+    "endByte": 868,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -633,34 +633,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 36,
     "kind": "Definition",
-    "name": "Pressure",
+    "name": "abs",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 993,
-    "endByte": 1033,
+    "startByte": 874,
+    "endByte": 914,
     "exports": [
-      "abstract attribute def Pressure :> Real;"
+      "e def Velocity :> Real;\n    abstract att"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "e def Ve",
       "isVariation": null
     }
   },
   {
     "id": 37,
     "kind": "Reference",
-    "name": "Real",
+    "name": "t at",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 36,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1027,
-    "endByte": 1032,
+    "startByte": 909,
+    "endByte": 913,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -668,34 +668,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 38,
     "kind": "Definition",
-    "name": "Energy",
+    "name": "eal;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1038,
-    "endByte": 1076,
+    "startByte": 919,
+    "endByte": 957,
     "exports": [
-      "abstract attribute def Energy :> Real;"
+      "e def Acceleration :> Real;\n    abstra"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "e def Ac",
       "isVariation": null
     }
   },
   {
     "id": 39,
     "kind": "Reference",
-    "name": "Real",
+    "name": "bstr",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 38,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1070,
-    "endByte": 1075,
+    "startByte": 952,
+    "endByte": 956,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -703,34 +703,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 40,
     "kind": "Definition",
-    "name": "Power",
+    "name": "al;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1081,
-    "endByte": 1118,
+    "startByte": 962,
+    "endByte": 999,
     "exports": [
-      "abstract attribute def Power :> Real;"
+      "tribute def Force :> Real;\n    abstra"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "tribute",
       "isVariation": null
     }
   },
   {
     "id": 41,
     "kind": "Reference",
-    "name": "Real",
+    "name": "bstr",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 40,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1112,
-    "endByte": 1117,
+    "startByte": 994,
+    "endByte": 998,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -738,34 +738,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 42,
     "kind": "Definition",
-    "name": "Voltage",
+    "name": "Real;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1123,
-    "endByte": 1162,
+    "startByte": 1004,
+    "endByte": 1043,
     "exports": [
-      "abstract attribute def Voltage :> Real;"
+      "tribute def Pressure :> Real;\n    abstr"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "tribute",
       "isVariation": null
     }
   },
   {
     "id": 43,
     "kind": "Reference",
-    "name": "Real",
+    "name": "abst",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 42,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1156,
-    "endByte": 1161,
+    "startByte": 1038,
+    "endByte": 1042,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -773,34 +773,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 44,
     "kind": "Definition",
-    "name": "ElectricResistance",
+    "name": "Real;\n    abstract",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1167,
-    "endByte": 1217,
+    "startByte": 1048,
+    "endByte": 1098,
     "exports": [
-      "abstract attribute def ElectricResistance :> Real;"
+      "ttribute def Energy :> Real;\n    abstract attribut"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ttribute",
       "isVariation": null
     }
   },
   {
     "id": 45,
     "kind": "Reference",
-    "name": "Real",
+    "name": "ribu",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 44,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1211,
-    "endByte": 1216,
+    "startByte": 1093,
+    "endByte": 1097,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -808,34 +808,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 46,
     "kind": "Definition",
-    "name": "Frequency",
+    "name": "tract att",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1222,
-    "endByte": 1263,
+    "startByte": 1103,
+    "endByte": 1144,
     "exports": [
-      "abstract attribute def Frequency :> Real;"
+      "Power :> Real;\n    abstract attribute de"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "Power :",
       "isVariation": null
     }
   },
   {
     "id": 47,
     "kind": "Reference",
-    "name": "Real",
+    "name": "te d",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 46,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1257,
-    "endByte": 1262,
+    "startByte": 1139,
+    "endByte": 1143,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -843,16 +843,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 48,
     "kind": "Package",
-    "name": "SIBaseUnits",
+    "name": "Real;",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1265,
-    "endByte": 1619,
+    "startByte": 1146,
+    "endByte": 1500,
     "exports": [
-      "package SIBaseUnits {\n    import ScalarValues::*;\n    abstract attribute def Second :> Real;\n    abstract attribute def Kilogram :> Real;\n    abstract attribute def Metre :> Real;\n    abstract attribute def Ampere :> Real;\n    abstract attribute def Kelvin :> Real;\n    abstract attribute def Mole :> Real;\n    abstract attribute def Candela :> Real;\n}"
+      "Voltage :> Real;\n    abstract attribute def ElectricResistance :> Real;\n    abstract attribute def Frequency :> Real;\n}\n\npackage SIBaseUnits {\n    import ScalarValues::*;\n    abstract attribute def Second :> Real;\n    abstract attribute def Kilogram :> Real;\n    abstract attribute def Metre :> Real;\n    abstract attribute def Ampere :> Real;\n    abstra"
     ],
     "inherits": [],
     "metadata": {}
@@ -860,14 +860,14 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 49,
     "kind": "Import",
-    "name": "ScalarValues",
+    "name": "bute def Ele",
     "ruleName": "NamespaceImport",
     "namePath": "importedNamespace",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1288,
-    "endByte": 1315,
+    "startByte": 1169,
+    "endByte": 1196,
     "exports": [],
     "inherits": [],
     "metadata": {
@@ -878,34 +878,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 50,
     "kind": "Definition",
-    "name": "Second",
+    "name": "tract",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1321,
-    "endByte": 1359,
+    "startByte": 1202,
+    "endByte": 1240,
     "exports": [
-      "abstract attribute def Second :> Real;"
+      "stance :> Real;\n    abstract attribute"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "stance :",
       "isVariation": null
     }
   },
   {
     "id": 51,
     "kind": "Reference",
-    "name": "Real",
+    "name": "ibut",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 50,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1353,
-    "endByte": 1358,
+    "startByte": 1235,
+    "endByte": 1239,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -913,34 +913,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 52,
     "kind": "Definition",
-    "name": "Kilogram",
+    "name": "ackage S",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1364,
-    "endByte": 1404,
+    "startByte": 1245,
+    "endByte": 1285,
     "exports": [
-      "abstract attribute def Kilogram :> Real;"
+      "Frequency :> Real;\n}\n\npackage SIBaseUnit"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "Frequenc",
       "isVariation": null
     }
   },
   {
     "id": 53,
     "kind": "Reference",
-    "name": "Real",
+    "name": "eUni",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 52,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1398,
-    "endByte": 1403,
+    "startByte": 1280,
+    "endByte": 1284,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -948,34 +948,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 54,
     "kind": "Definition",
-    "name": "Metre",
+    "name": ":*;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1409,
-    "endByte": 1446,
+    "startByte": 1290,
+    "endByte": 1327,
     "exports": [
-      "abstract attribute def Metre :> Real;"
+      "import ScalarValues::*;\n    abstra"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "impor",
       "isVariation": null
     }
   },
   {
     "id": 55,
     "kind": "Reference",
-    "name": "Real",
+    "name": "bstr",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 54,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1440,
-    "endByte": 1445,
+    "startByte": 1322,
+    "endByte": 1326,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -983,34 +983,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 56,
     "kind": "Definition",
-    "name": "Ampere",
+    "name": "eal;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1451,
-    "endByte": 1489,
+    "startByte": 1332,
+    "endByte": 1370,
     "exports": [
-      "abstract attribute def Ampere :> Real;"
+      "tribute def Second :> Real;\n    abstra"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "tribute",
       "isVariation": null
     }
   },
   {
     "id": 57,
     "kind": "Reference",
-    "name": "Real",
+    "name": "bstr",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 56,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1483,
-    "endByte": 1488,
+    "startByte": 1365,
+    "endByte": 1369,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1018,34 +1018,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 58,
     "kind": "Definition",
-    "name": "Kelvin",
+    "name": "Real;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1494,
-    "endByte": 1532,
+    "startByte": 1375,
+    "endByte": 1413,
     "exports": [
-      "abstract attribute def Kelvin :> Real;"
+      "tribute def Kilogram :> Real;\n    abst"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "tribute",
       "isVariation": null
     }
   },
   {
     "id": 59,
     "kind": "Reference",
-    "name": "Real",
+    "name": "abs",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 58,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1526,
-    "endByte": 1531,
+    "startByte": 1408,
+    "endByte": 1412,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1053,34 +1053,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 60,
     "kind": "Definition",
-    "name": "Mole",
+    "name": "Real",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1537,
-    "endByte": 1573,
+    "startByte": 1418,
+    "endByte": 1454,
     "exports": [
-      "abstract attribute def Mole :> Real;"
+      "attribute def Metre :> Real;\n    abs"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "attribut",
       "isVariation": null
     }
   },
   {
     "id": 61,
     "kind": "Reference",
-    "name": "Real",
+    "name": "ab",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 60,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1567,
-    "endByte": 1572,
+    "startByte": 1449,
+    "endByte": 1453,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1088,34 +1088,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 62,
     "kind": "Definition",
-    "name": "Candela",
+    "name": "> Real;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1578,
-    "endByte": 1617,
+    "startByte": 1459,
+    "endByte": 1498,
     "exports": [
-      "abstract attribute def Candela :> Real;"
+      "attribute def Ampere :> Real;\n    abst"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "attribu",
       "isVariation": null
     }
   },
   {
     "id": 63,
     "kind": "Reference",
-    "name": "Real",
+    "name": "abs",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 62,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1611,
-    "endByte": 1616,
+    "startByte": 1493,
+    "endByte": 1497,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1123,16 +1123,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 64,
     "kind": "Package",
-    "name": "SIDerivedUnits",
+    "name": "te def Kelvin",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1619,
-    "endByte": 1967,
+    "startByte": 1500,
+    "endByte": 1848,
     "exports": [
-      "package SIDerivedUnits {\n    import ScalarValues::*;\n    abstract attribute def Newton :> Real;\n    abstract attribute def Pascal :> Real;\n    abstract attribute def Joule :> Real;\n    abstract attribute def Watt :> Real;\n    abstract attribute def Volt :> Real;\n    abstract attribute def Ohm :> Real;\n    abstract attribute def Hertz :> Real;\n}"
+      "ct attribute def Kelvin :> Real;\n    abstract attribute def Mole :> Real;\n    abstract attribute def Candela :> Real;\n}\n\npackage SIDerivedUnits {\n    import ScalarValues::*;\n    abstract attribute def Newton :> Real;\n    abstract attribute def Pascal :> Real;\n    abstract attribute def Joule :> Real;\n    abstract attribute def Watt :> Real;\n    a"
     ],
     "inherits": [],
     "metadata": {}
@@ -1140,14 +1140,14 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 65,
     "kind": "Import",
-    "name": "ScalarValues",
+    "name": "bstract attr",
     "ruleName": "NamespaceImport",
     "namePath": "importedNamespace",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1645,
-    "endByte": 1672,
+    "startByte": 1526,
+    "endByte": 1553,
     "exports": [],
     "inherits": [],
     "metadata": {
@@ -1158,34 +1158,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 66,
     "kind": "Definition",
-    "name": "Newton",
+    "name": "ract a",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1678,
-    "endByte": 1716,
+    "startByte": 1559,
+    "endByte": 1597,
     "exports": [
-      "abstract attribute def Newton :> Real;"
+      "Mole :> Real;\n    abstract attribute"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "Mole :>",
       "isVariation": null
     }
   },
   {
     "id": 67,
     "kind": "Reference",
-    "name": "Real",
+    "name": "bute",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 66,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1710,
-    "endByte": 1715,
+    "startByte": 1592,
+    "endByte": 1596,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1193,34 +1193,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 68,
     "kind": "Definition",
-    "name": "Pascal",
+    "name": "age SI",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1721,
-    "endByte": 1759,
+    "startByte": 1602,
+    "endByte": 1640,
     "exports": [
-      "abstract attribute def Pascal :> Real;"
+      "andela :> Real;\n}\n\npackage SIDerivedUn"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "andela :",
       "isVariation": null
     }
   },
   {
     "id": 69,
     "kind": "Reference",
-    "name": "Real",
+    "name": "vedU",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 68,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1753,
-    "endByte": 1758,
+    "startByte": 1635,
+    "endByte": 1639,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1228,34 +1228,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 70,
     "kind": "Definition",
-    "name": "Joule",
+    "name": "s::*;",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1764,
-    "endByte": 1801,
+    "startByte": 1645,
+    "endByte": 1682,
     "exports": [
-      "abstract attribute def Joule :> Real;"
+      "import ScalarValues::*;\n    abst"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "imp",
       "isVariation": null
     }
   },
   {
     "id": 71,
     "kind": "Reference",
-    "name": "Real",
+    "name": "abs",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 70,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1795,
-    "endByte": 1800,
+    "startByte": 1677,
+    "endByte": 1681,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1263,34 +1263,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 72,
     "kind": "Definition",
-    "name": "Watt",
+    "name": "Rea",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1806,
-    "endByte": 1842,
+    "startByte": 1687,
+    "endByte": 1723,
     "exports": [
-      "abstract attribute def Watt :> Real;"
+      "attribute def Newton :> Real;\n    ab"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "attribut",
       "isVariation": null
     }
   },
   {
     "id": 73,
     "kind": "Reference",
-    "name": "Real",
+    "name": "a",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 72,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1836,
-    "endByte": 1841,
+    "startByte": 1718,
+    "endByte": 1722,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1298,34 +1298,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 74,
     "kind": "Definition",
-    "name": "Volt",
+    "name": ":> R",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1847,
-    "endByte": 1883,
+    "startByte": 1728,
+    "endByte": 1764,
     "exports": [
-      "abstract attribute def Volt :> Real;"
+      "t attribute def Pascal :> Real;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "t attrib",
       "isVariation": null
     }
   },
   {
     "id": 75,
     "kind": "Reference",
-    "name": "Real",
+    "name": "OwnedSubclassification",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 74,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1877,
-    "endByte": 1882,
+    "startByte": 1759,
+    "endByte": 1763,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1333,34 +1333,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 76,
     "kind": "Definition",
-    "name": "Ohm",
+    "name": ":>",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1888,
-    "endByte": 1923,
+    "startByte": 1769,
+    "endByte": 1804,
     "exports": [
-      "abstract attribute def Ohm :> Real;"
+      "act attribute def Joule :> Real;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "act attr",
       "isVariation": null
     }
   },
   {
     "id": 77,
     "kind": "Reference",
-    "name": "Real",
+    "name": "l;",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 76,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1917,
-    "endByte": 1922,
+    "startByte": 1799,
+    "endByte": 1803,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1368,34 +1368,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 78,
     "kind": "Definition",
-    "name": "Hertz",
+    "name": "t :>",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1928,
-    "endByte": 1965,
+    "startByte": 1809,
+    "endByte": 1846,
     "exports": [
-      "abstract attribute def Hertz :> Real;"
+      "tract attribute def Watt :> Real;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "tract at",
       "isVariation": null
     }
   },
   {
     "id": 79,
     "kind": "Reference",
-    "name": "Real",
+    "name": ";",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 78,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1959,
-    "endByte": 1964,
+    "startByte": 1841,
+    "endByte": 1845,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1403,16 +1403,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 80,
     "kind": "Package",
-    "name": "Collections",
+    "name": "tribute def",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1967,
-    "endByte": 2109,
+    "startByte": 1848,
+    "endByte": 1990,
     "exports": [
-      "package Collections {\n    abstract item def Collection;\n    abstract item def List :> Collection;\n    abstract item def Set :> Collection;\n}"
+      "bstract attribute def Volt :> Real;\n    abstract attribute def Ohm :> Real;\n    abstract attribute def Hertz :> Real;\n}\n\npackage Collections {"
     ],
     "inherits": [],
     "metadata": {}
@@ -1420,54 +1420,54 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 81,
     "kind": "Definition",
-    "name": "Collection",
+    "name": "ct attribu",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 80,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1995,
-    "endByte": 2024,
+    "startByte": 1876,
+    "endByte": 1905,
     "exports": [
-      "abstract item def Collection;"
+      "> Real;\n    abstract attribut"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "> Real;",
       "isVariation": null
     }
   },
   {
     "id": 82,
     "kind": "Definition",
-    "name": "List",
+    "name": "abst",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 80,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2029,
-    "endByte": 2066,
+    "startByte": 1910,
+    "endByte": 1947,
     "exports": [
-      "abstract item def List :> Collection;"
+      "Ohm :> Real;\n    abstract attribute"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "Ohm :>",
       "isVariation": null
     }
   },
   {
     "id": 83,
     "kind": "Reference",
-    "name": "Collection",
+    "name": "attribute",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 82,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2054,
-    "endByte": 2065,
+    "startByte": 1936,
+    "endByte": 1946,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1475,20 +1475,20 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 84,
     "kind": "Definition",
-    "name": "Set",
+    "name": "ack",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 80,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2071,
-    "endByte": 2107,
+    "startByte": 1952,
+    "endByte": 1988,
     "exports": [
-      "abstract item def Set :> Collection;"
+      "ertz :> Real;\n}\n\npackage Collections"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ertz :>",
       "isVariation": null
     }
   },
@@ -1501,8 +1501,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 84,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2095,
-    "endByte": 2106,
+    "startByte": 1977,
+    "endByte": 1987,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1510,16 +1510,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 86,
     "kind": "Package",
-    "name": "Base",
+    "name": "act",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2109,
-    "endByte": 2497,
+    "startByte": 1990,
+    "endByte": 2378,
     "exports": [
-      "package Base {\n    abstract item def Anything;\n    abstract item def Element :> Anything;\n    abstract item def Feature :> Element;\n    abstract item def Type :> Element;\n    abstract item def Classifier :> Type;\n    abstract item def DataType :> Classifier;\n    abstract item def Class :> Classifier;\n    abstract item def Structure :> Class;\n    abstract item def Behavior :> Class;\n}"
+      "abstract item def Collection;\n    abstract item def List :> Collection;\n    abstract item def Set :> Collection;\n}\n\npackage Base {\n    abstract item def Anything;\n    abstract item def Element :> Anything;\n    abstract item def Feature :> Element;\n    abstract item def Type :> Element;\n    abstract item def Classifier :> Type;\n    abstract item def DataType :> Classifier;\n    abst"
     ],
     "inherits": [],
     "metadata": {}
@@ -1527,54 +1527,54 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 87,
     "kind": "Definition",
-    "name": "Anything",
+    "name": "abstract",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2130,
-    "endByte": 2157,
+    "startByte": 2011,
+    "endByte": 2038,
     "exports": [
-      "abstract item def Anything;"
+      "f Collection;\n    abstract"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "f Collec",
       "isVariation": null
     }
   },
   {
     "id": 88,
     "kind": "Definition",
-    "name": "Element",
+    "name": "tion;",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2162,
-    "endByte": 2200,
+    "startByte": 2043,
+    "endByte": 2081,
     "exports": [
-      "abstract item def Element :> Anything;"
+      "def List :> Collection;\n    abstract i"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "def List",
       "isVariation": null
     }
   },
   {
     "id": 89,
     "kind": "Reference",
-    "name": "Anything",
+    "name": "bstract",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 88,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2190,
-    "endByte": 2199,
+    "startByte": 2072,
+    "endByte": 2080,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1582,34 +1582,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 90,
     "kind": "Definition",
-    "name": "Feature",
+    "name": "on;\n}",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2205,
-    "endByte": 2242,
+    "startByte": 2086,
+    "endByte": 2123,
     "exports": [
-      "abstract item def Feature :> Element;"
+      "ef Set :> Collection;\n}\n\npackage Base"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ef Set :",
       "isVariation": null
     }
   },
   {
     "id": 91,
     "kind": "Reference",
-    "name": "Element",
+    "name": "age Bas",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 90,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2233,
-    "endByte": 2241,
+    "startByte": 2115,
+    "endByte": 2122,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1617,34 +1617,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 92,
     "kind": "Definition",
-    "name": "Type",
+    "name": "f An",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2247,
-    "endByte": 2281,
+    "startByte": 2128,
+    "endByte": 2162,
     "exports": [
-      "abstract item def Type :> Element;"
+      "abstract item def Anything;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "abstra",
       "isVariation": null
     }
   },
   {
     "id": 93,
     "kind": "Reference",
-    "name": "Element",
+    "name": "ng;",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 92,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2272,
-    "endByte": 2280,
+    "startByte": 2154,
+    "endByte": 2161,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1652,34 +1652,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 94,
     "kind": "Definition",
-    "name": "Classifier",
+    "name": "nt :> Anyt",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2286,
-    "endByte": 2323,
+    "startByte": 2167,
+    "endByte": 2204,
     "exports": [
-      "abstract item def Classifier :> Type;"
+      "act item def Element :> Anything;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "act item",
       "isVariation": null
     }
   },
   {
     "id": 95,
     "kind": "Reference",
-    "name": "Type",
+    "name": ";",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 94,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2317,
-    "endByte": 2322,
+    "startByte": 2199,
+    "endByte": 2203,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1687,34 +1687,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 96,
     "kind": "Definition",
-    "name": "DataType",
+    "name": "ure :> E",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2328,
-    "endByte": 2369,
+    "startByte": 2209,
+    "endByte": 2250,
     "exports": [
-      "abstract item def DataType :> Classifier;"
+      "ract item def Feature :> Element;\n    abs"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ract ite",
       "isVariation": null
     }
   },
   {
     "id": 97,
     "kind": "Reference",
-    "name": "Classifier",
+    "name": "nt;\n    ab",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 96,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2357,
-    "endByte": 2368,
+    "startByte": 2239,
+    "endByte": 2249,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1722,34 +1722,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 98,
     "kind": "Definition",
-    "name": "Class",
+    "name": "Eleme",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2374,
-    "endByte": 2412,
+    "startByte": 2255,
+    "endByte": 2293,
     "exports": [
-      "abstract item def Class :> Classifier;"
+      "item def Type :> Element;\n    abstrac"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "item de",
       "isVariation": null
     }
   },
   {
     "id": 99,
     "kind": "Reference",
-    "name": "Classifier",
+    "name": "abstra",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 98,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2400,
-    "endByte": 2411,
+    "startByte": 2282,
+    "endByte": 2292,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1757,34 +1757,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 100,
     "kind": "Definition",
-    "name": "Structure",
+    "name": "> Type;",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2417,
-    "endByte": 2454,
+    "startByte": 2298,
+    "endByte": 2335,
     "exports": [
-      "abstract item def Structure :> Class;"
+      "m def Classifier :> Type;\n    abstrac"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "m def Cl",
       "isVariation": null
     }
   },
   {
     "id": 101,
     "kind": "Reference",
-    "name": "Class",
+    "name": "bstra",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 100,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2447,
-    "endByte": 2453,
+    "startByte": 2329,
+    "endByte": 2334,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1792,34 +1792,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 102,
     "kind": "Definition",
-    "name": "Behavior",
+    "name": "Classifi",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 86,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2459,
-    "endByte": 2495,
+    "startByte": 2340,
+    "endByte": 2376,
     "exports": [
-      "abstract item def Behavior :> Class;"
+      "m def DataType :> Classifier;\n    ab"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "m def Da",
       "isVariation": null
     }
   },
   {
     "id": 103,
     "kind": "Reference",
-    "name": "Class",
+    "name": "a",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 102,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2488,
-    "endByte": 2494,
+    "startByte": 2370,
+    "endByte": 2375,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1827,16 +1827,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 104,
     "kind": "Package",
-    "name": "Control",
+    "name": "def Cla",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2497,
-    "endByte": 2756,
+    "startByte": 2378,
+    "endByte": 2637,
     "exports": [
-      "package Control {\n    abstract action def ControlNode;\n    abstract action def MergeNode :> ControlNode;\n    abstract action def DecisionNode :> ControlNode;\n    abstract action def ForkNode :> ControlNode;\n    abstract action def JoinNode :> ControlNode;\n}"
+      "ract item def Class :> Classifier;\n    abstract item def Structure :> Class;\n    abstract item def Behavior :> Class;\n}\n\npackage Control {\n    abstract action def ControlNode;\n    abstract action def MergeNode :> ControlNode;\n    abstract action def DecisionN"
     ],
     "inherits": [],
     "metadata": {}
@@ -1844,54 +1844,54 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 105,
     "kind": "Definition",
-    "name": "ControlNode",
+    "name": "act item de",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 104,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2521,
-    "endByte": 2553,
+    "startByte": 2402,
+    "endByte": 2434,
     "exports": [
-      "abstract action def ControlNode;"
+      "lassifier;\n    abstract item def"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "lassifie",
       "isVariation": null
     }
   },
   {
     "id": 106,
     "kind": "Definition",
-    "name": "MergeNode",
+    "name": "abstract",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 104,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2558,
-    "endByte": 2603,
+    "startByte": 2439,
+    "endByte": 2484,
     "exports": [
-      "abstract action def MergeNode :> ControlNode;"
+      "cture :> Class;\n    abstract item def Behavio"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "cture :>",
       "isVariation": null
     }
   },
   {
     "id": 107,
     "kind": "Reference",
-    "name": "ControlNode",
+    "name": "def Behavi",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 106,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2590,
-    "endByte": 2602,
+    "startByte": 2472,
+    "endByte": 2483,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1899,34 +1899,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 108,
     "kind": "Definition",
-    "name": "DecisionNode",
+    "name": "ntrol {",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 104,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2608,
-    "endByte": 2656,
+    "startByte": 2489,
+    "endByte": 2537,
     "exports": [
-      "abstract action def DecisionNode :> ControlNode;"
+      "Class;\n}\n\npackage Control {\n    abstract action"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "Class;\n}",
       "isVariation": null
     }
   },
   {
     "id": 109,
     "kind": "Reference",
-    "name": "ControlNode",
+    "name": "ract action",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 108,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2643,
-    "endByte": 2655,
+    "startByte": 2525,
+    "endByte": 2536,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1934,34 +1934,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 110,
     "kind": "Definition",
-    "name": "ForkNode",
+    "name": "ract act",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 104,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2661,
-    "endByte": 2705,
+    "startByte": 2542,
+    "endByte": 2586,
     "exports": [
-      "abstract action def ForkNode :> ControlNode;"
+      "ontrolNode;\n    abstract action def MergeNod"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ontrolNo",
       "isVariation": null
     }
   },
   {
     "id": 111,
     "kind": "Reference",
-    "name": "ControlNode",
+    "name": "def MergeNo",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 110,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2692,
-    "endByte": 2704,
+    "startByte": 2574,
+    "endByte": 2585,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -1969,34 +1969,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 112,
     "kind": "Definition",
-    "name": "JoinNode",
+    "name": "tract ac",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 104,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2710,
-    "endByte": 2754,
+    "startByte": 2591,
+    "endByte": 2635,
     "exports": [
-      "abstract action def JoinNode :> ControlNode;"
+      "ControlNode;\n    abstract action def Decisio"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ControlN",
       "isVariation": null
     }
   },
   {
     "id": 113,
     "kind": "Reference",
-    "name": "ControlNode",
+    "name": "def Decisi",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 112,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2741,
-    "endByte": 2753,
+    "startByte": 2623,
+    "endByte": 2634,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -2004,16 +2004,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 114,
     "kind": "Package",
-    "name": "Transfers",
+    "name": "trolNode;",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2756,
-    "endByte": 2894,
+    "startByte": 2637,
+    "endByte": 2775,
     "exports": [
-      "package Transfers {\n    abstract item def Transfer;\n    abstract item def Flow :> Transfer;\n    abstract item def Message :> Transfer;\n}"
+      "ode :> ControlNode;\n    abstract action def ForkNode :> ControlNode;\n    abstract action def JoinNode :> ControlNode;\n}\n\npackage Transfers"
     ],
     "inherits": [],
     "metadata": {}
@@ -2021,54 +2021,54 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 115,
     "kind": "Definition",
-    "name": "Transfer",
+    "name": "ForkNode",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 114,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2782,
-    "endByte": 2809,
+    "startByte": 2663,
+    "endByte": 2690,
     "exports": [
-      "abstract item def Transfer;"
+      "stract action def ForkNode"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "stract a",
       "isVariation": null
     }
   },
   {
     "id": 116,
     "kind": "Definition",
-    "name": "Flow",
+    "name": "trac",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 114,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2814,
-    "endByte": 2849,
+    "startByte": 2695,
+    "endByte": 2730,
     "exports": [
-      "abstract item def Flow :> Transfer;"
+      "ntrolNode;\n    abstract action def"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ntrolNod",
       "isVariation": null
     }
   },
   {
     "id": 117,
     "kind": "Reference",
-    "name": "Transfer",
+    "name": "tion def",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 116,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2839,
-    "endByte": 2848,
+    "startByte": 2721,
+    "endByte": 2729,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -2076,34 +2076,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 118,
     "kind": "Definition",
-    "name": "Message",
+    "name": ";\n}\n\npa",
     "ruleName": "ItemDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 114,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2854,
-    "endByte": 2892,
+    "startByte": 2735,
+    "endByte": 2773,
     "exports": [
-      "abstract item def Message :> Transfer;"
+      "ode :> ControlNode;\n}\n\npackage Transfe"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ode :> C",
       "isVariation": null
     }
   },
   {
     "id": 119,
     "kind": "Reference",
-    "name": "Transfer",
+    "name": "e Transf",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 118,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2882,
-    "endByte": 2891,
+    "startByte": 2764,
+    "endByte": 2772,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -2111,16 +2111,16 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 120,
     "kind": "Package",
-    "name": "Performances",
+    "name": "tract item d",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2894,
-    "endByte": 3058,
+    "startByte": 2775,
+    "endByte": 2939,
     "exports": [
-      "package Performances {\n    abstract action def Performance;\n    abstract action def Evaluation :> Performance;\n    abstract action def Execution :> Performance;\n}"
+      "{\n    abstract item def Transfer;\n    abstract item def Flow :> Transfer;\n    abstract item def Message :> Transfer;\n}\n\npackage Performances {\n    abstract action"
     ],
     "inherits": [],
     "metadata": {}
@@ -2128,54 +2128,54 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 121,
     "kind": "Definition",
-    "name": "Performance",
+    "name": "tem def Flo",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 120,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2923,
-    "endByte": 2955,
+    "startByte": 2804,
+    "endByte": 2836,
     "exports": [
-      "abstract action def Performance;"
+      "sfer;\n    abstract item def Flow"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "sfer;",
       "isVariation": null
     }
   },
   {
     "id": 122,
     "kind": "Definition",
-    "name": "Evaluation",
+    "name": "t item def",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 120,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2960,
-    "endByte": 3006,
+    "startByte": 2841,
+    "endByte": 2887,
     "exports": [
-      "abstract action def Evaluation :> Performance;"
+      "ransfer;\n    abstract item def Message :> Tran"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "ransfer;",
       "isVariation": null
     }
   },
   {
     "id": 123,
     "kind": "Reference",
-    "name": "Performance",
+    "name": "sage :> Tra",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 122,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2993,
-    "endByte": 3005,
+    "startByte": 2875,
+    "endByte": 2886,
     "exports": [],
     "inherits": [],
     "metadata": {}
@@ -2183,34 +2183,34 @@ export const kermlStdlibEntries: SymbolEntry[] = [
   {
     "id": 124,
     "kind": "Definition",
-    "name": "Execution",
+    "name": "nces {",
     "ruleName": "ActionDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 120,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3011,
-    "endByte": 3056,
+    "startByte": 2892,
+    "endByte": 2937,
     "exports": [
-      "abstract action def Execution :> Performance;"
+      "}\n\npackage Performances {\n    abstract actio"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "abstract",
+      "isAbstract": "}\n\npack",
       "isVariation": null
     }
   },
   {
     "id": 125,
     "kind": "Reference",
-    "name": "Performance",
+    "name": "stract acti",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 124,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3043,
-    "endByte": 3055,
+    "startByte": 2925,
+    "endByte": 2936,
     "exports": [],
     "inherits": [],
     "metadata": {}

@@ -37,6 +37,8 @@ export interface SimulateArgs {
   memoryProfile?: boolean;
   jacobian: "dense" | "sparse" | "fd";
   flattener?: "ts" | "wasm" | "hybrid" | "diff";
+  "steady-state"?: boolean;
+  steadyState?: boolean;
 
   // Cloud bursting options
   cloud?: boolean;
@@ -128,6 +130,11 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         description:
           "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
         type: "string",
+      })
+      .option("steady-state", {
+        description: "Solve steady-state initial equilibrium only without time integration",
+        type: "boolean",
+        default: false,
       })
       .option("cloud", {
         description: "dispatch simulation to ModelScript Cloud HPC cluster",
@@ -238,6 +245,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
     if (!arena) {
       console.error(`'${args.name}' not found or had flattening errors.`);
+      process.exitCode = 1;
       return;
     }
 
@@ -246,20 +254,26 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     const stopTime = args.stopTime ?? exp.stopTime ?? 10;
     const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
 
-    switch (args.engine) {
-      case "wasm":
-        await simulateWasm(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
-      case "c":
-        await simulateC(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
-      case "arena":
-        await simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
-      case "js":
-      default:
-        simulateJs(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
+    try {
+      switch (args.engine) {
+        case "wasm":
+          await simulateWasm(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+        case "c":
+          await simulateC(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+        case "arena":
+          await simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+        case "js":
+        default:
+          simulateJs(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+      }
+    } catch (err: unknown) {
+      console.error(`Simulation failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+      return;
     }
 
     if (args.memoryProfile) {
@@ -310,6 +324,7 @@ function simulateJs(
     step,
     solver,
     outputStringIds,
+    steadyStateOnly: Boolean(args["steady-state"] || args.steadyState),
   });
 
   profiler.end("simulation");
@@ -361,6 +376,7 @@ async function simulateArenaEngine(
     step,
     solver,
     outputStringIds,
+    steadyStateOnly: Boolean(args["steady-state"] || args.steadyState),
   };
   if (args.tolerance) {
     opts.atol = Number(args.tolerance);
@@ -410,86 +426,92 @@ async function simulateWasm(
   // Compile with Emscripten
   profiler.start("compilation");
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-wasm-"));
-  const cFile = path.join(tmpDir, `${modelIdentifier}_sim.c`);
-  const jsFile = path.join(tmpDir, `${modelIdentifier}_sim.js`);
-
-  fs.writeFileSync(cFile, cSource);
-
-  const rawEmcc = process.env.EMCC ?? "emcc";
-  const emcc = /^[a-zA-Z0-9_./-]+$/.test(rawEmcc) ? rawEmcc : "emcc";
-  const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1" : "-O3";
-  const emccArgs: string[] = [optFlag, "-w", cFile];
-  if (isCvode) {
-    const sundialsInstall = path.resolve(
-      path.dirname(require.resolve("@modelscript/dsl/package.json")),
-      ".build/sundials/install",
-    );
-    emccArgs.push(
-      `-I${path.join(sundialsInstall, "include")}`,
-      path.join(sundialsInstall, "lib/libsundials_cvode.a"),
-      path.join(sundialsInstall, "lib/libsundials_nvecserial.a"),
-      path.join(sundialsInstall, "lib/libsundials_core.a"),
-    );
-  }
-  emccArgs.push("-s", "ALLOW_MEMORY_GROWTH=1", "-s", "NODEJS_CATCH_EXIT=0", "-o", jsFile);
-
   try {
-    execFileSync(emcc, emccArgs, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
-  } catch (e: unknown) {
-    const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
-    console.error(`WASM compilation failed:\n${stderr}`);
-    return;
-  }
-  profiler.end("compilation");
+    const cFile = path.join(tmpDir, `${modelIdentifier}_sim.c`);
+    const jsFile = path.join(tmpDir, `${modelIdentifier}_sim.js`);
 
-  if (args.memoryProfile && lastSnap) {
-    const snap = snapshotMemory(true);
-    memProfiles["codegen"] = { before: lastSnap, after: snap };
-    lastSnap = snap;
-  }
+    fs.writeFileSync(cFile, cSource);
 
-  console.error(`WASM compiled: ${emcc} ${optFlag} → ${jsFile}`);
+    const rawEmcc = process.env.EMCC ?? "emcc";
+    const emcc = /^[a-zA-Z0-9_./-]+$/.test(rawEmcc) ? rawEmcc : "emcc";
+    const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1" : "-O3";
+    const emccArgs: string[] = [optFlag, "-w", cFile];
+    if (isCvode) {
+      const sundialsInstall = path.resolve(
+        path.dirname(require.resolve("@modelscript/dsl/package.json")),
+        ".build/sundials/install",
+      );
+      emccArgs.push(
+        `-I${path.join(sundialsInstall, "include")}`,
+        path.join(sundialsInstall, "lib/libsundials_cvode.a"),
+        path.join(sundialsInstall, "lib/libsundials_nvecserial.a"),
+        path.join(sundialsInstall, "lib/libsundials_core.a"),
+      );
+    }
+    emccArgs.push("-s", "ALLOW_MEMORY_GROWTH=1", "-s", "NODEJS_CATCH_EXIT=0", "-o", jsFile);
 
-  // Run simulation via Node
-  profiler.start("simulation");
-  const output = await new Promise<string>((resolve, reject) => {
-    const child = spawn("node", [jsFile], { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
+    try {
+      execFileSync(emcc, emccArgs, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
+    } catch (e: unknown) {
+      const stderr =
+        e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
+      console.error(`WASM compilation failed:\n${stderr}`);
+      process.exitCode = 1;
+      return;
+    }
+    profiler.end("compilation");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["codegen"] = { before: lastSnap, after: snap };
+      lastSnap = snap;
+    }
+
+    console.error(`WASM compiled: ${emcc} ${optFlag} → ${jsFile}`);
+
+    // Run simulation via Node
+    profiler.start("simulation");
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawn("node", [jsFile], { stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (data: Buffer) => {
+        stdout += data.toString();
+      });
+      child.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+      child.on("close", (code: number | null) => {
+        if (code !== 0) {
+          reject(new Error(`WASM simulation exited with code ${code}: ${stderr}`));
+        } else {
+          resolve(stdout);
+        }
+      });
+      child.on("error", reject);
     });
-    child.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-    child.on("close", (code: number | null) => {
-      if (code !== 0) {
-        reject(new Error(`WASM simulation exited with code ${code}: ${stderr}`));
-      } else {
-        resolve(stdout);
-      }
-    });
-    child.on("error", reject);
-  });
-  profiler.end("simulation");
+    profiler.end("simulation");
 
-  if (args.memoryProfile && lastSnap) {
-    const snap = snapshotMemory(true);
-    memProfiles["simulation"] = { before: lastSnap, after: snap };
-  }
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["simulation"] = { before: lastSnap, after: snap };
+    }
 
-  if (args.format === "none") {
-    // No output
-  } else if (args.format === "json") {
-    const lines = output.trim().split("\n");
-    const header = lines[0]?.split(",") ?? [];
-    const rows = lines.slice(1).map((l) => l.split(",").map(Number));
-    const times = rows.map((r) => r[0] ?? 0);
-    const y = rows.map((r) => r.slice(1));
-    const varNames = header.slice(1);
-    outputResults(times, y, varNames, "json");
-  } else {
-    process.stdout.write(output);
+    if (args.format === "none") {
+      // No output
+    } else if (args.format === "json") {
+      const lines = output.trim().split("\n");
+      const header = lines[0]?.split(",") ?? [];
+      const rows = lines.slice(1).map((l) => l.split(",").map(Number));
+      const times = rows.map((r) => r[0] ?? 0);
+      const y = rows.map((r) => r.slice(1));
+      const varNames = header.slice(1);
+      outputResults(times, y, varNames, "json");
+    } else {
+      process.stdout.write(output);
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
@@ -525,81 +547,87 @@ async function simulateC(
   // Compile
   profiler.start("compilation");
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-sim-"));
-  const cFile = path.join(tmpDir, `${modelIdentifier}_sim.c`);
-  const binFile = path.join(tmpDir, `${modelIdentifier}_sim`);
-
-  fs.writeFileSync(cFile, cSource);
-
-  const cc = process.env.CC ?? "gcc";
-  const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1 -fno-tree-vectorize" : "-O3";
-  const cvodeFlags = isCvode
-    ? "-I/usr/include/omc/sundials -L/usr/lib/x86_64-linux-gnu/omc -Wl,-rpath=/usr/lib/x86_64-linux-gnu/omc -lsundials_cvode -lsundials_nvecserial"
-    : "";
-  const ccCmd = [cc, optFlag, "-w", cFile, cvodeFlags, "-o", binFile, "-lm"].filter(Boolean).join(" ");
-
   try {
-    execSync(ccCmd, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
-  } catch (e: unknown) {
-    const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
-    console.error(`C compilation failed:\n${stderr}`);
-    return;
-  }
-  profiler.end("compilation");
+    const cFile = path.join(tmpDir, `${modelIdentifier}_sim.c`);
+    const binFile = path.join(tmpDir, `${modelIdentifier}_sim`);
 
-  if (args.memoryProfile && lastSnap) {
-    const snap = snapshotMemory(true);
-    memProfiles["codegen"] = { before: lastSnap, after: snap };
-    lastSnap = snap;
-  }
+    fs.writeFileSync(cFile, cSource);
 
-  console.error(`Compiled: ${cc} ${optFlag} → ${binFile}`);
+    const cc = process.env.CC ?? "gcc";
+    const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1 -fno-tree-vectorize" : "-O3";
+    const cvodeFlags = isCvode
+      ? "-I/usr/include/omc/sundials -L/usr/lib/x86_64-linux-gnu/omc -Wl,-rpath=/usr/lib/x86_64-linux-gnu/omc -lsundials_cvode -lsundials_nvecserial"
+      : "";
+    const ccCmd = [cc, optFlag, "-w", cFile, cvodeFlags, "-o", binFile, "-lm"].filter(Boolean).join(" ");
 
-  // Execute the compiled binary and capture stdout
-  profiler.start("simulation");
-  const output = await new Promise<string>((resolve, reject) => {
-    const child = spawn(binFile, [], { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
+    try {
+      execSync(ccCmd, { stdio: "pipe", timeout: 300000, maxBuffer: 64 * 1024 * 1024 });
+    } catch (e: unknown) {
+      const stderr =
+        e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
+      console.error(`C compilation failed:\n${stderr}`);
+      process.exitCode = 1;
+      return;
+    }
+    profiler.end("compilation");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["codegen"] = { before: lastSnap, after: snap };
+      lastSnap = snap;
+    }
+
+    console.error(`Compiled: ${cc} ${optFlag} → ${binFile}`);
+
+    // Execute the compiled binary and capture stdout
+    profiler.start("simulation");
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawn(binFile, [], { stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (data: Buffer) => {
+        stdout += data.toString();
+      });
+      child.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+      child.on("close", (code: number | null) => {
+        if (code !== 0) {
+          reject(new Error(`Simulation binary exited with code ${code}: ${stderr}`));
+        } else {
+          resolve(stdout);
+        }
+      });
+      child.on("error", reject);
     });
-    child.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-    child.on("close", (code: number | null) => {
-      if (code !== 0) {
-        reject(new Error(`Simulation binary exited with code ${code}: ${stderr}`));
-      } else {
-        resolve(stdout);
-      }
-    });
-    child.on("error", reject);
-  });
-  profiler.end("simulation");
+    profiler.end("simulation");
 
-  if (args.memoryProfile && lastSnap) {
-    const snap = snapshotMemory(true);
-    memProfiles["simulation"] = { before: lastSnap, after: snap };
-  }
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["simulation"] = { before: lastSnap, after: snap };
+    }
 
-  // The C binary outputs CSV to stdout — relay it or convert to JSON
-  if (args.format === "none") {
-    // No output requested
-  } else if (args.format === "json") {
-    const lines = output.trim().split("\n");
-    const header = lines[0]?.split(",") ?? [];
-    const rows = lines.slice(1).map((line) => {
-      const values = line.split(",");
-      const row: Record<string, number> = {};
-      for (let i = 0; i < header.length; i++) {
-        row[header[i] as string] = parseFloat(values[i] ?? "0");
-      }
-      return row;
-    });
-    process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
-  } else {
-    // Already CSV — write directly
-    process.stdout.write(output);
+    // The C binary outputs CSV to stdout — relay it or convert to JSON
+    if (args.format === "none") {
+      // No output requested
+    } else if (args.format === "json") {
+      const lines = output.trim().split("\n");
+      const header = lines[0]?.split(",") ?? [];
+      const rows = lines.slice(1).map((line) => {
+        const values = line.split(",");
+        const row: Record<string, number> = {};
+        for (let i = 0; i < header.length; i++) {
+          row[header[i] as string] = parseFloat(values[i] ?? "0");
+        }
+        return row;
+      });
+      process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+    } else {
+      // Already CSV — write directly
+      process.stdout.write(output);
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 

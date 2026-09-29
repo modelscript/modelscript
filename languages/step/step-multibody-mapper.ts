@@ -38,9 +38,20 @@ export interface MultiBodyFixedTranslation {
   partA: string;
   partB: string;
   r: [number, number, number];
+  rotationMatrix?: [[number, number, number], [number, number, number], [number, number, number]];
 }
 
 import type { StepAssemblyModel } from "./src/physical-data.js";
+
+function normalizeVec(v: [number, number, number]): [number, number, number] {
+  const norm = Math.hypot(v[0], v[1], v[2]);
+  if (norm < 1e-12) return [0, 0, 1];
+  return [v[0] / norm, v[1] / norm, v[2] / norm];
+}
+
+function crossVec(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
 
 export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyModel): MultiBodyAssembly {
   const bodies: MultiBodyPart[] = [];
@@ -53,18 +64,38 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
   for (const part of model.parts.values()) {
     const massProps = model.massProperties.get(part.id) || model.massProperties.values().next().value;
     const bodyName = part.name.replace(/[^a-zA-Z0-9_]/g, "_") || `part_${part.id.replace("#", "")}`;
+
+    let mass = massProps?.mass;
+    if (!mass || isNaN(mass)) {
+      mass = massProps?.volume ? massProps.volume * 7850 : 1.0;
+    }
+    const r_CM: [number, number, number] = massProps?.centerOfMass ?? [0, 0, 0];
+    let inertia = massProps?.inertiaTensor;
+    if (!inertia) {
+      const dim = massProps?.volume ? Math.cbrt(massProps.volume) : 0.1;
+      const I_diag = (1 / 6) * mass * dim * dim;
+      inertia = {
+        I_11: I_diag,
+        I_22: I_diag,
+        I_33: I_diag,
+        I_21: 0,
+        I_31: 0,
+        I_32: 0,
+      };
+    }
+
     bodies.push({
       name: bodyName,
       stepId: part.id,
-      mass: massProps?.mass || 1.0,
-      r_CM: massProps?.centerOfMass || [0, 0, 0],
-      inertia: massProps?.inertiaTensor || { I_11: 1, I_22: 1, I_33: 1, I_21: 0, I_31: 0, I_32: 0 },
+      mass,
+      r_CM,
+      inertia,
       shapeRef: part.shapeId,
       frameVariable: `${bodyName}.frame_a`,
     });
   }
 
-  // Very simplified mapping
+  // Joint mapping
   for (const joint of model.joints) {
     const partA = model.parts.get(joint.partA);
     const partB = model.parts.get(joint.partB);
@@ -78,7 +109,7 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
         name: `offset_${offsetCount++}`,
         partA: nameA,
         partB: nameB,
-        r: joint.origin, // Simplified
+        r: joint.origin,
       });
     } else {
       let type: MultiBodyJoint["type"] = "Revolute";
@@ -97,7 +128,7 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
     }
   }
 
-  // Handle edges (static placements)
+  // Handle edges (static placements) with orientation frame derivation
   for (const edge of model.edges) {
     const partA = model.parts.get(edge.parentPartId);
     const partB = model.parts.get(edge.childPartId);
@@ -106,16 +137,30 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
     const nameA = partA.name.replace(/[^a-zA-Z0-9_]/g, "_");
     const nameB = partB.name.replace(/[^a-zA-Z0-9_]/g, "_");
 
-    // Check if there's already a joint between them
     const hasJoint = joints.some(
       (j) => (j.partA === nameA && j.partB === nameB) || (j.partA === nameB && j.partB === nameA),
     );
     if (!hasJoint) {
+      const zAxis = normalizeVec(edge.placement.axis || [0, 0, 1]);
+      const refDir = normalizeVec(edge.placement.refDirection || [1, 0, 0]);
+      let xAxis = normalizeVec(crossVec(refDir, zAxis));
+      if (Math.hypot(xAxis[0], xAxis[1], xAxis[2]) < 1e-6) {
+        xAxis = [1, 0, 0];
+      }
+      const yAxis = crossVec(zAxis, xAxis);
+
+      const rotMatrix: [[number, number, number], [number, number, number], [number, number, number]] = [
+        [xAxis[0], yAxis[0], zAxis[0]],
+        [xAxis[1], yAxis[1], zAxis[1]],
+        [xAxis[2], yAxis[2], zAxis[2]],
+      ];
+
       fixedTranslations.push({
         name: `offset_${offsetCount++}`,
         partA: nameA,
         partB: nameB,
-        r: edge.placement.location, // simplified
+        r: edge.placement.location,
+        rotationMatrix: rotMatrix,
       });
     }
   }

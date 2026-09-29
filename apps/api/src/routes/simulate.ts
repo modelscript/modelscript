@@ -199,14 +199,10 @@ getErrorString();
         }
 
         if (database && dbJobId) {
-          database.updateJobStatus(dbJobId, "SUCCESS");
-          database.updateJobAccounting(dbJobId, usage);
-          if (userId && usage.costCredits > 0) {
-            database.deductUserCredits(userId, usage.costCredits, dbJobId, `Simulation: ${modelName}`, {
-              profile: profile.id,
-              ...usage,
-            });
-          }
+          database.completeJobWithBilling(dbJobId, usage, userId, `Simulation: ${modelName}`, {
+            profile: profile.id,
+            ...usage,
+          });
         }
       } catch (err) {
         // If it's a simulation failure, we might want to keep the tmp dir for debugging

@@ -20,6 +20,12 @@ export interface ProofManifestItem {
   timestamp?: string;
 }
 
+export interface ManifestSigningOptions {
+  algorithm?: "sha256" | "ed25519";
+  privateKey?: crypto.KeyObject | string;
+  publicKey?: crypto.KeyObject | string;
+}
+
 export interface DigitalThreadProofManifest {
   manifestId: string;
   schemaVersion: "1.0.0";
@@ -29,6 +35,8 @@ export interface DigitalThreadProofManifest {
   compositeRootHash: string;
   isCertifiedCompliant: boolean;
   signatureToken: string;
+  signatureAlgorithm?: "sha256" | "ed25519";
+  publicKey?: string;
 }
 
 export class ProofManifestGenerator {
@@ -45,6 +53,7 @@ export class ProofManifestGenerator {
   public static generateManifest(
     items: ProofManifestItem[],
     gitCommitSha: string = "HEAD",
+    options?: ManifestSigningOptions,
   ): DigitalThreadProofManifest {
     const timestamp = new Date().toISOString();
 
@@ -70,8 +79,38 @@ export class ProofManifestGenerator {
           it.verificationStatus === "UNSAT",
       );
 
-    // Synthetic verifiable cryptographic signature token
     const sigPayload = `PROOF-TOKEN::${compositeRootHash}::${gitCommitSha}::${isCertifiedCompliant ? "VALID" : "INVALID"}`;
+
+    if (options?.algorithm === "ed25519") {
+      let privKey = options.privateKey;
+      let pubKeyPem = typeof options.publicKey === "string" ? options.publicKey : undefined;
+
+      if (!privKey) {
+        const keyPair = crypto.generateKeyPairSync("ed25519");
+        privKey = keyPair.privateKey;
+        pubKeyPem = keyPair.publicKey.export({ type: "spki", format: "pem" }).toString();
+      } else if (options.publicKey && typeof options.publicKey !== "string") {
+        pubKeyPem = options.publicKey.export({ type: "spki", format: "pem" }).toString();
+      }
+
+      const sig = crypto.sign(null, Buffer.from(sigPayload, "utf8"), privKey);
+      const signatureToken = sig.toString("hex");
+
+      return {
+        manifestId: `proof-manifest-${Date.now()}`,
+        schemaVersion: "1.0.0",
+        timestamp,
+        gitCommitSha,
+        items: sortedItems,
+        compositeRootHash,
+        isCertifiedCompliant,
+        signatureToken,
+        signatureAlgorithm: "ed25519",
+        publicKey: pubKeyPem,
+      };
+    }
+
+    // Default SHA-256 verifiable token
     const signatureToken = crypto.createHash("sha256").update(sigPayload).digest("hex");
 
     return {
@@ -83,6 +122,7 @@ export class ProofManifestGenerator {
       compositeRootHash,
       isCertifiedCompliant,
       signatureToken,
+      signatureAlgorithm: "sha256",
     };
   }
 
@@ -110,12 +150,38 @@ export class ProofManifestGenerator {
       };
     }
 
-    const expectedSig = crypto
-      .createHash("sha256")
-      .update(
-        `PROOF-TOKEN::${computedRootHash}::${manifest.gitCommitSha}::${manifest.isCertifiedCompliant ? "VALID" : "INVALID"}`,
-      )
-      .digest("hex");
+    const sigPayload = `PROOF-TOKEN::${computedRootHash}::${manifest.gitCommitSha}::${manifest.isCertifiedCompliant ? "VALID" : "INVALID"}`;
+
+    if (manifest.signatureAlgorithm === "ed25519" && manifest.publicKey) {
+      try {
+        const pubKey = crypto.createPublicKey(manifest.publicKey);
+        const isVerified = crypto.verify(
+          null,
+          Buffer.from(sigPayload, "utf8"),
+          pubKey,
+          Buffer.from(manifest.signatureToken, "hex"),
+        );
+        if (!isVerified) {
+          return {
+            isValid: false,
+            computedRootHash,
+            reason: "Cryptographic asymmetric signature (Ed25519) verification failed.",
+          };
+        }
+        return {
+          isValid: true,
+          computedRootHash,
+        };
+      } catch (err: any) {
+        return {
+          isValid: false,
+          computedRootHash,
+          reason: `Cryptographic signature verification error: ${err.message}`,
+        };
+      }
+    }
+
+    const expectedSig = crypto.createHash("sha256").update(sigPayload).digest("hex");
 
     if (expectedSig !== manifest.signatureToken) {
       return {

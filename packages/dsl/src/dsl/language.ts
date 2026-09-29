@@ -431,6 +431,8 @@ export function language<
             line.includes("\\dsl\\") ||
             line.includes("/packages/dsl/") ||
             line.includes("\\packages\\dsl\\") ||
+            line.includes("/packages/runtime/") ||
+            line.includes("\\packages\\runtime\\") ||
             line.includes("/packages/language/") ||
             line.includes("\\packages\\language\\") ||
             line.includes("node_modules") ||

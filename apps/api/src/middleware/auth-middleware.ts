@@ -11,7 +11,12 @@ export function setAuthDatabase(database: LibraryDatabase) {
   sharedAuthDatabase = database;
 }
 
-const JWT_SECRET = process.env["JWT_SECRET"] || "modelscript-dev-secret";
+const isProd = process.env["NODE_ENV"] === "production";
+const envJwtSecret = process.env["JWT_SECRET"];
+if (isProd && (!envJwtSecret || envJwtSecret === "modelscript-dev-secret")) {
+  throw new Error("FATAL: JWT_SECRET must be explicitly configured with a secure key in production mode.");
+}
+const JWT_SECRET = envJwtSecret || "modelscript-dev-secret";
 
 export interface AuthUser {
   id: number;

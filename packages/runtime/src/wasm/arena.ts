@@ -1511,15 +1511,6 @@ export function ast_getTextSpan(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 
   return 0;
 }
 
-/**
- * Legacy interop wrapper for modifying literal values from the C-bindings.
- * @param ptr The target node.
- * @param valueStringPtr A pointer to the value string (currently ignored, just marks dirty).
- */
-export function ast_setLiteralValue(ptr: u32, valueStringPtr: u32): void {
-  // Legacy C-ptr interop
-  ast_markDirty(ptr);
-}
 
 export function cacheNodeStrings(nodeId: u32, absoluteStart: u32): void {
   cacheNodeStringsInner(nodeId, absoluteStart, 0);
@@ -1575,19 +1566,6 @@ export function hashNodeTextAt(nodeId: u32, absoluteStart: u32): u32 {
   return ast_hashSpan(span);
 }
 
-/**
- * Legacy single-arg wrapper: computes the absolute offset by reading the node's padding field.
- * WARNING: This only works for root-level nodes or scenarios where the padding natively
- * represents the absolute offset from the start of the file.
- * For general nodes deep in the tree, use `hashNodeTextAt`.
- * @param nodeId The target node.
- * @returns A 32-bit FNV-1a hash.
- */
-export function hashNodeText(nodeId: u32): u32 {
-  if (nodeId == 0) return 0;
-  let pad = getNodePadding(nodeId);
-  return hashNodeTextAt(nodeId, pad);
-}
 
 /**
  * Performs a zero-GC byte-by-byte comparison of the source text of two nodes.
@@ -1636,17 +1614,6 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
   return true;
 }
 
-/**
- * Legacy single-arg wrapper (see `hashNodeText` note for limitations).
- * Assumes the node padding represents the absolute offset.
- */
-export function isNodeTextEqual(nodeA: u32, nodeB: u32): boolean {
-  if (nodeA == nodeB) return true;
-  if (nodeA == 0 || nodeB == 0) return false;
-  let padA = getNodePadding(nodeA);
-  let padB = getNodePadding(nodeB);
-  return isNodeTextEqualAt(nodeA, padA, nodeB, padB);
-}
 
 /** Returns the current physical linear memory offset for Generation 1. */
 
@@ -1660,6 +1627,44 @@ export function initUndoLog(): void {
     t_sideTableUndoLog = createChunkedUint32Array();
     t_floatUndoLog = createChunkedFloat64Array();
   }
+}
+
+export let g_parseStartChunk: u32 = 0;
+export let g_parseStartOffset: u32 = 0;
+
+export function setParseWatermark(isIncremental: boolean): void {
+  let s = S();
+  if (!isIncremental) {
+    g_parseStartChunk = 0;
+    g_parseStartOffset = 0;
+  } else {
+    g_parseStartChunk = s.gen1_active_chunk;
+    g_parseStartOffset = s.gen1_offset;
+  }
+}
+
+export function isCurrentParseNode(ptr: u32, oldTree: u32 = 0): boolean {
+  if (ptr == 0) return false;
+  if (oldTree == 0) return true;
+  if (isNodeGen2(ptr)) return true;
+  let s = S();
+  let count = s.gen1_chunk_count;
+  let chunks = s.gen1_chunks;
+  let startChunk = g_parseStartChunk;
+  let startOffset = g_parseStartOffset;
+  if (startChunk < count) {
+    let base = chunks[startChunk];
+    if (ptr >= base && ptr < base + AST_CHUNK_SIZE) {
+      return ptr >= startOffset;
+    }
+  }
+  for (let i = startChunk + 1; i < count; i++) {
+    let base = chunks[i];
+    if (ptr >= base && ptr < base + AST_CHUNK_SIZE) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function isNodeGen2(ptr: u32): boolean {

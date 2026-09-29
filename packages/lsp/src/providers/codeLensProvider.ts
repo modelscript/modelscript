@@ -8,7 +8,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
     // 1. Modelica files (.mo)
     if (uri.endsWith(".mo")) {
-      const index = context.workspaceManager.globalWorkspaceIndex.getFileIndex(uri);
+      const index = context.workspaceManager.getWorkspaceIndex("modelica")?.getFileIndex(uri);
       if (!index) return lenses;
 
       for (const [, symbol] of index.symbols.entries()) {

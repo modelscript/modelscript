@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { parseSourceToPolyglotNode } from "../src/commands/polyglot.js";
 
 describe("Polyglot CLI Command Suite (`msc polyglot`)", () => {
-  const scratchDir = path.resolve(process.cwd(), "apps/cli/tests/scratch_polyglot");
+  const scratchDir = path.resolve(import.meta.dirname, "scratch_polyglot");
+  const cliPath = path.resolve(import.meta.dirname, "../src/main.ts");
 
   // Setup scratch fixtures
   if (!fs.existsSync(scratchDir)) {
@@ -88,8 +89,10 @@ PropellerGuard();`,
   });
 
   it("should execute `msc polyglot verify` across all 8 polyglot domains", () => {
-    const cmd = "npx tsx apps/cli/src/main.ts polyglot verify";
-    const stdout = execSync(cmd, { cwd: process.cwd(), encoding: "utf-8", timeout: 30000 });
+    const stdout = execFileSync("npx", ["tsx", cliPath, "polyglot", "verify"], {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
     assert.ok(stdout.includes("ModelScript Polyglot TGG Formal Confluence"));
     assert.ok(stdout.includes("Modelica"));
     assert.ok(stdout.includes("SysML v2"));
@@ -101,8 +104,11 @@ PropellerGuard();`,
 
   it("should project Modelica model to SysML v2 via CLI `msc polyglot project`", () => {
     const outPath = path.join(scratchDir, "DroneMotor_Projected.sysml");
-    const cmd = `npx tsx apps/cli/src/main.ts polyglot project ${sampleMoPath} --target=sysml2 --out=${outPath}`;
-    const stdout = execSync(cmd, { cwd: process.cwd(), encoding: "utf-8", timeout: 30000 });
+    const stdout = execFileSync(
+      "npx",
+      ["tsx", cliPath, "polyglot", "project", sampleMoPath, "--target=sysml2", `--out=${outPath}`],
+      { encoding: "utf-8", timeout: 30000 },
+    );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));
 
@@ -113,8 +119,11 @@ PropellerGuard();`,
 
   it("should project SysML v2 to OWL 2 ontology via CLI `msc polyglot project`", () => {
     const outPath = path.join(scratchDir, "FlightController_Projected.owl");
-    const cmd = `npx tsx apps/cli/src/main.ts polyglot project ${sampleSysmlPath} --target=owl2 --out=${outPath}`;
-    const stdout = execSync(cmd, { cwd: process.cwd(), encoding: "utf-8", timeout: 30000 });
+    const stdout = execFileSync(
+      "npx",
+      ["tsx", cliPath, "polyglot", "project", sampleSysmlPath, "--target=owl2", `--out=${outPath}`],
+      { encoding: "utf-8", timeout: 30000 },
+    );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));
 
@@ -125,8 +134,11 @@ PropellerGuard();`,
 
   it("should project OpenSCAD to STEP CAD via CLI `msc polyglot project`", () => {
     const outPath = path.join(scratchDir, "PropellerGuard_Projected.step");
-    const cmd = `npx tsx apps/cli/src/main.ts polyglot project ${sampleScadPath} --target=step --out=${outPath}`;
-    const stdout = execSync(cmd, { cwd: process.cwd(), encoding: "utf-8", timeout: 30000 });
+    const stdout = execFileSync(
+      "npx",
+      ["tsx", cliPath, "polyglot", "project", sampleScadPath, "--target=step", `--out=${outPath}`],
+      { encoding: "utf-8", timeout: 30000 },
+    );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));
 
@@ -137,8 +149,11 @@ PropellerGuard();`,
 
   it("should project Modelica to CSV parameter specs via CLI `msc polyglot project`", () => {
     const outPath = path.join(scratchDir, "DroneMotor_Specs.csv");
-    const cmd = `npx tsx apps/cli/src/main.ts polyglot project ${sampleMoPath} --target=csv --out=${outPath}`;
-    const stdout = execSync(cmd, { cwd: process.cwd(), encoding: "utf-8", timeout: 30000 });
+    const stdout = execFileSync(
+      "npx",
+      ["tsx", cliPath, "polyglot", "project", sampleMoPath, "--target=csv", `--out=${outPath}`],
+      { encoding: "utf-8", timeout: 30000 },
+    );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));
 
@@ -148,8 +163,10 @@ PropellerGuard();`,
   });
 
   it("should inspect digital thread alignment graph via `msc polyglot thread`", () => {
-    const cmd = `npx tsx apps/cli/src/main.ts polyglot thread ${sampleMoPath}`;
-    const stdout = execSync(cmd, { cwd: process.cwd(), encoding: "utf-8", timeout: 30000 });
+    const stdout = execFileSync("npx", ["tsx", cliPath, "polyglot", "thread", sampleMoPath], {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
     assert.ok(stdout.includes("Digital Thread Alignment for 'DroneMotor.mo'"));
     assert.ok(stdout.includes("Primary Node:   DroneMotor"));
     assert.ok(stdout.includes("SysML v2:"));

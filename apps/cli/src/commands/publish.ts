@@ -139,7 +139,17 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       const statusUrl = `${API_URL}/api/v1/libraries/${name}/${version}/status`;
       let done = false;
 
+      const MAX_POLL_ATTEMPTS = 150; // 5 minutes max
+      let pollAttempts = 0;
+
       while (!done) {
+        pollAttempts++;
+        if (pollAttempts > MAX_POLL_ATTEMPTS) {
+          process.stdout.write(`\r`);
+          console.error(`\n❌ Processing timed out after 5 minutes.`);
+          process.exit(1);
+        }
+
         await new Promise((r) => setTimeout(r, 2000));
 
         try {

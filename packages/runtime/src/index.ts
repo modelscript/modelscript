@@ -82,13 +82,13 @@ export * from "./simulation/wasm_doe.js";
 export * from "./simulation/wasm_fmu_subsystem.js";
 export * from "./simulation/wasm_monte_carlo.js";
 export {
-  VerificationRunner,
-  VerifyOp,
   computeIntegral,
   computeOvershoot,
   computeSettlingTime,
   computeSteadyState,
   parseComparisonOp,
+  VerificationRunner,
+  VerifyOp,
   verifyTrajectoryDirect,
   type ComparisonOp,
   type TrajectoryConstraint,
@@ -124,7 +124,9 @@ export {
   LanguageWorkspaceIndex as WasmWorkspaceIndex,
   LanguageWorkspaceIndex as WorkspaceIndex,
 } from "./workspace/wasm_workspace.js";
-export type CSTNode = any;
+export type { SyntaxNode };
+import type { SyntaxNode } from "@modelscript/dsl/utils";
+export type CSTNode = SyntaxNode;
 
 export * from "./formal/abstract_interpretation/array_segment_domain.js";
 export * from "./formal/abstract_interpretation/cfg.js";

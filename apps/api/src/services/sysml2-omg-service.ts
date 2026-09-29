@@ -20,6 +20,7 @@ import {
   type Sysml2ContainerExportOptions,
 } from "@modelscript/sysml2";
 import { randomUUID } from "node:crypto";
+import type { LibraryDatabase } from "../database.js";
 
 export const OMG_SYSML2_CONTEXT = "https://www.omg.org/spec/SysML/20240201/context.jsonld";
 
@@ -89,9 +90,36 @@ export class SysML2OmgService {
   private elements = new Map<string, Map<string, OmgElement>>(); // commitId -> (elementId -> element)
   private relationships = new Map<string, OmgRelationship[]>(); // commitId -> relationships
 
-  constructor() {
+  constructor(private db?: LibraryDatabase | null) {
+    if (this.db) {
+      this.loadFromDatabase();
+    }
     this.seedStandardLibraryProject();
     this.seedSampleDroneProject();
+  }
+
+  private loadFromDatabase(): void {
+    if (!this.db) return;
+    try {
+      const projects = this.db.getSysml2Projects();
+      for (const p of projects) {
+        this.projects.set(p["@id"], p);
+        const commits = this.db.getSysml2Commits(p["@id"]);
+        this.commits.set(p["@id"], commits);
+        for (const c of commits) {
+          const elements = this.db.getSysml2Elements(c["@id"]);
+          const elemMap = new Map<string, OmgElement>();
+          for (const e of elements) {
+            elemMap.set(e["@id"], e);
+          }
+          this.elements.set(c["@id"], elemMap);
+          const rels = this.db.getSysml2Relationships(c["@id"]);
+          this.relationships.set(c["@id"], rels);
+        }
+      }
+    } catch (err) {
+      console.warn("[SysML2OmgService] Could not load from database:", err);
+    }
   }
 
   /**
@@ -111,10 +139,10 @@ export class SysML2OmgService {
   /**
    * Creates a new SysML v2 project with an initial commit and default branch.
    */
-  createProject(name: string, description?: string): OmgProject {
-    const projectId = randomUUID();
-    const branchId = randomUUID();
-    const initialCommitId = randomUUID();
+  createProject(name: string, description?: string, customId?: string): OmgProject {
+    const projectId = customId || randomUUID();
+    const branchId = customId ? `${customId}-branch` : randomUUID();
+    const initialCommitId = customId ? `${customId}-init` : randomUUID();
     const now = new Date().toISOString();
 
     const initialCommit: OmgCommit = {
@@ -144,6 +172,15 @@ export class SysML2OmgService {
     this.elements.set(initialCommitId, new Map());
     this.relationships.set(initialCommitId, []);
 
+    if (this.db) {
+      try {
+        this.db.saveSysml2Project(project);
+        this.db.saveSysml2Commit(initialCommit);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not persist project to database:", err);
+      }
+    }
+
     return project;
   }
 
@@ -159,6 +196,15 @@ export class SysML2OmgService {
     }
     this.commits.delete(projectId);
     this.projects.delete(projectId);
+
+    if (this.db) {
+      try {
+        this.db.deleteSysml2Project(projectId);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not delete project from database:", err);
+      }
+    }
+
     return true;
   }
 
@@ -213,6 +259,17 @@ export class SysML2OmgService {
 
     this.elements.set(commitId, elementMap);
     this.relationships.set(commitId, relationships);
+
+    if (this.db) {
+      try {
+        this.db.saveSysml2Commit(commit);
+        this.db.saveSysml2Elements(commitId, elements);
+        this.db.saveSysml2Relationships(commitId, relationships);
+        this.db.saveSysml2Project(project);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not persist commit to database:", err);
+      }
+    }
 
     return commit;
   }
@@ -546,6 +603,7 @@ export class SysML2OmgService {
    */
   private seedStandardLibraryProject(): void {
     const projectId = "urn:uuid:kerml-standard-library";
+    if (this.projects.has(projectId)) return;
     const commitId = "urn:uuid:kerml-stdlib-commit-v1";
     const now = "2026-09-18T00:00:00.000Z";
 
@@ -600,9 +658,14 @@ export class SysML2OmgService {
    * Pre-seeds an autonomous drone SysML v2 architecture project.
    */
   private seedSampleDroneProject(): void {
+    const DRONE_PROJECT_ID = "urn:uuid:autonomous-drone-sysml2";
+    if (this.projects.has(DRONE_PROJECT_ID) && (this.commits.get(DRONE_PROJECT_ID)?.length ?? 0) >= 2) {
+      return;
+    }
     const project = this.createProject(
       "AutonomousDrone-SysML2",
       "Multi-physics Quadcopter System Architecture & Control",
+      DRONE_PROJECT_ID,
     );
 
     const droneSysml = `

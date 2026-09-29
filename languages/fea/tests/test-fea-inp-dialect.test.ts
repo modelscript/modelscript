@@ -142,4 +142,44 @@ Cantilever Plate
       "*BOUNDARY must be inserted before *END STEP",
     );
   });
+
+  it("parses Nastran BDF decks including CQUAD4, CTETRA, MAT1, SPC, and FORCE cards", () => {
+    const dialect = getFeaDialect("bdf");
+    assert.strictEqual(dialect.id, "bdf");
+
+    const bdfDeck = `$ Nastran Bulk Data Deck
+GRID,1,,0.0,0.0,0.0
+GRID,2,,10.0,0.0,0.0
+GRID,3,,10.0,10.0,0.0
+GRID,4,,0.0,10.0,0.0
+GRID,5,,0.0,0.0,10.0
+CQUAD4,101,1,1,2,3,4
+CTETRA,201,1,1,2,3,5
+MAT1,1,2.1E11,,0.3,7850.0
+SPC1,1,123456,1,4
+FORCE,1,2,0,500.0,0.0,-1.0,0.0
+ENDDATA
+`;
+
+    const parsed = dialect.parse(bdfDeck);
+    assert.strictEqual(parsed.dialect, "bdf");
+    assert.strictEqual(parsed.nodes.size, 5);
+    assert.deepStrictEqual(parsed.nodes.get(1), { id: 1, x: 0.0, y: 0.0, z: 0.0 });
+    assert.deepStrictEqual(parsed.nodes.get(3), { id: 3, x: 10.0, y: 10.0, z: 0.0 });
+
+    assert.strictEqual(parsed.elements.size, 2);
+    assert.deepStrictEqual(parsed.elements.get(101), { id: 101, type: "CQUAD4", nodes: [1, 2, 3, 4] });
+    assert.deepStrictEqual(parsed.elements.get(201), { id: 201, type: "CTETRA", nodes: [1, 2, 3, 5] });
+
+    const mat = parsed.materials.get("1");
+    assert.ok(mat);
+    assert.strictEqual(mat.E, 2.1e11);
+    assert.strictEqual(mat.nu, 0.3);
+    assert.strictEqual(mat.rho, 7850.0);
+
+    assert.ok(parsed.fixedNodes.has(1));
+    assert.ok(parsed.fixedNodes.has(4));
+
+    assert.deepStrictEqual(parsed.nodalLoads.get(2), [0.0, -500.0, 0.0]);
+  });
 });

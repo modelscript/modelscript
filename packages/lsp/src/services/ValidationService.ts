@@ -405,7 +405,7 @@ export class ValidationService {
           }
 
           if (wsIndex.has(effectiveUri)) {
-            wsIndex.markDirty(effectiveUri, () => tree.rootNode, actualEditRanges, totalDelta);
+            wsIndex.reindexDocument(effectiveUri, () => tree.rootNode, actualEditRanges, totalDelta);
           } else {
             wsIndex.register(effectiveUri, () => tree.rootNode);
           }
@@ -897,7 +897,7 @@ export class ValidationService {
       this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
       let astIndex;
       let tree;
-      const stepParser = plugin?.parser ?? this.parserService.stepParser;
+      const stepParser = plugin?.parser ?? this.parserService.getParser("step");
       if (stepParser) {
         tree = stepParser.parse(text);
         if (tree) {
@@ -1118,7 +1118,8 @@ export class ValidationService {
   private postValidateSysml2(effectiveUri: string, diagnostics: Diagnostic[]): void {
     try {
       const versions = new Map<string, number>();
-      versions.set("sysml2", this.workspaceManager.sysml2WorkspaceIndex.version);
+      const sysml2Index = this.workspaceManager.getWorkspaceIndex("sysml2");
+      if (sysml2Index) versions.set("sysml2", sysml2Index.version);
       this.reasonerService.updateAndReason(versions);
 
       const consistency = this.reasonerService.reasoner.checkConsistency();
@@ -1429,10 +1430,12 @@ export class ValidationService {
           if (doc) {
             const text = doc.getText();
             let tree: any;
-            if ((entryUri.endsWith(".sysml") || entryUri.endsWith(".sysml2")) && this.parserService.sysml2Parser) {
-              tree = this.parserService.sysml2Parser.parse(text);
+            const parser = this.parserService.getParserForUri(entryUri);
+            if (parser) {
+              tree = parser.parse(text);
             } else if (this.parserService.sharedContext) {
-              tree = this.parserService.sharedContext.parse(".mo", text);
+              const ext = entryUri.includes(".") ? entryUri.substring(entryUri.lastIndexOf(".")) : ".mo";
+              tree = this.parserService.sharedContext.parse(ext, text);
             }
             if (tree) {
               this.documentManager.documentTrees.set(entryUri, { text, tree, classCache: new Map() });

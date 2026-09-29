@@ -4671,25 +4671,15 @@ export class SyntaxNode {
   hasError(): boolean {
     if (this._cachedHasError !== undefined) return this._cachedHasError;
     if (this._cachedTypeId === 0) {
-      this._cachedHasError = true;
-      return true;
+      return (this._cachedHasError = true);
     }
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
-      const flags = (typeFlags >>> 10) & 0x0fff;
-      if ((flags & 128) !== 0) {
-        this._cachedHasError = true;
-        return true;
+      if ((typeFlags & 0x03ff) === 0 || ((typeFlags >>> 10) & 128) !== 0) {
+        return (this._cachedHasError = true);
       }
     }
-    for (const kid of this.children) {
-      if (kid.hasError()) {
-        this._cachedHasError = true;
-        return true;
-      }
-    }
-    this._cachedHasError = false;
-    return false;
+    return (this._cachedHasError = false);
   }
 
   /** Finds the smallest syntax node covering the character range [start, end]. */
@@ -5287,7 +5277,6 @@ export async function createWasmParser(
         wasmUrlOrBytes.replace(/\/dist\/parser\.wasm$/, "/src-gen/bindings.js"),
         wasmUrlOrBytes.replace(/\.wasm$/, ".bindings.js"),
         wasmUrlOrBytes.replace(/\/parser\.wasm$/, "/bindings.js"),
-        wasmUrlOrBytes.replace(/\/tree-sitter-[^/]+\.wasm$/, "/bindings.js"),
       ];
       const bindingsPaths = candidates.filter((p) => p !== wasmUrlOrBytes && !p.endsWith(".wasm"));
       for (const bPath of bindingsPaths) {

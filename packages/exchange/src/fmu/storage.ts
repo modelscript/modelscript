@@ -15,6 +15,7 @@ import path, { basename, join, resolve } from "path";
 import { inflateRawSync } from "zlib";
 import type { FmiModelDescription, FmiTerminal } from "./model-description.js";
 import { parseModelDescription, parseTerminalsAndIcons } from "./model-description.js";
+import { generateFmuWrapperModelica } from "./wrapper-gen.js";
 
 /** Metadata about a stored FMU. */
 export interface StoredFmu {
@@ -104,12 +105,17 @@ export class FmuStorage {
     // Parse the model description
     const modelDescription = parseModelDescription(xmlContent);
 
-    // Try to extract FMI 3.0 terminalsAndIcons.xml
+    // Try to extract FMI 3.0 terminalsAndIcons.xml from standard locations
     let terminalsAndIcons: FmiTerminal[] | undefined;
-    const terminalsXml = extractFileFromZip(data, "terminalsAndIcons/terminalsAndIcons.xml");
+    const terminalsXml =
+      extractFileFromZip(data, "terminalsAndIcons/terminalsAndIcons.xml") ??
+      extractFileFromZip(data, "terminalsAndIcons.xml") ??
+      extractFileFromZip(data, "fmi3TerminalsAndIcons.xml");
     if (terminalsXml) {
       writeFileSync(resolve(dir, "terminalsAndIcons.xml"), terminalsXml);
       terminalsAndIcons = parseTerminalsAndIcons(terminalsXml);
+    } else if (modelDescription.terminals && modelDescription.terminals.length > 0) {
+      terminalsAndIcons = modelDescription.terminals;
     }
 
     // Store metadata
@@ -197,6 +203,13 @@ export class FmuStorage {
     const xmlPath = resolve(this.storageDir, safe, "terminalsAndIcons.xml");
     if (!existsSync(xmlPath)) return null;
     return readFileSync(xmlPath, "utf-8");
+  }
+
+  /** Generate a synthetic Modelica wrapper for a stored FMU. */
+  generateWrapper(id: string, packageName?: string): string | null {
+    const stored = this.get(id);
+    if (!stored) return null;
+    return generateFmuWrapperModelica(stored.modelDescription, stored.filename, packageName, stored.terminalsAndIcons);
   }
 
   /** Delete a stored FMU. */

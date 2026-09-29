@@ -174,16 +174,24 @@ export function invertExpression(forwardExpr: string, targetVarName: string = "y
   }
 
   // 9. Relational Equality / Equation: lhs == rhs or lhs = rhs
-  const eqMatch = trimmed.match(/^(.+?)\s*(?:==|=)\s*(.+)$/);
-  if (eqMatch) {
-    const [, lhs, rhs] = eqMatch;
-    return {
-      isInvertible: true,
-      kind: "custom",
-      sourceVar: lhs.trim(),
-      targetVar: rhs.trim(),
-      invertedExpr: `${rhs.trim()} == ${lhs.trim()}`,
-    };
+  let eqIdx = trimmed.indexOf("==");
+  let opLen = 2;
+  if (eqIdx === -1) {
+    eqIdx = trimmed.indexOf("=");
+    opLen = 1;
+  }
+  if (eqIdx > 0 && eqIdx + opLen < trimmed.length) {
+    const lhs = trimmed.slice(0, eqIdx).trim();
+    const rhs = trimmed.slice(eqIdx + opLen).trim();
+    if (lhs.length > 0 && rhs.length > 0) {
+      return {
+        isInvertible: true,
+        kind: "custom",
+        sourceVar: lhs,
+        targetVar: rhs,
+        invertedExpr: `${rhs} == ${lhs}`,
+      };
+    }
   }
 
   return {

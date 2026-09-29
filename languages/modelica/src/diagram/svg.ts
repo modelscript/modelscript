@@ -42,11 +42,9 @@ import {
   type IRectangle,
   type IText,
   type ITransformation,
+  type ModelicaClassInstance,
+  type ModelicaComponentInstance,
 } from "./types.js";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ModelicaClassInstance = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ModelicaComponentInstance = any;
 
 /**
  * Renders the Diagram view of a Modelica class instance as an SVG.

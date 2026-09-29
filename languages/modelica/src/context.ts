@@ -665,18 +665,6 @@ export class Context {
   }
 
   /**
-   * @deprecated Use `classes` or `listLibraries()` instead.
-   */
-  get allElements(): IterableIterator<any> {
-    const classes = this.#classes;
-    const libraries = this.#libraries;
-    return (function* () {
-      yield* classes;
-      yield* libraries;
-    })();
-  }
-
-  /**
    * Returns the array of top-level classes loaded via `load()`.
    */
   get classes(): readonly any[] {

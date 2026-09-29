@@ -499,19 +499,6 @@ export {
   initGlobalCursor
 } from "./gss";
 
-// ----------------------------------------------------------------------------
-// Legacy Imports / Globals
-// ----------------------------------------------------------------------------
-
-declare namespace parser {
-  export function emitTextEdit(op: u32, len: u32, start: u32, end: u32): void;
-  export function getSourceSlice(start: u32, end: u32): u32;
-}
-
-declare namespace env {
-  export function emitTextEdit(cat: i32, val1: i32, val2: i32, val3: i32): void;
-}
-
 @external("engine", "debugLog")
 export declare function debugLog(cat: i32, val1: i32, val2: i32, val3: i32): void;
 export let globalLoopGuard: u32 = 0;

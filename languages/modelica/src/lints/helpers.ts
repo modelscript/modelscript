@@ -720,8 +720,11 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
  * TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK, or TYPE_UNKNOWN.
  */
 export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Record<string, u16>): u16 {
-  if (typeNameId == 0) return TYPE_UNKNOWN;
+  return resolveBasePrimitiveTypeInternal(db, typeNameId, $, 0);
+}
 
+function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Record<string, u16>, depth: u32): u16 {
+  if (typeNameId == 0 || depth > 10) return TYPE_UNKNOWN;
   let targetId: u32 = typeNameId;
   for (const id of db.ast.getDescendants(typeNameId, $.identifier)) {
     targetId = id;
@@ -746,6 +749,15 @@ export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Reco
           }
         }
         if (specName != 0 && db.ast.textEqualsNode(targetId, specName)) {
+          let cls: u32 = 0;
+          for (const c of db.ast.getAncestors(spec)) {
+            if (db.ast.getType(c) == $.class_definition) {
+              cls = c;
+              break;
+            }
+          }
+          if (cls != 0 && !isClassKind(db, cls, "type")) continue;
+
           if ($.enum_list != 0) {
             for (const _ of db.ast.getDescendants(spec, $.enum_list)) {
               return TYPE_ENUM;
@@ -759,7 +771,12 @@ export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Reco
             ch = db.ast.getNextSibling(ch);
           }
           for (const ts of db.ast.getDescendants(spec, $.type_specifier)) {
-            const resolved = resolveBasePrimitiveType(db, ts, $);
+            let tsId: u32 = ts;
+            for (const id of db.ast.getDescendants(ts, $.identifier)) {
+              tsId = id;
+            }
+            if (db.ast.textEqualsNode(targetId, tsId)) continue;
+            const resolved = resolveBasePrimitiveTypeInternal(db, ts, $, depth + 1);
             if (resolved != TYPE_UNKNOWN) return resolved;
           }
         }
@@ -775,9 +792,23 @@ export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Reco
           }
         }
         if (specName != 0 && db.ast.textEqualsNode(targetId, specName)) {
+          let cls: u32 = 0;
+          for (const c of db.ast.getAncestors(spec)) {
+            if (db.ast.getType(c) == $.class_definition) {
+              cls = c;
+              break;
+            }
+          }
+          if (cls != 0 && !isClassKind(db, cls, "type")) continue;
+
           for (const ext of db.ast.getDescendants(spec, $.extends_clause)) {
             for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {
-              const resolved = resolveBasePrimitiveType(db, ts, $);
+              let tsId: u32 = ts;
+              for (const id of db.ast.getDescendants(ts, $.identifier)) {
+                tsId = id;
+              }
+              if (db.ast.textEqualsNode(targetId, tsId)) continue;
+              const resolved = resolveBasePrimitiveTypeInternal(db, ts, $, depth + 1);
               if (resolved != TYPE_UNKNOWN) return resolved;
             }
           }
@@ -1703,7 +1734,17 @@ export const MEMBER_RECORD_COMPONENT: u16 = 3;
  * MEMBER_NONE (0), MEMBER_COMPONENT (1), MEMBER_CLASS (2), or MEMBER_RECORD_COMPONENT (3).
  */
 export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 {
-  if (classNode == 0 || identNode == 0) return MEMBER_NONE;
+  return getMemberKindInClassInternal(db, classNode, identNode, $, 0);
+}
+
+function getMemberKindInClassInternal(
+  db: CodeGraph,
+  classNode: u32,
+  identNode: u32,
+  $: Record<string, u16>,
+  depth: u32,
+): u16 {
+  if (classNode == 0 || identNode == 0 || depth > 10) return MEMBER_NONE;
 
   // 1. Direct inner class definitions
   const innerClass = findInnerClassInClass(db, classNode, identNode, $);
@@ -1799,7 +1840,7 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
                 }
               }
               if (baseClass == 0 || baseClass == classNode) continue;
-              const res = getMemberKindInClass(db, baseClass, identNode, $);
+              const res = getMemberKindInClassInternal(db, baseClass, identNode, $, depth + 1);
               if (res != MEMBER_NONE) return res;
               break;
             }
@@ -1815,7 +1856,7 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
                 }
               }
               if (baseClass == 0 || baseClass == classNode) continue;
-              const res = getMemberKindInClass(db, baseClass, identNode, $);
+              const res = getMemberKindInClassInternal(db, baseClass, identNode, $, depth + 1);
               if (res != MEMBER_NONE) return res;
               break;
             }
@@ -1860,7 +1901,7 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
             }
           }
           if (baseClass == 0 || baseClass == classNode) continue;
-          const res = getMemberKindInClass(db, baseClass, identNode, $);
+          const res = getMemberKindInClassInternal(db, baseClass, identNode, $, depth + 1);
           if (res != MEMBER_NONE) return res;
           break;
         }
@@ -1876,7 +1917,7 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
             }
           }
           if (baseClass == 0 || baseClass == classNode) continue;
-          const res = getMemberKindInClass(db, baseClass, identNode, $);
+          const res = getMemberKindInClassInternal(db, baseClass, identNode, $, depth + 1);
           if (res != MEMBER_NONE) return res;
           break;
         }
@@ -2099,7 +2140,17 @@ export function getDottedVariableType(
  * of a variable identifier `identNode` in `classNode` or its inherited base classes.
  */
 export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 {
-  if (classNode == 0 || identNode == 0) return TYPE_UNKNOWN;
+  return getVariableTypeInClassInternal(db, classNode, identNode, $, 0);
+}
+
+function getVariableTypeInClassInternal(
+  db: CodeGraph,
+  classNode: u32,
+  identNode: u32,
+  $: Record<string, u16>,
+  depth: u32,
+): u16 {
+  if (classNode == 0 || identNode == 0 || depth > 10) return TYPE_UNKNOWN;
   const docRoot = db.ast.getRootNode();
   if (docRoot == 0) return TYPE_UNKNOWN;
 
@@ -2189,7 +2240,7 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
                 }
               }
               if (baseClass == 0 || baseClass == classNode) continue;
-              const inheritedType = getVariableTypeInClass(db, baseClass, targetId, $);
+              const inheritedType = getVariableTypeInClassInternal(db, baseClass, targetId, $, depth + 1);
               if (inheritedType != TYPE_UNKNOWN) return inheritedType;
               break;
             }
@@ -2224,7 +2275,7 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
             }
           }
           if (baseClass == 0 || baseClass == classNode) continue;
-          const inheritedType = getVariableTypeInClass(db, baseClass, targetId, $);
+          const inheritedType = getVariableTypeInClassInternal(db, baseClass, targetId, $, depth + 1);
           if (inheritedType != TYPE_UNKNOWN) return inheritedType;
           break;
         }
@@ -2240,7 +2291,7 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
             }
           }
           if (baseClass == 0 || baseClass == classNode) continue;
-          const inheritedType = getVariableTypeInClass(db, baseClass, targetId, $);
+          const inheritedType = getVariableTypeInClassInternal(db, baseClass, targetId, $, depth + 1);
           if (inheritedType != TYPE_UNKNOWN) return inheritedType;
           break;
         }

@@ -1,6 +1,25 @@
-import * as vscode from "vscode";
-import { Uri } from "vscode";
+import type * as vscode from "vscode";
 import { droneStepContent } from "../droneStepContent.js";
+
+function joinPath(base: vscode.Uri, ...pathSegments: string[]): vscode.Uri {
+  const globalVsCode = (globalThis as any).vscode;
+  if (typeof globalVsCode?.Uri?.joinPath === "function") {
+    return globalVsCode.Uri.joinPath(base, ...pathSegments);
+  }
+  const cleanBase = (base.path || "").replace(/\/+$/, "");
+  const relPath = pathSegments.join("/").replace(/^\/+/, "");
+  const fullPath = `${cleanBase}/${relPath}`;
+  return {
+    scheme: base.scheme || "memfs",
+    path: fullPath,
+    authority: base.authority || "",
+    query: base.query || "",
+    fragment: base.fragment || "",
+    fsPath: fullPath,
+    with: (change: any) => ({ ...base, ...change }),
+    toJSON: () => ({ scheme: base.scheme, path: fullPath }),
+  } as vscode.Uri;
+}
 
 export interface IMemoryFileSystemProvider {
   writeFile(uri: vscode.Uri, content: Uint8Array): void;
@@ -419,9 +438,10 @@ end Manufacturing;
 
         "// ── Integration ──",
         "package VehicleIntegration {",
+        "  import VehicleRequirements::*;",
         "  part vehicle : VehicleSystem::Vehicle;",
-        "  satisfy VehicleRequirements::MassRequirement by vehicle;",
-        "  satisfy VehicleRequirements::SafetyRequirement by vehicle;",
+        "  satisfy MassRequirement by vehicle;",
+        "  satisfy SafetyRequirement by vehicle;",
         "}",
         "",
       ].join("\n"),
@@ -429,7 +449,7 @@ end Manufacturing;
     fmi2: {
       "System.mo":
         [
-          "model System",
+          'model System "FMI 2.0 Harmonic Oscillator"',
           "  Real x(start=1.0);",
           "  Real v(start=0.0);",
           "equation",
@@ -437,17 +457,63 @@ end Manufacturing;
           "  der(v) = -x;",
           "end System;",
         ].join("\n") + "\n",
+      "README.md":
+        [
+          "# FMI 2.0 Standard Exchange",
+          "",
+          "This workspace demonstrates a physical system designed for **FMI 2.0 export** (Functional Mock-up Interface).",
+          "",
+          "## Exporting as FMU",
+          "",
+          "From the terminal, export the model as an FMI 2.0 FMU archive:",
+          "```bash",
+          "msc fmu System System.mo --fmi-version 2.0",
+          "```",
+          "",
+          "### Supported Targets",
+          "- `--type cs`: Co-Simulation (includes embedded numerical integrator)",
+          "- `--type me`: Model Exchange (pure differential equations for master solvers)",
+          "- `--target wasm`: Edge-ready WebAssembly FMU binary",
+          "- `--target c`: Standalone C source package for embedded cross-compilation",
+        ].join("\n") + "\n",
     },
     fmi3: {
       "System.mo":
         [
-          "model System",
-          "  Real x(start=1.0);",
-          "  Real v(start=0.0);",
+          'model System "FMI 3.0 Dynamic System with Actuation and Telemetry"',
+          '  input Real u(start = 0.0) "External actuation input";',
+          '  output Real y "Measured system output";',
+          '  parameter Real k = 2.0 "Tunable gain parameter";',
+          '  parameter Real w = 1.0 "Natural angular frequency [rad/s]";',
+          '  Real x(start = 1.0) "Displacement state";',
+          '  Real v(start = 0.0) "Velocity state";',
           "equation",
           "  der(x) = v;",
-          "  der(v) = -x;",
+          "  der(v) = -w^2 * x + k * u;",
+          "  y = x;",
           "end System;",
+        ].join("\n") + "\n",
+      "README.md":
+        [
+          "# FMI 3.0 Next-Generation Simulation Exchange",
+          "",
+          "This workspace showcases **FMI 3.0** capabilities supported by ModelScript, including:",
+          "- **Explicit Causality**: Typed continuous and discrete ports (`input Real u`, `output Real y`)",
+          "- **Tunable Parameters**: Real-time parameter reconfiguration during simulation event mode",
+          "- **Intermediate Value Callbacks**: Real-time telemetry streaming to WebGL/3D dashboards without interrupting steps",
+          "- **Directional & Adjoint Derivatives**: Exact sensitivity propagation for gradient-based optimization loops",
+          "",
+          "## Exporting as FMI 3.0 FMU",
+          "",
+          "Export with the ModelScript CLI:",
+          "```bash",
+          "msc fmu System System.mo --fmi-version 3.0 --target wasm",
+          "```",
+          "",
+          "Inspect the generated FMI 3.0 `modelDescription.xml` schema:",
+          "```bash",
+          "msc fmu System System.mo --fmi-version 3.0 --xml-only",
+          "```",
         ].join("\n") + "\n",
     },
     script: {
@@ -534,13 +600,20 @@ end Manufacturing;
     },
     "hardware-ci": {
       "SystemIntegration.mo": [
-        'model SystemIntegration "Top-level integration prone to structural singularities"',
-        "  // Assume MechanicalComponents.MotorDrive and ElectricalComponents.MechanicalLoad exist",
-        "  // MotorDrive drive;",
-        "  // MechanicalLoad load;",
+        'model SystemIntegration "Demonstrates structural singularity detection in CI"',
+        "  // Two independent rigid speed sources connected rigidly to the same shaft",
+        "  // cause a structural singularity (0 = w1 - w2 over-constraint).",
+        '  Real w1(start = 10.0) "Motor 1 angular velocity [rad/s]";',
+        '  Real w2(start = 12.0) "Motor 2 angular velocity [rad/s]";',
+        '  parameter Real J1 = 0.5 "Inertia 1";',
+        '  parameter Real J2 = 0.5 "Inertia 2";',
+        "  Real tau1 = 2.0;",
+        "  Real tau2 = 3.0;",
         "equation",
-        "  // Structural over-constraint: connecting two fixed speed sources",
-        "  // connect(drive.flange, load.flange);",
+        "  J1 * der(w1) = tau1;",
+        "  J2 * der(w2) = tau2;",
+        "  // Rigid coupling equation creating index-2 DAE / structural over-constraint:",
+        "  w1 = w2;",
         "end SystemIntegration;",
       ].join("\n"),
       ".github/workflows/ci.yml": [
@@ -636,7 +709,7 @@ end Manufacturing;
     "drone-meshing": {
       "drone.step": droneStepContent,
       "README.md":
-        "# Drone Chassis Meshing\n\nRight-click `drone.step` and select **Create FEA Setup** or **Create CFD Setup** to begin configuring your mesh and physical simulation.",
+        "# Drone Chassis Meshing\n\nRight-click `drone.step` and select **Discretize CAD to FEA Mesh (.inp)** or **Discretize CAD to CFD Mesh (.su2)** to begin configuring your mesh and physical simulation.",
     },
     "drone-fea": {
       "drone.step": droneStepContent,
@@ -1090,6 +1163,9 @@ end Manufacturing;
       ].join("\n"),
       "optimize.mos": [
         "// Optimal control with Optimica + SysML2 constraints",
+        "//",
+        "// Run via CLI: msc optimize RocketSled RocketSled.mo SafetyConstraints.sysml",
+        "// Or open RocketSled.mo and press Ctrl+Shift+P → 'ModelScript: Open Optimization Dashboard'",
         "",
         'loadFile("RocketSled.mo");',
         "",
@@ -1127,6 +1203,9 @@ end Manufacturing;
       "uncertainty.mos": [
         "// Monte Carlo uncertainty analysis for a projectile",
         "// Uncertain parameters: drag coefficient (Gaussian) and mass (Uniform)",
+        "//",
+        "// Run via CLI: msc mc Projectile Projectile.mo --samples 200",
+        "// Or open Projectile.mo and press Ctrl+Shift+P → 'ModelScript: Open Uncertainty Analysis'",
         "",
         'loadFile("Projectile.mo");',
         "",
@@ -1232,15 +1311,22 @@ end Manufacturing;
         "",
         "1. Open `SimplePendulum.step`.",
         "2. The 3D Viewer will render the geometric bodies (if OCCT WASM is loaded).",
-        "3. Click the **⚙️ Generate Multi-Body Model** button in the top left of the 3D Viewer, or run the command from the Command Palette.",
+        "3. Click the **⚙️ Generate Multi-Body Model** button in the top left of the 3D Viewer, or run the command from the Command Palette (`Ctrl+Shift+P` → **ModelScript: Generate Multi-Body Simulation from CAD**).",
         "4. A new `SimplePendulum.mo` file will be generated automatically, containing `Parts.Body` and `Joints.Revolute` components.",
         "5. Open `SimplePendulum.mo` and click **Run Simulation** to simulate the dynamics!",
+        "",
+        "## CLI Synthesis",
+        "",
+        "You can also synthesize multi-body models from the terminal using:",
+        "```bash",
+        "msc polyglot multibody SimplePendulum.step",
+        "```",
       ].join("\n"),
       "generate.mos": [
-        "// Generate a Multi-Body model from a STEP assembly",
-        'loadStepAssembly("SimplePendulum.step");',
-        "generateMultiBody(density = 7800);",
-        "simulate(SimplePendulum_Assembly, stopTime = 10);",
+        "// After generating SimplePendulum.mo from SimplePendulum.step via the 3D Viewer",
+        "// (or 'msc polyglot multibody SimplePendulum.step'), simulate the synthesized model:",
+        'loadFile("SimplePendulum.mo");',
+        "simulate(SimplePendulum, stopTime = 10);",
       ].join("\n"),
     },
     cosim: {
@@ -1704,16 +1790,13 @@ end Manufacturing;
     massiveModelRows.push("end MassiveModel;\n");
 
     const entries: [vscode.Uri, Uint8Array][] = [];
-    entries.push([Uri.joinPath(workspaceUri, "MassiveModel.mo"), encoder.encode(massiveModelRows.join("\n"))]);
+    entries.push([joinPath(workspaceUri, "MassiveModel.mo"), encoder.encode(massiveModelRows.join("\n"))]);
 
     for (let i = 0; i < 5; i++) {
       // Use SysML2 ':>' syntax for inheritance to avoid syntax errors
       const extendsClause = i > 0 ? `:> Component_${String(i - 1).padStart(3, "0")} ` : "";
       const content = `package Component_${String(i).padStart(3, "0")} {\n  part def Component_${String(i).padStart(3, "0")} ${extendsClause}{\n    attribute localValue : Real = ${i}.0;\n  }\n}\n`;
-      entries.push([
-        Uri.joinPath(workspaceUri, `Component_${String(i).padStart(3, "0")}.sysml`),
-        encoder.encode(content),
-      ]);
+      entries.push([joinPath(workspaceUri, `Component_${String(i).padStart(3, "0")}.sysml`), encoder.encode(content)]);
     }
     if (memFs.writeFiles) {
       memFs.writeFiles(entries);
@@ -1729,7 +1812,7 @@ end Manufacturing;
   const files = templates[template];
   if (files) {
     for (const [name, content] of Object.entries(files)) {
-      const fileUri = Uri.joinPath(workspaceUri, name);
+      const fileUri = joinPath(workspaceUri, name);
       memFs.writeFile(fileUri, encoder.encode(content));
     }
     console.log(`[blank-project] Scaffolded ${Object.keys(files).length} template file(s) for '${template}'`);
@@ -1738,25 +1821,55 @@ end Manufacturing;
 
 export function getTemplatePrimaryFile(template: string): string {
   const map: Record<string, string> = {
+    // Basic templates
     empty: "HelloWorld.mo",
     blank: "HelloWorld.mo",
     "bouncing-ball": "BouncingBall.mo",
+    rlc: "RLC.mo",
+    script: "simulate.mos",
+    notebook: "demo.monb",
+    "stress-test": "MassiveModel.mo",
+
+    // Digital Thread & CAD / CAE
     "drone-chassis": "DroneSimulation.mo",
-    "pendulum-3d": "DoublePendulum.mo",
     cad: "drone_architecture.sysml",
+    "cad-assembly": "RobotAssembly.mo",
+    "drone-meshing": "README.md",
+    "drone-fea": "DroneFEA.mo",
+    "drone-cfd": "DroneFlight.mo",
+    "modelica-procedural-cad": "DroneCAD.mo",
+    "assembly-to-multibody": "SimplePendulum.step",
+    "injection-molding-cosim": "Manufacturing.mo",
+
+    // Systems Engineering & MBSE
+    sysml2: "VehicleSystem.sysml",
+    "simulation-verification": "BatteryArchitecture.sysml",
+    "mbse-verification": "VerificationReport.md",
+    "hardware-ci": "SystemIntegration.mo",
+
+    // Simulation, Optimization & Surrogate
+    fmi2: "System.mo",
+    fmi3: "System.mo",
+    surrogate: "BouncingBall.mo",
+    "cfd-verification": "ThermalSystem.mo",
+    calibration: "SpringDamper.mo",
+    "data-driven-calibration": "Suspension.mo",
+    "multi-fidelity-binding": "PropellerDynamics.mo",
+    "optimica-polyglot": "RocketSled.mo",
+    uncertainty: "Projectile.mo",
     cosim: "CosimSetup.mo",
     "uns-mqtt": "DigitalTwin.mo",
-    surrogate: "BouncingBall.mo",
-    "injection-molding-cosim": "Manufacturing.mo",
-    rlc: "RLC.mo",
-    "vehicle-architecture": "VehicleArchitecture.sysml",
-    "stress-test": "MassiveModel.mo",
-    "mbse-verification": "VerificationReport.md",
+
+    // Semantic Web & OWL2
     "owl2-contradiction": "constraints.owl",
     "owl2-fmea": "control_system.mo",
     "owl2-manufacturing": "drone.sysml",
     "owl2-subsumption": "components.mo",
     "owl2-units": "units_model.mo",
+
+    // Backwards-compatibility aliases
+    "pendulum-3d": "DoublePendulum.mo",
+    "vehicle-architecture": "VehicleSystem.sysml",
   };
   return map[template] ?? "HelloWorld.mo";
 }

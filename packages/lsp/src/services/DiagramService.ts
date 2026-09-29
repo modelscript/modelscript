@@ -238,8 +238,8 @@ export class DiagramService {
           }
         },
         getSysML2Parser: () => {
-          if (this.parserService?.sysml2ParserReady && this.parserService.sysml2Parser) {
-            return this.parserService.sysml2Parser;
+          if (this.parserService?.isParserReady("sysml2")) {
+            return this.parserService.getParser("sysml2");
           }
           return (globalThis as any).sysml2ParserReady && (globalThis as any).sysml2Parser
             ? (globalThis as any).sysml2Parser

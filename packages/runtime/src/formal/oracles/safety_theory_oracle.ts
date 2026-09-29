@@ -169,8 +169,15 @@ export class SafetyTheoryOracle implements TheoryOracle {
     this.levelStack = [];
   }
 
-  public onSharedEquality(_eq: SharedEquality): void {
-    // Shared equalities from other domains can link parameter values or tolerances
+  public onSharedEquality(eq: SharedEquality): void {
+    if (!eq.varA) return;
+    for (const [fmId, fm] of this.failureModes) {
+      if (eq.varA === `${fmId}.baseFitRate` || eq.varA === `${fmId}.fit` || eq.varA === fmId) {
+        if (eq.bounds && Number.isFinite(eq.bounds[1])) {
+          fm.failureRatePerHour = eq.bounds[1] * 1e-9;
+        }
+      }
+    }
   }
 
   public propagateEqualities(): SharedEquality[] {

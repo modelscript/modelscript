@@ -1,7 +1,6 @@
 // name: ExtendSelf2.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that an extends loop gives an error.
 //

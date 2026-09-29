@@ -102,7 +102,7 @@ export class LibraryTreeItem extends vscode.TreeItem {
       } catch {
         this.iconPath = classKindToIcon(info.classKind);
       }
-    } else if (info.iconUri) {
+    } else if (info.iconUri && info.iconUri.scheme !== "vscode-userdata") {
       this.iconPath = info.iconUri;
     } else if (info.iconSvg) {
       const iconUri = svgToIconUri(info.iconSvg);
@@ -264,7 +264,7 @@ export class LibraryTreeProvider
 
   private async saveSvgIcon(className: string, svg: string): Promise<vscode.Uri | undefined> {
     if (!svg) return undefined;
-    if (this.context?.globalStorageUri) {
+    if (this.context?.globalStorageUri && this.context.globalStorageUri.scheme === "file") {
       try {
         const iconsDir = vscode.Uri.joinPath(this.context.globalStorageUri, "icons");
         await vscode.workspace.fs.createDirectory(iconsDir);

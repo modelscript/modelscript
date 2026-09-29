@@ -26,7 +26,7 @@ import { createDiagramDispatch } from "./diagramApi.js";
 // @ts-ignore
 // @ts-ignore
 
-import type { SyntaxNode, Tree as TreeSitterTree } from "./utils/tree-sitter.js";
+import type { SyntaxNode, Tree as TreeSitterTree } from "./utils/cst-facade.js";
 
 import {
   ArenaQueryFlattener,
@@ -226,11 +226,11 @@ globalThis.connection = connection;
 
 const diagramService = new DiagramService(connection, documentManager, workspaceManager);
 /* Per-document state for hover resolution */
-workspaceManager.stepWorkspaceIndex = new StepWorkspaceIndex();
-workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, { priority: 2 });
+const stepWsIndex = new StepWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("step", stepWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("step", stepWsIndex, { priority: 2, name: "step" });
 
 import modelicaLangFallback from "@modelscript/modelica/language";
-import { UnifiedWorkspace } from "@modelscript/runtime";
 import scadLangFallback from "@modelscript/scad/language";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -254,45 +254,29 @@ import { HierarchyService } from "./services/HierarchyService.js";
 import { ParserService } from "./services/ParserService.js";
 import { ValidationService } from "./services/ValidationService.js";
 
-const unifiedWorkspace = new UnifiedWorkspace();
-const stepWorkspaceIndex = new StepWorkspaceIndex();
-if (workspaceManager.globalWorkspaceIndex) {
-  workspaceManager.unifiedWorkspace.registerWorkspace(
-    "modelica",
-    workspaceManager.globalWorkspaceIndex,
-    modelicaLangFallback,
-  );
+const moWs = workspaceManager.getWorkspaceIndex("modelica");
+if (moWs) {
+  workspaceManager.unifiedWorkspace.registerWorkspace("modelica", moWs, modelicaLangFallback);
 }
-if (workspaceManager.sysml2WorkspaceIndex) {
-  workspaceManager.unifiedWorkspace.registerWorkspace(
-    "sysml2",
-    workspaceManager.sysml2WorkspaceIndex,
-    sysml2LangFallback,
-  );
-  workspaceManager.unifiedWorkspace.registerWorkspace(
-    "sysml",
-    workspaceManager.sysml2WorkspaceIndex,
-    sysml2LangFallback,
-  );
+const sysmlWs = workspaceManager.getWorkspaceIndex("sysml2");
+if (sysmlWs) {
+  workspaceManager.unifiedWorkspace.registerWorkspace("sysml2", sysmlWs, sysml2LangFallback);
+  workspaceManager.unifiedWorkspace.registerWorkspace("sysml", sysmlWs, sysml2LangFallback);
 }
-if (workspaceManager.owl2WorkspaceIndex) {
-  workspaceManager.unifiedWorkspace.registerWorkspace("owl2", workspaceManager.owl2WorkspaceIndex, owl2LangFallback);
+const owlWs = workspaceManager.getWorkspaceIndex("owl2");
+if (owlWs) {
+  workspaceManager.unifiedWorkspace.registerWorkspace("owl2", owlWs, owl2LangFallback);
 }
 
 const getReadyMessage = () => {
   const parts = [];
-  const mslCount = workspaceManager.globalWorkspaceIndex?.fileCount ?? 0;
+  const mslCount = workspaceManager.getWorkspaceIndex("modelica")?.fileCount ?? 0;
   if (mslCount > 0) parts.push(`${mslCount} MSL`);
-  const sysmlCount = workspaceManager.sysml2WorkspaceIndex?.fileCount ?? 0;
+  const sysmlCount = workspaceManager.getWorkspaceIndex("sysml2")?.fileCount ?? 0;
   if (sysmlCount > 0) parts.push(`${sysmlCount} SysML2`);
   return parts.length > 0 ? `ModelScript (${parts.join(", ")})` : "ModelScript";
 };
 globalThis.getReadyMessage = getReadyMessage;
-if (workspaceManager.stepWorkspaceIndex) {
-  workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, {
-    name: "step",
-  });
-}
 
 // ── Multi-Body generation from STEP ───────────────────────────────
 globalThis.documentLSPBridges = validationService.documentLSPBridges;
@@ -376,23 +360,23 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "Modelica",
       extensions: [".mo", ".mos", ".msim"],
       get parser() {
-        return modelicaParser ?? parserService.parser;
+        return modelicaParser ?? parserService.getParser("modelica");
       },
       set parser(val: any) {
         modelicaParser = val;
       },
       get facade() {
-        return modelicaFacade ?? parserService.facade;
+        return modelicaFacade ?? parserService.getFacade("modelica");
       },
       set facade(val: any) {
         modelicaFacade = val;
       },
-      workspaceIndex: workspaceManager.globalWorkspaceIndex,
+      workspaceIndex: workspaceManager.getWorkspaceIndex("modelica"),
       get queryEngine() {
-        return workspaceManager.globalModelicaQueryEngine ?? undefined;
+        return workspaceManager.getQueryEngine("modelica") ?? undefined;
       },
       set queryEngine(val) {
-        workspaceManager.globalModelicaQueryEngine = val ?? null;
+        workspaceManager.setQueryEngine("modelica", val ?? null);
       },
       languageDef: modelicaLanguage,
       handlers: modelicaLanguage.lsp?.handlers,
@@ -406,23 +390,23 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "SysML v2",
       extensions: [".sysml", ".sysml2"],
       get parser() {
-        return sysml2Parser ?? parserService.sysml2Parser;
+        return sysml2Parser ?? parserService.getParser("sysml2");
       },
       set parser(val: any) {
         sysml2Parser = val;
       },
       get facade() {
-        return sysml2Facade ?? parserService.sysml2Facade;
+        return sysml2Facade ?? parserService.getFacade("sysml2");
       },
       set facade(val: any) {
         sysml2Facade = val;
       },
-      workspaceIndex: workspaceManager.sysml2WorkspaceIndex,
+      workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
       get queryEngine() {
-        return workspaceManager.globalSysML2QueryEngine ?? undefined;
+        return workspaceManager.getQueryEngine("sysml2") ?? undefined;
       },
       set queryEngine(val) {
-        workspaceManager.globalSysML2QueryEngine = val ?? null;
+        workspaceManager.setQueryEngine("sysml2", val ?? null);
       },
       languageDef: sysml2LangFallback,
     });
@@ -434,23 +418,23 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "SysML v2",
       extensions: [".sysml", ".sysml2"],
       get parser() {
-        return sysmlParser ?? parserService.sysml2Parser;
+        return sysmlParser ?? parserService.getParser("sysml2");
       },
       set parser(val: any) {
         sysmlParser = val;
       },
       get facade() {
-        return sysmlFacade ?? parserService.sysml2Facade;
+        return sysmlFacade ?? parserService.getFacade("sysml2");
       },
       set facade(val: any) {
         sysmlFacade = val;
       },
-      workspaceIndex: workspaceManager.sysml2WorkspaceIndex,
+      workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
       get queryEngine() {
-        return workspaceManager.globalSysML2QueryEngine ?? undefined;
+        return workspaceManager.getQueryEngine("sysml2") ?? undefined;
       },
       set queryEngine(val) {
-        workspaceManager.globalSysML2QueryEngine = val ?? null;
+        workspaceManager.setQueryEngine("sysml2", val ?? null);
       },
       languageDef: sysml2LangFallback,
     });
@@ -462,23 +446,23 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "STEP",
       extensions: [".step", ".stp", ".p21"],
       get parser() {
-        return stepParser ?? parserService.stepParser;
+        return stepParser ?? parserService.getParser("step");
       },
       set parser(val: any) {
         stepParser = val;
       },
       get facade() {
-        return stepFacade ?? parserService.stepFacade;
+        return stepFacade ?? parserService.getFacade("step");
       },
       set facade(val: any) {
         stepFacade = val;
       },
-      workspaceIndex: workspaceManager.stepWorkspaceIndex,
+      workspaceIndex: workspaceManager.getWorkspaceIndex("step"),
       get queryEngine() {
-        return workspaceManager.globalStepQueryEngine ?? undefined;
+        return workspaceManager.getQueryEngine("step") ?? undefined;
       },
       set queryEngine(val) {
-        workspaceManager.globalStepQueryEngine = val ?? null;
+        workspaceManager.setQueryEngine("step", val ?? null);
       },
       languageDef: stepLanguage,
       handlers: stepLanguage.lsp?.handlers,
@@ -491,23 +475,23 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "OWL2",
       extensions: [".owl", ".ttl", ".ofn"],
       get parser() {
-        return owl2Parser ?? parserService.owl2Parser;
+        return owl2Parser ?? parserService.getParser("owl2");
       },
       set parser(val: any) {
         owl2Parser = val;
       },
       get facade() {
-        return owl2Facade ?? parserService.owl2Facade;
+        return owl2Facade ?? parserService.getFacade("owl2");
       },
       set facade(val: any) {
         owl2Facade = val;
       },
-      workspaceIndex: workspaceManager.owl2WorkspaceIndex,
+      workspaceIndex: workspaceManager.getWorkspaceIndex("owl2"),
       get queryEngine() {
-        return workspaceManager.globalOWL2QueryEngine ?? undefined;
+        return workspaceManager.getQueryEngine("owl2") ?? undefined;
       },
       set queryEngine(val) {
-        workspaceManager.globalOWL2QueryEngine = val ?? null;
+        workspaceManager.setQueryEngine("owl2", val ?? null);
       },
       languageDef: owl2LangFallback,
     });
@@ -519,13 +503,13 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "CSV",
       extensions: [".csv"],
       get parser() {
-        return csvParser ?? parserService.csvParser;
+        return csvParser ?? parserService.getParser("csv");
       },
       set parser(val: any) {
         csvParser = val;
       },
       get facade() {
-        return csvFacade ?? parserService.csvFacade;
+        return csvFacade ?? parserService.getFacade("csv");
       },
       set facade(val: any) {
         csvFacade = val;
@@ -540,13 +524,13 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "OpenSCAD",
       extensions: [".scad"],
       get parser() {
-        return scadParser ?? (parserService as any).scadParser;
+        return scadParser ?? parserService.getParser("scad");
       },
       set parser(val: any) {
         scadParser = val;
       },
       get facade() {
-        return scadFacade ?? (parserService as any).scadFacade;
+        return scadFacade ?? parserService.getFacade("scad");
       },
       set facade(val: any) {
         scadFacade = val;
@@ -705,12 +689,10 @@ Object.defineProperty(globalThis, "projectTreeChangedPending", {
 });
 documents.onDidOpen(async (event) => {
   connection.console.info(`[documents] onDidOpen: ${event.document.uri}`);
-  if (parserService.parserReady) {
-    try {
-      await validationService.validateTextDocument(event.document);
-    } catch (e: any) {
-      connection.console.warn(`[onDidOpen] Validation error for ${event.document.uri}: ${e?.message}`);
-    }
+  try {
+    await validationService.validateTextDocument(event.document);
+  } catch (e: any) {
+    connection.console.warn(`[onDidOpen] Validation error for ${event.document.uri}: ${e?.message}`);
   }
 });
 
@@ -760,7 +742,10 @@ documents.onDidChangeContent((change) => {
 
   // === TIER 1: Keystroke (0ms) — Fast WASM GLR Incremental Parse + Syntax Errors ===
   const plugin = globalLanguageRegistry.getPluginForUri(uri);
-  const parser = plugin?.parser ?? (parserService.parserReady ? parserService.parser : undefined);
+  const parser =
+    plugin?.parser ??
+    parserService.getParserForUri(uri) ??
+    (parserService.isParserReady("modelica") ? parserService.getParser("modelica") : undefined);
 
   if (parser) {
     try {
@@ -817,7 +802,7 @@ documents.onDidChangeContent((change) => {
             ? "file://" + uri.substring("modelscript-lib://global".length)
             : uri;
           if (wsIndex.has(effectiveUri)) {
-            wsIndex.markDirty(effectiveUri, () => cached.tree.rootNode);
+            wsIndex.reindexDocument(effectiveUri, () => cached.tree.rootNode);
           } else {
             wsIndex.register(effectiveUri, () => cached.tree.rootNode);
           }
@@ -877,8 +862,8 @@ registerSemanticTokensProvider(
   connection,
   documents,
   parserService.getDocumentTree.bind(parserService),
-  () => parserService.sysml2Parser,
-  () => parserService.sysml2ParserReady,
+  () => parserService.getParser("sysml2"),
+  () => parserService.isParserReady("sysml2"),
   (ext, text) => sharedContext?.parse(ext, text),
 );
 
@@ -892,20 +877,14 @@ registerHoverProvider(connection, documents, validationService);
 registerDefinitionProvider(connection, documents, validationService.documentLSPBridges, documentManager.documentTrees);
 /* Document formatting — uses tree-sitter parse + format() */
 
-registerFormattingProvider(
-  connection,
-  documents,
-  parserService.getDocumentTree.bind(parserService),
-  () => parserService.parserReady && !!parserService.parser,
+registerFormattingProvider(connection, documents, parserService.getDocumentTree.bind(parserService), () =>
+  parserService.isParserReady("modelica"),
 );
 
 /* Document color provider — detects Modelica color fields (color, lineColor, etc.) */
 
-registerColorProvider(
-  connection,
-  documents,
-  parserService.getDocumentTree.bind(parserService),
-  () => parserService.parserReady && !!parserService.parser,
+registerColorProvider(connection, documents, parserService.getDocumentTree.bind(parserService), () =>
+  parserService.isParserReady("modelica"),
 );
 
 /* Document symbols — enables Outline panel and breadcrumb navigation */
@@ -916,9 +895,9 @@ registerDocumentFeaturesProvider(
   validationService.documentLSPBridges,
   parserService.getDocumentTree.bind(parserService),
   parserService.getLineIndexForDoc.bind(parserService),
-  () => parserService.parserReady && !!parserService.parser,
-  () => parserService.sysml2ParserReady && !!parserService.sysml2Parser,
-  () => parserService.sysml2Parser,
+  () => parserService.isParserReady("modelica"),
+  () => parserService.isParserReady("sysml2"),
+  () => parserService.getParser("sysml2"),
   validationService,
 );
 
@@ -930,11 +909,13 @@ registerWorkspaceFeaturesProvider(
   documents,
   documentManager.documentTrees,
   validationService.flushValidation.bind(validationService),
-  async (isSysML2) =>
-    isSysML2
-      ? await workspaceManager.sysml2WorkspaceIndex.toUnifiedAsync()
-      : await workspaceManager.globalWorkspaceIndex.toUnifiedAsync(),
-  () => workspaceManager.globalWorkspaceIndex,
+  async (isSysML2) => {
+    const idx = isSysML2
+      ? workspaceManager.getWorkspaceIndex("sysml2")
+      : workspaceManager.getWorkspaceIndex("modelica");
+    return await idx?.toUnifiedAsync();
+  },
+  () => workspaceManager.getWorkspaceIndex("modelica"),
 );
 
 // Custom request: get diagram data for the webview
@@ -1222,8 +1203,8 @@ registerSignatureHelpProvider(
   documents,
   validationService.documentLSPBridges,
   parserService.getDocumentTree.bind(parserService),
-  () => parserService.parserReady,
-  () => parserService.parser,
+  () => parserService.isParserReady("modelica"),
+  () => parserService.getParser("modelica"),
   parserService.getLineIndexForDoc.bind(parserService),
 );
 registerCodeLensProvider(lspContext);

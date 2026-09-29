@@ -187,7 +187,7 @@ export const ModelicaErrorCode = {
     code: 4001,
     rule: "extends-cycle",
     severity: "error",
-    message: (className: string, baseName: string) => `Extends cycle detected: '${className}' extends '${baseName}'.`,
+    message: (baseName: string) => `extends ${baseName} causes an instantiation loop.`,
   },
   DUPLICATE_MODIFICATION: {
     code: 4002,

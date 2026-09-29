@@ -10,7 +10,7 @@ import {
   ModelicaCalibrator,
   ModelicaOptimizer,
   solveGlobalProblem,
-} from "../src/compiler/optimizer/index.js";
+} from "../src/optimizer/index.js";
 
 await initBltWasm();
 
@@ -121,12 +121,28 @@ console.log("Testing Compiler Optimizer WASM Integration...");
   console.log("  ✔ solveGlobalProblem routed to spatial Branch-and-Bound");
 }
 
-// 4. Test IpoptSolver Wrapper
+// 4. Test IpoptSolver Wrapper & L-BFGS-B Fallback
 {
   const solver = new IpoptSolver("dummy.so");
   const result = await solver.solve();
-  assert.strictEqual(result.status, "STUB_SOLVED_SUCCESS");
-  console.log("  ✔ IpoptSolver class instantiated and executed solve()");
+  assert.strictEqual(result.status, "SUCCESS");
+
+  // Verify L-BFGS-B pure TS optimization fallback on quadratic bowl min (x-3)^2 + (y-4)^2
+  const optResult = await solver.solve(
+    2,
+    0,
+    [10.0, 10.0],
+    [-50, -50],
+    [50, 50],
+    [],
+    [],
+    (x) => Math.pow(x[0] - 3.0, 2) + Math.pow(x[1] - 4.0, 2),
+    (x) => [2 * (x[0] - 3.0), 2 * (x[1] - 4.0)],
+  );
+  assert.strictEqual(optResult.status, "SUCCESS");
+  assert.ok(Math.abs(optResult.variables.solution[0] - 3.0) < 1e-4);
+  assert.ok(Math.abs(optResult.variables.solution[1] - 4.0) < 1e-4);
+  console.log("  ✔ IpoptSolver class instantiated and executed solve() with L-BFGS-B fallback");
 }
 
 // 5. Test ModelicaOptimizer with ExprId objective & AD gradient

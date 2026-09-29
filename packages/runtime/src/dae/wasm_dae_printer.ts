@@ -15,7 +15,6 @@ import {
   ArenaStateMachine,
   ArenaStateMachineState,
   BinOp,
-  Causality,
   DAEBuilder,
   EqKind,
   ExprKind,
@@ -1481,6 +1480,7 @@ export class ArenaDAEPrinter {
     // Emit function definitions
     const calledFnNames = new Set<string>();
     const collectCalls = (builder: DAEBuilder) => {
+      if (!builder) return;
       for (let i = 0; i < builder.exprCount; i++) {
         if (builder.getExprKind(i) === ExprKind.Call) {
           const fnName = builder.interner.resolve(builder.getExprData1(i));
@@ -1760,21 +1760,14 @@ export class ArenaDAEPrinter {
     this.out.write("\n");
 
     if (this.omcCompatibility) {
-      const inputs: number[] = [];
-      const outputs: number[] = [];
-      const publicLocals: number[] = [];
+      const publicVars: number[] = [];
       const protNoBinding: number[] = [];
       const protWithBinding: number[] = [];
 
       for (let i = 0; i < fn.varCount; i++) {
         if (fn.isVarRemoved(i)) continue;
-        const causality = fn.getVarCausality(i);
         const isProtected = fn.isVarProtected(i);
-        if (causality === Causality.Input) {
-          inputs.push(i);
-        } else if (causality === Causality.Output) {
-          outputs.push(i);
-        } else if (isProtected) {
+        if (isProtected) {
           const hasBinding = fn.getVarExpression(i) >= 0;
           if (hasBinding) {
             protWithBinding.push(i);
@@ -1783,7 +1776,7 @@ export class ArenaDAEPrinter {
           }
         } else {
           if (fn.getVarVariability(i) !== Variability.Constant) {
-            publicLocals.push(i);
+            publicVars.push(i);
           }
         }
       }
@@ -1798,7 +1791,7 @@ export class ArenaDAEPrinter {
         return 0;
       });
 
-      for (const i of [...inputs, ...outputs, ...publicLocals, ...protNoBinding, ...protWithBinding]) {
+      for (const i of [...publicVars, ...protNoBinding, ...protWithBinding]) {
         this.printVar(i);
       }
     } else {

@@ -218,9 +218,9 @@ const ExplorePage: React.FC = () => {
             userRepos = data.repos || [];
           }
 
-          const mockRepos = [
+          const curatedRepos = [
             {
-              id: "mock1",
+              id: "curated-msl",
               provider: "github",
               namespace: "modelica",
               project: "Modelica-Standard-Library",
@@ -228,7 +228,7 @@ const ExplorePage: React.FC = () => {
               avatar_url: "",
             },
             {
-              id: "mock2",
+              id: "curated-compiler",
               provider: "gitlab",
               namespace: "modelscript",
               project: "compiler",
@@ -236,7 +236,7 @@ const ExplorePage: React.FC = () => {
               avatar_url: "",
             },
             {
-              id: "mock3",
+              id: "curated-web",
               provider: "github",
               namespace: "modelscript",
               project: "web",
@@ -244,7 +244,7 @@ const ExplorePage: React.FC = () => {
               avatar_url: "",
             },
             {
-              id: "mock4",
+              id: "curated-fmi",
               provider: "github",
               namespace: "modelica-association",
               project: "FMI-Standard",
@@ -253,7 +253,7 @@ const ExplorePage: React.FC = () => {
             },
           ];
 
-          const filteredMock = mockRepos.filter(
+          const filteredCurated = curatedRepos.filter(
             (r) =>
               r.project.toLowerCase().includes(query.toLowerCase()) ||
               r.namespace.toLowerCase().includes(query.toLowerCase()) ||
@@ -267,7 +267,7 @@ const ExplorePage: React.FC = () => {
           );
 
           const seen = new Set();
-          const combined = [...filteredUser, ...filteredMock].filter((r) => {
+          const combined = [...filteredUser, ...filteredCurated].filter((r) => {
             const key = `${r.namespace}/${r.project}`;
             if (seen.has(key)) return false;
             seen.add(key);

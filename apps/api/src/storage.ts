@@ -17,7 +17,7 @@ export class LibraryStorage {
   readonly #dataDir: string;
 
   constructor(dataDir?: string) {
-    this.#dataDir = dataDir ?? DEFAULT_DATA_DIR;
+    this.#dataDir = path.resolve(dataDir ?? DEFAULT_DATA_DIR);
   }
 
   /**
@@ -286,7 +286,8 @@ export class LibraryStorage {
     if (typeof val !== "string") {
       throw new Error("Invalid path component: expected string");
     }
-    const clean = path.basename(val).replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const normalized = val.startsWith("@") ? "@" + val.slice(1).replace(/[/\\]/g, "__") : val;
+    const clean = path.basename(normalized).replace(/[^a-zA-Z0-9_.-]/g, "_");
     if (!clean || clean === "." || clean === "..") {
       throw new Error(`Invalid path component: ${val}`);
     }

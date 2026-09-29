@@ -492,22 +492,37 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         fs.mkdirSync(outDir, { recursive: true });
       }
 
+      const { createSysML2QueryEngine, exportToNuXmv, exportToOcra, exportToSmtLib } =
+        await import("@modelscript/sysml2");
+      const unifiedSysml = sysmlIndex
+        ? sysmlIndex.toUnifiedAsync
+          ? await sysmlIndex.toUnifiedAsync()
+          : sysmlIndex.toUnified()
+        : unifiedDb;
+      const qe = createSysML2QueryEngine(unifiedSysml);
+      const qdb = qe.toQueryDB();
+
       for (const fmt of formats) {
         if (fmt === "smt2") {
           const smtPath = path.join(outDir, `${target || "model"}.smt2`);
-          fs.writeFileSync(smtPath, `; SMT-LIB 2.6 Formal Export\n(set-logic QF_NRA)\n(check-sat)\n`);
+          const smtContent = exportToSmtLib(qdb);
+          fs.writeFileSync(smtPath, smtContent);
           console.log(`Exported SMT2 spec to: ${smtPath}`);
         } else if (fmt === "nuxmv" || fmt === "smv") {
           const smvPath = path.join(outDir, `${target || "model"}.smv`);
-          fs.writeFileSync(smvPath, `-- NuXmv Formal Transition System\nMODULE main\n`);
+          const smvContent = exportToNuXmv(qdb, { moduleName: target || "System" });
+          fs.writeFileSync(smvPath, smvContent);
           console.log(`Exported NuXmv spec to: ${smvPath}`);
         } else if (fmt === "ocra") {
           const ocraPath = path.join(outDir, `${target || "model"}.oss`);
-          fs.writeFileSync(ocraPath, `@contract\nCOMPONENT ${target || "System"}\n`);
+          const ocraContent = exportToOcra(qdb, { systemName: target || "System" });
+          fs.writeFileSync(ocraPath, ocraContent);
           console.log(`Exported OCRA contract to: ${ocraPath}`);
         } else if (fmt === "mos") {
           const mosPath = path.join(outDir, `${target || "model"}.mos`);
-          fs.writeFileSync(mosPath, `// Modelica Simulation Script\n`);
+          const simModel = target || "model";
+          const firstMo = paths.find((p) => p.endsWith(".mo")) || "model.mo";
+          fs.writeFileSync(mosPath, `// Modelica Simulation Script\nloadFile("${firstMo}");\nsimulate(${simModel});\n`);
           console.log(`Exported Modelica experiment to: ${mosPath}`);
         }
       }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CoinorWasmSolver, type IpoptWasmOptions, type IpoptWasmResult } from "./coinor-wasm.js";
+import { lbfgsbSolve, type LbfgsbResult } from "./lbfgsb.js";
 
 export interface IpoptResult {
   status: string;
@@ -59,10 +60,46 @@ export class IpoptSolver {
       };
     }
 
-    return {
-      status: "STUB_SOLVED_SUCCESS",
-      objectiveValue: 0.0,
-      variables: {},
-    };
+    // Fallback to pure TypeScript L-BFGS-B when WASM module is not loaded or for bound-constrained problems
+    if (nVars > 0 && evalObjective && evalGradient) {
+      const x0Arr = new Float64Array(x0.length === nVars ? x0 : new Array(nVars).fill(0.0));
+      const lbArr = varLB.length === nVars ? new Float64Array(varLB) : undefined;
+      const ubArr = varUB.length === nVars ? new Float64Array(varUB) : undefined;
+
+      const res: LbfgsbResult = lbfgsbSolve(
+        x0Arr,
+        (xArr) => {
+          const xVec = Array.from(xArr);
+          return {
+            cost: evalObjective(xVec),
+            grad: new Float64Array(evalGradient(xVec)),
+          };
+        },
+        lbArr,
+        ubArr,
+        {
+          maxIterations: options?.maxIterations ?? 100,
+          tolerance: options?.tolerance ?? 1e-6,
+        },
+      );
+
+      return {
+        status: res.converged ? "SUCCESS" : "MAX_ITERATIONS_REACHED",
+        objectiveValue: res.cost,
+        variables: { solution: Array.from(res.x) },
+      };
+    }
+
+    if (nVars === 0) {
+      return {
+        status: "SUCCESS",
+        objectiveValue: 0.0,
+        variables: { solution: [] },
+      };
+    }
+
+    throw new Error(
+      "IpoptSolver requires either a loaded WebAssembly CoinOR module with constraint callbacks, or valid evalObjective and evalGradient callbacks for L-BFGS-B optimization.",
+    );
   }
 }

@@ -66,12 +66,21 @@ export async function startDaemon(): Promise<boolean> {
     return true;
   }
 
-  const serverScript = path.resolve(__dirname, "daemon-server.js");
-  const child = spawn(process.execPath, [serverScript], {
-    detached: true,
-    stdio: "ignore",
-    env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=4096" },
-  });
+  const jsServer = path.resolve(__dirname, "daemon-server.js");
+  const tsServer = path.resolve(__dirname, "daemon-server.ts");
+  const serverScript = fs.existsSync(jsServer) ? jsServer : tsServer;
+  const isTs = serverScript.endsWith(".ts");
+  const child = isTs
+    ? spawn("npx", ["tsx", serverScript], {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=4096" },
+      })
+    : spawn(process.execPath, [serverScript], {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=4096" },
+      });
   child.unref();
 
   // Poll until socket is alive (up to 2 seconds)

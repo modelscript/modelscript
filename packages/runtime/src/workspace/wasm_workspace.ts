@@ -406,7 +406,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   /**
-   * Backwards-compatible alias for reindexDocument.
+   * @deprecated Backwards-compatible alias for reindexDocument. Use `reindexDocument` instead.
    */
   markDirty(uri: string, loader?: () => any, editRanges?: any, totalDelta?: number): void {
     this.reindexDocument(uri, loader, editRanges, totalDelta);

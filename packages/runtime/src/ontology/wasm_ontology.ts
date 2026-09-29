@@ -350,6 +350,9 @@ export interface SHACLSparqlRule {
   readonly wherePatterns: readonly TriplePattern[];
 }
 
+/**
+ * @deprecated Legacy rule representation. Use `SHACLTripleRule` or `SHACLSparqlRule` instead.
+ */
 export interface SHACLLegacyRule {
   readonly targetClass: string;
   readonly propertyIri: string;

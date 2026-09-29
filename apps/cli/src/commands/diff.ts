@@ -243,6 +243,10 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       const diffData = buildVisualDiffGraph(baseDiagram, headDiagram);
       const title = `Visual Diff: ${path.basename(file1Path)} vs ${path.basename(file2Path)}`;
 
+      const useColor = Boolean(process.stdout.isTTY && !process.env["NO_COLOR"]);
+      const green = useColor ? "\x1b[32m" : "";
+      const reset = useColor ? "\x1b[0m" : "";
+
       if (format === "visual-html") {
         const html = renderVisualDiffToHtml(diffData, {
           title,
@@ -251,12 +255,12 @@ export const Diff: CommandModule<{}, DiffArgs> = {
         });
         const outPath = args.output || path.resolve(process.cwd(), "visual-diff.html");
         fs.writeFileSync(outPath, html, "utf-8");
-        console.log(`\x1b[32m✔ Visual Diff HTML generated:\x1b[0m ${outPath}`);
+        console.log(`${green}✔ Visual Diff HTML generated:${reset} ${outPath}`);
       } else if (format === "visual-svg") {
         const svg = renderVisualDiffToSvg(diffData, { title });
         const outPath = args.output || path.resolve(process.cwd(), "visual-diff.svg");
         fs.writeFileSync(outPath, svg, "utf-8");
-        console.log(`\x1b[32m✔ Visual Diff SVG generated:\x1b[0m ${outPath}`);
+        console.log(`${green}✔ Visual Diff SVG generated:${reset} ${outPath}`);
       } else if (format === "pr-comment") {
         let comment = `### 🔍 ModelScript Visual Diff: \`${path.basename(file1Path)}\` ➔ \`${path.basename(file2Path)}\`\n\n`;
         comment += `| Added | Deleted | Modified | Breaking Changes |\n`;
@@ -264,7 +268,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
         comment += `| \`+${diffData.stats.addedNodes}\` | \`−${diffData.stats.deletedNodes}\` | \`~${diffData.stats.modifiedNodes}\` | \`${diffData.stats.breakingChanges}\` |\n\n`;
         if (args.output) {
           fs.writeFileSync(path.resolve(process.cwd(), args.output), comment, "utf-8");
-          console.log(`\x1b[32m✔ PR Comment written to:\x1b[0m ${args.output}`);
+          console.log(`${green}✔ PR Comment written to:${reset} ${args.output}`);
         } else {
           console.log(comment);
         }
@@ -300,12 +304,13 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       console.log(`  Updated:  ${updatedCount}`);
       console.log(`  Breaking: ${breakingCount}`);
     } else {
-      // ANSI colors
-      const green = "\x1b[32m";
-      const red = "\x1b[31m";
-      const yellow = "\x1b[33m";
-      const bold = "\x1b[1m";
-      const reset = "\x1b[0m";
+      // ANSI colors (respects NO_COLOR and non-TTY)
+      const useColor = Boolean(process.stdout.isTTY && !process.env["NO_COLOR"]);
+      const green = useColor ? "\x1b[32m" : "";
+      const red = useColor ? "\x1b[31m" : "";
+      const yellow = useColor ? "\x1b[33m" : "";
+      const bold = useColor ? "\x1b[1m" : "";
+      const reset = useColor ? "\x1b[0m" : "";
 
       console.log(`${bold}ModelScript Semantic AST Diff${reset}`);
       console.log(`Base:   ${args.file1}`);

@@ -1207,7 +1207,7 @@ function populateEnvFromClassModLoc(envPtr: u32, modLoc: u64, pool: ArenaStringP
   populateEnvRecursive(env, modLoc, pool, exprVisitor);
 }
 
-function extractModUnit(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
+function extractModAttr(modLoc: u64, attrName: string, exprVisitor: WasmExprVisitor): u32 {
   if (locIsNull(modLoc)) return 0xffffffff;
   let ch = locFirstChild(modLoc);
   while (!locIsNull(ch)) {
@@ -1220,7 +1220,7 @@ function extractModUnit(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
       let nameCur = locFindDescendant(ch, SyntaxType.IDENTIFIER);
       if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.TOKEN_IDENTIFIER_ALT);
       if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.NAME);
-      if (!locIsNull(nameCur) && locMatches(nameCur, "unit")) {
+      if (!locIsNull(nameCur) && locMatches(nameCur, attrName)) {
         let exprLoc = locFindDescendant(ch, SyntaxType.MODIFICATION_EXPRESSION);
         if (locIsNull(exprLoc)) exprLoc = locFindDescendant(ch, SyntaxType.EXPRESSION);
         if (!locIsNull(exprLoc)) {
@@ -1231,35 +1231,17 @@ function extractModUnit(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
       ch = locNextSibling(ch);
       continue;
     }
-    let sub = extractModUnit(ch, exprVisitor);
+    let sub = extractModAttr(ch, attrName, exprVisitor);
     if (sub != 0xffffffff) return sub;
     ch = locNextSibling(ch);
   }
   return 0xffffffff;
 }
 
-// Backward compatibility wrappers for CstCursor
-function findCompositionNode(node: CstCursor): CstCursor {
-  return CstCursor.wrap(locPtr(findCompositionLoc(node.toLoc())));
+function extractModUnit(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
+  return extractModAttr(modLoc, "unit", exprVisitor);
 }
-function getClassNameId(pool: ArenaStringPool, classNode: CstCursor): u32 {
-  return getClassNameIdLoc(pool, classNode.toLoc());
-}
-function findClassDefinition(root: CstCursor, targetNameId: u32, pool: ArenaStringPool): CstCursor {
-  return CstCursor.wrap(locPtr(findClassDefinitionLoc(root.toLoc(), targetNameId, pool)));
-}
-function parseArrayDimensions(subscriptsNode: CstCursor): u64 {
-  return parseArrayDimensionsLoc(subscriptsNode.toLoc());
-}
-function findBindingExpression(modNode: CstCursor): CstCursor {
-  return CstCursor.wrap(locPtr(findBindingExpressionLoc(modNode.toLoc())));
-}
-function findClassModification(modNode: CstCursor): CstCursor {
-  return CstCursor.wrap(locPtr(findClassModificationLoc(modNode.toLoc())));
-}
-function populateEnvFromClassMod(envPtr: u32, modCur: CstCursor, pool: ArenaStringPool, exprVisitor: WasmExprVisitor): void {
-  populateEnvFromClassModLoc(envPtr, modCur.toLoc(), pool, exprVisitor);
-}
+
 
 
 const MOD_ENTRY_SLOTS: u32 = 256;

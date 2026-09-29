@@ -32,13 +32,11 @@ import {
   type IPolygon,
   type IRectangle,
   type IText,
+  type ModelicaClassInstance,
+  type ModelicaComponentInstance,
 } from "./index.js";
 
 import { ModelicaClassKind, ModelicaVariability } from "../types.js";
-
-type ModelicaClassInstance = any;
-
-type ModelicaComponentInstance = any;
 
 // Import canonical types from the protocol module and re-export for
 // backward compatibility with consumers that import from diagramData.

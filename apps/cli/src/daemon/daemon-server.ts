@@ -6,11 +6,22 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
 import readline from "node:readline";
+import yargs from "yargs";
 import { Compile } from "../commands/compile.js";
 import { Instantiate } from "../commands/instantiate.js";
 import { Lint } from "../commands/lint.js";
 import { Simulate } from "../commands/simulate.js";
 import { getSocketPath } from "./socket-path.js";
+
+let executionLock = Promise.resolve();
+function executeSerialized<T>(fn: () => Promise<T>): Promise<T> {
+  const next = executionLock.then(fn, fn);
+  executionLock = next.then(
+    () => {},
+    () => {},
+  );
+  return next;
+}
 
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
@@ -74,96 +85,95 @@ const server = net.createServer((socket) => {
       }
 
       if (msg.type === "run") {
-        const { cwd, argv } = msg;
-        const origCwd = process.cwd();
-        if (cwd) {
+        await executeSerialized(async () => {
+          const { cwd, argv } = msg;
+          const origCwd = process.cwd();
+          if (cwd) {
+            try {
+              process.chdir(cwd);
+            } catch {
+              // ignore
+            }
+          }
+
+          // Intercept stdout & stderr during handler execution
+          const origStdoutWrite = process.stdout.write.bind(process.stdout);
+          const origStderrWrite = process.stderr.write.bind(process.stderr);
+          const origConsoleLog = console.log;
+          const origConsoleError = console.error;
+
+          process.stdout.write = ((chunk: unknown) => {
+            socket.write(JSON.stringify({ type: "stdout", data: String(chunk) }) + "\n");
+            return true;
+          }) as unknown as typeof process.stdout.write;
+
+          process.stderr.write = ((chunk: unknown) => {
+            socket.write(JSON.stringify({ type: "stderr", data: String(chunk) }) + "\n");
+            return true;
+          }) as unknown as typeof process.stderr.write;
+
+          console.log = (...args: unknown[]) => {
+            socket.write(JSON.stringify({ type: "stdout", data: args.map(String).join(" ") + "\n" }) + "\n");
+          };
+
+          console.error = (...args: unknown[]) => {
+            socket.write(JSON.stringify({ type: "stderr", data: args.map(String).join(" ") + "\n" }) + "\n");
+          };
+
+          let exitCode = 0;
           try {
-            process.chdir(cwd);
-          } catch {
-            // ignore
+            const cmd = argv[0];
+            const cmdArgs = argv.slice(1);
+            if (cmd === "compile" || cmd === "flatten") {
+              const builder = typeof Compile.builder === "function" ? Compile.builder(yargs(cmdArgs)) : yargs(cmdArgs);
+              const parsed = await (builder as any).parse();
+              await (Compile.handler as any)(parsed);
+            } else if (cmd === "instantiate") {
+              const builder =
+                typeof Instantiate.builder === "function" ? Instantiate.builder(yargs(cmdArgs)) : yargs(cmdArgs);
+              const parsed = await (builder as any).parse();
+              await (Instantiate.handler as any)(parsed);
+            } else if (cmd === "simulate") {
+              const builder =
+                typeof Simulate.builder === "function" ? Simulate.builder(yargs(cmdArgs)) : yargs(cmdArgs);
+              const parsed = await (builder as any).parse();
+              await (Simulate.handler as any)(parsed);
+            } else if (cmd === "lint") {
+              const builder = typeof Lint.builder === "function" ? Lint.builder(yargs(cmdArgs)) : yargs(cmdArgs);
+              const parsed = await (builder as any).parse();
+              await (Lint.handler as any)(parsed);
+            } else {
+              // Fallback: command not directly supported in daemon runner
+              socket.write(JSON.stringify({ type: "fallback" }) + "\n");
+              return;
+            }
+
+            if (typeof process.exitCode === "number" && process.exitCode !== 0) {
+              exitCode = process.exitCode;
+              process.exitCode = 0;
+            }
+          } catch (err: unknown) {
+            exitCode = 1;
+            socket.write(
+              JSON.stringify({
+                type: "stderr",
+                data: (err instanceof Error ? (err.stack ?? err.message) : String(err)) + "\n",
+              }) + "\n",
+            );
+          } finally {
+            process.stdout.write = origStdoutWrite;
+            process.stderr.write = origStderrWrite;
+            console.log = origConsoleLog;
+            console.error = origConsoleError;
+            try {
+              process.chdir(origCwd);
+            } catch {
+              // ignore
+            }
+            socket.write(JSON.stringify({ type: "exit", code: exitCode }) + "\n");
+            socket.end();
           }
-        }
-
-        // Intercept stdout & stderr during handler execution
-        const origStdoutWrite = process.stdout.write.bind(process.stdout);
-        const origStderrWrite = process.stderr.write.bind(process.stderr);
-        const origConsoleLog = console.log;
-        const origConsoleError = console.error;
-
-        process.stdout.write = ((chunk: unknown) => {
-          socket.write(JSON.stringify({ type: "stdout", data: String(chunk) }) + "\n");
-          return true;
-        }) as unknown as typeof process.stdout.write;
-
-        process.stderr.write = ((chunk: unknown) => {
-          socket.write(JSON.stringify({ type: "stderr", data: String(chunk) }) + "\n");
-          return true;
-        }) as unknown as typeof process.stderr.write;
-
-        console.log = (...args: unknown[]) => {
-          socket.write(JSON.stringify({ type: "stdout", data: args.map(String).join(" ") + "\n" }) + "\n");
-        };
-
-        console.error = (...args: unknown[]) => {
-          socket.write(JSON.stringify({ type: "stderr", data: args.map(String).join(" ") + "\n" }) + "\n");
-        };
-
-        let exitCode = 0;
-        try {
-          const cmd = argv[0];
-          if (cmd === "compile" || cmd === "flatten") {
-            const name = argv[1];
-            const paths = argv.slice(2);
-            await (Compile.handler as (args: unknown) => Promise<void> | void)({ name, paths, _: argv, $0: "msc" });
-          } else if (cmd === "instantiate") {
-            const name = argv[1];
-            const paths = argv.slice(2);
-            await (Instantiate.handler as (args: unknown) => Promise<void> | void)({ name, paths, _: argv, $0: "msc" });
-          } else if (cmd === "simulate") {
-            const name = argv[1];
-            const paths = argv.slice(2);
-            await (Simulate.handler as (args: unknown) => Promise<void> | void)({
-              name,
-              paths,
-              _: argv,
-              $0: "msc",
-              solver: "cvode",
-              engine: "arena",
-            });
-          } else if (cmd === "lint") {
-            const paths = argv.slice(1);
-            await (Lint.handler as (args: unknown) => Promise<void> | void)({
-              path: paths[0],
-              paths,
-              _: argv,
-              $0: "msc",
-            });
-          } else {
-            // Fallback: command not directly supported in daemon runner
-            socket.write(JSON.stringify({ type: "fallback" }) + "\n");
-            return;
-          }
-        } catch (err: unknown) {
-          exitCode = 1;
-          socket.write(
-            JSON.stringify({
-              type: "stderr",
-              data: (err instanceof Error ? (err.stack ?? err.message) : String(err)) + "\n",
-            }) + "\n",
-          );
-        } finally {
-          process.stdout.write = origStdoutWrite;
-          process.stderr.write = origStderrWrite;
-          console.log = origConsoleLog;
-          console.error = origConsoleError;
-          try {
-            process.chdir(origCwd);
-          } catch {
-            // ignore
-          }
-          socket.write(JSON.stringify({ type: "exit", code: exitCode }) + "\n");
-          socket.end();
-        }
+        });
       }
     } catch (err) {
       console.error("[Daemon] Error parsing message:", err);

@@ -302,6 +302,7 @@ export class GssEdge {
  */
 export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNode: u32): void {
   if (pred == null) return;
+  if (head == pred) return;
   if (head.prev == pred) return;
   let curr = head.firstEdge;
   while (curr != 0) {
@@ -321,6 +322,7 @@ export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNo
  * Merges two parse heads arriving at the same state and position into a unified DAG node.
  */
 export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void {
+  if (existingHead == newHead) return;
   // Primary link inversion fix:
   // If newHead has higher dynamic precedence (or lower errorCost), swap existingHead's primary link
   // (prev, astNode) with newHead's so the primary link always points to the superior derivation.
@@ -332,13 +334,17 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
   }
 
   if (swapPrimary) {
-    let oldPrev = existingHead.prev;
-    let oldNode = existingHead.astNode;
-    existingHead.prev = newHead.prev;
-    existingHead.astNode = newHead.astNode;
-    existingHead.dynamicPrec = newHead.dynamicPrec;
-    existingHead.errorCost = newHead.errorCost;
-    gssAddPredecessor(existingHead, oldPrev, oldNode);
+    if (newHead.prev != existingHead) {
+      let oldPrev = existingHead.prev;
+      let oldNode = existingHead.astNode;
+      existingHead.prev = newHead.prev;
+      existingHead.astNode = newHead.astNode;
+      existingHead.dynamicPrec = newHead.dynamicPrec;
+      existingHead.errorCost = newHead.errorCost;
+      gssAddPredecessor(existingHead, oldPrev, oldNode);
+    } else {
+      gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
+    }
   } else {
     gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
   }

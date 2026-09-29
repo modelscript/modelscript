@@ -328,6 +328,105 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
+      // Check if the type can be resolved through imports or scope resolution
+      const resolved = db.scope.resolve(node);
+      if (resolved != 0) {
+        return;
+      }
+
+      // Check if the type name matches an import clause in an enclosing class
+      // This handles renamed imports (import MyC=A.B2.C), simple imports (import A.B.C),
+      // and unqualified imports (import A.B.*)
+      if ($.import_clause != 0) {
+        for (const anc of db.ast.getAncestors(node, 0)) {
+          const ancType = db.ast.getType(anc);
+          if (ancType !== $.class_definition && ancType !== $.stored_definition) continue;
+          for (const imp of db.ast.getDescendants(anc, $.import_clause)) {
+            // Only consider direct children (not deeply nested imports in inner classes)
+            let isDirectChild = false;
+            for (const impAnc of db.ast.getAncestors(imp, 0)) {
+              if (impAnc === anc) {
+                isDirectChild = true;
+                break;
+              }
+              const impAncType = db.ast.getType(impAnc);
+              if (impAncType === $.class_definition && impAnc !== anc) break;
+            }
+            if (!isDirectChild) continue;
+
+            // Check for alias: import MyC = A.B2.C
+            const aliasField = db.ast.getChildByFieldId(imp, "alias");
+            if (aliasField != 0 && db.ast.textEqualsNode(node, aliasField)) {
+              return;
+            }
+            // Check for simple import: import A.B.C → last segment matches
+            // The name field contains the full dotted path; we check if the type
+            // node text matches the last identifier in the name
+            if (aliasField == 0) {
+              const nameField = db.ast.getChildByFieldId(imp, "name");
+              if (nameField != 0) {
+                // Get all identifiers in the name field; the last one is the imported name
+                let lastNameId: u32 = 0;
+                for (const id of db.ast.getDescendants(nameField, $.identifier)) {
+                  lastNameId = id;
+                }
+                if (lastNameId != 0 && db.ast.textEqualsNode(node, lastNameId)) {
+                  return;
+                }
+              }
+            }
+          }
+          // For any enclosing class with imports, we need to be more careful.
+          // If there are unqualified imports (import A.B.*), the name could be any child.
+          // Check by scanning import_clause texts for .* pattern.
+          // Since we can't getText, check if any import_clause in this class
+          // doesn't have an alias and doesn't have an import_list — those are
+          // either simple or unqualified. We'll be conservative and suppress
+          // for any class that has any unqualified import.
+          for (const imp of db.ast.getDescendants(anc, $.import_clause)) {
+            let isDirectChild2 = false;
+            for (const impAnc2 of db.ast.getAncestors(imp, 0)) {
+              if (impAnc2 === anc) {
+                isDirectChild2 = true;
+                break;
+              }
+              if (db.ast.getType(impAnc2) === $.class_definition && impAnc2 !== anc) break;
+            }
+            if (!isDirectChild2) continue;
+            const aliasField2 = db.ast.getChildByFieldId(imp, "alias");
+            const nameField2 = db.ast.getChildByFieldId(imp, "name");
+            const importListField2 = db.ast.getChildByFieldId(imp, "import_list");
+            // Unqualified import: has name but no alias and no import_list, and name text != child text
+            // (since if name matched, we would have returned above)
+            // We can detect this: if the import doesn't have alias, doesn't have import_list,
+            // and the name doesn't end with the same text as node, then it must be unqualified
+            // (name is the package path, .* was stripped by grammar)
+            if (aliasField2 == 0 && importListField2 == 0 && nameField2 != 0) {
+              // This could be a simple import (import A.B.C) or unqualified (import A.B.*)
+              // We already checked simple imports above. If we get here, it might be unqualified.
+              // Check: does the import node's text contain ".*"?
+              // Since we can't getText on import, use a heuristic:
+              // Walk all children of import_clause. If only "import" + name + description exist,
+              // it's either simple or unqualified. We detect unqualified by checking if no
+              // identifier in the name matches node text.
+              let anyIdentMatch = false;
+              for (const id of db.ast.getDescendants(nameField2, $.identifier)) {
+                if (db.ast.textEqualsNode(node, id)) {
+                  anyIdentMatch = true;
+                  break;
+                }
+              }
+              if (!anyIdentMatch) {
+                // This import brings in a package where .* could make this name visible
+                // Be conservative and don't flag
+                return;
+              }
+            }
+          }
+          break; // Only check the nearest enclosing class
+        }
+      }
+
       db.diagnostic(node);
     },
   },

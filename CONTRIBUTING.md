@@ -11,8 +11,8 @@ npm run build
 
 ### Prerequisites
 
-- **Node.js** ≥ 22 (see `.nvmrc`)
-- **emsdk** — required for building the Tree-sitter WASM parser (see [README](./README.md#prerequisites))
+- **Node.js** ≥ 24 (see `.nvmrc`)
+- **Git**
 
 ### Common Commands
 

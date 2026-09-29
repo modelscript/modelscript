@@ -99,13 +99,29 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
   // ── Flatten a study class for dynamic UI parameters ──
 
-  router.get("/physics/flattenStudy", (req, res) => {
+  router.get("/physics/flattenStudy", async (req, res) => {
     const className = (req.query["className"] as string) || "";
+    const upper = className.toUpperCase();
 
-    // This mocks the LSP's modelscript/flattenStudy endpoint for the web IDE.
-    // In the future, this should invoke the actual StudyFlattener against the DB.
+    // 1. Try to invoke StudyFlattener via Modelica Context if source or class is available
+    try {
+      const { StudyFlattener } = await import("@modelscript/modelica");
+      const { Context } = await import("@modelscript/modelica/context");
+      const defaultCtx = (Context as any).current || (Context as any).defaultInstance;
+      if (defaultCtx && defaultCtx.queryEngine) {
+        const symbols = defaultCtx.queryEngine.byName(className);
+        if (symbols && symbols.length > 0 && symbols[0]) {
+          const flattener = new StudyFlattener(defaultCtx.queryEngine);
+          const config = flattener.flatten(symbols[0].id);
+          return res.json(config);
+        }
+      }
+    } catch {
+      // Fall through to schema registry if Context/symbol is not loaded in memory
+    }
 
-    if (className.toUpperCase().includes("CFD")) {
+    // 2. Structured schemas for built-in study types
+    if (upper.includes("CFD") || upper.endsWith("CFDSTUDY")) {
       return res.json({
         workflowClass: "ModelScript.Studies.CFD",
         parameters: {
@@ -118,7 +134,39 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       });
     }
 
-    // Default to FEA schema
+    if (upper.includes("OPTIMIZATION") || upper.endsWith("OPTIMIZATIONSTUDY")) {
+      return res.json({
+        workflowClass: "ModelScript.Studies.OptimizationStudy",
+        parameters: {
+          modelName: "",
+          stopTime: 1.0,
+          tolerance: 1e-4,
+        },
+      });
+    }
+
+    if (upper.includes("MONTECARLO") || upper.endsWith("MONTECARLOSTUDY") || upper.includes("UNCERTAINTY")) {
+      return res.json({
+        workflowClass: "ModelScript.Studies.MonteCarloStudy",
+        parameters: {
+          modelName: "",
+          samples: 100,
+          stopTime: 1.0,
+        },
+      });
+    }
+
+    if (upper.includes("PARAMETER") || upper.endsWith("PARAMETERSTUDY")) {
+      return res.json({
+        workflowClass: "ModelScript.Studies.ParameterStudy",
+        parameters: {
+          modelName: "",
+          stopTime: 1.0,
+        },
+      });
+    }
+
+    // Default to StaticStructuralFEA schema
     return res.json({
       workflowClass: "ModelScript.Studies.StaticStructuralFEA",
       parameters: {

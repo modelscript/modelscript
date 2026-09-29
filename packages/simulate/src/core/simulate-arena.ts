@@ -2228,6 +2228,8 @@ export interface ArenaSimulateOptions {
   debuggerHook?: SimulationDebugger;
   /** When true, preserves internal variables tagged with HideResult. */
   debug?: boolean;
+  /** When true, only solves the steady-state initial equilibrium and returns immediately at startTime. */
+  steadyStateOnly?: boolean;
 }
 
 /**
@@ -2360,6 +2362,21 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   }
 
   // ── Step 6: Run simulation ──
+  if (options?.steadyStateOnly) {
+    const t = [startTime];
+    const initialRow: number[] = [];
+    for (const nameId of stateNameIds) {
+      initialRow.push(valuesByStringId[nameId] ?? 0);
+    }
+    let outNames = stateNames;
+    let outY = [initialRow];
+    if (options?.outputStringIds) {
+      outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+      outY = [options.outputStringIds.map((id) => valuesByStringId[id] ?? 0)];
+    }
+    return { t, y: outY, states: outNames };
+  }
+
   const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
 
   // ── Step 5.5: Initialize FMU subsystems (if any) ──
@@ -2505,6 +2522,21 @@ export async function simulateArenaAsync(
     stateNameIds.push(nameId);
     derivNameIds.push(derNameId);
     stateNames.push(name);
+  }
+
+  if (options?.steadyStateOnly) {
+    const t = [startTime];
+    const initialRow: number[] = [];
+    for (const nameId of stateNameIds) {
+      initialRow.push(valuesByStringId[nameId] ?? 0);
+    }
+    let outNames = stateNames;
+    let outY = [initialRow];
+    if (options?.outputStringIds) {
+      outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+      outY = [options.outputStringIds.map((id) => valuesByStringId[id] ?? 0)];
+    }
+    return { t, y: outY, states: outNames };
   }
 
   const steps = Math.max(Math.round((stopTime - startTime) / step), 1);

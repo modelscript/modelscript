@@ -362,6 +362,7 @@ export class WorkspaceManager {
   }
 
   // Compatibility getters/setters for legacy callers
+  /** @deprecated Use `getWorkspaceIndex("modelica")` instead. */
   get globalWorkspaceIndex() {
     return this.getWorkspaceIndex("modelica");
   }
@@ -369,6 +370,7 @@ export class WorkspaceManager {
     this.setWorkspaceIndex("modelica", val);
   }
 
+  /** @deprecated Use `getWorkspaceIndex("sysml2")` instead. */
   get sysml2WorkspaceIndex() {
     return this.getWorkspaceIndex("sysml2");
   }
@@ -376,6 +378,7 @@ export class WorkspaceManager {
     this.setWorkspaceIndex("sysml2", val);
   }
 
+  /** @deprecated Use `getWorkspaceIndex("owl2")` instead. */
   get owl2WorkspaceIndex() {
     return this.getWorkspaceIndex("owl2");
   }
@@ -383,6 +386,7 @@ export class WorkspaceManager {
     this.setWorkspaceIndex("owl2", val);
   }
 
+  /** @deprecated Use `getWorkspaceIndex("step")` instead. */
   get stepWorkspaceIndex() {
     return this.getWorkspaceIndex("step");
   }
@@ -390,6 +394,7 @@ export class WorkspaceManager {
     this.setWorkspaceIndex("step", val);
   }
 
+  /** @deprecated Use `getQueryEngine("modelica")` instead. */
   get globalModelicaQueryEngine() {
     return this.getQueryEngine("modelica");
   }
@@ -397,6 +402,7 @@ export class WorkspaceManager {
     this.setQueryEngine("modelica", val);
   }
 
+  /** @deprecated Use `getQueryEngine("sysml2")` instead. */
   get globalSysML2QueryEngine() {
     return this.getQueryEngine("sysml2");
   }
@@ -404,6 +410,7 @@ export class WorkspaceManager {
     this.setQueryEngine("sysml2", val);
   }
 
+  /** @deprecated Use `getQueryEngine("owl2")` instead. */
   get globalOWL2QueryEngine() {
     return this.getQueryEngine("owl2");
   }
@@ -411,6 +418,7 @@ export class WorkspaceManager {
     this.setQueryEngine("owl2", val);
   }
 
+  /** @deprecated Use `getQueryEngine("step")` instead. */
   get globalStepQueryEngine() {
     return this.getQueryEngine("step");
   }

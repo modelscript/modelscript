@@ -1,0 +1,2223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ModelScript Playground</title>
+    <style>
+        :root {
+            --bg-color: #f6f8fa;
+            --border-color: #d0d7de;
+            --text-color: #24292f;
+            --btn-bg: #2da44e;
+            --btn-hover: #2c974b;
+            --btn-text: #ffffff;
+            --toolbar-bg: #ffffff;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #0d1117;
+                --border-color: #30363d;
+                --text-color: #c9d1d9;
+                --btn-bg: #238636;
+                --btn-hover: #2ea043;
+                --btn-text: #ffffff;
+                --toolbar-bg: #161b22;
+            }
+        }
+        html, body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"; background: var(--bg-color); color: var(--text-color); }
+        #toolbar { height: 48px; min-height: 48px; box-sizing: border-box; padding: 8px 16px; background: var(--toolbar-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; }
+        #editors { display: flex; flex: 1; height: calc(100vh - 48px); min-height: 0; min-width: 0; }
+        #dsl-editor { flex: 1; border-right: 1px solid var(--border-color); min-width: 0; height: 100%; min-height: 0; }
+        #right-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; }
+        #code-editor { flex: 1; border-bottom: 1px solid var(--border-color); min-width: 0; min-height: 0; height: 50%; position: relative; overflow: hidden; }
+        #react-ast-root { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 50%; background: var(--toolbar-bg); position: relative; overflow: hidden; }
+        #ast-viewer { flex: 1; overflow: auto; padding: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; white-space: pre; font-size: 12px; min-height: 0; }
+        
+        .ghost-node { opacity: 0.6; color: #d73a49; font-style: italic; }
+        .ghost-node::after { content: " (inserted)"; font-size: 10px; }
+        
+        .primer-btn {
+            background-color: var(--btn-bg);
+            color: var(--btn-text);
+            border: 1px solid rgba(27, 31, 36, 0.15);
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 1px 0 rgba(27, 31, 36, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+            transition: 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+        }
+        .primer-btn:hover {
+            background-color: var(--btn-hover);
+        }
+        .primer-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status-badge {
+            font-size: 12px;
+            color: #57606a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #2da44e;
+            display: inline-block;
+        }
+        .status-dot.building {
+            background-color: #bf8700;
+            animation: pulse 1.5s infinite;
+        }
+        .status-dot.error {
+            background-color: #cf222e;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.5; }
+        }
+        #panel-tabs {
+            display: flex;
+            align-items: center;
+            background: var(--toolbar-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 8px;
+            gap: 2px;
+            user-select: none;
+            min-height: 38px;
+            height: 38px;
+            flex-shrink: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            box-sizing: border-box;
+        }
+        #panel-tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+        #panel-tabs::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            padding: 6px 14px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--text-color);
+            opacity: 0.7;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 120ms ease;
+            box-sizing: border-box;
+            border-radius: 4px 4px 0 0;
+        }
+        #panel-tabs .tab-btn {
+            height: 38px;
+            padding: 0 14px;
+        }
+        .tab-btn:hover {
+            opacity: 1;
+            background: rgba(128, 128, 128, 0.08);
+        }
+        .tab-btn.active {
+            opacity: 1;
+            font-weight: 600;
+            border-bottom-color: #0969da;
+            color: #0969da;
+        }
+        @media (prefers-color-scheme: dark) {
+            .tab-btn.active {
+                border-bottom-color: #58a6ff;
+                color: #58a6ff;
+            }
+        }
+        .tab-badge {
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+            background: rgba(128, 128, 128, 0.2);
+            line-height: 1.2;
+        }
+        .tab-badge.error {
+            background: #cf222e;
+            color: #ffffff;
+        }
+        .tab-badge.warning {
+            background: #9a6700;
+            color: #ffffff;
+        }
+        #right-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--toolbar-bg);
+        }
+        #ast-viewer-controls {
+            display: flex;
+            gap: 8px;
+            padding-right: 12px;
+            font-size: 12px;
+        }
+        .panel-content {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .panel-content::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .panel-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+    </style>
+    <!-- Scripts: React, Babel, LZString before Monaco AMD loader to avoid define() conflicts -->
+    <script src="/vendor/react.production.min.js"></script>
+    <script src="/vendor/react-dom.production.min.js"></script>
+    <script src="/node_modules/@babel/standalone/babel.min.js"></script>
+    <script src="/node_modules/lz-string/libs/lz-string.min.js"></script>
+    <script type="module">
+        import * as Diagram from "/diagram.browser.js";
+        window.DiagramModule = Diagram;
+        window.dispatchEvent(new Event('diagramModuleLoaded'));
+    </script>
+    <script src="/node_modules/monaco-editor/min/vs/loader.js"></script>
+</head>
+<body>
+    <div id="toolbar">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <img src="/logo.png" alt="Logo" style="height: 24px; width: auto;" class="dark-only" onerror="this.style.display='none'">
+            <img src="/logo-light.png" alt="Logo" style="height: 24px; width: auto;" class="light-only" onerror="this.style.display='none'">
+            <h1 style="margin: 0; font-size: 14px; font-weight: 600;">ModelScript Playground</h1>
+        </div>
+        <button id="btn-compile" class="primer-btn">
+            <svg aria-hidden="true" height="14" viewBox="0 0 16 16" version="1.1" width="14" style="fill: currentColor;">
+                <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.442a.25.25 0 0 1 .379-.215Z"></path>
+            </svg>
+            Build Grammar (Ctrl+Enter)
+        </button>
+        <button id="btn-format" class="primer-btn" style="background-color: var(--border-color); color: var(--text-color);" title="Format DSL (Alt+Shift+F)">
+            Format DSL
+        </button>
+        <button id="btn-share" class="primer-btn" style="background-color: var(--border-color); color: var(--text-color);" title="Copy Shareable Link">
+            Share
+        </button>
+        <div style="display: flex; gap: 12px; font-size: 12px; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-a1" checked> Deletion Recovery
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-b" checked> Insertion Recovery
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-c" checked> Forced Reduction
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-island-mode" checked> Island Mode
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Toggle Monaco Monarch syntax token colorizer">
+                <input type="checkbox" id="toggle-monarch" checked> Monarch Colorizer
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-verbose-log"> Verbose Log
+            </label>
+        </div>
+        <div class="status-badge">
+            <span id="status-indicator" class="status-dot"></span>
+            <span id="status">Ready</span>
+        </div>
+    </div>
+    <div id="editors">
+        <div id="dsl-editor"></div>
+        <div id="right-pane">
+            <div id="code-editor"></div>
+            <div id="react-ast-root"></div>
+        </div>
+    </div>
+
+    <script>
+        require.config({ paths: { 'vs': '/node_modules/monaco-editor/min/vs' }});
+
+        // Initialize Share functionality (hash encoding/decoding)
+        function getShareState() {
+            try {
+                if (window.location.hash && window.location.hash.length > 1) {
+                    const compressed = window.location.hash.substring(1);
+                    const jsonStr = LZString.decompressFromEncodedURIComponent(compressed);
+                    if (jsonStr) {
+                        return JSON.parse(jsonStr);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to restore state from URL hash:", e);
+            }
+            return null;
+        }
+
+        function updateShareUrl(dsl, code) {
+            try {
+                const state = { dsl, code };
+                const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(state));
+                window.history.replaceState(null, '', '#' + compressed);
+            } catch (e) {
+                console.error("Failed to update URL hash:", e);
+            }
+        }
+
+        require(['vs/editor/editor.main'], function() {
+            // Setup DSL environment types for monaco
+            monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                target: monaco.languages.typescript.ScriptTarget.ES2020 || monaco.languages.typescript.ScriptTarget.ESNext || 99,
+                module: monaco.languages.typescript.ModuleKind.ESNext || 99,
+                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs || 2,
+                allowNonTsExtensions: true,
+                downlevelIteration: true,
+                lib: ["es2020", "esnext", "dom"],
+                noEmit: true,
+                esModuleInterop: true,
+            });
+
+            const dslLib = __DSL_LIB__;
+            const dslLibModule = __DSL_LIB_MODULE__;
+            const dslModuleDecl = __DSL_MODULE_DECL__;
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLib, 'ts:filename/dsl.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'file:///node_modules/@modelscript/dsl/index.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'node_modules/@modelscript/dsl/index.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'ts:filename/dsl-module.d.ts');
+
+            monaco.editor.defineTheme('dark-modern', {
+                base: 'vs-dark',
+                inherit: true,
+                semanticHighlighting: true,
+                rules: [
+                    { token: 'keyword', foreground: '569cd6' },
+                    { token: 'keyword.control', foreground: 'c586c0' },
+                    { token: 'keyword.flow', foreground: 'c586c0' },
+                    { token: 'type', foreground: '4ec9b0' },
+                    { token: 'class', foreground: '4ec9b0' },
+                    { token: 'class.declaration', foreground: '4ec9b0' },
+                    { token: 'interface', foreground: '4ec9b0' },
+                    { token: 'struct', foreground: '4ec9b0' },
+                    { token: 'enum', foreground: '4ec9b0' },
+                    { token: 'typeParameter', foreground: '4ec9b0' },
+                    { token: 'function', foreground: 'dcdcaa' },
+                    { token: 'method', foreground: 'dcdcaa' },
+                    { token: 'property', foreground: '9cdcfe' },
+                    { token: 'property.declaration', foreground: '9cdcfe' },
+                    { token: 'variable', foreground: '9cdcfe' },
+                    { token: 'variable.name', foreground: '9cdcfe' },
+                    { token: 'variable.parameter', foreground: '9cdcfe' },
+                    { token: 'parameter', foreground: '9cdcfe' },
+                    { token: 'enumMember', foreground: '4fc1ff' },
+                    { token: 'number', foreground: 'b5cea8' },
+                    { token: 'string', foreground: 'ce9178' },
+                    { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
+                    { token: 'constant', foreground: '4fc1ff' },
+                    { token: 'delimiter', foreground: 'd4d4d4' },
+                    { token: 'operator', foreground: 'd4d4d4' },
+                    { token: 'namespace', foreground: '4ec9b0' },
+                    { token: 'tag', foreground: '569cd6' }
+                ],
+                colors: {
+                    'editor.background': '#1f1f1f',
+                    'editor.foreground': '#cccccc',
+                    'editor.lineHighlightBackground': '#282828',
+                    'editorCursor.foreground': '#aeafad',
+                    'editor.selectionBackground': '#264f78',
+                    'editor.inactiveSelectionBackground': '#3a3d41',
+                    'editorLineNumber.foreground': '#6e7681',
+                    'editorLineNumber.activeForeground': '#cccccc',
+                    'editorIndentGuide.background1': '#3b3b3b',
+                    'editorIndentGuide.activeBackground1': '#707070'
+                }
+            });
+
+            monaco.editor.defineTheme('light-modern', {
+                base: 'vs',
+                inherit: true,
+                semanticHighlighting: true,
+                rules: [
+                    { token: 'keyword', foreground: '0000ff' },
+                    { token: 'keyword.control', foreground: 'af00db' },
+                    { token: 'keyword.flow', foreground: 'af00db' },
+                    { token: 'type', foreground: '267f99' },
+                    { token: 'class', foreground: '267f99' },
+                    { token: 'class.declaration', foreground: '267f99' },
+                    { token: 'interface', foreground: '267f99' },
+                    { token: 'struct', foreground: '267f99' },
+                    { token: 'enum', foreground: '267f99' },
+                    { token: 'typeParameter', foreground: '267f99' },
+                    { token: 'function', foreground: '795e26' },
+                    { token: 'method', foreground: '795e26' },
+                    { token: 'property', foreground: '001080' },
+                    { token: 'property.declaration', foreground: '001080' },
+                    { token: 'variable', foreground: '001080' },
+                    { token: 'variable.name', foreground: '001080' },
+                    { token: 'variable.parameter', foreground: '001080' },
+                    { token: 'parameter', foreground: '001080' },
+                    { token: 'enumMember', foreground: '0070c1' },
+                    { token: 'number', foreground: '098658' },
+                    { token: 'string', foreground: 'a31515' },
+                    { token: 'comment', foreground: '008000', fontStyle: 'italic' },
+                    { token: 'constant', foreground: '0070c1' },
+                    { token: 'delimiter', foreground: '000000' },
+                    { token: 'operator', foreground: '000000' },
+                    { token: 'namespace', foreground: '267f99' },
+                    { token: 'tag', foreground: '800000' }
+                ],
+                colors: {
+                    'editor.background': '#ffffff',
+                    'editor.foreground': '#3b3b3b',
+                    'editor.lineHighlightBackground': '#f8f8f8',
+                    'editorCursor.foreground': '#000000',
+                    'editor.selectionBackground': '#add6ff',
+                    'editor.inactiveSelectionBackground': '#e5ebf1',
+                    'editorLineNumber.foreground': '#6e7681',
+                    'editorLineNumber.activeForeground': '#0b216f',
+                    'editorIndentGuide.background1': '#d3d3d3',
+                    'editorIndentGuide.activeBackground1': '#939393'
+                }
+            });
+
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const editorTheme = prefersDark ? 'dark-modern' : 'light-modern';
+
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+                const newTheme = e.matches ? 'dark-modern' : 'light-modern';
+                monaco.editor.setTheme(newTheme);
+            });
+
+            const exampleDSL = __INITIAL_DSL__;
+            const exampleCode = __INITIAL_CODE__;
+
+            let latestUri = 'inmemory://example.mo';
+            window.dslEditor = monaco.editor.create(document.getElementById('dsl-editor'), {
+                value: exampleDSL,
+                language: 'typescript',
+                theme: editorTheme,
+                minimap: { enabled: false }
+            });
+            window.codeEditor = monaco.editor.create(document.getElementById('code-editor'), {
+                value: exampleCode,
+                language: 'plaintext',
+                theme: editorTheme,
+                minimap: { enabled: false },
+                quickSuggestions: { other: true, comments: true, strings: true },
+                suggestOnTriggerCharacters: true,
+                acceptSuggestionOnEnter: 'on',
+                tabCompletion: 'on',
+                wordBasedSuggestions: 'off',
+                'semanticHighlighting.enabled': true,
+                semanticHighlighting: { enabled: true }
+            });
+
+            window.addEventListener('resize', () => {
+                window.dslEditor.layout();
+                window.codeEditor.layout();
+            });
+
+            const cacheBuster = Date.now();
+            const compilerWorker = new Worker('/worker-compiler.js?v=' + cacheBuster, { type: 'module' });
+            compilerWorker.onerror = (e) => {
+                console.error("Compiler Worker Error Details:", e, e.message, e.filename, e.lineno, e.colno, e.error);
+                const msg = e.message || (e.filename ? "Error in " + e.filename + ":" + e.lineno + ":" + e.colno : "Worker initialization failed (see browser console)");
+                document.getElementById('status').innerText = "Compiler Worker Error: " + msg;
+            };
+
+            const lspWorker = new Worker('/worker-lsp.js?v=' + cacheBuster, { type: 'module' });
+            lspWorker.onerror = (e) => {
+                console.error("LSP Worker Error:", e.message || e, "at", e.filename, "line", e.lineno, "col", e.colno, e.error);
+            };
+            lspWorker.addEventListener('message', (e) => {
+                const msg = e.data;
+                if (msg && (msg.type === 'astPatch' || msg.type === 'astPatchBinary')) {
+                    window['__latestAstPatch'] = msg;
+                    window.dispatchEvent(new CustomEvent('astPatch', { detail: msg }));
+                    if (window['__semanticTokensEmitter']) {
+                        window['__semanticTokensEmitter'].fire();
+                    }
+
+                    // Request diagram data if active
+                    if (window['__activeTab'] === 'diagram' && window['__requestDiagramData']) {
+                        if (window['__diagramDebounceTimer']) clearTimeout(window['__diagramDebounceTimer']);
+                        window['__diagramDebounceTimer'] = setTimeout(() => {
+                            window['__requestDiagramData']();
+                        }, 400);
+                    }
+
+                    // Request pipeline data if active
+                    if (window['__activeTab'] && window['__activeTab'] !== 'ast' && window['__activeTab'] !== 'diagram' && window['__activeTab'] !== 'diagnostics' && window['__activeTab'] !== 'grammar-conflicts') {
+                        if (window['__pipelineDebounceTimer']) clearTimeout(window['__pipelineDebounceTimer']);
+                        window['__pipelineDebounceTimer'] = setTimeout(() => {
+                            if (window['__requestPipelineData']) window['__requestPipelineData'](window['__activeTab']);
+                        }, 300);
+                    }
+                }
+                if (msg && msg.result && msg.result.pipelineId) {
+                    window['__latestPipelineData_' + msg.result.pipelineId] = msg.result;
+                    window.dispatchEvent(new CustomEvent('pipelineDataUpdated', { detail: msg.result }));
+                }
+                if (msg && msg.result && (msg.result.nodes || msg.result.edges)) {
+                    window['__latestDiagramData'] = msg.result;
+                    window.dispatchEvent(new CustomEvent('diagramDataUpdated', { detail: msg.result }));
+                }
+                if (msg && msg.result && typeof msg.result.text === 'string' && msg.result.text.length > 0) {
+                    const cleanText = msg.result.text.replace(/\0/g, '');
+                    if (cleanText.length > 0 && window.codeEditor && window.codeEditor.getValue() !== cleanText) {
+                        const pos = window.codeEditor.getPosition();
+                        window.codeEditor.setValue(cleanText);
+                        if (pos) window.codeEditor.setPosition(pos);
+                    }
+                }
+                if (msg && msg.method === 'modelscript/languageRegistered' && msg.params) {
+                    const { id, extensions, monarch } = msg.params;
+                    console.log('[Playground] Dynamic language registered:', id, extensions);
+                    try {
+                        monaco.languages.register({ id, extensions });
+                        if (monarch) {
+                            monaco.languages.setMonarchTokensProvider(id, monarch);
+                        }
+                        const model = window.codeEditor ? window.codeEditor.getModel() : null;
+                        if (model && extensions && extensions.some((ext) => model.uri.path.endsWith(ext))) {
+                            monaco.editor.setModelLanguage(model, id);
+                            if (model.tokenization && typeof model.tokenization.resetTokenization === 'function') {
+                                model.tokenization.resetTokenization();
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[Playground] Failed to register dynamic language with Monaco:', err);
+                    }
+                }
+                if (msg && msg.method === 'modelscript/languageUnregistered' && msg.params) {
+                    const { id, extensions } = msg.params;
+                    console.log('[Playground] Dynamic language unregistered:', id);
+                    const model = window.codeEditor ? window.codeEditor.getModel() : null;
+                    if (model && extensions && extensions.some((ext) => model.uri.path.endsWith(ext))) {
+                        monaco.editor.setModelLanguage(model, 'plaintext');
+                    }
+                }
+            });
+
+            window['__requestPipelineData'] = (pipelineId) => {
+                lspWorker.postMessage({
+                    jsonrpc: '2.0',
+                    id: Date.now(),
+                    method: 'modelscript/pipeline/execute',
+                    params: { pipelineId }
+                });
+            };
+
+            window['__requestDiagramData'] = () => {
+                lspWorker.postMessage({
+                    jsonrpc: '2.0',
+                    id: Date.now(),
+                    method: 'modelscript/diagram/getData',
+                    params: {}
+                });
+            };
+
+            window['__applyDiagramEdits'] = (actions) => {
+                lspWorker.postMessage({
+                    jsonrpc: '2.0',
+                    id: Date.now(),
+                    method: 'modelscript/diagram/applyEdits',
+                    params: { actions }
+                });
+            };
+
+            const compileBtn = document.getElementById('btn-compile') || document.getElementById('compile-btn');
+            if (compileBtn) {
+                compileBtn.onclick = () => {
+                    document.getElementById('status').innerText = "Compiling DSL in browser...";
+                    const dsl = window.dslEditor.getValue();
+                    compilerWorker.postMessage({ type: 'compile', dsl });
+                };
+            }
+
+            const formatBtn = document.getElementById('btn-format') || document.getElementById('format-btn');
+            if (formatBtn) {
+                formatBtn.onclick = () => {
+                    if (window.codeEditor && window.codeEditor.hasTextFocus()) {
+                        window.codeEditor.getAction('editor.action.formatDocument')?.run();
+                    } else if (window.dslEditor) {
+                        window.dslEditor.getAction('editor.action.formatDocument')?.run();
+                    }
+                };
+            }
+
+            const shareBtn = document.getElementById('btn-share') || document.getElementById('share-btn');
+            if (shareBtn) {
+                shareBtn.onclick = () => {
+                    updateShareUrl(window.dslEditor.getValue(), window.codeEditor.getValue());
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(window.location.href).then(() => {
+                            const originalText = shareBtn.innerText;
+                            shareBtn.innerText = "Copied!";
+                            setTimeout(() => { shareBtn.innerText = originalText; }, 2000);
+                        });
+                    }
+                };
+            }
+            
+            const updateDslGrammarMarkers = (conflicts) => {
+                if (!window.dslEditor || !window.dslEditor.getModel()) return;
+                const model = window.dslEditor.getModel();
+                const markers = [];
+
+                for (const conflict of (conflicts || [])) {
+                    const rules = conflict.rules || [];
+                    for (const rule of rules) {
+                        const cleanRule = rule.replace(/^["']|["']$/g, '');
+                        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cleanRule)) continue;
+
+                        const regexStr = '\\b' + cleanRule + '\\s*:';
+                        const matches = model.findMatches(regexStr, false, true, false, null, true);
+                        if (matches && matches.length > 0) {
+                            for (const match of matches) {
+                                markers.push({
+                                    severity: monaco.MarkerSeverity.Warning,
+                                    startLineNumber: match.range.startLineNumber,
+                                    startColumn: match.range.startColumn,
+                                    endLineNumber: match.range.endLineNumber,
+                                    endColumn: match.range.startColumn + cleanRule.length,
+                                    message: 'Grammar Conflict (' + conflict.type + '):\\n' + conflict.output.trim(),
+                                    source: 'Grammar Analysis'
+                                });
+                            }
+                        }
+                    }
+                }
+
+                monaco.editor.setModelMarkers(model, 'grammar-conflicts', markers);
+            };
+
+            if (window.dslEditor) {
+                window.dslEditor.onDidChangeModelContent(() => {
+                    if (window.grammarConflicts && window.grammarConflicts.length > 0) {
+                        updateDslGrammarMarkers(window.grammarConflicts);
+                    }
+                });
+            }
+
+            compilerWorker.onmessage = (e) => {
+                if (e.data.type === 'ready') {
+                    document.getElementById('status').innerText = "Compiler Worker ready. Compiling DSL...";
+                    compilerWorker.postMessage({ type: 'compile', dsl: window.dslEditor.getValue() });
+                } else if (e.data.type === 'error') {
+                    document.getElementById('status').innerText = "Compiler Worker Error: " + e.data.error;
+                    window.grammarConflicts = [];
+                    window.dispatchEvent(new CustomEvent('grammarConflictsUpdated', { detail: [] }));
+                    updateDslGrammarMarkers([]);
+                } else if (e.data.type === 'progress') {
+                    document.getElementById('status').innerText = e.data.message;
+                } else if (e.data.type === 'success') {
+                    const kb = (e.data.wasm.byteLength / 1024).toFixed(1);
+                    document.getElementById('status').innerText = "Compiled successfully! LSP is active. (WASM: " + kb + " KB)";
+                    window.syntaxNames = e.data.syntaxNames;
+                    window.fieldNames = e.data.fieldNames;
+                    window.diagramConfig = e.data.diagram;
+                    window.pipelines = e.data.pipelines || [];
+                    window.grammarConflicts = e.data.conflicts || [];
+                    window.dispatchEvent(new Event('pipelinesUpdated'));
+                    window.dispatchEvent(new Event('diagramDataUpdated'));
+                    window.dispatchEvent(new CustomEvent('grammarConflictsUpdated', { detail: window.grammarConflicts }));
+                    updateDslGrammarMarkers(window.grammarConflicts);
+                    
+                    const langId = e.data.langName ? e.data.langName.toLowerCase() : 'exampledsl';
+                    if (!monaco.languages.getLanguages().some(l => l.id === langId)) {
+                        monaco.languages.register({ id: langId });
+                    }
+                    const keywords = [];
+                    const typeKeywords = ['Real', 'Integer', 'Boolean', 'String', 'Number'];
+                    if (e.data.syntaxNames && Array.isArray(e.data.syntaxNames)) {
+                        for (const name of e.data.syntaxNames) {
+                            if (name && name.startsWith('"') && name.endsWith('"')) {
+                                const raw = name.slice(1, -1);
+                                if (/^[a-zA-Z_][a-zA-Z0-9_ ]*$/.test(raw)) {
+                                    if (!typeKeywords.includes(raw)) {
+                                        keywords.push(raw);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // MONARCH TOKENIZER SETUP:
+                    // In stand-alone Monaco Editor, default 'vs' and 'vs-dark' themes rely on Monarch token rules
+                    // to style keywords, types, numbers, strings, and comments. 
+                    // NOTE: Double backslashes (e.g. \\w, \\d, \\[) are CRITICAL here because this code sits inside
+                    // a TypeScript template literal string. Single backslashes get stripped by tsc, which produces
+                    // broken JS regex syntax in the inline HTML output.
+                    window.currentLangId = langId;
+                    window.monarchKeywords = keywords;
+                    window.monarchTypeKeywords = typeKeywords;
+
+                    function applyMonarchTokens() {
+                        const enabled = document.getElementById('toggle-monarch')?.checked ?? true;
+                        if (window.monarchDisposable) {
+                            window.monarchDisposable.dispose();
+                            window.monarchDisposable = null;
+                        }
+                        if (window.currentLangId) {
+                            if (enabled) {
+                                window.monarchDisposable = monaco.languages.setMonarchTokensProvider(window.currentLangId, {
+                                    keywords: window.monarchKeywords || [],
+                                    typeKeywords: window.monarchTypeKeywords || [],
+                                    tokenizer: {
+                                        root: [
+                                            [/\\/\\/.*/, 'comment'],
+                                            [/\\/\\*[\\s\\S]*?\\*\\//, 'comment'],
+                                            [/"[^"]*"/, 'string'],
+                                            [/\\d+\\.?\\d*/, 'number'],
+                                            [/[a-zA-Z_]\\w*/, {
+                                                cases: {
+                                                    '@keywords': 'keyword',
+                                                    '@typeKeywords': 'type',
+                                                    '@default': 'identifier'
+                                                }
+                                            }],
+                                            [/[;,=(){}\\[\\].:+\\-*\\/]/, 'delimiter']
+                                        ]
+                                    }
+                                });
+                            } else {
+                                window.monarchDisposable = monaco.languages.setMonarchTokensProvider(window.currentLangId, {
+                                    tokenizer: {
+                                        root: []
+                                    }
+                                });
+                            }
+                        }
+                        if (window.codeEditor && window.codeEditor.getModel()) {
+                            const model = window.codeEditor.getModel();
+                            monaco.editor.setModelLanguage(model, 'plaintext');
+                            monaco.editor.setModelLanguage(model, window.currentLangId || 'exampledsl');
+                            if (model.tokenization && typeof model.tokenization.resetTokenization === 'function') {
+                                model.tokenization.resetTokenization();
+                            }
+                        }
+                    }
+                    window.applyMonarchTokens = applyMonarchTokens;
+                    applyMonarchTokens();
+
+                    if (window.semanticTokensProvider) {
+                        window.semanticTokensProvider.dispose();
+                    }
+                    if (window.semanticTokensRangeProvider) {
+                        window.semanticTokensRangeProvider.dispose();
+                    }
+                    if (e.data.semanticLegend) {
+                        const getLegend = function () { return e.data.semanticLegend; };
+                        if (window['__semanticTokensEmitter']) {
+                            window['__semanticTokensEmitter'].dispose();
+                        }
+                        const semanticTokensEmitter = new monaco.Emitter();
+                        window['__semanticTokensEmitter'] = semanticTokensEmitter;
+
+                        const providerObj = {
+                            getLegend,
+                            legend: e.data.semanticLegend,
+                            onDidChange: semanticTokensEmitter.event,
+                            provideDocumentSemanticTokens: async (model, lastResultId, token) => {
+                                if (token.isCancellationRequested) return null;
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } }).catch(() => null);
+                                if (result && result.data) {
+                                    const raw = result.data;
+                                    const uint32Data = raw instanceof Uint32Array ? raw
+                                                     : Array.isArray(raw) ? new Uint32Array(raw)
+                                                     : raw.buffer ? new Uint32Array(raw.buffer)
+                                                     : new Uint32Array(Object.values(raw));
+                                    return { data: uint32Data, resultId: String(Date.now()) };
+                                }
+                                return null;
+                            },
+                            releaseDocumentSemanticTokens: function (resultId) { }
+                        };
+                        const rangeProviderObj = {
+                            getLegend,
+                            legend: e.data.semanticLegend,
+                            provideDocumentRangeSemanticTokens: async (model, range, token) => {
+                                if (token.isCancellationRequested) return null;
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/range', {
+                                    textDocument: { uri: model.uri.toString() },
+                                    range: {
+                                        start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+                                        end: { line: range.endLineNumber - 1, character: range.endColumn - 1 }
+                                    }
+                                }).catch(() => null);
+                                if (result && result.data) {
+                                    const raw = result.data;
+                                    const uint32Data = raw instanceof Uint32Array ? raw
+                                                     : Array.isArray(raw) ? new Uint32Array(raw)
+                                                     : raw.buffer ? new Uint32Array(raw.buffer)
+                                                     : new Uint32Array(Object.values(raw));
+                                    return { data: uint32Data, resultId: String(Date.now()) };
+                                }
+                                return null;
+                            }
+                        };
+                        window.semanticTokensProvider = monaco.languages.registerDocumentSemanticTokensProvider(langId, providerObj);
+                        window.semanticTokensRangeProvider = monaco.languages.registerDocumentRangeSemanticTokensProvider(langId, rangeProviderObj);
+                    }
+
+                    if (window.codeEditor && window.codeEditor.getModel()) {
+                        const model = window.codeEditor.getModel();
+                        monaco.editor.setModelLanguage(model, langId);
+                        window.codeEditor.updateOptions({
+                            'semanticHighlighting.enabled': true,
+                            semanticHighlighting: { enabled: true }
+                        });
+                        if (model.tokenization && typeof model.tokenization.resetTokenization === 'function') {
+                            model.tokenization.resetTokenization();
+                        }
+                    }
+
+                    if (typeof window.registerLspProvidersForLanguage === 'function') {
+                        window.registerLspProvidersForLanguage(langId);
+                    }
+
+                    const branchA1 = document.getElementById('toggle-branch-a1')?.checked ?? true;
+                    const branchB = document.getElementById('toggle-branch-b')?.checked ?? true;
+                    const branchC = document.getElementById('toggle-branch-c')?.checked ?? true;
+                    const islandMode = document.getElementById('toggle-island-mode')?.checked ?? true;
+
+                    lspWorker.postMessage({ 
+                        type: 'init', 
+                        wasm: e.data.wasm, 
+                        jsWrapper: e.data.jsWrapper,
+                        syntaxNames: e.data.syntaxNames,
+                        langName: e.data.langName,
+                        initialText: window.codeEditor ? window.codeEditor.getValue() : null,
+                        initialConfig: { branchA1, branchB, branchC, islandMode }
+                    });
+                } else if (e.data.type === 'error') {
+                    document.getElementById('status').innerText = "Error: " + e.data.error;
+                }
+            };
+
+            let msgId = 0;
+            const pending = new Map();
+            class SimpleMonacoLanguageClient {
+                constructor(worker, editor) {
+                    this.worker = worker;
+                    this.editor = editor;
+                    
+                    this.worker.addEventListener('message', (e) => this.handleMessage(e.data));
+                    this.editor.onDidChangeModelContent((e) => {
+                        console.log("[Main Client] onDidChangeModelContent: " + e.changes.length + " change(s):", e.changes);
+                        this.syncDocument('textDocument/didChange', e.changes);
+                    });
+                    
+                    // Initialize
+                    this.sendRequest('initialize', {
+                        capabilities: {}
+                    }).then(() => {
+                        this.sendNotification('initialized', {});
+                        if (this.model) {
+                            console.log("[Main Client] didOpen initial text length: " + this.model.getValue().length);
+                            this.syncDocument('textDocument/didOpen', [{ text: this.model.getValue() }]);
+                        }
+                    });
+                }
+
+                get model() {
+                    return this.editor.getModel();
+                }
+                
+                syncDocument(method = 'textDocument/didChange', contentChanges = []) {
+                    this.sendNotification(method, {
+                        textDocument: {
+                            uri: this.model.uri.toString(),
+                            version: this.model.getVersionId(),
+                            text: method === 'textDocument/didOpen' ? this.model.getValue() : undefined,
+                            languageId: 'plaintext'
+                        },
+                        contentChanges: contentChanges
+                    });
+                }
+                
+                sendRequest(method, params) {
+                    return new Promise((resolve, reject) => {
+                        const id = ++msgId;
+                        pending.set(id, { resolve, reject });
+                        this.worker.postMessage({ jsonrpc: '2.0', id, method, params });
+                    });
+                }
+                
+                sendNotification(method, params) {
+                    this.worker.postMessage({ jsonrpc: '2.0', method, params });
+                }
+                
+                handleMessage(msg) {
+                    if (msg.id !== undefined && pending.has(msg.id)) {
+                        const { resolve, reject } = pending.get(msg.id);
+                        pending.delete(msg.id);
+                        if (msg.error) reject(msg.error);
+                        else resolve(msg.result);
+                    } else if (msg.method === 'textDocument/publishDiagnostics') {
+                        const currentModel = this.editor.getModel() || this.model;
+                        if (!currentModel) return;
+                        if (msg.params.version !== undefined && currentModel.getVersionId() !== msg.params.version) {
+                            return;
+                        }
+
+                        const lineCount = currentModel.getLineCount();
+                        const markers = (msg.params.diagnostics || []).map(d => {
+                            let startLine = d.range ? d.range.start.line + 1 : 1;
+                            let startCol = d.range ? d.range.start.character + 1 : 1;
+                            let endLine = d.range ? d.range.end.line + 1 : startLine;
+                            let endCol = d.range ? d.range.end.character + 1 : startCol;
+
+                            startLine = Math.min(Math.max(1, startLine), lineCount);
+                            endLine = Math.min(Math.max(startLine, endLine), lineCount);
+
+                            const maxStartCol = currentModel.getLineMaxColumn(startLine);
+                            const maxEndCol = currentModel.getLineMaxColumn(endLine);
+
+                            if (startLine === endLine && startCol === endCol) {
+                                if (startCol >= maxStartCol) {
+                                    startCol = Math.max(1, maxStartCol - 1);
+                                    endCol = maxStartCol;
+                                } else {
+                                    endCol = Math.min(maxStartCol, startCol + 1);
+                                }
+                            } else {
+                                startCol = Math.min(Math.max(1, startCol), maxStartCol);
+                                endCol = Math.min(Math.max(startCol, endCol), maxEndCol);
+                            }
+
+                            return {
+                                severity: d.severity === 1 ? monaco.MarkerSeverity.Error 
+                                        : d.severity === 2 ? monaco.MarkerSeverity.Warning
+                                        : d.severity === 3 ? monaco.MarkerSeverity.Info
+                                        : monaco.MarkerSeverity.Hint,
+                                startLineNumber: startLine,
+                                startColumn: startCol,
+                                endLineNumber: endLine,
+                                endColumn: endCol,
+                                message: d.message,
+                                code: d.code ? String(d.code) : undefined,
+                                source: d.source
+                            };
+                        });
+                        monaco.editor.setModelMarkers(currentModel, 'dsl-lsp', markers);
+                        window['__latestDiagnostics'] = msg.params.diagnostics || [];
+                        window.dispatchEvent(new Event('diagnosticsUpdated'));
+                    } else if (msg.type === 'statusUpdate') {
+                        document.getElementById('status').innerText = msg.message;
+                    } else if (msg.type === 'worker_log') {
+                        console.log(...msg.args);
+                    }
+                }
+                
+                sendConfigConfig(config) {
+                    this.worker.postMessage({ type: 'setConfig', config });
+                }
+            }
+            
+            // Start the client
+            const languageClient = new SimpleMonacoLanguageClient(lspWorker, window.codeEditor);
+
+            window.lspDisposablesByLang = window.lspDisposablesByLang || new Map();
+
+            function registerLspProvidersForLanguage(langId) {
+                if (!langId) return;
+                if (window.lspDisposablesByLang.has(langId)) {
+                    const oldDisposables = window.lspDisposablesByLang.get(langId);
+                    for (const d of oldDisposables) {
+                        try { d.dispose(); } catch {}
+                    }
+                    window.lspDisposablesByLang.delete(langId);
+                }
+
+                const disposables = [];
+
+                disposables.push(monaco.languages.registerDefinitionProvider(langId, {
+                    provideDefinition: async (model, position, token) => {
+                        const result = await languageClient.sendRequest('textDocument/definition', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 }
+                        });
+                        if (result && result.range) {
+                            return {
+                                uri: model.uri,
+                                range: new monaco.Range(
+                                    result.range.start.line + 1,
+                                    result.range.start.character + 1,
+                                    result.range.end.line + 1,
+                                    result.range.end.character + 1
+                                )
+                            };
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerReferenceProvider(langId, {
+                    provideReferences: async (model, position, context, token) => {
+                        const result = await languageClient.sendRequest('textDocument/references', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 }
+                        });
+                        if (result && result.length > 0) {
+                            return result.map(loc => ({
+                                uri: model.uri,
+                                range: new monaco.Range(
+                                    loc.range.start.line + 1,
+                                    loc.range.start.character + 1,
+                                    loc.range.end.line + 1,
+                                    loc.range.end.character + 1
+                                )
+                            }));
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerFoldingRangeProvider(langId, {
+                    provideFoldingRanges: async (model, context, token) => {
+                        if (token.isCancellationRequested) return null;
+
+                        const result = await languageClient.sendRequest('textDocument/foldingRange', {
+                            textDocument: { uri: model.uri.toString() }
+                        });
+                        if (result && result.length > 0) {
+                            return result.map(f => ({
+                                start: f.startLine + 1,
+                                end: f.endLine + 1,
+                                kind: monaco.languages.FoldingRangeKind.Region
+                            }));
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerDocumentSymbolProvider(langId, {
+                    provideDocumentSymbols: async (model, token) => {
+                        if (token.isCancellationRequested) return null;
+
+                        const result = await languageClient.sendRequest('textDocument/documentSymbol', {
+                            textDocument: { uri: model.uri.toString() }
+                        });
+                        if (result && result.length > 0) {
+                            return result.map(s => ({
+                                name: s.name,
+                                detail: s.detail || '',
+                                kind: s.kind || monaco.languages.SymbolKind.Class,
+                                range: new monaco.Range(s.range.start.line + 1, s.range.start.character + 1, s.range.end.line + 1, s.range.end.character + 1),
+                                selectionRange: new monaco.Range(s.selectionRange.start.line + 1, s.selectionRange.start.character + 1, s.selectionRange.end.line + 1, s.selectionRange.end.character + 1),
+                                tags: []
+                            }));
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerRenameProvider(langId, {
+                    provideRenameEdits: async (model, position, newName, token) => {
+                        const result = await languageClient.sendRequest('textDocument/rename', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 },
+                            newName: newName
+                        });
+                        
+                        if (result && result.changes) {
+                            const edits = [];
+                            for (const uri in result.changes) {
+                                for (const change of result.changes[uri]) {
+                                    edits.push({
+                                        resource: monaco.Uri.parse(uri),
+                                        textEdit: {
+                                            range: new monaco.Range(
+                                                change.range.start.line + 1,
+                                                change.range.start.character + 1,
+                                                change.range.end.line + 1,
+                                                change.range.end.character + 1
+                                            ),
+                                            text: change.newText
+                                        },
+                                        versionId: undefined
+                                    });
+                                }
+                            }
+                            return { edits };
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerHoverProvider(langId, {
+                    provideHover: async (model, position, token) => {
+                        if (token.isCancellationRequested) return null;
+                        const result = await languageClient.sendRequest('textDocument/hover', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 }
+                        });
+                        if (result && result.contents) {
+                            return {
+                                contents: Array.isArray(result.contents) ? result.contents : [result.contents],
+                                range: result.range ? new monaco.Range(
+                                    result.range.start.line + 1,
+                                    result.range.start.character + 1,
+                                    result.range.end.line + 1,
+                                    result.range.end.character + 1
+                                ) : undefined
+                            };
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerCompletionItemProvider(langId, {
+                    triggerCharacters: ['.', ' ', ':', '=', '(', ','],
+                    provideCompletionItems: async (model, position, context, token) => {
+                        const result = await languageClient.sendRequest('textDocument/completion', {
+                            textDocument: { 
+                                uri: model.uri.toString()
+                            },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 },
+                            context: {
+                                triggerKind: context.triggerKind,
+                                triggerCharacter: context.triggerCharacter
+                            }
+                        });
+                        
+                        if (result && Array.isArray(result.items)) {
+                            const word = model.getWordUntilPosition(position);
+                            const defaultRange = new monaco.Range(
+                                position.lineNumber,
+                                word.startColumn,
+                                position.lineNumber,
+                                word.endColumn
+                            );
+                            
+                            const suggestions = result.items.map((item, idx) => ({
+                                label: item.label,
+                                kind: item.kind !== undefined ? item.kind : monaco.languages.CompletionItemKind.Property,
+                                detail: item.detail || '',
+                                documentation: item.documentation || '',
+                                insertText: item.insertText || item.label,
+                                filterText: item.filterText || item.label,
+                                insertTextRules: item.isSnippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+                                range: item.range ? new monaco.Range(
+                                    item.range.start.line + 1,
+                                    item.range.start.character + 1,
+                                    item.range.end.line + 1,
+                                    item.range.end.character + 1
+                                ) : defaultRange,
+                                sortText: item.sortText || String(idx).padStart(5, '0')
+                            }));
+                            return { suggestions, incomplete: false };
+                        }
+                        return { suggestions: [], incomplete: false };
+                    }
+                }));
+
+                window.lspDisposablesByLang.set(langId, disposables);
+            }
+
+            window.registerLspProvidersForLanguage = registerLspProvidersForLanguage;
+            if (window.currentLangId) {
+                registerLspProvidersForLanguage(window.currentLangId);
+            }
+            registerLspProvidersForLanguage('plaintext');
+
+            document.getElementById('toggle-branch-a1')?.addEventListener('change', (e) => {
+                const branchB = document.getElementById('toggle-branch-b').checked;
+                const branchC = document.getElementById('toggle-branch-c').checked;
+                const islandMode = document.getElementById('toggle-island-mode').checked;
+                languageClient.sendConfigConfig({ branchA1: e.target.checked, branchB, branchC, islandMode });
+            });
+            document.getElementById('toggle-branch-b')?.addEventListener('change', (e) => {
+                const branchA1 = document.getElementById('toggle-branch-a1').checked;
+                const branchC = document.getElementById('toggle-branch-c').checked;
+                const islandMode = document.getElementById('toggle-island-mode').checked;
+                languageClient.sendConfigConfig({ branchA1, branchB: e.target.checked, branchC, islandMode });
+            });
+            document.getElementById('toggle-branch-c')?.addEventListener('change', (e) => {
+                const branchA1 = document.getElementById('toggle-branch-a1').checked;
+                const branchB = document.getElementById('toggle-branch-b').checked;
+                const islandMode = document.getElementById('toggle-island-mode').checked;
+                languageClient.sendConfigConfig({ branchA1, branchB, branchC: e.target.checked, islandMode });
+            });
+            document.getElementById('toggle-island-mode')?.addEventListener('change', (e) => {
+                const branchA1 = document.getElementById('toggle-branch-a1').checked;
+                const branchB = document.getElementById('toggle-branch-b').checked;
+                const branchC = document.getElementById('toggle-branch-c').checked;
+                languageClient.sendConfigConfig({ branchA1, branchB, branchC, islandMode: e.target.checked });
+            });
+            document.getElementById('toggle-monarch')?.addEventListener('change', () => {
+                if (typeof window.applyMonarchTokens === 'function') {
+                    window.applyMonarchTokens();
+                }
+            });
+        });
+    </script>
+
+    <script type="text/babel">
+        // React AST Viewer Component
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        function AstViewer() {
+            const [rootId, setRootId] = useState(0);
+            const [updateTick, setUpdateTick] = useState(0);
+            const [status, setStatus] = useState("(Waiting for compile...)");
+            const [renderLimit, setRenderLimit] = useState(150);
+            const [diagnostics, setDiagnostics] = useState([]);
+            const nodeMap = useRef(window['__astNodeMap'] || (window['__astNodeMap'] = new Map()));
+
+            const [currentGeneration, setCurrentGeneration] = useState(0);
+
+            const [lineStarts, setLineStarts] = useState(new Uint32Array([0]));
+
+            useEffect(() => {
+                let updateRaf = null;
+                const processMsg = (msg) => {
+                    if (!msg) return;
+                    if (msg.type === 'astPatchBinary') {
+                        console.log("[AstViewer] processMsg astPatchBinary: rootId=" + msg.rootId + ", isFullReset=" + msg.isFullReset + ", bufferBytes=" + (msg.buffer ? msg.buffer.byteLength : 0) + ", nodeMapPrevSize=" + nodeMap.current.size);
+                        if (msg.isFullReset) {
+                            nodeMap.current.clear();
+                        }
+
+                        if (msg.buffer && msg.buffer.byteLength > 0) {
+                            const ints = new Int32Array(msg.buffer);
+                            let i = 0;
+                            while (i < ints.length) {
+                                const op = ints[i++];
+                                const ptr = ints[i++];
+                                const typeId = ints[i++];
+                                const oldPtr = ints[i++];
+                                const pad = ints[i++];
+                                const len = ints[i++];
+                                const childCount = ints[i++];
+                                const flags = ints[i++];
+                                
+                                const children = [];
+                                for (let c = 0; c < childCount; c++) {
+                                    children.push({ ptr: ints[i++], fieldId: ints[i++] });
+                                }
+
+                                const typeName = typeId === 0 ? "ERROR" : (window['syntaxNames'] ? window['syntaxNames'][typeId] || ("UNKNOWN(" + typeId + ")") : ("UNKNOWN(" + typeId + ")"));
+                                
+                                if (op === 1) { // INSERT
+                                    nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, flags, children });
+                                } else if (op === 3) { // DELETE
+                                    nodeMap.current.delete(ptr);
+                                } else if (op === 2) { // UPDATE
+                                    const oldNode = nodeMap.current.get(oldPtr);
+                                    nodeMap.current.set(ptr, { ...oldNode, id: ptr, typeId, typeName, pad, len, flags, children });
+                                    if (ptr !== oldPtr) {
+                                        nodeMap.current.delete(oldPtr);
+                                    }
+                                } else if (op === 4) { // RETAINED_FLAG_UPDATE
+                                    const existingNode = nodeMap.current.get(ptr);
+                                    if (existingNode && existingNode.flags !== flags) {
+                                        nodeMap.current.set(ptr, { ...existingNode, flags });
+                                    }
+                                }
+                            }
+                        }
+
+                        if (msg.lineStartsBuffer) {
+                            setLineStarts(new Uint32Array(msg.lineStartsBuffer));
+                        }
+                        
+                        if (msg.diagnostics) {
+                            setDiagnostics(msg.diagnostics);
+                            window['__latestDiagnostics'] = msg.diagnostics;
+                            window.dispatchEvent(new Event('diagnosticsUpdated'));
+                        }
+                        if (msg.charMult) {
+                            window['__charMult'] = msg.charMult;
+                        }
+
+                        setStatus("Parsed AST (Root #" + msg.rootId + ")");
+
+                        if (msg.rootId === 0) {
+                            nodeMap.current.clear();
+                        }
+                        setRootId(msg.rootId);
+                        if (!updateRaf) {
+                            updateRaf = requestAnimationFrame(() => {
+                                updateRaf = null;
+                                setUpdateTick(t => t + 1);
+                            });
+                        }
+                    } else if (msg.type === 'statusUpdate') {
+                        setStatus(msg.message);
+                    }
+                };
+
+                const handleAstPatch = (e) => processMsg(e.detail);
+                window.addEventListener('astPatch', handleAstPatch);
+                if (window['__latestAstPatch']) {
+                    processMsg(window['__latestAstPatch']);
+                }
+                return () => {
+                    window.removeEventListener('astPatch', handleAstPatch);
+                    if (updateRaf) cancelAnimationFrame(updateRaf);
+                };
+            }, []);
+
+            const handleScroll = (e) => {
+                const target = e.target;
+                if (target.scrollTop + target.clientHeight >= target.scrollHeight - 200) {
+                    setRenderLimit(prev => prev + 150);
+                }
+            };
+
+            const flatNodes = useMemo(() => {
+                const nodes = [];
+                const visited = new Set();
+                let totalCalls = 0;
+                
+                const flatten = (ptr, depth, parentOffset, parentField) => {
+                    if (++totalCalls > 10000 || nodes.length >= 5000) return parentOffset;
+                    if (visited.has(ptr)) {
+                        nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE_' + ptr, depth, isCycle: true, currentOffset: parentOffset });
+                        return parentOffset;
+                    }
+                    visited.add(ptr);
+                    
+                    const node = nodeMap.current.get(ptr);
+                    if (!node) {
+                        visited.delete(ptr);
+                        return parentOffset;
+                    }
+                    
+                    const currentOffset = parentOffset + (node.pad || 0);
+                    const hasErrorFlag = (node.flags & 0x0080) !== 0; // FLAG_HAS_ERROR
+                    const isTainted = (node.flags & 0x0010) !== 0; // FLAG_IS_TAINED
+                    const isInserted = (node.flags & 0x0100) !== 0; // FLAG_IS_INSERTED
+                    const isError = node.typeName === "ERROR" || isTainted || hasErrorFlag;
+                    const isGhost = isInserted;
+                    
+                    nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });
+                    
+                    let childOffset = currentOffset;
+                    for (const childObj of node.children || []) {
+                        const fieldName = childObj.fieldId >= 0 ? (window.fieldNames ? window.fieldNames[childObj.fieldId] : ("field_" + childObj.fieldId)) : null;
+                        childOffset = flatten(childObj.ptr, depth + 1, childOffset, fieldName);
+                    }
+                    visited.delete(ptr);
+                    return currentOffset + (node.len || 0);
+                };
+                
+                const effectiveRoot = (rootId !== 0 && nodeMap.current.has(rootId)) ? rootId : 0;
+                console.log("[AstViewer] compute flatNodes: rootId=" + rootId + ", nodeMapSize=" + nodeMap.current.size + ", hasRoot=" + nodeMap.current.has(rootId) + ", effectiveRoot=" + effectiveRoot);
+                if (effectiveRoot) flatten(effectiveRoot, 0, 0, null);
+                console.log("[AstViewer] computed flatNodes done: " + nodes.length + " nodes");
+                return nodes;
+            }, [updateTick, rootId]);
+
+            const visibleNodes = flatNodes.slice(0, renderLimit);
+
+            const getLineCol = (offsetBytes) => {
+                if (!lineStarts || lineStarts.length === 0) return { line: 1, col: 1 };
+                let low = 0, high = lineStarts.length - 1;
+                while (low <= high) {
+                    const mid = (low + high) >> 1;
+                    if (lineStarts[mid] <= offsetBytes) low = mid + 1;
+                    else high = mid - 1;
+                }
+                const line = Math.max(0, Math.min(high, lineStarts.length - 1));
+                const charMult = window['__charMult'] || 2;
+                const colChars = Math.max(0, Math.floor((offsetBytes - (lineStarts[line] || 0)) / charMult));
+                return { line: line + 1, col: colChars + 1 };
+            };
+
+            const getPosStr = (offset, len) => {
+                const startPos = getLineCol(offset);
+                const endPos = getLineCol(offset + len);
+                if (Number.isNaN(startPos.col) || Number.isNaN(endPos.col)) {
+                    console.error("NaN detected! offset:", offset, "len:", len, "lineStarts:", lineStarts);
+                }
+                return "[" + startPos.line + ", " + startPos.col + "] - [" + endPos.line + ", " + endPos.col + "]";
+            };
+
+            const handleNodeClick = (offset, len) => {
+                if (window.highlightNode) {
+                    const startPos = getLineCol(offset);
+                    const endPos = getLineCol(offset + len);
+                    window.highlightNode(startPos.line - 1, startPos.col - 1, endPos.line - 1, endPos.col - 1);
+                }
+            };
+
+            return (
+                <div id="ast-viewer" style={{ padding: '10px', overflow: 'auto', flex: 1 }} onScroll={handleScroll}>
+                    {visibleNodes.length === 0 ? status : (
+                        <>
+                            {visibleNodes.map((node, i) => {
+                                if (node.isCycle) {
+                                    return <div key={node.id + "_" + i} style={{ marginLeft: node.depth * 15, color: '#8c959f', marginTop: '4px' }}>CYCLE</div>;
+                                }
+                                
+                                let className = "ast-node";
+                                if (node.isGhost) className += " ghost-node";
+                                if (node.isError) className += " ast-error";
+                                
+                                return (
+                                    <div key={node.id + "_" + i} className={className} style={{ marginLeft: node.depth * 15, cursor: 'pointer' }} onClick={() => handleNodeClick(node.currentOffset, node.len)}>
+                                        {node.parentField && (
+                                            <span style={{ color: '#6e7781', marginRight: '4px' }}>
+                                                {node.parentField}:
+                                            </span>
+                                        )}
+                                        <span className="hoverable-text" style={{ color: node.isError ? '#d73a49' : '#0550ae' }}>{node.typeName}</span>
+                                        <span style={{ color: '#8b949e', marginLeft: '5px' }}>
+                                            {getPosStr(node.currentOffset, node.len)}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        function PipelinePassViewer({ pipeline }) {
+            if (!pipeline) return null;
+            const [data, setData] = useState(window['__latestPipelineData_' + pipeline.id] || null);
+            const [activeFilter, setActiveFilter] = useState('all');
+            const [viewMode, setViewMode] = useState('formatted');
+
+            useEffect(() => {
+                const handler = (e) => {
+                    if (e.detail && e.detail.pipelineId === pipeline.id) {
+                        setData(e.detail);
+                    }
+                };
+                window.addEventListener('pipelineDataUpdated', handler);
+                if (window['__requestPipelineData']) {
+                    window['__requestPipelineData'](pipeline.id);
+                }
+                return () => window.removeEventListener('pipelineDataUpdated', handler);
+            }, [pipeline.id]);
+
+            const equations = data ? (data.equations || []) : [];
+            const variables = data ? (data.variables || []) : [];
+            const connections = data ? (data.connections || []) : [];
+            const bltBlocks = data ? (data.bltBlocks || []) : [];
+            const varCount = data ? data.varCount : 0;
+            const eqCount = data ? data.eqCount : 0;
+            const isBalanced = varCount > 0 && varCount === eqCount;
+
+            const filteredVars = variables.filter(v => {
+                if (activeFilter === 'params') return v.variability === 'parameter' || v.variability === 'constant';
+                if (activeFilter === 'states') return v.variability === 'continuous' || v.variability === 'discrete';
+                return true;
+            });
+
+            return (
+                <div className="panel-content" style={{ padding: '16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                    {/* Header Card */}
+                    <div className="equation-card" style={{ marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div className="title" style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                ⚙️ {pipeline.label}
+                                <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: 'normal',
+                                    background: '#21262d',
+                                    color: '#58a6ff',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    border: '1px solid #30363d',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    target: {pipeline.target}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <button
+                                    className={"tab-btn " + (viewMode === 'formatted' ? 'active' : '')}
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => setViewMode('formatted')}
+                                >
+                                    📊 Formatted DAE
+                                </button>
+                                <button
+                                    className={"tab-btn " + (viewMode === 'flat' ? 'active' : '')}
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => setViewMode('flat')}
+                                >
+                                    📄 Raw Flat Modelica
+                                </button>
+                                <button
+                                    className={"tab-btn " + (viewMode === 'json' ? 'active' : '')}
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => setViewMode('json')}
+                                >
+                                    📋 Raw JSON
+                                </button>
+                                <button
+                                    className="tab-btn"
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => window['__requestPipelineData'] && window['__requestPipelineData'](pipeline.id)}
+                                >
+                                    🔄 Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* System Stats Bar */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                            gap: '8px',
+                            marginTop: '12px'
+                        }}>
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>Flattened Equations</div>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#58a6ff' }}>{equations.length}</div>
+                            </div>
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>Continuous Unknowns</div>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#bc8cff' }}>{varCount}</div>
+                            </div>
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>Parameters / Const</div>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#79c0ff' }}>{data ? data.paramCount : 0}</div>
+                            </div>
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>System Balance</div>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px', color: isBalanced ? '#3fb950' : (varCount === 0 ? '#8b949e' : '#d29922') }}>
+                                    {isBalanced ? '✔ Balanced (N = M)' : (varCount === 0 ? '○ Standby' : '⚠️ Unbalanced')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {viewMode === 'json' ? (
+                        <div className="equation-card">
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                                <button
+                                    className="tab-btn"
+                                    style={{ fontSize: '11px', padding: '2px 8px' }}
+                                    onClick={() => navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(data, null, 2))}
+                                >
+                                    📋 Copy JSON
+                                </button>
+                            </div>
+                            <pre style={{ margin: 0, padding: '12px', background: '#0d1117', borderRadius: '6px', color: '#c9d1d9', fontSize: '12px', overflowX: 'auto' }}>
+                                {JSON.stringify(data || { status: 'loading' }, null, 2)}
+                            </pre>
+                        </div>
+                    ) : viewMode === 'flat' ? (
+                        <div className="equation-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', color: '#e6edf3' }}>
+                                    📄 Canonical Flat Code Representation
+                                </div>
+                                <button
+                                    className="tab-btn"
+                                    style={{ fontSize: '11px', padding: '2px 8px' }}
+                                    onClick={() => navigator.clipboard && navigator.clipboard.writeText(data ? (data.flatText || data.flatModelica || '') : '')}
+                                >
+                                    📋 Copy Flat Code
+                                </button>
+                            </div>
+                            <pre style={{
+                                margin: 0,
+                                padding: '14px 16px',
+                                background: '#0d1117',
+                                borderRadius: '6px',
+                                border: '1px solid #30363d',
+                                color: '#79c0ff',
+                                fontSize: '12px',
+                                fontFamily: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+                                lineHeight: '1.6',
+                                overflowX: 'auto',
+                                whiteSpace: 'pre'
+                            }}>
+                                {data && (data.flatText || data.flatModelica) ? (data.flatText || data.flatModelica) : '// No flat code generated'}
+                            </pre>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Flattened Equations List */}
+                            <div className="equation-card" style={{ marginBottom: '16px' }}>
+                                <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#e6edf3' }}>
+                                    📝 Flattened Equations ({equations.length})
+                                </div>
+                                {equations.length === 0 ? (
+                                    <div style={{ color: '#8b949e', fontSize: '12px', fontStyle: 'italic' }}>
+                                        No equations lowered in current AST model.
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {equations.map((eq, idx) => (
+                                            <div key={idx} style={{
+                                                padding: '8px 12px',
+                                                background: '#0d1117',
+                                                borderRadius: '6px',
+                                                border: '1px solid #30363d',
+                                                fontFamily: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div>
+                                                    <span style={{ color: '#6e7781', marginRight: '8px', userSelect: 'none' }}>({idx + 1})</span>
+                                                    <span style={{ color: '#79c0ff' }}>{eq.text.split('=')[0]}</span>
+                                                    <span style={{ color: '#ff7b72', margin: '0 6px' }}>=</span>
+                                                    <span style={{ color: '#a5d6ff' }}>{eq.text.split('=').slice(1).join('=')}</span>
+                                                    {eq.flowText && (
+                                                        <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '4px' }}>
+                                                            ↳ flow: <code style={{ color: '#e3b341' }}>{eq.flowText}</code>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span style={{
+                                                    fontSize: '10px',
+                                                    color: '#8b949e',
+                                                    background: '#161b22',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    border: '1px solid #21262d'
+                                                }}>
+                                                    {eq.kind || 'simple'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Topological Connections */}
+                            {connections.length > 0 && (
+                                <div className="equation-card" style={{ marginBottom: '16px' }}>
+                                    <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#e6edf3' }}>
+                                        ⚡ Topological Connects & Port Equivalence ({connections.length})
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+                                        {connections.map((c, idx) => (
+                                            <div key={idx} style={{
+                                                padding: '8px 12px',
+                                                background: '#0d1117',
+                                                borderRadius: '6px',
+                                                border: '1px solid #30363d',
+                                                fontSize: '12px',
+                                                fontFamily: 'monospace'
+                                            }}>
+                                                <span style={{ color: '#58a6ff' }}>connect</span>(
+                                                <span style={{ color: '#7ee787' }}>{c.from}</span>,{' '}
+                                                <span style={{ color: '#7ee787' }}>{c.to}</span>)
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* BLT Block Decomposition */}
+                            {pipeline.target === 'blt' && bltBlocks.length > 0 && (
+                                <div className="equation-card" style={{ marginBottom: '16px' }}>
+                                    <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#e6edf3' }}>
+                                        🧩 BLT Strongly Connected Components ({bltBlocks.length} Blocks)
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {bltBlocks.map((b) => (
+                                            <div key={b.id} style={{
+                                                padding: '10px 12px',
+                                                background: '#0d1117',
+                                                borderRadius: '6px',
+                                                border: '1px solid #30363d',
+                                                borderLeft: '4px solid #bc8cff',
+                                                fontSize: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                    <strong>Block {b.id}: [{b.solvedVars.join(', ')}]</strong>
+                                                    <span style={{ fontSize: '11px', color: '#8b949e' }}>type: {b.type} (size: {b.size})</span>
+                                                </div>
+                                                <div style={{ color: '#8b949e', fontFamily: 'monospace' }}>
+                                                    {b.equations.map((eq, i) => <div key={i}>• {eq}</div>)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Variables & Parameters Table */}
+                            <div className="equation-card">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', color: '#e6edf3' }}>
+                                        📊 Variables & Parameters ({variables.length})
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                        <button
+                                            className={"tab-btn " + (activeFilter === 'all' ? 'active' : '')}
+                                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                                            onClick={() => setActiveFilter('all')}
+                                        >
+                                            All ({variables.length})
+                                        </button>
+                                        <button
+                                            className={"tab-btn " + (activeFilter === 'states' ? 'active' : '')}
+                                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                                            onClick={() => setActiveFilter('states')}
+                                        >
+                                            Unknowns ({varCount})
+                                        </button>
+                                        <button
+                                            className={"tab-btn " + (activeFilter === 'params' ? 'active' : '')}
+                                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                                            onClick={() => setActiveFilter('params')}
+                                        >
+                                            Params ({data ? data.paramCount : 0})
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {filteredVars.length === 0 ? (
+                                    <div style={{ color: '#8b949e', fontSize: '12px', fontStyle: 'italic' }}>
+                                        No variables found matching current filter.
+                                    </div>
+                                ) : (
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e' }}>
+                                                    <th style={{ padding: '6px 8px' }}>Name</th>
+                                                    <th style={{ padding: '6px 8px' }}>Type</th>
+                                                    <th style={{ padding: '6px 8px' }}>Variability</th>
+                                                    <th style={{ padding: '6px 8px' }}>Causality</th>
+                                                    <th style={{ padding: '6px 8px' }}>Start / Binding</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredVars.map((v, i) => {
+                                                    const isParam = v.variability === 'parameter' || v.variability === 'constant';
+                                                    return (
+                                                        <tr key={i} style={{ borderBottom: '1px solid #21262d' }}>
+                                                            <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#58a6ff', fontFamily: 'monospace' }}>
+                                                                {v.name + (v.dimensions && v.dimensions.length > 0 ? '[' + v.dimensions.join(', ') + ']' : '')}
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px', color: '#7ee787', fontFamily: 'monospace' }}>
+                                                                {v.type}
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px' }}>
+                                                                <span style={{
+                                                                    padding: '2px 6px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '10px',
+                                                                    fontWeight: 'bold',
+                                                                    background: isParam ? 'rgba(188,140,255,0.15)' : 'rgba(88,166,255,0.15)',
+                                                                    color: isParam ? '#bc8cff' : '#58a6ff',
+                                                                    border: '1px solid ' + (isParam ? 'rgba(188,140,255,0.3)' : 'rgba(88,166,255,0.3)')
+                                                                }}>
+                                                                    {v.variability}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px', color: '#8b949e' }}>
+                                                                {v.causality || 'local'}
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px', color: v.start ? '#e3b341' : '#6e7781', fontFamily: 'monospace' }}>
+                                                                {v.start ? v.start : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        function DiagnosticsViewer() {
+            const [diagnostics, setDiagnostics] = useState(window['__latestDiagnostics'] || []);
+
+            useEffect(() => {
+                const handler = () => {
+                    setDiagnostics(window['__latestDiagnostics'] || []);
+                };
+                window.addEventListener('diagnosticsUpdated', handler);
+                return () => window.removeEventListener('diagnosticsUpdated', handler);
+            }, []);
+
+            const jumpToDiagnostic = (d) => {
+                if (!window.codeEditor || !window.codeEditor.getModel()) return;
+                const startLine = d.range ? d.range.start.line + 1 : 1;
+                const startCol = d.range ? d.range.start.character + 1 : 1;
+                window.codeEditor.revealLineInCenter(startLine);
+                window.codeEditor.setPosition({ lineNumber: startLine, column: startCol });
+                window.codeEditor.focus();
+            };
+
+            return (
+                <div className="panel-content" style={{ padding: '15px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                    <div className="equation-card">
+                        <div className="title" style={{ marginBottom: '12px', fontSize: '15px', fontWeight: 'bold' }}>
+                            🔍 Active Diagnostics & Lints ({diagnostics.length})
+                        </div>
+                        {diagnostics.length === 0 ? (
+                            <div style={{ color: '#2da44e', fontSize: '13px' }}>✔ No syntax or linter errors detected.</div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {diagnostics.map((d, idx) => {
+                                    const isError = d.severity === 1;
+                                    const startLine = d.range ? d.range.start.line + 1 : 1;
+                                    const startCol = d.range ? d.range.start.character + 1 : 1;
+                                    const endLine = d.range ? d.range.end.line + 1 : startLine;
+                                    const endCol = d.range ? d.range.end.character + 1 : startCol;
+                                    return (
+                                        <div key={idx} onClick={() => jumpToDiagnostic(d)} style={{
+                                            padding: '8px 12px',
+                                            borderRadius: '6px',
+                                            background: isError ? 'rgba(207,34,46,0.1)' : 'rgba(154,103,0,0.1)',
+                                            borderLeft: "4px solid " + (isError ? '#cf222e' : '#d97706'),
+                                            fontSize: '13px',
+                                            lineHeight: '1.4',
+                                            cursor: 'pointer'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span style={{ fontWeight: 'bold', color: isError ? '#cf222e' : '#d97706' }}>
+                                                    {isError ? '❌ Error' : '⚠️ Warning'} {d.code ? "[M" + d.code + "]" : ''}
+                                                </span>
+                                                <span style={{ opacity: 0.7, fontFamily: 'monospace', fontSize: '12px' }}>
+                                                    L{startLine}:{startCol} - L{endLine}:{endCol}
+                                                </span>
+                                            </div>
+                                            <div style={{ color: 'var(--text-color, inherit)' }}>{d.message}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function DiagramViewer({ isActive }) {
+            const containerRef = useRef(null);
+            const graphRef = useRef(null);
+            const [views, setViews] = useState(['All']);
+            const [activeView, setActiveView] = useState('All');
+
+            const updateDiagramGraph = () => {
+                if (!containerRef.current) return;
+                const Diagram = window.DiagramModule;
+                if (!Diagram || !Diagram.initGraph) return;
+
+                const dslConfig = window.diagramConfig;
+                if (dslConfig && dslConfig.views) {
+                    const vKeys = Object.keys(dslConfig.views);
+                    if (vKeys.length > 0) {
+                        setViews(['All', ...vKeys]);
+                    }
+                }
+
+                if (!graphRef.current) {
+                    Diagram.setDiagramOptions({
+                        container: containerRef.current,
+                        isDark: true,
+                        onAction: (action) => {
+                            if (action && action.type === 'move' && action.items) {
+                                const edits = action.items.map(item => ({
+                                    type: 'move',
+                                    nodePtr: parseInt(item.name.replace('node_', '')) || 0,
+                                    x: Math.round(item.x),
+                                    y: Math.round(item.y)
+                                }));
+                                if (window.diagramConfig?.mutations?.moveNode && window['__applyDiagramEdits']) {
+                                    window['__applyDiagramEdits'](edits);
+                                }
+                            } else if (action && action.type === 'resize' && action.item) {
+                                if (window.diagramConfig?.mutations?.resizeNode && window['__applyDiagramEdits']) {
+                                    window['__applyDiagramEdits']([{
+                                        type: 'resize',
+                                        nodePtr: parseInt(action.item.name.replace('node_', '')) || 0,
+                                        x: Math.round(action.item.x),
+                                        y: Math.round(action.item.y),
+                                        width: Math.round(action.item.width),
+                                        height: Math.round(action.item.height)
+                                    }]);
+                                }
+                            }
+                        }
+                    });
+
+                    const g = Diagram.initGraph(true);
+                    graphRef.current = g;
+                }
+
+                const rawData = window['__latestDiagramData'] || { nodes: [], edges: [] };
+                const sourceText = window.codeEditor ? window.codeEditor.getValue() : "";
+                const diagramData = (Diagram.buildDiagramFromDSL && (dslConfig || rawData.nodes?.length > 0))
+                    ? Diagram.buildDiagramFromDSL(rawData, dslConfig, window.syntaxNames, activeView, sourceText)
+                    : rawData;
+
+                Diagram.renderDiagram(diagramData, true);
+
+                setTimeout(() => {
+                    if (graphRef.current && containerRef.current) {
+                        const rect = containerRef.current.getBoundingClientRect();
+                        if (rect.width > 50 && rect.height > 50) {
+                            graphRef.current.resize(rect.width, rect.height);
+                            try {
+                                graphRef.current.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8 });
+                                graphRef.current.centerContent();
+                            } catch (e) {}
+                        }
+                    }
+                }, 60);
+            };
+
+            useEffect(() => {
+                let isMounted = true;
+
+                if (window.DiagramModule) {
+                    if (isActive) updateDiagramGraph();
+                } else {
+                    const modHandler = () => { if (isMounted && isActive) updateDiagramGraph(); };
+                    window.addEventListener('diagramModuleLoaded', modHandler, { once: true });
+                }
+
+                const dataHandler = () => {
+                    if (isMounted) updateDiagramGraph();
+                };
+
+                window.addEventListener('diagramDataUpdated', dataHandler);
+                return () => {
+                    isMounted = false;
+                    window.removeEventListener('diagramDataUpdated', dataHandler);
+                };
+            }, [isActive, activeView]);
+
+            useEffect(() => {
+                if (!containerRef.current) return;
+                const ro = new ResizeObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.contentRect.width > 50 && entry.contentRect.height > 50) {
+                            if (graphRef.current) {
+                                graphRef.current.resize(entry.contentRect.width, entry.contentRect.height);
+                                try {
+                                    graphRef.current.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8 });
+                                    graphRef.current.centerContent();
+                                } catch (e) {}
+                            } else {
+                                updateDiagramGraph();
+                            }
+                        }
+                    }
+                });
+                ro.observe(containerRef.current);
+                return () => ro.disconnect();
+            }, []);
+
+            return (
+                <div 
+                    className="panel-content" 
+                    style={{ 
+                        padding: 0, 
+                        flex: 1, 
+                        position: 'relative', 
+                        overflow: 'hidden', 
+                        background: '#0d1117',
+                        display: 'flex',
+                        flexDirection: 'column'
+                    }}
+                >
+                    <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 100, display: 'flex', gap: 6, background: 'rgba(22,27,34,0.85)', padding: '4px 8px', borderRadius: 6, border: '1px solid #30363d', alignItems: 'center' }}>
+                        {views.length > 1 && (
+                            <select 
+                                value={activeView} 
+                                onChange={(e) => setActiveView(e.target.value)}
+                                style={{ background: '#21262d', color: '#c9d1d9', border: '1px solid #30363d', borderRadius: 4, padding: '3px 8px', fontSize: 12 }}
+                            >
+                                {views.map(v => <option key={v} value={v}>{v === 'All' ? 'Default View' : v}</option>)}
+                            </select>
+                        )}
+                        <button className="tab-btn" onClick={() => graphRef.current?.zoom(0.15)}>🔍 +</button>
+                        <button className="tab-btn" onClick={() => graphRef.current?.zoom(-0.15)}>🔍 -</button>
+                        <button className="tab-btn" onClick={() => { graphRef.current?.zoomTo(1); graphRef.current?.centerContent(); }}>↺ Fit</button>
+                    </div>
+
+                    <div 
+                        id="diagram-x6-container"
+                        ref={containerRef} 
+                        style={{ flex: 1, width: '100%', height: '100%', minHeight: '100%' }} 
+                    />
+                </div>
+            );
+        }
+
+        function GrammarConflictsViewer() {
+            const [conflicts, setConflicts] = useState(window.grammarConflicts || []);
+
+            useEffect(() => {
+                const handler = (e) => {
+                    setConflicts(e.detail || window.grammarConflicts || []);
+                };
+                window.addEventListener('grammarConflictsUpdated', handler);
+                return () => window.removeEventListener('grammarConflictsUpdated', handler);
+            }, []);
+
+            const numReduceReduce = conflicts.filter(c => c.type === 'reduce/reduce').length;
+            const numShiftReduce = conflicts.filter(c => c.type === 'shift/reduce').length;
+
+            const jumpToRule = (ruleName) => {
+                if (!window.dslEditor || !window.dslEditor.getModel()) return;
+                const clean = ruleName.replace(/^["']|["']$/g, '');
+                const model = window.dslEditor.getModel();
+                const matches = model.findMatches('\\b' + clean + '\\s*:', false, true, false, null, true);
+                if (matches && matches.length > 0) {
+                    const line = matches[0].range.startLineNumber;
+                    window.dslEditor.revealLineInCenter(line);
+                    window.dslEditor.setPosition({ lineNumber: line, column: matches[0].range.startColumn });
+                    window.dslEditor.focus();
+                }
+            };
+
+            const copyConflictGroup = (rules) => {
+                const cleanRules = (rules || []).map(r => r.replace(/^["']|["']$/g, '')).filter(r => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(r));
+                if (cleanRules.length === 0) return;
+                const snippet = 'conflicts: ($) => [\\n    [' + cleanRules.map(r => '$.' + r).join(', ') + '],\\n],';
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(snippet);
+                }
+            };
+
+            return (
+                <div className="panel-content" style={{ padding: '15px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                    <div className="equation-card" style={{ marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div className="title" style={{ fontSize: '15px', fontWeight: 'bold' }}>
+                                ⚠️ Grammar Analysis & Conflicts ({conflicts.length})
+                            </div>
+                            {conflicts.length > 0 && (
+                                <div style={{ display: 'flex', gap: '6px', fontSize: '12px' }}>
+                                    {numShiftReduce > 0 && (
+                                        <span style={{ background: 'rgba(217,119,6,0.2)', color: '#d97706', padding: '2px 8px', borderRadius: '12px', border: '1px solid rgba(217,119,6,0.4)', fontWeight: 600 }}>
+                                            {numShiftReduce} Shift/Reduce
+                                        </span>
+                                    )}
+                                    {numReduceReduce > 0 && (
+                                        <span style={{ background: 'rgba(207,34,46,0.2)', color: '#cf222e', padding: '2px 8px', borderRadius: '12px', border: '1px solid rgba(207,34,46,0.4)', fontWeight: 600 }}>
+                                            {numReduceReduce} Reduce/Reduce
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {conflicts.length === 0 ? (
+                            <div style={{ padding: '16px', background: 'rgba(46,160,67,0.1)', border: '1px solid rgba(46,160,67,0.3)', borderRadius: '6px', color: '#3fb950', fontSize: '13px' }}>
+                                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>✔ No Grammar Conflicts Detected</div>
+                                <div style={{ opacity: 0.85, fontSize: '12px' }}>Your grammar is deterministic and unambiguous under LALR(1) / GLR analysis.</div>
+                            </div>
+                        ) : (
+                            <div style={{ fontSize: '12px', color: '#8b949e', lineHeight: '1.4', marginBottom: '8px' }}>
+                                Conflicts indicate parser lookahead ambiguities where multiple shift or reduce actions exist. In ModelScript GLR, unresolved conflicts are forked dynamically, but defining operator precedence (<code style={{ background: '#21262d', padding: '1px 4px', borderRadius: '3px' }}>prec.left / prec.right</code>) or whitelisting in <code style={{ background: '#21262d', padding: '1px 4px', borderRadius: '3px' }}>conflicts: ($) =&gt; [...]</code> resolves ambiguity and enhances performance.
+                            </div>
+                        )}
+                    </div>
+
+                    {conflicts.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {conflicts.map((c, idx) => {
+                                const isReduceReduce = c.type === 'reduce/reduce';
+                                return (
+                                    <div key={idx} style={{
+                                        padding: '12px 14px',
+                                        borderRadius: '8px',
+                                        background: isReduceReduce ? 'rgba(207,34,46,0.06)' : 'rgba(217,119,6,0.06)',
+                                        border: '1px solid ' + (isReduceReduce ? 'rgba(207,34,46,0.3)' : 'rgba(217,119,6,0.3)'),
+                                        borderLeft: '5px solid ' + (isReduceReduce ? '#cf222e' : '#d97706'),
+                                        fontSize: '13px',
+                                        lineHeight: '1.45'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{
+                                                    fontWeight: 'bold',
+                                                    color: isReduceReduce ? '#cf222e' : '#d97706',
+                                                    textTransform: 'uppercase',
+                                                    fontSize: '12px',
+                                                    background: isReduceReduce ? 'rgba(207,34,46,0.15)' : 'rgba(217,119,6,0.15)',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    {c.type}
+                                                </span>
+                                                <span style={{ fontWeight: 'bold', fontSize: '13px' }}>Conflict #{idx + 1}</span>
+                                            </div>
+                                            {c.rules && c.rules.length > 0 && (
+                                                <button 
+                                                    className="tab-btn" 
+                                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                                    onClick={() => copyConflictGroup(c.rules)}
+                                                    title="Copy conflicts array snippet to clipboard"
+                                                >
+                                                    📋 Copy Suppressor
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {c.rules && c.rules.length > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                                <span style={{ fontSize: '12px', opacity: 0.75 }}>Involved rules:</span>
+                                                {c.rules.map(r => (
+                                                    <span 
+                                                        key={r} 
+                                                        onClick={() => jumpToRule(r)}
+                                                        style={{ 
+                                                            cursor: 'pointer', 
+                                                            background: '#21262d', 
+                                                            color: '#58a6ff', 
+                                                            padding: '1px 6px', 
+                                                            borderRadius: '4px', 
+                                                            fontSize: '11px', 
+                                                            fontFamily: 'monospace',
+                                                            border: '1px solid #30363d'
+                                                        }}
+                                                        title="Click to jump to rule definition in DSL editor"
+                                                    >
+                                                        {r} ↗
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <pre style={{
+                                            margin: '6px 0 0 0',
+                                            padding: '10px 12px',
+                                            background: '#0d1117',
+                                            border: '1px solid #30363d',
+                                            borderRadius: '6px',
+                                            color: '#c9d1d9',
+                                            fontSize: '12px',
+                                            fontFamily: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+                                            overflowX: 'auto',
+                                            whiteSpace: 'pre-wrap',
+                                            lineHeight: '1.4'
+                                        }}>
+                                            {c.output.trim()}
+                                        </pre>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function PlaygroundPanels() {
+            const [activeTab, setActiveTab] = useState('ast');
+            const [pipelines, setPipelines] = useState([]);
+            const [grammarConflicts, setGrammarConflicts] = useState(window.grammarConflicts || []);
+            const [diagnostics, setDiagnostics] = useState(window['__latestDiagnostics'] || []);
+
+            useEffect(() => {
+                const handler = () => {
+                    setPipelines(window.pipelines || []);
+                };
+                const conflictHandler = (e) => {
+                    setGrammarConflicts(e.detail || window.grammarConflicts || []);
+                };
+                const diagHandler = () => {
+                    setDiagnostics(window['__latestDiagnostics'] || []);
+                };
+                window.addEventListener('pipelinesUpdated', handler);
+                window.addEventListener('grammarConflictsUpdated', conflictHandler);
+                window.addEventListener('diagnosticsUpdated', diagHandler);
+                return () => {
+                    window.removeEventListener('pipelinesUpdated', handler);
+                    window.removeEventListener('grammarConflictsUpdated', conflictHandler);
+                    window.removeEventListener('diagnosticsUpdated', diagHandler);
+                };
+            }, []);
+
+            const activePipeline = pipelines.find(p => p.id === activeTab);
+            const errCount = diagnostics.filter(d => d.severity === 'error' || d.severity === 1 || d.severity === 8).length;
+
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0, overflow: 'hidden' }}>
+                    <div id="panel-tabs">
+                        <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => { setActiveTab('ast'); window['__activeTab'] = 'ast'; }}>
+                            🌳 AST Tree
+                        </button>
+                        <button className={"tab-btn " + (activeTab === 'diagram' ? 'active' : '')} onClick={() => { setActiveTab('diagram'); window['__activeTab'] = 'diagram'; if (window['__requestDiagramData']) window['__requestDiagramData'](); }}>
+                            📊 2D Diagram
+                        </button>
+                        {pipelines.map(p => (
+                            <button
+                                key={p.id}
+                                className={"tab-btn " + (activeTab === p.id ? 'active' : '')}
+                                onClick={() => {
+                                    setActiveTab(p.id);
+                                    window['__activeTab'] = p.id;
+                                    if (window['__requestPipelineData']) window['__requestPipelineData'](p.id);
+                                }}
+                            >
+                                ⚙️ {p.label}
+                            </button>
+                        ))}
+                        <button className={"tab-btn " + (activeTab === 'diagnostics' ? 'active' : '')} onClick={() => { setActiveTab('diagnostics'); window['__activeTab'] = 'diagnostics'; }}>
+                            🔍 Code Diagnostics
+                            {diagnostics.length > 0 && (
+                                <span className={"tab-badge " + (errCount > 0 ? 'error' : 'warning')}>
+                                    {diagnostics.length}
+                                </span>
+                            )}
+                        </button>
+                        <button 
+                            className={"tab-btn " + (activeTab === 'grammar-conflicts' ? 'active' : '')} 
+                            onClick={() => { setActiveTab('grammar-conflicts'); window['__activeTab'] = 'grammar-conflicts'; }}
+                        >
+                            ⚠️ Grammar
+                            {grammarConflicts.length > 0 && (
+                                <span className="tab-badge warning">
+                                    {grammarConflicts.length}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                    <div style={{ display: activeTab === 'ast' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        <AstViewer />
+                    </div>
+                    <div style={{ display: activeTab === 'diagram' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        <DiagramViewer isActive={activeTab === 'diagram'} />
+                    </div>
+                    {activePipeline && <PipelinePassViewer pipeline={activePipeline} />}
+                    {activeTab === 'diagnostics' && <DiagnosticsViewer />}
+                    {activeTab === 'grammar-conflicts' && <GrammarConflictsViewer />}
+                </div>
+            );
+        }
+
+        // Render React Tree
+        const root = ReactDOM.createRoot(document.getElementById('react-ast-root'));
+        root.render(<PlaygroundPanels />);
+    </script>
+</body>
+</html>

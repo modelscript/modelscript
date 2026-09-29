@@ -11,8 +11,8 @@ export function registerInlayHintProvider(context: LspContext) {
       if (!document) return hints;
 
       const fileIndex =
-        context.workspaceManager.globalWorkspaceIndex.getFileIndex(uri) ??
-        context.workspaceManager.sysml2WorkspaceIndex.getFileIndex(uri);
+        context.workspaceManager.getWorkspaceIndex("modelica")?.getFileIndex(uri) ??
+        context.workspaceManager.getWorkspaceIndex("sysml2")?.getFileIndex(uri);
 
       if (!fileIndex) return hints;
 

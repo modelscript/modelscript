@@ -601,10 +601,6 @@ app.get("/", (_req, res) => {
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
       <span class="tpl-name">Multi-Fidelity Binding</span>
     </a>
-    <a href="/vscode/workbench/#memfs:data-driven-calibration" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18M7 14l4-4 4 4 6-6"/></svg></div>
-      <span class="tpl-name">Data-Driven Calibration</span>
-    </a>
     <a href="/vscode/workbench/#memfs:hardware-ci" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
       <span class="tpl-name">Hardware CI</span>

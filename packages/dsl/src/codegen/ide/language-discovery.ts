@@ -106,11 +106,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     normalizedLangs.push(normalized);
 
     // 3. Discover native GLR parser.wasm
-    const wasmCandidates = [
-      path.join(langDir, "dist", "parser.wasm"),
-      path.join(langDir, "parser.wasm"),
-      path.join(langDir, "tree-sitter-modelica.wasm"),
-    ];
+    const wasmCandidates = [path.join(langDir, "dist", "parser.wasm"), path.join(langDir, "parser.wasm")];
 
     let wasmFileName: string | undefined;
     const foundWasm = wasmCandidates.find(fs.existsSync);
@@ -119,11 +115,6 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       wasmAssets.push({
         src: foundWasm,
         dest: `server/dist/${wasmFileName}`,
-      });
-      // Backward compatibility copies for legacy test references
-      wasmAssets.push({
-        src: foundWasm,
-        dest: `server/dist/tree-sitter-${normalized.id}.wasm`,
       });
     }
 

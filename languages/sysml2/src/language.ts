@@ -1058,8 +1058,23 @@ const constraintEvalQueries = {
   /** Dynamic simulation-backed validation via VerificationRunner */
   dynamicConstraintResult: (db: QueryDB, self: SymbolEntry) => {
     // Re-evaluates automatically when SimulationResult inputs (Salsa queries) change
-    // db.query<SimulationResult>("activeSimulation", ...)
-    return null; // stubbed
+    const simResult = (db as any).query?.("activeSimulation") ?? (db as any).activeSimulation;
+    if (simResult && simResult.trajectory) {
+      const traj = simResult.trajectory;
+      const staticRes = evaluateConstraintBody(db, self);
+      if (staticRes === false) return false;
+
+      if (Array.isArray(traj.signals)) {
+        for (const sig of traj.signals) {
+          if (sig.name && sig.values && (sig.name === self.name || sig.name.endsWith(`.${self.name}`))) {
+            const hasViolation = sig.values.some((v: number) => !Boolean(v));
+            if (hasViolation) return false;
+          }
+        }
+      }
+      return true;
+    }
+    return evaluateConstraintBody(db, self);
   },
 };
 
@@ -1157,14 +1172,21 @@ const evaluateConstraintsMet = (db: QueryDB, self: SymbolEntry): boolean | null 
  * Falls back to the symbol's own name (for the `requirement <name>` branch).
  */
 const getRelationshipTargetName = (db: QueryDB, entry: SymbolEntry): string | null => {
-  // If the symbol has a declared name, it's using the `requirement <name>` branch
-  if (entry.name) return entry.name;
+  // If the symbol has a declared name that is not its internal rule name, it's using the `requirement <name>` branch
+  if (entry.name && entry.name !== entry.ruleName) {
+    const parts = entry.name.split("::");
+    return parts[parts.length - 1];
+  }
 
   // Otherwise, extract from OwnedReferenceSubsetting CST child.
   // The CST text of the OwnedReferenceSubsetting span contains the qualified name.
   for (const child of db.childrenOf(entry.id)) {
-    if (child.ruleName === "OwnedReferenceSubsetting" && child.name) {
-      return child.name;
+    if (child.ruleName === "OwnedReferenceSubsetting") {
+      const raw = db.cstText(child.startByte, child.endByte);
+      if (raw) {
+        const parts = raw.trim().split("::");
+        return parts[parts.length - 1];
+      }
     }
   }
 
@@ -1172,9 +1194,14 @@ const getRelationshipTargetName = (db: QueryDB, entry: SymbolEntry): string | nu
   // to get the target name from the source text.
   const text = db.cstText(entry.startByte, entry.endByte);
   if (text) {
-    // Match patterns:  "verify <name>" or "satisfy <name>"
-    const match = text.match(/(?:verify|satisfy)\s+(?:requirement\s+)?([A-Za-z_][A-Za-z0-9_]*)/);
-    if (match) return match[1];
+    // Match patterns:  "verify <name>" or "satisfy <name>" or qualified names like "Pkg::Name"
+    const match = text.match(
+      /(?:verify|satisfy)\s+(?:requirement\s+)?([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)/,
+    );
+    if (match) {
+      const parts = match[1].split("::");
+      return parts[parts.length - 1];
+    }
   }
   return null;
 };
@@ -1451,7 +1478,7 @@ const definitionLints = {
 /** Shared lint rules for all Usage rules */
 const usageLints = {
   usageNaming: (_db: QueryDB, self: SymbolEntry) => {
-    if (self.name && /^[A-Z]/.test(self.name)) {
+    if (self.name && self.name !== self.ruleName && /^[A-Z]/.test(self.name)) {
       return warning(`Usage '${self.name}' should start with a lowercase letter`, { field: "declaredName" });
     }
     return null;
@@ -1651,11 +1678,12 @@ const requirementUsageLints = {
 const satisfyRequirementLints = {
   ...usageLints,
   invalidTarget: (db: QueryDB, self: SymbolEntry) => {
-    if (!self.name) return null;
-    const targets = db.byName(self.name);
+    const targetName = getRelationshipTargetName(db, self);
+    if (!targetName || targetName === self.ruleName) return null;
+    const targets = db.byName(targetName);
     const reqTarget = targets.find((t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage");
     if (targets.length > 0 && !reqTarget) {
-      return error(`Target '${self.name}' is not a Requirement`, { field: "declaredName" });
+      return error(`Target '${targetName}' is not a Requirement`, { field: "declaredName" });
     }
     return null;
   },

@@ -22,6 +22,15 @@ interface LintArgs {
   path: string;
   paths: string[] | undefined;
   language?: string;
+  format?: "terminal" | "json";
+}
+
+function byteToLineCol(text: string, byteOffset: number): { line: number; col: number } {
+  const slice = text.slice(0, Math.max(0, byteOffset));
+  const lines = slice.split("\n");
+  const line = lines.length;
+  const col = (lines[lines.length - 1]?.length ?? 0) + 1;
+  return { line, col };
 }
 
 function findPolyglotFiles(dir: string, fileList: string[] = [], recognizedExts: Set<string>) {
@@ -61,6 +70,13 @@ export const Lint: CommandModule<any, any> = {
         alias: "l",
         description: "Filter to specific language (e.g. modelica, sysml2, scad)",
         type: "string",
+      })
+      .option("format", {
+        alias: "f",
+        description: "Output format: terminal or json",
+        type: "string",
+        choices: ["terminal", "json"],
+        default: "terminal",
       });
   },
   handler: async (args) => {
@@ -122,9 +138,14 @@ export const Lint: CommandModule<any, any> = {
       const { createSysML2WorkspaceIndex } = await import("@modelscript/sysml2");
       sIdx = createSysML2WorkspaceIndex();
       const { createWasmParser } = await import("@modelscript/dsl");
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = path.dirname(__filename);
-      const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
+      let wasmPath: string;
+      try {
+        wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
+      } catch {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
+      }
       const sysmlResult = await createWasmParser(wasmPath);
       const sysmlParser = sysmlResult.parser;
       for (const item of sysmlItems) {
@@ -210,27 +231,56 @@ export const Lint: CommandModule<any, any> = {
     }
 
     if (diagnostics.length === 0) {
-      console.log("No diagnostics found.");
+      if (args.format === "json") {
+        console.log("[]");
+      } else {
+        console.log("No diagnostics found.");
+      }
       return;
     }
 
-    for (const d of diagnostics) {
+    const textMap = new Map<string, string>();
+    for (const item of [...modelicaItems, ...sysmlItems, ...genericItems]) {
+      textMap.set(item.uri.replace("file://", ""), item.text);
+    }
+
+    const formattedDiags = diagnostics.map((d: any) => {
       let entry = null;
       if (engineM && d.symbolId) entry = engineM.toQueryDB().symbol(d.symbolId);
       if (!entry && engineS && d.symbolId) entry = engineS.toQueryDB().symbol(d.symbolId);
 
       const resource = d.resourceId ?? (entry?.resourceId ? entry.resourceId.replace("file://", "") : "unknown");
-      console.log(`[${resource}:${d.startByte}-${d.endByte}] ${d.severity}: [${d.lintName}] ${d.message}`);
+      const docText = textMap.get(resource) ?? "";
+      const pos = byteToLineCol(docText, d.startByte);
+      return {
+        resource,
+        line: pos.line,
+        col: pos.col,
+        startByte: d.startByte,
+        endByte: d.endByte,
+        severity: d.severity,
+        lintName: d.lintName,
+        message: d.message,
+      };
+    });
+
+    if (args.format === "json") {
+      console.log(JSON.stringify(formattedDiags, null, 2));
+    } else {
+      for (const d of formattedDiags) {
+        console.log(`[${d.resource}:${d.line}:${d.col}] ${d.severity}: [${d.lintName}] ${d.message}`);
+      }
+
+      const errors = formattedDiags.filter((d: any) => d.severity === "error").length;
+      const warnings = formattedDiags.filter((d: any) => d.severity !== "error").length;
+
+      if (errors > 0 || warnings > 0) {
+        console.log(`\n${errors} error(s), ${warnings} warning(s) found.`);
+      }
     }
 
-    const errors = diagnostics.filter((d: any) => d.severity === "error").length;
-    const warnings = diagnostics.filter((d: any) => d.severity !== "error").length;
-
-    if (errors > 0 || warnings > 0) {
-      console.log(`\n${errors} error(s), ${warnings} warning(s) found.`);
-    }
-
-    if (errors > 0) {
+    const errorCount = formattedDiags.filter((d: any) => d.severity === "error").length;
+    if (errorCount > 0) {
       process.exitCode = 1;
     }
   },

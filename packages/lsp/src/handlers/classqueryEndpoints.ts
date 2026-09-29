@@ -137,9 +137,11 @@ export function registerClassQueryEndpoints(context: LspContext) {
         let uri = entry?.resourceId;
         if (!uri) {
           // Fallback: try to resolve file path via index
+          const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
+          const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2");
           uri =
-            (context.workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(params.className) ||
-            (context.workspaceManager.sysml2WorkspaceIndex as any).getFileUriForFQN?.(params.className);
+            (moIdx as any)?.getFileUriForFQN?.(params.className) ||
+            (sysmlIdx as any)?.getFileUriForFQN?.(params.className);
         }
 
         if (uri && context.state.sharedContext) {
@@ -266,12 +268,12 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       try {
         // Ensure the full index is available before flattening
-        if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
+        const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
+        if (!context.state.dependenciesReady && (moIdx?.pendingFileCount ?? 0) > 0) {
           const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
           injectPredefinedTypes(fullIndex);
-          const engine = params.uri?.endsWith(".sysml")
-            ? context.workspaceManager.globalSysML2QueryEngine
-            : context.workspaceManager.globalModelicaQueryEngine;
+          const langId = params.uri?.endsWith(".sysml") ? "sysml2" : "modelica";
+          const engine = context.workspaceManager.getQueryEngine(langId);
           if (engine) {
             engine.updateIndex(fullIndex);
           }

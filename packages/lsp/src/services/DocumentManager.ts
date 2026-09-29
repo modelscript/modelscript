@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 import { TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import type { Tree as TreeSitterTree } from "../utils/tree-sitter.js";
+import type { Tree as CstTree } from "../utils/cst-facade.js";
 
 export class DocumentManager {
   public documents: TextDocuments<TextDocument>;
@@ -15,7 +15,7 @@ export class DocumentManager {
     this.getSharedCstTreeWrapper = getSharedCstTreeWrapper;
   }
 
-  public getDocumentTree(uri: string): TreeSitterTree | null {
+  public getDocumentTree(uri: string): CstTree | null {
     if (this.documentTrees.has(uri)) {
       return this.documentTrees.get(uri)!;
     }

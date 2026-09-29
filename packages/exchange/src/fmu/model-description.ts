@@ -51,6 +51,8 @@ export interface FmiModelDescription {
   variables: FmiScalarVariable[];
   /** Number of event indicators. */
   numberOfEventIndicators: number | undefined;
+  /** FMI 3.0 Terminals and Icons (if present in modelDescription or archive). */
+  terminals?: FmiTerminal[];
 }
 
 /**
@@ -154,6 +156,78 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     });
   }
 
+  // Parse FMI 3.0 typed variables (Float64, Float32, Int32, Boolean, etc.)
+  const fmi3TypeTags: { tag: string; moType: FmiScalarVariable["type"] }[] = [
+    { tag: "Float32", moType: "Real" },
+    { tag: "Float64", moType: "Real" },
+    { tag: "Int8", moType: "Integer" },
+    { tag: "Int16", moType: "Integer" },
+    { tag: "Int32", moType: "Integer" },
+    { tag: "Int64", moType: "Integer" },
+    { tag: "UInt8", moType: "Integer" },
+    { tag: "UInt16", moType: "Integer" },
+    { tag: "UInt32", moType: "Integer" },
+    { tag: "UInt64", moType: "Integer" },
+    { tag: "Boolean", moType: "Boolean" },
+    { tag: "String", moType: "String" },
+    { tag: "Enumeration", moType: "Enumeration" },
+  ];
+
+  for (const { tag, moType } of fmi3TypeTags) {
+    const elements = extractTagElements(xml, tag);
+    for (const { attrs } of elements) {
+      const name = extractAttrFromStr(attrs, "name");
+      const vrStr = extractAttrFromStr(attrs, "valueReference");
+      // Ensure this is a ModelVariable element (has name and valueReference)
+      if (!name || vrStr === undefined) continue;
+
+      const valueReference = parseInt(vrStr, 10);
+      const svDescription = extractAttrFromStr(attrs, "description");
+      const causality = (extractAttrFromStr(attrs, "causality") ?? "local") as FmiCausality;
+      const variability = (extractAttrFromStr(attrs, "variability") ?? "continuous") as FmiVariability;
+      const unit = extractAttrFromStr(attrs, "unit");
+      const displayUnit = extractAttrFromStr(attrs, "displayUnit");
+
+      let start: number | string | boolean | undefined;
+      const startStr = extractAttrFromStr(attrs, "start");
+      if (startStr !== undefined) {
+        if (moType === "Real") {
+          start = parseFloat(startStr);
+        } else if (moType === "Integer" || moType === "Enumeration") {
+          start = parseInt(startStr, 10);
+        } else if (moType === "Boolean") {
+          start = startStr === "true" || startStr === "1";
+        } else {
+          start = startStr;
+        }
+      }
+
+      variables.push({
+        name,
+        valueReference,
+        description: svDescription,
+        causality,
+        variability,
+        type: moType,
+        start,
+        unit,
+        displayUnit,
+      });
+    }
+  }
+
+  // Sort variables by valueReference
+  variables.sort((a, b) => a.valueReference - b.valueReference);
+
+  // Embedded terminals (FMI 3.0)
+  let terminals: FmiTerminal[] | undefined;
+  if (xml.includes("<Terminal") || xml.includes("<fmiTerminalsAndIcons")) {
+    const parsed = parseTerminalsAndIcons(xml);
+    if (parsed.length > 0) {
+      terminals = parsed;
+    }
+  }
+
   return {
     fmiVersion,
     modelName,
@@ -168,6 +242,7 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     defaultExperiment,
     variables,
     numberOfEventIndicators: numberOfEventIndicatorsStr ? parseInt(numberOfEventIndicatorsStr, 10) : undefined,
+    terminals,
   };
 }
 
@@ -272,19 +347,31 @@ function extractAttrFromStr(attrs: string, attr: string): string | undefined {
 
 // ── FMI 3.0 Terminals and Icons ──────────────────────────────────
 
+/** Graphical placement coordinates for an FMI 3.0 Terminal. */
+export interface FmiTerminalGraphicalRepresentation {
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  x?: number;
+  y?: number;
+}
+
 /** Member variable of an FMI 3.0 Terminal. */
 export interface FmiTerminalMemberVariable {
   variableName: string;
   memberName: string;
-  variableKind: string;
+  variableKind: "potential" | "flow" | "stream" | "signal" | string;
 }
 
 /** FMI 3.0 Graphical Terminal node. */
 export interface FmiTerminal {
   name: string;
   terminalKind?: string;
+  matchingRule?: string;
   description?: string;
   memberVariables: FmiTerminalMemberVariable[];
+  graphicalRepresentation?: FmiTerminalGraphicalRepresentation;
 }
 
 /**
@@ -294,12 +381,15 @@ export interface FmiTerminal {
  * @returns Array of parsed FMI 3.0 Terminals
  */
 export function parseTerminalsAndIcons(xml: string): FmiTerminal[] {
+  if (!xml || typeof xml !== "string" || !xml.includes("<")) return [];
+
   const terminals: FmiTerminal[] = [];
   const termElements = extractTagElements(xml, "Terminal");
 
   for (const { attrs, body } of termElements) {
     const name = extractAttrFromStr(attrs, "name") ?? "Unknown";
     const terminalKind = extractAttrFromStr(attrs, "terminalKind");
+    const matchingRule = extractAttrFromStr(attrs, "matchingRule");
     const description = extractAttrFromStr(attrs, "description");
 
     const memberVariables: FmiTerminalMemberVariable[] = [];
@@ -309,9 +399,20 @@ export function parseTerminalsAndIcons(xml: string): FmiTerminal[] {
       const mvAttrs = mv.attrs;
       const variableName = extractAttrFromStr(mvAttrs, "variableName") ?? "";
       const memberName = extractAttrFromStr(mvAttrs, "memberName") ?? "";
-      const variableKind = extractAttrFromStr(mvAttrs, "variableKind") ?? "signal";
+      const variableKind = (extractAttrFromStr(mvAttrs, "variableKind") ??
+        "signal") as FmiTerminalMemberVariable["variableKind"];
 
       memberVariables.push({ variableName, memberName, variableKind });
+    }
+
+    // Check for inline graphical representation / placement
+    let graphicalRepresentation: FmiTerminalGraphicalRepresentation | undefined;
+    const posBlock =
+      extractTagBlock(body, "Position") ??
+      extractTagBlock(body, "Placement") ??
+      extractTagBlock(body, "TerminalGraphicalRepresentation");
+    if (posBlock) {
+      graphicalRepresentation = parsePositionAttrs(posBlock.attrs);
     }
 
     const terminal: FmiTerminal = {
@@ -319,10 +420,66 @@ export function parseTerminalsAndIcons(xml: string): FmiTerminal[] {
       memberVariables,
     };
     if (terminalKind !== undefined) terminal.terminalKind = terminalKind;
+    if (matchingRule !== undefined) terminal.matchingRule = matchingRule;
     if (description !== undefined) terminal.description = description;
+    if (graphicalRepresentation !== undefined) terminal.graphicalRepresentation = graphicalRepresentation;
 
     terminals.push(terminal);
   }
 
+  // Parse external TerminalsGraphicalRepresentation section if present
+  const termGraphRepElements = extractTagElements(xml, "TerminalGraphicalRepresentation");
+  for (const { attrs, body } of termGraphRepElements) {
+    const termName = extractAttrFromStr(attrs, "terminalName") ?? extractAttrFromStr(attrs, "name");
+    if (!termName) continue;
+    const term = terminals.find((t) => t.name === termName);
+    if (term) {
+      const posBlock = extractTagBlock(body, "Position") ?? extractTagBlock(body, "Placement");
+      const attrsToParse = posBlock ? posBlock.attrs : attrs;
+      const coords = parsePositionAttrs(attrsToParse);
+      if (coords) {
+        term.graphicalRepresentation = coords;
+      }
+    }
+  }
+
   return terminals;
+}
+
+function parsePositionAttrs(attrs: string): FmiTerminalGraphicalRepresentation | undefined {
+  const x1Str = extractAttrFromStr(attrs, "x1");
+  const y1Str = extractAttrFromStr(attrs, "y1");
+  const x2Str = extractAttrFromStr(attrs, "x2");
+  const y2Str = extractAttrFromStr(attrs, "y2");
+  const xStr = extractAttrFromStr(attrs, "x");
+  const yStr = extractAttrFromStr(attrs, "y");
+
+  const rep: FmiTerminalGraphicalRepresentation = {};
+  let hasData = false;
+  if (x1Str !== undefined) {
+    rep.x1 = parseFloat(x1Str);
+    hasData = true;
+  }
+  if (y1Str !== undefined) {
+    rep.y1 = parseFloat(y1Str);
+    hasData = true;
+  }
+  if (x2Str !== undefined) {
+    rep.x2 = parseFloat(x2Str);
+    hasData = true;
+  }
+  if (y2Str !== undefined) {
+    rep.y2 = parseFloat(y2Str);
+    hasData = true;
+  }
+  if (xStr !== undefined) {
+    rep.x = parseFloat(xStr);
+    hasData = true;
+  }
+  if (yStr !== undefined) {
+    rep.y = parseFloat(yStr);
+    hasData = true;
+  }
+
+  return hasData ? rep : undefined;
 }

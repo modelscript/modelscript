@@ -24,8 +24,10 @@ function collectTsFiles(dir) {
   return results;
 }
 
-// Exclude arena.ts shim and parser loop files that require dynamically generated grammar tables (MAX_TERMINAL_ID, lex, etc.)
-const files = collectTsFiles(runtimeDir).filter((f) => !f.endsWith("arena.ts") && !f.includes("/parser/"));
+const filter = process.argv[2];
+const files = collectTsFiles(runtimeDir)
+  .filter((f) => !f.endsWith("arena.ts") && !f.includes("/parser/"))
+  .filter((f) => !filter || f.includes(filter));
 
 console.log(`Verifying ${files.length} AssemblyScript runtime source files...`);
 

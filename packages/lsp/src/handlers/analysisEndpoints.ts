@@ -289,12 +289,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
     }
 
     try {
-      if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
+      const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
+      if (!context.state.dependenciesReady && (moIdx?.pendingFileCount ?? 0) > 0) {
         const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         injectPredefinedTypes(fullIndex);
-        const engine = params.uri.endsWith(".sysml")
-          ? context.workspaceManager.globalSysML2QueryEngine
-          : context.workspaceManager.globalModelicaQueryEngine;
+        const langId = params.uri.endsWith(".sysml") ? "sysml2" : "modelica";
+        const engine = context.workspaceManager.getQueryEngine(langId);
         if (engine) engine.updateIndex(fullIndex);
 
         const doc = context.documents.get(params.uri);
@@ -406,12 +406,15 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/verifyAll",
-    async (params: {
-      uri: string;
-      target?: string;
-      options?: UnifiedVerificationOptions;
-      format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf";
-    }): Promise<UnifiedVerificationReport> => {
+    async (
+      params: {
+        uri: string;
+        target?: string;
+        options?: UnifiedVerificationOptions;
+        format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf";
+      },
+      token?: any,
+    ): Promise<UnifiedVerificationReport> => {
       context.connection.console.info(`[verifyAll] Requested unified verification for URI: ${params.uri}`);
       try {
         let sourceText = "";
@@ -470,6 +473,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         // 3. Perform simulation if needed for trajectory verification or B2B
         const options: UnifiedVerificationOptions = params.options || { all: true };
+        if (!options.cancellationToken && token) {
+          options.cancellationToken = token;
+        }
         let simResult: any = undefined;
         const needsSim = options.all || options.trajectories !== false || options.b2b;
         if (arena && needsSim) {

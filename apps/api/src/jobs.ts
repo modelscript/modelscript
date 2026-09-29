@@ -171,9 +171,24 @@ export class JobQueue {
         console.error(`Job "${job.key}" failed: ${message}`);
         const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
         this.#status.set(job.key, { ...updatedStatus, status: "failed", error: message });
+      } finally {
+        this.#prune();
       }
     }
 
     this.#running = false;
+  }
+
+  static readonly MAX_STATUS_ENTRIES = 1000;
+
+  /** Evict oldest finished jobs when status map exceeds maximum size. */
+  #prune(): void {
+    if (this.#status.size <= JobQueue.MAX_STATUS_ENTRIES) return;
+    for (const [key, info] of this.#status.entries()) {
+      if (this.#status.size <= JobQueue.MAX_STATUS_ENTRIES) break;
+      if (info.status === "completed" || info.status === "failed") {
+        this.#status.delete(key);
+      }
+    }
   }
 }

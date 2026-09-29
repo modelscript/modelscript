@@ -91,13 +91,28 @@ export class OntologyTheoryOracle implements TheoryOracle {
   }
 
   private findRootIndividual(x: string): string {
-    const parent = this.sameIndividualMap.get(x);
-    if (!parent || parent === x) {
-      this.sameIndividualMap.set(x, x);
-      return x;
+    let curr = x;
+    const visited = new Set<string>();
+    const path: string[] = [];
+
+    while (true) {
+      if (visited.has(curr)) {
+        this.sameIndividualMap.set(curr, curr);
+        break;
+      }
+      visited.add(curr);
+      path.push(curr);
+      const parent = this.sameIndividualMap.get(curr);
+      if (!parent || parent === curr) {
+        break;
+      }
+      curr = parent;
     }
-    const root = this.findRootIndividual(parent);
-    this.sameIndividualMap.set(x, root);
+
+    const root = curr;
+    for (const node of path) {
+      this.sameIndividualMap.set(node, root);
+    }
     return root;
   }
 

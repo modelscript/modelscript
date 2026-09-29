@@ -11,7 +11,7 @@ import {
 import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
 import { strFromU8, unzipSync } from "fflate";
 import { iconCache } from "../handlers/treeHandler.js";
-import type { Parser, Tree } from "../utils/tree-sitter.js";
+import type { Parser, Tree } from "../utils/cst-facade.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";
 
 export interface LoaderContext {

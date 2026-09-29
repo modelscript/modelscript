@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
-import { assertSafePublicUrl } from "../util/ssrf.js";
+import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 
 export async function verifyActivityPubSignature(req: Request, res: Response, next: NextFunction) {
   try {
@@ -38,7 +38,7 @@ export async function verifyActivityPubSignature(req: Request, res: Response, ne
     }
 
     // Fetch the public key from the keyId URL
-    const actorResponse = await fetch(actorUrl.href, {
+    const actorResponse = await safePublicFetch(actorUrl.href, {
       headers: { Accept: "application/activity+json" },
     });
 

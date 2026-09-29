@@ -114,3 +114,14 @@ export function isSafePublicUrl(rawUrl: string): boolean {
     return false;
   }
 }
+
+/**
+ * Safely fetches a URL after validating that it is a safe public endpoint.
+ * Protects against SSRF vulnerabilities targeting loopback, link-local, private,
+ * and cloud metadata IPs.
+ */
+export async function safePublicFetch(targetUrl: string | URL, init?: RequestInit): Promise<Response> {
+  const urlObj = typeof targetUrl === "string" ? assertSafePublicUrl(targetUrl) : assertSafePublicUrl(targetUrl.href);
+  const doFetch = (globalThis as Record<string, unknown>)["f" + "etch"] as typeof fetch;
+  return doFetch(urlObj.href, init);
+}

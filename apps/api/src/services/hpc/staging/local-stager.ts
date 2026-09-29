@@ -17,7 +17,19 @@ export class LocalFsObjectStager implements ObjectStager {
   }
 
   private resolveKey(remoteKey: string): string {
-    return path.join(this.storageRoot, remoteKey.replace(/^\/+/, ""));
+    if (typeof remoteKey !== "string" || Array.isArray(remoteKey)) {
+      throw new Error("Invalid remote key");
+    }
+    const cleanKey = path
+      .normalize(remoteKey)
+      .replace(/^(\.\.[/\\])+/, "")
+      .replace(/^[/\\]+/, "");
+    const resolved = path.resolve(this.storageRoot, cleanKey);
+    const rootWithSep = this.storageRoot.endsWith(path.sep) ? this.storageRoot : this.storageRoot + path.sep;
+    if (!resolved.startsWith(rootWithSep) && resolved !== this.storageRoot) {
+      throw new Error(`Path traversal detected: ${remoteKey}`);
+    }
+    return resolved;
   }
 
   public async uploadFile(remoteKey: string, localPathOrBuffer: string | Buffer): Promise<string> {
@@ -25,7 +37,8 @@ export class LocalFsObjectStager implements ObjectStager {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
 
     if (typeof localPathOrBuffer === "string") {
-      fs.copyFileSync(localPathOrBuffer, dest);
+      const cleanLocal = path.resolve(localPathOrBuffer);
+      fs.copyFileSync(cleanLocal, dest);
     } else {
       fs.writeFileSync(dest, localPathOrBuffer);
     }
@@ -37,8 +50,9 @@ export class LocalFsObjectStager implements ObjectStager {
     if (!fs.existsSync(src)) {
       throw new Error(`Local staged file not found: ${src}`);
     }
-    fs.mkdirSync(path.dirname(localDestinationPath), { recursive: true });
-    fs.copyFileSync(src, localDestinationPath);
+    const safeDest = path.resolve(localDestinationPath);
+    fs.mkdirSync(path.dirname(safeDest), { recursive: true });
+    fs.copyFileSync(src, safeDest);
   }
 
   public async getDownloadUrl(remoteKey: string): Promise<string> {

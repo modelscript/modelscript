@@ -5502,6 +5502,29 @@ function lowerCSTExpression(
     }
 
     if (fnDae && !(fnDae as any).isOperatorRecord && !fnDae.description?.includes("record constructor")) {
+      if (
+        flattener?.options?.omcCompatibility &&
+        fnDae.eqCount === 0 &&
+        fnDae.algorithmSections.length === 0 &&
+        !fnDae.externalDecl
+      ) {
+        let firstOutputType: VarType | null = null;
+        let outputCount = 0;
+        for (let i = 0; i < fnDae.varCount; i++) {
+          if (fnDae.getVarCausality(i) === Causality.Output) {
+            if (outputCount === 0) firstOutputType = fnDae.getVarType(i);
+            outputCount++;
+          }
+        }
+        if (outputCount === 1 && firstOutputType !== null) {
+          (fnDae as any).wasCalled = true;
+          if (firstOutputType === VarType.Integer) return dae.addIntLiteral(0);
+          if (firstOutputType === VarType.Boolean) return dae.addBoolLiteral(false);
+          if (firstOutputType === VarType.String) return dae.addStringLiteral("");
+          return dae.addRealLiteral(0.0);
+        }
+      }
+
       let allConstant = true;
       const constArgs: any[] = [];
       for (const aid of argExprIds) {
@@ -7464,9 +7487,12 @@ function lowerCSTExpression(
                           : x.ident,
                     )
                     .join(".");
+                  const isConnect = stmtNode.type === "connect_equation" || stmtNode.type === "ConnectEquation";
+                  const targetRefStr = isConnect ? refStr : rawParts[pi].ident;
                   dae.diagnostics.push({
                     severity: "error",
-                    message: `Subscript '${v}' for dimension ${d + 1} (size = ${dimSize}) of ${refStr} is out of bounds.`,
+                    code: 4031,
+                    message: `Subscript '${v}' for dimension ${d + 1} (size = ${dimSize}) of ${targetRefStr} is out of bounds.`,
                     range: r,
                   });
                   return -1;
@@ -8290,14 +8316,32 @@ function expandColonToArrayCtor(exprId: number, dae: DAEBuilder, varType?: VarTy
     return null;
   }
 
-  if (startVal !== null && stopVal !== null && stepVal !== 0) {
+  if (startVal !== null && stopVal !== null) {
+    if (stepVal === 0 || Math.abs(stepVal) < 1e-12) {
+      dae.diagnostics.push({
+        severity: "error",
+        code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
+        message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(stepVal)),
+        range: { startByte: 0, endByte: 0 },
+      });
+      return null;
+    }
+    const count = Math.max(0, Math.floor((stopVal - startVal) / stepVal + 1e-9) + 1);
+    if (count > 100000) {
+      dae.diagnostics.push({
+        severity: "error",
+        code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
+        message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(stepVal)),
+        range: { startByte: 0, endByte: 0 },
+      });
+      return null;
+    }
     const elemIds: number[] = [];
     const isReal =
       varType === VarType.Real ||
       !Number.isInteger(startVal) ||
       !Number.isInteger(stepVal) ||
       !Number.isInteger(stopVal);
-    const count = Math.max(0, Math.floor((stopVal - startVal) / stepVal + 1e-9) + 1);
     for (let i = 0; i < count; i++) {
       const v = startVal + i * stepVal;
       elemIds.push(isReal ? dae.addRealLiteral(v) : dae.addIntLiteral(Math.round(v)));
@@ -8761,11 +8805,53 @@ export class ModelicaFlattener {
     for (const child of this.db.childrenOf(classId)) {
       if (child.kind === "Import") {
         const meta = child.metadata as Record<string, unknown>;
-        const importKind = (meta?.importKind as string | undefined) ?? "simple";
-        const pkgName = (meta?.packageName ?? child.name) as string;
+        let importKind = meta?.importKind as string | undefined;
+        let pkgName = (meta?.packageName ?? child.name) as string;
+        let aliasName = meta?.shortName as string | undefined;
+
+        // For WASM GLR parser import_clause nodes, inspect the CST
+        if (importKind === undefined && (child.ruleName === "import_clause" || child.ruleName === "ImportClause")) {
+          const importCst = this.db.cstNode(child.id) as any;
+          if (importCst) {
+            const aliasNode = Cst.ImportClause.alias(importCst);
+            const importListNode = Cst.ImportClause.importList(importCst);
+            const cstText: string = importCst.text ?? "";
+
+            if (aliasNode) {
+              aliasName = aliasNode.text;
+              importKind = "simple";
+            } else if (importListNode) {
+              importKind = "compound";
+            } else if (/\.\s*\*/.test(cstText)) {
+              importKind = "unqualified";
+            } else {
+              importKind = "simple";
+            }
+          } else {
+            importKind = "simple";
+          }
+        }
+        if (!importKind) importKind = "simple";
+
         if (importKind === "simple") {
-          const shortName = (meta?.shortName as string) ?? pkgName.split(".").pop() ?? pkgName;
+          const shortName = aliasName ?? pkgName.split(".").pop() ?? pkgName;
           result.set(shortName, pkgName);
+        } else if (importKind === "unqualified") {
+          // For unqualified imports, we need to resolve the package and add all children
+          const pkgEntry = this.db
+            .byName(pkgName.split(".")[0] ?? "")
+            .find((e) => e.kind === "Package" || e.kind === "Class");
+          if (pkgEntry) {
+            const resolvedPkg = this.db.query<(n: string) => { id: number } | null>("resolveName", pkgEntry.id);
+            const target = pkgName.includes(".") ? resolvedPkg?.(pkgName.slice(pkgName.indexOf(".") + 1)) : pkgEntry;
+            if (target) {
+              for (const pkgChild of this.db.childrenOf(target.id)) {
+                if (pkgChild.kind !== "Reference" && pkgChild.kind !== "Import") {
+                  result.set(pkgChild.name, `${pkgName}.${pkgChild.name}`);
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -9307,6 +9393,40 @@ export class ModelicaFlattener {
     return false;
   }
 
+  private classHasUnsupportedWasmFeatures(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
+    if (!classId || visited.has(classId)) return false;
+    visited.add(classId);
+
+    const cst = this.db.cstNode(classId) as any;
+    const text = cst?.text ?? "";
+    const fileText = cst?.tree?.rootNode?.text ?? "";
+    if (/\b(inner|outer|expandable|each|import)\b/.test(text) || /\b(inner|outer|expandable|import)\b/.test(fileText))
+      return true;
+    if (/\btype\s+[a-zA-Z_]\w*\s*=/.test(text) || /\btype\s+[a-zA-Z_]\w*\s*=/.test(fileText)) return true;
+    if (/\[\s*\d+\s*\]\s*\(/.test(text)) return true;
+    if (/\b(?:Real|Integer|Boolean|String)\s+[a-zA-Z_]\w*\s*\[\s*\d+\s*,\s*\d+\s*\]/.test(text)) return true;
+
+    const children = this.db.childrenOf(classId);
+    for (const child of children) {
+      if (child.kind === "Import") return true;
+      if (child.kind === "Extends") {
+        const baseClass = this.db.query<any>("resolvedBaseClass", child.id) ?? this.db.byName(child.name)?.[0];
+        if (baseClass && this.classHasUnsupportedWasmFeatures(baseClass.id, visited)) return true;
+      }
+      if (child.kind === "Class" || child.kind === "Model" || child.kind === "Block" || child.kind === "Connector") {
+        if (this.classHasUnsupportedWasmFeatures(child.id, visited)) return true;
+      }
+      if (child.kind === "Component") {
+        const compInst = this.db.query<any>("componentInstance", child.id);
+        const targetClass = compInst?.classTargetId
+          ? this.db.symbol(compInst.classTargetId)
+          : this.db.byName(compInst?.typeName ?? "")?.[0];
+        if (targetClass && this.classHasUnsupportedWasmFeatures(targetClass.id, visited)) return true;
+      }
+    }
+    return false;
+  }
+
   flattenClass(rootClassId: SymbolId, cachedArena?: DAEBuilder | null): DAEBuilder {
     this.currentRootClassId = rootClassId;
     this.currentClassId = rootClassId;
@@ -9796,7 +9916,10 @@ export class ModelicaFlattener {
       ((this.options.backend === "hybrid" || !this.options.backend) &&
         Boolean(this.options.useWasmKernel) &&
         !this.classHasRedeclare(rootClassId) &&
-        !(this.options.omcCompatibility && this.classHasConnect(rootClassId)));
+        !(
+          this.options.omcCompatibility &&
+          (this.classHasConnect(rootClassId) || this.classHasUnsupportedWasmFeatures(rootClassId))
+        ));
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
@@ -15344,11 +15467,17 @@ export class ModelicaFlattener {
       brokenConnections: Set<string>;
     },
     parentMods?: any,
+    visitedClasses?: Set<SymbolId>,
   ): void {
     const curBreakContext = breakContext ?? {
       brokenComponents: new Set<string>(),
       brokenConnections: new Set<string>(),
     };
+    const curVisited = visitedClasses ? new Set(visitedClasses) : new Set<SymbolId>();
+    if (curVisited.has(classId)) {
+      return;
+    }
+    curVisited.add(classId);
 
     if (this.pendingArrayBindings.has(prefix)) {
       const pending = this.pendingArrayBindings.get(prefix)!;
@@ -15435,13 +15564,25 @@ export class ModelicaFlattener {
               ownerClassId: compClassId,
             };
             const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", child.id);
+            if (curVisited.has(compClassId)) {
+              continue;
+            }
+            const nextVisited = new Set(curVisited);
+            nextVisited.add(compClassId);
             if (arrayDims && arrayDims.length > 0) {
               const indices = generateArrayIndices(arrayDims);
               for (const indexStr of indices) {
-                this.extractClassEquations(compClassId, `${childPrefix}${indexStr}`, dae, curBreakContext, childSubMod);
+                this.extractClassEquations(
+                  compClassId,
+                  `${childPrefix}${indexStr}`,
+                  dae,
+                  curBreakContext,
+                  childSubMod,
+                  nextVisited,
+                );
               }
             } else {
-              this.extractClassEquations(compClassId, childPrefix, dae, curBreakContext, childSubMod);
+              this.extractClassEquations(compClassId, childPrefix, dae, curBreakContext, childSubMod, nextVisited);
             }
           }
         }
@@ -16428,6 +16569,11 @@ export class ModelicaFlattener {
                         if (!sym0 || !sym1) {
                           connIncompat = true;
                         } else {
+                          const isC0Exp = this.isExpandableConnectorClass(sym0.id);
+                          const isC1Exp = this.isExpandableConnectorClass(sym1.id);
+                          if (isC0Exp !== isC1Exp) {
+                            return;
+                          }
                           const getPublicComps = (sym: SymbolEntry): SymbolEntry[] => {
                             const elems =
                               this.db.query<SymbolEntry[]>("allElements", sym.id) ?? this.db.childrenOf(sym.id);
@@ -17377,7 +17523,11 @@ export class ModelicaFlattener {
             args: [...(parentMods?.args ?? []), ...shortArgs],
             ownerClassId: parentMods?.ownerClassId ?? classId,
           };
-          this.extractClassEquations(matches[0].id, prefix, dae, curBreakContext, combinedMods);
+          if (!curVisited.has(matches[0].id)) {
+            const nextVisited = new Set(curVisited);
+            nextVisited.add(matches[0].id);
+            this.extractClassEquations(matches[0].id, prefix, dae, curBreakContext, combinedMods, nextVisited);
+          }
         }
       }
     }
@@ -17410,6 +17560,20 @@ export class ModelicaFlattener {
         const baseTargets = baseClass ? [baseClass] : this.db.byName(child.name);
         for (const target of baseTargets) {
           if (target.kind === "Class") {
+            if (curVisited.has(target.id) || target.id === classId) {
+              const startB = child.startByte ?? 0;
+              const endB = child.endByte ?? 0;
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.EXTENDS_CYCLE.code,
+                message: ModelicaErrorCode.EXTENDS_CYCLE.message(child.name),
+                range: {
+                  startByte: startB,
+                  endByte: endB,
+                },
+              });
+              continue;
+            }
             this.extractClassEquations(
               target.id,
               prefix,
@@ -17419,6 +17583,7 @@ export class ModelicaFlattener {
                 brokenConnections: childBrokenConnections,
               },
               extSubMod,
+              curVisited,
             );
           }
         }

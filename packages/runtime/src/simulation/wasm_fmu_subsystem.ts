@@ -334,36 +334,318 @@ export class OnnxFmuSubsystem implements FmuSubsystem {
 }
 
 /**
+ * Interface for an FMU Model Exchange participant.
+ *
+ * Unlike Co-Simulation (which advances via discrete doStep(h) intervals),
+ * Model Exchange integrates directly into the continuous DAE solver:
+ * - States x and continuous derivatives dx/dt are evaluated continuously
+ * - Inputs u are pushed directly at any time point
+ * - Algebraic outputs y and event indicators z are queried on demand
+ */
+export interface ModelExchangeSubsystem {
+  /** Model name */
+  readonly modelName: string;
+  /** Number of continuous states */
+  readonly numberOfContinuousStates: number;
+  /** Number of event indicators */
+  readonly numberOfEventIndicators: number;
+  /** Continuous state variable names */
+  readonly stateNames: string[];
+  /** Continuous state derivative variable names */
+  readonly derivativeNames: string[];
+  /** Input variable names */
+  readonly inputNames: string[];
+  /** Output variable names */
+  readonly outputNames: string[];
+  /** Parameter names */
+  readonly parameterNames: string[];
+
+  /** Initialize the Model Exchange instance */
+  initialize(startTime: number, stopTime: number): void;
+  /** Set continuous time */
+  setTime(time: number): void;
+  /** Set continuous states */
+  setContinuousStates(states: Float64Array | number[]): void;
+  /** Get continuous states */
+  getContinuousStates(): Float64Array;
+  /** Get continuous state derivatives */
+  getContinuousStateDerivatives(): Float64Array;
+  /** Get event indicators */
+  getEventIndicators(): Float64Array;
+  /** Set inputs */
+  setInputs(inputs: Map<string, number>): void;
+  /** Get algebraic/continuous outputs */
+  getOutputs(): Map<string, number>;
+  /** Complete an integrator step */
+  completedIntegratorStep(): { enterEventMode: boolean; terminateSimulation: boolean };
+  /** Terminate the instance */
+  terminate(): void;
+}
+
+/**
+ * In-memory FMU Model Exchange subsystem implementation.
+ */
+export class ModelExchangeFmuSubsystem implements ModelExchangeSubsystem {
+  readonly modelName: string;
+  readonly numberOfContinuousStates: number;
+  readonly numberOfEventIndicators: number;
+  readonly stateNames: string[];
+  readonly derivativeNames: string[];
+  readonly inputNames: string[];
+  readonly outputNames: string[];
+  readonly parameterNames: string[];
+
+  private currentTime = 0;
+  private states: Float64Array;
+  private derivatives: Float64Array;
+  private eventIndicators: Float64Array;
+  private currentInputs = new Map<string, number>();
+  private currentOutputs = new Map<string, number>();
+  private derivativeFn?: (t: number, x: Float64Array, u: Map<string, number>) => Float64Array | number[];
+  private outputFn?: (t: number, x: Float64Array, u: Map<string, number>) => Map<string, number>;
+
+  constructor(options: {
+    modelName: string;
+    stateNames: string[];
+    derivativeNames?: string[];
+    inputNames?: string[];
+    outputNames?: string[];
+    parameterNames?: string[];
+    numberOfEventIndicators?: number;
+    initialStates?: Float64Array | number[];
+    derivativeFn?: (t: number, x: Float64Array, u: Map<string, number>) => Float64Array | number[];
+    outputFn?: (t: number, x: Float64Array, u: Map<string, number>) => Map<string, number>;
+  }) {
+    this.modelName = options.modelName;
+    this.stateNames = options.stateNames;
+    this.numberOfContinuousStates = options.stateNames.length;
+    this.derivativeNames = options.derivativeNames ?? options.stateNames.map((s) => `der(${s})`);
+    this.inputNames = options.inputNames ?? [];
+    this.outputNames = options.outputNames ?? [];
+    this.parameterNames = options.parameterNames ?? [];
+    this.numberOfEventIndicators = options.numberOfEventIndicators ?? 0;
+    this.derivativeFn = options.derivativeFn;
+    this.outputFn = options.outputFn;
+
+    this.states = new Float64Array(this.numberOfContinuousStates);
+    if (options.initialStates) {
+      for (let i = 0; i < options.initialStates.length && i < this.states.length; i++) {
+        this.states[i] = options.initialStates[i]!;
+      }
+    }
+    this.derivatives = new Float64Array(this.numberOfContinuousStates);
+    this.eventIndicators = new Float64Array(this.numberOfEventIndicators);
+  }
+
+  initialize(startTime: number, _stopTime: number): void {
+    this.currentTime = startTime;
+    this.evaluateDerivatives();
+    this.evaluateOutputs();
+  }
+
+  setTime(time: number): void {
+    this.currentTime = time;
+  }
+
+  setContinuousStates(states: Float64Array | number[]): void {
+    for (let i = 0; i < this.states.length && i < states.length; i++) {
+      this.states[i] = states[i]!;
+    }
+    this.evaluateDerivatives();
+    this.evaluateOutputs();
+  }
+
+  getContinuousStates(): Float64Array {
+    return new Float64Array(this.states);
+  }
+
+  getContinuousStateDerivatives(): Float64Array {
+    this.evaluateDerivatives();
+    return new Float64Array(this.derivatives);
+  }
+
+  getEventIndicators(): Float64Array {
+    return new Float64Array(this.eventIndicators);
+  }
+
+  setInputs(inputs: Map<string, number>): void {
+    for (const [k, v] of inputs) {
+      this.currentInputs.set(k, v);
+    }
+    this.evaluateDerivatives();
+    this.evaluateOutputs();
+  }
+
+  getOutputs(): Map<string, number> {
+    this.evaluateOutputs();
+    return new Map(this.currentOutputs);
+  }
+
+  completedIntegratorStep(): { enterEventMode: boolean; terminateSimulation: boolean } {
+    return { enterEventMode: false, terminateSimulation: false };
+  }
+
+  terminate(): void {
+    this.currentInputs.clear();
+    this.currentOutputs.clear();
+  }
+
+  private evaluateDerivatives(): void {
+    if (this.derivativeFn) {
+      const res = this.derivativeFn(this.currentTime, this.states, this.currentInputs);
+      for (let i = 0; i < this.derivatives.length && i < res.length; i++) {
+        this.derivatives[i] = res[i]!;
+      }
+    }
+  }
+
+  private evaluateOutputs(): void {
+    if (this.outputFn) {
+      const out = this.outputFn(this.currentTime, this.states, this.currentInputs);
+      for (const [k, v] of out) {
+        this.currentOutputs.set(k, v);
+      }
+    }
+  }
+}
+
+/**
+ * Wrap a Model Exchange subsystem into an FmuSubsystem (Co-Simulation) using a micro-integrator.
+ */
+export function createCoSimFromModelExchange(
+  me: ModelExchangeSubsystem,
+  stepSolver: "rk4" | "euler" = "rk4",
+): FmuSubsystem {
+  return {
+    modelName: me.modelName,
+    inputNames: me.inputNames,
+    outputNames: me.outputNames,
+    parameterNames: me.parameterNames,
+
+    initialize(startTime: number, stopTime: number, _stepSize: number): void {
+      me.initialize(startTime, stopTime);
+    },
+
+    setInputs(inputs: Map<string, number>): void {
+      me.setInputs(inputs);
+    },
+
+    doStep(currentTime: number, stepSize: number): void {
+      const n = me.numberOfContinuousStates;
+      if (n === 0) {
+        me.setTime(currentTime + stepSize);
+        return;
+      }
+
+      const x0 = me.getContinuousStates();
+
+      if (stepSolver === "euler") {
+        me.setTime(currentTime);
+        const f0 = me.getContinuousStateDerivatives();
+        const xNext = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          xNext[i] = x0[i]! + stepSize * f0[i]!;
+        }
+        me.setTime(currentTime + stepSize);
+        me.setContinuousStates(xNext);
+        me.completedIntegratorStep();
+      } else {
+        // RK4 micro-integrator
+        me.setTime(currentTime);
+        const k1 = me.getContinuousStateDerivatives();
+
+        const xStage1 = new Float64Array(n);
+        for (let i = 0; i < n; i++) xStage1[i] = x0[i]! + 0.5 * stepSize * k1[i]!;
+        me.setTime(currentTime + 0.5 * stepSize);
+        me.setContinuousStates(xStage1);
+        const k2 = me.getContinuousStateDerivatives();
+
+        const xStage2 = new Float64Array(n);
+        for (let i = 0; i < n; i++) xStage2[i] = x0[i]! + 0.5 * stepSize * k2[i]!;
+        me.setContinuousStates(xStage2);
+        const k3 = me.getContinuousStateDerivatives();
+
+        const xStage3 = new Float64Array(n);
+        for (let i = 0; i < n; i++) xStage3[i] = x0[i]! + stepSize * k3[i]!;
+        me.setTime(currentTime + stepSize);
+        me.setContinuousStates(xStage3);
+        const k4 = me.getContinuousStateDerivatives();
+
+        const xNext = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          xNext[i] = x0[i]! + (stepSize / 6.0) * (k1[i]! + 2 * k2[i]! + 2 * k3[i]! + k4[i]!);
+        }
+        me.setContinuousStates(xNext);
+        me.completedIntegratorStep();
+      }
+    },
+
+    getOutputs(): Map<string, number> {
+      return me.getOutputs();
+    },
+
+    terminate(): void {
+      me.terminate();
+    },
+  };
+}
+
+/**
  * Registry of FMU subsystems available to the simulator.
  */
 export class FmuSubsystemRegistry {
   private subsystems = new Map<string, FmuSubsystem>();
+  private meSubsystems = new Map<string, ModelExchangeSubsystem>();
 
   register(instanceName: string, subsystem: FmuSubsystem): void {
     this.subsystems.set(instanceName, subsystem);
+  }
+
+  registerME(instanceName: string, subsystem: ModelExchangeSubsystem): void {
+    this.meSubsystems.set(instanceName, subsystem);
+    // Also auto-register CoSim adapter so it can be stepped in co-simulation if requested
+    this.subsystems.set(instanceName, createCoSimFromModelExchange(subsystem));
   }
 
   get(instanceName: string): FmuSubsystem | undefined {
     return this.subsystems.get(instanceName);
   }
 
+  getME(instanceName: string): ModelExchangeSubsystem | undefined {
+    return this.meSubsystems.get(instanceName);
+  }
+
   has(instanceName: string): boolean {
     return this.subsystems.has(instanceName);
+  }
+
+  hasME(instanceName: string): boolean {
+    return this.meSubsystems.has(instanceName);
   }
 
   entries(): IterableIterator<[string, FmuSubsystem]> {
     return this.subsystems.entries();
   }
 
+  entriesME(): IterableIterator<[string, ModelExchangeSubsystem]> {
+    return this.meSubsystems.entries();
+  }
+
   initializeAll(startTime: number, stopTime: number, stepSize: number): void {
     for (const sub of this.subsystems.values()) {
       sub.initialize(startTime, stopTime, stepSize);
+    }
+    for (const me of this.meSubsystems.values()) {
+      me.initialize(startTime, stopTime);
     }
   }
 
   terminateAll(): void {
     for (const sub of this.subsystems.values()) {
       sub.terminate();
+    }
+    for (const me of this.meSubsystems.values()) {
+      me.terminate();
     }
   }
 }

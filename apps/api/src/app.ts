@@ -46,6 +46,7 @@ import { seedCfdAnimation } from "./seed-cfd-animation.js";
 import { seedDroneCfd } from "./seed-drone-cfd.js";
 import { seedDroneFea } from "./seed-drone-fea.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
+import { SysML2OmgService } from "./services/sysml2-omg-service.js";
 import { LibraryStorage } from "./storage.js";
 import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
 
@@ -118,170 +119,172 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       console.error("[DevServer] Failed to seed prepackaged libraries:", err);
     });
 
-    app.post("/api/v1/dev/reset", async (req, res) => {
-      console.log("[DevServer] Resetting database and re-seeding...");
-      try {
-        jobQueue.clear();
-        database.resetDevData();
-        for (const u of devUsers) {
-          if (!database.getUserByUsername(u.username)) {
-            const hash = bcrypt.hashSync("password", 10);
-            const { id } = database.createUser(u.username, u.email, hash);
-            database.updateProfile(id, { location: u.location });
+    if (process.env["NODE_ENV"] !== "production") {
+      app.post("/api/v1/dev/reset", async (req, res) => {
+        console.log("[DevServer] Resetting database and re-seeding...");
+        try {
+          jobQueue.clear();
+          database.resetDevData();
+          for (const u of devUsers) {
+            if (!database.getUserByUsername(u.username)) {
+              const hash = bcrypt.hashSync("password", 10);
+              const { id } = database.createUser(u.username, u.email, hash);
+              database.updateProfile(id, { location: u.location });
+            }
           }
-        }
 
-        // Seed some dummy posts
-        const devUser = database.getUserByUsername("dev");
-        const alice = database.getUserByUsername("alice");
-        if (devUser && alice) {
-          const devPost = database.createPost(
-            devUser.id,
-            "Welcome to the new ModelScript social platform! We're excited to see what you build. #welcome",
-          );
-          database.createPost(alice.id, "Just testing out the new federated features. Very smooth so far! 🚀");
-          database.createPost(
-            devUser.id,
-            "Has anyone played with the new Modelica parser yet? The AST is looking really clean.",
-            undefined,
-            devPost.id,
-          );
+          // Seed some dummy posts
+          const devUser = database.getUserByUsername("dev");
+          const alice = database.getUserByUsername("alice");
+          if (devUser && alice) {
+            const devPost = database.createPost(
+              devUser.id,
+              "Welcome to the new ModelScript social platform! We're excited to see what you build. #welcome",
+            );
+            database.createPost(alice.id, "Just testing out the new federated features. Very smooth so far! 🚀");
+            database.createPost(
+              devUser.id,
+              "Has anyone played with the new Modelica parser yet? The AST is looking really clean.",
+              undefined,
+              devPost.id,
+            );
 
-          const cadViewId = database.createArtifactView(
-            alice.id,
-            "cad_step",
-            "url",
-            JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/cad/drone.step" }),
-            "Drone Chassis CAD Model",
-          );
+            const cadViewId = database.createArtifactView(
+              alice.id,
+              "cad_step",
+              "url",
+              JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/cad/drone.step" }),
+              "Drone Chassis CAD Model",
+            );
 
-          database.createPost(
-            alice.id,
-            "Just finished the initial 3D design for the drone chassis! The STEP file is attached below. Let me know what you think of the rotor placement. 🚁 #cad",
-            cadViewId,
-          );
+            database.createPost(
+              alice.id,
+              "Just finished the initial 3D design for the drone chassis! The STEP file is attached below. Let me know what you think of the rotor placement. 🚁 #cad",
+              cadViewId,
+            );
 
-          // Vega-Lite trajectory plot
-          const vegaSpec = {
-            $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-            description: "Simulation Trajectory of a Pendulum",
-            mark: "line",
-            encoding: {
-              x: { field: "time", type: "quantitative", title: "Time (s)" },
-              y: { field: "angle", type: "quantitative", title: "Angle (rad)" },
-            },
-          };
-          const vegaData = [
-            { time: 0, angle: 0.5 },
-            { time: 0.1, angle: 0.48 },
-            { time: 0.2, angle: 0.42 },
-            { time: 0.3, angle: 0.34 },
-            { time: 0.4, angle: 0.24 },
-            { time: 0.5, angle: 0.12 },
-            { time: 0.6, angle: 0 },
-            { time: 0.7, angle: -0.12 },
-            { time: 0.8, angle: -0.24 },
-            { time: 0.9, angle: -0.34 },
-            { time: 1.0, angle: -0.42 },
-          ];
+            // Vega-Lite trajectory plot
+            const vegaSpec = {
+              $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+              description: "Simulation Trajectory of a Pendulum",
+              mark: "line",
+              encoding: {
+                x: { field: "time", type: "quantitative", title: "Time (s)" },
+                y: { field: "angle", type: "quantitative", title: "Angle (rad)" },
+              },
+            };
+            const vegaData = [
+              { time: 0, angle: 0.5 },
+              { time: 0.1, angle: 0.48 },
+              { time: 0.2, angle: 0.42 },
+              { time: 0.3, angle: 0.34 },
+              { time: 0.4, angle: 0.24 },
+              { time: 0.5, angle: 0.12 },
+              { time: 0.6, angle: 0 },
+              { time: 0.7, angle: -0.12 },
+              { time: 0.8, angle: -0.24 },
+              { time: 0.9, angle: -0.34 },
+              { time: 1.0, angle: -0.42 },
+            ];
 
-          const vegaViewId = database.createArtifactView(
-            devUser.id,
-            "vega-plot",
-            "inline",
-            JSON.stringify({ spec: vegaSpec, data: vegaData }),
-            "Pendulum Simulation Trajectory",
-          );
-          database.createPost(
-            devUser.id,
-            "Here is the simulation trajectory for the pendulum model over 1 second. Vega-Lite makes it so easy to visualize this! 📉",
-            vegaViewId,
-          );
+            const vegaViewId = database.createArtifactView(
+              devUser.id,
+              "vega-plot",
+              "inline",
+              JSON.stringify({ spec: vegaSpec, data: vegaData }),
+              "Pendulum Simulation Trajectory",
+            );
+            database.createPost(
+              devUser.id,
+              "Here is the simulation trajectory for the pendulum model over 1 second. Vega-Lite makes it so easy to visualize this! 📉",
+              vegaViewId,
+            );
 
-          // Mermaid diagram
-          const mermaidCode = `
+            // Mermaid diagram
+            const mermaidCode = `
 graph TD
     A[Start] --> B{Is it working?}
     B -- Yes --> C[Great!]
     B -- No --> D[Debug]
     D --> B
 `;
-          const mermaidViewId = database.createArtifactView(
-            devUser.id,
-            "mermaid-diagram",
-            "inline",
-            JSON.stringify({ code: mermaidCode }),
-            "Flowchart Diagram",
-          );
-          database.createPost(
-            devUser.id,
-            "I've also mapped out the debugging process using a Mermaid diagram. What do you think? 🧜‍♀️",
-            mermaidViewId,
-          );
+            const mermaidViewId = database.createArtifactView(
+              devUser.id,
+              "mermaid-diagram",
+              "inline",
+              JSON.stringify({ code: mermaidCode }),
+              "Flowchart Diagram",
+            );
+            database.createPost(
+              devUser.id,
+              "I've also mapped out the debugging process using a Mermaid diagram. What do you think? 🧜‍♀️",
+              mermaidViewId,
+            );
 
-          // PDF Document
-          const pdfViewId = database.createArtifactView(
-            devUser.id,
-            "pdf",
-            "inline",
-            JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/docs/drone-manual.pdf" }),
-            "Dummy PDF Document",
-          );
-          database.createPost(
-            devUser.id,
-            "Just reading through this interesting document. The PDF viewer embeds it perfectly! 📄",
-            pdfViewId,
-          );
+            // PDF Document
+            const pdfViewId = database.createArtifactView(
+              devUser.id,
+              "pdf",
+              "inline",
+              JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/docs/drone-manual.pdf" }),
+              "Dummy PDF Document",
+            );
+            database.createPost(
+              devUser.id,
+              "Just reading through this interesting document. The PDF viewer embeds it perfectly! 📄",
+              pdfViewId,
+            );
 
-          // CSV Table
-          const csvData = `Name,Age,Role,Score\nAlice,28,Engineer,95\nBob,34,Designer,88\nCharlie,22,Intern,91`;
-          const csvViewId = database.createArtifactView(
-            devUser.id,
-            "csv",
-            "inline",
-            JSON.stringify({ data: csvData }),
-            "Team Statistics",
-          );
-          database.createPost(
-            devUser.id,
-            "Check out these team statistics! The CSV table viewer renders the data cleanly. 📊",
-            csvViewId,
-          );
+            // CSV Table
+            const csvData = `Name,Age,Role,Score\nAlice,28,Engineer,95\nBob,34,Designer,88\nCharlie,22,Intern,91`;
+            const csvViewId = database.createArtifactView(
+              devUser.id,
+              "csv",
+              "inline",
+              JSON.stringify({ data: csvData }),
+              "Team Statistics",
+            );
+            database.createPost(
+              devUser.id,
+              "Check out these team statistics! The CSV table viewer renders the data cleanly. 📊",
+              csvViewId,
+            );
 
-          // GCode Toolpath
-          const gcodeViewId = database.createArtifactView(
-            alice.id,
-            "gcode",
-            "upload",
-            JSON.stringify({
-              url: "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gcode/benchy.gcode",
-              thumbnail_url:
-                "https://images.unsplash.com/photo-1620917670359-4781498b0ed1?auto=format&fit=crop&q=80&w=600",
-            }),
-            "3DBenchy Toolpath",
-          );
-          database.createPost(
-            alice.id,
-            "Check out the sliced GCode for the 3DBenchy benchmark test. Ready for the machine!",
-            gcodeViewId,
-          );
+            // GCode Toolpath
+            const gcodeViewId = database.createArtifactView(
+              alice.id,
+              "gcode",
+              "upload",
+              JSON.stringify({
+                url: "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gcode/benchy.gcode",
+                thumbnail_url:
+                  "https://images.unsplash.com/photo-1620917670359-4781498b0ed1?auto=format&fit=crop&q=80&w=600",
+              }),
+              "3DBenchy Toolpath",
+            );
+            database.createPost(
+              alice.id,
+              "Check out the sliced GCode for the 3DBenchy benchmark test. Ready for the machine!",
+              gcodeViewId,
+            );
 
-          // FEA Simulation
-          seedDroneFea(database);
-          seedCadAssembly(database);
-          seedDroneCfd(database);
-          seedScriptsAndTemplates(database);
-          await seedCfdAnimation(database);
+            // FEA Simulation
+            seedDroneFea(database);
+            seedCadAssembly(database);
+            seedDroneCfd(database);
+            seedScriptsAndTemplates(database);
+            await seedCfdAnimation(database);
+          }
+
+          await seedExamplePackages(libraryStorage, database, jobQueue);
+          await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
+          res.json({ success: true });
+        } catch (err) {
+          console.error("[DevServer] Failed to reset dev data:", err);
+          res.status(500).json({ success: false, error: String(err) });
         }
-
-        await seedExamplePackages(libraryStorage, database, jobQueue);
-        await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
-        res.json({ success: true });
-      } catch (err) {
-        console.error("[DevServer] Failed to reset dev data:", err);
-        res.status(500).json({ success: false, error: String(err) });
-      }
-    });
+      });
+    }
   }
 
   // ── Periodic Workers (disabled in test environment) ──
@@ -384,7 +387,7 @@ graph TD
   }
 
   // ── OMG Systems Modeling REST API (SysML v2 - ptc/2024-02-03) ──
-  const omgRouter = sysml2OmgRouter();
+  const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
   app.use("/api/v1/sysml2", omgRouter);
   app.use("/", omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
 

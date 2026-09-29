@@ -6,7 +6,7 @@ import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
-import { assertSafePublicUrl } from "../util/ssrf.js";
+import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
 
 // OptionalAuth middleware to allow endpoints to work for both logged in and out users
@@ -223,7 +223,7 @@ export function socialRouter(database: LibraryDatabase): Router {
                     try {
                       const controller = new AbortController();
                       const timeoutId = setTimeout(() => controller.abort(), 3000);
-                      const res = await fetch(url, {
+                      const res = await safePublicFetch(url, {
                         signal: controller.signal,
                         headers: { "User-Agent": "ModelScriptBot/1.0" },
                       });
@@ -708,7 +708,7 @@ export function socialRouter(database: LibraryDatabase): Router {
         }
         if (safeSiteUrl) {
           try {
-            const htmlRes = await fetch(safeSiteUrl.href, {
+            const htmlRes = await safePublicFetch(safeSiteUrl.href, {
               headers: {
                 "User-Agent": "Mozilla/5.0 (compatible; ModelScript/1.0)",
               },

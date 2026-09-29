@@ -253,6 +253,10 @@ prec.right = function <F extends string = string>(value: number | RuleLike<F>, r
   return { type: "PREC_RIGHT", value: val, children: [toRule(r)] };
 };
 
+prec.dynamic = function <F extends string = string>(value: number, rule: RuleLike<F>): Rule<F> {
+  return { type: "PREC_DYNAMIC", value, children: [toRule(rule)] };
+};
+
 export function blank(): any {
   return { type: "BLANK" };
 }

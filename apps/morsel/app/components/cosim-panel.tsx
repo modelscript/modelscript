@@ -10,12 +10,48 @@
  * - Select which variables to chart
  */
 
-import { LinkExternalIcon, PulseIcon, ServerIcon, SyncIcon } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Flash, IconButton } from "@primer/react";
+import { LinkExternalIcon, PauseIcon, PlayIcon, PulseIcon, ServerIcon, SyncIcon } from "@primer/octicons-react";
+import { ActionList, ActionMenu, Button, Flash, IconButton, Select } from "@primer/react";
 import { useCallback, useState } from "react";
 import type { MqttConnectionState, MqttParticipantMeta } from "../util/mqtt-client";
 import type { SimulationDataSource } from "../util/use-mqtt-simulation";
 import { useMqttSimulation } from "../util/use-mqtt-simulation";
+
+export interface HistorianSession {
+  id: string;
+  name: string;
+  recordedAt: string;
+  durationSeconds: number;
+  participantCount: number;
+  signalCount: number;
+}
+
+export const DEFAULT_HISTORIAN_SESSIONS: HistorianSession[] = [
+  {
+    id: "session-2026-09-27-01",
+    name: "Coupled Thermal-Fluid Dynamics Test",
+    recordedAt: "2026-09-27 14:32:10 UTC",
+    durationSeconds: 120,
+    participantCount: 3,
+    signalCount: 24,
+  },
+  {
+    id: "session-2026-09-27-02",
+    name: "Permanent Magnet DC Motor Step Transient",
+    recordedAt: "2026-09-27 16:05:44 UTC",
+    durationSeconds: 60,
+    participantCount: 2,
+    signalCount: 16,
+  },
+  {
+    id: "session-2026-09-26-03",
+    name: "Multi-Zone HVAC Closed-Loop Verification",
+    recordedAt: "2026-09-26 09:12:00 UTC",
+    durationSeconds: 300,
+    participantCount: 5,
+    signalCount: 48,
+  },
+];
 
 interface CosimPanelProps {
   /** Currently selected data source. */
@@ -28,6 +64,8 @@ interface CosimPanelProps {
   sessionId?: string;
   /** Color mode for styling. */
   colorMode?: "light" | "dark";
+  /** Optional handler when a recorded historian session is selected or replayed. */
+  onReplaySession?: (session: HistorianSession, speed: number) => void;
 }
 
 const STATUS_COLORS: Record<MqttConnectionState, string> = {
@@ -65,8 +103,12 @@ export function CosimPanel({
   onVariableSelected,
   sessionId,
   colorMode = "light",
+  onReplaySession,
 }: CosimPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(DEFAULT_HISTORIAN_SESSIONS[0].id);
+  const [replaySpeed, setReplaySpeed] = useState<number>(1);
+  const [isReplaying, setIsReplaying] = useState<boolean>(false);
 
   const mqtt = useMqttSimulation({
     source: dataSource,
@@ -186,12 +228,121 @@ export function CosimPanel({
         </div>
       )}
 
-      {/* Historian Replay: stub for future session selector */}
-      {dataSource === "historian-replay" && (
-        <Flash variant="default" style={{ fontSize: 12, padding: 8 }}>
-          Select a recorded session to replay from the Historian.
-        </Flash>
-      )}
+      {/* Historian Replay: recorded session selector and playback */}
+      {dataSource === "historian-replay" &&
+        (() => {
+          const selectedSession =
+            DEFAULT_HISTORIAN_SESSIONS.find((s) => s.id === selectedSessionId) ?? DEFAULT_HISTORIAN_SESSIONS[0];
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  padding: 10,
+                  borderRadius: 6,
+                  border: `1px solid ${borderColor}`,
+                  background: isDark ? "#0d1117" : "#ffffff",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontWeight: 600, fontSize: 12 }}>Recorded Sessions</span>
+                  <span style={{ color: textMuted, fontSize: 11 }}>TimescaleDB Historian</span>
+                </div>
+
+                <Select
+                  size="small"
+                  value={selectedSessionId}
+                  onChange={(e) => setSelectedSessionId(e.target.value)}
+                  aria-label="Recorded Session"
+                >
+                  {DEFAULT_HISTORIAN_SESSIONS.map((s) => (
+                    <Select.Option key={s.id} value={s.id}>
+                      {s.name} ({s.durationSeconds}s)
+                    </Select.Option>
+                  ))}
+                </Select>
+
+                {selectedSession && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      fontSize: 11,
+                      color: textMuted,
+                      marginTop: 2,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Recorded:</span>
+                      <span style={{ fontFamily: "monospace" }}>{selectedSession.recordedAt}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Duration:</span>
+                      <span>{selectedSession.durationSeconds} seconds</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Participants / Signals:</span>
+                      <span>
+                        {selectedSession.participantCount} models / {selectedSession.signalCount} signals
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 6,
+                    paddingTop: 8,
+                    borderTop: `1px solid ${borderColor}`,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+                    <span style={{ fontSize: 11, color: textMuted }}>Speed:</span>
+                    <Select
+                      size="small"
+                      value={String(replaySpeed)}
+                      onChange={(e) => setReplaySpeed(parseFloat(e.target.value))}
+                      aria-label="Replay Speed"
+                    >
+                      <Select.Option value="0.25">0.25x</Select.Option>
+                      <Select.Option value="0.5">0.5x</Select.Option>
+                      <Select.Option value="1">1.0x</Select.Option>
+                      <Select.Option value="2">2.0x</Select.Option>
+                      <Select.Option value="5">5.0x</Select.Option>
+                    </Select>
+                  </div>
+
+                  <Button
+                    size="small"
+                    variant={isReplaying ? "danger" : "primary"}
+                    leadingVisual={isReplaying ? PauseIcon : PlayIcon}
+                    onClick={() => {
+                      const next = !isReplaying;
+                      setIsReplaying(next);
+                      if (next && selectedSession) {
+                        onReplaySession?.(selectedSession, replaySpeed);
+                      }
+                    }}
+                  >
+                    {isReplaying ? "Pause" : "Replay"}
+                  </Button>
+                </div>
+              </div>
+
+              {isReplaying && (
+                <Flash variant="success" style={{ fontSize: 11, padding: "6px 10px" }}>
+                  Replaying {selectedSession?.name} at {replaySpeed}x speed…
+                </Flash>
+              )}
+            </div>
+          );
+        })()}
     </div>
   );
 }

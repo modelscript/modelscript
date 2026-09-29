@@ -144,6 +144,25 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
   }) as any,
 
   handler: async (args) => {
+    if (args.name === "import") {
+      const { runImportFmu } = await import("./import-fmu.js");
+      const fmuTarget = args.paths?.[0];
+      if (!fmuTarget) {
+        console.error("Error: Please provide the path to the .fmu file (e.g. msc fmu import <path.fmu>)");
+        process.exitCode = 1;
+        return;
+      }
+      const code = await runImportFmu({
+        fmu: fmuTarget,
+        output: args.output,
+        verbose: false,
+      });
+      if (code !== 0) {
+        process.exitCode = code;
+      }
+      return;
+    }
+
     const profiler = new Profiler();
     const { parser } = await createWasmParser(modelicaWasmPath);
 
@@ -164,6 +183,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
 
     if (!arena) {
       console.error(`'${args.name}' not found or had flattening errors.`);
+      process.exitCode = 1;
       return;
     }
 
@@ -368,7 +388,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
               ? (compileErr as { stderr: Buffer }).stderr.toString()
               : String(compileErr);
           console.error(`Compilation failed:\n${msg}`);
-          fs.writeFileSync(outputPath, result.archive);
+          process.exitCode = 1;
           profiler.end("compilation_c");
           if (args.timing) profiler.report();
           return;

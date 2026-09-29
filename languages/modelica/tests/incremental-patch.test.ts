@@ -51,7 +51,9 @@ equation
 end Cascade;`;
 
     const t0 = performance.now();
-    ctx.load(src2, uri);
+    const newTree = ctx.load(src2, uri);
+    console.log("newTree:", (newTree.rootNode as any).toString());
+    console.log("newTree hasError:", (newTree.rootNode as any).hasError());
     const dae2 = ctx.flattenArena("Cascade", undefined, uri);
     const elapsed = performance.now() - t0;
     console.log(`  -> Incremental re-flatten took: ${elapsed.toFixed(3)} ms`);
@@ -59,8 +61,22 @@ end Cascade;`;
     assert(dae2 !== null, "Patched flatten must succeed");
     assert.strictEqual(dae2.eqCount, 2, "Must still have 2 equations");
 
+    // Verify AST structural integrity: incrementally parsed tree must match fresh parse
+    const freshCtx = new Context(fs);
+    const freshTree = freshCtx.load(src2, "file:///test/Cascade_fresh.mo");
+    assert.strictEqual(
+      (newTree.rootNode as any).toString(),
+      (freshTree.rootNode as any).toString(),
+      "Incremental tree string representation must match fresh parse exactly (no text or padding corruption)",
+    );
+    assert.strictEqual(newTree.rootNode.endIndex, src2.length, "Root node endIndex must match source length exactly");
+
+    for (let i = 0; i < dae2.getEqCount(); i++) {
+      console.log(
+        `Eq ${i}: lhs kind=${dae2.getExprKind(dae2.getEqLhs(i))} (data1=${dae2.getExprData1(dae2.getEqLhs(i))}, resolved=${dae2.interner.resolve(dae2.getExprData1(dae2.getEqLhs(i)))}), rhs kind=${dae2.getExprKind(dae2.getEqRhs(i))} (data1=${dae2.getExprData1(dae2.getEqRhs(i))}, resolved=${dae2.interner.resolve(dae2.getExprData1(dae2.getEqRhs(i)))}`,
+      );
+    }
     const newRhs = dae2.getEqRhs(1);
-    assert(newRhs >= 0, "New RHS must exist");
     const leftChild = dae2.getExprLeft(newRhs);
     assert.strictEqual(dae2.getExprKind(leftChild), ExprKind.RealLiteral, "LHS of binary expr must be RealLiteral");
     assert.strictEqual(dae2.getExprRealValue(leftChild), 5.0, "Real literal must be 5.0");

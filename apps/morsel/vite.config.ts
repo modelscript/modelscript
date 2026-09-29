@@ -3,7 +3,6 @@ import tailwindcss from "@tailwindcss/vite";
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vite";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import tsconfigPaths from "vite-tsconfig-paths";
 
@@ -19,11 +18,6 @@ export default defineConfig(({ isSsrBuild }) => {
       tailwindcss(),
       reactRouter(),
       tsconfigPaths({ root: import.meta.dirname }),
-      !isSsrBuild &&
-        nodePolyfills({
-          include: ["buffer", "fs", "path", "process"],
-          protocolImports: false,
-        }),
       !isSsrBuild &&
         viteStaticCopy({
           targets: [

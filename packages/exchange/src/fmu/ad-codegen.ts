@@ -1,4 +1,4 @@
-import { type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/runtime";
+import { BinOp, type DAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/runtime";
 
 import { type Fmi3Variable } from "./fmi3.js";
 
@@ -329,21 +329,78 @@ export function generateNlpC(
   }
   L.push(``);
 
-  // Constraint function (placeholder — filled per transcription strategy)
-  L.push(`/* eval_g: Constraint residuals */`);
-  L.push(`void eval_g(const double* x, double* g) {`);
-  L.push(`  memset(g, 0, N_CONSTRAINTS * sizeof(double));`);
-  L.push(`  /* TODO: Fill from transcription strategy */`);
-  L.push(`}`);
-  L.push(``);
+  // Constraint function and Jacobian
+  if (nConstraints > 0 && dae.getEqCount() > 0) {
+    const conTapes: { tape: StaticTapeBuilder; outputIdx: number }[] = [];
+    const numEq = Math.min(nConstraints, dae.getEqCount());
+    for (let i = 0; i < numEq; i++) {
+      const tape = new StaticTapeBuilder(dae.interner);
+      const lhs = dae.getEqLhs(i);
+      const rhs = dae.getEqRhs(i);
+      let resIdx = -1;
+      if (lhs >= 0 && rhs >= 0) {
+        const subExpr = dae.addExpression(ExprKind.Binary, BinOp.Sub, lhs, rhs);
+        resIdx = tape.addExpression(subExpr, dae);
+      } else if (lhs >= 0) {
+        resIdx = tape.addExpression(lhs, dae);
+      } else if (rhs >= 0) {
+        resIdx = tape.addExpression(rhs, dae);
+      }
+      conTapes.push({ tape, outputIdx: resIdx });
+    }
 
-  // Jacobian (placeholder)
-  L.push(`/* eval_jac_g: Constraint Jacobian values */`);
-  L.push(`void eval_jac_g(const double* x, double* values) {`);
-  L.push(`  if (!values) return; /* Structure query */`);
-  L.push(`  memset(values, 0, NNZ_JAC * sizeof(double));`);
-  L.push(`  /* TODO: Fill from transcription strategy */`);
-  L.push(`}`);
+    L.push(`/* eval_g: Constraint residuals via collocation / equation residual tapes */`);
+    L.push(`void eval_g(const double* x, double* g) {`);
+    L.push(`  memset(g, 0, N_CONSTRAINTS * sizeof(double));`);
+    for (let i = 0; i < conTapes.length; i++) {
+      const ct = conTapes[i]!;
+      if (ct.outputIdx >= 0) {
+        L.push(`  { /* Constraint ${i} */`);
+        const fwd = ct.tape.emitForwardC((name: string) => varMap.get(name) ?? `0.0 /* ${name} */`);
+        L.push("    " + fwd.join("\n    "));
+        L.push(`    g[${i}] = t[${ct.outputIdx}];`);
+        L.push(`  }`);
+      }
+    }
+    L.push(`}`);
+    L.push(``);
+
+    L.push(`/* eval_jac_g: Constraint Jacobian values via reverse-mode AD */`);
+    L.push(`void eval_jac_g(const double* x, double* values) {`);
+    L.push(`  if (!values) return; /* Structure query */`);
+    L.push(`  memset(values, 0, NNZ_JAC * sizeof(double));`);
+    let valOffset = 0;
+    for (let i = 0; i < conTapes.length; i++) {
+      const ct = conTapes[i]!;
+      if (ct.outputIdx >= 0) {
+        L.push(`  { /* Constraint ${i} Jacobian row */`);
+        const fwd = ct.tape.emitForwardC((name: string) => varMap.get(name) ?? `0.0 /* ${name} */`);
+        const { code: revCode, gradients } = ct.tape.emitReverseC(ct.outputIdx);
+        L.push("    " + fwd.join("\n    "));
+        L.push("    " + revCode.join("\n    "));
+        for (let j = 0; j < vars.length; j++) {
+          const v = vars[j]!;
+          const gIdx = gradients.get(v.name);
+          if (gIdx !== undefined && valOffset < nnzJacobian) {
+            L.push(`    values[${valOffset++}] = dt[${gIdx}];`);
+          }
+        }
+        L.push(`  }`);
+      }
+    }
+    L.push(`}`);
+  } else {
+    L.push(`/* eval_g: Constraint residuals */`);
+    L.push(`void eval_g(const double* x, double* g) {`);
+    L.push(`  memset(g, 0, N_CONSTRAINTS * sizeof(double));`);
+    L.push(`}`);
+    L.push(``);
+    L.push(`/* eval_jac_g: Constraint Jacobian values */`);
+    L.push(`void eval_jac_g(const double* x, double* values) {`);
+    L.push(`  if (!values) return; /* Structure query */`);
+    L.push(`  memset(values, 0, NNZ_JAC * sizeof(double));`);
+    L.push(`}`);
+  }
   L.push(``);
 
   // Main driver

@@ -120,6 +120,15 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "import-fmu <fmu>",
+      "Import an FMU archive and generate an acausal or causal Modelica wrapper",
+      () => import("./commands/import-fmu.js"),
+      "ImportFmu",
+      ["fmu-import"],
+    ),
+  )
+  .command(
+    lazy(
       "csg <name> <paths...>",
       "Compile and extract CSG topologies to 3D meshes",
       () => import("./commands/csg.js"),

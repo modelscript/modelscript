@@ -75,4 +75,44 @@ MARKER_ISOTHERMAL= ( motor_wall, 350.0 )
     assert.ok(parsed.markers.has("inlet_surf"));
     assert.ok(parsed.markers.has("motor_wall"));
   });
+
+  it("parses recursive OpenFOAM case dictionaries into canonical CfdModelData", () => {
+    const dialect = getCfdDialect("openfoam");
+    assert.strictEqual(dialect.id, "openfoam");
+
+    const foamContent = `
+application     simpleFoam;
+startFrom       startTime;
+startTime       0;
+stopTime        1000;
+deltaT          1;
+
+boundaryField
+{
+    inlet
+    {
+        type            fixedValue;
+        value           uniform (15.5 0 0);
+    }
+    outlet
+    {
+        type            zeroGradient;
+    }
+    wing
+    {
+        type            noSlip;
+    }
+}
+`;
+
+    const parsed = dialect.parse(foamContent);
+    assert.strictEqual(parsed.dialect, "openfoam");
+    assert.strictEqual(parsed.mathProblem, "simpleFoam");
+    assert.strictEqual(parsed.inletMarker, "inlet");
+    assert.deepStrictEqual(parsed.inletVelocity, [15.5, 0, 0]);
+    assert.strictEqual(parsed.outletMarker, "outlet");
+    assert.ok(parsed.wallMarkers.includes("wing"));
+    assert.strictEqual(parsed.directives.get("boundaryField.inlet.type"), "fixedValue");
+    assert.strictEqual(parsed.directives.get("application"), "simpleFoam");
+  });
 });

@@ -168,3 +168,25 @@ export interface ITransformation {
   origin?: IPoint;
   rotation?: number;
 }
+
+export interface ModelicaComponentInstance {
+  name: string;
+  declaration?: any;
+  classInstance?: ModelicaClassInstance | null;
+  annotation?: (key?: string, ...args: any[]) => any;
+  annotations?: any[];
+  [key: string]: any;
+}
+
+export interface ModelicaClassInstance {
+  id?: number;
+  db?: any;
+  name?: string;
+  kind?: string;
+  components?: ModelicaComponentInstance[];
+  extendsClassInstances?: ModelicaClassInstance[];
+  annotation?: (key?: string, ...args: any[]) => any;
+  annotations?: any[];
+  declaredElements?: any[];
+  [key: string]: any;
+}

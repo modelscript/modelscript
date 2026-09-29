@@ -12,7 +12,10 @@ export * from "./bindings/javascript/index.js";
 // Core Utilities & FileSystem Abstractions
 export * as utils from "./utils/index.js";
 
+import type { SyntaxNode } from "./utils/cst-facade.js";
+
 // Language Tools (I18n, Semantic Diff)
 export * from "./tools/index.js";
+export type { SyntaxNode };
 
-export type CSTNode = any;
+export type CSTNode = SyntaxNode;

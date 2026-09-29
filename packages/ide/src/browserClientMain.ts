@@ -246,6 +246,63 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
+  // ── Markdown Preview: LSP-backed resolver ──
+  // Cache variable values, requirements, and diagram data from the LSP
+  // so the markdown-it plugin can inject them synchronously during rendering.
+  const markdownVarCache: Record<string, string> = {};
+  const markdownDiagramCache: Record<string, string> = {};
+  const markdownRequirementsCache: Record<string, { reqId: string; name: string; text: string; status: string }[]> = {};
+  const markdownDiagramComponentsCache: Record<
+    string,
+    { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
+  > = {};
+
+  const resolver: MarkdownResolver = {
+    resolveVariable(name: string): string | undefined {
+      return markdownVarCache[name];
+    },
+    resolveDiagramSvg(target: string): string | undefined {
+      return markdownDiagramCache[target];
+    },
+    resolveRequirements(target: string) {
+      return markdownRequirementsCache[target];
+    },
+    resolveDiagramComponents(target: string) {
+      return markdownDiagramComponentsCache[target]?.components;
+    },
+    resolveDiagramConnections(target: string) {
+      return markdownDiagramComponentsCache[target]?.connections;
+    },
+  };
+
+  /**
+   * Fetch all markdown-related data from the LSP and refresh the preview.
+   */
+  async function refreshMarkdownData(): Promise<void> {
+    if (!client) return;
+    try {
+      const varsResult = await client
+        .sendRequest<{ values: Record<string, string> }>("modelscript/resolveMarkdownVars")
+        .catch(() => null);
+
+      let changed = false;
+      if (varsResult?.values) {
+        for (const [k, v] of Object.entries(varsResult.values)) {
+          if (markdownVarCache[k] !== v) {
+            markdownVarCache[k] = v;
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        vscode.commands.executeCommand("markdown.preview.refresh");
+      }
+    } catch (e) {
+      console.warn("[ModelScript] refreshMarkdownData error:", e);
+    }
+  }
+
   const STATIC_ACTION_COMMANDS = new Set([
     "modelscript.modelica.simulate",
     "modelscript.modelica.flatten",
@@ -2070,156 +2127,6 @@ END-ISO-10303-21;`;
         },
       );
     }),
-    commands.registerCommand(
-      "modelscript.scaffoldMultiDomain",
-      async (uriOrStr?: vscode.Uri | string, entityName?: string) => {
-        let targetUri: vscode.Uri | undefined;
-        if (typeof uriOrStr === "string") {
-          targetUri = vscode.Uri.parse(uriOrStr);
-        } else if (uriOrStr) {
-          targetUri = uriOrStr;
-        } else if (vscode.window.activeTextEditor) {
-          targetUri = vscode.window.activeTextEditor.document.uri;
-        }
-
-        if (!targetUri) {
-          vscode.window.showErrorMessage("Please open a SysML v2 model file first.");
-          return;
-        }
-
-        try {
-          const fileBytes = await vscode.workspace.fs.readFile(targetUri);
-          const sourceText = new TextDecoder().decode(fileBytes);
-
-          const modelName =
-            entityName ||
-            /part\s+def\s+([A-Za-z0-9_]+)/.exec(sourceText)?.[1] ||
-            targetUri.path
-              .split("/")
-              .pop()
-              ?.replace(/\.[^/.]+$/, "") ||
-            "SystemArchitecture";
-
-          // Extract dimension attributes or defaults
-          const extractNum = (regex: RegExp, fallback: number) => {
-            const match = regex.exec(sourceText);
-            return match ? parseFloat(match[1]) : fallback;
-          };
-
-          const lengthVal = extractNum(/(?:length|len|L)\s*[:=]\s*([0-9.]+)/i, 100);
-          const widthVal = extractNum(/(?:width|W)\s*[:=]\s*([0-9.]+)/i, 50);
-          const heightVal = extractNum(/(?:height|H)\s*[:=]\s*([0-9.]+)/i, 25);
-          const massVal = extractNum(/(?:mass|m)\s*[:=]\s*([0-9.]+)/i, 5.0);
-
-          const basePath = targetUri.path.replace(/\.[^/.]+$/, "");
-
-          // 1. Generate OpenSCAD Parametric Geometry Stub
-          const scadContent = `// ============================================================================
-// Generated OpenSCAD Parametric Geometry Stub from SysML v2: ${modelName}
-// ============================================================================
-length = ${lengthVal};
-width = ${widthVal};
-height = ${heightVal};
-
-module ${modelName}() {
-  cube([length, width, height], center = true);
-}
-
-${modelName}();
-`;
-          const scadUri = targetUri.with({ path: `${basePath}.scad` });
-          await vscode.workspace.fs.writeFile(scadUri, new TextEncoder().encode(scadContent));
-
-          // 2. Generate Modelica Simulation Model Stub
-          const moContent = `model ${modelName}
-  parameter Real length = ${lengthVal};
-  parameter Real width = ${widthVal};
-  parameter Real height = ${heightVal};
-  parameter Real mass = ${massVal};
-
-  Real v(start = 0.0);
-  Real a(start = 0.0);
-equation
-  der(v) = a;
-  mass * a = 0.0;
-end ${modelName};
-`;
-          const moUri = targetUri.with({ path: `${basePath}.mo` });
-          await vscode.workspace.fs.writeFile(moUri, new TextEncoder().encode(moContent));
-
-          // 3. Generate CalculiX Parametric Structural FEA Deck (.inpt)
-          const inptContent = `** ============================================================================
-** Generated CalculiX Parametric FEA Deck from SysML v2: ${modelName}
-** ============================================================================
-*HEADING
-ModelScript 3D Structural FEA for {{ ${modelName}.name }}
-*NODE
-1, 0.0, 0.0, 0.0
-2, {{ ${modelName}.length }}, 0.0, 0.0
-3, 0.0, {{ ${modelName}.width }}, 0.0
-4, 0.0, 0.0, {{ ${modelName}.height }}
-*ELEMENT, TYPE=C3D4, ELSET=${modelName.toUpperCase()}_BODY
-1, 1, 2, 3, 4
-*MATERIAL, NAME=ALUMINUM_6061
-*ELASTIC
- {{ ${modelName}.youngsModulus }}, {{ ${modelName}.poissonsRatio }}
-*DENSITY
- 2700
-*STEP
-*STATIC
-*BOUNDARY
- 1, 1, 3
-*CLOAD
- 2, 2, {{ ${modelName}.thrustForce }}
-*NODE FILE
- U
-*EL FILE
- S
-*END STEP
-`;
-          const inpUri = targetUri.with({ path: `${basePath}.inp` });
-          await vscode.workspace.fs.writeFile(inpUri, new TextEncoder().encode(inptContent));
-
-          // 4. Generate SU2 Parametric Aerodynamic CFD Config (.cfg)
-          const cfgtContent = `% ============================================================================
-% Generated SU2 Parametric CFD Config from SysML v2: ${modelName}
-% ============================================================================
-MATH_PROBLEM= NAVIER_STOKES
-MACH_NUMBER= 0.15
-REYNOLDS_NUMBER= 250000
-FREESTREAM_DENSITY= 1.225
-FREESTREAM_VELOCITY= ( {{ ${modelName}.inletVelocity }}, 0.0, 0.0 )
-MARKER_INLET= ( inlet_patch, {{ ${modelName}.inletVelocity }}, 1.0, 0.0, 0.0 )
-MARKER_OUTLET= ( outlet_patch, 0.0 )
-MARKER_HEATFLUX= ( ${modelName.toLowerCase()}_wall, 0.0 )
-`;
-          const cfgUri = targetUri.with({ path: `${basePath}.cfg` });
-          await vscode.workspace.fs.writeFile(cfgUri, new TextEncoder().encode(cfgtContent));
-
-          vscode.window
-            .showInformationMessage(
-              `⚡ Multi-Domain Scaffolding Complete for ${modelName}: generated .scad, .mo, .inp (FEA), and .cfg (CFD).`,
-              "Open FEA (.inp)",
-              "Open CFD (.cfg)",
-              "Open Modelica (.mo)",
-            )
-            .then(async (selection) => {
-              if (selection === "Open FEA (.inp)") {
-                const doc = await vscode.workspace.openTextDocument(inpUri);
-                await vscode.window.showTextDocument(doc);
-              } else if (selection === "Open CFD (.cfg)") {
-                const doc = await vscode.workspace.openTextDocument(cfgUri);
-                await vscode.window.showTextDocument(doc);
-              } else if (selection === "Open Modelica (.mo)") {
-                const doc = await vscode.workspace.openTextDocument(moUri);
-                await vscode.window.showTextDocument(doc);
-              }
-            });
-        } catch (err: any) {
-          vscode.window.showErrorMessage(`Failed to scaffold multi-domain stubs: ${err.message || err}`);
-        }
-      },
-    ),
     commands.registerCommand("modelscript.materializeCalculixDeck", async (uriOrStr?: vscode.Uri | string) => {
       let targetUri: vscode.Uri | undefined;
       if (typeof uriOrStr === "string") targetUri = vscode.Uri.parse(uriOrStr);
@@ -2442,63 +2349,6 @@ end ${studyName};
   initWorkspaceAndTree(treeProvider, treeView).catch((e) => {
     console.warn("[workspace-init] Non-fatal initialization error:", e);
   });
-
-  // ── Markdown Preview: LSP-backed resolver ──
-  // Cache variable values, requirements, and diagram data from the LSP
-  // so the markdown-it plugin can inject them synchronously during rendering.
-  const markdownVarCache: Record<string, string> = {};
-  const markdownDiagramCache: Record<string, string> = {};
-  const markdownRequirementsCache: Record<string, { reqId: string; name: string; text: string; status: string }[]> = {};
-  const markdownDiagramComponentsCache: Record<
-    string,
-    { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
-  > = {};
-
-  const resolver: MarkdownResolver = {
-    resolveVariable(name: string): string | undefined {
-      return markdownVarCache[name];
-    },
-    resolveDiagramSvg(target: string): string | undefined {
-      return markdownDiagramCache[target];
-    },
-    resolveRequirements(target: string) {
-      return markdownRequirementsCache[target];
-    },
-    resolveDiagramComponents(target: string) {
-      return markdownDiagramComponentsCache[target]?.components;
-    },
-    resolveDiagramConnections(target: string) {
-      return markdownDiagramComponentsCache[target]?.connections;
-    },
-  };
-
-  /**
-   * Fetch all markdown-related data from the LSP and refresh the preview.
-   */
-  async function refreshMarkdownData(): Promise<void> {
-    if (!client) return;
-    try {
-      const varsResult = await client
-        .sendRequest<{ values: Record<string, string> }>("modelscript/resolveMarkdownVars")
-        .catch(() => null);
-
-      let changed = false;
-      if (varsResult?.values) {
-        for (const [k, v] of Object.entries(varsResult.values)) {
-          if (markdownVarCache[k] !== v) {
-            markdownVarCache[k] = v;
-            changed = true;
-          }
-        }
-      }
-
-      if (changed) {
-        vscode.commands.executeCommand("markdown.preview.refresh");
-      }
-    } catch (e) {
-      console.warn("[ModelScript] refreshMarkdownData error:", e);
-    }
-  }
 
   // Register command for parameter writeback (invoked from preview click-to-edit or palette)
   context.subscriptions.push(
@@ -2914,14 +2764,27 @@ try {
     } else if (e.data.type === "request-diagram") {
       const target = e.data.target;
       try {
-        // Try to fetch diagram using modelscript/getProjectTree or getClassIcon?
-        // Let's use the simplest: an SVG placeholder or actual render.
-        // For real rendering, we'd need to use X6, but we can't easily serialize it to SVG here.
-        // Instead, let's output a generic placeholder that points the user to the diagram editor.
-        const svg = `<div style="padding: 20px; border: 2px dashed var(--vscode-editorBracketHighlight-foreground3); border-radius: 8px; cursor: pointer;">
-          <h3 style="margin: 0; color: var(--vscode-textLink-foreground);">View ${target} Diagram</h3>
-          <p style="margin: 5px 0 0 0; opacity: 0.8;">Click "Open Diagram" from the title bar to view.</p>
-        </div>`;
+        const targetClean = String(target).replace(/[<>&"]/g, "");
+        const svg = `<svg viewBox="0 0 400 180" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--vscode-widget-border, #454545); border-radius: 6px; background: var(--vscode-editor-background, #1e1e1e); padding: 8px; font-family: sans-serif;">
+          <defs>
+            <linearGradient id="compGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="var(--vscode-button-background, #007acc)" stop-opacity="0.2"/>
+              <stop offset="100%" stop-color="var(--vscode-button-background, #007acc)" stop-opacity="0.05"/>
+            </linearGradient>
+            <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--vscode-textLink-foreground, #3794ff)"/>
+            </marker>
+          </defs>
+          <rect x="20" y="30" width="140" height="110" rx="6" fill="url(#compGrad)" stroke="var(--vscode-button-background, #007acc)" stroke-width="2"/>
+          <text x="90" y="80" text-anchor="middle" fill="var(--vscode-editor-foreground, #ccc)" font-size="13" font-weight="600">${targetClean}</text>
+          <text x="90" y="105" text-anchor="middle" fill="var(--vscode-descriptionForeground, #888)" font-size="11">Modelica / SysML</text>
+          <circle cx="160" cy="85" r="5" fill="var(--vscode-textLink-foreground, #3794ff)"/>
+          <path d="M 165 85 L 235 85" stroke="var(--vscode-textLink-foreground, #3794ff)" stroke-width="2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+          <rect x="240" y="30" width="140" height="110" rx="6" fill="url(#compGrad)" stroke="var(--vscode-button-background, #007acc)" stroke-width="2"/>
+          <text x="310" y="80" text-anchor="middle" fill="var(--vscode-editor-foreground, #ccc)" font-size="13" font-weight="600">Interface / Sink</text>
+          <text x="310" y="105" text-anchor="middle" fill="var(--vscode-descriptionForeground, #888)" font-size="11">Connector Port</text>
+          <circle cx="240" cy="85" r="5" fill="var(--vscode-textLink-foreground, #3794ff)"/>
+        </svg>`;
 
         markdownChannel.postMessage({ type: "resolved-diagram", id: target, svg });
       } catch (err) {

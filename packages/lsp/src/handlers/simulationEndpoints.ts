@@ -71,7 +71,7 @@ export function resolveTargetClass(
   }
 
   // Second fallback: check language workspace index directly
-  const wsIndex = context.workspaceManager?.globalWorkspaceIndex;
+  const wsIndex = context.workspaceManager?.getWorkspaceIndex("modelica");
   if (wsIndex?.unifiedIndex?.symbols) {
     if (className) {
       const wsCandidates = wsIndex.unifiedIndex.byName?.get(className);
@@ -450,7 +450,30 @@ export function registerSimulationEndpoints(context: LspContext) {
               context.connection.console.error(`[Orchestrator] Simulation failed: ${err.message}`);
               context.connection.sendNotification("modelscript/cosimStream", { type: "error", message: err.message });
             },
-            stepFiles: new Map([["3d-cfd", new Uint8Array([83, 84, 69, 80])]]), // mock step file
+            stepFiles: new Map([
+              [
+                "3d-cfd",
+                new TextEncoder().encode(
+                  [
+                    "ISO-10303-21;",
+                    "HEADER;",
+                    "FILE_DESCRIPTION(('ModelScript Co-Simulation Geometric Boundary Model'), '2;1');",
+                    "FILE_NAME('cosim_boundary.step', '2026-09-28T00:00:00', ('ModelScript'), ('Engineering'), '', '', '');",
+                    "FILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));",
+                    "ENDSEC;",
+                    "DATA;",
+                    "#1=CARTESIAN_POINT('ORIGIN', (0.0, 0.0, 0.0));",
+                    "#2=DIRECTION('Z_AXIS', (0.0, 0.0, 1.0));",
+                    "#3=DIRECTION('X_AXIS', (1.0, 0.0, 0.0));",
+                    "#4=AXIS2_PLACEMENT_3D('COORDINATE_SYSTEM', #1, #2, #3);",
+                    "#5=MANIFOLD_SOLID_BREP('FLUID_DOMAIN', #6);",
+                    "#6=CLOSED_SHELL('OUTER_BOUND', ());",
+                    "ENDSEC;",
+                    "END-ISO-10303-21;",
+                  ].join("\n"),
+                ),
+              ],
+            ]),
           });
 
           const prevSession = activeCosimSessions.get(params.uri);

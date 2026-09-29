@@ -1,7 +1,6 @@
 // name:     Import3
 // keywords: import
 // status:   correct
-// xfail:    true
 //
 // Import in enclosing scopes is valid.
 

@@ -230,6 +230,5 @@ export function createModelicaQueryEngine(
   });
 }
 
-import { MsimParser } from "./extensions/msim-parser.js";
 export { Context } from "./context.js";
-export { injectPredefinedTypes, MsimParser, QueryEngine, WorkspaceIndex };
+export { injectPredefinedTypes, QueryEngine, WorkspaceIndex };

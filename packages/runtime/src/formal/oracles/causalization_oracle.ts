@@ -158,8 +158,40 @@ export class CausalizationTheoryOracle implements TheoryOracle {
   }
 
   public propagateEqualities(): SharedEquality[] {
-    return [];
+    const eqs: SharedEquality[] = [];
+    for (const eq of this.equations) {
+      if (eq.unknowns.length === 1) {
+        const u = eq.unknowns[0]!;
+        const litIds = Array.from(this.assertedLiterals.values())
+          .filter((l) => l.args.includes(eq.eqId))
+          .map((l) => l.id);
+        eqs.push({
+          varA: u,
+          varB: `assign(${eq.eqId})`,
+          domain: "real",
+          explanation: `Causal assignment for single unknown in ${eq.eqId}`,
+          sourceOracle: this.name,
+          justification: litIds,
+          justifications: litIds,
+        });
+      }
+    }
+    return eqs;
   }
 
-  public onSharedEquality(eq: SharedEquality): void {}
+  public onSharedEquality(eq: SharedEquality): void {
+    if (!eq.varA || !eq.varB || eq.varA === eq.varB) return;
+    for (const loop of this.algebraicLoops) {
+      const idxA = loop.variables.indexOf(eq.varA);
+      if (idxA !== -1) {
+        loop.variables[idxA] = eq.varB;
+      }
+    }
+    for (const assignment of this.equations) {
+      const idxA = assignment.unknowns.indexOf(eq.varA);
+      if (idxA !== -1) {
+        assignment.unknowns[idxA] = eq.varB;
+      }
+    }
+  }
 }

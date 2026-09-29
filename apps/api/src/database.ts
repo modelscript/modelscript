@@ -258,6 +258,10 @@ export class LibraryDatabase {
       "twins",
       "twin_adaptations",
       "twin_proposals",
+      "sysml2_relationships",
+      "sysml2_elements",
+      "sysml2_commits",
+      "sysml2_projects",
     ];
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     this.#db.transaction(() => {
@@ -699,6 +703,46 @@ export class LibraryDatabase {
         created_at      TEXT DEFAULT (datetime('now')),
         updated_at      TEXT DEFAULT (datetime('now'))
       );
+
+      -- OMG SysML v2 Persistence
+      CREATE TABLE IF NOT EXISTS sysml2_projects (
+        id              TEXT PRIMARY KEY,
+        name            TEXT NOT NULL,
+        description     TEXT,
+        created         TEXT NOT NULL,
+        default_branch  TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sysml2_commits (
+        id              TEXT PRIMARY KEY,
+        project_id      TEXT NOT NULL REFERENCES sysml2_projects(id) ON DELETE CASCADE,
+        description     TEXT NOT NULL,
+        created         TEXT NOT NULL,
+        previous_commit TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS sysml2_elements (
+        id              TEXT PRIMARY KEY,
+        commit_id       TEXT NOT NULL REFERENCES sysml2_commits(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        qualified_name  TEXT NOT NULL,
+        owner_id        TEXT,
+        is_abstract     INTEGER DEFAULT 0,
+        element_json    TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sysml2_relationships (
+        id              TEXT PRIMARY KEY,
+        commit_id       TEXT NOT NULL REFERENCES sysml2_commits(id) ON DELETE CASCADE,
+        source_id       TEXT NOT NULL,
+        target_id       TEXT NOT NULL,
+        rel_type        TEXT NOT NULL,
+        rel_json        TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sysml2_commits_project ON sysml2_commits(project_id);
+      CREATE INDEX IF NOT EXISTS idx_sysml2_elements_commit ON sysml2_elements(commit_id);
+      CREATE INDEX IF NOT EXISTS idx_sysml2_relationships_commit ON sysml2_relationships(commit_id);
     `);
 
     // Migrations
@@ -2973,6 +3017,28 @@ export class LibraryDatabase {
     }
   }
 
+  completeJobWithBilling(
+    jobId: number,
+    usage: {
+      computeProfile?: string | undefined;
+      cpuSeconds?: number | undefined;
+      peakMemoryMb?: number | undefined;
+      gpuSeconds?: number | undefined;
+      costCredits?: number | undefined;
+    },
+    userId?: number | null,
+    description?: string,
+    metadata?: Record<string, unknown>,
+  ): void {
+    this.#db.transaction(() => {
+      this.updateJobStatus(jobId, "SUCCESS");
+      this.updateJobAccounting(jobId, usage);
+      if (userId && usage.costCredits && usage.costCredits > 0) {
+        this.deductUserCredits(userId, usage.costCredits, jobId, description || `Job ${jobId} execution`, metadata);
+      }
+    })();
+  }
+
   // ── Credit Ledger & Billing ─────────────────────────────────────
 
   getUserBalance(userId: number): number {
@@ -3758,6 +3824,152 @@ export class LibraryDatabase {
     }
 
     return true;
+  }
+
+  // ── SysML v2 OMG Persistence ──
+
+  saveSysml2Project(project: {
+    "@id": string;
+    name: string;
+    description?: string;
+    created: string;
+    defaultBranch: { "@id": string; name: string; headCommitId?: string };
+  }): void {
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO sysml2_projects (id, name, description, created, default_branch)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        project["@id"],
+        project.name,
+        project.description || null,
+        project.created,
+        JSON.stringify(project.defaultBranch),
+      );
+  }
+
+  getSysml2Projects(): {
+    "@id": string;
+    "@type": "Project";
+    name: string;
+    description?: string;
+    created: string;
+    defaultBranch: { "@id": string; name: string; headCommitId?: string };
+  }[] {
+    const rows = this.#db.prepare(`SELECT * FROM sysml2_projects ORDER BY created ASC`).all() as any[];
+    return rows.map((r) => ({
+      "@id": r.id,
+      "@type": "Project" as const,
+      name: r.name,
+      description: r.description || undefined,
+      created: r.created,
+      defaultBranch: JSON.parse(r.default_branch),
+    }));
+  }
+
+  deleteSysml2Project(projectId: string): void {
+    this.#db.transaction(() => {
+      const commits = this.#db.prepare(`SELECT id FROM sysml2_commits WHERE project_id = ?`).all(projectId) as {
+        id: string;
+      }[];
+      for (const c of commits) {
+        this.#db.prepare(`DELETE FROM sysml2_elements WHERE commit_id = ?`).run(c.id);
+        this.#db.prepare(`DELETE FROM sysml2_relationships WHERE commit_id = ?`).run(c.id);
+      }
+      this.#db.prepare(`DELETE FROM sysml2_commits WHERE project_id = ?`).run(projectId);
+      this.#db.prepare(`DELETE FROM sysml2_projects WHERE id = ?`).run(projectId);
+    })();
+  }
+
+  saveSysml2Commit(commit: {
+    "@id": string;
+    projectId: string;
+    description: string;
+    created: string;
+    previousCommit?: { "@id": string } | null;
+  }): void {
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO sysml2_commits (id, project_id, description, created, previous_commit)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        commit["@id"],
+        commit.projectId,
+        commit.description,
+        commit.created,
+        commit.previousCommit ? commit.previousCommit["@id"] : null,
+      );
+  }
+
+  getSysml2Commits(projectId: string): {
+    "@id": string;
+    "@type": "Commit";
+    projectId: string;
+    description: string;
+    created: string;
+    previousCommit?: { "@id": string } | null;
+  }[] {
+    const rows = this.#db
+      .prepare(`SELECT * FROM sysml2_commits WHERE project_id = ? ORDER BY created ASC`)
+      .all(projectId) as any[];
+    return rows.map((r) => ({
+      "@id": r.id,
+      "@type": "Commit" as const,
+      projectId: r.project_id,
+      description: r.description,
+      created: r.created,
+      previousCommit: r.previous_commit ? { "@id": r.previous_commit } : null,
+    }));
+  }
+
+  saveSysml2Elements(commitId: string, elements: any[]): void {
+    const insertStmt = this.#db.prepare(`
+      INSERT OR REPLACE INTO sysml2_elements (id, commit_id, name, qualified_name, owner_id, is_abstract, element_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.#db.transaction(() => {
+      for (const elem of elements) {
+        insertStmt.run(
+          elem["@id"],
+          commitId,
+          elem.name || "",
+          elem.qualifiedName || "",
+          elem.owner?.["@id"] || null,
+          elem.isAbstract ? 1 : 0,
+          JSON.stringify(elem),
+        );
+      }
+    })();
+  }
+
+  getSysml2Elements(commitId: string): any[] {
+    const rows = this.#db
+      .prepare(`SELECT element_json FROM sysml2_elements WHERE commit_id = ?`)
+      .all(commitId) as any[];
+    return rows.map((r) => JSON.parse(r.element_json));
+  }
+
+  saveSysml2Relationships(commitId: string, relationships: any[]): void {
+    const insertStmt = this.#db.prepare(`
+      INSERT OR REPLACE INTO sysml2_relationships (id, commit_id, source_id, target_id, rel_type, rel_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    this.#db.transaction(() => {
+      for (const rel of relationships) {
+        const sourceId = rel.source?.[0]?.["@id"] || "";
+        const targetId = rel.target?.[0]?.["@id"] || "";
+        insertStmt.run(rel["@id"], commitId, sourceId, targetId, rel.relationshipType || "", JSON.stringify(rel));
+      }
+    })();
+  }
+
+  getSysml2Relationships(commitId: string): any[] {
+    const rows = this.#db
+      .prepare(`SELECT rel_json FROM sysml2_relationships WHERE commit_id = ?`)
+      .all(commitId) as any[];
+    return rows.map((r) => JSON.parse(r.rel_json));
   }
 
   close(): void {

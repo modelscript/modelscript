@@ -128,7 +128,8 @@ export function registerMiscEndpoints(context: LspContext) {
           state: "loading",
           message: `Indexing ${params.name}...`,
         });
-        await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(100, (indexed, total) => {
+        const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
+        await moIdx?.indexRemainingInBackground?.(100, (indexed, total) => {
           if (indexed % 100 === 0) {
             context.connection.sendNotification("modelscript/status", {
               state: "loading",

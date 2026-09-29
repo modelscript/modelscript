@@ -20,6 +20,8 @@ export {
   type FmiDefaultExperiment,
   type FmiModelDescription,
   type FmiTerminal,
+  type FmiTerminalGraphicalRepresentation,
+  type FmiTerminalMemberVariable,
 } from "./model-description.js";
 export * from "./rom-wasm-codegen.js";
 export * from "./solver-options.js";

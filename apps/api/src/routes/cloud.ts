@@ -220,12 +220,21 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           }
         });
 
+        let safeGeometryPath: string | undefined;
+        if (payload.geometryPath && typeof payload.geometryPath === "string") {
+          const resolved = path.resolve(payload.geometryPath);
+          const allowedRoots = [path.resolve(process.cwd()), path.resolve(os.tmpdir())];
+          if (allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+            safeGeometryPath = resolved;
+          }
+        }
+
         const caeSpec: CaeJobSpec = {
           jobId,
           solver,
           deckContent: payload.deck?.content || payload.sourceContent || "",
           deckFormat: format,
-          geometryPath: payload.geometryPath,
+          geometryPath: safeGeometryPath,
           cores: profile.cpus,
           profile: profile.id,
           resultDir,
@@ -275,8 +284,11 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-cloud-${jobId}-`));
         try {
           const mosScriptPath = path.join(tmpDir, "simulate.mos");
-          const fileNamePrefix = name.replace(/[^a-zA-Z0-9_]/g, "_");
-          const adhocMoPath = path.join(tmpDir, `${fileNamePrefix}.mo`);
+          const fileNamePrefix = path.basename(name).replace(/[^a-zA-Z0-9_]/g, "_") || "model";
+          const adhocMoPath = path.resolve(tmpDir, `${fileNamePrefix}.mo`);
+          if (!adhocMoPath.startsWith(tmpDir + path.sep)) {
+            throw new Error("Invalid model file path");
+          }
 
           const source = payload.sourceContent || "";
           fs.writeFileSync(adhocMoPath, source, "utf8");
@@ -324,8 +336,8 @@ getErrorString();
           const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
           const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);
 
-          const csvFilePath = path.join(tmpDir, `${fileNamePrefix}_res.csv`);
-          if (fs.existsSync(csvFilePath)) {
+          const csvFilePath = path.resolve(tmpDir, `${fileNamePrefix}_res.csv`);
+          if (csvFilePath.startsWith(tmpDir + path.sep) && fs.existsSync(csvFilePath)) {
             jobRecord.status = "completed";
             jobRecord.resultPath = csvFilePath;
             jobRecord.usage = usage;

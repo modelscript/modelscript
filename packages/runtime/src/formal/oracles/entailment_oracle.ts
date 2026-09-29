@@ -187,8 +187,34 @@ export class EntailmentTheoryOracle implements TheoryOracle {
   }
 
   public propagateEqualities(): SharedEquality[] {
-    return [];
+    const eqs: SharedEquality[] = [];
+    // Check if any requirements enforce exact bounds or shared variables
+    for (const req of this.requirements.values()) {
+      if (req.op === "==") {
+        const litIds = Array.from(this.assertedLiterals.values())
+          .filter((l) => l.args.includes(req.id))
+          .map((l) => l.id);
+        eqs.push({
+          varA: req.variable,
+          varB: String(req.limit),
+          domain: "real",
+          bounds: [req.limit, req.limit],
+          explanation: `Requirement ${req.id} enforces exact value ${req.limit}`,
+          sourceOracle: this.name,
+          justification: litIds,
+          justifications: litIds,
+        });
+      }
+    }
+    return eqs;
   }
 
-  public onSharedEquality(eq: SharedEquality): void {}
+  public onSharedEquality(eq: SharedEquality): void {
+    if (!eq.varA || !eq.varB || eq.varA === eq.varB) return;
+    for (const req of this.requirements.values()) {
+      if (req.variable === eq.varA) {
+        req.variable = eq.varB;
+      }
+    }
+  }
 }

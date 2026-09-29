@@ -116,7 +116,12 @@ export function authRouter(database: LibraryDatabase): Router {
    * GET /api/v1/auth/login/:provider
    */
   router.get("/login/:provider", (req: Request, res: Response) => {
-    const { provider } = req.params;
+    const provider = typeof req.params.provider === "string" ? req.params.provider : String(req.params.provider ?? "");
+    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
+    if (process.env["NODE_ENV"] === "production" && !clientId) {
+      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+      return;
+    }
     // Mock OAuth flow: Redirect to provider, which would normally redirect back to callback
     res.redirect(`/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}`);
   });
@@ -146,17 +151,75 @@ export function authRouter(database: LibraryDatabase): Router {
   /**
    * GET /api/v1/auth/callback/:provider
    */
-  router.get("/callback/:provider", (req: Request, res: Response) => {
+  router.get("/callback/:provider", async (req: Request, res: Response) => {
     const provider = req.params.provider as string;
     const stateParam = req.query.state as string;
+    const code = req.query.code as string | undefined;
 
-    // Mock OAuth flow: exchange code for profile and tokens
-    const mockEmail = `mockuser@${provider}.com`;
-    const mockUsername = `mockuser_${provider}`;
-    const mockProviderUserId = `12345_${provider}`;
-    const mockAccessToken = `mock_access_token_${provider}`;
-    const mockRefreshToken = `mock_refresh_token_${provider}`;
-    const mockExpiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+    let email = `mockuser@${provider}.com`;
+    let username = `mockuser_${provider}`;
+    let providerUserId = `12345_${provider}`;
+    let accessToken = `mock_access_token_${provider}`;
+    let refreshToken: string | null = `mock_refresh_token_${provider}`;
+    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+
+    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
+    const clientSecret = process.env[`${provider.toUpperCase()}_CLIENT_SECRET`];
+
+    if (process.env["NODE_ENV"] === "production" && (!clientId || !clientSecret)) {
+      res.status(501).json({ error: `OAuth provider '${provider}' is not configured in production.` });
+      return;
+    }
+
+    // Real OAuth2 token exchange if credentials configured
+    if (code && clientId && clientSecret) {
+      try {
+        if (provider === "github") {
+          const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+          });
+          const tokenData = (await tokenRes.json()) as { access_token?: string };
+          if (tokenData.access_token) {
+            accessToken = tokenData.access_token;
+            const userRes = await fetch("https://api.github.com/user", {
+              headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ModelScript" },
+            });
+            const userData = (await userRes.json()) as { id?: number; login?: string; email?: string };
+            if (userData.id) providerUserId = String(userData.id);
+            if (userData.login) username = userData.login;
+            if (userData.email) email = userData.email;
+          }
+        } else if (provider === "gitlab") {
+          const tokenRes = await fetch("https://gitlab.com/oauth/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              client_id: clientId,
+              client_secret: clientSecret,
+              code,
+              grant_type: "authorization_code",
+              redirect_uri: `${req.protocol}://${req.get("host")}/api/v1/auth/callback/gitlab`,
+            }),
+          });
+          const tokenData = (await tokenRes.json()) as { access_token?: string; refresh_token?: string };
+          if (tokenData.access_token) {
+            accessToken = tokenData.access_token;
+            if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
+            const userRes = await fetch("https://gitlab.com/api/v4/user", {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            const userData = (await userRes.json()) as { id?: number; username?: string; email?: string };
+            if (userData.id) providerUserId = String(userData.id);
+            if (userData.username) username = userData.username;
+            if (userData.email) email = userData.email;
+          }
+        }
+      } catch (oauthErr) {
+        console.warn(`[OAuth] Live provider exchange failed, falling back to mock profile:`, oauthErr);
+      }
+    }
 
     try {
       let stateData: { action?: string; userId?: number } | null = null;
@@ -175,17 +238,13 @@ export function authRouter(database: LibraryDatabase): Router {
 
         const existingLink = database.getOAuthAccountByUserId(userId, provider);
         if (existingLink) {
-          database.updateOAuthTokens(userId, provider, mockAccessToken, mockRefreshToken, mockExpiresAt);
+          database.updateOAuthTokens(userId, provider, accessToken, refreshToken, expiresAt);
         } else {
-          // Temporarily create a user just to use createOAuthUser but since user exists,
-          // wait, we need an insert into oauth_accounts!
-          // We can just add it via a raw DB call, but since we are mocking, let's just
-          // add an insertOAuthAccount method or use a quick query.
           database.db
             .prepare(
               `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
             )
-            .run(userId, provider, mockProviderUserId, mockAccessToken, mockRefreshToken, mockExpiresAt);
+            .run(userId, provider, providerUserId, accessToken, refreshToken, expiresAt);
         }
 
         res.redirect(`http://localhost:3000/settings?success=Linked${provider}`);
@@ -193,26 +252,26 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       // Handle Normal Login/Signup
-      let oauthAcc = database.getOAuthAccount(provider, mockProviderUserId);
+      let oauthAcc = database.getOAuthAccount(provider, providerUserId);
       let userId = oauthAcc?.user_id;
       let user;
 
       if (userId) {
         user = database.getUserById(userId);
-        database.updateOAuthTokens(userId, provider, mockAccessToken, mockRefreshToken, mockExpiresAt);
+        database.updateOAuthTokens(userId, provider, accessToken, refreshToken, expiresAt);
       } else {
         // Ensure email/username are not already taken by a regular account
-        const existing = database.getUserByEmail(mockEmail);
+        const existing = database.getUserByEmail(email);
         if (existing) {
           user = existing;
           database.db
             .prepare(
               `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
             )
-            .run(user.id, provider, mockProviderUserId, mockAccessToken, mockRefreshToken, mockExpiresAt);
+            .run(user.id, provider, providerUserId, accessToken, refreshToken, expiresAt);
         } else {
-          user = database.createOAuthUser(mockUsername, mockEmail, provider, mockProviderUserId);
-          database.updateOAuthTokens(user.id, provider, mockAccessToken, mockRefreshToken, mockExpiresAt);
+          user = database.createOAuthUser(username, email, provider, providerUserId);
+          database.updateOAuthTokens(user.id, provider, accessToken, refreshToken, expiresAt);
         }
       }
 

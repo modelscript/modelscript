@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { assertSafePublicUrl } from "./ssrf.js";
+import { assertSafePublicUrl, safePublicFetch } from "./ssrf.js";
 
 export async function sendSignedRequest(
   targetInboxUrl: string,
@@ -34,7 +34,7 @@ export async function sendSignedRequest(
   const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="${signature}"`;
   headers["Signature"] = signatureHeader;
 
-  const response = await fetch(url.href, {
+  const response = await safePublicFetch(url.href, {
     method: "POST",
     headers,
     body: bodyString,

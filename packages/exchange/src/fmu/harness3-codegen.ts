@@ -375,11 +375,78 @@ int main(int argc, char* argv[]) {
       }
 
     } else if (strcmp(method, "getOutputs") == 0) {
-      /* Placeholder: caller provides VR list in params.valueReferences */
-      json_respond_ok(id);
+      /* Extract valueReferences from params: "valueReferences":[...] */
+      fmi3ValueReference vrs[256];
+      size_t nvr = 0;
+      char* vrp = strstr(line, "\\\\"valueReferences\\\\":[");
+      if (vrp) {
+        char* p = vrp + 20;
+        while (*p && *p != ']' && nvr < 256) {
+          while (*p == ' ' || *p == ',') p++;
+          if (*p >= '0' && *p <= '9') {
+            vrs[nvr++] = (fmi3ValueReference)strtoul(p, &p, 10);
+          } else {
+            break;
+          }
+        }
+      }
+      if (h.GetFloat64 && nvr > 0) {
+        fmi3Float64 vals[256];
+        fmi3Status s = h.GetFloat64(h.inst, vrs, nvr, vals, nvr);
+        if (s == fmi3OK) {
+          printf("{\\\\"result\\\\":{\\\\"values\\\\":[");
+          for (size_t i = 0; i < nvr; i++) {
+            printf("%s%.16g", (i > 0 ? "," : ""), vals[i]);
+          }
+          printf("]},\\\\"id\\\\":%d}\\\\n", id);
+          fflush(stdout);
+        } else {
+          json_respond_error(id, "GetFloat64 failed");
+        }
+      } else {
+        printf("{\\\\"result\\\\":{\\\\"values\\\\":[]},\\\\"id\\\\":%d}\\\\n", id);
+        fflush(stdout);
+      }
 
     } else if (strcmp(method, "setInputs") == 0) {
-      json_respond_ok(id);
+      /* Extract valueReferences and values from params */
+      fmi3ValueReference vrs[256];
+      fmi3Float64 vals[256];
+      size_t nvr = 0, nval = 0;
+      char* vrp = strstr(line, "\\\\"valueReferences\\\\":[");
+      if (vrp) {
+        char* p = vrp + 20;
+        while (*p && *p != ']' && nvr < 256) {
+          while (*p == ' ' || *p == ',') p++;
+          if (*p >= '0' && *p <= '9') {
+            vrs[nvr++] = (fmi3ValueReference)strtoul(p, &p, 10);
+          } else {
+            break;
+          }
+        }
+      }
+      char* valp = strstr(line, "\\\\"values\\\\":[");
+      if (valp) {
+        char* p = valp + 10;
+        while (*p && *p != ']' && nval < 256) {
+          while (*p == ' ' || *p == ',') p++;
+          if ((*p >= '0' && *p <= '9') || *p == '-' || *p == '+') {
+            vals[nval++] = strtod(p, &p);
+          } else {
+            break;
+          }
+        }
+      }
+      if (h.SetFloat64 && nvr > 0 && nvr == nval) {
+        fmi3Status s = h.SetFloat64(h.inst, vrs, nvr, vals, nval);
+        if (s == fmi3OK) {
+          json_respond_ok(id);
+        } else {
+          json_respond_error(id, "SetFloat64 failed");
+        }
+      } else {
+        json_respond_ok(id);
+      }
 
     } else if (strcmp(method, "updateDiscreteStates") == 0) {
       if (h.UpdateDiscreteStates) {

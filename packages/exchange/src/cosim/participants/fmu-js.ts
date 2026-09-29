@@ -17,7 +17,6 @@ import type { FmiModelDescription, FmiScalarVariable } from "../../fmu/model-des
 import type { FmuStorage, StoredFmu } from "../../fmu/storage.js";
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
 import type { CoSimParticipant } from "../participant.js";
-import { JsSimulatorParticipant } from "./js-simulator.js";
 
 /**
  * Options for creating an FMU-JS participant.
@@ -60,9 +59,6 @@ export class FmuJsParticipant implements CoSimParticipant {
   private initialized = false;
 
   private readonly storage: FmuStorage;
-
-  /** Underlying js simulator if model.json is present inside the Fmu */
-  private simulatorParticipant?: JsSimulatorParticipant;
 
   constructor(options: FmuJsParticipantOptions) {
     this.id = options.id;
@@ -141,14 +137,6 @@ export class FmuJsParticipant implements CoSimParticipant {
       this.currentTime = this.modelDesc.defaultExperiment.startTime;
     }
 
-    if (this.simulatorParticipant) {
-      await this.simulatorParticipant.initialize(startTime, _stopTime, _stepSize);
-      // sync our override maps
-      for (const [name, value] of this.values) {
-        this.simulatorParticipant.setInputs(new Map([[name, value]]));
-      }
-    }
-
     this.initialized = true;
     void this.storedFmu; // retained for future model.json loading
   }
@@ -156,19 +144,9 @@ export class FmuJsParticipant implements CoSimParticipant {
   async doStep(currentTime: number, stepSize: number): Promise<void> {
     if (!this.initialized) throw new Error("FMU-JS participant not initialized");
 
-    if (this.simulatorParticipant) {
-      // Pass the inputs
-      await this.simulatorParticipant.setInputs(this.inputOverrides);
-      await this.simulatorParticipant.doStep(currentTime, stepSize);
-      const outs = await this.simulatorParticipant.getOutputs();
-      for (const [name, value] of outs) {
-        this.values.set(name, value);
-      }
-    } else {
-      // Apply input overrides before stepping
-      for (const [name, value] of this.inputOverrides) {
-        this.values.set(name, value);
-      }
+    // Apply input overrides before stepping
+    for (const [name, value] of this.inputOverrides) {
+      this.values.set(name, value);
     }
 
     this.currentTime = currentTime + stepSize;

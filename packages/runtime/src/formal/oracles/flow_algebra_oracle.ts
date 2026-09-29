@@ -131,13 +131,28 @@ export class FlowAlgebraOracle implements TheoryOracle {
   }
 
   private getCanonicalPort(port: string): string {
-    const parent = this.aliases.get(port);
-    if (!parent || parent === port) {
-      this.aliases.set(port, port);
-      return port;
+    let curr = port;
+    const visited = new Set<string>();
+    const path: string[] = [];
+
+    while (true) {
+      if (visited.has(curr)) {
+        this.aliases.set(curr, curr);
+        break;
+      }
+      visited.add(curr);
+      path.push(curr);
+      const parent = this.aliases.get(curr);
+      if (!parent || parent === curr) {
+        break;
+      }
+      curr = parent;
     }
-    const root = this.getCanonicalPort(parent);
-    this.aliases.set(port, root);
+
+    const root = curr;
+    for (const node of path) {
+      this.aliases.set(node, root);
+    }
     return root;
   }
 

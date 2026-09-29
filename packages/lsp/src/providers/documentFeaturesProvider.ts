@@ -3,7 +3,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { nodeRange } from "../utils/astUtils.js";
-import type { SyntaxNode } from "../utils/tree-sitter.js";
+import type { SyntaxNode } from "../utils/cst-facade.js";
 
 export function registerDocumentFeaturesProvider(
   connection: Connection,

@@ -20,7 +20,7 @@ import { parsePackageMo } from "../util/package-mo.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
 function isValidPackageName(name: string): boolean {
-  return /^[a-zA-Z0-9_.-]+$/.test(name);
+  return /^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(name);
 }
 
 function safeUpstreamUrl(pathname: string): URL {

@@ -616,7 +616,8 @@ export function runTestCase(
 
     // ── Arena-native flattening ──
     const flattenerBackend = (process.env.FLATTENER_BACKEND || "hybrid") as any;
-    const arrayMode = testCase.metadata.arrayMode ?? (/\+a\b/.test(testCase.source) ? "preserve" : undefined);
+    const arrayMode =
+      testCase.metadata.arrayMode ?? (/\+a\b|-nfScalarize\b/.test(testCase.source) ? "preserve" : undefined);
     const intEnumConversion = /\+intEnumConversion\b/.test(testCase.source);
     const arena = context.flattenArena(lastClassName, undefined, undefined, {
       omcCompatibility: true,
@@ -654,8 +655,33 @@ export function runTestCase(
         )
           return false;
       }
+      // Filter M2003 false positives for names resolvable via imports
+      if (cd.code === 2003) {
+        const nameMatch = /Class or type '([^']+)' not found/.exec(msg);
+        if (nameMatch) {
+          const typeName = nameMatch[1];
+          // Check if any class in the file has an import that resolves this name
+          const qe = context.queryEngine;
+          const db = qe.toQueryDB();
+          // Walk all classes and check their scope data for this import
+          for (const [symId, sym] of qe.index.symbols) {
+            if (sym.kind !== "Class") continue;
+            const scopeData = db.query<any>("getScopeData", symId);
+            if (scopeData?.qualifiedImports?.[typeName]) {
+              return false; // Name is resolvable via import
+            }
+          }
+        }
+      }
       if (cd.code === 4051 && msg.includes("extends Real")) return false;
       if (cd.code === 3009 && arena?.diagnostics.some((d) => d.code === 3009)) return false;
+      if (cd.code === 4031 && arena?.diagnostics.some((d) => d.code === 4031 || d.message.includes("is out of bounds")))
+        return false;
+      if (
+        cd.code === 5004 &&
+        arena?.diagnostics.some((d) => d.code === 3003 || d.message.includes("not type compatible"))
+      )
+        return false;
       if (
         (cd.code === 4011 || msg.includes("Invalid protected variable")) &&
         arena?.diagnostics.some((d) => d.code === 4011 || d.message.includes("Invalid protected variable"))

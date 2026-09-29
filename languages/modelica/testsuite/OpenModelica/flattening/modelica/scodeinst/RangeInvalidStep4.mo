@@ -1,7 +1,6 @@
 // name: RangeInvalidStep4.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Check that a step size close to 0 isn't allowed, since that would give an
 // infinite range.

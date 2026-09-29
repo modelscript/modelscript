@@ -128,6 +128,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
           const normalized = path.resolve(testPath);
           if (
             normalized.includes("/packages/dsl/src/") ||
+            normalized.includes("/packages/runtime/src/") ||
             normalized.includes("/packages/language/src/") ||
             normalized.includes("/node_modules/")
           ) {

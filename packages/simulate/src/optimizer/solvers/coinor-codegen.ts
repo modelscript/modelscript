@@ -59,12 +59,10 @@ export interface NlpProblemDef {
   x0: number[];
   /** DAE instance containing expression arena metadata (when using ExprId handles). */
   dae?: DAEBuilder;
-  /** Objective expression (ExprId in dae or legacy AST). */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  objectiveExpr: number | any;
+  /** Objective expression (ExprId in dae). */
+  objectiveExpr: number;
   /** Constraint expressions (each evaluates to a residual that should be zero). */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constraintExprs: (number | any)[];
+  constraintExprs: number[];
   /** Constraint lower bounds. */
   constraintLB: number[];
   /** Constraint upper bounds. */
@@ -232,15 +230,15 @@ export function generateNlpMainC(problem: NlpProblemDef, options: CoinorCodegenO
   // Build AD tapes for objective and constraints
   const interner = problem.dae?.interner;
   const objTape = new StaticTapeBuilder(interner);
-  const objIdx =
-    typeof problem.objectiveExpr === "number" && problem.dae
-      ? objTape.addExpression(problem.objectiveExpr, problem.dae)
-      : objTape.walk(problem.objectiveExpr);
+  if (!problem.dae) {
+    throw new Error("DAEBuilder instance required for NLP tape compilation");
+  }
+  const objIdx = objTape.addExpression(problem.objectiveExpr, problem.dae);
 
   const conTapes: { tape: StaticTapeBuilder; outputIdx: number }[] = [];
   for (const expr of problem.constraintExprs) {
     const tape = new StaticTapeBuilder(interner);
-    const idx = typeof expr === "number" && problem.dae ? tape.addExpression(expr, problem.dae) : tape.walk(expr);
+    const idx = tape.addExpression(expr, problem.dae);
     conTapes.push({ tape, outputIdx: idx });
   }
 

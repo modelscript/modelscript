@@ -308,7 +308,21 @@ export function makeShapeNil(): u32 {
 }
 
 export function addLowerBound(varId: u32, boundId: u32): void {
-  // Stub for directional constraint subtyping
+  let vRoot = typeFind(varId);
+  let bRoot = typeFind(boundId);
+  if (vRoot == bRoot || bRoot == 0) return;
+
+  let currentBound = getTypeExtra(vRoot);
+  if (currentBound == 0) {
+    typeTable[vRoot * TYPE_STRIDE + 3] = bRoot;
+  } else if (currentBound != bRoot) {
+    if (core_isAssignableTo(currentBound, bRoot)) {
+      typeTable[vRoot * TYPE_STRIDE + 3] = bRoot;
+    } else if (!core_isAssignableTo(bRoot, currentBound)) {
+      let unionBound = allocType(TYPE_UNION, 0, bRoot, currentBound);
+      typeTable[vRoot * TYPE_STRIDE + 3] = unionBound;
+    }
+  }
 }
 
 export function core_isAssignableTo(targetId: u32, sourceId: u32): boolean {

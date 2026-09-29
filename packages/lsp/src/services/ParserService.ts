@@ -11,9 +11,9 @@ import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { computeTreeEdit } from "../utils/astUtils.js";
+import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/cst-facade.js";
 import { getCompositeName } from "../utils/hierarchyUtils.js";
 import { LineIndex, TokenData } from "../utils/line-index.js";
-import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/tree-sitter.js";
 import { BrowserFileSystem } from "../vfs/browser-file-system.js";
 import {
   loadDependencyFromRegistry,
@@ -137,12 +137,14 @@ export class ParserService {
   }
 
   // Compatibility getters/setters for legacy callers
+  /** @deprecated Use `getParser("modelica")` instead. */
   get parser() {
     return this.getParser("modelica");
   }
   set parser(val: any) {
     this.registerParser("modelica", val, this.facade);
   }
+  /** @deprecated Use `getFacade("modelica")` instead. */
   get facade() {
     return this.getFacade("modelica");
   }
@@ -150,6 +152,7 @@ export class ParserService {
     const p = this.parser;
     this.registerParser("modelica", p, val);
   }
+  /** @deprecated Use `isParserReady("modelica")` instead. */
   get parserReady() {
     return this.isParserReady("modelica");
   }
@@ -159,12 +162,14 @@ export class ParserService {
     else this.registerParser("modelica", null, null);
   }
 
+  /** @deprecated Use `getParser("sysml2")` instead. */
   get sysml2Parser() {
     return this.getParser("sysml2");
   }
   set sysml2Parser(val: any) {
     this.registerParser("sysml2", val, this.sysml2Facade);
   }
+  /** @deprecated Use `getFacade("sysml2")` instead. */
   get sysml2Facade() {
     return this.getFacade("sysml2");
   }
@@ -172,6 +177,7 @@ export class ParserService {
     const p = this.sysml2Parser;
     this.registerParser("sysml2", p, val);
   }
+  /** @deprecated Use `isParserReady("sysml2")` instead. */
   get sysml2ParserReady() {
     return this.isParserReady("sysml2");
   }
@@ -181,6 +187,7 @@ export class ParserService {
     else this.registerParser("sysml2", null, null);
   }
 
+  /** @deprecated Use `getParser("step")` instead. */
   get stepParser() {
     return this.getParser("step");
   }
@@ -521,7 +528,8 @@ export class ParserService {
       }
 
       // Set this EARLY so that occt-import-js has the right path during early validation pass
-      this.workspaceManager.stepWorkspaceIndex.serverDistBase = serverDistBase;
+      const stepWs = this.workspaceManager.getWorkspaceIndex("step");
+      if (stepWs) stepWs.serverDistBase = serverDistBase;
       (globalThis as any).serverDistBase = serverDistBase;
 
       this.connection.sendNotification("modelscript/status", {
@@ -565,14 +573,11 @@ export class ParserService {
         manifest.map(async (entry) => {
           if (!entry.wasm) return;
           const wasmUrl = `${serverDistBase}/${entry.wasm}`;
-          const legacyWasmUrl = `${serverDistBase}/tree-sitter-${entry.id}.wasm`;
           const syntaxNames = entry.syntaxNames || (globalThis as any)[`${entry.id}SyntaxNames`];
           const fieldNames = entry.fieldNames || (globalThis as any)[`${entry.id}FieldNames`];
 
           try {
-            const result = await createWasmParser(wasmUrl, { syntaxNames, fieldNames }).catch(() =>
-              createWasmParser(legacyWasmUrl, { syntaxNames, fieldNames }),
-            );
+            const result = await createWasmParser(wasmUrl, { syntaxNames, fieldNames });
 
             if (result) {
               this.registerParser(entry.id, result.parser, result.facade);
@@ -715,7 +720,7 @@ export class ParserService {
       if (createModelicaQE) {
         try {
           const unified =
-            this.workspaceManager.globalWorkspaceIndex?.toUnified?.() ??
+            this.workspaceManager.getWorkspaceIndex("modelica")?.toUnified?.() ??
             this.workspaceManager.unifiedWorkspace?.toUnifiedPartial?.();
           if (unified) {
             this.workspaceManager.globalModelicaQueryEngine = createModelicaQE(
@@ -753,10 +758,10 @@ export class ParserService {
         },
         sharedFs: (globalThis as any).sharedFs ?? new BrowserFileSystem(),
         sharedContext: this.sharedContext,
-        globalWorkspaceIndex: this.workspaceManager.globalWorkspaceIndex,
-        sysml2WorkspaceIndex: this.workspaceManager.sysml2WorkspaceIndex,
+        globalWorkspaceIndex: this.workspaceManager.getWorkspaceIndex("modelica"),
+        sysml2WorkspaceIndex: this.workspaceManager.getWorkspaceIndex("sysml2"),
         documentTrees: this.documentManager.documentTrees as any,
-        sysml2Parser: this.sysml2Parser as any,
+        sysml2Parser: this.getParser("sysml2") as any,
         cacheStore,
         registryUrl: typeof registryUrl !== "undefined" ? registryUrl : undefined,
         federatedEndpoints,
@@ -830,20 +835,6 @@ export class ParserService {
         message: "Parser initialization failed",
       });
     }
-  }
-
-  /**
-   * Backward-compatible alias for third-party consumers.
-   * @deprecated Use `initWasmParsers` instead.
-   */
-  public async initTreeSitter(
-    extensionUri: string,
-    validationService?: any,
-    projectDependencies?: { name: string; version: string }[],
-    useLocalMsl = false,
-    onParsersReady?: () => void,
-  ): Promise<void> {
-    return this.initWasmParsers(extensionUri, validationService, projectDependencies, useLocalMsl, onParsersReady);
   }
 
   sendProjectTreeChanged() {
@@ -934,9 +925,9 @@ export class ParserService {
             this.sharedContext.queryEngine = this.workspaceManager.globalModelicaQueryEngine;
           }
           if (typeof this.sharedContext.setWorkspaceIndex === "function") {
-            this.sharedContext.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
+            this.sharedContext.setWorkspaceIndex(this.workspaceManager.getWorkspaceIndex("modelica"));
           } else {
-            this.sharedContext.workspaceIndex = this.workspaceManager.globalWorkspaceIndex;
+            this.sharedContext.workspaceIndex = this.workspaceManager.getWorkspaceIndex("modelica");
           }
         }
       }
